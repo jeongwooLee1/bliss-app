@@ -1,3 +1,4 @@
+import { T } from '../../lib/constants'
 import React from 'react'
 
 export const I = ({name,size=16,color="currentColor",style={},...p}) => {
