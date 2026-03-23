@@ -102,3 +102,7 @@ export const BLOCK_COLORS = {
 
 export const DEFAULT_SOURCES = ["네이버","전화","방문","소개","인스타","카카오","기타"]
 export const STATUS_KEYS = ["confirmed","completed","cancelled","no_show"]
+
+export const SYSTEM_TAG_NAME_NEW_CUST = "신규"
+export const SYSTEM_TAG_NAME_PREPAID  = "예약금완료"
+export const SYSTEM_SRC_NAME_NAVER    = "네이버"
