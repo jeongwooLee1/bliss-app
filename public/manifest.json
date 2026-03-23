@@ -1,0 +1,12 @@
+{
+  "name": "Bliss 하우스왁싱",
+  "short_name": "Bliss",
+  "start_url": "/bliss-app/",
+  "display": "standalone",
+  "background_color": "#f9fafb",
+  "theme_color": "#7c7cc8",
+  "icons": [
+    { "src": "/bliss-app/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/bliss-app/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
