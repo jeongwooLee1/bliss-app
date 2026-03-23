@@ -46,7 +46,7 @@ function DataTable({ cols=[], rows=[], onRow }) {
   </table></div>;
 }
 async function loadAllFromDb(bizId) {
-  const [branches, services, categories, tags, sources, users, rooms] = await Promise.all([
+  const [branches, services, categories, tags, sources, users, rooms, customers, reservations, sales, products] = await Promise.all([
     sb.getByBiz("branches", bizId),
     sb.getByBiz("services", bizId),
     sb.getByBiz("service_categories", bizId),
@@ -54,15 +54,23 @@ async function loadAllFromDb(bizId) {
     sb.getByBiz("reservation_sources", bizId),
     sb.getByBiz("app_users", bizId),
     sb.getByBiz("rooms", bizId),
+    sb.getByBiz("customers", bizId),
+    sb.get("reservations", `&business_id=eq.${bizId}&order=date.desc,time.asc&limit=3000`),
+    sb.getByBiz("sales", bizId),
+    sb.getByBiz("products", bizId).catch(()=>[]),
   ]);
   return {
     branches: fromDb("branches", branches),
     services: fromDb("services", services),
-    categories: fromDb("service_categories", categories),
+    cats: fromDb("service_categories", categories),
     serviceTags: fromDb("service_tags", tags),
-    sources: fromDb("reservation_sources", sources),
+    resSources: fromDb("reservation_sources", sources),
     users: fromDb("app_users", users),
     rooms,
+    customers: fromDb("customers", customers),
+    reservations: fromDb("reservations", reservations),
+    sales: fromDb("sales", sales),
+    products: fromDb("services", products),
   };
 }
 function SuperDashboard({ superData, setSuperData, currentUser, onLogout, onEnterBiz }) {
