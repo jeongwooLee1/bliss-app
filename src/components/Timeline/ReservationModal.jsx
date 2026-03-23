@@ -831,10 +831,10 @@ ${naverText}
                     try {
                       const items = JSON.parse(f.requestMsg);
                       const _ncShow = (lbl) => {
-const col = NAVER_COLS.find(c=>c.kws.some(kw=>lbl.includes(kw)));
-return col ? (naverColShow[col.key] !== false) : true;
-};
-return items.filter(it=>it.value && _ncShow(it.label||"")).map((it,i)=>{
+        const col = NAVER_COLS.find(c=>c.kws.some(kw=>lbl.includes(kw)));
+        return col ? (naverColShow[col.key] !== false) : true;
+      };
+      return items.filter(it=>it.value && _ncShow(it.label||"")).map((it,i)=>{
                         if (it.label==="시술메뉴") return <NRow key={i} label="시술메뉴" value={it.value} />;
                         return <div key={i} style={{display:"flex",alignItems:"flex-start",gap:6,padding:"4px 0",borderBottom:"1px solid #E8F5E9"}}>
                           <span style={{fontSize:11,color:T.textMuted,fontWeight:500,minWidth:48,flexShrink:0,paddingTop:2}}>{it.label}</span>
@@ -845,10 +845,10 @@ return items.filter(it=>it.value && _ncShow(it.label||"")).map((it,i)=>{
                   }
                   // 기존 텍스트 형식 fallback
                   const _ncShow2 = (lbl) => {
-const col = NAVER_COLS.find(c=>c.kws.some(kw=>(lbl||"").includes(kw)));
-return col ? (naverColShow[col.key] !== false) : true;
-};
-return f.requestMsg.split("\n").filter(l=>l.trim()).map((line,i)=>{
+        const col = NAVER_COLS.find(c=>c.kws.some(kw=>(lbl||"").includes(kw)));
+        return col ? (naverColShow[col.key] !== false) : true;
+      };
+      return f.requestMsg.split("\n").filter(l=>l.trim()).map((line,i)=>{
                     const ci = line.lastIndexOf(": ");
                     const key = ci > -1 ? line.slice(0,ci).trim() : null;
                     const val = ci > -1 ? line.slice(ci+2).trim() : line.trim();
