@@ -674,3 +674,5 @@ function MiniCal({ selDate, onSelect, onClose }) {
   </div>;
 }
 
+
+export default App
