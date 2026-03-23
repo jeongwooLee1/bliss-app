@@ -1,178 +1,271 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { T } from '../../lib/constants'
-import { supabase, SB_URL, SB_KEY } from '../../lib/supabase'
+import { supabase } from '../../lib/supabase'
+import { BUSINESS_ID } from '../../lib/constants'
+import Icon from '../common/Icon'
 
-const H = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }
+const SB_URL = 'https://dpftlrsuqxqqeouwbfjd.supabase.co'
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRwZnRscnN1cXhxcWVvdXdiZmpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5MDU4MjQsImV4cCI6MjA4NzQ4MTgyNH0.iydEkjtPjZ0jXpUUPJben4IWWneDqLomv-HDlcFayE4'
+const H = { apikey:SB_KEY, Authorization:`Bearer ${SB_KEY}`, 'Content-Type':'application/json' }
 
 const BR_ACC = {
   'br_4bcauqvrb':'101171979','br_wkqsxj6k1':'102071377',
   'br_l6yzs2pkq':'102507795','br_k57zpkbx1':'101521969',
   'br_lfv2wgdf1':'101522539','br_g768xdu4w':'101517367',
-  'br_ybo3rmulv':'101476019','br_xu60omgdf':'101988152'
+  'br_ybo3rmulv':'101476019','br_xu60omgdf':'101988152',
 }
 
 export default function MessagesPage({ data, currentUser, isMaster }) {
-  const [convos, setConvos] = useState([])
+  const [convos, setConvos] = useState([])   // 대화 목록
   const [selConvo, setSelConvo] = useState(null)
-  const [messages, setMessages] = useState([])
-  const [input, setInput] = useState('')
+  const [msgs, setMsgs] = useState([])
+  const [inputText, setInputText] = useState('')
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
-  const messagesEndRef = useRef(null)
+  const [filterBranch, setFilterBranch] = useState('all')
+  const chatEndRef = useRef(null)
 
   const branches = data?.branches || []
-  const userBranchIds = isMaster ? branches.map(b=>b.id) : [currentUser?.branch_id].filter(Boolean)
-  const accIds = userBranchIds.map(b=>BR_ACC[b]).filter(Boolean)
+  const userBranches = isMaster ? branches.map(b=>b.id) : [currentUser?.branch_id].filter(Boolean)
+  const accIds = userBranches.map(b=>BR_ACC[b]).filter(Boolean)
 
   // 대화 목록 로드
-  const loadConvos = async () => {
-    let url = `${SB_URL}/rest/v1/naver_messages?select=account_id,user_id,user_name,direction,message_text,created_at,is_read&order=created_at.desc&limit=500`
-    if (accIds.length) url += `&account_id=in.(${accIds.join(',')})`
-    const r = await fetch(url, { headers: H })
-    const msgs = await r.json()
-    if (!Array.isArray(msgs)) { setLoading(false); return }
+  const loadConvos = useCallback(async () => {
+    let url = `${SB_URL}/rest/v1/naver_messages?select=account_id,user_id,user_name,direction,text,created_at,is_read,translated_text&order=created_at.desc&limit=500`
+    if (accIds.length > 0) url += `&account_id=in.(${accIds.join(',')})`
 
-    // 대화별 최신 메시지 묶기
+    const res = await fetch(url, { headers: H })
+    const rows = await res.json()
+    if (!Array.isArray(rows)) return
+
+    // 대화별 최신 메시지로 그룹화
     const map = {}
-    msgs.forEach(m => {
-      const key = `${m.account_id}_${m.user_id}`
-      if (!map[key]) map[key] = { account_id: m.account_id, user_id: m.user_id, user_name: m.user_name, last_msg: m.message_text, last_time: m.created_at, unread: 0 }
-      if (m.direction==='in' && !m.is_read) map[key].unread++
+    rows.forEach(m => {
+      const key = `${m.account_id}___${m.user_id}`
+      if (!map[key]) map[key] = { ...m, unread:0 }
+      if (!m.is_read && m.direction==='in') map[key].unread++
     })
-    setConvos(Object.values(map).sort((a,b)=>b.last_time.localeCompare(a.last_time)))
+    setConvos(Object.values(map).sort((a,b)=>b.created_at.localeCompare(a.created_at)))
     setLoading(false)
-  }
+  }, [accIds.join(',')])
 
+  useEffect(() => { loadConvos() }, [loadConvos])
+
+  // Realtime - 새 메시지
   useEffect(() => {
-    loadConvos()
-    // Realtime 구독
-    const ch = supabase.channel('messages_page')
-      .on('postgres_changes', {event:'INSERT',schema:'public',table:'naver_messages'}, loadConvos)
-      .on('postgres_changes', {event:'UPDATE',schema:'public',table:'naver_messages'}, loadConvos)
-      .subscribe()
+    const ch = supabase.channel('msgs_list')
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'naver_messages'},
+        () => { loadConvos(); if (selConvo) loadMsgs(selConvo) }
+      ).subscribe()
     return () => ch.unsubscribe()
-  }, [])
+  }, [loadConvos, selConvo])
 
-  const loadMessages = async (convo) => {
-    setSelConvo(convo)
-    const r = await fetch(
+  const loadMsgs = useCallback(async (convo) => {
+    if (!convo) return
+    const res = await fetch(
       `${SB_URL}/rest/v1/naver_messages?account_id=eq.${convo.account_id}&user_id=eq.${convo.user_id}&order=created_at.asc&limit=200`,
       { headers: H }
     )
-    const msgs = await r.json()
-    setMessages(Array.isArray(msgs) ? msgs : [])
-    // 읽음 처리
-    await fetch(`${SB_URL}/rest/v1/naver_messages?account_id=eq.${convo.account_id}&user_id=eq.${convo.user_id}&direction=eq.in&is_read=eq.false`,
-      { method:'PATCH', headers:{...H,'Content-Type':'application/json','Prefer':'return=minimal'}, body: JSON.stringify({is_read:true}) })
-    loadConvos()
-    setTimeout(()=>messagesEndRef.current?.scrollIntoView({behavior:'smooth'}), 100)
-  }
+    const rows = await res.json()
+    if (Array.isArray(rows)) {
+      setMsgs(rows)
+      // 읽음 처리
+      await fetch(
+        `${SB_URL}/rest/v1/naver_messages?account_id=eq.${convo.account_id}&user_id=eq.${convo.user_id}&is_read=eq.false&direction=eq.in`,
+        { method:'PATCH', headers:{...H,Prefer:'return=minimal'}, body:JSON.stringify({is_read:true}) }
+      )
+      setConvos(prev=>prev.map(c=>
+        c.account_id===convo.account_id&&c.user_id===convo.user_id ? {...c,unread:0} : c
+      ))
+    }
+  }, [])
 
-  const sendMessage = async () => {
-    if (!input.trim() || !selConvo) return
+  useEffect(() => {
+    if (selConvo) {
+      loadMsgs(selConvo)
+      setTimeout(()=>chatEndRef.current?.scrollIntoView({behavior:'smooth'}),100)
+    }
+  }, [selConvo, loadMsgs])
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({behavior:'smooth'})
+  }, [msgs])
+
+  const sendMsg = async () => {
+    if (!inputText.trim() || !selConvo || sending) return
     setSending(true)
     try {
       await fetch(`${SB_URL}/rest/v1/send_queue`, {
-        method:'POST', headers:{...H,'Content-Type':'application/json','Prefer':'return=minimal'},
-        body: JSON.stringify({ account_id: selConvo.account_id, user_id: selConvo.user_id, message: input.trim() })
+        method:'POST', headers:{...H,Prefer:'return=minimal'},
+        body: JSON.stringify({
+          account_id: selConvo.account_id,
+          user_id: selConvo.user_id,
+          text: inputText.trim(),
+          status: 'pending',
+        })
       })
-      setInput('')
-      setTimeout(() => loadMessages(selConvo), 1000)
+      setInputText('')
     } finally { setSending(false) }
   }
 
   const getBranchName = (accId) => {
-    const brId = Object.entries(BR_ACC).find(([,a])=>a===accId)?.[0]
+    const brId = Object.entries(BR_ACC).find(([,acc])=>acc===accId)?.[0]
     return branches.find(b=>b.id===brId)?.short || accId
   }
 
-  const formatTime = (dt) => {
+  const fmtTime = (dt) => {
     const d = new Date(dt)
-    const h = d.getHours(), m = d.getMinutes()
-    return `${h}:${String(m).padStart(2,'0')}`
-  }
-  const formatDate = (dt) => {
-    const d = new Date(dt)
+    const now = new Date()
+    const diffDays = Math.floor((now-d)/(1000*60*60*24))
+    if (diffDays===0) return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+    if (diffDays===1) return '어제'
+    if (diffDays<7) return `${diffDays}일전`
     return `${d.getMonth()+1}/${d.getDate()}`
   }
 
-  if (selConvo) return (
-    <div style={{display:'flex',flexDirection:'column',height:'100dvh',overflow:'hidden'}}>
-      {/* 채팅 헤더 */}
-      <div style={{flexShrink:0,background:T.bgCard,borderBottom:`1px solid ${T.border}`,padding:'10px 12px',display:'flex',alignItems:'center',gap:8}}>
-        <button onClick={()=>setSelConvo(null)} style={{width:28,height:28,borderRadius:'50%',border:`1px solid ${T.border}`,background:'none',cursor:'pointer',fontSize:18}}>‹</button>
-        <div style={{flex:1}}>
-          <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bold}}>{selConvo.user_name||'고객'}</div>
-          <div style={{fontSize:T.fs.xs,color:T.textMuted}}>{getBranchName(selConvo.account_id)}</div>
+  // 채팅 화면
+  if (selConvo) {
+    return (
+      <div style={{ display:'flex', flexDirection:'column', height:'100dvh' }}>
+        {/* 헤더 */}
+        <div style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 12px', background:T.bgCard, borderBottom:`1px solid ${T.border}`, flexShrink:0 }}>
+          <button onClick={()=>setSelConvo(null)} style={{ background:'none', border:'none', cursor:'pointer', padding:4 }}>
+            <Icon name="chevLeft" size={20} color={T.text}/>
+          </button>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:T.fs.sm, fontWeight:T.fw.bold }}>{selConvo.user_name||'고객'}</div>
+            <div style={{ fontSize:T.fs.xxs, color:T.textMuted }}>{getBranchName(selConvo.account_id)}</div>
+          </div>
+        </div>
+
+        {/* 메시지 목록 */}
+        <div style={{ flex:1, overflowY:'auto', padding:'12px 12px 8px', display:'flex', flexDirection:'column', gap:8 }}>
+          {msgs.map((m,i) => {
+            const isOut = m.direction==='out'
+            return (
+              <div key={i} style={{ display:'flex', justifyContent:isOut?'flex-end':'flex-start' }}>
+                <div style={{
+                  maxWidth:'78%', padding:'8px 12px',
+                  borderRadius: isOut ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                  background: isOut ? T.primary : T.bgCard,
+                  color: isOut ? '#fff' : T.text,
+                  fontSize:T.fs.sm, lineHeight:1.5,
+                  boxShadow: T.shadow.sm,
+                  border: isOut ? 'none' : `1px solid ${T.border}`,
+                }}>
+                  <div>{m.text}</div>
+                  {m.translated_text && !isOut && (
+                    <div style={{ marginTop:4, paddingTop:4, borderTop:`1px solid ${T.border}`, fontSize:T.fs.xxs, color:T.textMuted }}>
+                      번역: {m.translated_text}
+                    </div>
+                  )}
+                  <div style={{ fontSize:9, color:isOut?'rgba(255,255,255,0.7)':T.textMuted, marginTop:3, textAlign:isOut?'right':'left' }}>
+                    {fmtTime(m.created_at)}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+          <div ref={chatEndRef}/>
+        </div>
+
+        {/* 입력창 */}
+        <div style={{ padding:'8px 12px', background:T.bgCard, borderTop:`1px solid ${T.border}`, flexShrink:0, paddingBottom:'calc(8px + env(safe-area-inset-bottom))' }}>
+          <div style={{ display:'flex', gap:8, alignItems:'flex-end' }}>
+            <textarea
+              value={inputText} onChange={e=>setInputText(e.target.value)}
+              onKeyDown={e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg()} }}
+              placeholder="메시지 입력..." rows={1}
+              style={{ flex:1, border:`1px solid ${T.border}`, borderRadius:T.radius.md, padding:'8px 12px', fontSize:T.fs.sm, outline:'none', resize:'none', maxHeight:100, overflowY:'auto' }}
+            />
+            <button onClick={sendMsg} disabled={!inputText.trim()||sending} style={{
+              width:40, height:40, borderRadius:'50%', background:T.primary, border:'none',
+              cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
+              opacity:(!inputText.trim()||sending)?0.5:1,
+            }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+          </div>
         </div>
       </div>
+    )
+  }
 
-      {/* 메시지 목록 */}
-      <div style={{flex:1,overflowY:'auto',padding:12,display:'flex',flexDirection:'column',gap:8}}>
-        {messages.map((m,i) => {
-          const isOut = m.direction==='out'
-          return (
-            <div key={m.id||i} style={{display:'flex',flexDirection:'column',alignItems:isOut?'flex-end':'flex-start'}}>
-              <div style={{maxWidth:'75%',padding:'8px 12px',borderRadius:isOut?`${T.radius.lg}px ${T.radius.lg}px 4px ${T.radius.lg}px`:`${T.radius.lg}px ${T.radius.lg}px ${T.radius.lg}px 4px`,background:isOut?T.primary:T.gray200,color:isOut?'#fff':T.text,fontSize:T.fs.sm,lineHeight:1.5,wordBreak:'break-word'}}>
-                {m.message_text || m.text || ''}
-              </div>
-              {m.translated_text && !isOut && (
-                <div style={{maxWidth:'75%',fontSize:T.fs.xs,color:T.textMuted,marginTop:2,padding:'0 4px'}}>{m.translated_text}</div>
-              )}
-              <div style={{fontSize:9,color:T.textMuted,marginTop:2}}>{formatTime(m.created_at)}</div>
-            </div>
-          )
-        })}
-        <div ref={messagesEndRef}/>
-      </div>
-
-      {/* 입력창 */}
-      <div style={{flexShrink:0,padding:'8px 12px',borderTop:`1px solid ${T.border}`,background:T.bgCard,display:'flex',gap:8}}>
-        <input value={input} onChange={e=>setInput(e.target.value)}
-          onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&(e.preventDefault(),sendMessage())}
-          placeholder="메시지 입력..."
-          style={{flex:1,height:40,border:`1px solid ${T.border}`,borderRadius:T.radius.md,padding:'0 12px',fontSize:T.fs.sm,outline:'none'}}/>
-        <button onClick={sendMessage} disabled={sending||!input.trim()}
-          style={{width:40,height:40,background:T.primary,color:'#fff',border:'none',borderRadius:T.radius.md,cursor:'pointer',opacity:sending||!input.trim()?0.5:1,fontSize:16}}>
-          ↑
-        </button>
-      </div>
-    </div>
+  // 대화 목록
+  const filteredConvos = convos.filter(c =>
+    filterBranch === 'all' || BR_ACC[filterBranch] === c.account_id
   )
 
   return (
-    <div style={{display:'flex',flexDirection:'column',height:'100dvh',overflow:'hidden'}}>
-      <div style={{flexShrink:0,padding:'12px 16px',background:T.bgCard,borderBottom:`1px solid ${T.border}`,fontSize:T.fs.lg,fontWeight:T.fw.bolder}}>메시지함</div>
-      <div style={{flex:1,overflowY:'auto'}}>
-        {loading ? (
-          <div style={{padding:40,textAlign:'center',color:T.textMuted}}>로딩중...</div>
-        ) : convos.length === 0 ? (
-          <div style={{padding:40,textAlign:'center',color:T.textMuted}}>메시지가 없습니다</div>
-        ) : convos.map((c,i) => (
-          <div key={i} onClick={()=>loadMessages(c)}
-            style={{padding:'12px 16px',borderBottom:`1px solid ${T.border}`,background:T.bgCard,display:'flex',gap:10,cursor:'pointer'}}>
-            {/* 아바타 */}
-            <div style={{width:44,height:44,borderRadius:'50%',background:T.primaryLt,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:T.fs.sm,fontWeight:T.fw.bold,color:T.primary}}>
-              {(c.user_name||'고객').slice(0,2)}
-            </div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:3}}>
-                <div style={{display:'flex',alignItems:'center',gap:6}}>
-                  <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bold}}>{c.user_name||'고객'}</span>
-                  <span style={{fontSize:T.fs.xs,color:T.textMuted}}>{getBranchName(c.account_id)}</span>
-                </div>
-                <div style={{display:'flex',alignItems:'center',gap:6}}>
-                  {c.unread>0 && <span style={{background:T.danger,color:'#fff',borderRadius:10,padding:'1px 6px',fontSize:10,fontWeight:700}}>{c.unread}</span>}
-                  <span style={{fontSize:T.fs.xs,color:T.textMuted}}>{formatDate(c.last_time)}</span>
-                </div>
-              </div>
-              <div style={{fontSize:T.fs.xs,color:T.textSub,overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>
-                {c.last_msg||''}
-              </div>
-            </div>
+    <div style={{ display:'flex', flexDirection:'column', height:'100dvh' }}>
+      <div style={{ padding:'10px 12px', background:T.bgCard, borderBottom:`1px solid ${T.border}`, flexShrink:0 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+          <span style={{ fontSize:T.fs.lg, fontWeight:T.fw.bolder }}>메시지함</span>
+          <span style={{ fontSize:T.fs.xxs, color:T.textMuted }}>{convos.filter(c=>c.unread>0).length}개 미읽</span>
+        </div>
+        {isMaster && (
+          <div style={{ display:'flex', gap:6, overflowX:'auto' }}>
+            <button onClick={()=>setFilterBranch('all')} style={filterBtnStyle(filterBranch==='all',T)}>전체</button>
+            {branches.map(b=>(
+              <button key={b.id} onClick={()=>setFilterBranch(b.id)} style={{
+                ...filterBtnStyle(filterBranch===b.id,T),
+                borderColor:filterBranch===b.id?b.color:T.border,
+                background:filterBranch===b.id?b.color+'22':T.bgCard,
+                color:filterBranch===b.id?b.color:T.textSub,
+              }}>{b.short||b.name}</button>
+            ))}
           </div>
-        ))}
+        )}
+      </div>
+
+      <div style={{ flex:1, overflowY:'auto' }}>
+        {loading ? (
+          <div style={{ padding:40, textAlign:'center', color:T.textMuted }}>로딩중...</div>
+        ) : filteredConvos.length === 0 ? (
+          <div style={{ padding:40, textAlign:'center', color:T.textMuted, fontSize:T.fs.sm }}>메시지가 없습니다</div>
+        ) : filteredConvos.map((c,i) => {
+          const brName = getBranchName(c.account_id)
+          const initials = (c.user_name||'고객').slice(0,2)
+          const hasUnread = c.unread > 0
+          return (
+            <div key={i} onClick={()=>setSelConvo(c)} style={{
+              display:'flex', gap:12, padding:'12px 14px',
+              borderBottom:`1px solid ${T.border}`, cursor:'pointer',
+              background: hasUnread ? T.primaryHover : T.bgCard,
+            }}>
+              {/* 아바타 */}
+              <div style={{ width:46, height:46, borderRadius:'50%', background:T.primaryLt, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <span style={{ fontSize:T.fs.sm, fontWeight:T.fw.bolder, color:T.primary }}>{initials}</span>
+              </div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+                  <span style={{ fontSize:T.fs.sm, fontWeight:hasUnread?T.fw.bolder:T.fw.medium }}>
+                    {c.user_name||'고객'} · {brName}
+                  </span>
+                  <span style={{ fontSize:T.fs.xxs, color:T.textMuted, flexShrink:0 }}>{fmtTime(c.created_at)}</span>
+                </div>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <span style={{ fontSize:T.fs.xs, color:T.textSub, overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis' }}>
+                    {c.direction==='out'?'나: ':''}{c.text||''}
+                  </span>
+                  {c.unread > 0 && (
+                    <span style={{ width:18, height:18, borderRadius:'50%', background:T.danger, color:'#fff', fontSize:10, fontWeight:T.fw.bolder, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginLeft:6 }}>
+                      {c.unread}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
 }
+
+const filterBtnStyle = (active,T) => ({
+  padding:'3px 10px', borderRadius:T.radius.full, flexShrink:0,
+  border:`1px solid ${active?T.primary:T.border}`,
+  background:active?T.primaryLt:T.bgCard, color:active?T.primary:T.textSub,
+  fontSize:T.fs.xxs, fontWeight:T.fw.bold, cursor:'pointer',
+})
