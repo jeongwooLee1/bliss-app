@@ -66,8 +66,6 @@ function TimeSelect({ value, onChange, times }) {
 function DatePick({ value, onChange, style, min }) {
   const DAYS = ["일","월","화","수","목","금","토"];
 
-const STATUS_KEYS = ["confirmed","completed","cancelled","no_show"];
-const DEFAULT_SOURCES = ["네이버","전화","방문","소개","인스타","카카오","기타"];
   const fmt = (v) => {
     if (!v) return "--";
     const p = v.split("-");
@@ -83,6 +81,9 @@ const DEFAULT_SOURCES = ["네이버","전화","방문","소개","인스타","카
       style={{position:"absolute",inset:0,opacity:0,width:"100%",height:"100%",cursor:"pointer",fontSize:T.fs.lg}}/>
   </label>;
 }
+const STATUS_KEYS = ["confirmed","completed","cancelled","no_show"];
+const DEFAULT_SOURCES = ["네이버","전화","방문","소개","인스타","카카오","기타"];
+
 function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBranch, userBranches, data, setData, setPage, naverColShow={} }) {
   const SVC_LIST = (data?.services || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
   const PROD_LIST = (data?.products || []);
