@@ -1913,3 +1913,5 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   );
 }
 
+
+export default Timeline
