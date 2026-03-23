@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useCallback } from 'react'
-import { T, SCH_BRANCH_MAP } from '../../lib/constants'
+import { T, SCH_BRANCH_MAP, branchColor } from '../../lib/constants'
 import { todayStr, pad, fmtDate, getDow, timeToY, durationToH, addMinutes } from '../../lib/utils'
 import { useReservations } from '../../lib/useReservations'
 import ReservationModal from './ReservationModal'
@@ -152,10 +152,11 @@ function BranchTimeline({ branch, staff, reservations, services, tags, onClickCe
   const hours = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => i + START_HOUR)
   const totalH = (END_HOUR - START_HOUR) * PX_PER_HOUR
 
+  const color = branchColor(branch.id, branch.color)
   if (staff.length === 0) {
     return (
       <div style={{ marginBottom:1 }}>
-        <div style={branchHeaderStyle(branch.color)}>
+        <div style={branchHeaderStyle(color)}>
           {branch.short || branch.name} · 오늘 근무자 없음
         </div>
       </div>
@@ -164,7 +165,7 @@ function BranchTimeline({ branch, staff, reservations, services, tags, onClickCe
 
   return (
     <div style={{ marginBottom:1 }}>
-      <div style={branchHeaderStyle(branch.color)}>
+      <div style={branchHeaderStyle(color)}>
         {branch.short || branch.name}
         <span style={{ marginLeft:8, fontSize:T.fs.xxs, opacity:0.8 }}>
           {staff.map(e => e.isSupport ? `${e.id}↓` : e.id).join(' · ')}
@@ -234,7 +235,7 @@ function StaffColumn({ emp, branch, reservations, services, tags, totalH, hours,
       <div style={{
         height:28, display:'flex', alignItems:'center', justifyContent:'center',
         fontSize:T.fs.xxs, fontWeight:T.fw.bold, borderBottom:`1px solid ${T.border}`,
-        color: emp.isSupport ? T.orange : branch.color,
+        color: emp.isSupport ? T.orange : branchColor(branch.id, branch.color),
         background: emp.isSupport ? T.orangeLt : T.bgCard,
       }}>
         {emp.id}{emp.isSupport ? '↓' : ''}
@@ -281,7 +282,7 @@ function ResBlock({ res, branch, services, onClick }) {
 
   const isPending = res.status === 'pending'
   const isNaver = res.source === 'naver' || res.source === '네이버'
-  const color = isPending ? T.orange : branch.color
+  const color = isPending ? T.orange : branchColor(branch.id, branch.color)
 
   return (
     <div
