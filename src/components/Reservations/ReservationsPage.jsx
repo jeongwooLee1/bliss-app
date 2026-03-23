@@ -28,6 +28,31 @@ const resGridCols = (showCols, density) => {
 const DEFAULT_SOURCES = ["네이버","전화","방문","소개","인스타","카카오","기타"];
 const STATUS_KEYS = ["confirmed","completed","cancelled","no_show"];
 
+// ─── 공통 컴포넌트 (원본 전역 → 로컬 선언) ─────────────────────
+const Badge = ({ children, color=T.primary, bg, style={} }) => (
+  <span style={{display:"inline-flex",alignItems:"center",padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:700,color,background:bg||color+"22",...style}}>{children}</span>
+);
+const Tag = ({ children, color=T.primary, style={} }) => (
+  <span style={{display:"inline-flex",alignItems:"center",gap:3,padding:"2px 6px",borderRadius:4,fontSize:11,fontWeight:600,color,background:color+"22",...style}}>{children}</span>
+);
+const Chip = ({ label, color, bg, onRemove, style={} }) => (
+  <span style={{display:"inline-flex",alignItems:"center",gap:3,padding:"2px 8px",borderRadius:20,fontSize:12,fontWeight:500,color:color||T.text,background:bg||T.gray100,...style}}>
+    {label}{onRemove && <button onClick={onRemove} style={{background:"none",border:"none",cursor:"pointer",padding:0,lineHeight:1,color:"inherit",opacity:0.6}}>×</button>}
+  </span>
+);
+const Modal = ({ open, onClose, children, title, width=480 }) => {
+  if (!open) return null;
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,.4)"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div style={{background:T.bgCard,borderRadius:T.radius.lg,width:"min(90vw,"+width+"px)",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 8px 40px rgba(0,0,0,.2)"}}>
+        {title && <div style={{padding:"16px 20px",borderBottom:"1px solid "+T.border,fontWeight:700,fontSize:T.fs.lg,display:"flex",justifyContent:"space-between",alignItems:"center"}}>{title}<button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:T.textMuted}}>×</button></div>}
+        {children}
+      </div>
+    </div>
+  );
+};
+const Spinner = ({size=20}) => <div style={{width:size,height:size,border:"2px solid #eee",borderTop:"2px solid "+T.primary,borderRadius:"50%",animation:"spin 1s linear infinite"}}></div>;
+
 const Btn = ({ children, variant="primary", size="md", disabled, onClick, style={} }) => {
   const { T: _T } = { T: window.__T || {} };
   const bg = variant==="primary"?"#7c7cc8":variant==="danger"?"#e05555":variant==="ghost"?"transparent":"#f0f0f0";
