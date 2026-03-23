@@ -106,3 +106,5 @@ export const STATUS_KEYS = ["confirmed","completed","cancelled","no_show"]
 export const SYSTEM_TAG_NAME_NEW_CUST = "신규"
 export const SYSTEM_TAG_NAME_PREPAID  = "예약금완료"
 export const SYSTEM_SRC_NAME_NAVER    = "네이버"
+
+export const STATUS_CLR_DEFAULT = { confirmed:T.male, completed:T.success, cancelled:T.warning, no_show:T.danger, naver_cancel:T.danger }
