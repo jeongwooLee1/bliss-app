@@ -1734,7 +1734,4 @@ function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, data, setD
   );
 }
 
-// ═══════════════════════════════════════════
-// RESERVATION LIST
-// ═══════════════════════════════════════════
 export default TimelineModal;
