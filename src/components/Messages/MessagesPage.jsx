@@ -393,4 +393,5 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
     </div>
   );
 }
-function AdminAISettings({ data, sb, bizId }) {
+
+export default AdminInbox
