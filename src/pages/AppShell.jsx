@@ -39,6 +39,32 @@ const Btn = ({ children, variant="primary", size="md", disabled, onClick, style=
   return <button onClick={disabled?undefined:onClick} style={{...base,...sizes[size],...variants[variant],...style}} {...p}>{children}</button>;
 };
 
+function DataTable({ cols=[], rows=[], onRow }) {
+  return <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+    <thead><tr>{cols.map(c=><th key={c.key} style={{padding:"6px 10px",background:"#f5f5f5",borderBottom:"1px solid #eee",textAlign:"left",fontWeight:600}}>{c.label}</th>)}</tr></thead>
+    <tbody>{(rows||[]).map((r,i)=><tr key={i} onClick={()=>onRow&&onRow(r)} style={{cursor:onRow?"pointer":"default",borderBottom:"1px solid #f0f0f0"}}>{cols.map(c=><td key={c.key} style={{padding:"6px 10px"}}>{r[c.key]}</td>)}</tr>)}</tbody>
+  </table></div>;
+}
+async function loadAllFromDb(bizId) {
+  const [branches, services, categories, tags, sources, users, rooms] = await Promise.all([
+    sb.getByBiz("branches", bizId),
+    sb.getByBiz("services", bizId),
+    sb.getByBiz("service_categories", bizId),
+    sb.getByBiz("service_tags", bizId),
+    sb.getByBiz("reservation_sources", bizId),
+    sb.getByBiz("app_users", bizId),
+    sb.getByBiz("rooms", bizId),
+  ]);
+  return {
+    branches: fromDb("branches", branches),
+    services: fromDb("services", services),
+    categories: fromDb("service_categories", categories),
+    serviceTags: fromDb("service_tags", tags),
+    sources: fromDb("reservation_sources", sources),
+    users: fromDb("app_users", users),
+    rooms,
+  };
+}
 function SuperDashboard({ superData, setSuperData, currentUser, onLogout, onEnterBiz }) {
   const [tab, setTab] = useState("businesses");
   const { businesses=[], groups=[], groupMembers=[], users=[] } = superData || {};
