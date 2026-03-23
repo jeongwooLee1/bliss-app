@@ -5,6 +5,18 @@ import { fromDb } from '../../lib/db'
 import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone } from '../../lib/utils'
 import I from '../common/I'
 
+const _BR_ACC = {
+  "br_4bcauqvrb": 101171979,  // 강남
+  "br_wkqsxj6k1": 102071377,  // 왕십리
+  "br_xu60omgdf": 101988152,  // 천호
+  "br_k57zpkbx1": 101521969,  // 마곡
+  "br_g768xdu4w": 101517367,  // 위례
+  "br_ybo3rmulv": 101476019,  // 용산
+  "br_l6yzs2pkq": 102507795,  // 홍대
+  "br_lfv2wgdf1": 101522539,  // 잠실
+};
+
+
 function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], isMaster=false }) {
   const isMobile = window.innerWidth < 768;
   const CH_ICON = {naver:"N",kakao:"K",instagram:"I",whatsapp:"W",telegram:"T"};
