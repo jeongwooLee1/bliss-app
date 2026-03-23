@@ -10,6 +10,9 @@ import ReservationList from '../components/Reservations/ReservationsPage'
 import AdminInbox from '../components/Messages/MessagesPage'
 import SchedulePage from '../components/Schedule/SchedulePage'
 import AdminPage from '../components/Admin/AdminPage'
+import Timeline from '../components/Timeline/TimelinePage'
+import ReservationList from '../components/Reservations/ReservationsPage'
+import AdminInbox from '../components/Messages/MessagesPage'
 
 const BLISS_V = "bliss-app"
 const BIZ_ID = 'biz_khvurgshb'
