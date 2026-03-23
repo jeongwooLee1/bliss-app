@@ -2,7 +2,6 @@
 import { useState, useMemo } from 'react'
 import { useSchHistory } from '../../lib/useData'
 import { T, SCH_BRANCH_MAP } from '../../lib/constants'
-import autoAssignWorker from './autoAssign'
 
 const BRANCHES_SCHEDULE = [
   { id:'gangnam',   name:'강남',   color:'#c8793a', minStaff:1 },
