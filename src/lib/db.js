@@ -1,31 +1,5 @@
 // DB utilities (원본 index.html L49~149 그대로)
 
-export let NEW_CUST_TAG_ID_GLOBAL = null
-export let PREPAID_TAG_ID = null
-export let NAVER_SRC_ID = null
-export let SYSTEM_TAG_IDS = []
-export let SYSTEM_SRC_IDS = []
-
-export function resolveSystemIds(tags, sources) {
-  try {
-    const tagList = Array.isArray(tags) ? tags : []
-    const srcList = Array.isArray(sources) ? sources : []
-    const newCustTag = tagList.find(t => t.name === "신규" && t.scheduleYn !== "Y")
-    const prepaidTag = tagList.find(t => t.name === "예약금완료" && t.scheduleYn !== "Y")
-    const naverSrc   = srcList.find(s => s.name === "네이버")
-    NEW_CUST_TAG_ID_GLOBAL = newCustTag?.id || null
-    PREPAID_TAG_ID         = prepaidTag?.id || null
-    NAVER_SRC_ID           = naverSrc?.id   || null
-    SYSTEM_TAG_IDS = [NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID].filter(Boolean)
-    SYSTEM_SRC_IDS = [NAVER_SRC_ID].filter(Boolean)
-  } catch(e) {
-    SYSTEM_TAG_IDS = []; SYSTEM_SRC_IDS = []
-  }
-}
-
-export let _activeBizId = null
-export const setActiveBiz = (bizId) => { _activeBizId = bizId }
-
 export const DBMAP = {
   reservations:{business_id:"businessId",room_id:"roomId",cust_id:"custId",cust_name:"custName",cust_phone:"custPhone",cust_gender:"custGender",staff_id:"staffId",service_id:"serviceId",is_schedule:"isSchedule",is_new_cust:"isNewCust",selected_tags:"selectedTags",selected_services:"selectedServices",repeat_group_id:"repeatSourceId",repeat_until:"repeatUntil",reservation_id:"reservationId",updated_at:"_ua",source:"source",request_msg:"requestMsg",owner_comment:"ownerComment",is_prepaid:"isPrepaid",npay_method:"npayMethod",total_price:"totalPrice",visit_count:"visitCount",no_show_count:"noShowCount",is_scraping_done:"isScrapingDone",naver_reg_dt:"naverRegDt",naver_confirmed_dt:"naverConfirmedDt",naver_cancelled_dt:"naverCancelledDt",prev_reservation_id:"prevReservationId",visitor_name:"visitorName",visitor_phone:"visitorPhone"},
   sales:{business_id:"businessId",cust_id:"custId",cust_name:"custName",cust_phone:"custPhone",cust_gender:"custGender",cust_num:"custNum",staff_id:"staffId",staff_name:"staffName",service_id:"serviceId",service_name:"serviceName",product_id:"productId",product_name:"productName",svc_cash:"svcCash",svc_transfer:"svcTransfer",svc_card:"svcCard",svc_point:"svcPoint",prod_cash:"prodCash",prod_transfer:"prodTransfer",prod_card:"prodCard",prod_point:"prodPoint",order_num:"orderNum",reservation_id:"reservationId"},
@@ -44,13 +18,13 @@ const SYSTEM_TAG_NAME_PREPAID  = "예약금완료";
 const SYSTEM_SRC_NAME_NAVER    = "네이버";
 
 // 런타임에 데이터 로드 후 resolveSystemIds()로 채워지는 변수
-let NEW_CUST_TAG_ID_GLOBAL = null;
-let PREPAID_TAG_ID         = null;
-let NAVER_SRC_ID           = null;
-let SYSTEM_TAG_IDS         = [];  // 삭제/보호 대상 시스템 태그 ID 목록
-let SYSTEM_SRC_IDS         = [];  // 삭제/보호 대상 시스템 경로 ID 목록
+export let NEW_CUST_TAG_ID_GLOBAL = null;
+export let PREPAID_TAG_ID = null;
+export let NAVER_SRC_ID = null;
+export let SYSTEM_TAG_IDS = [];  // 삭제/보호 대상 시스템 태그 ID 목록
+export let SYSTEM_SRC_IDS = [];  // 삭제/보호 대상 시스템 경로 ID 목록
 
-function resolveSystemIds(tags, sources) {
+export function resolveSystemIds(tags, sources) {
   try {
     const tagList = Array.isArray(tags) ? tags : [];
     const srcList = Array.isArray(sources) ? sources : [];
@@ -93,8 +67,8 @@ export const DB_COLS={
   reservation_sources:["id","business_id","name","color","sort","use_yn"],
 };
 // Global active business context - auto-injected into DB writes
-let _activeBizId = null;
-const setActiveBiz = (bizId) => { _activeBizId = bizId; };
+export let _activeBizId = null;
+export const setActiveBiz = (bizId) => { _activeBizId = bizId; };
 
 // Excel utility (uses SheetJS/XLSX global)
 const XL = {
