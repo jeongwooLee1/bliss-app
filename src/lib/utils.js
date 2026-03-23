@@ -101,3 +101,11 @@ export const durationToH = (mins, pixPerHour=60) => (mins/60) * pixPerHour
 export const fmtLocal = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`
 export const dateFromStr = (s) => { if (!s) return null; const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); }
 export const isoDate = (d) => d ? fmtLocal(new Date(d)) : ''
+
+export const groupSvcNames = (ids, svcs) => {
+  if (!ids?.length || !svcs?.length) return '';
+  const names = ids.map(id => svcs.find(s => s.id === id)?.name).filter(Boolean);
+  const counts = {};
+  names.forEach(n => { counts[n] = (counts[n]||0)+1; });
+  return Object.entries(counts).map(([n,c])=>c>1?`${n}x${c}`:n).join(', ');
+}
