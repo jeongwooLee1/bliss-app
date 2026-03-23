@@ -103,9 +103,11 @@ export const dateFromStr = (s) => { if (!s) return null; const [y,m,d] = s.split
 export const isoDate = (d) => d ? fmtLocal(new Date(d)) : ''
 
 export const groupSvcNames = (ids, svcs) => {
-  if (!ids?.length || !svcs?.length) return '';
-  const names = ids.map(id => svcs.find(s => s.id === id)?.name).filter(Boolean);
   const counts = {};
-  names.forEach(n => { counts[n] = (counts[n]||0)+1; });
-  return Object.entries(counts).map(([n,c])=>c>1?`${n}x${c}`:n).join(', ');
+  (ids||[]).forEach(id => { counts[id] = (counts[id]||0)+1; });
+  return Object.entries(counts).map(([id,qty]) => {
+    const s = svcs?.find(x=>x.id===id);
+    const n = s?.name||'?';
+    return qty>1 ? n+' x'+qty : n;
+  });
 }
