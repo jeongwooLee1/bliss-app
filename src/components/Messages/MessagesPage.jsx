@@ -23,6 +23,12 @@ const _BR_ACC = {
   "br_l6yzs2pkq": 102507795,  // 홍대
   "br_lfv2wgdf1": 101522539,  // 잠실
 };
+const _ACC_NAME = {
+  101171979: "강남", 102071377: "왕십리", 101988152: "천호",
+  101521969: "마곡", 101517367: "위례", 101476019: "용산",
+  102507795: "홍대", 101522539: "잠실",
+};
+const _ACC_BR = Object.fromEntries(Object.entries(_BR_ACC).map(([k,v])=>[v,k]));
 
 
 function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], isMaster=false }) {
