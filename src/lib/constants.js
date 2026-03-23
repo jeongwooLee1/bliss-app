@@ -16,7 +16,16 @@ export const T = {
   radius:{ sm:4, md:8, lg:12, xl:16, full:999 },
   fs:{ nano:9, xxs:11, xs:12, sm:13, md:14, lg:16, xl:18, xxl:22 },
   fw:{ normal:400, medium:500, bold:600, bolder:700, black:800 },
-  shadow:{ sm:'0 1px 3px rgba(0,0,0,.08)', md:'0 4px 12px rgba(0,0,0,.10)' }
+  shadow:{ sm:'0 1px 3px rgba(0,0,0,.08)', md:'0 4px 12px rgba(0,0,0,.10)' },
+  radius:{ sm:4, md:8, lg:12, xl:16, full:999 },
+  fs:{ nano:9, xxs:11, xs:12, sm:13, md:14, lg:16, xl:18, xxl:22 },
+  fw:{ normal:400, medium:500, bold:600, bolder:700, black:800 },
+  sp:{ xs:4, sm:8, md:12, lg:16, xl:24 },
+  info: '#5cb5c5', infoLt: '#e0f7fa', infoLt2: '#e8f5f0',
+  male: '#4a7cc8', maleLt: '#e3f0ff',
+  female: '#d96570', femaleLt: '#fce8e8',
+  naver: '#03c75a', kakao: '#fee500', google: '#4285f4', instagram: '#e4405f',
+  borderFocus: '#7c7cc8'
 }
 
 export const SCH_BRANCH_MAP = {
