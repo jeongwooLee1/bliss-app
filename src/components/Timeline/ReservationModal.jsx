@@ -89,6 +89,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   const branchId = item?.bid || selBranch;
   const branchRooms = (data.rooms||[]).filter(r=>r.branch_id===branchId);
   const branchStaff = (data.staff||[]).filter(s=>s.bid===branchId);
+  const fmt = (v) => v==null?"":Number(v).toLocaleString();
   const [showSaleForm, setShowSaleForm] = useState(false);
   const [isSchedule, setIsSchedule] = useState(item?.isSchedule || false);
   const modalRef = useRef(null);
