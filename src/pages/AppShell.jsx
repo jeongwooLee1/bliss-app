@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { T, BRANCH_DEFAULT_COLORS, branchColor, STATUS_LABEL } from '../lib/constants'
 import { sb, SB_URL, SB_KEY, sbHeaders } from '../lib/sb'
-import { fromDb, toDb, resolveSystemIds, setActiveBiz, SYSTEM_TAG_NAME_NEW_CUST, SYSTEM_TAG_NAME_PREPAID, SYSTEM_SRC_NAME_NAVER, _activeBizId } from '../lib/db'
+import { fromDb, toDb, resolveSystemIds, setActiveBiz } from '../lib/db'
 import { todayStr, pad, fmtDate, getDow, genId } from '../lib/utils'
 import I from '../components/common/I'
 import TimelineModal from '../components/Timeline/ReservationModal'
@@ -10,6 +10,9 @@ import AdminPage from '../components/Admin/AdminPage'
 
 const BLISS_V = "bliss-app"
 const BIZ_ID = 'biz_khvurgshb'
+const SYSTEM_TAG_NAME_NEW_CUST = "신규"
+const SYSTEM_TAG_NAME_PREPAID  = "예약금완료"
+const SYSTEM_SRC_NAME_NAVER    = "네이버" 
 
 function Spinner({size=20}) {
   return <div style={{width:size,height:size,border:`2px solid ${T.primaryLt}`,borderTop:`2px solid ${T.primary}`,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}></div>;
