@@ -38,13 +38,13 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   const inputAreaRef = useRef(null);
   const chatWrapRef = useRef(null);
 
-  const allowedIds = (userBranches||[]).map(b=>_BR_ACC[b]).filter(Boolean);
+  const allowedIds = isMaster ? Object.values(_BR_ACC) : (userBranches||[]).map(b=>_BR_ACC[b]).filter(Boolean);
 
   // 메시지 로드
   const loadMsgs = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch(_SB2+"/rest/v1/naver_messages?order=created_at.desc&limit=300&select=*",{headers:_SH2});
+      const r = await fetch(SB_URL+"/rest/v1/naver_messages?order=created_at.desc&limit=300&select=*",{headers:sbHeaders});
       const d2 = await r.json();
       if (Array.isArray(d2)) {
         setMsgs(d2);
@@ -106,8 +106,8 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   };
 
   const markRead = async(uid)=>{
-    await fetch(_SB2+"/rest/v1/naver_messages?user_id=eq."+uid+"&is_read=eq.false",
-      {method:"PATCH",headers:{..._SH2,Prefer:"return=minimal"},body:JSON.stringify({is_read:true})});
+    await fetch(SB_URL+"/rest/v1/naver_messages?user_id=eq."+uid+"&is_read=eq.false",
+      {method:"PATCH",headers:{...sbHeaders,Prefer:"return=minimal"},body:JSON.stringify({is_read:true})});
     setMsgs(prev=>prev.map(m=>m.user_id===uid?{...m,is_read:true}:m));
   };
 
@@ -124,8 +124,8 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
     setSending(true);
     try{
       const accId = sel.account_id && sel.account_id!=="unknown" ? sel.account_id : (allowedIds[0]||Object.keys(_ACC_AUTH)[0]);
-      const r = await fetch(_SB2+"/rest/v1/send_queue",{
-        method:"POST",headers:{..._SH2,Prefer:"return=representation"},
+      const r = await fetch(SB_URL+"/rest/v1/send_queue",{
+        method:"POST",headers:{...sbHeaders,Prefer:"return=representation"},
         body:JSON.stringify({account_id:accId,user_id:sel.user_id,message_text:text,status:"pending",channel:sel.channel||"naver"})
       });
       if(r.ok){
