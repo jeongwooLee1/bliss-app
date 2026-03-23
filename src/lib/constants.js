@@ -55,3 +55,41 @@ export function branchColor(branchId, dbColor) {
   }
   return BRANCH_DEFAULT_COLORS[branchId] || '#7c7cc8'
 }
+
+// 원본 L473~ 상수들
+export const NAVER_COLS = [
+  { key:"상품",     label:"상품",     kws:["상품"] },
+  { key:"시술메뉴",  label:"시술메뉴",  kws:["시술메뉴"] },
+  { key:"유입경로",  label:"유입경로",  kws:["유입경로"] },
+  { key:"관리부위",  label:"관리부위",  kws:["시술부위","관리받으실 부위","관리받을 부위","부위","Please tell me which part"] },
+  { key:"주차",     label:"주차",     kws:["주차"] },
+  { key:"첫방문",   label:"첫방문",   kws:["첫방문","first"] },
+  { key:"요청",     label:"요청사항", kws:["요청"] },
+]
+
+export const getNaverVal = (requestMsg, keywords) => {
+  if (!requestMsg) return ""
+  if (requestMsg.trim().startsWith("[")) {
+    try {
+      const items = JSON.parse(requestMsg)
+      for (const it of items) {
+        if (keywords.some(kw => (it.label||"").includes(kw))) return it.value || ""
+      }
+    } catch(e) {}
+  }
+  return ""
+}
+
+export const STATUS_CLR = {
+  confirmed: T.male, completed: T.success, cancelled: T.warning,
+  no_show: T.danger, naver_cancelled: T.warning, naver_changed: T.gray500,
+  pending: T.orange,
+}
+
+export const BLOCK_COLORS = {
+  reservation: T.primary, memo: T.danger, clockin: T.gray400,
+  cleaning: T.teal, break: T.purple,
+}
+
+export const DEFAULT_SOURCES = ["네이버","전화","방문","소개","인스타","카카오","기타"]
+export const STATUS_KEYS = ["confirmed","completed","cancelled","no_show"]
