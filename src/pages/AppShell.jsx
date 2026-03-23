@@ -438,10 +438,8 @@ function App() {
     .then(r => r.text())
     .then(remote => {
       remote = remote.trim();
-      if (remote && remote !== BLISS_V) {
-        console.log("[Bliss] 새 버전 감지:", remote, "→ 자동 새로고침");
-        location.reload(true);
-      }
+      // bliss-app은 별도 배포 - 자동 새로고침 비활성화
+      // if (remote && remote !== BLISS_V) { location.reload(true); }
     }).catch(() => {});
   timer = setTimeout(check, 30000);
   };
