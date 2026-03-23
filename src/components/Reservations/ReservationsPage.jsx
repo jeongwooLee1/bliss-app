@@ -1,11 +1,21 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { T, STATUS_LABEL, STATUS_CLR } from '../../lib/constants'
-import { sb } from '../../lib/sb'
+import { sb, SB_URL, SB_KEY, sbHeaders } from '../../lib/sb'
+import I from '../common/I'
 import { fromDb, toDb } from '../../lib/db'
 import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone } from '../../lib/utils'
 import I from '../common/I'
 import useTouchDragSort from '../../hooks/useTouchDragSort'
 
+
+const Btn = ({ children, variant="primary", size="md", disabled, onClick, style={} }) => {
+  const { T: _T } = { T: window.__T || {} };
+  const bg = variant==="primary"?"#7c7cc8":variant==="danger"?"#e05555":variant==="ghost"?"transparent":"#f0f0f0";
+  const color = variant==="ghost"?"#7c7cc8":variant==="secondary"?"#333":"#fff";
+  const border = variant==="ghost"?"1px solid #ddd":"none";
+  const pad = size==="sm"?"4px 10px":size==="lg"?"10px 20px":"7px 14px";
+  return <button onClick={onClick} disabled={disabled} style={{background:bg,color,border,borderRadius:8,padding:pad,fontSize:13,fontWeight:600,cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.6:1,...style}}>{children}</button>;
+};
 function ReservationList({ data, setData, userBranches, isMaster, setPage, setPendingOpenRes, naverColShow={}, setNaverColShow }) {
   const today = todayStr();
   const dateAnchorRef = React.useRef(null);
