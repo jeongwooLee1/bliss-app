@@ -54,6 +54,191 @@ const Modal = ({ open, onClose, children, title, width=480 }) => {
 };
 const Spinner = ({size=20}) => <div style={{width:size,height:size,border:"2px solid #eee",borderTop:"2px solid "+T.primary,borderRadius:"50%",animation:"spin 1s linear infinite"}}></div>;
 
+function SmartDatePicker({ open, onClose, anchorEl, startDate, endDate, onApply, mode }) {
+  const [selStart, setSelStart] = useState(startDate || todayStr());
+  const [selEnd,   setSelEnd]   = useState(endDate   || todayStr());
+  const [period,   setPeriod]   = useState("today");
+  const [months,   setMonths]   = useState(() => {
+    const d = new Date(startDate || todayStr());
+    const d2 = new Date(d.getFullYear(), d.getMonth()+1, 1);
+    return [{y:d.getFullYear(),m:d.getMonth()},{y:d2.getFullYear(),m:d2.getMonth()}];
+  });
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [pos, setPos] = useState({top:0,left:0});
+
+  useEffect(()=>{
+    const check = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize",check);
+    return ()=>window.removeEventListener("resize",check);
+  },[]);
+
+  useEffect(()=>{
+    if (!isMobile && anchorEl && open) {
+      const r = anchorEl.getBoundingClientRect();
+      setPos({top: r.bottom + 6, left: r.left});
+    }
+  },[open, isMobile, anchorEl]);
+
+  const presets = mode==="res"
+    ? [["today","오늘"],["7days","7일"],["month","한달"],["all","전체"],["custom","직접"]]
+    : [["today","오늘"],["prev","전일"],["thismonth","이번달"],["lastmonth","지난달"],["custom","직접"]];
+
+  const applyPreset = (key) => {
+    const today = todayStr();
+    const d = new Date(); const y=d.getFullYear(); const m=d.getMonth();
+    let s=today, e=today;
+    if (key==="today") { s=e=today; }
+    else if (key==="prev") { const p=new Date(); p.setDate(p.getDate()-1); s=e=fmtLocal(p); }
+    else if (key==="7days") {
+      if (mode==="res") { const en=new Date(); en.setDate(en.getDate()+6); e=fmtLocal(en); }
+      else { const st=new Date(); st.setDate(st.getDate()-6); s=fmtLocal(st); }
+    }
+    else if (key==="month") {
+      if (mode==="res") { const en=new Date(); en.setDate(en.getDate()+29); e=fmtLocal(en); }
+      else { const st=new Date(); st.setDate(st.getDate()-29); s=fmtLocal(st); }
+    }
+    else if (key==="thismonth") { s=`${y}-${String(m+1).padStart(2,"0")}-01`; e=today; }
+    else if (key==="lastmonth") {
+      const lm=m===0?11:m-1; const ly=m===0?y-1:y;
+      s=`${ly}-${String(lm+1).padStart(2,"0")}-01`;
+      e=fmtLocal(new Date(y,m,0));
+    }
+    else if (key==="all") { s=""; e=""; }
+    setPeriod(key); setSelStart(s); setSelEnd(e);
+    if (s) { const sd=new Date(s); const sd2=new Date(sd.getFullYear(),sd.getMonth()+1,1); setMonths([{y:sd.getFullYear(),m:sd.getMonth()},{y:sd2.getFullYear(),m:sd2.getMonth()}]); }
+  };
+
+  const buildCal = (y,m) => {
+    const first=new Date(y,m,1).getDay(); const days=new Date(y,m+1,0).getDate();
+    const cells=[];
+    for(let i=0;i<first;i++) cells.push(null);
+    for(let i=1;i<=days;i++) cells.push(`${y}-${String(m+1).padStart(2,"0")}-${String(i).padStart(2,"0")}`);
+    return cells;
+  };
+
+  const prevM = () => { const d=new Date(months[0].y,months[0].m-1,1); const d2=new Date(months[1].y,months[1].m-1,1); setMonths([{y:d.getFullYear(),m:d.getMonth()},{y:d2.getFullYear(),m:d2.getMonth()}]); };
+  const nextM = () => { const d=new Date(months[0].y,months[0].m+1,1); const d2=new Date(months[1].y,months[1].m+1,1); setMonths([{y:d.getFullYear(),m:d.getMonth()},{y:d2.getFullYear(),m:d2.getMonth()}]); };
+
+  const [pickingEnd, setPickingEnd] = useState(false);
+
+  const handleDayClick = (ds) => {
+    setPeriod("custom");
+    if (!pickingEnd) {
+      setSelStart(ds); setSelEnd(ds);
+      setPickingEnd(true);
+    } else {
+      if (ds < selStart) { setSelStart(ds); setSelEnd(selStart); }
+      else { setSelEnd(ds); }
+      setPickingEnd(false);
+    }
+  };
+
+  const DAYS = ["일","월","화","수","목","금","토"];
+
+  const CalGrid = ({y,m}) => {
+    const cells = buildCal(y,m);
+    return <div style={{minWidth:220}}>
+      <div style={{textAlign:"center",fontWeight:T.fw.bolder,fontSize:T.fs.md,color:T.text,marginBottom:8}}>{y}.{String(m+1).padStart(2,"0")}</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:"2px 0",marginBottom:4}}>
+        {DAYS.map((d,i)=><div key={d} style={{textAlign:"center",fontSize:T.fs.xxs,fontWeight:T.fw.bold,color:i===0?T.danger:i===6?T.male:T.gray500,padding:"4px 0"}}>{d}</div>)}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:"2px 0"}}>
+        {cells.map((ds,i)=>{
+          if(!ds) return <div key={i}/>;
+          const today=todayStr();
+          const isToday=ds===today;
+          const isSt=ds===selStart&&selStart;
+          const isEn=ds===selEnd&&selEnd&&selEnd!==selStart;
+          const inR=selStart&&selEnd&&ds>selStart&&ds<selEnd;
+          const dow=new Date(ds).getDay();
+          let tc=dow===0?T.danger:dow===6?T.male:T.text;
+          if(isSt||isEn) tc=T.bgCard;
+          return <div key={ds} style={{display:"flex",justifyContent:"center",position:"relative",
+            background:inR?T.primaryHover:"transparent",
+            borderRadius:isSt?"50% 0 0 50%":isEn?"0 50% 50% 0":"0"}}>
+            <button onClick={()=>handleDayClick(ds)} style={{
+              width:30,height:30,borderRadius:"50%",border:"none",cursor:"pointer",fontSize:T.fs.sm,fontFamily:"inherit",
+              fontWeight:isToday||isSt||isEn?700:400,
+              background:isSt||isEn?T.primary:isToday?T.gray200:"transparent",
+              color:tc,position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              {parseInt(ds.slice(8))}
+              {isToday&&!(isSt||isEn)&&<span style={{position:"absolute",bottom:2,left:"50%",transform:"translateX(-50%)",width:3,height:3,borderRadius:"50%",background:T.primary}}/>}
+            </button>
+          </div>;
+        })}
+      </div>
+    </div>;
+  };
+
+  const doApply = () => { onApply(selStart,selEnd,period); onClose(); };
+
+  if (!open) return null;
+
+  // ── 데스크탑 드롭다운 ──
+  if (!isMobile) {
+    return <div style={{position:"fixed",inset:0,zIndex:3000}} onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div onMouseDown={e=>e.stopPropagation()} style={{
+        position:"fixed",top:pos.top,left:pos.left,
+        background:T.bgCard,borderRadius:T.radius.lg,boxShadow:"0 8px 32px rgba(0,0,0,.18)",
+        padding:"16px 20px 14px",zIndex:3001,minWidth:500}}>
+        {/* 프리셋 버튼 */}
+        <div style={{display:"flex",gap:T.sp.xs,marginBottom:14,flexWrap:"wrap"}}>
+          {presets.map(([k,v])=><button key={k} onClick={()=>applyPreset(k)} style={{
+            height:28,padding:"0 12px",borderRadius:T.radius.md,border:"1px solid",fontSize:T.fs.sm,cursor:"pointer",fontFamily:"inherit",
+            background:period===k?T.primary:T.gray100,
+            color:period===k?T.bgCard:T.gray700,
+            borderColor:period===k?T.primary:T.gray300,
+            fontWeight:period===k?700:400}}>{v}</button>)}
+          <span style={{marginLeft:"auto",fontSize:T.fs.sm,color:T.textMuted,alignSelf:"center"}}>
+            {selStart&&selEnd&&selStart!==selEnd?`${selStart} ~ ${selEnd}`:selStart||"전체"}
+          </span>
+        </div>
+        {/* 월 네비 + 2달 캘린더 */}
+        <div style={{display:"flex",alignItems:"center",gap:T.sp.sm}}>
+          <button onClick={prevM} style={{width:28,height:28,border:"1px solid "+T.border,borderRadius:T.radius.md,background:T.bgCard,cursor:"pointer",fontSize:T.fs.lg,color:T.gray600,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>‹</button>
+          <div style={{display:"flex",gap:T.sp.xxl,flex:1}}>
+            <CalGrid y={months[0].y} m={months[0].m}/>
+            <div style={{width:1,background:T.gray200,alignSelf:"stretch"}}/>
+            <CalGrid y={months[1].y} m={months[1].m}/>
+          </div>
+          <button onClick={nextM} style={{width:28,height:28,border:"1px solid "+T.border,borderRadius:T.radius.md,background:T.bgCard,cursor:"pointer",fontSize:T.fs.lg,color:T.gray600,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>›</button>
+        </div>
+        {/* 하단 버튼 */}
+        <div style={{display:"flex",gap:T.sp.sm,marginTop:14,justifyContent:"flex-end"}}>
+          <button onClick={onClose} style={{height:32,padding:"0 16px",borderRadius:T.radius.md,border:"1px solid "+T.border,background:T.bgCard,fontSize:T.fs.sm,cursor:"pointer",color:T.gray600,fontFamily:"inherit"}}>취소</button>
+          <button onClick={doApply} style={{height:32,padding:"0 20px",borderRadius:T.radius.md,border:"none",background:T.primary,fontSize:T.fs.sm,cursor:"pointer",color:T.bgCard,fontFamily:"inherit",fontWeight:T.fw.bolder}}>적용</button>
+        </div>
+      </div>
+    </div>;
+  }
+
+  // ── 모바일 바텀시트 ──
+  return <div style={{position:"fixed",inset:0,zIndex:3000,display:"flex",flexDirection:"column",justifyContent:"flex-end"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+    <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.45)"}} onClick={onClose}/>
+    <div style={{position:"relative",background:T.bgCard,borderRadius:"16px 16px 0 0",padding:"0 0 calc(32px + 56px + env(safe-area-inset-bottom))",maxHeight:"90vh",overflowY:"auto"}}>
+      <div style={{display:"flex",justifyContent:"center",padding:"12px 0 4px"}}><div style={{width:36,height:4,borderRadius:T.radius.sm,background:T.gray300}}/></div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 20px 14px"}}>
+        <span style={{fontSize:T.fs.lg,fontWeight:T.fw.bolder,color:T.text}}>날짜 선택</span>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {presets.map(([k,v])=><button key={k} onClick={()=>applyPreset(k)} style={{
+            height:30,padding:"0 10px",borderRadius:T.radius.md,border:"1px solid",fontSize:T.fs.sm,cursor:"pointer",fontFamily:"inherit",
+            background:period===k?T.primary:T.gray100,color:period===k?T.bgCard:T.gray700,borderColor:period===k?T.primary:T.gray300}}>{v}</button>)}
+        </div>
+      </div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",marginBottom:10}}>
+        <button onClick={prevM} style={{width:32,height:32,border:"none",background:"none",cursor:"pointer",fontSize:T.fs.xxl,color:T.gray700}}>‹</button>
+        <span style={{fontSize:T.fs.lg,fontWeight:T.fw.bolder}}>{months[0].y}.{String(months[0].m+1).padStart(2,"0")}</span>
+        <button onClick={nextM} style={{width:32,height:32,border:"none",background:"none",cursor:"pointer",fontSize:T.fs.xxl,color:T.gray700}}>›</button>
+      </div>
+      <div style={{padding:"0 16px"}}><CalGrid y={months[0].y} m={months[0].m}/></div>
+      {selStart&&<div style={{padding:"14px 20px 0",textAlign:"center",color:T.textSub,fontSize:T.fs.sm}}>{selStart}{selEnd&&selEnd!==selStart?` ~ ${selEnd}`:""}</div>}
+      <div style={{display:"flex",gap:10,padding:"16px 20px 0"}}>
+        <button onClick={onClose} style={{flex:1,height:46,border:"1.5px solid #ddd",borderRadius:T.radius.md,background:T.bgCard,fontSize:T.fs.md,cursor:"pointer",color:T.gray700,fontFamily:"inherit"}}>취소</button>
+        <button onClick={doApply} style={{flex:2,height:46,border:"none",borderRadius:T.radius.md,background:T.primary,fontSize:T.fs.md,cursor:"pointer",color:T.bgCard,fontFamily:"inherit",fontWeight:T.fw.bolder}}>적용</button>
+      </div>
+    </div>
+  </div>;
+}
 const Btn = ({ children, variant="primary", size="md", disabled, onClick, style={} }) => {
   const { T: _T } = { T: window.__T || {} };
   const bg = variant==="primary"?"#7c7cc8":variant==="danger"?"#e05555":variant==="ghost"?"transparent":"#f0f0f0";
