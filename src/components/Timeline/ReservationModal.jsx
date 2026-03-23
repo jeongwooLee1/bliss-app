@@ -1,36 +1,17 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { T, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, SYSTEM_TAG_NAME_NEW_CUST, SYSTEM_TAG_NAME_PREPAID, SYSTEM_SRC_NAME_NAVER } from '../../lib/constants'
-import { sb } from '../../lib/sb'
-import { fromDb, toDb, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS } from '../../lib/db'
-import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, getDow, genId, fmtLocal, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone } from '../../lib/utils'
+import { T, NAVER_COLS, getNaverVal, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, BRANCH_DEFAULT_COLORS, branchColor, STATUS_CLR_DEFAULT, SYSTEM_TAG_NAME_NEW_CUST, SYSTEM_TAG_NAME_PREPAID, SYSTEM_SRC_NAME_NAVER } from '../../lib/constants'
+import { sb, SB_URL, SB_KEY, sbHeaders } from '../../lib/sb'
+import { fromDb, toDb, resolveSystemIds, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS } from '../../lib/db'
+import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone } from '../../lib/utils'
 import I from '../common/I'
+import useTouchDragSort from '../../hooks/useTouchDragSort'
 
 
+const STATUS_KEYS = ["confirmed","completed","cancelled","no_show"];
+const DEFAULT_SOURCES = ["네이버","전화","방문","소개","인스타","카카오","기타"];
+const TIMES = (() => { const a=[]; for(let h=9;h<=23;h++) for(let m=0;m<60;m+=5) a.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')); return a; })();
+const fmt = (v) => v==null?"":Number(v).toLocaleString();
 
-const TIMES = (() => {
-  const arr = [];
-  for (let h = 9; h <= 23; h++) {
-    for (let m = 0; m < 60; m += 5) {
-      arr.push(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
-    }
-  }
-  return arr;
-})();
-// ─── 공통 컴포넌트 ────────────────────────────────────────────
-const Btn = ({ children, variant="primary", size="md", disabled, onClick, style={} }) => {
-  const bg = variant==="primary"?T.primary:variant==="danger"?T.danger:variant==="ghost"?"transparent":T.gray100;
-  const color = variant==="ghost"?T.primary:variant==="secondary"?T.text:"#fff";
-  const border = variant==="ghost"?"1px solid "+T.border:"none";
-  const pad = size==="sm"?"4px 10px":size==="lg"?"10px 20px":"7px 14px";
-  return <button onClick={disabled?undefined:onClick} disabled={disabled} style={{background:bg,color,border,borderRadius:T.radius.md,padding:pad,fontSize:T.fs.sm,fontWeight:T.fw.bold,cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.6:1,fontFamily:"inherit",...style}}>{children}</button>;
-};
-function FLD({ label, children, style={} }) {
-  return <div style={style}><label style={{fontSize:T.fs.sm,fontWeight:T.fw.bold,color:T.gray600,marginBottom:5,display:"block"}}>{label}</label>{children}</div>;
-}
-const GridLayout = ({ cols=2, gap=12, children, style={} }) => {
-  const tpl = typeof cols==="number" ? `repeat(${cols},1fr)` : cols;
-  return <div style={{display:"grid",gridTemplateColumns:tpl,gap,...style}}>{children}</div>;
-};
 function TimeSelect({ value, onChange, times }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -63,9 +44,9 @@ function TimeSelect({ value, onChange, times }) {
     </div>}
   </span>;
 }
+
 function DatePick({ value, onChange, style, min }) {
   const DAYS = ["일","월","화","수","목","금","토"];
-
   const fmt = (v) => {
     if (!v) return "--";
     const p = v.split("-");
@@ -81,8 +62,193 @@ function DatePick({ value, onChange, style, min }) {
       style={{position:"absolute",inset:0,opacity:0,width:"100%",height:"100%",cursor:"pointer",fontSize:T.fs.lg}}/>
   </label>;
 }
-const STATUS_KEYS = ["confirmed","completed","cancelled","no_show"];
-const DEFAULT_SOURCES = ["네이버","전화","방문","소개","인스타","카카오","기타"];
+function FLD({ label, children }) {
+function SmartDatePicker({ open, onClose, anchorEl, startDate, endDate, onApply, mode }) {
+  const [selStart, setSelStart] = useState(startDate || todayStr());
+  const [selEnd,   setSelEnd]   = useState(endDate   || todayStr());
+  const [period,   setPeriod]   = useState("today");
+  const [months,   setMonths]   = useState(() => {
+    const d = new Date(startDate || todayStr());
+    const d2 = new Date(d.getFullYear(), d.getMonth()+1, 1);
+    return [{y:d.getFullYear(),m:d.getMonth()},{y:d2.getFullYear(),m:d2.getMonth()}];
+  });
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [pos, setPos] = useState({top:0,left:0});
+
+  useEffect(()=>{
+    const check = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize",check);
+    return ()=>window.removeEventListener("resize",check);
+  },[]);
+
+  useEffect(()=>{
+    if (!isMobile && anchorEl && open) {
+      const r = anchorEl.getBoundingClientRect();
+      setPos({top: r.bottom + 6, left: r.left});
+    }
+  },[open, isMobile, anchorEl]);
+
+  const presets = mode==="res"
+    ? [["today","오늘"],["7days","7일"],["month","한달"],["all","전체"],["custom","직접"]]
+    : [["today","오늘"],["prev","전일"],["thismonth","이번달"],["lastmonth","지난달"],["custom","직접"]];
+
+  const applyPreset = (key) => {
+    const today = todayStr();
+    const d = new Date(); const y=d.getFullYear(); const m=d.getMonth();
+    let s=today, e=today;
+    if (key==="today") { s=e=today; }
+    else if (key==="prev") { const p=new Date(); p.setDate(p.getDate()-1); s=e=fmtLocal(p); }
+    else if (key==="7days") {
+      if (mode==="res") { const en=new Date(); en.setDate(en.getDate()+6); e=fmtLocal(en); }
+      else { const st=new Date(); st.setDate(st.getDate()-6); s=fmtLocal(st); }
+    }
+    else if (key==="month") {
+      if (mode==="res") { const en=new Date(); en.setDate(en.getDate()+29); e=fmtLocal(en); }
+      else { const st=new Date(); st.setDate(st.getDate()-29); s=fmtLocal(st); }
+    }
+    else if (key==="thismonth") { s=`${y}-${String(m+1).padStart(2,"0")}-01`; e=today; }
+    else if (key==="lastmonth") {
+      const lm=m===0?11:m-1; const ly=m===0?y-1:y;
+      s=`${ly}-${String(lm+1).padStart(2,"0")}-01`;
+      e=fmtLocal(new Date(y,m,0));
+    }
+    else if (key==="all") { s=""; e=""; }
+    setPeriod(key); setSelStart(s); setSelEnd(e);
+    if (s) { const sd=new Date(s); const sd2=new Date(sd.getFullYear(),sd.getMonth()+1,1); setMonths([{y:sd.getFullYear(),m:sd.getMonth()},{y:sd2.getFullYear(),m:sd2.getMonth()}]); }
+  };
+
+  const buildCal = (y,m) => {
+    const first=new Date(y,m,1).getDay(); const days=new Date(y,m+1,0).getDate();
+    const cells=[];
+    for(let i=0;i<first;i++) cells.push(null);
+    for(let i=1;i<=days;i++) cells.push(`${y}-${String(m+1).padStart(2,"0")}-${String(i).padStart(2,"0")}`);
+    return cells;
+  };
+
+  const prevM = () => { const d=new Date(months[0].y,months[0].m-1,1); const d2=new Date(months[1].y,months[1].m-1,1); setMonths([{y:d.getFullYear(),m:d.getMonth()},{y:d2.getFullYear(),m:d2.getMonth()}]); };
+  const nextM = () => { const d=new Date(months[0].y,months[0].m+1,1); const d2=new Date(months[1].y,months[1].m+1,1); setMonths([{y:d.getFullYear(),m:d.getMonth()},{y:d2.getFullYear(),m:d2.getMonth()}]); };
+
+  const [pickingEnd, setPickingEnd] = useState(false);
+
+  const handleDayClick = (ds) => {
+    setPeriod("custom");
+    if (!pickingEnd) {
+      setSelStart(ds); setSelEnd(ds);
+      setPickingEnd(true);
+    } else {
+      if (ds < selStart) { setSelStart(ds); setSelEnd(selStart); }
+      else { setSelEnd(ds); }
+      setPickingEnd(false);
+    }
+  };
+
+  const DAYS = ["일","월","화","수","목","금","토"];
+
+  const CalGrid = ({y,m}) => {
+    const cells = buildCal(y,m);
+    return <div style={{minWidth:220}}>
+      <div style={{textAlign:"center",fontWeight:T.fw.bolder,fontSize:T.fs.md,color:T.text,marginBottom:8}}>{y}.{String(m+1).padStart(2,"0")}</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:"2px 0",marginBottom:4}}>
+        {DAYS.map((d,i)=><div key={d} style={{textAlign:"center",fontSize:T.fs.xxs,fontWeight:T.fw.bold,color:i===0?T.danger:i===6?T.male:T.gray500,padding:"4px 0"}}>{d}</div>)}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:"2px 0"}}>
+        {cells.map((ds,i)=>{
+          if(!ds) return <div key={i}/>;
+          const today=todayStr();
+          const isToday=ds===today;
+          const isSt=ds===selStart&&selStart;
+          const isEn=ds===selEnd&&selEnd&&selEnd!==selStart;
+          const inR=selStart&&selEnd&&ds>selStart&&ds<selEnd;
+          const dow=new Date(ds).getDay();
+          let tc=dow===0?T.danger:dow===6?T.male:T.text;
+          if(isSt||isEn) tc=T.bgCard;
+          return <div key={ds} style={{display:"flex",justifyContent:"center",position:"relative",
+            background:inR?T.primaryHover:"transparent",
+            borderRadius:isSt?"50% 0 0 50%":isEn?"0 50% 50% 0":"0"}}>
+            <button onClick={()=>handleDayClick(ds)} style={{
+              width:30,height:30,borderRadius:"50%",border:"none",cursor:"pointer",fontSize:T.fs.sm,fontFamily:"inherit",
+              fontWeight:isToday||isSt||isEn?700:400,
+              background:isSt||isEn?T.primary:isToday?T.gray200:"transparent",
+              color:tc,position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              {parseInt(ds.slice(8))}
+              {isToday&&!(isSt||isEn)&&<span style={{position:"absolute",bottom:2,left:"50%",transform:"translateX(-50%)",width:3,height:3,borderRadius:"50%",background:T.primary}}/>}
+            </button>
+          </div>;
+        })}
+      </div>
+    </div>;
+  };
+
+  const doApply = () => { onApply(selStart,selEnd,period); onClose(); };
+
+  if (!open) return null;
+
+  // ── 데스크탑 드롭다운 ──
+  if (!isMobile) {
+    return <div style={{position:"fixed",inset:0,zIndex:3000}} onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div onMouseDown={e=>e.stopPropagation()} style={{
+        position:"fixed",top:pos.top,left:pos.left,
+        background:T.bgCard,borderRadius:T.radius.lg,boxShadow:"0 8px 32px rgba(0,0,0,.18)",
+        padding:"16px 20px 14px",zIndex:3001,minWidth:500}}>
+        {/* 프리셋 버튼 */}
+        <div style={{display:"flex",gap:T.sp.xs,marginBottom:14,flexWrap:"wrap"}}>
+          {presets.map(([k,v])=><button key={k} onClick={()=>applyPreset(k)} style={{
+            height:28,padding:"0 12px",borderRadius:T.radius.md,border:"1px solid",fontSize:T.fs.sm,cursor:"pointer",fontFamily:"inherit",
+            background:period===k?T.primary:T.gray100,
+            color:period===k?T.bgCard:T.gray700,
+            borderColor:period===k?T.primary:T.gray300,
+            fontWeight:period===k?700:400}}>{v}</button>)}
+          <span style={{marginLeft:"auto",fontSize:T.fs.sm,color:T.textMuted,alignSelf:"center"}}>
+            {selStart&&selEnd&&selStart!==selEnd?`${selStart} ~ ${selEnd}`:selStart||"전체"}
+          </span>
+        </div>
+        {/* 월 네비 + 2달 캘린더 */}
+        <div style={{display:"flex",alignItems:"center",gap:T.sp.sm}}>
+          <button onClick={prevM} style={{width:28,height:28,border:"1px solid "+T.border,borderRadius:T.radius.md,background:T.bgCard,cursor:"pointer",fontSize:T.fs.lg,color:T.gray600,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>‹</button>
+          <div style={{display:"flex",gap:T.sp.xxl,flex:1}}>
+            <CalGrid y={months[0].y} m={months[0].m}/>
+            <div style={{width:1,background:T.gray200,alignSelf:"stretch"}}/>
+            <CalGrid y={months[1].y} m={months[1].m}/>
+          </div>
+          <button onClick={nextM} style={{width:28,height:28,border:"1px solid "+T.border,borderRadius:T.radius.md,background:T.bgCard,cursor:"pointer",fontSize:T.fs.lg,color:T.gray600,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>›</button>
+        </div>
+        {/* 하단 버튼 */}
+        <div style={{display:"flex",gap:T.sp.sm,marginTop:14,justifyContent:"flex-end"}}>
+          <button onClick={onClose} style={{height:32,padding:"0 16px",borderRadius:T.radius.md,border:"1px solid "+T.border,background:T.bgCard,fontSize:T.fs.sm,cursor:"pointer",color:T.gray600,fontFamily:"inherit"}}>취소</button>
+          <button onClick={doApply} style={{height:32,padding:"0 20px",borderRadius:T.radius.md,border:"none",background:T.primary,fontSize:T.fs.sm,cursor:"pointer",color:T.bgCard,fontFamily:"inherit",fontWeight:T.fw.bolder}}>적용</button>
+        </div>
+      </div>
+    </div>;
+  }
+
+  // ── 모바일 바텀시트 ──
+  return <div style={{position:"fixed",inset:0,zIndex:3000,display:"flex",flexDirection:"column",justifyContent:"flex-end"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+    <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.45)"}} onClick={onClose}/>
+    <div style={{position:"relative",background:T.bgCard,borderRadius:"16px 16px 0 0",padding:"0 0 calc(32px + 56px + env(safe-area-inset-bottom))",maxHeight:"90vh",overflowY:"auto"}}>
+      <div style={{display:"flex",justifyContent:"center",padding:"12px 0 4px"}}><div style={{width:36,height:4,borderRadius:T.radius.sm,background:T.gray300}}/></div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 20px 14px"}}>
+        <span style={{fontSize:T.fs.lg,fontWeight:T.fw.bolder,color:T.text}}>날짜 선택</span>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {presets.map(([k,v])=><button key={k} onClick={()=>applyPreset(k)} style={{
+            height:30,padding:"0 10px",borderRadius:T.radius.md,border:"1px solid",fontSize:T.fs.sm,cursor:"pointer",fontFamily:"inherit",
+            background:period===k?T.primary:T.gray100,color:period===k?T.bgCard:T.gray700,borderColor:period===k?T.primary:T.gray300}}>{v}</button>)}
+        </div>
+      </div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",marginBottom:10}}>
+        <button onClick={prevM} style={{width:32,height:32,border:"none",background:"none",cursor:"pointer",fontSize:T.fs.xxl,color:T.gray700}}>‹</button>
+        <span style={{fontSize:T.fs.lg,fontWeight:T.fw.bolder}}>{months[0].y}.{String(months[0].m+1).padStart(2,"0")}</span>
+        <button onClick={nextM} style={{width:32,height:32,border:"none",background:"none",cursor:"pointer",fontSize:T.fs.xxl,color:T.gray700}}>›</button>
+      </div>
+      <div style={{padding:"0 16px"}}><CalGrid y={months[0].y} m={months[0].m}/></div>
+      {selStart&&<div style={{padding:"14px 20px 0",textAlign:"center",color:T.textSub,fontSize:T.fs.sm}}>{selStart}{selEnd&&selEnd!==selStart?` ~ ${selEnd}`:""}</div>}
+      <div style={{display:"flex",gap:10,padding:"16px 20px 0"}}>
+        <button onClick={onClose} style={{flex:1,height:46,border:"1.5px solid #ddd",borderRadius:T.radius.md,background:T.bgCard,fontSize:T.fs.md,cursor:"pointer",color:T.gray700,fontFamily:"inherit"}}>취소</button>
+        <button onClick={doApply} style={{flex:2,height:46,border:"none",borderRadius:T.radius.md,background:T.primary,fontSize:T.fs.md,cursor:"pointer",color:T.bgCard,fontFamily:"inherit",fontWeight:T.fw.bolder}}>적용</button>
+      </div>
+    </div>
+  </div>;
+}
+
 
 function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBranch, userBranches, data, setData, setPage, naverColShow={} }) {
   const SVC_LIST = (data?.services || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
@@ -93,16 +259,6 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   const branchId = item?.bid || selBranch;
   const branchRooms = (data.rooms||[]).filter(r=>r.branch_id===branchId);
   const branchStaff = (data.staff||[]).filter(s=>s.bid===branchId);
-  const fmt = (v) => v==null?"":Number(v).toLocaleString();
-
-  const svcAllowQty = (svcId) => {
-    const s = (data?.services||[]).find(x=>x.id===svcId);
-    return s?.allow_qty ?? false;
-  };
-  const getStatusClr = () => {
-    try { const v = localStorage.getItem("tl_sc"); return v ? JSON.parse(v) : {}; } catch { return {}; }
-  };
-
   const [showSaleForm, setShowSaleForm] = useState(false);
   const [isSchedule, setIsSchedule] = useState(item?.isSchedule || false);
   const modalRef = useRef(null);
@@ -457,8 +613,7 @@ ${naverText}
         border:_isMob ? "none" : `1px solid ${T.border}`,
         margin:_isMob ? 0 : "0 auto",
         animation:_isMob ? "none" : "slideUp .4s cubic-bezier(.22,1,.36,1)",
-        boxShadow:_isMob ? "none" : T.shadow.lg,
-        width:_isMob ? "100%" : "92%", maxWidth:680, overflowX:"hidden"}}>
+        boxShadow:_isMob ? "none" : T.shadow.lg}}>
         {/* ═══ Chrome-style Tabs ═══ */}
         {!item?.id && <div style={{display:"flex",alignItems:"stretch",borderBottom:`1.5px solid ${T.gray200}`,background:T.bgCard,borderRadius:`${T.radius.xl}px ${T.radius.xl}px 0 0`,position:"relative"}}>
           {/* 예약 탭 */}
@@ -826,29 +981,39 @@ ${naverText}
                 {f.isPrepaid && (f.totalPrice||0) > 0 && <NRow label="결제금액" value={`✓ ${(f.totalPrice||0).toLocaleString()}원${f.npayMethod?" ("+f.npayMethod+")":""}`} valueColor={T.successDk}/>}
                 {/* 고객 요청사항 - JSON 배열이면 그대로, 아니면 기존 파싱 */}
                 {f.requestMsg && (()=>{
+                  // JSON 배열 형식(새 방식)
                   if (f.requestMsg.trim().startsWith("[")) {
                     try {
                       const items = JSON.parse(f.requestMsg);
-                      return items.filter(it=>it.value).map((it,idx)=>{
-                        if (it.label==="시술메뉴") return <NRow key={idx} label="시술메뉴" value={it.value} />;
-                        return <div key={idx} style={{display:"flex",alignItems:"flex-start",gap:6,padding:"4px 0",borderBottom:"1px solid #E8F5E9"}}>
+                      const _ncShow = (lbl) => {
+const col = NAVER_COLS.find(c=>c.kws.some(kw=>lbl.includes(kw)));
+return col ? (naverColShow[col.key] !== false) : true;
+};
+return items.filter(it=>it.value && _ncShow(it.label||"")).map((it,i)=>{
+                        if (it.label==="시술메뉴") return <NRow key={i} label="시술메뉴" value={it.value} />;
+                        return <div key={i} style={{display:"flex",alignItems:"flex-start",gap:6,padding:"4px 0",borderBottom:"1px solid #E8F5E9"}}>
                           <span style={{fontSize:11,color:T.textMuted,fontWeight:500,minWidth:48,flexShrink:0,paddingTop:2}}>{it.label}</span>
                           <span style={{fontSize:T.fs.sm,fontWeight:T.fw.medium,color:T.successDk,lineHeight:1.45,wordBreak:"break-word",flex:1}}>{it.value}</span>
                         </div>;
                       });
                     } catch(e) {}
                   }
-                  return f.requestMsg.split("\n").filter(l=>l.trim()).map((line,idx)=>{
+                  // 기존 텍스트 형식 fallback
+                  const _ncShow2 = (lbl) => {
+const col = NAVER_COLS.find(c=>c.kws.some(kw=>(lbl||"").includes(kw)));
+return col ? (naverColShow[col.key] !== false) : true;
+};
+return f.requestMsg.split("\n").filter(l=>l.trim()).map((line,i)=>{
                     const ci = line.lastIndexOf(": ");
                     const key = ci > -1 ? line.slice(0,ci).trim() : null;
                     const val = ci > -1 ? line.slice(ci+2).trim() : line.trim();
                     if (!val) return null;
-                    if (key==="시술메뉴") return <NRow key={idx} label="시술메뉴" value={val} />;
-                    if (key) return <div key={idx} style={{display:"flex",alignItems:"flex-start",gap:6,padding:"4px 0",borderBottom:"1px solid #E8F5E9"}}>
+                    if (key==="시술메뉴") return <NRow key={i} label="시술메뉴" value={val} />;
+                    if (key) return <div key={i} style={{display:"flex",alignItems:"flex-start",gap:6,padding:"4px 0",borderBottom:"1px solid #E8F5E9"}}>
                       <span style={{fontSize:11,color:T.textMuted,fontWeight:500,minWidth:48,flexShrink:0,paddingTop:2}}>{key}</span>
                       <span style={{fontSize:T.fs.sm,fontWeight:T.fw.normal,color:T.text,lineHeight:1.45,wordBreak:"break-word",flex:1}}>{val}</span>
                     </div>;
-                    return <NRow key={idx} label="요청" value={val}/>;
+                    return <NRow key={i} label="요청" value={val}/>;
                   });
                 })()}
                 {/* 직원 메모 */}
@@ -1027,734 +1192,5 @@ const SaleDiscountRow = React.memo(function SaleDiscountRow({ id, checked, amoun
 // DETAILED SALE FORM (매출 입력 - 시술상품/제품 연동)
 // ═══════════════════════════════════════════
 function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, data, setData }) {
-  const SVC_LIST = (data?.services || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
-  const PROD_LIST = (data?.products || []);
-  const CATS = (data?.categories || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
-  const branchStaff = (data.staff||[]).filter(s => s.bid === branchId);
-  const [manager, setManager] = useState(reservation?.staffId || "");
-  const allStaff = (data.staff||[]).filter(s => s.bid); // 전체 직원
-  const [selBranch, setSelBranch] = useState(branchId);
-  const [gender, setGender] = useState(reservation?.custGender || "");
-  const [openCats, setOpenCats] = useState({}); // catId → true/false (null=auto)
-  const toggleCat = (catId) => setOpenCats(p => ({...p, [catId]: !isCatOpen(catId, p)}));
-  const isCatOpen = (catId, cats=openCats) => {
-    if(cats[catId] !== undefined) return cats[catId];
-    // 선택된 시술이 있는 카테고리는 자동 열림
-    const svcs = (data?.services||[]).filter(s=>s.cat===catId);
-    return svcs.some(s=>items[s.id]?.checked);
-  };
-  const [saleMemo, setSaleMemo] = useState(reservation?.saleMemo || "");
 
-  // 결제수단 분배
-  const [payMethod, setPayMethod] = useState({ svcCash:0, svcCard:0, svcTransfer:0, svcPoint:0, prodCash:0, prodCard:0, prodTransfer:0, prodPoint:0 });
-  const [openPay, setOpenPay] = useState({ svcCard:false, svcCash:false, svcTransfer:false, prodCard:false, prodCash:false, prodTransfer:false });
-  const [primaryPay, setPrimaryPay] = useState({ svc:null, prod:null });
-  const togglePayField = (k, total, prefix) => {
-    const fields = prefix === "svc" ? ["svcCard","svcCash","svcTransfer"] : ["prodCard","prodCash","prodTransfer"];
-    setOpenPay(prev => {
-      const next = {...prev, [k]: !prev[k]};
-      if (!prev[k]) {
-        // Opening: set as primary if first, or fill remainder
-        const openOthers = fields.filter(f => f !== k && next[f]);
-        if (openOthers.length === 0) {
-          setPrimaryPay(p => ({...p, [prefix]: k}));
-          setPayMethod(pm => ({...pm, [k]: total}));
-        } else {
-          const used = openOthers.reduce((s, f) => s + (payMethod[f]||0), 0);
-          setPayMethod(pm => ({...pm, [k]: Math.max(0, total - used)}));
-        }
-      } else {
-        // Closing: zero out and redistribute to primary
-        const pri = primaryPay[prefix];
-        setPayMethod(pm => {
-          const n = {...pm, [k]: 0};
-          if (pri && pri !== k && next[pri]) {
-            const others = fields.filter(f => f !== pri && next[f]).reduce((s, f) => s + (n[f]||0), 0);
-            n[pri] = Math.max(0, total - others);
-          }
-          return n;
-        });
-        if (primaryPay[prefix] === k) {
-          const remaining = fields.find(f => f !== k && next[f]);
-          setPrimaryPay(p => ({...p, [prefix]: remaining || null}));
-        }
-      }
-      return next;
-    });
-  };
-  const editPay = (k, v, total, prefix) => {
-    const val = Number(v) || 0;
-    const fields = prefix === "svc" ? ["svcCard","svcCash","svcTransfer"] : ["prodCard","prodCash","prodTransfer"];
-    const pri = primaryPay[prefix];
-    setPayMethod(prev => {
-      const next = {...prev, [k]: val};
-      if (pri && pri !== k && openPay[pri]) {
-        const others = fields.filter(f => f !== pri).reduce((s, f) => s + (f === k ? val : (prev[f]||0)), 0);
-        next[pri] = Math.max(0, total - others);
-      }
-      return next;
-    });
-  };
-
-  // 네이버 예약 감지 (태그, 예약번호, 메모 중 하나라도 해당)
-  const isNaver = !!(
-    (reservation?.selectedTags||[]).some(tid => {
-      const tag = (data?.serviceTags||[]).find(t=>t.id===tid);
-      return tag && tag.name.includes("네이버");
-    }) ||
-    reservation?.reservationId ||
-    (reservation?.memo && /네이버/.test(reservation.memo))
-  );
-  const [naverPrepaid, setNaverPrepaid] = useState(() => {
-    // is_prepaid=true이면 total_price가 예약금
-    if (reservation?.isPrepaid && (reservation?.totalPrice || 0) > 0) {
-      return reservation.totalPrice;
-    }
-    // fallback: memo에 예약금 텍스트가 있는 경우 (레거시)
-    if (reservation?.memo) {
-      const m = reservation.memo.match(/예약금\s*:?\s*([0-9,]+)\s*원?/);
-      if (m) return Number(m[1].replace(/,/g, "")) || 0;
-    }
-    return 0;
-  });
-
-  // 고객 상태 (예약에서 넘어오면 자동 기입, 매출관리에서 열면 검색)
-  // 방문자(대리예약) 있으면 방문자로 매출 등록
-  const _hasVisitor = !!(reservation?.visitorName || reservation?.visitorPhone);
-  const [cust, setCust] = useState(_hasVisitor ? {
-    id: null,
-    name: reservation?.visitorName || "",
-    phone: reservation?.visitorPhone || "",
-    gender: reservation?.custGender || ""
-  } : {
-    id: reservation?.custId || null,
-    name: reservation?.custName || "",
-    phone: reservation?.custPhone || "",
-    gender: reservation?.custGender || ""
-  });
-  const hasReservationCust = !!(reservation?.custName);
-
-  // 고객 검색 (디바운스)
-  const [custSearch, setCustSearch] = useState("");
-  const [showCustDrop, setShowCustDrop] = useState(false);
-  const [custResults, setCustResults] = useState([]);
-  useEffect(() => {
-    if (custSearch.length < 2) { setCustResults([]); return; }
-    const timer = setTimeout(() => {
-      const q = custSearch.toLowerCase();
-      const results = (data?.customers||[]).filter(c =>
-        c.name.toLowerCase().includes(q) || c.phone.includes(q)
-      ).slice(0, 30);
-      setCustResults(results);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [custSearch]);
-  const selectCust = (c) => {
-    setCust({ id: c.id, name: c.name, phone: c.phone, gender: c.gender || "" });
-    setGender(c.gender || "");
-    setCustSearch(""); setShowCustDrop(false);
-  };
-
-  // State: { [id]: { checked, amount } }
-  const [items, setItems] = useState(() => {
-    const init = {};
-    const selSvcs = reservation?.selectedServices || [];
-    SVC_LIST.forEach(svc => {
-      const preSelected = selSvcs.includes(svc.id);
-      const defPrice = gender ? ((gender==="M") ? svc.priceM : svc.priceF) : (svc.priceF===svc.priceM ? svc.priceF : 0);
-      init[svc.id] = { checked: preSelected, amount: preSelected ? defPrice : 0 };
-    });
-    PROD_LIST.forEach(p => { init[p.id] = { checked: false, amount: 0 }; });
-    init["discount"] = { checked: false, amount: 0 };
-    init["extra_svc"] = { checked: false, amount: 0, label: "" };
-    init["extra_prod"] = { checked: false, amount: 0, label: "" };
-    return init;
-  });
-
-  const toggle = useCallback((id, defPrice) => {
-    setItems(prev => {
-      const cur = prev[id] || { checked: false, amount: 0 };
-      const newChecked = !cur.checked;
-      return { ...prev, [id]: { ...cur, checked: newChecked, amount: newChecked ? (cur.amount || defPrice || 0) : 0 } };
-    });
-  }, []);
-  const setAmt = useCallback((id, v) => setItems(prev => ({ ...prev, [id]: { ...prev[id], amount: Number(v) || 0 } })), []);
-  const setLabel = useCallback((id, v) => setItems(prev => ({ ...prev, [id]: { ...prev[id], label: v } })), []);
-
-  // 신규고객 등록 모드
-  const [newCustMode, setNewCustMode] = useState(false);
-  const [newCustName, setNewCustName] = useState("");
-  const [newCustPhone, setNewCustPhone] = useState("");
-  const [newCustGender, setNewCustGender] = useState("");
-  const registerNewCust = () => {
-    if (!newCustName.trim()) return;
-    setCust({ id: "new_" + uid(), name: newCustName.trim(), phone: newCustPhone.trim(), gender: newCustGender });
-    setGender(newCustGender);
-    setNewCustMode(false); setCustSearch(""); setShowCustDrop(false);
-  };
-
-  // Totals
-  const svcTotal = SVC_LIST.reduce((sum, svc) => sum + (items[svc.id]?.checked ? items[svc.id].amount : 0), 0)
-    + (items.extra_svc?.checked ? items.extra_svc.amount : 0);
-  const prodTotal = PROD_LIST.reduce((sum, p) => sum + (items[p.id]?.checked ? items[p.id].amount : 0), 0)
-    + (items.extra_prod?.checked ? items.extra_prod.amount : 0);
-  const discount = items.discount?.checked ? items.discount.amount : 0;
-  const naverDeduct = isNaver ? naverPrepaid : 0;
-  const grandTotal = svcTotal + prodTotal - discount - naverDeduct;
-  // 실제 결제할 금액 (예약금·할인 차감)
-  const svcPayTotal = Math.max(0, svcTotal - discount - naverDeduct);
-  const prodPayTotal = prodTotal;
-
-  // Count checked
-  const checkedSvc = SVC_LIST.filter(s => items[s.id]?.checked).length + (items.extra_svc?.checked ? 1 : 0);
-  const checkedProd = PROD_LIST.filter(p => items[p.id]?.checked).length + (items.extra_prod?.checked ? 1 : 0);
-
-  // Auto-calc remaining for default payment
-  const svcRemain = Math.max(0, svcTotal - payMethod.svcCard - payMethod.svcTransfer - payMethod.svcCash - payMethod.svcPoint);
-  const prodRemain = Math.max(0, prodTotal - payMethod.prodCard - payMethod.prodTransfer - payMethod.prodCash - payMethod.prodPoint);
-  // Reset payment when total changes
-  const prevSvcPay = useRef(0);
-  const prevProdPay = useRef(0);
-  useEffect(() => {
-    if (svcPayTotal !== prevSvcPay.current) {
-      prevSvcPay.current = svcPayTotal;
-      const pri = primaryPay.svc;
-      if (pri && openPay[pri]) {
-        const fields = ["svcCard","svcCash","svcTransfer"];
-        setPayMethod(p => { const n={...p}; const others=fields.filter(f=>f!==pri&&openPay[f]).reduce((s,f)=>s+(n[f]||0),0); n[pri]=Math.max(0,svcPayTotal-others); return n; });
-      }
-    }
-  }, [svcPayTotal]);
-  useEffect(() => {
-    if (prodPayTotal !== prevProdPay.current) {
-      prevProdPay.current = prodPayTotal;
-      const pri = primaryPay.prod;
-      if (pri && openPay[pri]) {
-        const fields = ["prodCard","prodCash","prodTransfer"];
-        setPayMethod(p => { const n={...p}; const others=fields.filter(f=>f!==pri&&openPay[f]).reduce((s,f)=>s+(n[f]||0),0); n[pri]=Math.max(0,prodPayTotal-others); return n; });
-      }
-    }
-  }, [prodPayTotal]);
-
-  const handleSubmit = () => {
-    if (grandTotal <= 0) {
-      alert("매출 금액이 0원입니다. 시술 또는 제품을 선택해주세요.");
-      return;
-    }
-    if (!manager) {
-      alert("시술자를 선택해주세요.");
-      return;
-    }
-    // 고객 이름/연락처 - 마스킹 체크만
-    const custName = (cust.name||"").trim();
-    const custPhone = (cust.phone||"").trim();
-    if (/\*/.test(custName) || /\*/.test(custPhone)) {
-      alert("고객 이름이나 연락처에 '*'가 포함되어 있습니다.\n네이버 마스킹 데이터가 아닌 실제 정보를 입력해주세요.");
-      return;
-    }
-    const staff = (data.staff||[]).find(s => s.id === manager);
-    // 고객 정보 저장 (신규 등록 또는 기존 업데이트)
-    const isNewCust = cust.id?.startsWith("new_") || (!cust.id && custName);
-    if (setData) {
-      if (isNewCust) {
-        const custId = cust.id || ("cust_" + uid());
-        const newCustObj = {
-          id: custId, bid: selBranch, name: custName, phone: custPhone,
-          gender: gender, visits: 1, lastVisit: todayStr(), memo: "",
-          custNum: String(50000 + Math.floor(Math.random() * 10000))
-        };
-        const alreadyExists = (data?.customers||[]).some(c => c.id === custId);
-        if (!alreadyExists) {
-          setData(prev => ({ ...prev, customers: [...prev.customers, newCustObj] }));
-          sb.insert("customers", toDb("customers", newCustObj)).catch(console.error);
-        }
-        cust.id = custId;
-      } else if (cust.id) {
-        // 기존 고객 정보 업데이트 (이름, 연락처, 성별, 최근방문)
-        const updates = { name: custName, phone: custPhone, gender: gender, lastVisit: todayStr() };
-        setData(prev => ({ ...prev, customers: (prev?.customers||[]).map(c => c.id === cust.id ? {...c, ...updates, visits: (c.visits||0)+1} : c) }));
-        sb.update("customers", cust.id, toDb("customers", updates)).catch(console.error);
-      }
-    }
-    const sale = {
-      id: uid(), bid: selBranch,
-      custId: cust.id || null, custName: custName,
-      custPhone: custPhone, custGender: gender,
-      custNum: String(50000 + Math.floor(Math.random() * 10000)),
-      staffId: manager, staffName: staff?.dn || "",
-      date: reservation?.date || todayStr(),
-      serviceId: reservation?.serviceId || null, serviceName: SVC_LIST.find(s => s.id === reservation?.serviceId)?.name || "",
-      productId: null, productName: null,
-      svcCash: payMethod.svcCash, svcTransfer: payMethod.svcTransfer, svcCard: payMethod.svcCard, svcPoint: payMethod.svcPoint,
-      prodCash: payMethod.prodCash, prodTransfer: payMethod.prodTransfer, prodCard: payMethod.prodCard, prodPoint: payMethod.prodPoint,
-      gift: 0, orderNum: String(252000 + Math.floor(Math.random() * 200)),
-      memo: (isNaver && naverPrepaid > 0 ? `[네이버예약금 ${naverPrepaid.toLocaleString()}원] ` : "") + (saleMemo || ""),
-      createdAt: new Date().toISOString(),
-    };
-    onSubmit(sale);
-  };
-
-  // Split services into 2 columns by flat sort order
-  const halfSvc = Math.ceil(SVC_LIST.length / 2);
-  const leftSvcs = SVC_LIST.slice(0, halfSvc);
-  const rightSvcs = SVC_LIST.slice(halfSvc);
-  // 카테고리별 그룹
-  const catGroups = CATS.map(cat => ({
-    cat,
-    svcs: SVC_LIST.filter(s => s.cat === cat.id)
-  })).filter(g => g.svcs.length > 0);
-  const uncatSvcs = SVC_LIST.filter(s => !CATS.find(c=>c.id===s.cat));
-  const halfProd = Math.ceil(PROD_LIST.length / 2);
-
-  const _m = false; // 항상 데스크탑 모달
-  return (
-    <div onClick={_m?undefined:onClose} style={_m?{
-        position:"fixed",inset:0,zIndex:500,background:T.bgCard,overflowY:"auto",WebkitOverflowScrolling:"touch"
-      }:{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.35)",backdropFilter:"blur(2px)",WebkitBackdropFilter:"blur(2px)",zIndex:200,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"20px 16px",overflow:"auto",WebkitOverflowScrolling:"touch",animation:"ovFadeIn .25s"}}>
-      {_m&&<div style={{display:"flex",alignItems:"center",padding:"10px 14px 8px",borderBottom:`1px solid ${T.border}`,background:T.bgCard,position:"sticky",top:0,zIndex:10}}>
-        <button onClick={onClose} style={{display:"flex",alignItems:"center",gap:4,background:"none",border:"none",cursor:"pointer",color:T.primary,fontWeight:700,fontSize:15,padding:"4px 2px",fontFamily:"inherit"}}>
-          <I name="chevronLeft" size={20}/> 뒤로
-        </button>
-      </div>}
-      <div onClick={e => e.stopPropagation()} className="sale-modal-wrap" style={{
-        background: T.bgCard, borderRadius: _m?0:12, border:_m?"none":"1px solid "+T.border, padding: 0,
-        width: _m?"100%":"92%", maxWidth: 680, margin: "0 auto",
-        animation: _m?"none":"slideUp .6s cubic-bezier(.22,1,.36,1)", boxShadow: _m?"none":"0 12px 40px rgba(0,0,0,.18)"
-      }}>
-        {/* Header */}
-        <div style={{ padding: "7px 14px", borderBottom: "1px solid #e0e0e0", display: "flex", alignItems: "center", justifyContent: "space-between", background: T.gray100, gap: 8, borderRadius: "12px 12px 0 0" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", flex: 1 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 800, color: T.danger, flexShrink: 0 }}><I name="diamond" size={14}/> 매출 입력</h3>
-            {cust.name ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span className="badge" style={{ background: cust.gender === "M" ? T.infoLt : cust.gender === "F" ? T.femaleLt : T.gray200, color: cust.gender === "M" ? T.primary : cust.gender === "F" ? T.female : T.gray500, fontSize: 10 }}>{cust.gender === "M" ? "남" : cust.gender === "F" ? "여" : "-"}</span>
-                <strong style={{ color: T.gray700, fontSize: 13 }}>{cust.name}</strong>
-                <span style={{ fontSize: 11, color:T.textSub }}>{cust.phone}</span>
-                {cust.id?.startsWith("new_") && <span style={{ fontSize: 8, padding: "1px 4px", borderRadius: 3, background: T.female, color: T.bgCard, fontWeight: 700 }}>신규</span>}
-                {!hasReservationCust && <button onClick={() => { setCust({ id: null, name: "", phone: "", gender: "" }); setGender(""); setCustSearch(""); setNewCustMode(false); }}
-                  style={{ fontSize: 10, color: T.female, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", textDecoration: "underline" }}>변경</button>}
-              </div>
-            ) : newCustMode ? (
-              <div style={{ display: "flex", gap: 6, alignItems: "center", flex: 1 }}>
-                <div style={{ display: "flex", gap: 2 }}>
-                  {["F","M"].map(g => <button key={g} onClick={() => setNewCustGender(prev => prev===g ? "" : g)}
-                    style={{ padding: "3px 8px", fontSize: 10, fontWeight: 700, borderRadius: 4, cursor: "pointer", fontFamily: "inherit", border: "1px solid " + (newCustGender === g ? (g === "F" ? T.female : T.primary) : T.gray400),
-                      background: newCustGender === g ? (g === "F" ? "#e5737320" : "#7c7cc820") : "transparent",
-                      color: newCustGender === g ? (g === "F" ? T.female : T.primary) : T.gray500
-                    }}>{g === "F" ? "여" : "남"}</button>)}
-                </div>
-                <input className="inp" style={{ width: 90, fontSize: 11, padding: "4px 8px" }} value={newCustName} onChange={e => setNewCustName(e.target.value)} placeholder="고객명" autoFocus />
-                <input className="inp" style={{ width: 110, fontSize: 11, padding: "4px 8px" }} value={newCustPhone} onChange={e => setNewCustPhone(e.target.value)} placeholder="전화번호" />
-                <button onClick={registerNewCust} style={{ padding: "4px 12px", fontSize: 10, fontWeight: 700, borderRadius: 5, border: "none", background:T.primary, color: T.bgCard, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>확인</button>
-                <button onClick={() => setNewCustMode(false)} style={{ padding: "4px 8px", fontSize: 10, border: "none", background: "transparent", color: T.gray500, cursor: "pointer", fontFamily: "inherit" }}>취소</button>
-              </div>
-            ) : (
-              <div style={{ position: "relative", flex: 1, maxWidth: 280 }}>
-                <input className="inp" style={{ fontSize: 11, width: "100%" }} value={custSearch}
-                  onChange={e => { setCustSearch(e.target.value); setShowCustDrop(true); }}
-                  onFocus={() => setShowCustDrop(true)}
-                  placeholder="고객 검색 (2글자 이상)" />
-                {showCustDrop && custSearch.length >= 2 && (
-                  <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: T.bgCard, border: "1px solid #d0d0d0", borderRadius: 8,
-                    maxHeight: 200, overflow: "auto", zIndex: 20, marginTop: 2, boxShadow: "0 8px 20px rgba(0,0,0,.12)" }}>
-                    {custResults.map(c => (
-                      <div key={c.id} onClick={() => selectCust(c)}
-                        style={{ padding: "7px 10px", cursor: "pointer", borderBottom: "1px solid #e0e0e020", display: "flex", gap: 6, alignItems: "center", fontSize: 11 }}
-                        onMouseOver={e => e.currentTarget.style.background = T.gray200} onMouseOut={e => e.currentTarget.style.background = "transparent"}>
-                        <span className="badge" style={{ background: c.gender === "M" ? T.infoLt : T.femaleLt, color: c.gender === "M" ? T.primary : T.female, fontSize: 9 }}>{c.gender === "M" ? "남" : "여"}</span>
-                        <span style={{ fontWeight: 600 }}>{c.name}</span>
-                        <span style={{ color:T.textSub }}>{c.phone}</span>
-                      </div>
-                    ))}
-                    {custResults.length === 0 && <div style={{ padding: "10px", fontSize: 11, color: T.gray500, textAlign: "center" }}>검색결과 없음</div>}
-                    <div onClick={() => { setNewCustMode(true); setShowCustDrop(false); setNewCustName(custSearch.replace(/[0-9\-]/g,"").trim()); setNewCustPhone(custSearch.replace(/[^0-9]/g,"")); }}
-                      style={{ padding: "8px 10px", cursor: "pointer", borderTop: "1px solid #e0e0e0", display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, color:T.primary }}
-                      onMouseOver={e => e.currentTarget.style.background = "#e0edf520"} onMouseOut={e => e.currentTarget.style.background = "transparent"}>
-                      <I name="plus" size={14}/> 신규고객으로 등록 {custSearch && <span style={{ fontWeight: 400, color:T.textSub }}>"{custSearch}"</span>}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-          <button onClick={onClose} className="close-btn" style={{ fontSize: 18 }}><I name="x" size={16}/></button>
-        </div>
-
-        {/* Controls: Manager, Branch, Gender, Live Totals */}
-        <div style={{ padding: "6px 14px", borderBottom: "1px solid #e0e0e0", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", background: T.dangerLt }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13 }}>
-            <span style={{ color:T.textSub, fontWeight: 700 }}>시술자 <span style={{color:T.danger}}>*</span></span>
-            <select className="inp" style={{ flex:1, minWidth:80, maxWidth:130, borderColor: manager ? T.gray400 : T.danger, background: manager ? T.bgCard : T.dangerLt }} value={manager} onChange={e => setManager(e.target.value)}>
-              <option value="">시술자 선택</option>
-              {(data.staff||[]).map(s => {
-                const br = (data.branches||[]).find(b=>b.id===s.bid);
-                return <option key={s.id} value={s.id}>{s.dn}{br&&br.id!==selBranch?` (${br.short||br.name||''})`:''}</option>;
-              })}
-            </select>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12 }}>
-            <span style={{ color:T.textSub }}>지점</span>
-            <select className="inp" style={{ flex:1, minWidth:90, maxWidth:140 }} value={selBranch} onChange={e => setSelBranch(e.target.value)}>
-              {(data.branches||[]).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
-          </div>
-          {/* Gender - changeable buttons */}
-          <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-            {["F","M"].map(g => <button key={g} onClick={() => { setGender(g); setCust(p=>({...p,gender:g})); }}
-              style={{ padding: "4px 10px", fontSize: 11, fontWeight: 700, borderRadius: g==="F"?"6px 0 0 6px":"0 6px 6px 0", cursor: "pointer", fontFamily: "inherit", border: "none",
-                background: gender === g ? (g==="F" ? "#e5737340" : "#7c7cc840") : T.gray200,
-                color: gender === g ? (g==="F" ? T.female : T.info) : T.gray400 }}>{g === "F" ? "여" : "남"}</button>)}
-            <span style={{ fontSize: 9, color: T.gray400, marginLeft: 2 }}>{gender ? (gender==="F"?"여성":"남성")+" 가격" : "성별 미선택"}</span>
-          </div>
-          {/* Totals */}
-          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 11, color:T.textSub }}>시술 <strong style={{ color:T.primary }}>{fmt(svcTotal)}</strong> ({checkedSvc})</span>
-            <span style={{ fontSize: 11, color:T.textSub }}>제품 <strong style={{ color: T.infoLt2 }}>{fmt(prodTotal)}</strong> ({checkedProd})</span>
-            {discount > 0 && <span style={{ fontSize: 11, color:T.textSub }}>할인 <strong style={{ color: T.female }}>-{fmt(discount)}</strong></span>}
-            {isNaver && naverPrepaid > 0 && <span style={{ fontSize: 11, color:T.textSub }}>예약금 <strong style={{ color: T.orange }}>-{fmt(naverPrepaid)}</strong></span>}
-            <span style={{ fontSize: 17, fontWeight: 900, color: T.danger }}>{fmt(grandTotal)}원</span>
-          </div>
-        </div>
-
-        {/* Main Body - 4 columns: svc left, svc right, prod left, prod right */}
-        <GridLayout className="sale-grid" cols={2} gap={12} style={{flex:1,overflow:"auto",padding:"10px 14px",alignContent:"start"}}>
-
-          {/* Col 1+2: Services by category (span 2 columns) */}
-          <div style={{gridColumn:"span 2"}}>
-            <div className="sale-section-title" style={{ color:T.primary, padding: "4px 0 3px", borderBottom: "2px solid #7c7cc830", marginBottom: 5 }}>시술 ({SVC_LIST.length})</div>
-            {catGroups.map(({cat, svcs}) => {
-              const isOpen = isCatOpen(cat.id);
-              const hasChecked = svcs.some(s=>items[s.id]?.checked);
-              return (
-              <div key={cat.id} style={{marginBottom:6,border:"1px solid "+T.border,borderRadius:8,overflow:"hidden"}}>
-                <div onClick={()=>toggleCat(cat.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 8px",cursor:"pointer",background:hasChecked?T.primaryHover:T.gray100}}>
-                  <span className="sale-cat-hdr" style={{color:hasChecked?T.primary:T.gray600}}>{cat.name}{hasChecked&&<span style={{marginLeft:6,fontSize:T.fs.nano,color:T.primary}}>✓ {svcs.filter(s=>items[s.id]?.checked).length}개 선택</span>}</span>
-                  <I name={isOpen?"chevU":"chevD"} size={12} style={{color:T.gray400}}/>
-                </div>
-                {isOpen && <div style={{padding:"4px 0"}}>{svcs.map(svc => { const it=items[svc.id]||{}; const dp=gender?(gender==="M"?svc.priceM:svc.priceF):(svc.priceF===svc.priceM?svc.priceF:0); return <SaleSvcRow key={svc.id} id={svc.id} name={svc.name} dur={svc.dur} checked={!!it.checked} amount={it.amount||0} defPrice={dp} toggle={toggle} setAmt={setAmt} />; })}</div>}
-              </div>
-              );
-            })}
-            {uncatSvcs.length>0 && <div style={{marginBottom:8}}>
-              <div style={{fontSize:T.fs.nano,fontWeight:T.fw.bolder,color:T.textMuted,background:T.bg,borderRadius:T.radius.sm,padding:"2px 6px",marginBottom:2,display:"inline-block"}}>기타</div>
-              {uncatSvcs.map(svc => { const it=items[svc.id]||{}; const dp=gender?(gender==="M"?svc.priceM:svc.priceF):(svc.priceF===svc.priceM?svc.priceF:0); return <SaleSvcRow key={svc.id} id={svc.id} name={svc.name} dur={svc.dur} checked={!!it.checked} amount={it.amount||0} defPrice={dp} toggle={toggle} setAmt={setAmt} />; })}
-            </div>}
-            <SaleExtraRow id="extra_svc" color={T.primary} placeholder="추가 시술명 입력" checked={!!(items.extra_svc||{}).checked} amount={(items.extra_svc||{}).amount||0} label={(items.extra_svc||{}).label||""} toggle={toggle} setAmt={setAmt} setLabel={setLabel} />
-            <div style={{ marginTop: 6, padding: "4px 0", borderTop: "1px solid #e8e8e8" }}>
-              <SaleDiscountRow id="discount" checked={items.discount?.checked} amount={items.discount?.amount||0} toggle={toggle} setAmt={setAmt} />
-            </div>
-          </div>
-
-          {/* Col 3+4: Products - 아코디언 */}
-          <div style={{gridColumn:"span 2"}}>
-            <div className="sale-section-title" style={{ color: T.infoLt2, padding: "4px 0 3px", borderBottom: "2px solid #6bab9e30", marginBottom: 5 }}>제품 ({PROD_LIST.length})</div>
-            <div style={{border:"1px solid "+T.border,borderRadius:8,overflow:"hidden",marginBottom:6}}>
-              <div onClick={()=>setOpenCats(p=>({...p,__prod:!isCatOpen("__prod",{...p,__prod:p.__prod},"prod")}))} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 10px",cursor:"pointer",background:PROD_LIST.some(p=>items[p.id]?.checked)?T.successLt:T.gray100}}>
-                <span style={{fontSize:T.fs.nano,fontWeight:T.fw.bolder,color:PROD_LIST.some(p=>items[p.id]?.checked)?T.successDk:T.gray600}}>
-                  제품 전체{PROD_LIST.some(p=>items[p.id]?.checked)&&<span style={{marginLeft:6,fontSize:T.fs.nano,color:T.successDk}}>✓ {PROD_LIST.filter(p=>items[p.id]?.checked).length}개 선택</span>}
-                </span>
-                <I name={openCats.__prod===true||(openCats.__prod===undefined&&PROD_LIST.some(p=>items[p.id]?.checked))?"chevU":"chevD"} size={12} style={{color:T.gray400}}/>
-              </div>
-              {(openCats.__prod===true||(openCats.__prod===undefined&&PROD_LIST.some(p=>items[p.id]?.checked)))&&
-                <div style={{padding:"4px 0",display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 4px"}}>
-                  {PROD_LIST.map(p => { const it=items[p.id]||{}; return <SaleProdRow key={p.id} id={p.id} name={p.name} price={p.price||0} checked={!!it.checked} amount={it.amount||0} toggle={toggle} setAmt={setAmt} />; })}
-                </div>
-              }
-            </div>
-            <SaleExtraRow id="extra_prod" color={T.infoLt2} placeholder="추가 제품명 입력" checked={!!(items.extra_prod||{}).checked} amount={(items.extra_prod||{}).amount||0} label={(items.extra_prod||{}).label||""} toggle={toggle} setAmt={setAmt} setLabel={setLabel} />
-          </div>
-        </GridLayout>
-
-        {/* 결제 정리 */}
-        <div style={{padding:"10px 12px",borderTop:"1px solid #e0e0e0",background:T.bg}}>
-          {/* 금액 브레이크다운 */}
-          <div style={{marginBottom:8,padding:"7px 10px",background:T.bgCard,borderRadius:T.radius.md,border:"1px solid #e8e8e8"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
-              <span style={{fontSize:T.fs.sm,color:T.gray700}}><I name="scissors" size={12}/> 시술 합계</span>
-              <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.primary}}>{fmt(svcTotal)}원</span>
-            </div>
-            {prodTotal > 0 && <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
-              <span style={{fontSize:T.fs.sm,color:T.gray700}}><I name="pkg" size={12}/> 제품 합계</span>
-              <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.infoLt2}}>{fmt(prodTotal)}원</span>
-            </div>}
-            {discount > 0 && <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
-              <span style={{fontSize:T.fs.sm,color:T.female}}><I name="tag" size={11}/> 할인</span>
-              <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.female}}>-{fmt(discount)}원</span>
-            </div>}
-            {isNaver && <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",marginTop:2}}>
-              <span style={{fontSize:T.fs.sm,color:T.orange}}><I name="naver" size={11}/> 네이버 예약금</span>
-              <div style={{display:"flex",alignItems:"center",gap:T.sp.xs}}>
-                <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.orange}}>-</span>
-                <input className="inp" type="number" value={naverPrepaid||""} placeholder="0"
-                  onChange={e=>setNaverPrepaid(Number(e.target.value)||0)}
-                  style={{width:85,padding:"4px 8px",fontSize:T.fs.sm,textAlign:"right",fontWeight:T.fw.bolder,color:T.orange,
-                    border:"2px solid #ff9800",borderRadius:T.radius.md,background:T.warningLt}} />
-                <span style={{fontSize:T.fs.sm,color:T.orange,fontWeight:T.fw.bold}}>원</span>
-              </div>
-            </div>}
-            <div style={{borderTop:"2px solid #333",marginTop:6,paddingTop:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <span style={{fontSize:T.fs.sm,fontWeight:T.fw.black,color:T.text}}>{isNaver ? "현장 결제금액" : "총 결제금액"}</span>
-              <span style={{fontSize:T.fs.xl,fontWeight:T.fw.black,color:T.danger}}>{fmt(grandTotal)}원</span>
-            </div>
-          </div>
-
-          {/* 결제수단 분배 */}
-          {grandTotal > 0 && <div className="sale-pay-row" style={{display:"flex",gap:T.sp.lg,flexWrap:"wrap"}}>
-            {svcPayTotal > 0 && <div style={{flex:1,minWidth:0,padding:"8px 12px",background:T.bgCard,borderRadius:T.radius.md,border:"1px solid "+T.border}}>
-              <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.primary,marginBottom:6}}><I name="scissors" size={12}/> 시술 결제 <span style={{color:T.danger,fontWeight:T.fw.black}}>{fmt(svcPayTotal)}원</span></div>
-              <div style={{display:"flex",gap:T.sp.xs,flexWrap:"wrap"}}>
-                {[
-                  {k:"svcCard",label:"카드",clr:T.male,bg:T.maleLt},
-                  {k:"svcCash",label:"현금",clr:T.orange,bg:T.orangeLt},
-                  {k:"svcTransfer",label:"입금",clr:T.successDk,bg:T.successLt},
-                ].map(({k,label,clr,bg})=><div key={k} style={{display:"flex",alignItems:"center",gap:3}}>
-                  <button onClick={()=>togglePayField(k,svcPayTotal,"svc")}
-                    style={{padding:"5px 10px",fontSize:T.fs.xxs,fontWeight:T.fw.bolder,borderRadius:T.radius.md,cursor:"pointer",fontFamily:"inherit",transition:"all .15s",
-                      border:openPay[k]?`2px solid ${clr}`:"1px solid #d0d0d0",
-                      background:openPay[k]?bg:T.gray100,color:openPay[k]?clr:T.gray500}}>{label}</button>
-                  {openPay[k] && <input className="inp" type="number" value={payMethod[k]||""} placeholder="0"
-                    onChange={e=>editPay(k,e.target.value,svcPayTotal,"svc")}
-                    readOnly={primaryPay.svc===k}
-                    style={{width:75,padding:"4px 6px",fontSize:T.fs.sm,textAlign:"right",border:`1.5px solid ${clr}`,color:clr,fontWeight:T.fw.bolder,borderRadius:T.radius.md,
-                      background:primaryPay.svc===k?T.bg:T.bgCard}}/>}
-                </div>)}
-              </div>
-            </div>}
-            {prodPayTotal > 0 && <div style={{flex:1,minWidth:0,padding:"8px 12px",background:T.bgCard,borderRadius:T.radius.md,border:"1px solid "+T.border}}>
-              <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.infoLt2,marginBottom:6}}><I name="pkg" size={12}/> 제품 결제 <span style={{color:T.danger,fontWeight:T.fw.black}}>{fmt(prodPayTotal)}원</span></div>
-              <div style={{display:"flex",gap:T.sp.xs,flexWrap:"wrap"}}>
-                {[
-                  {k:"prodCard",label:"카드",clr:T.male,bg:T.maleLt},
-                  {k:"prodCash",label:"현금",clr:T.orange,bg:T.orangeLt},
-                  {k:"prodTransfer",label:"입금",clr:T.successDk,bg:T.successLt},
-                ].map(({k,label,clr,bg})=><div key={k} style={{display:"flex",alignItems:"center",gap:3}}>
-                  <button onClick={()=>togglePayField(k,prodPayTotal,"prod")}
-                    style={{padding:"5px 10px",fontSize:T.fs.xxs,fontWeight:T.fw.bolder,borderRadius:T.radius.md,cursor:"pointer",fontFamily:"inherit",transition:"all .15s",
-                      border:openPay[k]?`2px solid ${clr}`:"1px solid #d0d0d0",
-                      background:openPay[k]?bg:T.gray100,color:openPay[k]?clr:T.gray500}}>{label}</button>
-                  {openPay[k] && <input className="inp" type="number" value={payMethod[k]||""} placeholder="0"
-                    onChange={e=>editPay(k,e.target.value,prodPayTotal,"prod")}
-                    readOnly={primaryPay.prod===k}
-                    style={{width:75,padding:"4px 6px",fontSize:T.fs.sm,textAlign:"right",border:`1.5px solid ${clr}`,color:clr,fontWeight:T.fw.bolder,borderRadius:T.radius.md,
-                      background:primaryPay.prod===k?T.bg:T.bgCard}}/>}
-                </div>)}
-              </div>
-            </div>}
-          </div>}
-          {grandTotal > 0 && <div style={{fontSize:T.fs.nano,color:T.gray400,marginTop:6}}>결제수단 버튼 클릭 → 전액 입력 / 추가 수단 클릭 → 금액 입력 시 첫 수단에서 차감</div>}
-        </div>
-
-        {/* 매출 메모 */}
-        <div style={{padding:"8px 16px",borderTop:"1px solid #eee"}}>
-          <textarea className="inp" rows={2} value={saleMemo} onChange={e=>setSaleMemo(e.target.value)}
-            placeholder="매출 관련 메모를 입력하세요" style={{resize:"vertical",width:"100%",fontSize:T.fs.sm}}/>
-        </div>
-
-        {/* Footer */}
-        <div style={{ padding: "10px 16px", borderTop: "1px solid #e0e0e0", display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", background: T.gray100, flexWrap: "wrap", borderRadius: "0 0 12px 12px" }}>
-          <div style={{ fontSize: 10, color: T.gray400, flex: "1 1 200px" }}>
-            {gender ? (gender === "F" ? "여성" : "남성") + " 가격 적용" : "성별 미선택"} · 체크한 항목만 매출 반영
-          </div>
-          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-            <Btn variant="secondary" onClick={onClose}>취소</Btn>
-            <Btn variant="primary" style={{ padding: "10px 20px", fontSize: 13, fontWeight: 800 }} onClick={handleSubmit}>
-              <I name="wallet" size={12}/> 매출 등록 ({fmt(grandTotal)}원)
-            </Btn>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════
-// RESERVATION LIST
-// ═══════════════════════════════════════════
-function SmartDatePicker({ open, onClose, anchorEl, startDate, endDate, onApply, mode }) {
-  const [selStart, setSelStart] = useState(startDate || todayStr());
-  const [selEnd,   setSelEnd]   = useState(endDate   || todayStr());
-  const [period,   setPeriod]   = useState("today");
-  const [months,   setMonths]   = useState(() => {
-    const d = new Date(startDate || todayStr());
-    const d2 = new Date(d.getFullYear(), d.getMonth()+1, 1);
-    return [{y:d.getFullYear(),m:d.getMonth()},{y:d2.getFullYear(),m:d2.getMonth()}];
-  });
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  const [pos, setPos] = useState({top:0,left:0});
-
-  useEffect(()=>{
-    const check = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener("resize",check);
-    return ()=>window.removeEventListener("resize",check);
-  },[]);
-
-  useEffect(()=>{
-    if (!isMobile && anchorEl && open) {
-      const r = anchorEl.getBoundingClientRect();
-      setPos({top: r.bottom + 6, left: r.left});
-    }
-  },[open, isMobile, anchorEl]);
-
-  const presets = mode==="res"
-    ? [["today","오늘"],["7days","7일"],["month","한달"],["all","전체"],["custom","직접"]]
-    : [["today","오늘"],["prev","전일"],["thismonth","이번달"],["lastmonth","지난달"],["custom","직접"]];
-
-  const applyPreset = (key) => {
-    const today = todayStr();
-    const d = new Date(); const y=d.getFullYear(); const m=d.getMonth();
-    let s=today, e=today;
-    if (key==="today") { s=e=today; }
-    else if (key==="prev") { const p=new Date(); p.setDate(p.getDate()-1); s=e=fmtLocal(p); }
-    else if (key==="7days") {
-      if (mode==="res") { const en=new Date(); en.setDate(en.getDate()+6); e=fmtLocal(en); }
-      else { const st=new Date(); st.setDate(st.getDate()-6); s=fmtLocal(st); }
-    }
-    else if (key==="month") {
-      if (mode==="res") { const en=new Date(); en.setDate(en.getDate()+29); e=fmtLocal(en); }
-      else { const st=new Date(); st.setDate(st.getDate()-29); s=fmtLocal(st); }
-    }
-    else if (key==="thismonth") { s=`${y}-${String(m+1).padStart(2,"0")}-01`; e=today; }
-    else if (key==="lastmonth") {
-      const lm=m===0?11:m-1; const ly=m===0?y-1:y;
-      s=`${ly}-${String(lm+1).padStart(2,"0")}-01`;
-      e=fmtLocal(new Date(y,m,0));
-    }
-    else if (key==="all") { s=""; e=""; }
-    setPeriod(key); setSelStart(s); setSelEnd(e);
-    if (s) { const sd=new Date(s); const sd2=new Date(sd.getFullYear(),sd.getMonth()+1,1); setMonths([{y:sd.getFullYear(),m:sd.getMonth()},{y:sd2.getFullYear(),m:sd2.getMonth()}]); }
-  };
-
-  const buildCal = (y,m) => {
-    const first=new Date(y,m,1).getDay(); const days=new Date(y,m+1,0).getDate();
-    const cells=[];
-    for(let i=0;i<first;i++) cells.push(null);
-    for(let i=1;i<=days;i++) cells.push(`${y}-${String(m+1).padStart(2,"0")}-${String(i).padStart(2,"0")}`);
-    return cells;
-  };
-
-  const prevM = () => { const d=new Date(months[0].y,months[0].m-1,1); const d2=new Date(months[1].y,months[1].m-1,1); setMonths([{y:d.getFullYear(),m:d.getMonth()},{y:d2.getFullYear(),m:d2.getMonth()}]); };
-  const nextM = () => { const d=new Date(months[0].y,months[0].m+1,1); const d2=new Date(months[1].y,months[1].m+1,1); setMonths([{y:d.getFullYear(),m:d.getMonth()},{y:d2.getFullYear(),m:d2.getMonth()}]); };
-
-  const [pickingEnd, setPickingEnd] = useState(false);
-
-  const handleDayClick = (ds) => {
-    setPeriod("custom");
-    if (!pickingEnd) {
-      setSelStart(ds); setSelEnd(ds);
-      setPickingEnd(true);
-    } else {
-      if (ds < selStart) { setSelStart(ds); setSelEnd(selStart); }
-      else { setSelEnd(ds); }
-      setPickingEnd(false);
-    }
-  };
-
-  const DAYS = ["일","월","화","수","목","금","토"];
-
-  const CalGrid = ({y,m}) => {
-    const cells = buildCal(y,m);
-    return <div style={{minWidth:220}}>
-      <div style={{textAlign:"center",fontWeight:T.fw.bolder,fontSize:T.fs.md,color:T.text,marginBottom:8}}>{y}.{String(m+1).padStart(2,"0")}</div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:"2px 0",marginBottom:4}}>
-        {DAYS.map((d,i)=><div key={d} style={{textAlign:"center",fontSize:T.fs.xxs,fontWeight:T.fw.bold,color:i===0?T.danger:i===6?T.male:T.gray500,padding:"4px 0"}}>{d}</div>)}
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:"2px 0"}}>
-        {cells.map((ds,i)=>{
-          if(!ds) return <div key={i}/>;
-          const today=todayStr();
-          const isToday=ds===today;
-          const isSt=ds===selStart&&selStart;
-          const isEn=ds===selEnd&&selEnd&&selEnd!==selStart;
-          const inR=selStart&&selEnd&&ds>selStart&&ds<selEnd;
-          const dow=new Date(ds).getDay();
-          let tc=dow===0?T.danger:dow===6?T.male:T.text;
-          if(isSt||isEn) tc=T.bgCard;
-          return <div key={ds} style={{display:"flex",justifyContent:"center",position:"relative",
-            background:inR?T.primaryHover:"transparent",
-            borderRadius:isSt?"50% 0 0 50%":isEn?"0 50% 50% 0":"0"}}>
-            <button onClick={()=>handleDayClick(ds)} style={{
-              width:30,height:30,borderRadius:"50%",border:"none",cursor:"pointer",fontSize:T.fs.sm,fontFamily:"inherit",
-              fontWeight:isToday||isSt||isEn?700:400,
-              background:isSt||isEn?T.primary:isToday?T.gray200:"transparent",
-              color:tc,position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
-              {parseInt(ds.slice(8))}
-              {isToday&&!(isSt||isEn)&&<span style={{position:"absolute",bottom:2,left:"50%",transform:"translateX(-50%)",width:3,height:3,borderRadius:"50%",background:T.primary}}/>}
-            </button>
-          </div>;
-        })}
-      </div>
-    </div>;
-  };
-
-  const doApply = () => { onApply(selStart,selEnd,period); onClose(); };
-
-  if (!open) return null;
-
-  // ── 데스크탑 드롭다운 ──
-  if (!isMobile) {
-    return <div style={{position:"fixed",inset:0,zIndex:3000}} onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
-      <div onMouseDown={e=>e.stopPropagation()} style={{
-        position:"fixed",top:pos.top,left:pos.left,
-        background:T.bgCard,borderRadius:T.radius.lg,boxShadow:"0 8px 32px rgba(0,0,0,.18)",
-        padding:"16px 20px 14px",zIndex:3001,minWidth:500}}>
-        {/* 프리셋 버튼 */}
-        <div style={{display:"flex",gap:T.sp.xs,marginBottom:14,flexWrap:"wrap"}}>
-          {presets.map(([k,v])=><button key={k} onClick={()=>applyPreset(k)} style={{
-            height:28,padding:"0 12px",borderRadius:T.radius.md,border:"1px solid",fontSize:T.fs.sm,cursor:"pointer",fontFamily:"inherit",
-            background:period===k?T.primary:T.gray100,
-            color:period===k?T.bgCard:T.gray700,
-            borderColor:period===k?T.primary:T.gray300,
-            fontWeight:period===k?700:400}}>{v}</button>)}
-          <span style={{marginLeft:"auto",fontSize:T.fs.sm,color:T.textMuted,alignSelf:"center"}}>
-            {selStart&&selEnd&&selStart!==selEnd?`${selStart} ~ ${selEnd}`:selStart||"전체"}
-          </span>
-        </div>
-        {/* 월 네비 + 2달 캘린더 */}
-        <div style={{display:"flex",alignItems:"center",gap:T.sp.sm}}>
-          <button onClick={prevM} style={{width:28,height:28,border:"1px solid "+T.border,borderRadius:T.radius.md,background:T.bgCard,cursor:"pointer",fontSize:T.fs.lg,color:T.gray600,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>‹</button>
-          <div style={{display:"flex",gap:T.sp.xxl,flex:1}}>
-            <CalGrid y={months[0].y} m={months[0].m}/>
-            <div style={{width:1,background:T.gray200,alignSelf:"stretch"}}/>
-            <CalGrid y={months[1].y} m={months[1].m}/>
-          </div>
-          <button onClick={nextM} style={{width:28,height:28,border:"1px solid "+T.border,borderRadius:T.radius.md,background:T.bgCard,cursor:"pointer",fontSize:T.fs.lg,color:T.gray600,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>›</button>
-        </div>
-        {/* 하단 버튼 */}
-        <div style={{display:"flex",gap:T.sp.sm,marginTop:14,justifyContent:"flex-end"}}>
-          <button onClick={onClose} style={{height:32,padding:"0 16px",borderRadius:T.radius.md,border:"1px solid "+T.border,background:T.bgCard,fontSize:T.fs.sm,cursor:"pointer",color:T.gray600,fontFamily:"inherit"}}>취소</button>
-          <button onClick={doApply} style={{height:32,padding:"0 20px",borderRadius:T.radius.md,border:"none",background:T.primary,fontSize:T.fs.sm,cursor:"pointer",color:T.bgCard,fontFamily:"inherit",fontWeight:T.fw.bolder}}>적용</button>
-        </div>
-      </div>
-    </div>;
-  }
-
-  // ── 모바일 바텀시트 ──
-  return <div style={{position:"fixed",inset:0,zIndex:3000,display:"flex",flexDirection:"column",justifyContent:"flex-end"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-    <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.45)"}} onClick={onClose}/>
-    <div style={{position:"relative",background:T.bgCard,borderRadius:"16px 16px 0 0",padding:"0 0 calc(32px + 56px + env(safe-area-inset-bottom))",maxHeight:"90vh",overflowY:"auto"}}>
-      <div style={{display:"flex",justifyContent:"center",padding:"12px 0 4px"}}><div style={{width:36,height:4,borderRadius:T.radius.sm,background:T.gray300}}/></div>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 20px 14px"}}>
-        <span style={{fontSize:T.fs.lg,fontWeight:T.fw.bolder,color:T.text}}>날짜 선택</span>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {presets.map(([k,v])=><button key={k} onClick={()=>applyPreset(k)} style={{
-            height:30,padding:"0 10px",borderRadius:T.radius.md,border:"1px solid",fontSize:T.fs.sm,cursor:"pointer",fontFamily:"inherit",
-            background:period===k?T.primary:T.gray100,color:period===k?T.bgCard:T.gray700,borderColor:period===k?T.primary:T.gray300}}>{v}</button>)}
-        </div>
-      </div>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",marginBottom:10}}>
-        <button onClick={prevM} style={{width:32,height:32,border:"none",background:"none",cursor:"pointer",fontSize:T.fs.xxl,color:T.gray700}}>‹</button>
-        <span style={{fontSize:T.fs.lg,fontWeight:T.fw.bolder}}>{months[0].y}.{String(months[0].m+1).padStart(2,"0")}</span>
-        <button onClick={nextM} style={{width:32,height:32,border:"none",background:"none",cursor:"pointer",fontSize:T.fs.xxl,color:T.gray700}}>›</button>
-      </div>
-      <div style={{padding:"0 16px"}}><CalGrid y={months[0].y} m={months[0].m}/></div>
-      {selStart&&<div style={{padding:"14px 20px 0",textAlign:"center",color:T.textSub,fontSize:T.fs.sm}}>{selStart}{selEnd&&selEnd!==selStart?` ~ ${selEnd}`:""}</div>}
-      <div style={{display:"flex",gap:10,padding:"16px 20px 0"}}>
-        <button onClick={onClose} style={{flex:1,height:46,border:"1.5px solid #ddd",borderRadius:T.radius.md,background:T.bgCard,fontSize:T.fs.md,cursor:"pointer",color:T.gray700,fontFamily:"inherit"}}>취소</button>
-        <button onClick={doApply} style={{flex:2,height:46,border:"none",borderRadius:T.radius.md,background:T.primary,fontSize:T.fs.md,cursor:"pointer",color:T.bgCard,fontFamily:"inherit",fontWeight:T.fw.bolder}}>적용</button>
-      </div>
-    </div>
-  </div>;
-}
-
-
-export default TimelineModal
+export default TimelineModal;
