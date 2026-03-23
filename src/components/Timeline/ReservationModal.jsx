@@ -1315,7 +1315,7 @@ function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, data, setD
   const uncatSvcs = SVC_LIST.filter(s => !CATS.find(c=>c.id===s.cat));
   const halfProd = Math.ceil(PROD_LIST.length / 2);
 
-  const _m = window.innerWidth <= 768;
+  const _m = false; // 항상 데스크탑 모달
   return (
     <div onClick={_m?undefined:onClose} style={_m?{
         position:"fixed",inset:0,zIndex:500,background:T.bgCard,overflowY:"auto",WebkitOverflowScrolling:"touch"
