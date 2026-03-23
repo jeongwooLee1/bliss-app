@@ -6,24 +6,21 @@ import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, g
 import I from '../common/I'
 
 
+const _BR_ACC = {
+  "br_4bcauqvrb": 101171979,
+  "br_wkqsxj6k1": 102071377,
+  "br_xu60omgdf": 101988152,
+  "br_k57zpkbx1": 101521969,
+  "br_g768xdu4w": 101517367,
+  "br_ybo3rmulv": 101476019,
+  "br_l6yzs2pkq": 102507795,
+  "br_lfv2wgdf1": 101522539,
+};
 const _ACC_NAME = {
   101171979: "강남", 102071377: "왕십리", 101988152: "천호",
   101521969: "마곡", 101517367: "위례", 101476019: "용산",
   102507795: "홍대", 101522539: "잠실",
 };
-// 역방향 맵
-const _ACC_BR = Object.fromEntries(Object.entries(_BR_ACC).map(([k,v])=>[v,k]));
-const _BR_ACC = {
-  "br_4bcauqvrb": 101171979,  // 강남
-  "br_wkqsxj6k1": 102071377,  // 왕십리
-  "br_xu60omgdf": 101988152,  // 천호
-  "br_k57zpkbx1": 101521969,  // 마곡
-  "br_g768xdu4w": 101517367,  // 위례
-  "br_ybo3rmulv": 101476019,  // 용산
-  "br_l6yzs2pkq": 102507795,  // 홍대
-  "br_lfv2wgdf1": 101522539,  // 잠실
-};
-
 const _ACC_BR = Object.fromEntries(Object.entries(_BR_ACC).map(([k,v])=>[v,k]));
 
 
