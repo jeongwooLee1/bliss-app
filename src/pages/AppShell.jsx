@@ -25,6 +25,261 @@ function Loading({msg}) {
   </div>;
 }
 
+
+const Btn = ({ children, variant="primary", size="md", disabled, onClick, style={}, ...p }) => {
+  const base = { display:"inline-flex", alignItems:"center", justifyContent:"center", gap:6,
+    border:"none", borderRadius:T.radius.md, cursor:disabled?"not-allowed":"pointer",
+    fontFamily:"inherit", fontWeight:T.fw.bold, transition:"opacity .15s",
+    opacity: disabled ? 0.5 : 1 };
+  const sizes = { sm:{padding:"4px 10px",fontSize:T.fs.sm}, md:{padding:"7px 14px",fontSize:T.fs.md}, lg:{padding:"10px 20px",fontSize:T.fs.lg} };
+  const variants = {
+    primary:   { background:T.primary,   color:T.bgCard },
+    secondary: { background:T.gray200,   color:T.gray800 },
+    danger:    { background:T.danger,    color:T.bgCard },
+    ghost:     { background:"transparent", color:T.primary, border:`1px solid ${T.border}` },
+    outline:   { background:"transparent", color:T.primary, border:`1px solid ${T.primary}` },
+  };
+  return <button onClick={disabled?undefined:onClick} style={{...base,...sizes[size],...variants[variant],...style}} {...p}>{children}</button>;
+};
+
+function SuperDashboard({ superData, setSuperData, currentUser, onLogout, onEnterBiz }) {
+  const [tab, setTab] = useState("businesses");
+  const { businesses=[], groups=[], groupMembers=[], users=[] } = superData || {};
+
+  // ── Business CRUD ──
+  const [bizForm, setBizForm] = useState(null);
+  const saveBiz = async () => {
+    if (!bizForm?.name || !bizForm?.code) return alert("업체명과 대표 아이디를 입력하세요");
+    const isNew = !bizForm.id;
+    const biz = isNew ? { ...bizForm, id: "biz_" + uid() } : bizForm;
+    if (isNew) {
+      await sb.insert("businesses", { id:biz.id, name:biz.name, code:biz.code, phone:biz.phone||"", settings:biz.settings||"" });
+      const ownerId = "acc_" + uid();
+      await sb.insert("app_users", { id:ownerId, business_id:biz.id, login_id:biz.code, password:"1234", name:biz.name+" 대표", role:"owner", branch_ids:"[]", view_branch_ids:"[]" });
+      // Auto-assign group if selected
+      if (bizForm.groupId) {
+        const gm = { id:"gm_"+uid(), group_id:bizForm.groupId, business_id:biz.id };
+        await sb.insert("business_group_members", gm);
+        setSuperData(p => ({...p, businesses:[...p.businesses, biz], users:[...p.users, {id:ownerId, businessId:biz.id, loginId:biz.code, pw:"1234", name:biz.name+" 대표", role:"owner", branches:[], viewBranches:[]}], groupMembers:[...p.groupMembers, gm]}));
+      } else {
+        setSuperData(p => ({...p, businesses:[...p.businesses, biz], users:[...p.users, {id:ownerId, businessId:biz.id, loginId:biz.code, pw:"1234", name:biz.name+" 대표", role:"owner", branches:[], viewBranches:[]}]}));
+      }
+    } else {
+      await sb.update("businesses", biz.id, { name:biz.name, code:biz.code, phone:biz.phone||"", settings:biz.settings||"" });
+      // Update group membership
+      const curMem = groupMembers.find(m=>m.business_id===biz.id);
+      if (bizForm.groupId && (!curMem || curMem.group_id!==bizForm.groupId)) {
+        if (curMem) await sb.del("business_group_members", curMem.id);
+        const gm = { id:"gm_"+uid(), group_id:bizForm.groupId, business_id:biz.id };
+        await sb.insert("business_group_members", gm);
+        setSuperData(p => ({...p, businesses:p.businesses.map(b=>b.id===biz.id?biz:b), groupMembers:[...(p?.groupMembers||[]).filter(m=>m.business_id!==biz.id), gm]}));
+      } else if (!bizForm.groupId && curMem) {
+        await sb.del("business_group_members", curMem.id);
+        setSuperData(p => ({...p, businesses:p.businesses.map(b=>b.id===biz.id?biz:b), groupMembers:(p?.groupMembers||[]).filter(m=>m.business_id!==biz.id)}));
+      } else {
+        setSuperData(p => ({...p, businesses:p.businesses.map(b=>b.id===biz.id?biz:b)}));
+      }
+    }
+    setBizForm(null);
+  };
+  const deleteBiz = async (id) => {
+    if (!confirm("이 사업자를 삭제하시겠습니까? 모든 데이터가 삭제됩니다.")) return;
+    await sb.del("businesses", id);
+    setSuperData(p => ({...p, businesses:(p?.businesses||[]).filter(b=>b.id!==id)}));
+  };
+  const seedBizTemplates = async (bizId) => {
+    const prefix = bizId.replace("biz_","");
+    const br = { id:`br_${prefix}_1`, business_id:bizId, name:"본점", short:"본점", phone:"", address:"", color:T.bgCard, sort:0, use_yn:true };
+    await sb.insert("branches", br);
+    await sb.insert("rooms", { id:`rm_${prefix}_1`, business_id:bizId, branch_id:br.id, name:"담당자1", color:"", sort_order:0 });
+    const cats = ["왁싱","페이셜","바디","기타"];
+    for (let i=0;i<cats.length;i++) await sb.insert("service_categories", { id:`cat_${prefix}_${i}`, business_id:bizId, name:cats[i], sort:i });
+    alert("기본 템플릿이 등록되었습니다.");
+  };
+  const startEditBiz = (b) => {
+    const curMem = groupMembers.find(m=>m.business_id===b.id);
+    setBizForm({...b, groupId: curMem?.group_id||""});
+  };
+
+  // ── Group quick-add (inline) ──
+  const [newGrp, setNewGrp] = useState("");
+  const addGroup = async () => {
+    if (!newGrp.trim()) return;
+    const grp = { id:"grp_"+uid(), name:newGrp.trim(), memo:"" };
+    await sb.insert("business_groups", grp);
+    setSuperData(p => ({...p, groups:[...p.groups, grp]}));
+    setNewGrp("");
+  };
+
+  const [sideOpen, setSideOpen] = useState(false);
+  const tabs = [{id:"businesses",label:<><I name="building" size={15}/> 업체 관리</>},{id:"users",label:<><I name="user" size={15}/> 사용자</>},{id:"settings",label:<><I name="settings" size={15}/> 시스템 설정</>}];
+
+  const SideContent = () => <>
+    <div style={{padding:"20px 16px 16px",borderBottom:"1px solid "+T.border}}>
+      <div style={{fontSize:T.fs.xxl,fontWeight:T.fw.black,color:T.primary,letterSpacing:-1}}>Bliss</div>
+      <div style={{fontSize:T.fs.xxs,color:T.textSub,marginTop:4}}>슈퍼관리자 · {currentUser?.name}</div>
+    </div>
+    <div style={{flex:1,padding:"12px 0"}}>
+      {tabs.map(t=>(
+        <button key={t.id} onClick={()=>{setTab(t.id);setSideOpen(false)}} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 16px",border:"none",cursor:"pointer",fontSize:T.fs.sm,fontWeight:tab===t.id?700:400,
+          background:tab===t.id?T.primaryHover:"transparent",color:tab===t.id?T.primary:T.gray700,
+          borderLeft:tab===t.id?"3px solid #7c7cc8":"3px solid transparent",
+          fontFamily:"inherit",width:"100%",textAlign:"left"}}>{t.label}</button>
+      ))}
+    </div>
+    <div style={{padding:12,borderTop:"1px solid "+T.border}}>
+      <button onClick={onLogout} style={{width:"100%",padding:"8px 14px",borderRadius:T.radius.sm,border:"1px solid #d0d0d0",background:T.bgCard,color:T.textSub,cursor:"pointer",fontSize:T.fs.sm,fontWeight:T.fw.bold,fontFamily:"inherit"}}>로그아웃</button>
+    </div>
+  </>;
+
+  return (
+    <div style={{display:"flex",height:"100dvh",fontFamily:"'Pretendard',sans-serif",background:T.gray100,position:"fixed",top:0,left:0,right:0,bottom:0}}>
+      <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" rel="stylesheet"/>
+      <style>{CSS}</style>
+      {/* Desktop sidebar */}
+      <aside className="sidebar-d" style={{width:220,background:T.bgCard,borderRight:"1px solid "+T.border,display:"flex",flexDirection:"column"}}>
+        <SideContent/>
+      </aside>
+      {/* Mobile sidebar overlay */}
+      {sideOpen && <div className="sidebar-m" style={{position:"fixed",inset:0,zIndex:300}}>
+        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,.5)"}} onClick={()=>setSideOpen(false)}/>
+        <div style={{position:"relative",width:260,height:"100%",background:T.bgCard,display:"flex",flexDirection:"column",animation:"slideIn .5s cubic-bezier(.22,1,.36,1)"}}>
+          <SideContent/>
+        </div>
+      </div>}
+      <main className="main-c" style={{flex:1,display:"flex",flexDirection:"column",height:"100%",overflow:"hidden",paddingBottom:0}}>
+        {/* Mobile header */}
+        <div className="mob-hdr" style={{padding:"10px 16px",background:T.bgCard,borderBottom:"1px solid "+T.border,display:"flex",alignItems:"center",gap:T.sp.md,justifyContent:"space-between"}}>
+          <span style={{fontSize:T.fs.md,fontWeight:T.fw.bolder,color:T.primary}}>Bliss 슈퍼관리자</span>
+          <span style={{fontSize:T.fs.xl,fontWeight:T.fw.black,color:T.danger}}>v{BLISS_V}</span>
+        </div>
+        <div className="page-pad" style={{flex:1,padding:24,overflow:"auto",WebkitOverflowScrolling:"touch"}}>
+        {/* ── 업체 관리 ── */}
+        {tab==="businesses" && <div>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+            <h2 style={{fontSize:T.fs.xl,fontWeight:T.fw.black,color:T.text}}><I name="building" size={18}/> 업체 관리</h2>
+            <span style={{fontSize:T.fs.sm,color:T.textSub}}>{businesses.length}개 업체</span>
+            <Btn variant="primary" style={{marginLeft:"auto"}} onClick={()=>setBizForm({name:"",code:"",phone:"",memo:"",groupId:""})}><I name="plus" size={12}/> 업체 추가</Btn>
+          </div>
+          {bizForm && <div className="card" style={{padding:16,marginBottom:16}}>
+            <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"end"}}>
+              <FLD label="업체명"><input className="inp" style={{width:"100%",maxWidth:160}} value={bizForm.name} onChange={e=>setBizForm({...bizForm,name:e.target.value})} placeholder="업체명 입력"/></FLD>
+              <FLD label="대표 아이디"><input className="inp" style={{width:"100%",maxWidth:140}} value={bizForm.code} onChange={e=>setBizForm({...bizForm,code:e.target.value.toLowerCase().replace(/[^a-z0-9]/g,"")})} placeholder="영문소문자+숫자"/></FLD>
+              <FLD label="전화"><input className="inp" style={{width:"100%",maxWidth:140}} value={bizForm.phone||""} onChange={e=>setBizForm({...bizForm,phone:e.target.value})} placeholder="02-0000-0000"/></FLD>
+              <FLD label="그룹">
+                <div style={{display:"flex",gap:T.sp.xs}}>
+                  <select className="inp" style={{width:"100%",maxWidth:130}} value={bizForm.groupId||""} onChange={e=>setBizForm({...bizForm,groupId:e.target.value})}>
+                    <option value="">없음</option>
+                    {groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
+                  </select>
+                  <div style={{display:"flex",gap:2}}>
+                    <input className="inp" style={{width:80,fontSize:T.fs.xs,padding:"4px 6px"}} value={newGrp} onChange={e=>setNewGrp(e.target.value)} placeholder="새 그룹" onKeyDown={e=>e.key==="Enter"&&addGroup()}/>
+                    <Btn variant="secondary" style={{padding:"2px 6px",fontSize:T.fs.xs}} onClick={addGroup}>+</Btn>
+                  </div>
+                </div>
+              </FLD>
+              <FLD label="메모"><input className="inp" style={{width:"100%",maxWidth:160}} value={ (() => { try { const m=JSON.parse(bizForm.settings||"{}"); return m.gemini_key ? "" : (bizForm.settings||""); } catch { return bizForm.settings||""; } })() } onChange={e=>{ try { const m=JSON.parse(bizForm.settings||"{}"); if(m.gemini_key){setBizForm({...bizForm,settings:JSON.stringify({...m,_note:e.target.value})});}else{setBizForm({...bizForm,settings:e.target.value});} } catch { setBizForm({...bizForm,settings:e.target.value}); } }} placeholder="메모"/></FLD>
+              <Btn variant="primary" onClick={saveBiz}>{bizForm.id?"저장":"추가"}</Btn>
+              <Btn variant="secondary" onClick={()=>setBizForm(null)}>취소</Btn>
+            </div>
+            {!bizForm.id && <div style={{marginTop:8,fontSize:T.fs.xxs,color:T.gray500}}>* 대표 아이디로 대표 계정이 자동 생성됩니다 (초기 비밀번호: 1234)</div>}
+          </div>}
+          <DataTable card><thead><tr>
+              <th>업체명</th><th>대표 아이디</th><th>전화</th><th>그룹</th><th>계정수</th><th>메모</th><th>관리</th>
+            </tr></thead><tbody>
+              {businesses.map(b=>{
+                const bizUsers = users.filter(u=>u.businessId===b.id);
+                const grps = groupMembers.filter(m=>m.business_id===b.id).map(m=>groups.find(g=>g.id===m.group_id)?.name).filter(Boolean);
+                return <tr key={b.id}>
+                  <td style={{fontWeight:T.fw.bolder}}>{b.name}</td>
+                  <td style={{color:T.primary,fontFamily:"monospace",fontSize:T.fs.sm}}>{b.code}</td>
+                  <td style={{fontSize:T.fs.sm,color:T.textSub}}>{b.phone||"-"}</td>
+                  <td>{grps.length>0 ? <span style={{fontSize:T.fs.xs,color:T.info,background:"#5cb5c520",padding:"2px 8px",borderRadius:T.radius.md}}>{grps.join(", ")}</span> : <span style={{color:T.gray400}}>-</span>}</td>
+                  <td style={{color:T.textSub}}>{bizUsers.length}명</td>
+                  <td style={{fontSize:T.fs.sm,color:T.textSub}}>{ (() => { try { const m=JSON.parse(b.settings||"{}"); return m.gemini_key ? <span style={{color:T.gray400,fontStyle:"italic"}}>설정값</span> : (b.settings||"-"); } catch { return b.settings||"-"; } })() }</td>
+                  <td style={{display:"flex",gap:T.sp.xs}}>
+                    <Btn variant="primary" style={{padding:"4px 10px",fontSize:T.fs.xxs}} onClick={()=>onEnterBiz(b.id)}>접속</Btn>
+                    <Btn variant="secondary" style={{padding:"4px 10px",fontSize:T.fs.xxs}} onClick={()=>startEditBiz(b)}>수정</Btn>
+                    <Btn variant="secondary" style={{padding:"4px 10px",fontSize:T.fs.xxs}} onClick={()=>seedBizTemplates(b.id)}>템플릿</Btn>
+                    <Btn variant="danger" style={{padding:"4px 10px",fontSize:T.fs.xxs}} onClick={()=>deleteBiz(b.id)}>삭제</Btn>
+                  </td>
+                </tr>;
+              })}
+              {businesses.length===0 && <tr><td colSpan={7} style={{textAlign:"center",color:T.gray500,padding:40}}>등록된 업체가 없습니다</td></tr>}
+            </tbody></DataTable>
+        </div>}
+
+        {/* ── 사용자 ── */}
+        {tab==="users" && <SuperUsers users={users} businesses={businesses} superData={superData} setSuperData={setSuperData}/>}
+        {tab==="settings" && <SuperSystemSettings/>}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function Login({ users, onLogin, onSignup }) {
+  const [showSignup, setShowSignup] = useState(false);
+  const [loginId, setLoginId] = useState(() => {try{return localStorage.getItem("savedLoginId")||"";}catch(e){return "";}});
+  const [pw, setPw] = useState("");
+  const [saveId, setSaveId] = useState(() => {try{return localStorage.getItem("savedLoginId")!==null;}catch(e){return false;}});
+  const [err, setErr] = useState("");
+  const handleLogin = () => {
+    const u = users.find(u => (u.loginId||u.login_id) === loginId && (u.pw||u.password) === pw);
+    if (!u) { setErr("아이디 또는 비밀번호가 일치하지 않습니다."); return; }
+    try{if(saveId)localStorage.setItem("savedLoginId",loginId);else localStorage.removeItem("savedLoginId");}catch(e){}
+    onLogin(u);
+  };
+  const bgGrad = "linear-gradient(135deg,#e8e8f0 0%,#d8d8e8 50%,#c8c8d8 100%)";
+  const cardStyle = {background:T.bgCard,borderRadius:T.radius.lg,border:`1px solid ${T.border}`,boxShadow:T.shadow.lg,animation:"slideUp .6s cubic-bezier(.22,1,.36,1)"};
+  if (showSignup) return (
+    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,overflowY:"auto",WebkitOverflowScrolling:"touch",background:bgGrad,fontFamily:"'Pretendard',sans-serif",padding:"20px 16px 80px",boxSizing:"border-box",zIndex:9999}}>
+      <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" rel="stylesheet"/>
+      <style>{CSS}</style>
+      <div style={{...cardStyle,padding:"28px 24px",width:"92%",maxWidth:460,marginTop:20}}>
+        <div style={{textAlign:"center",marginBottom:T.sp.xxl}}>
+          <div style={{fontSize:T.fs.xxl,fontWeight:T.fw.black,color:T.primary,letterSpacing:-1}}>Bliss</div>
+          <div style={{fontSize:T.fs.xs,color:T.textMuted,marginTop:4}}>신규 가입</div>
+        </div>
+        <SignupWizard onComplete={(newUser)=>{ setShowSignup(false); onSignup(newUser); }} onBack={()=>setShowSignup(false)}/>
+      </div>
+    </div>
+  );
+  return (
+    <div style={{minHeight:"100vh",width:"100%",display:"flex",alignItems:"center",justifyContent:"center",background:bgGrad,fontFamily:"'Pretendard',sans-serif",padding:T.sp.lg}}>
+      <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" rel="stylesheet"/>
+      <style>{CSS}</style>
+      <div style={{...cardStyle,padding:"32px 28px",width:"92%",maxWidth:420}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <div style={{fontSize:28,fontWeight:T.fw.black,color:T.primary,letterSpacing:-1}}>Bliss</div>
+          <div style={{fontSize:T.fs.sm,color:T.textMuted,marginTop:T.sp.sm}}>통합 예약 & 매출 관리 시스템</div>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <FLD label="아이디"><input className="inp" placeholder="아이디 입력" value={loginId} onChange={e=>{setLoginId(e.target.value);setErr("")}}/></FLD>
+          <FLD label="비밀번호"><input className="inp" type="password" placeholder="비밀번호 입력" value={pw} onChange={e=>{setPw(e.target.value);setErr("")}} onKeyDown={e=>e.key==="Enter"&&handleLogin()}/></FLD>
+          {err && <div style={{fontSize:T.fs.sm,color:T.danger,textAlign:"center"}}>{err}</div>}
+          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:T.fs.sm,color:T.textSub,cursor:"pointer"}}>
+            <input type="checkbox" checked={saveId} onChange={e=>setSaveId(e.target.checked)} style={{accentColor:T.primary,width:14,height:14}}/>
+            아이디 저장
+          </label>
+          <Btn onClick={handleLogin} style={{width:"100%",padding:13,fontSize:T.fs.lg,marginTop:4}}>로그인</Btn>
+          <div style={{borderTop:`1px solid ${T.gray200}`,marginTop:T.sp.sm,paddingTop:T.sp.md,textAlign:"center"}}>
+            <span style={{fontSize:T.fs.sm,color:T.textMuted}}>아직 계정이 없으신가요? </span>
+            <button onClick={()=>setShowSignup(true)} style={{background:"none",border:"none",fontSize:T.fs.sm,color:T.primary,fontWeight:T.fw.bolder,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>무료 체험 시작 →</button>
+          </div>
+          <div style={{fontSize:T.fs.xs,color:T.textMuted,textAlign:"center",marginTop:4}}>앱 v{BLISS_V}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Stub 컴포넌트 (별도 페이지로 이식 전 임시)
+function SalesPage(p) { return <div style={{padding:20,color:'#666'}}>매출 페이지 준비 중</div>; }
+function StatsPage(p) { return <div style={{padding:20,color:'#666'}}>통계 페이지 준비 중</div>; }
+function CustomersPage(p) { return <div style={{padding:20,color:'#666'}}>고객 페이지 준비 중</div>; }
+function UsersPage(p) { return <div style={{padding:20,color:'#666'}}>계정 관리 페이지 준비 중</div>; }
+
 function App() {
   const [phase, setPhase] = useState("loading");
  // loading, login, super, app
