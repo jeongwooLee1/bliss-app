@@ -20,6 +20,26 @@ function App() {
   const [pageHistory, setPageHistory] = React.useState([]);
   const [unreadMsgCount, setUnreadMsgCount] = useState(0);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [allUsers, setAllUsers] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [currentBizId, setCurrentBizId] = useState(null);
+  const [currentBiz, setCurrentBiz] = useState(null);
+  const [data, setData] = useState(null);
+  const dataRef = useRef(null); // 항상 최신 data를 참조 (클로저 문제 방지)
+  useEffect(() => { dataRef.current = data; }, [data]);
+  const [superData, setSuperData] = useState(null);
+  const [role, setRole] = useState("staff");
+  const [userBranches, setUserBranches] = useState([]);
+  const [viewBranches, setViewBranches] = useState([]);
+  const [page, setPageRaw] = useState(() => {
+    try { const p = sessionStorage.getItem("bliss_page"); console.log("[SESSION] page restore:", p); return p || "timeline"; } catch(e){ return "timeline"; }
+  });
+  const [pendingOpenRes, setPendingOpenRes] = useState(null);
+  const [serverV, setServerV] = useState(null);
+  const [scraperStatus, setScraperStatus] = useState(null); // {lastSeen, lastScraped, isAlive, isWarning}
+  const [naverColShow, setNaverColShowRaw] = useState(()=>{ try{return JSON.parse(localStorage.getItem("bliss_naver_cols")||"null")||{};}catch(e){return{};} });
+  const [sideOpen, setSideOpen] = useState(false);
+  const [loadMsg, setLoadMsg] = useState("연결 중...");
   useEffect(() => {
     const BR_ACC = {"br_4bcauqvrb":"101171979","br_wkqsxj6k1":"102071377","br_l6yzs2pkq":"102507795",
       "br_k57zpkbx1":"101521969","br_lfv2wgdf1":"101522539","br_g768xdu4w":"101517367",
@@ -58,23 +78,6 @@ function App() {
     if (total > 0) navigator.setAppBadge(total).catch(()=>{});
     else navigator.clearAppBadge().catch(()=>{});
   }, [unreadMsgCount, data, userBranches, isMaster]);
-  const [allUsers, setAllUsers] = useState([]);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [currentBizId, setCurrentBizId] = useState(null);
-  const [currentBiz, setCurrentBiz] = useState(null);
-  const [data, setData] = useState(null);
-  const dataRef = useRef(null); // 항상 최신 data를 참조 (클로저 문제 방지)
-  useEffect(() => { dataRef.current = data; }, [data]);
-  const [superData, setSuperData] = useState(null);
-  const [role, setRole] = useState("staff");
-  const [userBranches, setUserBranches] = useState([]);
-  const [viewBranches, setViewBranches] = useState([]);
-  const [page, setPageRaw] = useState(() => {
-    try { const p = sessionStorage.getItem("bliss_page"); console.log("[SESSION] page restore:", p); return p || "timeline"; } catch(e){ return "timeline"; }
-  });
-  const [pendingOpenRes, setPendingOpenRes] = useState(null);
-  const [serverV, setServerV] = useState(null);
-  const [scraperStatus, setScraperStatus] = useState(null); // {lastSeen, lastScraped, isAlive, isWarning}
   // server_logs에서 서버 버전 + 스크래퍼 상태 1분마다 폴링
   React.useEffect(()=>{
     const fetchServerV = async ()=>{
@@ -106,7 +109,6 @@ function App() {
     const t = setInterval(fetchServerV, 60000);
     return ()=>clearInterval(t);
   },[]);
-  const [naverColShow, setNaverColShowRaw] = useState(()=>{ try{return JSON.parse(localStorage.getItem("bliss_naver_cols")||"null")||{};}catch(e){return{};} });
   const setNaverColShow = v => { setNaverColShowRaw(v); try{localStorage.setItem("bliss_naver_cols",JSON.stringify(v));}catch(e){} };
   const setPage = useCallback((p) => {
     console.log("[SESSION] page save:", p);
@@ -131,8 +133,6 @@ function App() {
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
-  const [sideOpen, setSideOpen] = useState(false);
-  const [loadMsg, setLoadMsg] = useState("연결 중...");
 
   // Page is persisted directly via setPage → sessionStorage.setItem("bliss_page")
 
