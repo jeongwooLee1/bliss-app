@@ -45,7 +45,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   const inputAreaRef = useRef(null);
   const chatWrapRef = useRef(null);
 
-  const allowedIds = isMaster ? Object.values(_BR_ACC) : (userBranches||[]).map(b=>_BR_ACC[b]).filter(Boolean);
+  const allowedIds = isMaster ? Object.values(_BR_ACC).map(String) : (userBranches||[]).map(b=>_BR_ACC[b]).filter(Boolean).map(String);
 
   // 메시지 로드
   const loadMsgs = useCallback(async () => {
@@ -86,7 +86,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
     const map = {};
     msgs.forEach(m=>{
       const _socialCh=["whatsapp","telegram","instagram","kakao"];
-      if(allowedIds.length>0 && m.account_id && m.account_id!=="unknown" && !allowedIds.includes(m.account_id) && !_socialCh.includes(m.channel)) return;
+      if(allowedIds.length>0 && m.account_id && m.account_id!=="unknown" && !allowedIds.includes(String(m.account_id)) && !_socialCh.includes(m.channel)) return;
       const key=(m.channel||"naver")+"_"+m.user_id;
       if(!map[key]||new Date(m.created_at)>new Date(map[key].created_at)) map[key]=m;
     });
