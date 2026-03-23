@@ -1,216 +1,325 @@
 import { useState, useMemo, useRef, useCallback } from 'react'
 import { T, SCH_BRANCH_MAP } from '../../lib/constants'
-import { supabase } from '../../lib/supabase'
+import { todayStr, pad, fmtDate, getDow, timeToY, durationToH, addMinutes } from '../../lib/utils'
+import { useReservations } from '../../lib/useReservations'
 import ReservationModal from './ReservationModal'
 
-function todayStr() { return new Date().toISOString().slice(0,10) }
-function pad(n) { return String(n).padStart(2,'0') }
-const DOW = ['일','월','화','수','목','금','토']
-const HOURS = Array.from({length:12}, (_,i) => i+10) // 10~21
+const START_HOUR = 10
+const END_HOUR = 22
+const PX_PER_HOUR = 60
+const COL_W = 76
 
-function timeToY(time) {
-  const [h,m] = time.split(':').map(Number)
-  return (h - 10) * 60 + m
-}
-function yToTime(y) {
-  const totalMin = Math.max(0, Math.min(660, Math.round(y/1) ))
-  const h = Math.floor(totalMin/60) + 10
-  const m = Math.floor((totalMin%60)/15)*15
-  return `${pad(h)}:${pad(m)}`
-}
-
-export default function TimelinePage({ data, employees, schHistory, currentUser, isMaster, setData }) {
+export default function TimelinePage({ data, setData, employees, schHistory, currentUser, isMaster }) {
   const [selDate, setSelDate] = useState(todayStr())
-  const [modal, setModal] = useState(null) // {res, branch, staff}
-  const [selBranch, setSelBranch] = useState(null)
+  const [modalItem, setModalItem] = useState(null)
+  const [modalOpen, setModalOpen] = useState(false)
+  const { upsert, updateField } = useReservations(data, setData)
 
   const branches = data?.branches || []
   const reservations = data?.reservations || []
+  const services = data?.services || []
+  const tags = data?.serviceTags || []
 
-  // 지원 근무 포함 오늘 근무 직원 - 지점별
-  const workingByBranch = useMemo(() => {
+  const userBranches = isMaster
+    ? branches.map(b => b.id)
+    : [currentUser?.branch_id].filter(Boolean)
+
+  const visibleBranches = branches.filter(b => userBranches.includes(b.id))
+
+  // 근무표 기반 직원 컬럼 (지원 근무 포함)
+  const staffByBranch = useMemo(() => {
     const map = {}
-    branches.forEach(br => { map[br.id] = [] })
-    employees.filter(e => !e.isMale).forEach(emp => {
+    visibleBranches.forEach(br => { map[br.id] = [] })
+
+    employees.forEach(emp => {
+      if (emp.isMale) return
       const status = schHistory[emp.id]?.[selDate]
       if (status === '휴무' || status === '휴무(꼭)') return
+
       if (status?.startsWith('지원(')) {
         const brName = status.replace('지원(','').replace(')','')
-        const br = branches.find(b => (b.short||b.name).includes(brName) || brName.includes(b.short||''))
-        if (br) { map[br.id] = [...(map[br.id]||[]), {...emp, isSupport:true}]; return }
+        const targetBr = branches.find(b =>
+          b.short === brName || b.name?.includes(brName)
+        )
+        if (targetBr && map[targetBr.id] !== undefined) {
+          map[targetBr.id].push({ ...emp, isSupport: true, supportFrom: emp.branch })
+          return
+        }
       }
+
       const brId = SCH_BRANCH_MAP[emp.branch]
-      if (brId && map[brId]) map[brId] = [...map[brId], emp]
+      if (brId && map[brId] !== undefined) map[brId].push(emp)
     })
     return map
-  }, [employees, schHistory, selDate, branches])
+  }, [employees, schHistory, selDate, branches, visibleBranches])
 
-  const userBranchIds = isMaster ? branches.map(b=>b.id) : [currentUser?.branch_id].filter(Boolean)
-  const visibleBranches = branches.filter(b => userBranchIds.includes(b.id))
-  const displayBranches = selBranch ? visibleBranches.filter(b=>b.id===selBranch) : visibleBranches
-
-  const dateObj = new Date(selDate+'T00:00:00')
   const changeDate = (d) => {
-    const nd = new Date(selDate+'T00:00:00'); nd.setDate(nd.getDate()+d)
-    setSelDate(nd.toISOString().slice(0,10))
+    const dt = new Date(selDate)
+    dt.setDate(dt.getDate() + d)
+    setSelDate(dt.toISOString().slice(0,10))
   }
 
-  const handleCellClick = (br, staff, yPx) => {
-    const time = yToTime(yPx)
-    setModal({ res: null, branch: br, staffId: staff?.id || null, date: selDate, time })
+  const openNew = (time='10:00', staffId='', branchId='') => {
+    setModalItem({
+      date: selDate, time, dur: 60, status: 'confirmed',
+      bid: branchId, staff_id: staffId,
+      cust_name:'', cust_phone:'', selected_tags:[], selected_services:[],
+    })
+    setModalOpen(true)
   }
 
-  const handleResClick = (e, res, br) => {
-    e.stopPropagation()
-    setModal({ res, branch: br, staffId: res.staff_id, date: selDate, time: res.time })
+  const openEdit = (r) => {
+    setModalItem(r)
+    setModalOpen(true)
   }
 
-  const handleSave = async (saved) => {
-    if (saved.id) {
-      setData(p => ({...p, reservations: p.reservations.map(r => r.id===saved.id ? saved : r)}))
-    } else {
-      setData(p => ({...p, reservations: [...(p.reservations||[]), saved]}))
-    }
-    setModal(null)
+  const handleSave = async (item) => {
+    await upsert(item)
+    setModalOpen(false)
   }
 
-  const handleDelete = async (id) => {
-    setData(p => ({...p, reservations: p.reservations.filter(r=>r.id!==id)}))
-    setModal(null)
-  }
-
-  const PX_PER_MIN = 1
+  const dateObj = new Date(selDate)
+  const isToday = selDate === todayStr()
 
   return (
-    <div style={{display:'flex', flexDirection:'column', height:'100dvh', overflow:'hidden'}}>
+    <div style={{ display:'flex', flexDirection:'column', height:'100dvh' }}>
       {/* 날짜 헤더 */}
-      <div style={{flexShrink:0, background:T.bgCard, borderBottom:`1px solid ${T.border}`, zIndex:20}}>
-        <div style={{display:'flex', alignItems:'center', gap:6, padding:'10px 12px'}}>
-          <button onClick={()=>changeDate(-1)} style={{width:28,height:28,borderRadius:'50%',border:`1px solid ${T.border}`,background:'none',cursor:'pointer',fontSize:16}}>‹</button>
-          <div style={{flex:1,textAlign:'center',fontSize:T.fs.md,fontWeight:T.fw.bolder}}>
-            {dateObj.getMonth()+1}.{pad(dateObj.getDate())} ({DOW[dateObj.getDay()]})
-          </div>
-          <button onClick={()=>changeDate(1)} style={{width:28,height:28,borderRadius:'50%',border:`1px solid ${T.border}`,background:'none',cursor:'pointer',fontSize:16}}>›</button>
-          <button onClick={()=>setSelDate(todayStr())} style={{fontSize:T.fs.xs,padding:'4px 8px',borderRadius:T.radius.md,border:`1px solid ${T.border}`,background:'none',cursor:'pointer',color:T.textSub}}>오늘</button>
+      <div style={{
+        display:'flex', alignItems:'center', gap:8,
+        padding:'10px 12px', background:T.bgCard,
+        borderBottom:`1px solid ${T.border}`, flexShrink:0,
+      }}>
+        <button onClick={() => changeDate(-1)} style={navBtnStyle}>‹</button>
+        <div style={{ flex:1, textAlign:'center' }}>
+          <span style={{ fontSize:T.fs.md, fontWeight:T.fw.bolder, color: isToday ? T.primary : T.text }}>
+            {dateObj.getMonth()+1}.{pad(dateObj.getDate())} ({getDow(selDate)})
+          </span>
+          {isToday && <span style={{ marginLeft:6, fontSize:T.fs.xxs, color:T.primary, background:T.primaryLt, padding:'1px 6px', borderRadius:T.radius.full }}>오늘</span>}
         </div>
-        {/* 지점 탭 */}
-        {visibleBranches.length > 1 && (
-          <div style={{display:'flex',gap:4,padding:'0 12px 8px',overflowX:'auto'}}>
-            <button onClick={()=>setSelBranch(null)}
-              style={{flexShrink:0,padding:'4px 10px',borderRadius:T.radius.full,border:`1px solid ${selBranch===null?T.primary:T.border}`,background:selBranch===null?T.primaryLt:'none',fontSize:T.fs.xs,fontWeight:selBranch===null?T.fw.bold:T.fw.normal,color:selBranch===null?T.primary:T.textSub,cursor:'pointer'}}>
-              전체
-            </button>
-            {visibleBranches.map(br=>(
-              <button key={br.id} onClick={()=>setSelBranch(br.id)}
-                style={{flexShrink:0,padding:'4px 10px',borderRadius:T.radius.full,border:`1px solid ${selBranch===br.id?br.color:T.border}`,background:selBranch===br.id?br.color+'22':'none',fontSize:T.fs.xs,fontWeight:selBranch===br.id?T.fw.bold:T.fw.normal,color:selBranch===br.id?br.color:T.textSub,cursor:'pointer'}}>
-                {br.short||br.name}
-              </button>
-            ))}
-          </div>
-        )}
+        <button onClick={() => changeDate(1)} style={navBtnStyle}>›</button>
+        <button onClick={() => setSelDate(todayStr())} style={{ ...navBtnStyle, fontSize:T.fs.xxs, width:'auto', padding:'0 8px', color:T.textSub }}>오늘</button>
       </div>
 
       {/* 타임라인 본체 */}
-      <div style={{flex:1, overflowY:'auto', overflowX:'auto'}}>
-        {displayBranches.map(br => {
-          const staff = workingByBranch[br.id] || []
+      <div style={{ flex:1, overflowY:'auto', overflowX:'auto' }}>
+        {visibleBranches.map(br => {
+          const staff = staffByBranch[br.id] || []
           const brRes = reservations.filter(r =>
-            r.bid===br.id && r.date===selDate &&
-            r.status!=='naver_cancelled' && r.status!=='naver_changed'
+            r.bid === br.id && r.date === selDate &&
+            r.status !== 'naver_cancelled' && r.status !== 'naver_changed'
           )
-          const cols = staff.length > 0 ? staff : [{id:'미배정', name:'미배정', isBlank:true}]
 
           return (
-            <div key={br.id} style={{marginBottom:1}}>
-              {/* 지점 헤더 */}
-              <div style={{padding:'4px 12px',background:br.color+'18',borderLeft:`3px solid ${br.color}`,fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:br.color,position:'sticky',left:0}}>
-                {br.short||br.name}
-                {staff.length>0 && <span style={{fontWeight:T.fw.normal,marginLeft:6,color:T.textMuted}}>{staff.map(e=>e.id).join(' · ')}</span>}
-              </div>
-
-              <div style={{display:'flex', borderBottom:`2px solid ${T.border}`}}>
-                {/* 시간축 */}
-                <div style={{width:38,flexShrink:0,borderRight:`1px solid ${T.border}`,background:T.gray100}}>
-                  <div style={{height:28}} />
-                  {HOURS.map(h=>(
-                    <div key={h} style={{height:60*PX_PER_MIN,borderTop:`1px solid ${T.gray200}`,padding:'2px 4px 0',fontSize:9,color:T.textMuted,position:'relative'}}>
-                      {h}:00
-                    </div>
-                  ))}
-                </div>
-
-                {/* 직원 컬럼들 */}
-                {cols.map(emp => {
-                  const empRes = brRes.filter(r => emp.isBlank ? !r.staff_id : r.staff_id===emp.id)
-                  const naverRes = brRes.filter(r => emp.isBlank ? false : false) // 네이버 미배정
-
-                  return (
-                    <div key={emp.id} style={{flex:1,minWidth:72,borderRight:`1px solid ${T.border}`,position:'relative'}}>
-                      {/* 직원명 */}
-                      <div style={{height:28,display:'flex',alignItems:'center',justifyContent:'center',
-                        borderBottom:`1px solid ${T.border}`,fontSize:T.fs.xs,fontWeight:T.fw.bold,
-                        color:emp.isBlank?T.textMuted:emp.isSupport?T.orange:br.color,
-                        background:T.bgCard,position:'sticky',top:0,zIndex:5}}>
-                        {emp.id}{emp.isSupport?'↗':''}
-                      </div>
-
-                      {/* 시간 격자 */}
-                      <div style={{position:'relative',height:660*PX_PER_MIN}}
-                        onClick={e => {
-                          if(emp.isBlank) return
-                          const rect = e.currentTarget.getBoundingClientRect()
-                          handleCellClick(br, emp, e.clientY - rect.top)
-                        }}>
-                        {HOURS.map(h=>(
-                          <div key={h} style={{position:'absolute',top:(h-10)*60*PX_PER_MIN,left:0,right:0,height:60*PX_PER_MIN,borderTop:`1px solid ${T.gray200}`}}>
-                            <div style={{position:'absolute',top:'50%',left:0,right:0,height:1,background:T.gray200,opacity:.5}}/>
-                          </div>
-                        ))}
-
-                        {/* 예약 블록 */}
-                        {empRes.map(r => {
-                          const top = timeToY(r.time) * PX_PER_MIN
-                          const height = Math.max(((r.dur||60)) * PX_PER_MIN, 20)
-                          const isConfirmed = r.status==='confirmed'
-                          const isCompleted = r.status==='completed'
-                          return (
-                            <div key={r.id}
-                              onClick={e=>handleResClick(e,r,br)}
-                              style={{
-                                position:'absolute',top,left:2,right:2,height,
-                                background: isCompleted ? T.gray200 : br.color+'30',
-                                border:`1.5px solid ${isCompleted?T.gray400:br.color}`,
-                                borderRadius:4,padding:'2px 4px',overflow:'hidden',
-                                cursor:'pointer',zIndex:3,
-                                boxShadow: isConfirmed?`0 1px 4px ${br.color}44`:undefined
-                              }}>
-                              <div style={{fontSize:9,fontWeight:700,color:isCompleted?T.textMuted:br.color,whiteSpace:'nowrap',overflow:'hidden'}}>{r.time}</div>
-                              <div style={{fontSize:9,color:isCompleted?T.textMuted:T.text,whiteSpace:'nowrap',overflow:'hidden'}}>{r.cust_name}</div>
-                              {r.dur>=30 && <div style={{fontSize:8,color:T.textMuted,whiteSpace:'nowrap',overflow:'hidden'}}>{r.dur}분</div>}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
+            <BranchTimeline
+              key={br.id}
+              branch={br}
+              staff={staff}
+              reservations={brRes}
+              services={services}
+              tags={tags}
+              onClickCell={(time, staffId) => openNew(time, staffId, br.id)}
+              onClickRes={openEdit}
+              onUpdateField={updateField}
+            />
           )
         })}
       </div>
 
-      {/* 예약 모달 */}
-      {modal && (
-        <ReservationModal
-          data={modal}
-          allData={data}
-          employees={employees}
-          onSave={handleSave}
-          onDelete={handleDelete}
-          onClose={()=>setModal(null)}
-        />
+      {/* 예약 추가 버튼 */}
+      <button onClick={() => openNew()} style={{
+        position:'fixed', bottom:82, right:16,
+        width:52, height:52, borderRadius:'50%',
+        background:T.primary, color:'#fff',
+        border:'none', fontSize:24, cursor:'pointer',
+        boxShadow:T.shadow.md, zIndex:50,
+        display:'flex', alignItems:'center', justifyContent:'center',
+      }}>+</button>
+
+      <ReservationModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        item={modalItem}
+        data={data}
+        onSave={handleSave}
+        currentUser={currentUser}
+        isMaster={isMaster}
+      />
+    </div>
+  )
+}
+
+function BranchTimeline({ branch, staff, reservations, services, tags, onClickCell, onClickRes, onUpdateField }) {
+  const hours = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => i + START_HOUR)
+  const totalH = (END_HOUR - START_HOUR) * PX_PER_HOUR
+
+  if (staff.length === 0) {
+    return (
+      <div style={{ marginBottom:1 }}>
+        <div style={branchHeaderStyle(branch.color)}>
+          {branch.short || branch.name} · 오늘 근무자 없음
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ marginBottom:1 }}>
+      <div style={branchHeaderStyle(branch.color)}>
+        {branch.short || branch.name}
+        <span style={{ marginLeft:8, fontSize:T.fs.xxs, opacity:0.8 }}>
+          {staff.map(e => e.isSupport ? `${e.id}↓` : e.id).join(' · ')}
+        </span>
+      </div>
+
+      <div style={{ display:'flex', overflowX:'auto' }}>
+        {/* 시간축 */}
+        <div style={{ width:34, flexShrink:0, borderRight:`1px solid ${T.border}`, position:'sticky', left:0, background:T.bgCard, zIndex:5 }}>
+          <div style={{ height:28 }}/>
+          {hours.map(h => (
+            <div key={h} style={{ height:PX_PER_HOUR, borderTop:`1px solid ${T.gray200}`, padding:'2px 3px 0', fontSize:9, color:T.textMuted }}>
+              {h}
+            </div>
+          ))}
+        </div>
+
+        {/* 직원 컬럼 */}
+        {staff.map(emp => {
+          const empRes = reservations.filter(r =>
+            r.staff_id === emp.id ||
+            (!r.staff_id && staff.length === 1)
+          )
+          return (
+            <StaffColumn
+              key={emp.id}
+              emp={emp}
+              branch={branch}
+              reservations={empRes}
+              services={services}
+              tags={tags}
+              totalH={totalH}
+              hours={hours}
+              onClickCell={(time) => onClickCell(time, emp.id)}
+              onClickRes={onClickRes}
+            />
+          )
+        })}
+
+        {/* 네이버 예약 컬럼 (staff 없는 예약) */}
+        {(() => {
+          const naverRes = reservations.filter(r => !r.staff_id && staff.length > 1)
+          if (!naverRes.length) return null
+          return (
+            <StaffColumn
+              emp={{ id:'미배정', name:'미배정' }}
+              branch={branch}
+              reservations={naverRes}
+              services={services}
+              tags={tags}
+              totalH={totalH}
+              hours={hours}
+              onClickCell={() => {}}
+              onClickRes={onClickRes}
+            />
+          )
+        })()}
+      </div>
+    </div>
+  )
+}
+
+function StaffColumn({ emp, branch, reservations, services, tags, totalH, hours, onClickCell, onClickRes }) {
+  return (
+    <div style={{ width:COL_W, flexShrink:0, borderRight:`1px solid ${T.border}` }}>
+      {/* 직원 헤더 */}
+      <div style={{
+        height:28, display:'flex', alignItems:'center', justifyContent:'center',
+        fontSize:T.fs.xxs, fontWeight:T.fw.bold, borderBottom:`1px solid ${T.border}`,
+        color: emp.isSupport ? T.orange : branch.color,
+        background: emp.isSupport ? T.orangeLt : T.bgCard,
+      }}>
+        {emp.id}{emp.isSupport ? '↓' : ''}
+      </div>
+
+      {/* 시간 셀 */}
+      <div style={{ position:'relative', height:totalH }}>
+        {hours.map(h => (
+          <div
+            key={h}
+            style={{ height:PX_PER_HOUR, borderTop:`1px solid ${T.gray200}`, cursor:'pointer' }}
+            onClick={() => onClickCell(`${pad(h)}:00`)}
+          >
+            <div
+              style={{ height:'50%', borderBottom:`1px dashed ${T.gray200}` }}
+              onClick={e => { e.stopPropagation(); onClickCell(`${pad(h)}:30`) }}
+            />
+          </div>
+        ))}
+
+        {/* 예약 블록 */}
+        {reservations.map(r => (
+          <ResBlock
+            key={r.id}
+            res={r}
+            branch={branch}
+            services={services}
+            onClick={() => onClickRes(r)}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ResBlock({ res, branch, services, onClick }) {
+  const [h, m] = res.time.split(':').map(Number)
+  const top = (h - START_HOUR) * PX_PER_HOUR + (m/60) * PX_PER_HOUR
+  const height = Math.max(((res.dur||60)/60) * PX_PER_HOUR, 22)
+
+  const svcName = res.selected_services?.length
+    ? services.find(s => s.id === res.selected_services[0])?.name || ''
+    : ''
+
+  const isPending = res.status === 'pending'
+  const isNaver = res.source === 'naver' || res.source === '네이버'
+  const color = isPending ? T.orange : branch.color
+
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        position:'absolute', top, left:2, right:2, height,
+        background: isPending ? T.orangeLt : branch.color + '28',
+        border:`1.5px solid ${color}`,
+        borderRadius:4, padding:'2px 4px',
+        overflow:'hidden', cursor:'pointer',
+        display:'flex', flexDirection:'column', gap:1,
+      }}
+    >
+      <div style={{ fontSize:9, fontWeight:T.fw.bolder, color, lineHeight:1.2 }}>
+        {res.time.slice(0,5)} {isNaver ? '🟢' : ''}
+      </div>
+      <div style={{ fontSize:9, color:T.text, lineHeight:1.2, overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis' }}>
+        {res.cust_name}
+      </div>
+      {height > 36 && svcName && (
+        <div style={{ fontSize:8, color:T.textSub, lineHeight:1.2, overflow:'hidden' }}>
+          {svcName}
+        </div>
       )}
     </div>
   )
 }
+
+const navBtnStyle = {
+  width:30, height:30, borderRadius:'50%',
+  border:`1px solid ${T.border}`, background:'none',
+  cursor:'pointer', fontSize:16, display:'flex',
+  alignItems:'center', justifyContent:'center',
+}
+
+const branchHeaderStyle = (color) => ({
+  padding:'5px 12px', fontSize:T.fs.xs, fontWeight:T.fw.bold,
+  color: color, background: color + '18',
+  borderLeft:`3px solid ${color}`,
+  display:'flex', alignItems:'center',
+})
