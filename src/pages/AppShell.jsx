@@ -215,6 +215,16 @@ function SuperDashboard({ superData, setSuperData, currentUser, onLogout, onEnte
   );
 }
 
+function FLD({ label, children }) {
+  return <div><label style={{fontSize:T.fs.sm,fontWeight:T.fw.bold,color:T.textSub,marginBottom:5,display:"block"}}>{label}</label>{children}</div>;
+}
+const Btn = ({ children, variant="primary", size="md", disabled, onClick, style={} }) => {
+  const bg = variant==="primary"?T.primary:variant==="danger"?T.danger:T.bgCard;
+  const color = variant==="ghost"?T.text:"#fff";
+  const border = variant==="ghost"?`1px solid ${T.border}`:"none";
+  const pad = size==="sm"?"4px 10px":size==="lg"?"10px 20px":"7px 14px";
+  return <button onClick={onClick} disabled={disabled} style={{background:bg,color,border,borderRadius:T.radius.md,padding:pad,fontSize:T.fs.sm,fontWeight:T.fw.bold,cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.6:1,...style}}>{children}</button>;
+};
 function Login({ users, onLogin, onSignup }) {
   const [showSignup, setShowSignup] = useState(false);
   const [loginId, setLoginId] = useState(() => {try{return localStorage.getItem("savedLoginId")||"";}catch(e){return "";}});
