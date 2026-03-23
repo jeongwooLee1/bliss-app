@@ -1805,3 +1805,5 @@ function AdminJoinBrand({ currentUser, onBack }) {
 // ═══════════════════════════════════════════
 // ADMIN — 예약장소 관리
 // ═══════════════════════════════════════════
+
+export default ReservationList
