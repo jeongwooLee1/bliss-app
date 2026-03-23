@@ -5,6 +5,71 @@ import { fromDb, toDb, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYS
 import { todayStr, pad, fmtDate, fmtDt, getDow, genId } from '../../lib/utils'
 import I from '../common/I'
 
+
+// ─── 공통 컴포넌트 ────────────────────────────────────────────
+const Btn = ({ children, variant="primary", size="md", disabled, onClick, style={} }) => {
+  const bg = variant==="primary"?T.primary:variant==="danger"?T.danger:variant==="ghost"?"transparent":T.gray100;
+  const color = variant==="ghost"?T.primary:variant==="secondary"?T.text:"#fff";
+  const border = variant==="ghost"?"1px solid "+T.border:"none";
+  const pad = size==="sm"?"4px 10px":size==="lg"?"10px 20px":"7px 14px";
+  return <button onClick={disabled?undefined:onClick} disabled={disabled} style={{background:bg,color,border,borderRadius:T.radius.md,padding:pad,fontSize:T.fs.sm,fontWeight:T.fw.bold,cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.6:1,fontFamily:"inherit",...style}}>{children}</button>;
+};
+function FLD({ label, children, style={} }) {
+  return <div style={style}><label style={{fontSize:T.fs.sm,fontWeight:T.fw.bold,color:T.gray600,marginBottom:5,display:"block"}}>{label}</label>{children}</div>;
+}
+const GridLayout = ({ cols=2, gap=12, children, style={} }) => {
+  const tpl = typeof cols==="number" ? `repeat(${cols},1fr)` : cols;
+  return <div style={{display:"grid",gridTemplateColumns:tpl,gap,...style}}>{children}</div>;
+};
+function TimeSelect({ value, onChange, times }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const listRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    // 선택 항목으로 스크롤
+    setTimeout(() => {
+      if (listRef.current) {
+        const active = listRef.current.querySelector('.active');
+        if (active) active.scrollIntoView({ block: 'center' });
+      }
+    }, 0);
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+
+  return <span className="time-sel-wrap" ref={ref}>
+    <button className="time-sel-btn" onClick={() => setOpen(o => !o)} type="button">{value}</button>
+    {open && <div className="time-sel-dropdown">
+      <ul ref={listRef}>
+        {times.map(t => <li key={t}
+          className={"time-sel-item" + (t === value ? " active" : "")}
+          onMouseDown={e => { e.preventDefault(); onChange(t); setOpen(false); }}>
+          {t}
+        </li>)}
+      </ul>
+    </div>}
+  </span>;
+}
+function DatePick({ value, onChange, style, min }) {
+  const DAYS = ["일","월","화","수","목","금","토"];
+  const fmt = (v) => {
+    if (!v) return "--";
+    const p = v.split("-");
+    const d = new Date(Number(p[0]), Number(p[1])-1, Number(p[2]));
+    const dow = d.getDay();
+    const clr = dow===0?T.danger:dow===6?T.male:T.gray600;
+    return <>{p[1]}.{p[2]}<span style={{color:clr,fontWeight:T.fw.medium,marginLeft:2}}>({DAYS[dow]})</span></>;
+  };
+  return <label style={{position:"relative",display:"inline-flex",alignItems:"center",gap:T.sp.xs,cursor:"pointer",...style}}>
+    <I name="calPick" size={12} color={T.gray500}/>
+    <span style={{fontSize:T.fs.sm,fontWeight:T.fw.normal,whiteSpace:"nowrap",pointerEvents:"none",color:T.gray700,fontFamily:"inherit"}}>{fmt(value)}</span>
+    <input type="date" value={value} onChange={e=>onChange(e.target.value)} min={min}
+      style={{position:"absolute",inset:0,opacity:0,width:"100%",height:"100%",cursor:"pointer",fontSize:T.fs.lg}}/>
+  </label>;
+}
 function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBranch, userBranches, data, setData, setPage, naverColShow={} }) {
   const SVC_LIST = (data?.services || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
   const PROD_LIST = (data?.products || []);
