@@ -15,7 +15,7 @@ export const sb = {
     const hasCreatedAt = !["rooms","services","products","service_categories","service_tags"].includes(table);
     const order = hasSortCol ? "order=sort.asc.nullslast" : (hasCreatedAt ? "order=created_at.asc.nullslast" : "order=id.asc");
     const r=await fetch(`${SB_URL}/rest/v1/${table}?select=*&${order}${filter}`,{headers:sbHeaders});
-    if(!r.ok){const e=await r.text();console.error(`DB get ${table} failed:`,${r.status},e);}
+    if(!r.ok){const e=await r.text();console.error(`DB get ${table} failed:`, r.status, e);}
     return r.ok?r.json():[];
   },
   async getByBiz(table, bizId) { return this.get(table, `&business_id=eq.${bizId}`); },
