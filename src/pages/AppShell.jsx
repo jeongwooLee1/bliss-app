@@ -766,6 +766,14 @@ function App() {
   if (phase === "super") return <SuperDashboard superData={superData} setSuperData={setSuperData} currentUser={currentUser} onLogout={handleLogout} onEnterBiz={handleEnterBiz} />;
 
   // Phase: app (owner or staff)
+
+  const S = {
+    root: { display:"flex", height:"100dvh", fontFamily:"'Pretendard',-apple-system,BlinkMacSystemFont,'Noto Sans KR',sans-serif", background:T.gray100, color:T.text, overflow:"hidden", position:"fixed", top:0, left:0, right:0, bottom:0 },
+    sidebar: { width:200, background:T.bgCard, borderRight:"1px solid "+T.border, display:"flex", flexDirection:"column", height:"100dvh", flexShrink:0, position:"fixed", left:0, top:0, bottom:0, zIndex:200 },
+    main: { flex:1, marginLeft:200, display:"flex", flexDirection:"column", height:"100dvh", minHeight:0, background:T.bgCard, overflow:"hidden" },
+    mobHdr: { padding:"10px 16px", background:T.bgCard, display:"flex", alignItems:"center", gap:12 },
+    menuBtn: { background:"none", border:"none", color:T.text, cursor:"pointer", fontSize:22, fontFamily:"inherit" }
+  }
   if (!data) return <Loading msg="데이터 로딩 중..." />;
 
   const isSuper = currentUser?.role === "super";
