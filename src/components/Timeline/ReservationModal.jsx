@@ -65,6 +65,9 @@ function TimeSelect({ value, onChange, times }) {
 }
 function DatePick({ value, onChange, style, min }) {
   const DAYS = ["일","월","화","수","목","금","토"];
+
+const STATUS_KEYS = ["confirmed","completed","cancelled","no_show"];
+const DEFAULT_SOURCES = ["네이버","전화","방문","소개","인스타","카카오","기타"];
   const fmt = (v) => {
     if (!v) return "--";
     const p = v.split("-");
