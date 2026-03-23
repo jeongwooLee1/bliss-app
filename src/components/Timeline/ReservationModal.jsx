@@ -6,6 +6,16 @@ import { todayStr, pad, fmtDate, fmtDt, getDow, genId } from '../../lib/utils'
 import I from '../common/I'
 
 
+
+const TIMES = (() => {
+  const arr = [];
+  for (let h = 9; h <= 23; h++) {
+    for (let m = 0; m < 60; m += 5) {
+      arr.push(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
+    }
+  }
+  return arr;
+})();
 // ─── 공통 컴포넌트 ────────────────────────────────────────────
 const Btn = ({ children, variant="primary", size="md", disabled, onClick, style={} }) => {
   const bg = variant==="primary"?T.primary:variant==="danger"?T.danger:variant==="ghost"?"transparent":T.gray100;
