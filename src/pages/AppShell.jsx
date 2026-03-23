@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { T, BRANCH_DEFAULT_COLORS, branchColor, STATUS_LABEL } from '../lib/constants'
 import { sb, SB_URL, SB_KEY, sbHeaders } from '../lib/sb'
-import { fromDb, toDb, resolveSystemIds, setActiveBiz } from '../lib/db'
+import { fromDb, toDb, resolveSystemIds, setActiveBiz, SYSTEM_TAG_NAME_NEW_CUST, SYSTEM_TAG_NAME_PREPAID, SYSTEM_SRC_NAME_NAVER, _activeBizId } from '../lib/db'
 import { todayStr, pad, fmtDate, getDow, genId } from '../lib/utils'
 import I from '../components/common/I'
 import TimelineModal from '../components/Timeline/ReservationModal'
