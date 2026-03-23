@@ -7,6 +7,27 @@ import I from '../common/I'
 import useTouchDragSort from '../../hooks/useTouchDragSort'
 
 
+const resGridCols = (showCols, density) => {
+  const compact = density === "compact";
+  const parts = [
+    compact ? "72px" : "80px",
+    compact ? "48px" : "56px",
+    compact ? "80px" : "100px",
+    showCols.service  ? (compact?"1fr":"1fr")    : null,
+    showCols.staff    ? (compact?"52px":"60px")  : null,
+    showCols.phone    ? (compact?"88px":"100px") : null,
+    showCols.prepaid  ? (compact?"64px":"80px")  : null,
+    showCols.naver_id ? (compact?"80px":"96px")  : null,
+    showCols.naver_info ? "1fr" : null,
+    showCols.memo     ? "80px"  : null,
+    compact ? "48px" : "56px",
+    "60px",
+  ].filter(Boolean);
+  return parts.join(" ");
+};
+const DEFAULT_SOURCES = ["네이버","전화","방문","소개","인스타","카카오","기타"];
+const STATUS_KEYS = ["confirmed","completed","cancelled","no_show"];
+
 const Btn = ({ children, variant="primary", size="md", disabled, onClick, style={} }) => {
   const { T: _T } = { T: window.__T || {} };
   const bg = variant==="primary"?"#7c7cc8":variant==="danger"?"#e05555":variant==="ghost"?"transparent":"#f0f0f0";
