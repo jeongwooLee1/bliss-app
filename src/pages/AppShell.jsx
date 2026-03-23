@@ -530,7 +530,7 @@ function App() {
         setPhase("super");
       }
     } else {
-      const bizId = user.businessId;
+      const bizId = user.businessId || user.business_id || "biz_khvurgshb";
       if (!bizId) { alert("사업자 연결 정보가 없습니다."); setPhase("login"); return; }
       setCurrentBizId(bizId);
       setActiveBiz(bizId);
