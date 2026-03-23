@@ -1,142 +1,182 @@
 import { useState, useMemo } from 'react'
-import { T, STATUS_LABEL } from '../../lib/constants'
-import { supabase } from '../../lib/supabase'
+import { T } from '../../lib/constants'
+import { fmtDate, getDow, getStatusLabel, getStatusColor, getSvcNames, getTagNames } from '../../lib/utils'
+import { useReservations } from '../../lib/useReservations'
 import ReservationModal from '../Timeline/ReservationModal'
+import Icon from '../common/Icon'
 
-function todayStr() { return new Date().toISOString().slice(0,10) }
-
-const STATUS_COLOR = {
-  confirmed: T.success, completed: T.textMuted,
-  cancelled: T.danger, naver_cancelled: T.danger,
-  no_show: T.danger, pending: T.orange, naver_changed: T.textMuted
-}
-
-export default function ReservationsPage({ data, setData, currentUser, isMaster, employees }) {
+export default function ReservationsPage({ data, setData, currentUser, isMaster }) {
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('active')
-  const [dateFilter, setDateFilter] = useState('upcoming')
-  const [modal, setModal] = useState(null)
+  const [filterStatus, setFilterStatus] = useState('all')
+  const [filterBranch, setFilterBranch] = useState('all')
+  const [modalItem, setModalItem] = useState(null)
+  const [modalOpen, setModalOpen] = useState(false)
+  const { upsert } = useReservations(data, setData)
 
   const branches = data?.branches || []
   const reservations = data?.reservations || []
-  const userBranchIds = isMaster ? branches.map(b=>b.id) : [currentUser?.branch_id].filter(Boolean)
-  const today = todayStr()
+  const services = data?.services || []
+  const tags = data?.serviceTags || []
+
+  const userBranches = isMaster ? branches.map(b=>b.id) : [currentUser?.branch_id].filter(Boolean)
 
   const filtered = useMemo(() => {
-    let list = reservations.filter(r => userBranchIds.includes(r.bid))
-    if (statusFilter === 'active') list = list.filter(r => ['confirmed','pending'].includes(r.status))
-    else if (statusFilter === 'completed') list = list.filter(r => ['completed','no_show'].includes(r.status))
-    else if (statusFilter === 'cancelled') list = list.filter(r => ['cancelled','naver_cancelled','naver_changed'].includes(r.status))
-
-    if (dateFilter === 'today') list = list.filter(r => r.date === today)
-    else if (dateFilter === 'upcoming') list = list.filter(r => r.date >= today)
-    else if (dateFilter === 'past') list = list.filter(r => r.date < today)
-
-    if (search) {
-      const q = search.toLowerCase()
-      list = list.filter(r => r.cust_name?.includes(q) || r.cust_phone?.includes(q))
-    }
-    return list.sort((a,b) => a.date===b.date ? (a.time||'').localeCompare(b.time||'') : a.date.localeCompare(b.date))
-  }, [reservations, statusFilter, dateFilter, search, userBranchIds, today])
+    return reservations
+      .filter(r => userBranches.includes(r.bid))
+      .filter(r => filterBranch === 'all' || r.bid === filterBranch)
+      .filter(r => filterStatus === 'all' || r.status === filterStatus)
+      .filter(r => !search ||
+        r.cust_name?.includes(search) ||
+        r.cust_phone?.includes(search) ||
+        r.reservation_id?.includes(search)
+      )
+      .sort((a,b) => b.date.localeCompare(a.date) || (b.time||'').localeCompare(a.time||''))
+  }, [reservations, userBranches, filterBranch, filterStatus, search])
 
   const getBranch = (bid) => branches.find(b=>b.id===bid)
 
-  const handleSave = (saved) => {
-    if (saved.id && reservations.find(r=>r.id===saved.id)) {
-      setData(p=>({...p, reservations: p.reservations.map(r=>r.id===saved.id?saved:r)}))
-    } else {
-      setData(p=>({...p, reservations:[...(p.reservations||[]),saved]}))
-    }
-    setModal(null)
+  const openEdit = (r) => { setModalItem(r); setModalOpen(true) }
+  const openNew = () => { setModalItem({ status:'confirmed', selected_tags:[], selected_services:[] }); setModalOpen(true) }
+
+  const handleSave = async (item) => {
+    await upsert(item)
+    setModalOpen(false)
   }
 
-  const handleDelete = (id) => {
-    setData(p=>({...p, reservations: p.reservations.filter(r=>r.id!==id)}))
-    setModal(null)
-  }
+  const STATUSES = [
+    { v:'all', label:'전체' },
+    { v:'pending', label:'대기' },
+    { v:'confirmed', label:'진행' },
+    { v:'completed', label:'완료' },
+    { v:'cancelled', label:'취소' },
+    { v:'no_show', label:'노쇼' },
+  ]
 
   return (
-    <div style={{display:'flex',flexDirection:'column',height:'100dvh',overflow:'hidden'}}>
-      {/* 검색 */}
-      <div style={{flexShrink:0,background:T.bgCard,borderBottom:`1px solid ${T.border}`,padding:12}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="이름, 전화번호 검색"
-          style={{width:'100%',height:40,border:`1px solid ${T.border}`,borderRadius:T.radius.md,padding:'0 12px',fontSize:T.fs.sm,outline:'none',background:T.gray100,boxSizing:'border-box'}}/>
-        {/* 날짜 필터 */}
-        <div style={{display:'flex',gap:6,marginTop:8}}>
-          {[['today','오늘'],['upcoming','예정'],['past','지난'],['all','전체']].map(([v,l])=>(
-            <button key={v} onClick={()=>setDateFilter(v)}
-              style={{flex:1,padding:'5px 0',borderRadius:T.radius.md,border:`1px solid ${dateFilter===v?T.primary:T.border}`,background:dateFilter===v?T.primaryLt:'none',color:dateFilter===v?T.primary:T.textSub,fontSize:T.fs.xs,fontWeight:dateFilter===v?T.fw.bold:T.fw.normal,cursor:'pointer'}}>
-              {l}
-            </button>
-          ))}
+    <div style={{ display:'flex', flexDirection:'column', height:'100dvh' }}>
+      {/* 검색 헤더 */}
+      <div style={{ padding:'10px 12px', background:T.bgCard, borderBottom:`1px solid ${T.border}`, flexShrink:0 }}>
+        <div style={{ position:'relative', marginBottom:8 }}>
+          <Icon name="search" size={15} color={T.textMuted} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)' }}/>
+          <input
+            value={search} onChange={e=>setSearch(e.target.value)}
+            placeholder="이름, 전화번호, 예약번호"
+            style={{ width:'100%', height:38, border:`1px solid ${T.border}`, borderRadius:T.radius.md, padding:'0 10px 0 32px', fontSize:T.fs.sm, outline:'none', background:T.gray100 }}
+          />
         </div>
+
         {/* 상태 필터 */}
-        <div style={{display:'flex',gap:6,marginTop:6}}>
-          {[['active','진행중'],['completed','완료'],['cancelled','취소'],['all','전체']].map(([v,l])=>(
-            <button key={v} onClick={()=>setStatusFilter(v)}
-              style={{flex:1,padding:'5px 0',borderRadius:T.radius.md,border:`1px solid ${statusFilter===v?T.primary:T.border}`,background:statusFilter===v?T.primaryLt:'none',color:statusFilter===v?T.primary:T.textSub,fontSize:T.fs.xs,fontWeight:statusFilter===v?T.fw.bold:T.fw.normal,cursor:'pointer'}}>
-              {l}
-            </button>
+        <div style={{ display:'flex', gap:6, overflowX:'auto', paddingBottom:2 }}>
+          {STATUSES.map(s => (
+            <button key={s.v} onClick={()=>setFilterStatus(s.v)} style={{
+              padding:'3px 10px', borderRadius:T.radius.full, flexShrink:0,
+              border:`1px solid ${filterStatus===s.v?T.primary:T.border}`,
+              background: filterStatus===s.v ? T.primaryLt : T.bgCard,
+              color: filterStatus===s.v ? T.primary : T.textSub,
+              fontSize:T.fs.xxs, fontWeight:T.fw.bold, cursor:'pointer',
+            }}>{s.label}</button>
           ))}
         </div>
+
+        {/* 지점 필터 (isMaster만) */}
+        {isMaster && (
+          <div style={{ display:'flex', gap:6, overflowX:'auto', paddingTop:6 }}>
+            <button onClick={()=>setFilterBranch('all')} style={filterBtnStyle(filterBranch==='all')}>전체</button>
+            {branches.map(b=>(
+              <button key={b.id} onClick={()=>setFilterBranch(b.id)} style={{
+                ...filterBtnStyle(filterBranch===b.id),
+                borderColor: filterBranch===b.id ? b.color : T.border,
+                background: filterBranch===b.id ? b.color+'22' : T.bgCard,
+                color: filterBranch===b.id ? b.color : T.textSub,
+              }}>{b.short||b.name}</button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* 목록 */}
-      <div style={{flex:1,overflowY:'auto'}}>
-        {/* 새 예약 버튼 */}
-        <div style={{padding:'8px 12px'}}>
-          <button onClick={()=>setModal({res:null,branch:branches[0],staffId:null,date:today,time:'10:00'})}
-            style={{width:'100%',height:40,background:T.primary,color:'#fff',border:'none',borderRadius:T.radius.md,fontSize:T.fs.sm,fontWeight:T.fw.bold,cursor:'pointer'}}>
-            + 새 예약 등록
-          </button>
-        </div>
-
-        <div style={{fontSize:T.fs.xs,color:T.textMuted,padding:'4px 12px',marginBottom:4}}>
+      <div style={{ flex:1, overflowY:'auto' }}>
+        <div style={{ padding:'4px 0', fontSize:T.fs.xxs, color:T.textMuted, textAlign:'right', paddingRight:12 }}>
           {filtered.length}건
         </div>
-
         {filtered.length === 0 ? (
-          <div style={{padding:40,textAlign:'center',color:T.textMuted,fontSize:T.fs.sm}}>예약이 없습니다</div>
+          <div style={{ padding:40, textAlign:'center', color:T.textMuted, fontSize:T.fs.sm }}>예약이 없습니다</div>
         ) : filtered.map(r => {
           const br = getBranch(r.bid)
-          const statusColor = STATUS_COLOR[r.status] || T.textSub
-          const isPast = r.date < today
+          const rtags = getTagNames(r.selected_tags, tags)
           return (
-            <div key={r.id} onClick={()=>setModal({res:r,branch:br,staffId:r.staff_id,date:r.date,time:r.time})}
-              style={{padding:'10px 12px',borderBottom:`1px solid ${T.border}`,background:T.bgCard,display:'flex',gap:10,cursor:'pointer',opacity:isPast&&r.status==='confirmed'?0.6:1}}>
-              <div style={{width:3,background:br?.color||T.border,borderRadius:2,flexShrink:0}}/>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:3}}>
-                  <div style={{display:'flex',alignItems:'center',gap:6}}>
-                    <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bold,color:T.text}}>{r.cust_name}</span>
-                    {r.cust_gender==='F'&&<span style={{fontSize:9,color:'#e91e8c',fontWeight:700}}>여</span>}
-                    {r.cust_gender==='M'&&<span style={{fontSize:9,color:'#1565c0',fontWeight:700}}>남</span>}
-                    <span style={{fontSize:T.fs.xs,color:T.textMuted}}>{br?.short||''}</span>
+            <div key={r.id} onClick={()=>openEdit(r)} style={{
+              padding:'10px 12px', borderBottom:`1px solid ${T.border}`,
+              background:T.bgCard, display:'flex', gap:10, cursor:'pointer',
+              '&:hover':{ background:T.gray100 }
+            }}>
+              <div style={{ width:3, background:br?.color||T.border, borderRadius:2, flexShrink:0 }}/>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:3 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                    <span style={{ fontSize:T.fs.sm, fontWeight:T.fw.bold }}>{r.cust_name}</span>
+                    <span style={{ fontSize:T.fs.xxs, color:T.textMuted }}>{br?.short||''}</span>
+                    {r.is_new_cust && <span style={{ fontSize:T.fs.nano, background:'#fde8e8', color:'#c0392b', padding:'1px 5px', borderRadius:T.radius.full, fontWeight:T.fw.bold }}>신규</span>}
                   </div>
-                  <span style={{fontSize:T.fs.xs,fontWeight:T.fw.bold,color:statusColor,flexShrink:0}}>
-                    {STATUS_LABEL[r.status]||r.status}
+                  <span style={{ fontSize:T.fs.xxs, fontWeight:T.fw.bold, color:getStatusColor(r.status, T) }}>
+                    {getStatusLabel(r.status)}
                   </span>
                 </div>
-                <div style={{fontSize:T.fs.xs,color:T.textSub,display:'flex',gap:8,flexWrap:'wrap'}}>
-                  <span>{r.date} {r.time}</span>
-                  {r.dur && <span>{r.dur}분</span>}
-                  {r.staff_id && <span>담당: {r.staff_id}</span>}
+                <div style={{ fontSize:T.fs.xs, color:T.textSub, marginBottom:3 }}>
+                  {fmtDate(r.date)} ({getDow(r.date)}) {r.time?.slice(0,5)}
+                  {r.dur ? ` · ${r.dur}분` : ''}
+                  {r.cust_phone ? ` · ${r.cust_phone}` : ''}
                 </div>
-                {r.cust_phone && <div style={{fontSize:T.fs.xs,color:T.textMuted,marginTop:2}}>{r.cust_phone}</div>}
-                {r.source==='naver'||r.source==='네이버' ? (
-                  <span style={{display:'inline-block',marginTop:3,fontSize:9,padding:'1px 5px',borderRadius:3,background:'#03c75a22',color:'#03c75a',fontWeight:700}}>네이버</span>
-                ) : null}
-                {r.is_prepaid && <span style={{display:'inline-block',marginTop:3,marginLeft:4,fontSize:9,padding:'1px 5px',borderRadius:3,background:T.orangeLt,color:T.orange,fontWeight:700}}>예약금</span>}
+                {(r.selected_services?.length > 0 || rtags.length > 0) && (
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:3 }}>
+                    {r.selected_services?.slice(0,2).map(sid => {
+                      const svc = services.find(s=>s.id===sid)
+                      return svc ? (
+                        <span key={sid} style={{ fontSize:T.fs.nano, background:T.gray100, color:T.textSub, padding:'1px 6px', borderRadius:T.radius.full }}>
+                          {svc.name}
+                        </span>
+                      ) : null
+                    })}
+                    {rtags.map(tag => (
+                      <span key={tag.id} style={{ fontSize:T.fs.nano, background:(tag.color||T.primary)+'22', color:tag.color||T.primary, padding:'1px 6px', borderRadius:T.radius.full, fontWeight:T.fw.bold }}>
+                        {tag.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {r.source === 'naver' && (
+                  <span style={{ fontSize:T.fs.nano, background:'#e8f5e9', color:'#2e7d32', padding:'1px 5px', borderRadius:T.radius.full, marginTop:3, display:'inline-block' }}>
+                    네이버
+                  </span>
+                )}
               </div>
             </div>
           )
         })}
       </div>
 
-      {modal && (
-        <ReservationModal data={modal} allData={data} employees={employees}
-          onSave={handleSave} onDelete={handleDelete} onClose={()=>setModal(null)}/>
-      )}
+      {/* 새 예약 버튼 */}
+      <button onClick={openNew} style={{
+        position:'fixed', bottom:82, right:16,
+        width:52, height:52, borderRadius:'50%',
+        background:T.primary, color:'#fff', border:'none',
+        fontSize:24, cursor:'pointer', boxShadow:T.shadow.md, zIndex:50,
+        display:'flex', alignItems:'center', justifyContent:'center',
+      }}>+</button>
+
+      <ReservationModal
+        open={modalOpen} onClose={()=>setModalOpen(false)}
+        item={modalItem} data={data} onSave={handleSave}
+        currentUser={currentUser} isMaster={isMaster}
+      />
     </div>
   )
 }
+
+const filterBtnStyle = (active) => ({
+  padding:'3px 10px', borderRadius:T.radius.full, flexShrink:0,
+  border:`1px solid ${active?T.primary:T.border}`,
+  background: active ? T.primaryLt : T.bgCard,
+  color: active ? T.primary : T.textSub,
+  fontSize:T.fs.xxs, fontWeight:T.fw.bold, cursor:'pointer',
+})
