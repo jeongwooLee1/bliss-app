@@ -826,39 +826,29 @@ ${naverText}
                 {f.isPrepaid && (f.totalPrice||0) > 0 && <NRow label="결제금액" value={`✓ ${(f.totalPrice||0).toLocaleString()}원${f.npayMethod?" ("+f.npayMethod+")":""}`} valueColor={T.successDk}/>}
                 {/* 고객 요청사항 - JSON 배열이면 그대로, 아니면 기존 파싱 */}
                 {f.requestMsg && (()=>{
-                  // JSON 배열 형식(새 방식)
                   if (f.requestMsg.trim().startsWith("[")) {
                     try {
                       const items = JSON.parse(f.requestMsg);
-                      const _ncShow = (lbl) => {
-        const col = NAVER_COLS.find(c=>c.kws.some(kw=>lbl.includes(kw)));
-        return col ? (naverColShow[col.key] !== false) : true;
-      };
-      return items.filter(it=>it.value && _ncShow(it.label||"")).map((it,i)=>{
-                        if (it.label==="시술메뉴") return <NRow key={i} label="시술메뉴" value={it.value} />;
-                        return <div key={i} style={{display:"flex",alignItems:"flex-start",gap:6,padding:"4px 0",borderBottom:"1px solid #E8F5E9"}}>
+                      return items.filter(it=>it.value).map((it,idx)=>{
+                        if (it.label==="시술메뉴") return <NRow key={idx} label="시술메뉴" value={it.value} />;
+                        return <div key={idx} style={{display:"flex",alignItems:"flex-start",gap:6,padding:"4px 0",borderBottom:"1px solid #E8F5E9"}}>
                           <span style={{fontSize:11,color:T.textMuted,fontWeight:500,minWidth:48,flexShrink:0,paddingTop:2}}>{it.label}</span>
                           <span style={{fontSize:T.fs.sm,fontWeight:T.fw.medium,color:T.successDk,lineHeight:1.45,wordBreak:"break-word",flex:1}}>{it.value}</span>
                         </div>;
                       });
                     } catch(e) {}
                   }
-                  // 기존 텍스트 형식 fallback
-                  const _ncShow2 = (lbl) => {
-        const col = NAVER_COLS.find(c=>c.kws.some(kw=>(lbl||"").includes(kw)));
-        return col ? (naverColShow[col.key] !== false) : true;
-      };
-      return f.requestMsg.split("\n").filter(l=>l.trim()).map((line,i)=>{
+                  return f.requestMsg.split("\n").filter(l=>l.trim()).map((line,idx)=>{
                     const ci = line.lastIndexOf(": ");
                     const key = ci > -1 ? line.slice(0,ci).trim() : null;
                     const val = ci > -1 ? line.slice(ci+2).trim() : line.trim();
                     if (!val) return null;
-                    if (key==="시술메뉴") return <NRow key={i} label="시술메뉴" value={val} />;
-                    if (key) return <div key={i} style={{display:"flex",alignItems:"flex-start",gap:6,padding:"4px 0",borderBottom:"1px solid #E8F5E9"}}>
+                    if (key==="시술메뉴") return <NRow key={idx} label="시술메뉴" value={val} />;
+                    if (key) return <div key={idx} style={{display:"flex",alignItems:"flex-start",gap:6,padding:"4px 0",borderBottom:"1px solid #E8F5E9"}}>
                       <span style={{fontSize:11,color:T.textMuted,fontWeight:500,minWidth:48,flexShrink:0,paddingTop:2}}>{key}</span>
                       <span style={{fontSize:T.fs.sm,fontWeight:T.fw.normal,color:T.text,lineHeight:1.45,wordBreak:"break-word",flex:1}}>{val}</span>
                     </div>;
-                    return <NRow key={i} label="요청" value={val}/>;
+                    return <NRow key={idx} label="요청" value={val}/>;
                   });
                 })()}
                 {/* 직원 메모 */}
