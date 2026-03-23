@@ -90,6 +90,15 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   const branchRooms = (data.rooms||[]).filter(r=>r.branch_id===branchId);
   const branchStaff = (data.staff||[]).filter(s=>s.bid===branchId);
   const fmt = (v) => v==null?"":Number(v).toLocaleString();
+
+  const svcAllowQty = (svcId) => {
+    const s = (data?.services||[]).find(x=>x.id===svcId);
+    return s?.allow_qty ?? false;
+  };
+  const getStatusClr = () => {
+    try { const v = localStorage.getItem("tl_sc"); return v ? JSON.parse(v) : {}; } catch { return {}; }
+  };
+
   const [showSaleForm, setShowSaleForm] = useState(false);
   const [isSchedule, setIsSchedule] = useState(item?.isSchedule || false);
   const modalRef = useRef(null);
