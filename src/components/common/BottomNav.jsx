@@ -10,29 +10,44 @@ const ICONS = {
 
 export default function BottomNav({ page, setPage, isMaster, unreadCount=0 }) {
   const items = [
-    {id:'timeline', label:'타임라인'},
-    {id:'reservations', label:'예약목록'},
-    {id:'messages', label:'메시지함', badge: unreadCount},
-    ...(isMaster?[{id:'schedule',label:'근무표'}]:[]),
-    {id:'admin', label:'메뉴'},
+    { id:'timeline',     label:'타임라인' },
+    { id:'reservations', label:'예약목록' },
+    { id:'messages',     label:'메시지함', badge: unreadCount },
+    ...(isMaster ? [{ id:'schedule', label:'근무표' }] : []),
+    { id:'admin', label:'메뉴' },
   ]
 
   return (
-    <nav style={{position:'fixed',bottom:0,left:'50%',transform:'translateX(-50%)',width:'100%',maxWidth:480,background:T.bgCard,borderTop:`1px solid ${T.border}`,display:'flex',zIndex:100,paddingBottom:'env(safe-area-inset-bottom)'}}>
-      {items.map(item=>{
-        const active=page===item.id
+    <nav style={{
+      position:'fixed', bottom:0, left:'50%', transform:'translateX(-50%)',
+      width:'100%', maxWidth:480,
+      background:T.bgCard, borderTop:`1px solid ${T.border}`,
+      display:'flex', zIndex:100,
+      paddingBottom:'env(safe-area-inset-bottom)',
+    }}>
+      {items.map(item => {
+        const active = page === item.id
+        const badge = item.badge || 0
         return (
-          <button key={item.id} onClick={()=>setPage(item.id)}
-            style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'8px 0',border:'none',background:'none',cursor:'pointer',color:active?T.primary:T.gray500}}>
-            <div style={{position:'relative',width:24,height:24,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <button key={item.id} onClick={() => setPage(item.id)}
+            style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+              padding:'8px 0', border:'none', background:'none', cursor:'pointer',
+              color: active ? T.primary : T.gray500 }}>
+            <div style={{ width:24, height:24, position:'relative', display:'flex', alignItems:'center', justifyContent:'center' }}>
               {ICONS[item.id]}
-              {item.badge>0 && page!==item.id && (
-                <span style={{position:'absolute',top:-4,right:-6,background:T.danger,color:'#fff',borderRadius:10,padding:'1px 5px',fontSize:9,fontWeight:700,minWidth:16,textAlign:'center'}}>
-                  {item.badge>99?'99+':item.badge}
-                </span>
+              {badge > 0 && page !== item.id && (
+                <span style={{
+                  position:'absolute', top:-4, right:-6,
+                  background:T.danger, color:'#fff',
+                  width:16, height:16, borderRadius:'50%',
+                  fontSize:9, fontWeight:700,
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                }}>{badge > 99 ? '99+' : badge}</span>
               )}
             </div>
-            <span style={{fontSize:10,fontWeight:active?T.fw.bolder:T.fw.medium,marginTop:2}}>{item.label}</span>
+            <span style={{ fontSize:10, fontWeight: active ? T.fw.bolder : T.fw.medium, marginTop:2, letterSpacing:-0.2 }}>
+              {item.label}
+            </span>
           </button>
         )
       })}
