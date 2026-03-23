@@ -36,3 +36,22 @@ export const STATUS_LABEL = {
   no_show:'노쇼', pending:'확정대기',
   naver_cancelled:'네이버취소', naver_changed:'변경됨',
 }
+
+// 지점별 기본 색상 (DB color가 없거나 흰색일 때 사용)
+export const BRANCH_DEFAULT_COLORS = {
+  'br_4bcauqvrb': '#7c7cc8', // 강남
+  'br_wkqsxj6k1': '#5cb5c5', // 왕십리
+  'br_l6yzs2pkq': '#e65100', // 홍대
+  'br_k57zpkbx1': '#6ab56a', // 마곡
+  'br_lfv2wgdf1': '#9b72cb', // 잠실
+  'br_g768xdu4w': '#e8b830', // 위례
+  'br_ybo3rmulv': '#d96570', // 용산
+  'br_xu60omgdf': '#4a7cc8', // 천호
+}
+
+export function branchColor(branchId, dbColor) {
+  if (dbColor && dbColor !== '#f8f8fc' && dbColor !== '#ffffff' && dbColor !== '') {
+    return dbColor
+  }
+  return BRANCH_DEFAULT_COLORS[branchId] || '#7c7cc8'
+}
