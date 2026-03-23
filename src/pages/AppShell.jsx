@@ -30,6 +30,7 @@ function App() {
   const [superData, setSuperData] = useState(null);
   const [role, setRole] = useState("staff");
   const [userBranches, setUserBranches] = useState([]);
+  const isMaster = role === "owner" || role === "super" || role === "manager";
   const [viewBranches, setViewBranches] = useState([]);
   const [page, setPageRaw] = useState(() => {
     try { const p = sessionStorage.getItem("bliss_page"); console.log("[SESSION] page restore:", p); return p || "timeline"; } catch(e){ return "timeline"; }
@@ -461,7 +462,6 @@ function App() {
   // Phase: app (owner or staff)
   if (!data) return <Loading msg="데이터 로딩 중..." />;
 
-  const isMaster = role === "owner" || role === "super" || role === "manager";
   const isSuper = currentUser?.role === "super";
   const nav = [
     { id:"timeline", label:"타임라인", icon:<I name="calendar" size={16}/> },
