@@ -14,6 +14,17 @@ import AdminPage from '../components/Admin/AdminPage'
 const BLISS_V = "bliss-app"
 const BIZ_ID = 'biz_khvurgshb'
 
+function Spinner({size=20}) {
+  return <div style={{width:size,height:size,border:`2px solid ${T.primaryLt}`,borderTop:`2px solid ${T.primary}`,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}></div>;
+}
+function Loading({msg}) {
+  return <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100dvh",gap:12,color:T.textSub,fontSize:T.fs.md}}>
+    <Spinner size={28}/>
+    <div>{msg||"로딩 중..."}</div>
+    <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+  </div>;
+}
+
 function App() {
   const [phase, setPhase] = useState("loading");
  // loading, login, super, app
