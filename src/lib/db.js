@@ -1,3 +1,7 @@
+export const SYSTEM_TAG_NAME_NEW_CUST = "신규"
+export const SYSTEM_TAG_NAME_PREPAID  = "예약금완료"
+export const SYSTEM_SRC_NAME_NAVER    = "네이버"
+
 // DB utilities (원본 index.html L49~149 그대로)
 
 export const DBMAP = {
