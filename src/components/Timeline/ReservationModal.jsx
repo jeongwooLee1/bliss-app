@@ -458,7 +458,7 @@ ${naverText}
         margin:_isMob ? 0 : "0 auto",
         animation:_isMob ? "none" : "slideUp .4s cubic-bezier(.22,1,.36,1)",
         boxShadow:_isMob ? "none" : T.shadow.lg,
-        width:_isMob ? "100%" : "92%", maxWidth:680}}>
+        width:_isMob ? "100%" : "92%", maxWidth:680, overflowX:"hidden"}}>
         {/* ═══ Chrome-style Tabs ═══ */}
         {!item?.id && <div style={{display:"flex",alignItems:"stretch",borderBottom:`1.5px solid ${T.gray200}`,background:T.bgCard,borderRadius:`${T.radius.xl}px ${T.radius.xl}px 0 0`,position:"relative"}}>
           {/* 예약 탭 */}
