@@ -313,6 +313,32 @@ function Login({ users, onLogin, onSignup }) {
 }
 
 // Stub 컴포넌트 (별도 페이지로 이식 전 임시)
+const sx = {
+  // 레이아웃
+  flex:        (gap=0) => ({ display:"flex", alignItems:"center", gap }),
+  flexBetween: (gap=0) => ({ display:"flex", alignItems:"center", justifyContent:"space-between", gap }),
+  flexCenter:  { display:"flex", alignItems:"center", justifyContent:"center" },
+  flexCol:     (gap=0) => ({ display:"flex", flexDirection:"column", gap }),
+  // 텍스트 자르기
+  ellipsis:    { overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
+  // 텍스트 스타일
+  label:       { fontSize:T.fs.xxs, fontWeight:T.fw.bolder, color:T.textSub, letterSpacing:.3 },
+  caption:     { fontSize:T.fs.nano, color:T.textMuted },
+  title:       { fontSize:T.fs.md,  fontWeight:T.fw.bolder, color:T.text },
+  // 성별
+  genderBadge: (g) => ({
+    fontSize:T.fs.nano, fontWeight:T.fw.bolder, borderRadius:T.radius.sm, padding:"1px 4px",
+    background: g==="M" ? T.maleLt : T.femaleLt,
+    color:      g==="M" ? T.male   : T.female,
+  }),
+  // 입력
+  inputBase:   {
+    width:"100%", height:36, borderRadius:T.radius.md, border:"1px solid "+T.border,
+    padding:"0 12px", fontSize:T.fs.sm, outline:"none", boxSizing:"border-box",
+    fontFamily:"inherit", color:T.text, background:T.bgCard,
+  },
+};
+
 function SalesPage({ data, setData, userBranches, isMaster, setPage }) {
   const dateAnchorRef = React.useRef(null);
   const [startDate, setStartDate] = useState(todayStr());
