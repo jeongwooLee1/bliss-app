@@ -1,16 +1,36 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { T, NAVER_COLS, getNaverVal, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, BRANCH_DEFAULT_COLORS, branchColor, STATUS_CLR_DEFAULT, SYSTEM_TAG_NAME_NEW_CUST, SYSTEM_TAG_NAME_PREPAID, SYSTEM_SRC_NAME_NAVER } from '../../lib/constants'
-import { sb, SB_URL, SB_KEY, sbHeaders } from '../../lib/sb'
-import { fromDb, toDb, resolveSystemIds, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS } from '../../lib/db'
-import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone } from '../../lib/utils'
+import { T, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, SYSTEM_TAG_NAME_NEW_CUST, SYSTEM_TAG_NAME_PREPAID, SYSTEM_SRC_NAME_NAVER } from '../../lib/constants'
+import { sb } from '../../lib/sb'
+import { fromDb, toDb, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS } from '../../lib/db'
+import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, getDow, genId, fmtLocal, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone } from '../../lib/utils'
 import I from '../common/I'
-import useTouchDragSort from '../../hooks/useTouchDragSort'
 
 
-const STATUS_KEYS = ["confirmed","completed","cancelled","no_show"];
-const DEFAULT_SOURCES = ["네이버","전화","방문","소개","인스타","카카오","기타"];
-const TIMES = (() => { const a=[]; for(let h=9;h<=23;h++) for(let m=0;m<60;m+=5) a.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')); return a; })();
 
+const TIMES = (() => {
+  const arr = [];
+  for (let h = 9; h <= 23; h++) {
+    for (let m = 0; m < 60; m += 5) {
+      arr.push(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
+    }
+  }
+  return arr;
+})();
+// ─── 공통 컴포넌트 ────────────────────────────────────────────
+const Btn = ({ children, variant="primary", size="md", disabled, onClick, style={} }) => {
+  const bg = variant==="primary"?T.primary:variant==="danger"?T.danger:variant==="ghost"?"transparent":T.gray100;
+  const color = variant==="ghost"?T.primary:variant==="secondary"?T.text:"#fff";
+  const border = variant==="ghost"?"1px solid "+T.border:"none";
+  const pad = size==="sm"?"4px 10px":size==="lg"?"10px 20px":"7px 14px";
+  return <button onClick={disabled?undefined:onClick} disabled={disabled} style={{background:bg,color,border,borderRadius:T.radius.md,padding:pad,fontSize:T.fs.sm,fontWeight:T.fw.bold,cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.6:1,fontFamily:"inherit",...style}}>{children}</button>;
+};
+function FLD({ label, children, style={} }) {
+  return <div style={style}><label style={{fontSize:T.fs.sm,fontWeight:T.fw.bold,color:T.gray600,marginBottom:5,display:"block"}}>{label}</label>{children}</div>;
+}
+const GridLayout = ({ cols=2, gap=12, children, style={} }) => {
+  const tpl = typeof cols==="number" ? `repeat(${cols},1fr)` : cols;
+  return <div style={{display:"grid",gridTemplateColumns:tpl,gap,...style}}>{children}</div>;
+};
 function TimeSelect({ value, onChange, times }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -43,9 +63,9 @@ function TimeSelect({ value, onChange, times }) {
     </div>}
   </span>;
 }
-
 function DatePick({ value, onChange, style, min }) {
   const DAYS = ["일","월","화","수","목","금","토"];
+
   const fmt = (v) => {
     if (!v) return "--";
     const p = v.split("-");
@@ -61,192 +81,8 @@ function DatePick({ value, onChange, style, min }) {
       style={{position:"absolute",inset:0,opacity:0,width:"100%",height:"100%",cursor:"pointer",fontSize:T.fs.lg}}/>
   </label>;
 }
-
-function SmartDatePicker({ open, onClose, anchorEl, startDate, endDate, onApply, mode }) {
-  const [selStart, setSelStart] = useState(startDate || todayStr());
-  const [selEnd,   setSelEnd]   = useState(endDate   || todayStr());
-  const [period,   setPeriod]   = useState("today");
-  const [months,   setMonths]   = useState(() => {
-    const d = new Date(startDate || todayStr());
-    const d2 = new Date(d.getFullYear(), d.getMonth()+1, 1);
-    return [{y:d.getFullYear(),m:d.getMonth()},{y:d2.getFullYear(),m:d2.getMonth()}];
-  });
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  const [pos, setPos] = useState({top:0,left:0});
-
-  useEffect(()=>{
-    const check = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener("resize",check);
-    return ()=>window.removeEventListener("resize",check);
-  },[]);
-
-  useEffect(()=>{
-    if (!isMobile && anchorEl && open) {
-      const r = anchorEl.getBoundingClientRect();
-      setPos({top: r.bottom + 6, left: r.left});
-    }
-  },[open, isMobile, anchorEl]);
-
-  const presets = mode==="res"
-    ? [["today","오늘"],["7days","7일"],["month","한달"],["all","전체"],["custom","직접"]]
-    : [["today","오늘"],["prev","전일"],["thismonth","이번달"],["lastmonth","지난달"],["custom","직접"]];
-
-  const applyPreset = (key) => {
-    const today = todayStr();
-    const d = new Date(); const y=d.getFullYear(); const m=d.getMonth();
-    let s=today, e=today;
-    if (key==="today") { s=e=today; }
-    else if (key==="prev") { const p=new Date(); p.setDate(p.getDate()-1); s=e=fmtLocal(p); }
-    else if (key==="7days") {
-      if (mode==="res") { const en=new Date(); en.setDate(en.getDate()+6); e=fmtLocal(en); }
-      else { const st=new Date(); st.setDate(st.getDate()-6); s=fmtLocal(st); }
-    }
-    else if (key==="month") {
-      if (mode==="res") { const en=new Date(); en.setDate(en.getDate()+29); e=fmtLocal(en); }
-      else { const st=new Date(); st.setDate(st.getDate()-29); s=fmtLocal(st); }
-    }
-    else if (key==="thismonth") { s=`${y}-${String(m+1).padStart(2,"0")}-01`; e=today; }
-    else if (key==="lastmonth") {
-      const lm=m===0?11:m-1; const ly=m===0?y-1:y;
-      s=`${ly}-${String(lm+1).padStart(2,"0")}-01`;
-      e=fmtLocal(new Date(y,m,0));
-    }
-    else if (key==="all") { s=""; e=""; }
-    setPeriod(key); setSelStart(s); setSelEnd(e);
-    if (s) { const sd=new Date(s); const sd2=new Date(sd.getFullYear(),sd.getMonth()+1,1); setMonths([{y:sd.getFullYear(),m:sd.getMonth()},{y:sd2.getFullYear(),m:sd2.getMonth()}]); }
-  };
-
-  const buildCal = (y,m) => {
-    const first=new Date(y,m,1).getDay(); const days=new Date(y,m+1,0).getDate();
-    const cells=[];
-    for(let i=0;i<first;i++) cells.push(null);
-    for(let i=1;i<=days;i++) cells.push(`${y}-${String(m+1).padStart(2,"0")}-${String(i).padStart(2,"0")}`);
-    return cells;
-  };
-
-  const prevM = () => { const d=new Date(months[0].y,months[0].m-1,1); const d2=new Date(months[1].y,months[1].m-1,1); setMonths([{y:d.getFullYear(),m:d.getMonth()},{y:d2.getFullYear(),m:d2.getMonth()}]); };
-  const nextM = () => { const d=new Date(months[0].y,months[0].m+1,1); const d2=new Date(months[1].y,months[1].m+1,1); setMonths([{y:d.getFullYear(),m:d.getMonth()},{y:d2.getFullYear(),m:d2.getMonth()}]); };
-
-  const [pickingEnd, setPickingEnd] = useState(false);
-
-  const handleDayClick = (ds) => {
-    setPeriod("custom");
-    if (!pickingEnd) {
-      setSelStart(ds); setSelEnd(ds);
-      setPickingEnd(true);
-    } else {
-      if (ds < selStart) { setSelStart(ds); setSelEnd(selStart); }
-      else { setSelEnd(ds); }
-      setPickingEnd(false);
-    }
-  };
-
-  const DAYS = ["일","월","화","수","목","금","토"];
-
-  const CalGrid = ({y,m}) => {
-    const cells = buildCal(y,m);
-    return <div style={{minWidth:220}}>
-      <div style={{textAlign:"center",fontWeight:T.fw.bolder,fontSize:T.fs.md,color:T.text,marginBottom:8}}>{y}.{String(m+1).padStart(2,"0")}</div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:"2px 0",marginBottom:4}}>
-        {DAYS.map((d,i)=><div key={d} style={{textAlign:"center",fontSize:T.fs.xxs,fontWeight:T.fw.bold,color:i===0?T.danger:i===6?T.male:T.gray500,padding:"4px 0"}}>{d}</div>)}
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:"2px 0"}}>
-        {cells.map((ds,i)=>{
-          if(!ds) return <div key={i}/>;
-          const today=todayStr();
-          const isToday=ds===today;
-          const isSt=ds===selStart&&selStart;
-          const isEn=ds===selEnd&&selEnd&&selEnd!==selStart;
-          const inR=selStart&&selEnd&&ds>selStart&&ds<selEnd;
-          const dow=new Date(ds).getDay();
-          let tc=dow===0?T.danger:dow===6?T.male:T.text;
-          if(isSt||isEn) tc=T.bgCard;
-          return <div key={ds} style={{display:"flex",justifyContent:"center",position:"relative",
-            background:inR?T.primaryHover:"transparent",
-            borderRadius:isSt?"50% 0 0 50%":isEn?"0 50% 50% 0":"0"}}>
-            <button onClick={()=>handleDayClick(ds)} style={{
-              width:30,height:30,borderRadius:"50%",border:"none",cursor:"pointer",fontSize:T.fs.sm,fontFamily:"inherit",
-              fontWeight:isToday||isSt||isEn?700:400,
-              background:isSt||isEn?T.primary:isToday?T.gray200:"transparent",
-              color:tc,position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
-              {parseInt(ds.slice(8))}
-              {isToday&&!(isSt||isEn)&&<span style={{position:"absolute",bottom:2,left:"50%",transform:"translateX(-50%)",width:3,height:3,borderRadius:"50%",background:T.primary}}/>}
-            </button>
-          </div>;
-        })}
-      </div>
-    </div>;
-  };
-
-  const doApply = () => { onApply(selStart,selEnd,period); onClose(); };
-
-  if (!open) return null;
-
-  // ── 데스크탑 드롭다운 ──
-  if (!isMobile) {
-    return <div style={{position:"fixed",inset:0,zIndex:3000}} onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
-      <div onMouseDown={e=>e.stopPropagation()} style={{
-        position:"fixed",top:pos.top,left:pos.left,
-        background:T.bgCard,borderRadius:T.radius.lg,boxShadow:"0 8px 32px rgba(0,0,0,.18)",
-        padding:"16px 20px 14px",zIndex:3001,minWidth:500}}>
-        {/* 프리셋 버튼 */}
-        <div style={{display:"flex",gap:T.sp.xs,marginBottom:14,flexWrap:"wrap"}}>
-          {presets.map(([k,v])=><button key={k} onClick={()=>applyPreset(k)} style={{
-            height:28,padding:"0 12px",borderRadius:T.radius.md,border:"1px solid",fontSize:T.fs.sm,cursor:"pointer",fontFamily:"inherit",
-            background:period===k?T.primary:T.gray100,
-            color:period===k?T.bgCard:T.gray700,
-            borderColor:period===k?T.primary:T.gray300,
-            fontWeight:period===k?700:400}}>{v}</button>)}
-          <span style={{marginLeft:"auto",fontSize:T.fs.sm,color:T.textMuted,alignSelf:"center"}}>
-            {selStart&&selEnd&&selStart!==selEnd?`${selStart} ~ ${selEnd}`:selStart||"전체"}
-          </span>
-        </div>
-        {/* 월 네비 + 2달 캘린더 */}
-        <div style={{display:"flex",alignItems:"center",gap:T.sp.sm}}>
-          <button onClick={prevM} style={{width:28,height:28,border:"1px solid "+T.border,borderRadius:T.radius.md,background:T.bgCard,cursor:"pointer",fontSize:T.fs.lg,color:T.gray600,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>‹</button>
-          <div style={{display:"flex",gap:T.sp.xxl,flex:1}}>
-            <CalGrid y={months[0].y} m={months[0].m}/>
-            <div style={{width:1,background:T.gray200,alignSelf:"stretch"}}/>
-            <CalGrid y={months[1].y} m={months[1].m}/>
-          </div>
-          <button onClick={nextM} style={{width:28,height:28,border:"1px solid "+T.border,borderRadius:T.radius.md,background:T.bgCard,cursor:"pointer",fontSize:T.fs.lg,color:T.gray600,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>›</button>
-        </div>
-        {/* 하단 버튼 */}
-        <div style={{display:"flex",gap:T.sp.sm,marginTop:14,justifyContent:"flex-end"}}>
-          <button onClick={onClose} style={{height:32,padding:"0 16px",borderRadius:T.radius.md,border:"1px solid "+T.border,background:T.bgCard,fontSize:T.fs.sm,cursor:"pointer",color:T.gray600,fontFamily:"inherit"}}>취소</button>
-          <button onClick={doApply} style={{height:32,padding:"0 20px",borderRadius:T.radius.md,border:"none",background:T.primary,fontSize:T.fs.sm,cursor:"pointer",color:T.bgCard,fontFamily:"inherit",fontWeight:T.fw.bolder}}>적용</button>
-        </div>
-      </div>
-    </div>;
-  }
-
-  // ── 모바일 바텀시트 ──
-  return <div style={{position:"fixed",inset:0,zIndex:3000,display:"flex",flexDirection:"column",justifyContent:"flex-end"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-    <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.45)"}} onClick={onClose}/>
-    <div style={{position:"relative",background:T.bgCard,borderRadius:"16px 16px 0 0",padding:"0 0 calc(32px + 56px + env(safe-area-inset-bottom))",maxHeight:"90vh",overflowY:"auto"}}>
-      <div style={{display:"flex",justifyContent:"center",padding:"12px 0 4px"}}><div style={{width:36,height:4,borderRadius:T.radius.sm,background:T.gray300}}/></div>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 20px 14px"}}>
-        <span style={{fontSize:T.fs.lg,fontWeight:T.fw.bolder,color:T.text}}>날짜 선택</span>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {presets.map(([k,v])=><button key={k} onClick={()=>applyPreset(k)} style={{
-            height:30,padding:"0 10px",borderRadius:T.radius.md,border:"1px solid",fontSize:T.fs.sm,cursor:"pointer",fontFamily:"inherit",
-            background:period===k?T.primary:T.gray100,color:period===k?T.bgCard:T.gray700,borderColor:period===k?T.primary:T.gray300}}>{v}</button>)}
-        </div>
-      </div>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",marginBottom:10}}>
-        <button onClick={prevM} style={{width:32,height:32,border:"none",background:"none",cursor:"pointer",fontSize:T.fs.xxl,color:T.gray700}}>‹</button>
-        <span style={{fontSize:T.fs.lg,fontWeight:T.fw.bolder}}>{months[0].y}.{String(months[0].m+1).padStart(2,"0")}</span>
-        <button onClick={nextM} style={{width:32,height:32,border:"none",background:"none",cursor:"pointer",fontSize:T.fs.xxl,color:T.gray700}}>›</button>
-      </div>
-      <div style={{padding:"0 16px"}}><CalGrid y={months[0].y} m={months[0].m}/></div>
-      {selStart&&<div style={{padding:"14px 20px 0",textAlign:"center",color:T.textSub,fontSize:T.fs.sm}}>{selStart}{selEnd&&selEnd!==selStart?` ~ ${selEnd}`:""}</div>}
-      <div style={{display:"flex",gap:10,padding:"16px 20px 0"}}>
-        <button onClick={onClose} style={{flex:1,height:46,border:"1.5px solid #ddd",borderRadius:T.radius.md,background:T.bgCard,fontSize:T.fs.md,cursor:"pointer",color:T.gray700,fontFamily:"inherit"}}>취소</button>
-        <button onClick={doApply} style={{flex:2,height:46,border:"none",borderRadius:T.radius.md,background:T.primary,fontSize:T.fs.md,cursor:"pointer",color:T.bgCard,fontFamily:"inherit",fontWeight:T.fw.bolder}}>적용</button>
-      </div>
-    </div>
-  </div>;
-}
+const STATUS_KEYS = ["confirmed","completed","cancelled","no_show"];
+const DEFAULT_SOURCES = ["네이버","전화","방문","소개","인스타","카카오","기타"];
 
 function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBranch, userBranches, data, setData, setPage, naverColShow={} }) {
   const SVC_LIST = (data?.services || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
@@ -257,6 +93,16 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   const branchId = item?.bid || selBranch;
   const branchRooms = (data.rooms||[]).filter(r=>r.branch_id===branchId);
   const branchStaff = (data.staff||[]).filter(s=>s.bid===branchId);
+  const fmt = (v) => v==null?"":Number(v).toLocaleString();
+
+  const svcAllowQty = (svcId) => {
+    const s = (data?.services||[]).find(x=>x.id===svcId);
+    return s?.allow_qty ?? false;
+  };
+  const getStatusClr = () => {
+    try { const v = localStorage.getItem("tl_sc"); return v ? JSON.parse(v) : {}; } catch { return {}; }
+  };
+
   const [showSaleForm, setShowSaleForm] = useState(false);
   const [isSchedule, setIsSchedule] = useState(item?.isSchedule || false);
   const modalRef = useRef(null);
@@ -611,7 +457,8 @@ ${naverText}
         border:_isMob ? "none" : `1px solid ${T.border}`,
         margin:_isMob ? 0 : "0 auto",
         animation:_isMob ? "none" : "slideUp .4s cubic-bezier(.22,1,.36,1)",
-        boxShadow:_isMob ? "none" : T.shadow.lg}}>
+        boxShadow:_isMob ? "none" : T.shadow.lg,
+        width:_isMob ? "100%" : "92%", maxWidth:680, overflowX:"hidden"}}>
         {/* ═══ Chrome-style Tabs ═══ */}
         {!item?.id && <div style={{display:"flex",alignItems:"stretch",borderBottom:`1.5px solid ${T.gray200}`,background:T.bgCard,borderRadius:`${T.radius.xl}px ${T.radius.xl}px 0 0`,position:"relative"}}>
           {/* 예약 탭 */}
@@ -979,39 +826,29 @@ ${naverText}
                 {f.isPrepaid && (f.totalPrice||0) > 0 && <NRow label="결제금액" value={`✓ ${(f.totalPrice||0).toLocaleString()}원${f.npayMethod?" ("+f.npayMethod+")":""}`} valueColor={T.successDk}/>}
                 {/* 고객 요청사항 - JSON 배열이면 그대로, 아니면 기존 파싱 */}
                 {f.requestMsg && (()=>{
-                  // JSON 배열 형식(새 방식)
                   if (f.requestMsg.trim().startsWith("[")) {
                     try {
                       const items = JSON.parse(f.requestMsg);
-                      const _ncShow = (lbl) => {
-const col = NAVER_COLS.find(c=>c.kws.some(kw=>lbl.includes(kw)));
-return col ? (naverColShow[col.key] !== false) : true;
-};
-return items.filter(it=>it.value && _ncShow(it.label||"")).map((it,i)=>{
-                        if (it.label==="시술메뉴") return <NRow key={i} label="시술메뉴" value={it.value} />;
-                        return <div key={i} style={{display:"flex",alignItems:"flex-start",gap:6,padding:"4px 0",borderBottom:"1px solid #E8F5E9"}}>
+                      return items.filter(it=>it.value).map((it,idx)=>{
+                        if (it.label==="시술메뉴") return <NRow key={idx} label="시술메뉴" value={it.value} />;
+                        return <div key={idx} style={{display:"flex",alignItems:"flex-start",gap:6,padding:"4px 0",borderBottom:"1px solid #E8F5E9"}}>
                           <span style={{fontSize:11,color:T.textMuted,fontWeight:500,minWidth:48,flexShrink:0,paddingTop:2}}>{it.label}</span>
                           <span style={{fontSize:T.fs.sm,fontWeight:T.fw.medium,color:T.successDk,lineHeight:1.45,wordBreak:"break-word",flex:1}}>{it.value}</span>
                         </div>;
                       });
                     } catch(e) {}
                   }
-                  // 기존 텍스트 형식 fallback
-                  const _ncShow2 = (lbl) => {
-const col = NAVER_COLS.find(c=>c.kws.some(kw=>(lbl||"").includes(kw)));
-return col ? (naverColShow[col.key] !== false) : true;
-};
-return f.requestMsg.split("\n").filter(l=>l.trim()).map((line,i)=>{
+                  return f.requestMsg.split("\n").filter(l=>l.trim()).map((line,idx)=>{
                     const ci = line.lastIndexOf(": ");
                     const key = ci > -1 ? line.slice(0,ci).trim() : null;
                     const val = ci > -1 ? line.slice(ci+2).trim() : line.trim();
                     if (!val) return null;
-                    if (key==="시술메뉴") return <NRow key={i} label="시술메뉴" value={val} />;
-                    if (key) return <div key={i} style={{display:"flex",alignItems:"flex-start",gap:6,padding:"4px 0",borderBottom:"1px solid #E8F5E9"}}>
+                    if (key==="시술메뉴") return <NRow key={idx} label="시술메뉴" value={val} />;
+                    if (key) return <div key={idx} style={{display:"flex",alignItems:"flex-start",gap:6,padding:"4px 0",borderBottom:"1px solid #E8F5E9"}}>
                       <span style={{fontSize:11,color:T.textMuted,fontWeight:500,minWidth:48,flexShrink:0,paddingTop:2}}>{key}</span>
                       <span style={{fontSize:T.fs.sm,fontWeight:T.fw.normal,color:T.text,lineHeight:1.45,wordBreak:"break-word",flex:1}}>{val}</span>
                     </div>;
-                    return <NRow key={i} label="요청" value={val}/>;
+                    return <NRow key={idx} label="요청" value={val}/>;
                   });
                 })()}
                 {/* 직원 메모 */}
@@ -1187,6 +1024,8 @@ const SaleDiscountRow = React.memo(function SaleDiscountRow({ id, checked, amoun
   </div>;
 });
 
+// DETAILED SALE FORM (매출 입력 - 시술상품/제품 연동)
+// ═══════════════════════════════════════════
 function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, data, setData }) {
   const SVC_LIST = (data?.services || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
   const PROD_LIST = (data?.products || []);
@@ -1467,7 +1306,7 @@ function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, data, setD
   const uncatSvcs = SVC_LIST.filter(s => !CATS.find(c=>c.id===s.cat));
   const halfProd = Math.ceil(PROD_LIST.length / 2);
 
-  const _m = window.innerWidth <= 768;
+  const _m = false; // 항상 데스크탑 모달
   return (
     <div onClick={_m?undefined:onClose} style={_m?{
         position:"fixed",inset:0,zIndex:500,background:T.bgCard,overflowY:"auto",WebkitOverflowScrolling:"touch"
@@ -1728,4 +1567,194 @@ function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, data, setD
   );
 }
 
-export default TimelineModal;
+// ═══════════════════════════════════════════
+// RESERVATION LIST
+// ═══════════════════════════════════════════
+function SmartDatePicker({ open, onClose, anchorEl, startDate, endDate, onApply, mode }) {
+  const [selStart, setSelStart] = useState(startDate || todayStr());
+  const [selEnd,   setSelEnd]   = useState(endDate   || todayStr());
+  const [period,   setPeriod]   = useState("today");
+  const [months,   setMonths]   = useState(() => {
+    const d = new Date(startDate || todayStr());
+    const d2 = new Date(d.getFullYear(), d.getMonth()+1, 1);
+    return [{y:d.getFullYear(),m:d.getMonth()},{y:d2.getFullYear(),m:d2.getMonth()}];
+  });
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [pos, setPos] = useState({top:0,left:0});
+
+  useEffect(()=>{
+    const check = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize",check);
+    return ()=>window.removeEventListener("resize",check);
+  },[]);
+
+  useEffect(()=>{
+    if (!isMobile && anchorEl && open) {
+      const r = anchorEl.getBoundingClientRect();
+      setPos({top: r.bottom + 6, left: r.left});
+    }
+  },[open, isMobile, anchorEl]);
+
+  const presets = mode==="res"
+    ? [["today","오늘"],["7days","7일"],["month","한달"],["all","전체"],["custom","직접"]]
+    : [["today","오늘"],["prev","전일"],["thismonth","이번달"],["lastmonth","지난달"],["custom","직접"]];
+
+  const applyPreset = (key) => {
+    const today = todayStr();
+    const d = new Date(); const y=d.getFullYear(); const m=d.getMonth();
+    let s=today, e=today;
+    if (key==="today") { s=e=today; }
+    else if (key==="prev") { const p=new Date(); p.setDate(p.getDate()-1); s=e=fmtLocal(p); }
+    else if (key==="7days") {
+      if (mode==="res") { const en=new Date(); en.setDate(en.getDate()+6); e=fmtLocal(en); }
+      else { const st=new Date(); st.setDate(st.getDate()-6); s=fmtLocal(st); }
+    }
+    else if (key==="month") {
+      if (mode==="res") { const en=new Date(); en.setDate(en.getDate()+29); e=fmtLocal(en); }
+      else { const st=new Date(); st.setDate(st.getDate()-29); s=fmtLocal(st); }
+    }
+    else if (key==="thismonth") { s=`${y}-${String(m+1).padStart(2,"0")}-01`; e=today; }
+    else if (key==="lastmonth") {
+      const lm=m===0?11:m-1; const ly=m===0?y-1:y;
+      s=`${ly}-${String(lm+1).padStart(2,"0")}-01`;
+      e=fmtLocal(new Date(y,m,0));
+    }
+    else if (key==="all") { s=""; e=""; }
+    setPeriod(key); setSelStart(s); setSelEnd(e);
+    if (s) { const sd=new Date(s); const sd2=new Date(sd.getFullYear(),sd.getMonth()+1,1); setMonths([{y:sd.getFullYear(),m:sd.getMonth()},{y:sd2.getFullYear(),m:sd2.getMonth()}]); }
+  };
+
+  const buildCal = (y,m) => {
+    const first=new Date(y,m,1).getDay(); const days=new Date(y,m+1,0).getDate();
+    const cells=[];
+    for(let i=0;i<first;i++) cells.push(null);
+    for(let i=1;i<=days;i++) cells.push(`${y}-${String(m+1).padStart(2,"0")}-${String(i).padStart(2,"0")}`);
+    return cells;
+  };
+
+  const prevM = () => { const d=new Date(months[0].y,months[0].m-1,1); const d2=new Date(months[1].y,months[1].m-1,1); setMonths([{y:d.getFullYear(),m:d.getMonth()},{y:d2.getFullYear(),m:d2.getMonth()}]); };
+  const nextM = () => { const d=new Date(months[0].y,months[0].m+1,1); const d2=new Date(months[1].y,months[1].m+1,1); setMonths([{y:d.getFullYear(),m:d.getMonth()},{y:d2.getFullYear(),m:d2.getMonth()}]); };
+
+  const [pickingEnd, setPickingEnd] = useState(false);
+
+  const handleDayClick = (ds) => {
+    setPeriod("custom");
+    if (!pickingEnd) {
+      setSelStart(ds); setSelEnd(ds);
+      setPickingEnd(true);
+    } else {
+      if (ds < selStart) { setSelStart(ds); setSelEnd(selStart); }
+      else { setSelEnd(ds); }
+      setPickingEnd(false);
+    }
+  };
+
+  const DAYS = ["일","월","화","수","목","금","토"];
+
+  const CalGrid = ({y,m}) => {
+    const cells = buildCal(y,m);
+    return <div style={{minWidth:220}}>
+      <div style={{textAlign:"center",fontWeight:T.fw.bolder,fontSize:T.fs.md,color:T.text,marginBottom:8}}>{y}.{String(m+1).padStart(2,"0")}</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:"2px 0",marginBottom:4}}>
+        {DAYS.map((d,i)=><div key={d} style={{textAlign:"center",fontSize:T.fs.xxs,fontWeight:T.fw.bold,color:i===0?T.danger:i===6?T.male:T.gray500,padding:"4px 0"}}>{d}</div>)}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:"2px 0"}}>
+        {cells.map((ds,i)=>{
+          if(!ds) return <div key={i}/>;
+          const today=todayStr();
+          const isToday=ds===today;
+          const isSt=ds===selStart&&selStart;
+          const isEn=ds===selEnd&&selEnd&&selEnd!==selStart;
+          const inR=selStart&&selEnd&&ds>selStart&&ds<selEnd;
+          const dow=new Date(ds).getDay();
+          let tc=dow===0?T.danger:dow===6?T.male:T.text;
+          if(isSt||isEn) tc=T.bgCard;
+          return <div key={ds} style={{display:"flex",justifyContent:"center",position:"relative",
+            background:inR?T.primaryHover:"transparent",
+            borderRadius:isSt?"50% 0 0 50%":isEn?"0 50% 50% 0":"0"}}>
+            <button onClick={()=>handleDayClick(ds)} style={{
+              width:30,height:30,borderRadius:"50%",border:"none",cursor:"pointer",fontSize:T.fs.sm,fontFamily:"inherit",
+              fontWeight:isToday||isSt||isEn?700:400,
+              background:isSt||isEn?T.primary:isToday?T.gray200:"transparent",
+              color:tc,position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              {parseInt(ds.slice(8))}
+              {isToday&&!(isSt||isEn)&&<span style={{position:"absolute",bottom:2,left:"50%",transform:"translateX(-50%)",width:3,height:3,borderRadius:"50%",background:T.primary}}/>}
+            </button>
+          </div>;
+        })}
+      </div>
+    </div>;
+  };
+
+  const doApply = () => { onApply(selStart,selEnd,period); onClose(); };
+
+  if (!open) return null;
+
+  // ── 데스크탑 드롭다운 ──
+  if (!isMobile) {
+    return <div style={{position:"fixed",inset:0,zIndex:3000}} onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div onMouseDown={e=>e.stopPropagation()} style={{
+        position:"fixed",top:pos.top,left:pos.left,
+        background:T.bgCard,borderRadius:T.radius.lg,boxShadow:"0 8px 32px rgba(0,0,0,.18)",
+        padding:"16px 20px 14px",zIndex:3001,minWidth:500}}>
+        {/* 프리셋 버튼 */}
+        <div style={{display:"flex",gap:T.sp.xs,marginBottom:14,flexWrap:"wrap"}}>
+          {presets.map(([k,v])=><button key={k} onClick={()=>applyPreset(k)} style={{
+            height:28,padding:"0 12px",borderRadius:T.radius.md,border:"1px solid",fontSize:T.fs.sm,cursor:"pointer",fontFamily:"inherit",
+            background:period===k?T.primary:T.gray100,
+            color:period===k?T.bgCard:T.gray700,
+            borderColor:period===k?T.primary:T.gray300,
+            fontWeight:period===k?700:400}}>{v}</button>)}
+          <span style={{marginLeft:"auto",fontSize:T.fs.sm,color:T.textMuted,alignSelf:"center"}}>
+            {selStart&&selEnd&&selStart!==selEnd?`${selStart} ~ ${selEnd}`:selStart||"전체"}
+          </span>
+        </div>
+        {/* 월 네비 + 2달 캘린더 */}
+        <div style={{display:"flex",alignItems:"center",gap:T.sp.sm}}>
+          <button onClick={prevM} style={{width:28,height:28,border:"1px solid "+T.border,borderRadius:T.radius.md,background:T.bgCard,cursor:"pointer",fontSize:T.fs.lg,color:T.gray600,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>‹</button>
+          <div style={{display:"flex",gap:T.sp.xxl,flex:1}}>
+            <CalGrid y={months[0].y} m={months[0].m}/>
+            <div style={{width:1,background:T.gray200,alignSelf:"stretch"}}/>
+            <CalGrid y={months[1].y} m={months[1].m}/>
+          </div>
+          <button onClick={nextM} style={{width:28,height:28,border:"1px solid "+T.border,borderRadius:T.radius.md,background:T.bgCard,cursor:"pointer",fontSize:T.fs.lg,color:T.gray600,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>›</button>
+        </div>
+        {/* 하단 버튼 */}
+        <div style={{display:"flex",gap:T.sp.sm,marginTop:14,justifyContent:"flex-end"}}>
+          <button onClick={onClose} style={{height:32,padding:"0 16px",borderRadius:T.radius.md,border:"1px solid "+T.border,background:T.bgCard,fontSize:T.fs.sm,cursor:"pointer",color:T.gray600,fontFamily:"inherit"}}>취소</button>
+          <button onClick={doApply} style={{height:32,padding:"0 20px",borderRadius:T.radius.md,border:"none",background:T.primary,fontSize:T.fs.sm,cursor:"pointer",color:T.bgCard,fontFamily:"inherit",fontWeight:T.fw.bolder}}>적용</button>
+        </div>
+      </div>
+    </div>;
+  }
+
+  // ── 모바일 바텀시트 ──
+  return <div style={{position:"fixed",inset:0,zIndex:3000,display:"flex",flexDirection:"column",justifyContent:"flex-end"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+    <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.45)"}} onClick={onClose}/>
+    <div style={{position:"relative",background:T.bgCard,borderRadius:"16px 16px 0 0",padding:"0 0 calc(32px + 56px + env(safe-area-inset-bottom))",maxHeight:"90vh",overflowY:"auto"}}>
+      <div style={{display:"flex",justifyContent:"center",padding:"12px 0 4px"}}><div style={{width:36,height:4,borderRadius:T.radius.sm,background:T.gray300}}/></div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 20px 14px"}}>
+        <span style={{fontSize:T.fs.lg,fontWeight:T.fw.bolder,color:T.text}}>날짜 선택</span>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {presets.map(([k,v])=><button key={k} onClick={()=>applyPreset(k)} style={{
+            height:30,padding:"0 10px",borderRadius:T.radius.md,border:"1px solid",fontSize:T.fs.sm,cursor:"pointer",fontFamily:"inherit",
+            background:period===k?T.primary:T.gray100,color:period===k?T.bgCard:T.gray700,borderColor:period===k?T.primary:T.gray300}}>{v}</button>)}
+        </div>
+      </div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",marginBottom:10}}>
+        <button onClick={prevM} style={{width:32,height:32,border:"none",background:"none",cursor:"pointer",fontSize:T.fs.xxl,color:T.gray700}}>‹</button>
+        <span style={{fontSize:T.fs.lg,fontWeight:T.fw.bolder}}>{months[0].y}.{String(months[0].m+1).padStart(2,"0")}</span>
+        <button onClick={nextM} style={{width:32,height:32,border:"none",background:"none",cursor:"pointer",fontSize:T.fs.xxl,color:T.gray700}}>›</button>
+      </div>
+      <div style={{padding:"0 16px"}}><CalGrid y={months[0].y} m={months[0].m}/></div>
+      {selStart&&<div style={{padding:"14px 20px 0",textAlign:"center",color:T.textSub,fontSize:T.fs.sm}}>{selStart}{selEnd&&selEnd!==selStart?` ~ ${selEnd}`:""}</div>}
+      <div style={{display:"flex",gap:10,padding:"16px 20px 0"}}>
+        <button onClick={onClose} style={{flex:1,height:46,border:"1.5px solid #ddd",borderRadius:T.radius.md,background:T.bgCard,fontSize:T.fs.md,cursor:"pointer",color:T.gray700,fontFamily:"inherit"}}>취소</button>
+        <button onClick={doApply} style={{flex:2,height:46,border:"none",borderRadius:T.radius.md,background:T.primary,fontSize:T.fs.md,cursor:"pointer",color:T.bgCard,fontFamily:"inherit",fontWeight:T.fw.bolder}}>적용</button>
+      </div>
+    </div>
+  </div>;
+}
+
+
+export default TimelineModal
