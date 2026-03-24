@@ -10,7 +10,6 @@ import useTouchDragSort from '../../hooks/useTouchDragSort'
 const STATUS_KEYS = ["confirmed","completed","cancelled","no_show"];
 const DEFAULT_SOURCES = ["네이버","전화","방문","소개","인스타","카카오","기타"];
 const TIMES = (() => { const a=[]; for(let h=9;h<=23;h++) for(let m=0;m<60;m+=5) a.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')); return a; })();
-const fmt = (v) => v==null?"":Number(v).toLocaleString();
 
 function TimeSelect({ value, onChange, times }) {
   const [open, setOpen] = useState(false);
@@ -62,7 +61,7 @@ function DatePick({ value, onChange, style, min }) {
       style={{position:"absolute",inset:0,opacity:0,width:"100%",height:"100%",cursor:"pointer",fontSize:T.fs.lg}}/>
   </label>;
 }
-function FLD({ label, children }) {
+
 function SmartDatePicker({ open, onClose, anchorEl, startDate, endDate, onApply, mode }) {
   const [selStart, setSelStart] = useState(startDate || todayStr());
   const [selEnd,   setSelEnd]   = useState(endDate   || todayStr());
@@ -248,7 +247,6 @@ function SmartDatePicker({ open, onClose, anchorEl, startDate, endDate, onApply,
     </div>
   </div>;
 }
-
 
 function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBranch, userBranches, data, setData, setPage, naverColShow={} }) {
   const SVC_LIST = (data?.services || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
@@ -1188,10 +1186,6 @@ const SaleDiscountRow = React.memo(function SaleDiscountRow({ id, checked, amoun
         color: checked ? T.danger : T.gray400, fontWeight: checked ? 700 : 400 }} />
   </div>;
 });
-
-// DETAILED SALE FORM (매출 입력 - 시술상품/제품 연동)
-// ═══════════════════════════════════════════
-function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, data, setData }) {
 
 function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, data, setData }) {
   const SVC_LIST = (data?.services || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
