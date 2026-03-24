@@ -595,8 +595,6 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage }) {
 }
 
 // ── 공통 헬퍼 ─────────────────────────────────────────
-const uid = () => { const c='abcdefghijklmnopqrstuvwxyz0123456789'; return Array.from({length:10},()=>c[Math.floor(Math.random()*c.length)]).join(''); };
-const fmt = (n) => { if(!n && n!==0) return '0'; return Number(n).toLocaleString('ko-KR'); };
 const _mc = (fn) => { if(fn) fn(); };
 function Empty({ msg='데이터 없음', icon='inbox' }) {
   return <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'40px 0',gap:8,color:T.textMuted}}>
