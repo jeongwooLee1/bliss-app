@@ -6,7 +6,7 @@ import { fromDb, toDb, resolveSystemIds, setActiveBiz, _activeBizId } from '../l
 import Timeline from '../components/Timeline/TimelinePage'
 import ReservationList from '../components/Reservations/ReservationsPage'
 import AdminInbox from '../components/Messages/MessagesPage'
-import { todayStr, pad, fmtDate, getDow, genId } from '../lib/utils'
+import { todayStr, pad, fmtDate, getDow, genId, fmtLocal } from '../lib/utils'
 import I from '../components/common/I'
 import TimelineModal from '../components/Timeline/ReservationModal'
 import SchedulePage from '../components/Schedule/SchedulePage'
@@ -14,6 +14,21 @@ import AdminPage from '../components/Admin/AdminPage'
 
 const BLISS_V = "bliss-app"
 const BIZ_ID = 'biz_khvurgshb'
+
+const fmt = (n) => n == null ? "0" : Number(n).toLocaleString("ko-KR");
+
+const GridLayout = ({ cols=2, gap=12, children, style={}, ...p }) => {
+  const gc = typeof cols === "number" ? `repeat(${cols},1fr)` : cols;
+  return <div style={{display:"grid",gridTemplateColumns:gc,gap,...style}} {...p}>{children}</div>;
+};
+
+const StatCard = ({ label, value, sub, color }) => (
+  <div style={{background:T.bgCard,borderRadius:T.radius.md,padding:"14px 16px",boxShadow:T.shadow.sm,borderLeft:`3px solid ${color||T.primary}`}}>
+    <div style={{fontSize:T.fs.xs,color:T.textSub,marginBottom:4}}>{label}</div>
+    <div style={{fontSize:T.fs.lg,fontWeight:T.fw.black,color:color||T.text}}>{value}</div>
+    {sub && <div style={{fontSize:T.fs.xxs,color:T.textMuted,marginTop:2}}>{sub}</div>}
+  </div>
+);
 
 function Spinner({size=20}) {
   return <div style={{width:size,height:size,border:`2px solid ${T.primaryLt}`,borderTop:`2px solid ${T.primary}`,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}></div>;
@@ -94,14 +109,14 @@ function SuperDashboard({ superData, setSuperData, currentUser, onLogout, onEnte
   const saveBiz = async () => {
     if (!bizForm?.name || !bizForm?.code) return alert("업체명과 대표 아이디를 입력하세요");
     const isNew = !bizForm.id;
-    const biz = isNew ? { ...bizForm, id: "biz_" + uid() } : bizForm;
+    const biz = isNew ? { ...bizForm, id: "biz_" + genId() } : bizForm;
     if (isNew) {
       await sb.insert("businesses", { id:biz.id, name:biz.name, code:biz.code, phone:biz.phone||"", settings:biz.settings||"" });
-      const ownerId = "acc_" + uid();
+      const ownerId = "acc_" + genId();
       await sb.insert("app_users", { id:ownerId, business_id:biz.id, login_id:biz.code, password:"1234", name:biz.name+" 대표", role:"owner", branch_ids:"[]", view_branch_ids:"[]" });
       // Auto-assign group if selected
       if (bizForm.groupId) {
-        const gm = { id:"gm_"+uid(), group_id:bizForm.groupId, business_id:biz.id };
+        const gm = { id:"gm_"+genId(), group_id:bizForm.groupId, business_id:biz.id };
         await sb.insert("business_group_members", gm);
         setSuperData(p => ({...p, businesses:[...p.businesses, biz], users:[...p.users, {id:ownerId, businessId:biz.id, loginId:biz.code, pw:"1234", name:biz.name+" 대표", role:"owner", branches:[], viewBranches:[]}], groupMembers:[...p.groupMembers, gm]}));
       } else {
@@ -113,7 +128,7 @@ function SuperDashboard({ superData, setSuperData, currentUser, onLogout, onEnte
       const curMem = groupMembers.find(m=>m.business_id===biz.id);
       if (bizForm.groupId && (!curMem || curMem.group_id!==bizForm.groupId)) {
         if (curMem) await sb.del("business_group_members", curMem.id);
-        const gm = { id:"gm_"+uid(), group_id:bizForm.groupId, business_id:biz.id };
+        const gm = { id:"gm_"+genId(), group_id:bizForm.groupId, business_id:biz.id };
         await sb.insert("business_group_members", gm);
         setSuperData(p => ({...p, businesses:p.businesses.map(b=>b.id===biz.id?biz:b), groupMembers:[...(p?.groupMembers||[]).filter(m=>m.business_id!==biz.id), gm]}));
       } else if (!bizForm.groupId && curMem) {
@@ -148,7 +163,7 @@ function SuperDashboard({ superData, setSuperData, currentUser, onLogout, onEnte
   const [newGrp, setNewGrp] = useState("");
   const addGroup = async () => {
     if (!newGrp.trim()) return;
-    const grp = { id:"grp_"+uid(), name:newGrp.trim(), memo:"" };
+    const grp = { id:"grp_"+genId(), name:newGrp.trim(), memo:"" };
     await sb.insert("business_groups", grp);
     setSuperData(p => ({...p, groups:[...p.groups, grp]}));
     setNewGrp("");
@@ -563,7 +578,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage }) {
     </DataTable>
 
     {showModal && <DetailedSaleForm
-      reservation={{id:uid(),bid:userBranches[0],custId:null,custName:"",custPhone:"",custGender:"",
+      reservation={{id:genId(),bid:userBranches[0],custId:null,custName:"",custPhone:"",custGender:"",
         staffId:(data.staff||[]).find(s=>s.bid===(userBranches[0]))?.id||"",serviceId:null,date:todayStr()}}
       branchId={userBranches[0]}
       onSubmit={handleSave}
@@ -918,7 +933,7 @@ function CustomersPage({ data, setData, userBranches, isMaster }) {
                               if(!e.target.value) return;
                               const svc = pkgSvcs.find(s=>s.id===e.target.value);
                               if(!svc) return;
-                              const pkg = {id:uid(),business_id:_activeBizId,customer_id:c.id,service_id:svc.id,
+                              const pkg = {id:genId(),business_id:_activeBizId,customer_id:c.id,service_id:svc.id,
                                 service_name:svc.name,total_count:svc.pkgCount||5,used_count:0,
                                 purchased_at:new Date().toISOString(),note:""};
                               sb.insert("customer_packages",pkg).catch(console.error);

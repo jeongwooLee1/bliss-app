@@ -7,6 +7,11 @@ import I from '../common/I'
 import TimelineModal from './ReservationModal'
 import useTouchDragSort from '../../hooks/useTouchDragSort'
 
+const GridLayout = ({ cols=2, gap=12, children, style={}, ...p }) => {
+  const gc = typeof cols === "number" ? `repeat(${cols},1fr)` : cols;
+  return <div style={{display:"grid",gridTemplateColumns:gc,gap,...style}} {...p}>{children}</div>;
+};
+
 function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, currentUser, setPage, bizId, onMenuClick, bizName, pendingOpenRes, setPendingOpenRes, naverColShow={}, scraperStatus=null }) {
   // 타임라인 블록 표시 항목 — App에서 prop으로 받음
   const effectiveNaverColShow = naverColShow;

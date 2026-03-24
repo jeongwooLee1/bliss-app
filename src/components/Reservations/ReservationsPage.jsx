@@ -7,6 +7,20 @@ import I from '../common/I'
 import TimelineModal from '../Timeline/ReservationModal'
 import useTouchDragSort from '../../hooks/useTouchDragSort'
 
+const fmt = (n) => n == null ? "0" : Number(n).toLocaleString("ko-KR");
+
+const GridLayout = ({ cols=2, gap=12, children, style={}, ...p }) => {
+  const gc = typeof cols === "number" ? `repeat(${cols},1fr)` : cols;
+  return <div style={{display:"grid",gridTemplateColumns:gc,gap,...style}} {...p}>{children}</div>;
+};
+
+const StatCard = ({ label, value, sub, color }) => (
+  <div style={{background:T.bgCard,borderRadius:T.radius.md,padding:"14px 16px",boxShadow:T.shadow.sm,borderLeft:`3px solid ${color||T.primary}`}}>
+    <div style={{fontSize:T.fs.xs,color:T.textSub,marginBottom:4}}>{label}</div>
+    <div style={{fontSize:T.fs.lg,fontWeight:T.fw.black,color:color||T.text}}>{value}</div>
+    {sub && <div style={{fontSize:T.fs.xxs,color:T.textMuted,marginTop:2}}>{sub}</div>}
+  </div>
+);
 
 const resGridCols = (showCols, density) => {
   const compact = density === "compact";
