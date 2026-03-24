@@ -14,7 +14,7 @@ export const sb = {
     const hasSortCol = ["services","products","service_tags","service_categories","reservation_sources","branches"].includes(table);
     const hasCreatedAt = !["rooms","services","products","service_categories","service_tags"].includes(table);
     const order = hasSortCol ? "order=sort.asc.nullslast" : (hasCreatedAt ? "order=created_at.asc.nullslast" : "order=id.asc");
-    const r=await fetch(`${SB_URL}/rest/v1/${table}?select=*&${order}${filter}`,{headers:sbHeaders});
+    const r=await fetch(`${SB_URL}/rest/v1/${table}?select=*${filter.includes('order=')?'':('&'+order)}${filter}`,{headers:sbHeaders});
     if(!r.ok){const e=await r.text();console.error(`DB get ${table} failed:`, r.status, e);}
     return r.ok?r.json():[];
   },
