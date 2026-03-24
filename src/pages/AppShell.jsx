@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { T, BRANCH_DEFAULT_COLORS, branchColor, STATUS_LABEL, SYSTEM_TAG_NAME_NEW_CUST, SYSTEM_TAG_NAME_PREPAID, SYSTEM_SRC_NAME_NAVER } from '../lib/constants'
 import { sb, SB_URL, SB_KEY, sbHeaders } from '../lib/sb'
 import { supabase as _supaClient } from '../lib/supabase'
-import { fromDb, toDb, resolveSystemIds, setActiveBiz } from '../lib/db'
+import { fromDb, toDb, resolveSystemIds, setActiveBiz, _activeBizId } from '../lib/db'
 import Timeline from '../components/Timeline/TimelinePage'
 import ReservationList from '../components/Reservations/ReservationsPage'
 import AdminInbox from '../components/Messages/MessagesPage'
@@ -43,10 +43,18 @@ const Btn = ({ children, variant="primary", size="md", disabled, onClick, style=
   return <button onClick={disabled?undefined:onClick} style={{...base,...sizes[size],...variants[variant],...style}} {...p}>{children}</button>;
 };
 
-function DataTable({ cols=[], rows=[], onRow }) {
+function DataTable({ cols=[], rows=[], onRow, card=true, children }) {
+  const thS = {padding:"7px 10px",background:T.gray100,borderBottom:"1px solid "+T.border,textAlign:"left",fontWeight:600,fontSize:12,whiteSpace:"nowrap"};
+  const tdS = {padding:"7px 10px",borderBottom:"1px solid "+T.border,fontSize:13,verticalAlign:"middle"};
+  if (children) {
+    return <div style={{overflowX:"auto",borderRadius:T.radius.md,border:"1px solid "+T.border}}>
+      <style>{`.bliss-tbl th{padding:7px 10px;background:${T.gray100};border-bottom:1px solid ${T.border};text-align:left;font-weight:600;font-size:12px;white-space:nowrap}.bliss-tbl td{padding:7px 10px;border-bottom:1px solid ${T.border};font-size:13px;vertical-align:middle}.bliss-tbl tbody tr:last-child td{border-bottom:none}.bliss-tbl tbody tr:hover{background:${T.gray100}}`}</style>
+      <table className="bliss-tbl" style={{width:"100%",borderCollapse:"collapse"}}>{children}</table>
+    </div>;
+  }
   return <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-    <thead><tr>{cols.map(c=><th key={c.key} style={{padding:"6px 10px",background:"#f5f5f5",borderBottom:"1px solid #eee",textAlign:"left",fontWeight:600}}>{c.label}</th>)}</tr></thead>
-    <tbody>{(rows||[]).map((r,i)=><tr key={i} onClick={()=>onRow&&onRow(r)} style={{cursor:onRow?"pointer":"default",borderBottom:"1px solid #f0f0f0"}}>{cols.map(c=><td key={c.key} style={{padding:"6px 10px"}}>{r[c.key]}</td>)}</tr>)}</tbody>
+    <thead><tr>{cols.map(c=><th key={c.key} style={thS}>{c.label}</th>)}</tr></thead>
+    <tbody>{(rows||[]).map((r,i)=><tr key={i} onClick={()=>onRow&&onRow(r)} style={{cursor:onRow?"pointer":"default",borderBottom:"1px solid "+T.border}}>{cols.map(c=><td key={c.key} style={{padding:"7px 10px"}}>{r[c.key]}</td>)}</tr>)}</tbody>
   </table></div>;
 }
 async function loadAllFromDb(bizId) {
@@ -568,6 +576,51 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage }) {
     <SmartDatePicker open={showSheet} onClose={()=>setShowSheet(false)} anchorEl={dateAnchorRef.current}
       startDate={startDate} endDate={endDate} mode="sales"
       onApply={(s,e,p)=>{ setStartDate(s); setEndDate(e); setPeriodKey(p); setShowSheet(false); }}/>
+  </div>;
+}
+
+// ── 공통 헬퍼 ─────────────────────────────────────────
+const uid = () => { const c='abcdefghijklmnopqrstuvwxyz0123456789'; return Array.from({length:10},()=>c[Math.floor(Math.random()*c.length)]).join(''); };
+const fmt = (n) => { if(!n && n!==0) return '0'; return Number(n).toLocaleString('ko-KR'); };
+const _mc = (fn) => { if(fn) fn(); };
+function Empty({ msg='데이터 없음', icon='inbox' }) {
+  return <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'40px 0',gap:8,color:T.textMuted}}>
+    <I name={icon} size={28} color={T.gray400}/>
+    <span style={{fontSize:T.fs.sm}}>{msg}</span>
+  </div>;
+}
+function CustModal({ item, onSave, onClose, defBranch, userBranches, branches }) {
+  const isNew = !item?.id;
+  const [form, setForm] = React.useState(() => item ? {...item} : {id:'cust_'+uid(),name:'',phone:'',gender:'',bid:defBranch||'',memo:'',visits:0});
+  const f = (k,v) => setForm(p=>({...p,[k]:v}));
+  return <div style={{position:'fixed',inset:0,zIndex:3000,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,.45)'}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+    <div style={{background:T.bgCard,borderRadius:T.radius.lg,padding:24,width:'100%',maxWidth:440,boxShadow:T.shadow.md}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:18}}>
+        <span style={{fontSize:T.fs.lg,fontWeight:T.fw.bolder}}>{isNew?'고객 등록':'고객 수정'}</span>
+        <button onClick={onClose} style={{border:'none',background:'none',cursor:'pointer',fontSize:20,color:T.gray400,lineHeight:1}}>×</button>
+      </div>
+      <div style={{display:'flex',flexDirection:'column',gap:12}}>
+        <FLD label="매장">
+          <select className="inp" value={form.bid} onChange={e=>f('bid',e.target.value)}>
+            {(branches||[]).filter(b=>userBranches.includes(b.id)).map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+        </FLD>
+        <FLD label="이름"><input className="inp" value={form.name} onChange={e=>f('name',e.target.value)} placeholder="고객 이름"/></FLD>
+        <FLD label="연락처"><input className="inp" value={form.phone} onChange={e=>f('phone',e.target.value)} placeholder="01012345678"/></FLD>
+        <FLD label="성별">
+          <div style={{display:'flex',gap:8}}>
+            {[['F','여성'],['M','남성'],['','미지정']].map(([v,l])=>(
+              <button key={v} onClick={()=>f('gender',v)} style={{flex:1,padding:'6px',border:'1.5px solid',borderRadius:T.radius.md,cursor:'pointer',fontFamily:'inherit',fontSize:T.fs.sm,fontWeight:form.gender===v?T.fw.bolder:T.fw.normal,background:form.gender===v?T.primary:T.bgCard,color:form.gender===v?T.bgCard:T.gray700,borderColor:form.gender===v?T.primary:T.border}}>{l}</button>
+            ))}
+          </div>
+        </FLD>
+        <FLD label="메모"><textarea className="inp" rows={2} value={form.memo||''} onChange={e=>f('memo',e.target.value)} placeholder="메모"/></FLD>
+      </div>
+      <div style={{display:'flex',gap:10,marginTop:20}}>
+        <Btn variant="secondary" style={{flex:1}} onClick={onClose}>취소</Btn>
+        <Btn variant="primary" style={{flex:2}} onClick={()=>{ if(!form.name.trim()) return alert('이름을 입력하세요'); onSave(form); }}>저장</Btn>
+      </div>
+    </div>
   </div>;
 }
 
