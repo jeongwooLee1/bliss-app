@@ -161,3 +161,15 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - WhatsApp 발송: _load_ai_settings()에 wa_token, wa_phone_number_id 캐시 추가
 - AI 자동응답 비활성화 (테스트 중)
 - Nginx: /bliss-app/ location 추가
+
+## 대기 중 작업 (라이브 전환 시)
+
+### AI 자동 예약 전체 활성화
+- 현재: `ai_booking.py`에 `TEST_ALLOWED_USERS`로 테스트 계정만 허용
+- 라이브 시: `TEST_ALLOWED_USERS` 블록 제거 → 모든 고객 메시지에 AI 자동응답
+- 사용자에게 확인 후 진행
+
+### 인스타그램 DM API 연동
+- Meta 개발자 앱 있음 (WhatsApp용)
+- Instagram Messaging 권한 추가 + Webhook 설정 필요
+- 네이버톡톡과 동일한 AI 예약 접수 적용
