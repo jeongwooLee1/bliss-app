@@ -20,6 +20,11 @@ const _ACC_NAME = {
   101171979: "강남", 102071377: "왕십리", 101988152: "천호",
   101521969: "마곡", 101517367: "위례", 101476019: "용산",
   102507795: "홍대", 101522539: "잠실",
+  // Instagram IG ID → 지점 (문자열 키)
+  "17841400218759830": "강남", "17841455170480955": "서울",
+  "17841451286389128": "왕십리", "17841424540907024": "홍대",
+  "17841424994371009": "마곡", "17841449388904548": "잠실",
+  "17841445864668171": "용산",
 };
 const _ACC_BR = Object.fromEntries(Object.entries(_BR_ACC).map(([k,v])=>[v,k]));
 
@@ -125,7 +130,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
     if(!m) return "고객";
     const uid = m.user_id;
     if(names[uid]) return names[uid];
-    const withName = msgs.find(x=>x.user_id===uid&&x.user_name);
+    const withName = msgs.find(x=>x.user_id===uid&&x.user_name&&x.user_name.trim());
     if(withName) return withName.user_name;
     const uids=[...new Set(threads.map(t=>t.user_id))];
     return "고객"+(uids.indexOf(uid)+1||"");
@@ -201,7 +206,11 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   },[data?.customers, data?.custPackages, msgs, names]);
 
   const genAI = async()=>{
-    if(!sel||convo.length===0) return;
+    console.log("[genAI] called, sel:", sel?.channel, "convo:", convo.length);
+    if(!sel||convo.length===0){alert("대화가 선택되지 않았습니다.");return;}
+    const key=getGeminiKey();
+    console.log("[genAI] key exists:", !!key);
+    if(!key){alert("AI API 키가 설정되지 않았습니다. 관리설정에서 Gemini 키를 입력하세요.");return;}
     setAiLoading(true); setAiKoDraft("");
     try{
       const lastIn=[...convo].reverse().find(m=>m.direction==="in");
@@ -220,14 +229,16 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       const pkgInfo = findCustPkgInfo(sel.user_id);
       const pkgCtx = pkgInfo ? `\n\n[이 고객의 다회권 정보]\n${pkgInfo}` : "";
 
-      const prompt=`당신은 하우스왁싱 상담 직원입니다.${chatCtx}${priceCtx}${pkgCtx}\n\n중요: 가격, 영업시간, 다회권 잔여 등 사실 정보는 위 자료에 근거해서만 답변하세요. 모르는 정보는 "확인 후 안내드리겠습니다"라고 답하세요. 절대 추측이나 거짓 정보를 말하지 마세요.\n\n대화:\n${lastMsgs}\n\n고객 마지막 메시지에 친절하게 2-3문장으로 답변하세요. JSON만 출력(마크다운 없이):\n{"reply":"${langName}로 작성한 답변","ko":"한국어 번역"}`;
-      const res=await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="+getGeminiKey(),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
+      const prompt=`당신은 하우스왁싱 예약 접수 및 상담 직원입니다.${chatCtx}${priceCtx}${pkgCtx}\n\n[예약 접수 안내]\n- 예약 요청 시 적극적으로 접수하세요. "예약 확인 후 안내드리겠습니다"라고 하지 마세요.\n- 예약에 필요한 정보: 이름, 연락처, 희망 날짜/시간, 시술 종류, 지점\n- 부족한 정보가 있으면 친절하게 물어보세요\n- 모든 정보가 있으면 "예약 접수 완료했습니다. [이름]님 [날짜] [시간] [지점] [시술] 예약 확인됩니다." 형태로 답변\n- 영업시간: 매일 10:00~22:00 (마지막 예약 21:00)\n\n중요: 가격, 다회권 잔여 등 사실 정보는 위 자료에 근거해서만 답변하세요. 모르는 정보는 "확인 후 안내드리겠습니다"라고 답하세요. 절대 추측이나 거짓 정보를 말하지 마세요.\n\n대화:\n${lastMsgs}\n\n고객 마지막 메시지에 친절하게 2-3문장으로 답변하세요. JSON만 출력(마크다운 없이):\n{"reply":"${langName}로 작성한 답변","ko":"한국어 번역"}`;
+      const res=await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="+key,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
       if(res.status===429){alert("AI 요청 한도 초과. 잠시 후 시도해주세요.");return;}
+      if(!res.ok){const err=await res.text();alert("AI API 오류: "+res.status);console.error("[genAI] API error:",err);return;}
       const dd=await res.json();
       let raw=(dd.candidates?.[0]?.content?.parts?.[0]?.text||"").replace(/```json|```/g,"").trim();
-      try{const p=JSON.parse(raw);if(p.reply){setReply(p.reply);setAiKoDraft(p.ko||"");}}
-      catch{if(raw)setReply(raw);}
-    }catch(e){}finally{setAiLoading(false);}
+      if(!raw){alert("AI 응답이 비어있습니다.");return;}
+      try{const p=JSON.parse(raw);if(p.reply){setReply(p.reply);setAiKoDraft(p.ko||"");}else{setReply(raw);}}
+      catch{setReply(raw);}
+    }catch(e){console.error("[genAI]",e);alert("AI 오류: "+e.message);}finally{setAiLoading(false);}
   };
 
   const sendTranslated = async()=>{
