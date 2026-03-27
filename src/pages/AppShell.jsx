@@ -13,7 +13,7 @@ import SchedulePage from '../components/Schedule/SchedulePage'
 import { AdminPage, UsersPage as UsersPageReal } from '../components/Reservations/ReservationsPage'
 
 const uid = genId;
-const BLISS_V = "1.1.0"
+const BLISS_V = "1.2.0"
 const BIZ_ID = 'biz_khvurgshb'
 
 const fmt = (n) => n == null ? "0" : Number(n).toLocaleString("ko-KR");

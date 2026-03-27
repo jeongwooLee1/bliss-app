@@ -212,15 +212,20 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   const [custSearch, setCustSearch] = useState("");
   const [showCustDropdown, setShowCustDropdown] = useState(false);
   const [custResults, setCustResults] = useState([]);
-  // 디바운스 검색 (300ms, 2글자 이상)
+  // 디바운스 검색 (300ms, 2글자 이상) — DB 직접 검색
   useEffect(() => {
     if (custSearch.length < 2) { setCustResults([]); return; }
-    const timer = setTimeout(() => {
-      const q = custSearch.toLowerCase();
-      const results = (data?.customers||[]).filter(c =>
-        c.name.toLowerCase().includes(q) || c.phone.includes(q)
-      ).slice(0,50);
-      setCustResults(results);
+    const timer = setTimeout(async () => {
+      const q = custSearch.trim();
+      const isPhone = /^\d+$/.test(q);
+      try {
+        const bizId = _activeBizId || "biz_khvurgshb";
+        const filter = isPhone
+          ? `&business_id=eq.${bizId}&phone=ilike.*${q}*&limit=20`
+          : `&business_id=eq.${bizId}&name=ilike.*${encodeURIComponent(q)}*&limit=20`;
+        const rows = await sb.get("customers", filter);
+        setCustResults(Array.isArray(rows) ? fromDb("customers", rows) : []);
+      } catch(e) { console.error("custSearch err:", e); setCustResults([]); }
     }, 300);
     return () => clearTimeout(timer);
   }, [custSearch]);
@@ -578,9 +583,8 @@ ${naverText}
                   {branchRooms.map(rm => branchStaff.map(st => {
                     const br = (data.branches||[]).find(b=>b.id===branchId);
                     const brName = br?.short||br?.name||"";
-                    const rmLabel = rm.name.startsWith(brName) ? rm.name.slice(brName.length).trim() : rm.name;
                     const stLabel = st.dn && st.dn !== rm.name ? (st.dn.startsWith(brName) ? st.dn.slice(brName.length).trim() : st.dn) : "";
-                    const label = [brName, rmLabel, stLabel].filter(Boolean).join(" · ");
+                    const label = stLabel ? `${brName} · ${stLabel}` : brName;
                     return <option key={rm.id+st.id} value={`${rm.id}|${st.id}`}>{label}</option>;
                   }))}
                 </select>
@@ -1276,21 +1280,17 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   useEffect(() => {
     if (custSearch.length < 2) { setCustResults([]); return; }
     const timer = setTimeout(async () => {
-      const q = custSearch.toLowerCase();
-      // 로컬 먼저
-      const local = (data?.customers||[]).filter(c =>
-        c.name.toLowerCase().includes(q) || c.phone.includes(q)
-      ).slice(0, 30);
-      if (local.length > 0) { setCustResults(local); return; }
-      // 로컬에 없으면 DB 검색
+      const q = custSearch.trim();
+      const isPhone = /^\d+$/.test(q);
       try {
-        const encoded = encodeURIComponent(q);
-        const filter = `&business_id=eq.${data?.business?.id||_activeBizId}&or=(name.ilike.*${encoded}*,phone.ilike.*${encoded}*)&order=visits.desc.nullslast&limit=30`;
+        const bizId = _activeBizId || "biz_khvurgshb";
+        const filter = isPhone
+          ? `&business_id=eq.${bizId}&phone=ilike.*${q}*&limit=20`
+          : `&business_id=eq.${bizId}&name=ilike.*${encodeURIComponent(q)}*&limit=20`;
         const rows = await sb.get("customers", filter);
-        const parsed = rows.map ? fromDb("customers", rows) : [];
-        setCustResults(parsed);
-      } catch(e) { setCustResults([]); }
-    }, 400);
+        setCustResults(Array.isArray(rows) ? fromDb("customers", rows) : []);
+      } catch(e) { console.error("custSearch err:", e); setCustResults([]); }
+    }, 300);
     return () => clearTimeout(timer);
   }, [custSearch]);
   const selectCust = (c) => {
@@ -1384,9 +1384,19 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     + (items.extra_prod?.checked ? items.extra_prod.amount : 0);
   const discount = items.discount?.checked ? items.discount.amount : 0;
   const naverDeduct = isNaver ? naverPrepaid : 0;
-  const grandTotal = svcTotal + prodTotal - discount - naverDeduct;
-  // 실제 결제할 금액 (예약금·할인 차감)
-  const svcPayTotal = Math.max(0, svcTotal - discount - naverDeduct);
+  // 보유권 차감 합산 (다회권: 시술가격, 다담권: 입력 금액)
+  const pkgDeduct = Object.entries(pkgUse).reduce((sum, [pkgId, val]) => {
+    if (!val) return sum;
+    const pkg = custPkgs.find(p => p.id === pkgId);
+    if (!pkg) return sum;
+    const t = _pkgType(pkg);
+    if (t === "package" && val === true) return sum + svcTotal; // 다회권: 시술 전액
+    if (t === "prepaid" && typeof val === "number") return sum + val;
+    return sum;
+  }, 0);
+  const grandTotal = Math.max(0, svcTotal + prodTotal - discount - naverDeduct - pkgDeduct);
+  // 실제 결제할 금액 (예약금·할인·보유권 차감)
+  const svcPayTotal = Math.max(0, svcTotal - discount - naverDeduct - pkgDeduct);
   const prodPayTotal = prodTotal;
 
   // Count checked
@@ -1740,6 +1750,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                 </div>;
               })}
             </div>
+            {pkgDeduct > 0 && <div style={{marginTop:6,fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.orange}}>보유권 차감: -{pkgDeduct.toLocaleString()}원</div>}
           </div>}
 
           {/* 결제수단 분배 */}

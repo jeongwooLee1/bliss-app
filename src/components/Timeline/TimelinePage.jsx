@@ -1809,7 +1809,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         </>;
       })()}
 
-      {showModal && <TimelineModal item={modalData} onSave={handleSave} onDelete={handleDelete} onDeleteRequest={handleDeleteRequest} naverColShow={naverColShow} onClose={()=>_mc(()=>{setShowModal(false);setModalData(null)})} selBranch={userBranches[0]} userBranches={userBranches} data={data} setData={setData} setPage={setPage}/>}
+      {showModal && <TimelineModal item={modalData} onSave={handleSave} onDelete={handleDelete} onDeleteRequest={handleDeleteRequest} naverColShow={naverColShow} onClose={()=>_mc(()=>{setShowModal(false);setModalData(null)})} selBranch={userBranches[0]} userBranches={userBranches} data={{...data, staff: BASE_EMP_LIST.map(e=>({id:e.id,bid:e.branch_id,dn:e.id,name:e.id,branch_id:e.branch_id}))}} setData={setData} setPage={setPage}/>}
 
       {showQuickBook && <QuickBookModal
         onClose={()=>setShowQuickBook(false)}
