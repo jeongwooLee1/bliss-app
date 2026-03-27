@@ -583,8 +583,8 @@ ${naverText}
                   {branchRooms.map(rm => branchStaff.map(st => {
                     const br = (data.branches||[]).find(b=>b.id===branchId);
                     const brName = br?.short||br?.name||"";
-                    const stLabel = st.dn && st.dn !== rm.name ? (st.dn.startsWith(brName) ? st.dn.slice(brName.length).trim() : st.dn) : "";
-                    const label = stLabel ? `${brName} · ${stLabel}` : brName;
+                    const stName = st.dn && st.dn !== rm.name ? st.dn.replace(brName,"").trim() : "";
+                    const label = stName ? `${brName}-${stName}` : brName;
                     return <option key={rm.id+st.id} value={`${rm.id}|${st.id}`}>{label}</option>;
                   }))}
                 </select>
@@ -700,7 +700,8 @@ ${naverText}
                   {branchRooms.map(rm => branchStaff.map(st => {
                     const br = (data.branches||[]).find(b=>b.id===branchId);
                     const brName = br?.short||br?.name||"";
-                    const label = `${brName}${rm.name}${st.dn && st.dn!==rm.name ? " · "+st.dn : ""}`;
+                    const stName = st.dn && st.dn!==rm.name ? st.dn.replace(brName,"").trim() : "";
+                    const label = stName ? `${brName}-${stName}` : brName;
                     return <option key={rm.id+st.id} value={`${rm.id}|${st.id}`}>{label}</option>;
                   }))}
                 </select>
