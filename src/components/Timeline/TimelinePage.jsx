@@ -40,16 +40,47 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   // 직원 당일 지점 오버라이드: {empId_date: branchId}
   const [empBranchOverride, setEmpBranchOverride] = useState({});
 
-  // 직원 목록: employees_v1 (schedule_data 테이블)에서 동적 로드
+  // 직원 목록: employees_v1 (schedule_data 테이블)에서 동적 로드 + Realtime + 폴링
   const [empList, setEmpList] = useState([]);
   useEffect(() => {
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
+    const parseEmp = (val) => {
+      const list = typeof val === 'string' ? JSON.parse(val) : val;
+      return [...list, ...MALE_EMPLOYEES];
+    };
     fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.employees_v1&select=value`, { headers: H })
       .then(r => r.json()).then(rows => {
         if (!rows?.length) return;
-        const list = typeof rows[0].value === 'string' ? JSON.parse(rows[0].value) : rows[0].value;
-        setEmpList([...list, ...MALE_EMPLOYEES]);
+        setEmpList(parseEmp(rows[0].value));
       }).catch(() => {});
+    // Realtime 구독
+    let empCh = null;
+    let empLastRt = 0;
+    const onEmpChange = (payload) => {
+      if (payload?.new?.value) {
+        empLastRt = Date.now();
+        setEmpList(parseEmp(payload.new.value));
+      }
+    };
+    if (window._sbClient) {
+      empCh = window._sbClient.channel("employees_v1_rt")
+        .on("postgres_changes", { event:"UPDATE", schema:"public", table:"schedule_data", filter:"key=eq.employees_v1" }, onEmpChange)
+        .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.employees_v1" }, onEmpChange)
+        .subscribe();
+    }
+    // 폴링 fallback (30초)
+    const empPoll = setInterval(() => {
+      if (Date.now() - empLastRt < 25000) return;
+      fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.employees_v1&select=value`, { headers: H })
+        .then(r => r.json()).then(rows => {
+          if (!rows?.length) return;
+          setEmpList(parseEmp(rows[0].value));
+        }).catch(() => {});
+    }, 30000);
+    return () => {
+      clearInterval(empPoll);
+      try { empCh?.unsubscribe(); } catch(e) {}
+    };
   }, []);
 
   // employees_v1의 branch("gangnam")를 실제 branch_id("br_4bcauqvrb")로 매핑
@@ -605,8 +636,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const [rowH, setRowHRaw] = useState(() => tlDef("rh", 14));
   const [colW, setColWRaw] = useState(() => tlDef("cw", 160));
   const [timeUnit, setTimeUnitRaw] = useState(() => tlDef("tu", 5));
-  const [blockFs, setBlockFsRaw] = useState(() => tlDef("fs", 10));
-  const [blockOp, setBlockOpRaw] = useState(() => tlDef("op", 100));
+  const [blockFs, setBlockFsRaw] = useState(() => tlDef("fs", 13));
+  const [blockOp, setBlockOpRaw] = useState(() => tlDef("op", 50));
   const [statusClr, setStatusClrRaw] = useState(() => {
     const sc = dbTl.current.sc;
     return sc ? {...STATUS_CLR_DEFAULT,...sc} : {...STATUS_CLR_DEFAULT};
@@ -725,6 +756,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   };
 
   const handleSave = (item) => {
+    // 미배정 칼럼 roomId 정리
+    if (item.roomId && item.roomId.startsWith("blank_")) item.roomId = "";
     // 필수값 검증
     if (!item.isSchedule && item.type === "reservation" && !item.custName?.trim()) {
       alert("고객 이름을 입력해 주세요."); return;
@@ -1809,7 +1842,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         </>;
       })()}
 
-      {showModal && <TimelineModal item={modalData} onSave={handleSave} onDelete={handleDelete} onDeleteRequest={handleDeleteRequest} naverColShow={naverColShow} onClose={()=>_mc(()=>{setShowModal(false);setModalData(null)})} selBranch={userBranches[0]} userBranches={userBranches} data={{...data, staff: BASE_EMP_LIST.map(e=>({id:e.id,bid:e.branch_id,dn:e.id,name:e.id,branch_id:e.branch_id}))}} setData={setData} setPage={setPage}/>}
+      {showModal && <TimelineModal item={modalData} onSave={handleSave} onDelete={handleDelete} onDeleteRequest={handleDeleteRequest} naverColShow={naverColShow} onClose={()=>_mc(()=>{setShowModal(false);setModalData(null)})} selBranch={userBranches[0]} userBranches={userBranches} data={{...data, staff: BASE_EMP_LIST.map(e=>({id:e.id,bid:e.branch_id,dn:e.id,name:e.id,branch_id:e.branch_id})), workingStaffIds: (() => { const ws = getWorkingStaff(modalData?.bid, selDate); return ws ? ws.map(e=>e.id) : null; })() }} setData={setData} setPage={setPage}/>}
 
       {showQuickBook && <QuickBookModal
         onClose={()=>setShowQuickBook(false)}

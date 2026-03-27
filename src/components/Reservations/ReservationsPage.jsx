@@ -2234,7 +2234,7 @@ function AdminSaleItems({ data, setData }) {
   useEffect(()=>{setCats([...(data?.categories||[])].sort((a,b)=>(a.sort||0)-(b.sort||0)));},[data?.categories?.length]);
   const syncCats=u=>{setCats(u);if(setData)setData(p=>p?{...p,categories:u}:p);};
 
-  const filtered=filterCat==="all"?services:services.filter(s=>s.cat===filterCat);
+  const filtered=filterCat==="all"?[...services].sort((a,b)=>{const ai=cats.findIndex(c=>c.id===a.cat);const bi=cats.findIndex(c=>c.id===b.cat);if(ai!==bi)return (ai===-1?999:ai)-(bi===-1?999:bi);return (a.sort||0)-(b.sort||0);}):services.filter(s=>s.cat===filterCat);
 
   const {mouseHandlers:svcMH, touchHandlers:svcTH, overIdx:svcOver} = useTouchDragSort(filtered, (reordered) => {
     const others = filterCat==="all" ? [] : services.filter(s=>s.cat!==filterCat);

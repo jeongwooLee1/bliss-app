@@ -92,7 +92,8 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   const isReadOnly = item?.readOnly || false;
   const branchId = item?.bid || selBranch;
   const branchRooms = (data.rooms||[]).filter(r=>r.branch_id===branchId);
-  const branchStaff = (data.staff||[]).filter(s=>s.bid===branchId);
+  const allBranchStaff = (data.staff||[]).filter(s=>s.bid===branchId);
+  const branchStaff = data.workingStaffIds ? allBranchStaff.filter(s => data.workingStaffIds.includes(s.id)) : allBranchStaff;
   const fmt = (v) => v==null?"":Number(v).toLocaleString();
 
   const svcAllowQty = (svcId) => {
@@ -118,8 +119,9 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   const itemDur = item?.dur || (isNaverItem ? 60 : BASE_DUR);
   const defaultEnd = () => { const t = item?.time||"10:00"; const [h,m] = t.split(":").map(Number); const em = m + itemDur; return `${String(h+Math.floor(em/60)).padStart(2,"0")}:${String(em%60).padStart(2,"0")}`; };
   const addMin = (t, mins) => { const [h,m] = t.split(":").map(Number); const em = m + mins; return `${String(h+Math.floor(em/60)).padStart(2,"0")}:${String(em%60).padStart(2,"0")}`; };
+  const initRoomId = (item?.roomId && item.roomId.startsWith("blank_")) ? "" : (item?.roomId || branchRooms[0]?.id);
   const [f, setF] = useState(isNew && !item?.id ? {
-    id: uid(), bid: branchId, roomId: item?.roomId||branchRooms[0]?.id,
+    id: uid(), bid: branchId, roomId: initRoomId,
     custId: item?._prefill?.custId || null,
     custName: item?._prefill?.custName || "",
     custPhone: item?._prefill?.custPhone || "",
