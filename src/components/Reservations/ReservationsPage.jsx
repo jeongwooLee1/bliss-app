@@ -1173,18 +1173,19 @@ function CustomersPage({ data, setData, userBranches, isMaster }) {
 
   const handleSave = (item) => {
     const normalized = {...item, phone: (item.phone || "").replace(/[^0-9]/g, "")};
-    // 신규 등록 시 전화번호 중복 체크
-    const isNew = !(data?.customers||[]).find(c=>c.id===normalized.id);
-    if (isNew && normalized.phone) {
+    const isEdit = !!editItem; // editItem이 있으면 수정 모드
+    if (!isEdit && normalized.phone) {
       const dup = (data?.customers||[]).find(c=>c.phone===normalized.phone);
       if (dup) { alert(`동일 번호(${normalized.phone})로 등록된 고객이 있습니다: ${dup.name}`); return; }
     }
-    setData(prev => {
-      const ex = (prev?.customers||[]).find(c=>c.id===normalized.id);
-      if (ex) { sb.update("customers",normalized.id,toDb("customers",normalized)).catch(console.error); return {...prev,customers:(prev?.customers||[]).map(c=>c.id===normalized.id?normalized:c)}; }
-      sb.insert("customers",toDb("customers",normalized)).catch(console.error);
-      return {...prev,customers:[...prev.customers,normalized]};
-    });
+    if (isEdit) {
+      const dbRow = toDb("customers", normalized); delete dbRow.id;
+      sb.update("customers", normalized.id, dbRow).catch(console.error);
+      setData(prev => ({...prev, customers: (prev?.customers||[]).map(c=>c.id===normalized.id?normalized:c)}));
+    } else {
+      sb.insert("customers", toDb("customers", normalized)).catch(console.error);
+      setData(prev => ({...prev, customers: [...(prev?.customers||[]), normalized]}));
+    }
     setShowModal(false); setEditItem(null);
   };
 

@@ -751,6 +751,14 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         sb.insert("customers", toDb("customers", newCust)).catch(console.error);
       }
     }
+    // 숨김 고객 자동 활성화
+    if (item.custId) {
+      const cust = (data?.customers||[]).find(c=>c.id===item.custId);
+      if (cust?.isHidden) {
+        sb.update("customers",cust.id,{is_hidden:false}).catch(console.error);
+        setData(prev=>({...prev,customers:(prev?.customers||[]).map(c=>c.id===cust.id?{...c,isHidden:false}:c)}));
+      }
+    }
     const allItems = [];
     const isNewItem = !data?.reservations?.find(r => r.id === item.id);
     const isExistItem = !isNewItem;
