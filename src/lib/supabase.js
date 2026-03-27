@@ -6,3 +6,6 @@ export const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 export const supabase = createClient(SB_URL, SB_KEY, {
   auth: { persistSession: true, autoRefreshToken: true }
 })
+
+// Realtime 구독용 글로벌 참조
+window._sbClient = supabase

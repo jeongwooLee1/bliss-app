@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { T, NAVER_COLS, getNaverVal, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, BRANCH_DEFAULT_COLORS, branchColor, STATUS_CLR_DEFAULT } from '../../lib/constants'
+import { createPortal } from 'react-dom'
+import { T, NAVER_COLS, getNaverVal, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, BRANCH_DEFAULT_COLORS, branchColor, STATUS_CLR_DEFAULT, STATUS_KEYS, SCH_BRANCH_MAP, MALE_EMPLOYEES } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY, sbHeaders } from '../../lib/sb'
 import { fromDb, toDb, resolveSystemIds, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS } from '../../lib/db'
 import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone } from '../../lib/utils'
@@ -7,6 +8,23 @@ import I from '../common/I'
 import TimelineModal from './ReservationModal'
 import useTouchDragSort from '../../hooks/useTouchDragSort'
 
+const _mc = (fn) => { if(fn) fn(); };
+const uid = genId;
+const Btn = ({ children, variant="primary", size="md", disabled, onClick, style={}, ...p }) => {
+  const bg = variant==="primary"?T.primary:variant==="danger"?T.danger:variant==="ghost"?"transparent":T.gray100;
+  const color = variant==="ghost"?T.primary:variant==="secondary"?T.text:"#fff";
+  const border = variant==="ghost"?"1px solid "+T.border:"none";
+  const pd = size==="sm"?"4px 10px":size==="lg"?"10px 20px":"7px 14px";
+  return <button onClick={disabled?undefined:onClick} disabled={disabled} style={{background:bg,color,border,borderRadius:T.radius.md,padding:pd,fontSize:T.fs.sm,fontWeight:T.fw.bold,cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.6:1,fontFamily:"inherit",...style}} {...p}>{children}</button>;
+};
+function EyeDrop({ onPick, size=28 }) {
+  const pick = async () => {
+    if (!window.EyeDropper) return;
+    try { const r = await new window.EyeDropper().open(); onPick(r.sRGBHex); } catch(e) {}
+  };
+  if (!window.EyeDropper) return null;
+  return <button onClick={pick} style={{width:size,height:size,border:"1px solid #ddd",borderRadius:T.radius.md,background:T.bgCard,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0}} title="색상 추출"><I name="eyedropper" size={14} color={T.gray600}/></button>;
+}
 const GridLayout = ({ cols=2, gap=12, children, style={}, ...p }) => {
   const gc = typeof cols === "number" ? `repeat(${cols},1fr)` : cols;
   return <div style={{display:"grid",gridTemplateColumns:gc,gap,...style}} {...p}>{children}</div>;
@@ -22,25 +40,25 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   // 직원 당일 지점 오버라이드: {empId_date: branchId}
   const [empBranchOverride, setEmpBranchOverride] = useState({});
 
-  // 직원-지점 매핑
-  const SCH_BRANCH_MAP = {"nonhyeon":"br_4bcauqvrb","gang":"br_4bcauqvrb","hongdae":"br_l6yzs2pkq","yongsan":"br_ybo3rmulv","jamsil":"br_lfv2wgdf1","cheonho":"br_xu60omgdf","wirye":"br_g768xdu4w","wangsimni":"br_wkqsxj6k1","magok":"br_k57zpkbx1"};
-  const BASE_EMP_LIST = [
-    // 강남+왕십리
-    {id:"경아",branch:"gangnam"},  {id:"서현",branch:"gangnam"},
-    {id:"소연",branch:"wangsimni"},{id:"수연",branch:"wangsimni"},
-    // 홍대+마곡
-    {id:"현아",branch:"hongdae"}, {id:"혜경",branch:"hongdae"},
-    {id:"지은",branch:"magok"},   {id:"민아",branch:"magok"},
-    // 용산
-    {id:"보령",branch:"yongsan"}, {id:"희서",branch:"yongsan"},{id:"민정",branch:"yongsan"},
-    // 잠실+위례
-    {id:"소이",branch:"jamsil"},
-    {id:"유라",branch:"wirye"},   {id:"다해",branch:"wirye"},
-    // 천호
-    {id:"미진",branch:"cheonho"},{id:"수민",branch:"cheonho"},
-    // 남자직원
-    {id:"재윤",branch:"male"},{id:"주용",branch:"male"},
-  ];
+  // 직원 목록: employees_v1 (schedule_data 테이블)에서 동적 로드
+  const [empList, setEmpList] = useState([]);
+  useEffect(() => {
+    const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
+    fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.employees_v1&select=value`, { headers: H })
+      .then(r => r.json()).then(rows => {
+        if (!rows?.length) return;
+        const list = typeof rows[0].value === 'string' ? JSON.parse(rows[0].value) : rows[0].value;
+        setEmpList([...list, ...MALE_EMPLOYEES]);
+      }).catch(() => {});
+  }, []);
+
+  // employees_v1의 branch("gangnam")를 실제 branch_id("br_4bcauqvrb")로 매핑
+  const BASE_EMP_LIST = React.useMemo(() => {
+    return empList.map(e => ({
+      id: e.id,
+      branch_id: SCH_BRANCH_MAP[e.branch] || e.branch,
+    }));
+  }, [empList]);
 
   // schHistory 파싱 함수
   const parseSchHistory = (val) => {
@@ -115,28 +133,32 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       }
     }, 60000); // 1분마다 체크
 
-    // Realtime 구독 (_sbClient 있으면 Realtime, 없으면 30초 폴링)
+    // Realtime 구독 (INSERT/UPDATE 모두 감지) + 폴링 fallback
     let channel = null;
     let pollTimer = null;
+    let lastRtUpdate = 0;
+    const onSchChange = (payload) => {
+      if (payload?.new?.value) {
+        lastRtUpdate = Date.now();
+        const newSch = parseSchHistory(payload.new.value);
+        setSchHistory(p => mergeWithLock(newSch));
+      }
+    };
     if (window._sbClient) {
       channel = window._sbClient.channel("schedule_data_rt")
-        .on("postgres_changes", { event:"UPDATE", schema:"public", table:"schedule_data", filter:"key=eq.schHistory_v1" },
-          (payload) => {
-            if (payload?.new?.value) {
-              const newSch = parseSchHistory(payload.new.value);
-              setSchHistory(p => mergeWithLock(newSch));
-            }
-          }
-        ).subscribe();
-    } else {
-      pollTimer = setInterval(() => {
-        fetch(`${SB_URL_SCH}/rest/v1/schedule_data?key=eq.schHistory_v1&select=value`, { headers: H })
-          .then(r=>r.json()).then(rows=>{
-            if (!rows?.length) return;
-            setSchHistory(p => mergeWithLock(parseSchHistory(rows[0].value)));
-          }).catch(()=>{});
-      }, 30000);
+        .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.schHistory_v1" }, onSchChange)
+        .on("postgres_changes", { event:"UPDATE", schema:"public", table:"schedule_data", filter:"key=eq.schHistory_v1" }, onSchChange)
+        .subscribe();
     }
+    // 폴링도 병행 (Realtime 실패 대비, 10초 간격) — RT 수신 직후에는 스킵
+    pollTimer = setInterval(() => {
+      if (Date.now() - lastRtUpdate < 8000) return; // RT가 최근 동작했으면 폴링 스킵
+      fetch(`${SB_URL_SCH}/rest/v1/schedule_data?key=eq.schHistory_v1&select=value`, { headers: H })
+        .then(r=>r.json()).then(rows=>{
+          if (!rows?.length) return;
+          setSchHistory(p => mergeWithLock(parseSchHistory(rows[0].value)));
+        }).catch(()=>{});
+    }, 10000);
 
     return () => {
       clearInterval(timer);
@@ -181,32 +203,74 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const empInBranch = (empId, date, branchId) => {
     const segs = getEmpBranches(empId, date);
     if (!segs) {
-      // 오버라이드 없으면 원래 지점
+      // 오버라이드 없으면 원래 지점 (rooms의 branch_id로 직접 비교)
       const emp = BASE_EMP_LIST.find(e => e.id === empId);
-      return emp && SCH_BRANCH_MAP[emp.branch] === branchId;
+      return emp && emp.branch_id === branchId;
     }
     return segs.some(s => s.branchId === branchId);
   };
 
-  const getWorkingStaff = (branchId, date) => {
-    // 해당 지점 소속 or 이동된 직원
-    const branchEmps = BASE_EMP_LIST.filter(e => empInBranch(e.id, date, branchId));
-    if (branchEmps.length === 0) return null;
-
-    // Tier 1: 근무표 확정된 날짜 → 근무 직원만
-    if (schHistory) {
-      const hasSchData = branchEmps.some(e => schHistory[e.id]?.[date] !== undefined);
-      if (hasSchData) {
-        const working = branchEmps.filter(e => {
-          const dayStatus = schHistory[e.id]?.[date];
-          return dayStatus !== "휴무" && dayStatus !== "휴무(꼭)";
-        });
-        return working.length > 0 ? working : null;
+  // "지원(강남)" → 강남 branch_id로 매핑하는 헬퍼
+  const branchNameToId = React.useMemo(() => {
+    const map = {};
+    (data?.branches || []).forEach(b => {
+      if (b.short) map[b.short] = b.id;                          // "강남점"
+      if (b.name) map[b.name] = b.id;                            // "하우스왁싱 강남본점"
+      // "강남점" → "강남", "왕십리점" → "왕십리" 매칭
+      if (b.short && b.short.endsWith("점")) map[b.short.slice(0, -1)] = b.id;
+      if (b.name && b.name.endsWith("점")) map[b.name.slice(0, -1)] = b.id;
+      // "하우스왁싱 강남본점" → "강남본점", "강남본" 매칭
+      if (b.name && b.name.startsWith("하우스왁싱 ")) {
+        const n = b.name.replace("하우스왁싱 ", "");
+        map[n] = b.id;
+        if (n.endsWith("점")) map[n.slice(0, -1)] = b.id;
       }
+      // "강남본점" → "강남" (본점 제거)
+      if (b.short) {
+        const base = b.short.replace(/본?점$/, "");
+        if (base) map[base] = b.id;
+      }
+    });
+    return map;
+  }, [data?.branches]);
+
+  const parseSupportBranch = (status) => {
+    if (!status || !status.startsWith("지원(")) return null;
+    const match = status.match(/^지원\((.+)\)$/);
+    if (!match) return null;
+    return branchNameToId[match[1]] || null;
+  };
+
+  const getWorkingStaff = (branchId, date) => {
+    if (!schHistory) {
+      // 근무표 없으면 원래 소속 직원만
+      const branchEmps = BASE_EMP_LIST.filter(e => empInBranch(e.id, date, branchId));
+      return branchEmps.length > 0 ? branchEmps : null;
     }
 
-    // Tier 2: 근무표 미확정 → 전체 직원
-    return branchEmps;
+    // 모든 직원 중 이 지점에 해당하는 직원 찾기
+    const working = [];
+    BASE_EMP_LIST.forEach(e => {
+      const dayStatus = schHistory[e.id]?.[date];
+      if (dayStatus === "휴무" || dayStatus === "휴무(꼭)") return; // 휴무는 제외
+
+      // "지원(강남)" → 해당 지점에 표시
+      const supportBid = parseSupportBranch(dayStatus);
+      if (supportBid === branchId) {
+        working.push(e);
+        return;
+      }
+
+      // 지원 중인 직원은 원래 지점에서 제외
+      if (supportBid) return;
+
+      // 원래 소속 지점이면 표시
+      if (empInBranch(e.id, date, branchId)) {
+        working.push(e);
+      }
+    });
+
+    return working.length > 0 ? working : null;
   };
 
   // 직원이 특정 지점에서 활성인 시간 범위 반환 (null=종일)
@@ -231,18 +295,11 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       try {
         const sr = scrollRef.current;
         if (sr) {
-          // 2. 세로 스크롤 - 예약 시간 위치 중앙
+          // 2. 세로 스크롤 - 예약 시간 위치 중앙 (실제 설정값 사용)
           const timeStr = pendingOpenRes.time || "10:00";
-          const [hh, mm] = timeStr.split(":").map(Number);
-          const startHourLocal = 8;
-          const rowHLocal = 60;
-          const timeUnitLocal = 10;
-          const headerHLocal = 60;
-          const topbarHLocal = window.innerWidth <= 768 ? 42 : 48;
-          const gridTopLocal = topbarHLocal + headerHLocal;
-          const yPos = gridTopLocal + ((hh - startHourLocal) * 60 + mm) / timeUnitLocal * (rowHLocal / (60 / timeUnitLocal));
+          const yPos = timeToY(timeStr);
           const srH = sr.clientHeight;
-          sr.scrollTop = Math.max(0, yPos - srH / 2);
+          sr.scrollTop = Math.max(0, yPos - srH / 3);
 
           // 3. 가로 스크롤 - 해당 지점 컬럼 중앙
           const rid = pendingOpenRes.reservationId || pendingOpenRes.id;
@@ -472,7 +529,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     }
     return [...naverRooms, ...staffRooms];
   });
-  const isNaverRes = (r) => !!r.reservationId;
+  const isNaverRes = (r) => !!r.reservationId || r.source === "ai_booking";
   
   const allRoomIds = new Set(allRooms.map(r => r.id));
 
@@ -572,8 +629,28 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const setStatusClr = (k,v) => { setStatusClrRaw(p => { const n = {...p,[k]:v}; dbTl.current = {...dbTl.current, sc:n}; tlSaveLocal(dbTl.current); try{localStorage.setItem("tl_sc",JSON.stringify(n))}catch(e){} return n; }); };
   // Sync status colors to localStorage for other components using getStatusClr()
   useEffect(() => { try{localStorage.setItem("tl_sc",JSON.stringify(statusClr))}catch(e){} }, [statusClr]);
+  // 예약 endTime이 설정된 종료시간을 초과하면 자동 확장
+  const effectiveEndHour = useMemo(() => {
+    let maxH = endHour;
+    (data?.reservations||[]).forEach(r => {
+      if (r.date !== selDate) return;
+      // endTime은 DB에 없으므로 time+dur로 계산
+      let et = r.endTime || r.end_time;
+      if (!et && r.time && r.dur) {
+        const [hh, mm] = r.time.split(":").map(Number);
+        const endMin = hh * 60 + mm + Number(r.dur);
+        et = `${String(Math.floor(endMin/60)).padStart(2,"0")}:${String(endMin%60).padStart(2,"0")}`;
+      }
+      if (!et) return;
+      const h = parseInt(et.split(":")[0]);
+      const m = parseInt(et.split(":")[1]);
+      const needed = m > 0 ? h + 1 : h;
+      if (needed > maxH) maxH = Math.min(24, needed);
+    });
+    return maxH;
+  }, [data?.reservations, selDate, endHour]);
   const slotsPerHour = 60 / timeUnit;
-  const totalRows = (endHour - startHour) * slotsPerHour;
+  const totalRows = (effectiveEndHour - startHour) * slotsPerHour;
   const headerH = 40;
 
   // CSS grid background
@@ -602,7 +679,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       labels.push({ i, isHour, m, text: isHour ? (isMob ? `${h12}:00` : `${ampm} ${String(h12).padStart(2,"0")}:00`) : `${String(m).padStart(2,"0")}` });
     }
     return labels;
-  }, [startHour, endHour, timeUnit, totalRows]);
+  }, [startHour, effectiveEndHour, timeUnit, totalRows]);
 
   const timeToY = (timeStr) => {
     const [h, m] = timeStr.split(":").map(Number);
@@ -652,17 +729,27 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     if (!item.isSchedule && item.type === "reservation" && !item.custName?.trim()) {
       alert("고객 이름을 입력해 주세요."); return;
     }
-    // 신규고객이면 DB에 고객 등록
+    // 신규고객이면 DB에 고객 등록 (전화번호 중복 체크)
     if (item.isNewCust && item.custName && !item.custId) {
-      const newCustId = "cust_" + uid();
-      item.custId = newCustId;
-      const newCust = {
-        id: newCustId, bid: item.bid, name: item.custName, phone: (item.custPhone || "").replace(/[^0-9]/g, ""),
-        gender: item.custGender || "", visits: 0, lastVisit: null, memo: "",
-        custNum: ""
-      };
-      setData(prev => ({ ...prev, customers: [...prev.customers, newCust] }));
-      sb.insert("customers", toDb("customers", newCust)).catch(console.error);
+      const normPhone = (item.custPhone || "").replace(/[^0-9]/g, "");
+      if (normPhone) {
+        const dup = (data?.customers||[]).find(c => c.phone === normPhone);
+        if (dup) {
+          if (!confirm(`동일 번호(${normPhone})로 등록된 고객이 있습니다: ${dup.name}\n기존 고객으로 연결할까요?`)) return;
+          item.custId = dup.id; item.custName = dup.name; item.isNewCust = false;
+        }
+      }
+      if (!item.custId) {
+        const newCustId = "cust_" + uid();
+        item.custId = newCustId;
+        const newCust = {
+          id: newCustId, bid: item.bid, name: item.custName, phone: normPhone,
+          gender: item.custGender || "", visits: 0, lastVisit: null, memo: "",
+          custNum: ""
+        };
+        setData(prev => ({ ...prev, customers: [...prev.customers, newCust] }));
+        sb.insert("customers", toDb("customers", newCust)).catch(console.error);
+      }
     }
     const allItems = [];
     const isNewItem = !data?.reservations?.find(r => r.id === item.id);
@@ -707,11 +794,11 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         return row;
       })).catch(console.error);
     }, 0);
-    // 알림톡 신규 등록 팝업
+    // 예약안내 신규 등록 팝업
     if(!item.isSchedule && isNewItem && item.custPhone) {
       setAlimtalkConfirm({...item, _alimtalkType: "confirm"});
     }
-    // 알림톡 변경 팝업 (isExistItem이고 고객 전화번호 있을 때)
+    // 예약안내 변경 팝업 (isExistItem이고 고객 전화번호 있을 때)
     if(isExistItem && !item.isSchedule && item.custPhone) {
       setAlimtalkConfirm(item);
     }
@@ -720,7 +807,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
 
   // ── Delete with repeat options ──
   const [deletePopup, setDeletePopup] = useState(null);
-  const [alimtalkConfirm, setAlimtalkConfirm] = useState(null); // {item} 저장 후 알림톡 발송 여부 팝업
+  const [alimtalkConfirm, setAlimtalkConfirm] = useState(null); // {item} 저장 후 예약안내 발송 여부 팝업
 
   const handleDeleteRequest = (block) => {
     const sourceId = block.repeatSourceId || block.id;
@@ -987,7 +1074,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         dur: r.dur
       }).catch(console.error);
     }
-    // 알림톡 발송
+    // 예약안내 발송
     if (sendAlimtalkFlag && block.custPhone && !block.isSchedule) {
       try {
         const r = (data?.reservations||[]).find(rv => rv.id === block.id);
@@ -999,7 +1086,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           "#{작업자}":r?.worker||"", "#{작업장소}":branch?.name||"",
           "#{대표전화번호}":branch?.phone||"", "#{예약URL}":rsvUrl
         }, (typeof branch?.notiConfig==="string"?JSON.parse(branch?.notiConfig)||{}:branch?.notiConfig||{}), branch?.id);
-      } catch(e) { console.warn("알림톡 변경:", e); }
+      } catch(e) { console.warn("예약안내 변경:", e); }
     }
     setPendingChange(null);
   };
@@ -1073,7 +1160,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     setData(prev => ({...prev, reservations: (prev?.reservations||[]).map(r => mismatched.some(m => m.id === r.id) ? {...r, status: "confirmed"} : r)}));
   }, [data?.reservations?.filter(r => r.status === "pending").length]);
   const now = new Date(nowTick);
-  const nowY = (selDate === todayStr() && now.getHours() >= startHour && now.getHours() < endHour) ? timeToY(`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`) : -1;
+  const nowY = (selDate === todayStr() && now.getHours() >= startHour && now.getHours() < effectiveEndHour) ? timeToY(`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`) : -1;
 
   // Date helpers
   const DAYS_KR = ["일","월","화","수","목","금","토"];
@@ -1106,7 +1193,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       })()}
       {/* Pending Reservations Alert - OUTSIDE scroll, always visible */}
       {(() => {
-        const pendingList = (data?.reservations||[]).filter(r => r.status === "pending" && (isMaster ? branchesToShow : allBranchList.filter(b => userBranches.includes(b.id))).some(b => b.id === r.bid) && !(r.memo && r.memo.includes("확정완료")));
+        const pendingList = (data?.reservations||[]).filter(r => (r.status === "pending" || r.status === "request") && (isMaster ? branchesToShow : allBranchList.filter(b => userBranches.includes(b.id))).some(b => b.id === r.bid) && !(r.memo && r.memo.includes("확정완료")));
         if (pendingList.length === 0) return null;
         return <div style={{background:T.orangeLt,borderBottom:"1px solid #FFB74D",padding:"6px 12px",display:"flex",alignItems:"center",gap:T.sp.sm,flexShrink:0,cursor:"pointer",animation:"pendingBlink 2s infinite",width:"100%",boxSizing:"border-box"}}
           onClick={()=>{
@@ -1139,7 +1226,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           }}>
           <span style={{fontSize:T.fs.xl}}><I name="bell" size={18} color={T.orange}/></span>
           <div style={{flex:1,minWidth:0}}>
-            <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.orange}}>확정대기 {pendingList.length}건</span>
+            <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.orange}}>{pendingList.some(r=>r.status==="request")?"AI 예약신청":"확정대기"} {pendingList.length}건</span>
             <span style={{fontSize:T.fs.xxs,color:T.orange,marginLeft:8}}>
               {pendingList.slice(0,3).map(r => {
                 const br = allBranchList.find(b=>b.id===r.bid);
@@ -1230,7 +1317,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
             }}>{rtPendingCount > 9 ? "9+" : rtPendingCount}</span>}
           </button>
           <div style={{position:"relative",flexShrink:0}} ref={el => { if(el) el._settingsBtn = el; }}>
-            <button onClick={(e)=>{setShowSettings(!showSettings);}} id="settings-btn"
+            <button onClick={(e)=>{const next=!showSettings;setShowSettings(next);if(next&&scrollRef.current)scrollRef.current.scrollLeft=0;}} id="settings-btn"
               style={{height:32,padding:"0 12px",border:"none",borderRadius:T.radius.md,background:"transparent",
                 cursor:"pointer",background:showSettings?T.primaryLt:"none",border:showSettings?"1px solid "+T.primary:"1px solid transparent",borderRadius:T.radius.md,padding:"4px 6px",display:"flex",alignItems:"center",justifyContent:"center"}}><I name="settings" size={17} color={showSettings?T.primary:T.gray500}/></button>
           </div>
@@ -1326,7 +1413,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             const ov = empBranchOverride[overrideKey];
                             const segs = ov ? (typeof ov==="string" ? [{branchId:ov,from:null,until:null}] : (ov.segments||[])) : [];
                             const empBase = BASE_EMP_LIST.find(e=>e.id===room.staffId);
-                            const baseBranch = empBase ? SCH_BRANCH_MAP[empBase.branch] : null;
+                            const baseBranch = empBase ? empBase.branch_id : null;
                             const allBranches = (data.branches||[]).filter(b=>
                               branchesToShow.some(bs=>bs.id===b.id) || b.id===baseBranch
                             );
@@ -1346,7 +1433,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                               }).map((s,i,arr)=>({...s, until: arr[i+1]?.from||null}));
                               // 원래 지점이 없으면 자동 추가 (첫 이동 전까지)
                               const empBase = BASE_EMP_LIST.find(e=>e.id===room.staffId);
-                              const baseBranchId = empBase ? SCH_BRANCH_MAP[empBase.branch] : null;
+                              const baseBranchId = empBase ? empBase.branch_id : null;
                               if(baseBranchId && !merged.find(s=>s.branchId===baseBranchId)) {
                                 const firstFrom = merged[0]?.from || null;
                                 merged = [{branchId:baseBranchId, from:null, until:firstFrom}, ...merged];
@@ -1521,7 +1608,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                       : "";
                     // 네이버 취소/대기 상태 처리
                     const isNaverCancelled = block.status === "naver_cancelled";
-                    const isNaverPending = block.status === "pending" && !(block.memo && block.memo.includes("확정완료"));
+                    const isNaverPending = (block.status === "pending" || block.status === "request") && !(block.memo && block.memo.includes("확정완료"));
                     // 네이버 예약이고 아직 일반 칼럼에 미배정 (roomId 없거나 nv_ 접두)
                     const isNaverUnassigned = !!block.reservationId && (!block.roomId || block.roomId.startsWith("nv_"));
                     const stClr = block.type==="reservation" && !block.isSchedule && statusClr[block.status];
@@ -1654,7 +1741,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
               "#{작업자}":item.worker||"", "#{작업장소}":branch?.name||"",
               "#{대표전화번호}":branch?.phone||"", "#{예약URL}":rsvUrl
             }, (typeof branch?.notiConfig==="string"?JSON.parse(branch?.notiConfig)||{}:branch?.notiConfig||{}), branch?.id);
-          } catch(e) { console.warn("알림톡:", e); }
+          } catch(e) { console.warn("예약안내:", e); }
           setAlimtalkConfirm(null);
         };
         const vw = window.innerWidth; const vh = window.innerHeight;
@@ -1666,8 +1753,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
             width:popW, background:T.bgCard, borderRadius:14,
             boxShadow:'0 8px 32px rgba(0,0,0,.22)', fontFamily:'inherit', zIndex:9998, overflow:'hidden'}}>
             <div style={{padding:'16px 16px 10px', textAlign:'center'}}>
-              <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.text,marginBottom:4}}>{label} 알림톡</div>
-              <div style={{fontSize:T.fs.xs,color:T.gray600}}>{item.custName} 고객님께 알림톡을 발송하시겠습니까?</div>
+              <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.text,marginBottom:4}}>{label} 예약안내</div>
+              <div style={{fontSize:T.fs.xs,color:T.gray600}}>{item.custName} 고객님께 예약안내을 발송하시겠습니까?</div>
             </div>
             <div style={{display:'flex',borderTop:'1px solid '+T.gray100}}>
               <button onClick={()=>setAlimtalkConfirm(null)} style={{flex:1,padding:'12px 0',fontSize:T.fs.sm,fontWeight:600,border:'none',borderRight:'1px solid '+T.gray100,background:'none',color:T.textSub,cursor:'pointer',fontFamily:'inherit'}}>발송 안함</button>
@@ -1704,10 +1791,10 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
               <div style={{fontSize:T.fs.xs,color:T.gray600}}>{desc}</div>
             </div>
             <div style={{display:'flex',flexDirection:'column',borderTop:'1px solid '+T.gray100}}>
-              {!block.isSchedule && block.custPhone && <button onClick={()=>_mc(()=>confirmChange(true))} style={{padding:'11px 0',fontSize:T.fs.sm,fontWeight:700,border:'none',borderBottom:'1px solid '+T.gray100,background:'none',color:T.primary,cursor:'pointer',fontFamily:'inherit'}}>확인 + 알림톡 발송</button>}
+              {!block.isSchedule && block.custPhone && <button onClick={()=>_mc(()=>confirmChange(true))} style={{padding:'11px 0',fontSize:T.fs.sm,fontWeight:700,border:'none',borderBottom:'1px solid '+T.gray100,background:'none',color:T.primary,cursor:'pointer',fontFamily:'inherit'}}>확인 + 예약안내 발송</button>}
               <div style={{display:'flex'}}>
                 <button onClick={()=>_mc(cancelChange)} style={{flex:1,padding:'11px 0',fontSize:T.fs.sm,fontWeight:600,border:'none',borderRight:'1px solid '+T.gray100,background:'none',color:T.textSub,cursor:'pointer',fontFamily:'inherit'}}>취소</button>
-                <button onClick={()=>_mc(()=>confirmChange(false))} style={{flex:1,padding:'11px 0',fontSize:T.fs.sm,fontWeight:600,border:'none',background:'none',color:T.text,cursor:'pointer',fontFamily:'inherit'}}>알림톡 없이 확인</button>
+                <button onClick={()=>_mc(()=>confirmChange(false))} style={{flex:1,padding:'11px 0',fontSize:T.fs.sm,fontWeight:600,border:'none',background:'none',color:T.text,cursor:'pointer',fontFamily:'inherit'}}>예약안내 없이 확인</button>
               </div>
             </div>
           </div>
@@ -1754,8 +1841,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         data={data}
       />}
 
-      {/* Settings dropdown (fixed, outside overflow) */}
-      {showSettings && <>{(() => {
+      {/* Settings dropdown — Portal to body to avoid overflow clipping */}
+      {showSettings && createPortal(<>{(() => {
         const handleTouchStart = e => {
           const el = e.currentTarget;
           el.dataset.sy = e.touches[0].clientY;
@@ -1789,7 +1876,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           }
         };
         return <>
-        <div style={{position:"fixed",inset:0,zIndex:99,background:"rgba(0,0,0,.3)",animation:"ovFadeIn .25s"}} onClick={()=>{
+        <div style={{position:"fixed",inset:0,width:"100vw",height:"100vh",zIndex:99,background:"rgba(0,0,0,.3)",animation:"ovFadeIn .25s"}} onClick={()=>{
           const p=document.querySelector('[data-settings-panel]');
           const o=document.querySelector('[data-settings-ov]');
           if(p){p.style.transition='transform .3s ease-out';p.style.transform='translateY(100%)';}
@@ -1801,9 +1888,9 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
-          style={{position:"fixed",bottom:0,left:0,right:0,
+          style={{position:"fixed",bottom:0,left:0,right:0,width:"100vw",boxSizing:"border-box",
           background:T.bgCard,borderRadius:"16px 16px 0 0",padding:"20px 20px calc(32px + 56px + env(safe-area-inset-bottom))",boxShadow:"0 -8px 32px rgba(0,0,0,.15)",zIndex:100,
-          maxHeight:"80vh",overflowY:"auto",animation:"bottomSheet .4s cubic-bezier(.22,1,.36,1)",willChange:"transform"}}>
+          maxHeight:"80vh",overflowY:"auto",overflowX:"hidden",animation:"bottomSheet .4s cubic-bezier(.22,1,.36,1)",willChange:"transform"}}>
           <div style={{width:36,height:4,borderRadius:T.radius.sm,background:T.gray300,margin:"0 auto 16px",cursor:"grab"}}/>
           <div style={{fontSize:T.fs.md,fontWeight:T.fw.bolder,color:T.text,marginBottom:12}}><I name="settings" size={14}/> 타임라인 설정</div>
           {/* 지점 보기 토글 - staff만 */}
@@ -1858,7 +1945,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
             </GridLayout>
           </div>
           </div>
-      </>;;})()}</>}
+      </>;})()}</>, document.body)}
 
       {/* 알람 팝업 */}
       {alarmPopup && <div className="ov" onClick={()=>_mc(()=>setAlarmPopup(null))} style={{zIndex:9999}}>
@@ -1919,5 +2006,250 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   );
 }
 
+
+function QuickBookModal({ onClose, onParsed, data }) {
+  // 브라우저 뒤로가기 지원
+  useEffect(() => {
+    history.pushState({modal:'quickbook'}, '');
+    const onPop = () => onClose();
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [onClose]);
+
+  const [input, setInput] = useState("");
+  const [imgData, setImgData] = useState(null);
+  const [imgPreview, setImgPreview] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+  const [isListening, setIsListening] = useState(false);
+  const [recordSec, setRecordSec] = useState(0);
+  const mediaRecRef = useRef(null);
+  const chunksRef = useRef([]);
+  const timerRef = useRef(null);
+  const [audioData, setAudioData] = useState(null);
+  const fileRef = useRef(null);
+  const camRef = useRef(null);
+  const inputRef = useRef(null);
+  const apiKey = window.__geminiKey || localStorage.getItem("bliss_gemini_key") || "";
+  const C = T.primary;
+  const G1 = T.google, G2 = T.purple, G3 = T.female;
+
+  const startVoice = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/mp4";
+      const rec = new MediaRecorder(stream, {mimeType: mime});
+      chunksRef.current = [];
+      rec.ondataavailable = (e) => { if(e.data.size>0) chunksRef.current.push(e.data); };
+      rec.onstop = () => {
+        stream.getTracks().forEach(t=>t.stop());
+        const blob = new Blob(chunksRef.current, {type: mime});
+        const reader = new FileReader();
+        reader.onload = () => setAudioData({base64:reader.result.split(",")[1], mimeType:mime.split(";")[0]});
+        reader.readAsDataURL(blob);
+      };
+      rec.start(1000); mediaRecRef.current = rec;
+      setIsListening(true); setRecordSec(0); setAudioData(null); setResult(null); setError(null);
+      timerRef.current = setInterval(()=>setRecordSec(s=>s+1), 1000);
+    } catch(e) { alert("마이크 권한이 필요합니다"); }
+  };
+  const stopVoice = () => { mediaRecRef.current?.stop(); setIsListening(false); clearInterval(timerRef.current); };
+  useEffect(() => { if (audioData) doParse(null, audioData); }, [audioData]);
+  useEffect(() => { if (imgData) doParse(null, null); }, [imgData]);
+
+  const handleImage = (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => { setImgData({base64:ev.target.result.split(",")[1], mimeType:file.type}); setImgPreview(ev.target.result); };
+    reader.readAsDataURL(file);
+  };
+
+  const handlePaste = (e) => {
+    const items = e.clipboardData?.items;
+    if(!items) return;
+    for(let i=0;i<items.length;i++){
+      if(items[i].type.startsWith("image/")){
+        e.preventDefault();
+        const file = items[i].getAsFile();
+        if(!file) continue;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const imgObj = {base64:ev.target.result.split(",")[1], mimeType:file.type};
+          setImgData(imgObj);
+          setImgPreview(ev.target.result);
+          // 즉시 분석 (imgData state 업데이트 전이라 직접 전달)
+          setTimeout(() => doParse(null, null), 100);
+        };
+        reader.readAsDataURL(file);
+        break;
+      }
+    }
+  };
+
+  const buildPrompt = () => {
+    const today = new Date(), dow = ["일","월","화","수","목","금","토"];
+    const ds = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")} (${dow[today.getDay()]})`;
+    const tags = (data?.serviceTags || []).filter(t=>t.useYn!==false && t.scheduleYn!=="Y");
+    const svcs = (data?.services || []).filter(s=>s.useYn!==false);
+    const tagList = tags.map(t=>`"${t.id}":"${t.name}"${t.dur?`(${t.dur}분)`:""}`).join(", ");
+    const svcList = svcs.map(s=>`"${s.id}":"${s.name}"${s.dur?`(${s.dur}분)`:""}`).join(", ");
+    const srcList = (data?.resSources||[]).filter(s=>s.useYn!==false).map(s=>s.name);
+    return `당신은 미용실/왁싱샵 예약 정보를 추출하는 AI입니다.\n오늘 날짜: ${ds}\n\n아래 텍스트/이미지/음성에서 예약 정보를 추출해 JSON으로만 응답하세요.\n마크다운 백틱이나 설명 없이 순수 JSON만 출력하세요.\n\n[이미지] 채팅 앱 스크린샷 분석 시 반드시 다음 순서로 처리:\n1단계: 화면 최상단 헤더 영역에서 전화번호/이름을 먼저 추출\n2단계: 대화 내용에서 날짜, 시간, 시술 정보 추출\n3단계: 앱 종류 판별\n※ 헤더의 전화번호가 고객 전화번호입니다.\n[음성] 오디오 첨부 시 음성을 듣고 추출. 공=0,일=1,이=2,삼=3,사=4,오=5,육=6,칠=7,팔=8,구=9. 공일공=010.\n\n[등록된 서비스태그] {${tagList || "없음"}}\n[등록된 시술상품] {${svcList || "없음"}}\n[등록된 예약경로] [${srcList.length ? srcList.map(s=>`"${s}"`).join(",") : "없음"}]\n\n시술 내용이 언급되면 위 목록에서 가장 적합한 항목의 ID를 매칭하세요.\n[왁싱 용어 매핑] 음모왁싱=브라질리언왁싱, eyebrows=눈썹, underarm=겨드랑이, leg=다리, arm=팔, bikini=비키니, full body=전신\n\n추출 항목:\n- custName: 고객 이름 (없으면 "")\n- custPhone: 전화번호 (010-XXXX-XXXX. 해외번호 원본유지)\n- date: YYYY-MM-DD\n- time: HH:MM 24시간\n- dur: 소요시간(분) (없으면 0)\n- memo: 시술내용만 (지점명/예약경로/연락처/날짜 등은 절대 넣지 말 것. 없으면 "")\n- branch: 지점명 (강남점/홍대점 등 지점이 언급된 경우. 없으면 "")\n- source: 예약경로 (반드시 등록된 예약경로 목록에서 선택! 명시적으로 언급된 경우만. WhatsApp→와츠앱, 카카오톡→카톡. 언급 없으면 반드시 "")\n- custGender: "M" or "F" or ""\n- matchedTagIds: 매칭된 서비스태그 ID 배열. 없으면 []\n- matchedServiceIds: 매칭된 시술상품 ID 배열. 없으면 []`;
+  };
+
+  const doParse = async (evt, overrideAudio) => {
+    const ad = overrideAudio || audioData;
+    if (!apiKey) { setError("관리설정 → AI설정에서 API 키를 등록하세요"); return; }
+    if (!input.trim() && !imgData && !ad) { setError("텍스트, 이미지, 또는 음성을 입력하세요"); return; }
+    setLoading(true); setError(null); setResult(null);
+    try {
+      const parts = [{text: buildPrompt()}];
+      if (input.trim()) parts.push({text: "입력:\n" + input.trim()});
+      if (imgData) parts.push({inlineData:{mimeType:imgData.mimeType, data:imgData.base64}});
+      if (ad) parts.push({inlineData:{mimeType:ad.mimeType, data:ad.base64}});
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({contents:[{parts}], generationConfig:{temperature:0}})
+      });
+      if (!r.ok) throw new Error("API: "+(await r.text()).slice(0,120));
+      const d = await r.json();
+      const txt = d.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      const parsed = JSON.parse(txt.replace(/```json|```/g,"").trim());
+      onParsed(parsed);
+    } catch(e) { setError("분석 실패: "+e.message); }
+    setLoading(false);
+  };
+
+  const editResult = (k,v) => setResult(p=>({...p,[k]:v}));
+  const reset = () => { setResult(null);setError(null);setAudioData(null);setRecordSec(0);setImgData(null);setImgPreview(null);setInput(""); };
+  const handleSubmit = () => { if (input.trim() || imgData) doParse(); };
+
+  const sparkle = <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2L13.09 8.26L18 6L14.74 10.91L21 12L14.74 13.09L18 18L13.09 15.74L12 22L10.91 15.74L6 18L9.26 13.09L3 12L9.26 10.91L6 6L10.91 8.26L12 2Z" fill="url(#gsp)"/><defs><linearGradient id="gsp" x1="3" y1="2" x2="21" y2="22"><stop stopColor={T.google}/><stop offset="0.5" stopColor={T.purple}/><stop offset="1" stopColor={T.female}/></linearGradient></defs></svg>;
+
+  return <div style={{position:"fixed",inset:0,zIndex:500,background:T.bgCard,display:"flex",flexDirection:"column"}}>
+    <style>{`@keyframes qb-spin{to{transform:rotate(360deg)}}@keyframes qb-pulse{0%,100%{transform:scale(1);opacity:.7}50%{transform:scale(1.15);opacity:1}}@keyframes qb-mic-idle{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}@keyframes qb-fade{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}@keyframes qb-breathe{0%{transform:scale(1) rotate(0deg);opacity:.85}15%{transform:scale(1.18) rotate(8deg);opacity:1}30%{transform:scale(.95) rotate(-5deg);opacity:.75}45%{transform:scale(1.22) rotate(12deg);opacity:.95}60%{transform:scale(1.05) rotate(-3deg);opacity:.8}75%{transform:scale(1.3) rotate(6deg);opacity:1}90%{transform:scale(.98) rotate(-8deg);opacity:.7}100%{transform:scale(1) rotate(0deg);opacity:.85}}@keyframes qb-glow{0%{box-shadow:0 0 15px #4285f420,0 0 30px #9b72cb10}33%{box-shadow:0 0 25px #9b72cb30,0 0 45px #d9657015}66%{box-shadow:0 0 20px #d9657025,0 0 40px #4285f410}100%{box-shadow:0 0 15px #4285f420,0 0 30px #9b72cb10}}.qb-field:focus{border-color:#7c7cc850!important;background:#fff!important}`}</style>
+
+    {/* Top bar */}
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",flexShrink:0}}>
+      <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",padding:6,display:"flex",color:T.gray600}}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>{sparkle}<span style={{fontSize:T.fs.md,fontWeight:T.fw.bolder,color:T.text}}>AI Book</span></div>
+      <div style={{width:32}}/>
+    </div>
+
+    {/* Content */}
+    <div style={{flex:1,overflow:"auto",padding:"0 20px",display:"flex",flexDirection:"column"}}>
+
+      {/* Empty — voice-first */}
+      {!result && !loading && !error && !imgPreview && !isListening && <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:28,padding:"0 28px"}}>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:18}}>
+          <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <div style={{position:"absolute",width:144,height:144,borderRadius:"50%",background:"rgba(217,101,112,.06)",animation:"qb-mic-idle 3s ease-in-out infinite"}}/>
+            <div style={{position:"absolute",width:116,height:116,borderRadius:"50%",background:"rgba(217,101,112,.1)"}}/>
+            <button onClick={startVoice} style={{position:"relative",zIndex:1,width:92,height:92,borderRadius:"50%",background:"linear-gradient(145deg,#d96570,#c0506b)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 8px 32px rgba(217,101,112,.45)",transition:"transform .12s"}}
+              onTouchStart={e=>e.currentTarget.style.transform="scale(.93)"}
+              onTouchEnd={e=>e.currentTarget.style.transform="scale(1)"}>
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="white"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1 1.93c-3.94-.49-7-3.85-7-7.93H2c0 4.92 3.66 9 8.44 9.44V21h3.11v-3.56C18.34 16.99 22 12.91 22 7.99h-2c0 4.08-3.05 7.44-7 7.93V15h-2v.93z"/></svg>
+            </button>
+          </div>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:22,fontWeight:700,color:T.text,marginBottom:6}}>말씀해 주세요</div>
+            <div style={{fontSize:T.fs.sm,color:T.gray500,lineHeight:1.8}}>마이크를 누르면 잘 듣고 있을게요<br/>카톡 메시지·이미지도 분석해드려요</div>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:10}}>
+          <input ref={fileRef} type="file" accept="image/*" onChange={handleImage} style={{display:"none"}}/>
+          <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={handleImage} style={{display:"none"}}/>
+          <button onClick={()=>fileRef.current?.click()} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:7,padding:"16px 0",borderRadius:16,border:"1.5px solid "+T.border,background:T.bgCard,cursor:"pointer",color:T.textSub,fontSize:T.fs.xs,fontWeight:500}}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>이미지
+          </button>
+          <button onClick={()=>camRef.current?.click()} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:7,padding:"16px 0",borderRadius:16,border:"1.5px solid "+T.border,background:T.bgCard,cursor:"pointer",color:T.textSub,fontSize:T.fs.xs,fontWeight:500}}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>카메라
+          </button>
+        </div>
+        <div style={{width:"100%",background:T.gray100,borderRadius:16,padding:"4px 4px 4px 16px",display:"flex",alignItems:"center",gap:8}}>
+          <textarea ref={inputRef} value={input} onChange={e=>{setInput(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,120)+"px";}}
+            onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();handleSubmit();}}}
+            onPaste={handlePaste} placeholder="카톡 메시지 텍스트 붙여넣기..." rows={1}
+            style={{flex:1,border:"none",background:"transparent",fontSize:T.fs.sm,fontFamily:"inherit",color:T.text,outline:"none",resize:"none",padding:"10px 0",lineHeight:1.5}}/>
+          {input.trim() && <button onClick={handleSubmit} style={{width:36,height:36,borderRadius:12,background:"linear-gradient(135deg,#4285f4,#9b72cb)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+          </button>}
+        </div>
+        {imgPreview && <div style={{fontSize:T.fs.xxs,color:T.gray500}}>📎 이미지 첨부됨</div>}
+      </div>}
+      {/* Image preview */}
+      {imgPreview && !result && !loading && <div style={{animation:"qb-fade .3s ease",marginTop:16}}>
+        <div style={{position:"relative",borderRadius:T.radius.md,overflow:"hidden",border:"1px solid #eee",display:"inline-block"}}>
+          <img src={imgPreview} style={{maxWidth:"100%",maxHeight:240,display:"block",objectFit:"contain"}} alt=""/>
+          <button onClick={()=>{setImgData(null);setImgPreview(null);}} style={{position:"absolute",top:8,right:8,width:28,height:28,borderRadius:T.radius.md,background:"rgba(0,0,0,.5)",color:T.bgCard,border:"none",cursor:"pointer",fontSize:T.fs.md,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+        </div>
+      </div>}
+
+      {/* Loading */}
+      {loading && <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:T.sp.lg,animation:"qb-fade .3s ease"}}>
+        <div style={{display:"flex",gap:6}}>{[T.google,T.purple,T.female].map((c,i)=><div key={i} style={{width:10,height:10,borderRadius:T.radius.sm,background:c,animation:`qb-pulse .8s ease ${i*.15}s infinite`}}/>)}</div>
+        <div style={{fontSize:T.fs.md,fontWeight:T.fw.bold,color:T.gray700}}>{audioData?"음성을 분석하고 있어요":imgData?"이미지를 읽고 있어요":"분석 중이에요"}</div>
+      </div>}
+
+      {/* Recording — 대화형 */}
+      {isListening && <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:24,animation:"qb-fade .3s ease"}}>
+        <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{position:"absolute",width:170,height:170,borderRadius:"50%",background:"rgba(217,101,112,.06)",animation:"qb-mic-idle 1.4s ease-in-out infinite"}}/>
+          <div style={{position:"absolute",width:136,height:136,borderRadius:"50%",background:"rgba(217,101,112,.1)",animation:"qb-mic-idle 1.4s ease-in-out infinite .3s"}}/>
+          <div style={{position:"relative",zIndex:1,width:108,height:108,borderRadius:"50%",background:"linear-gradient(145deg,#d96570,#c0506b)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 8px 40px rgba(217,101,112,.5)"}}>
+            <svg width="46" height="46" viewBox="0 0 24 24" fill="white"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1 1.93c-3.94-.49-7-3.85-7-7.93H2c0 4.92 3.66 9 8.44 9.44V21h3.11v-3.56C18.34 16.99 22 12.91 22 7.99h-2c0 4.08-3.05 7.44-7 7.93V15h-2v.93z"/></svg>
+          </div>
+        </div>
+        <div style={{textAlign:"center",display:"flex",flexDirection:"column",gap:6}}>
+          <div style={{fontSize:20,fontWeight:700,color:T.text}}>잘 듣고 있을게요 🎙️</div>
+          <div style={{fontSize:36,fontWeight:700,color:"#d96570",fontFamily:"monospace",letterSpacing:2}}>{Math.floor(recordSec/60)}:{String(recordSec%60).padStart(2,"0")}</div>
+          <div style={{fontSize:T.fs.xs,color:T.gray400}}>말씀이 끝나면 완료를 눌러주세요</div>
+        </div>
+        <button onClick={stopVoice} style={{padding:"13px 48px",fontSize:T.fs.md,fontWeight:700,background:T.gray200,color:T.gray700,border:"none",borderRadius:40,cursor:"pointer"}}>완료</button>
+      </div>}
+      {/* Error */}
+      {error && <div style={{marginTop:20,padding:"14px 16px",background:T.dangerLt,borderRadius:T.radius.lg,fontSize:T.fs.sm,color:T.danger,lineHeight:1.5,animation:"qb-fade .3s ease"}}>{error}<button onClick={reset} style={{display:"block",marginTop:8,fontSize:T.fs.sm,color:T.google,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:T.fw.bold}}>다시 시도</button></div>}
+
+      {/* Results */}
+      {result && <div style={{paddingTop:12,paddingBottom:100,animation:"qb-fade .3s ease"}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:14}}>{sparkle}<span style={{fontSize:T.fs.md,fontWeight:T.fw.bolder,color:T.text}}>분석 완료</span><span style={{fontSize:T.fs.xxs,color:T.gray400,marginLeft:4}}>수정 가능</span></div>
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {[["custName","고객명"],["custPhone","전화번호"],["date","날짜"],["time","시간"],["memo","시술/메모"],["source","예약경로"]].map(([key,label])=>
+            <div key={key}><div style={{fontSize:T.fs.xxs,color:T.gray500,marginBottom:4,fontWeight:T.fw.medium}}>{label}</div>
+            <input value={result[key]||""} onChange={e=>editResult(key,e.target.value)} className="qb-field"
+              style={{width:"100%",padding:"11px 14px",fontSize:T.fs.md,border:"1.5px solid #e8e8e8",borderRadius:T.radius.lg,fontFamily:"inherit",color:T.text,outline:"none",background:T.bg,transition:"all .15s"}}/></div>
+          )}
+          <div><div style={{fontSize:T.fs.xxs,color:T.gray500,marginBottom:4,fontWeight:T.fw.medium}}>성별</div>
+            <div style={{display:"flex",gap:6}}>{[["","미정"],["M","남"],["F","여"]].map(([v,l])=>
+              <button key={v} onClick={()=>editResult("custGender",v)} style={{padding:"8px 20px",fontSize:T.fs.sm,fontWeight:result.custGender===v?600:400,background:result.custGender===v?"#7c7cc812":T.bg,color:result.custGender===v?T.primary:T.gray500,border:result.custGender===v?"1.5px solid #7c7cc840":"1.5px solid #eee",borderRadius:T.radius.md,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
+            )}</div>
+          </div>
+          {(()=>{
+            const tags = (data?.serviceTags||[]).filter(t=>t.useYn!==false && t.scheduleYn!=="Y");
+            const svcs = (data?.services||[]).filter(s=>s.useYn!==false);
+            const mTags = result.matchedTagIds || [], mSvcs = result.matchedServiceIds || [];
+            const toggleTag = (id) => editResult("matchedTagIds", mTags.includes(id)?mTags.filter(x=>x!==id):[...mTags,id]);
+            const toggleSvc = (id) => editResult("matchedServiceIds", mSvcs.includes(id)?mSvcs.filter(x=>x!==id):[...mSvcs,id]);
+            if (!tags.length && !svcs.length) return null;
+            return <>{tags.length>0 && <div><div style={{fontSize:T.fs.xxs,color:T.gray500,marginBottom:6,fontWeight:T.fw.medium}}>서비스</div><div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {tags.map(t=><button key={t.id} onClick={()=>toggleTag(t.id)} style={{padding:"7px 14px",fontSize:T.fs.sm,fontWeight:mTags.includes(t.id)?600:400,background:mTags.includes(t.id)?(t.color||T.primary)+"15":T.bg,color:mTags.includes(t.id)?t.color||T.primary:T.gray400,border:mTags.includes(t.id)?`1.5px solid ${(t.color||T.primary)}40`:"1.5px solid #eee",borderRadius:T.radius.md,cursor:"pointer",fontFamily:"inherit"}}>{t.name}</button>)}
+            </div></div>}
+            {svcs.length>0 && <div><div style={{fontSize:T.fs.xxs,color:T.gray500,marginBottom:6,fontWeight:T.fw.medium}}>시술</div><div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {svcs.map(s=><button key={s.id} onClick={()=>toggleSvc(s.id)} style={{padding:"7px 14px",fontSize:T.fs.sm,fontWeight:mSvcs.includes(s.id)?600:400,background:mSvcs.includes(s.id)?"#7c7cc815":T.bg,color:mSvcs.includes(s.id)?T.primary:T.gray400,border:mSvcs.includes(s.id)?"1.5px solid #7c7cc840":"1.5px solid #eee",borderRadius:T.radius.md,cursor:"pointer",fontFamily:"inherit"}}>{s.name}</button>)}
+            </div></div>}</>;
+          })()}
+        </div>
+        <div style={{display:"flex",gap:10,marginTop:20}}>
+          <button onClick={reset} style={{flex:1,padding:"13px 0",fontSize:T.fs.sm,fontWeight:T.fw.medium,background:T.bg,color:T.textSub,border:"none",borderRadius:T.radius.lg,cursor:"pointer",fontFamily:"inherit"}}>다시</button>
+          <button onClick={()=>onParsed(result)} style={{flex:2,padding:"13px 0",fontSize:T.fs.md,fontWeight:T.fw.bold,background:"linear-gradient(135deg,#4285f4,#9b72cb)",color:T.bgCard,border:"none",borderRadius:T.radius.lg,cursor:"pointer",fontFamily:"inherit"}}>예약폼에 적용</button>
+        </div>
+      </div>}
+    </div>
+
+  </div>;
+}
 
 export default Timeline

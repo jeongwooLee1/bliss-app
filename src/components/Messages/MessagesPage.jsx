@@ -47,11 +47,13 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
 
   const allowedIds = isMaster ? Object.values(_BR_ACC).map(String) : (userBranches||[]).map(b=>_BR_ACC[b]).filter(Boolean).map(String);
 
-  // 메시지 로드
+  // 메시지 로드 (캐시 방지용 _t 파라미터 추가)
+  const loadingRef = useRef(false);
   const loadMsgs = useCallback(async () => {
-    setLoading(true);
+    if (loadingRef.current) return; // 중복 호출 방지
+    loadingRef.current = true;
     try {
-      const r = await fetch(SB_URL+"/rest/v1/naver_messages?order=created_at.desc&limit=300&select=*",{headers:sbHeaders});
+      const r = await fetch(SB_URL+"/rest/v1/naver_messages?order=created_at.desc&limit=300&select=*",{headers:{...sbHeaders,"Cache-Control":"no-cache"},cache:"no-store"});
       const d2 = await r.json();
       if (Array.isArray(d2)) {
         setMsgs(d2);
@@ -59,28 +61,35 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
         d2.forEach(m => { if (m.user_name && !nm[m.user_id]) nm[m.user_id] = m.user_name; });
         if (Object.keys(nm).length > 0) setNames(prev => ({...prev,...nm}));
       }
-    } catch(e){} finally{setLoading(false);}
+    } catch(e){} finally{ loadingRef.current = false; setLoading(false); }
   }, []);
 
   useEffect(()=>{
     loadMsgs();
+    // Realtime 구독
+    let lastMsgRt = 0;
     const chName = "inbox_rt_"+Date.now();
     const ch = window._sbClient?.channel(chName)
       ?.on("postgres_changes",{event:"INSERT",schema:"public",table:"naver_messages"},
-        p=>{ if(p?.new) { setMsgs(prev=>prev.some(m=>m.id===p.new.id)?prev:[...prev,p.new]); if(p.new.user_name) setNames(prev=>({...prev,[p.new.user_id]:p.new.user_name})); }}
+        p=>{ if(p?.new) { lastMsgRt = Date.now(); setMsgs(prev=>prev.some(m=>m.id===p.new.id)?prev:[...prev,p.new]); if(p.new.user_name) setNames(prev=>({...prev,[p.new.user_id]:p.new.user_name})); }}
       )
       ?.on("postgres_changes",{event:"UPDATE",schema:"public",table:"naver_messages"},
-        p=>{ if(p?.new?.id) setMsgs(prev=>prev.map(m=>m.id===p.new.id?{...m,...p.new}:m)); }
+        p=>{ if(p?.new?.id) { lastMsgRt = Date.now(); setMsgs(prev=>prev.map(m=>m.id===p.new.id?{...m,...p.new}:m)); }}
       )?.subscribe();
+    // 5초 폴링 (Realtime 실패 대비) — RT 수신 직후에는 스킵
+    const poll = setInterval(() => { if (Date.now() - lastMsgRt < 4000) return; loadMsgs(); }, 5000);
     const onVisible = () => { if(document.visibilityState==="visible") loadMsgs(); };
     document.addEventListener("visibilitychange", onVisible);
     return ()=>{
+      clearInterval(poll);
       document.removeEventListener("visibilitychange", onVisible);
       try{ch?.unsubscribe(); window._sbClient?.removeChannel(ch);}catch(e){}
     };
   }, []);
 
   useEffect(()=>{ convoEndRef.current?.scrollIntoView({behavior:"smooth"}); },[sel, msgs.length]);
+
+  const [msgSearch, setMsgSearch] = useState("");
 
   const threads = useMemo(()=>{
     const map = {};
@@ -90,8 +99,18 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       const key=(m.channel||"naver")+"_"+m.user_id;
       if(!map[key]||new Date(m.created_at)>new Date(map[key].created_at)) map[key]=m;
     });
-    return Object.values(map).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
-  },[msgs, allowedIds.length]);
+    let list = Object.values(map).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    if(msgSearch.trim()){
+      const q=msgSearch.trim().toLowerCase();
+      const matchUids=new Set();
+      msgs.forEach(m=>{
+        if((m.user_name||"").toLowerCase().includes(q)||(m.message_text||"").toLowerCase().includes(q))
+          matchUids.add((m.channel||"naver")+"_"+m.user_id);
+      });
+      list=list.filter(m=>matchUids.has((m.channel||"naver")+"_"+m.user_id));
+    }
+    return list;
+  },[msgs, allowedIds.length, msgSearch]);
 
   const convo = useMemo(()=>{
     if(!sel) return [];
@@ -113,9 +132,11 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   };
 
   const markRead = async(uid)=>{
+    const unreadCount = msgs.filter(m=>m.user_id===uid&&!m.is_read&&m.direction==="in").length;
     await fetch(SB_URL+"/rest/v1/naver_messages?user_id=eq."+uid+"&is_read=eq.false",
       {method:"PATCH",headers:{...sbHeaders,Prefer:"return=minimal"},body:JSON.stringify({is_read:true})});
     setMsgs(prev=>prev.map(m=>m.user_id===uid?{...m,is_read:true}:m));
+    if(onRead && unreadCount > 0) onRead(unreadCount);
   };
 
   const selectThread = (m)=>{
@@ -142,6 +163,43 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
     }finally{setSending(false);}
   };
 
+  // 시술 가격표 텍스트 생성
+  const svcPriceText = React.useMemo(()=>{
+    const svcs=(data?.services||[]).filter(s=>s.name);
+    if(!svcs.length) return "";
+    return svcs.map(s=>{
+      const parts=[s.name];
+      if(s.dur) parts.push(s.dur+"분");
+      if(s.priceF) parts.push("여성 "+Number(s.priceF).toLocaleString()+"원");
+      if(s.priceM) parts.push("남성 "+Number(s.priceM).toLocaleString()+"원");
+      if(s.price && !s.priceF && !s.priceM) parts.push(Number(s.price).toLocaleString()+"원");
+      return "- "+parts.join(" / ");
+    }).join("\n");
+  },[data?.services]);
+
+  // 고객 패키지 잔여 조회 헬퍼
+  const findCustPkgInfo = useCallback((userId)=>{
+    const custName = getDisplayName({user_id:userId});
+    if(!custName || custName.startsWith("고객")) return "";
+    // 고객 이름으로 customers 매칭
+    const customers = data?.customers || [];
+    const matched = customers.filter(c => c.name && custName.includes(c.name));
+    if(matched.length===0) return "";
+    const pkgs = data?.custPackages || [];
+    const lines = [];
+    matched.forEach(c => {
+      const cp = pkgs.filter(p => p.customer_id===c.id && (p.total_count-p.used_count)>0);
+      if(cp.length>0){
+        lines.push(`[${c.name}님 보유 다회권]`);
+        cp.forEach(p => {
+          const remain = p.total_count - p.used_count;
+          lines.push(`- ${p.service_name||"시술"}: 총 ${p.total_count}회 중 ${remain}회 남음`);
+        });
+      }
+    });
+    return lines.length>0 ? lines.join("\n") : "";
+  },[data?.customers, data?.custPackages, msgs, names]);
+
   const genAI = async()=>{
     if(!sel||convo.length===0) return;
     setAiLoading(true); setAiKoDraft("");
@@ -150,7 +208,19 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       const hasKo=lastIn?/[가-힣]/.test(lastIn.message_text):true;
       const langName=hasKo?"한국어":"영어";
       const lastMsgs=convo.slice(-6).map(m=>(m.direction==="in"?"고객":"직원")+": "+m.message_text).join("\n");
-      const prompt=`당신은 하우스왁싱 상담 직원입니다.\n\n대화:\n${lastMsgs}\n\n고객 마지막 메시지에 친절하게 2-3문장으로 답변하세요. JSON만 출력(마크다운 없이):\n{"reply":"${langName}로 작성한 답변","ko":"한국어 번역"}`;
+
+      // 자동 응대 프롬프트 (AI 설정에서 관리)
+      const chatPrompt = window.__aiChatPrompt || localStorage.getItem("bliss_ai_chat_prompt") || "";
+      const chatCtx = chatPrompt ? `\n\n[응대 지침]\n${chatPrompt}` : "";
+
+      // 시술 가격표
+      const priceCtx = svcPriceText ? `\n\n[시술 가격표]\n${svcPriceText}` : "";
+
+      // 고객 패키지 잔여 정보
+      const pkgInfo = findCustPkgInfo(sel.user_id);
+      const pkgCtx = pkgInfo ? `\n\n[이 고객의 다회권 정보]\n${pkgInfo}` : "";
+
+      const prompt=`당신은 하우스왁싱 상담 직원입니다.${chatCtx}${priceCtx}${pkgCtx}\n\n중요: 가격, 영업시간, 다회권 잔여 등 사실 정보는 위 자료에 근거해서만 답변하세요. 모르는 정보는 "확인 후 안내드리겠습니다"라고 답하세요. 절대 추측이나 거짓 정보를 말하지 마세요.\n\n대화:\n${lastMsgs}\n\n고객 마지막 메시지에 친절하게 2-3문장으로 답변하세요. JSON만 출력(마크다운 없이):\n{"reply":"${langName}로 작성한 답변","ko":"한국어 번역"}`;
       const res=await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="+getGeminiKey(),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
       if(res.status===429){alert("AI 요청 한도 초과. 잠시 후 시도해주세요.");return;}
       const dd=await res.json();
@@ -201,9 +271,12 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
         <span style={{fontWeight:800,fontSize:18,color:T.text}}>메시지</span>
         {totalUnread>0&&<span style={{background:T.danger,color:"#fff",borderRadius:10,fontSize:11,fontWeight:700,padding:"2px 8px"}}>{totalUnread}</span>}
       </div>
+      <div style={{padding:"8px 12px",borderBottom:"1px solid "+T.border}}>
+        <input value={msgSearch} onChange={e=>setMsgSearch(e.target.value)} placeholder="이름, 메시지 검색..." style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid "+T.border,fontSize:13,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
+      </div>
       <div style={{overflowY:"auto"}}>
         {loading?<div style={{padding:40,textAlign:"center",color:T.textMuted}}>로딩 중...</div>
-        :threads.length===0?<div style={{padding:40,textAlign:"center",color:T.textMuted}}>메시지 없음</div>
+        :threads.length===0?<div style={{padding:40,textAlign:"center",color:T.textMuted}}>{msgSearch?"검색 결과 없음":"메시지 없음"}</div>
         :threads.map(m=>{
           const ch=m.channel||"naver"; const key=ch+"_"+m.user_id;
           const uc=unread(m.user_id,ch);
@@ -314,9 +387,12 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
           <span style={{fontWeight:T.fw.bolder,fontSize:T.fs.md}}>메시지함</span>
           {totalUnread>0&&<span style={{background:T.danger,color:"#fff",borderRadius:10,fontSize:11,fontWeight:700,padding:"2px 7px"}}>{totalUnread}</span>}
         </div>
+        <div style={{padding:"8px 10px",borderBottom:"1px solid "+T.border}}>
+          <input value={msgSearch} onChange={e=>setMsgSearch(e.target.value)} placeholder="이름, 메시지 검색..." style={{width:"100%",padding:"6px 10px",borderRadius:6,border:"1px solid "+T.border,fontSize:12,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
+        </div>
         <div style={{flex:1,overflowY:"auto"}}>
           {loading?<div style={{padding:20,textAlign:"center",color:T.textMuted}}>로딩 중...</div>
-          :threads.length===0?<div style={{padding:20,textAlign:"center",color:T.textMuted}}>메시지 없음</div>
+          :threads.length===0?<div style={{padding:20,textAlign:"center",color:T.textMuted}}>{msgSearch?"검색 결과 없음":"메시지 없음"}</div>
           :threads.map(m=>{
             const ch=m.channel||"naver"; const key=ch+"_"+m.user_id;
             const isS=sel?.user_id===m.user_id&&sel?.channel===ch;

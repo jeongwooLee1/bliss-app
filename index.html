@@ -14,10 +14,238 @@
       * { box-sizing: border-box; margin: 0; padding: 0; }
       body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f9fafb; }
       #root { min-height: 100dvh; }
+      input,select,textarea{font-family:inherit}
+
+      /* ══ 타임라인 블록 ══ */
+      div:hover>.resize-handle{opacity:1 !important}
+      @media(pointer:coarse){.resize-handle{opacity:0.6 !important}}
+      .tl-block{transition:box-shadow .2s ease,transform .15s ease !important}
+      .tl-time-col{position:-webkit-sticky;position:sticky}
+      .tl-hdr-cell{position:-webkit-sticky;position:sticky}
+      .tl-block:hover{box-shadow:0 4px 14px rgba(0,0,0,.18) !important;transform:translateY(-1px)}
+      .tl-block:active{box-shadow:0 2px 6px rgba(0,0,0,.12) !important;transform:translateY(0)}
+      @media(pointer:coarse){.tl-block:active{box-shadow:0 2px 8px rgba(0,0,0,.12) !important}}
+
+      /* ══ 키프레임 ══ */
+      @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+      @keyframes slideUp{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
+      @keyframes slideRight{from{opacity:0;transform:translateX(-20px)}to{opacity:1;transform:translateX(0)}}
+      @keyframes bottomSheet{from{transform:translateY(100%)}to{transform:translateY(0)}}
+      @keyframes ovFadeIn{from{opacity:0}to{opacity:1}}
+      @keyframes slideIn{from{transform:translateX(-100%)}to{transform:translateX(0)}}
+      @keyframes naverBlink{0%,100%{background:#fff3e0}50%{background:#ffe0b2}}
+      @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+      @keyframes pendingBlink{0%,100%{opacity:1}50%{opacity:.5}}
+
+      /* ══ 모달 리디자인 — Minimal / Linear style ══ */
+      .modal-res{font-size:14px;color:#1a1a2e;width:480px!important;max-width:480px!important}
+      .modal-res .form-col{display:flex;flex-direction:column;gap:12px}
+      .modal-res .inp{
+        background:#f5f6f8;border:1.5px solid transparent;border-radius:8px;
+        color:#222;font-size:13.5px;padding:9px 12px;width:100%;
+        font-family:inherit;outline:none;transition:border-color .15s,background .15s;
+        box-sizing:border-box;min-height:40px
+      }
+      .modal-res .inp:focus{background:#fff;border-color:#7c7cc8}
+      .modal-res .inp::placeholder{color:#b0b4c0}
+      .modal-res select.inp{cursor:pointer}
+
+      /* 날짜+시간 통합 필드 */
+      .fld-datetime{
+        display:inline-flex;align-items:center;gap:2px;
+        background:#f5f6f8;border:1.5px solid transparent;border-radius:8px;
+        padding:0 14px;height:42px;cursor:default;
+        transition:border-color .15s,background .15s
+      }
+      .fld-datetime:hover{background:#f0f1f4;border-color:#d4d6e0}
+      .fld-sel{
+        background:transparent;border:none;font-size:14px;font-weight:600;
+        font-family:inherit;color:#333;cursor:pointer;outline:none;
+        padding:0;appearance:none;-webkit-appearance:none;
+        text-align:center;min-width:44px
+      }
+      .fld-sel:focus{outline:none;color:#7c7cc8}
+      .fld-sel option{background:#fff;color:#333;font-size:13px;font-weight:500;padding:6px 10px}
+      .fld-datetime select{
+        background:transparent;border:none;font-size:14px;font-weight:600;
+        font-family:inherit;color:#333;cursor:pointer;outline:none;padding:0;
+        appearance:none;-webkit-appearance:none;min-width:44px;text-align:center
+      }
+      .fld-datetime select:focus{outline:none;color:#7c7cc8}
+
+      /* 시간 커스텀 드롭다운 */
+      .time-sel-wrap{position:relative;display:inline-flex;align-items:center}
+      .time-sel-btn{background:transparent;border:none;font-size:14px;font-weight:700;
+        font-family:inherit;color:#333;cursor:pointer;padding:0 2px;outline:none;
+        min-width:44px;text-align:center;letter-spacing:-0.3px;transition:color .15s}
+      .time-sel-btn:hover,.time-sel-btn:focus{color:#7c7cc8;outline:none}
+      .time-sel-dropdown{position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);
+        background:#fff;border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.15);
+        z-index:9999;overflow:hidden;min-width:90px;
+        border:1px solid #e8e8ee;animation:fadeIn .12s ease}
+      .time-sel-dropdown ul{list-style:none;margin:0;padding:4px 0;max-height:220px;overflow-y:auto}
+      .time-sel-dropdown ul::-webkit-scrollbar{width:4px}
+      .time-sel-dropdown ul::-webkit-scrollbar-track{background:transparent}
+      .time-sel-dropdown ul::-webkit-scrollbar-thumb{background:#d4d6e8;border-radius:4px}
+      .time-sel-item{padding:7px 16px;font-size:13px;font-weight:500;color:#333;
+        cursor:pointer;white-space:nowrap;transition:background .1s,color .1s}
+      .time-sel-item:hover{background:#f0f0ff;color:#7c7cc8}
+      .time-sel-item.active{background:#7c7cc8;color:#fff;font-weight:700}
+
+      /* 섹션 카드 — 아코디언 */
+      .tags-acc{background:#f5f6f8;border:1.5px solid transparent;border-radius:10px;overflow:hidden;transition:border-color .18s,box-shadow .18s}
+      .tags-acc:hover{border-color:#d4d6e0;box-shadow:0 2px 12px rgba(0,0,0,.06)}
+      .tags-acc-hdr{width:100%;display:flex;align-items:center;justify-content:space-between;padding:10px 14px;cursor:pointer;border:none;background:transparent;font-family:inherit;text-align:left}
+      .tags-acc-body{overflow:hidden;transition:max-height .42s cubic-bezier(.4,0,.2,1),opacity .28s ease;max-height:0;opacity:0}
+      .tags-acc-body.open{max-height:800px;opacity:1}
+      .tags-acc-chev{display:inline-block;transition:transform .32s ease;font-size:18px;color:#9098a8;line-height:1}
+      .tags-acc-chev.open{transform:rotate(180deg)}
+      .acc-svc,.acc-src,.acc-tag{background:#fff;border:none;box-shadow:0 2px 10px rgba(0,0,0,.07);border-radius:10px}
+      .acc-svc:hover,.acc-src:hover,.acc-tag:hover{box-shadow:0 4px 16px rgba(0,0,0,.1)}
+      .acc-svc .tags-acc-hdr,.acc-src .tags-acc-hdr,.acc-tag .tags-acc-hdr{background:transparent}
+      .acc-tag .tags-acc-hdr.open{background:transparent}
+
+      /* 태그 pill */
+      .tag-pill{display:inline-flex;align-items:center;gap:4px;padding:4px 11px;border-radius:20px;border:none;cursor:pointer;font-size:12.5px;font-weight:500;font-family:inherit;transition:opacity .12s,transform .1s}
+      .tag-pill:active{transform:scale(.96)}
+
+      /* 탭 버튼 */
+      .res-tab-btn{transition:color .15s !important;transform:none !important;box-shadow:none !important}
+      .res-tab-btn:hover{transform:none !important;box-shadow:none !important;opacity:.85}
+
+      /* 액션 버튼 */
+      .modal-res .btn-p{background:#7c7cc8;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;padding:10px 28px;transition:background .15s,box-shadow .15s}
+      .modal-res .btn-p:hover{background:#6a6ab8;box-shadow:0 4px 14px rgba(124,124,200,.35);transform:none !important}
+      .modal-res .btn-p:active{background:#5a5aa8}
+      .modal-res .btn-s{background:#f0f1f4;color:#555;border:none;border-radius:8px;font-size:13.5px;font-weight:500;cursor:pointer;font-family:inherit;padding:10px 20px;transition:background .15s}
+      .modal-res .btn-s:hover{background:#e4e5ea}
+      .modal-res .btn-d{background:#fff0f0;color:#d94f4f;border:none;border-radius:8px;font-size:13.5px;font-weight:500;cursor:pointer;font-family:inherit;padding:10px 20px;transition:background .15s}
+      .modal-res .btn-d:hover{background:#fce0e0}
+      .modal-res button:not(:disabled){transition:background .15s,box-shadow .15s,color .15s !important}
+      .modal-res button:not(:disabled):hover{transform:none !important}
+      .modal-res button:not(:disabled):active{transform:scale(.97) !important}
+
+      /* 입력 필드 오버라이드 */
+      .inp-search,.inp-cust,.inp-date,.inp-memo{background:#f5f6f8 !important;border:1.5px solid transparent !important;border-radius:8px !important;box-shadow:none !important;transition:border-color .15s,background .15s !important}
+      .inp-search:focus,.inp-cust:focus,.inp-date:focus,.inp-memo:focus{background:#fff !important;border-color:#7c7cc8 !important}
+      .inp-search:hover,.inp-cust:hover,.inp-date:hover,.inp-memo:hover{background:#f0f1f4 !important;box-shadow:none !important}
+
+      /* 공통 UI */
+      .fade-in{animation:fadeIn .6s ease}
+      .card{background:#fff;border-radius:8px;border:1px solid #ebebeb;box-shadow:0 2px 8px rgba(0,0,0,.06),0 1px 3px rgba(0,0,0,.04)}
+      .tw{overflow-x:auto}
+      table{width:100%;border-collapse:collapse;font-size:13px}
+      th{text-align:left;padding:8px 10px;color:#555;font-weight:700;font-size:11px;letter-spacing:.3px;border-bottom:2px solid #e0e0e0;white-space:nowrap;position:sticky;top:0;background:#fff;z-index:1}
+      td{padding:7px 10px;border-bottom:1px solid #f0f0f0;white-space:nowrap;color:#333}
+      tr:last-child td{border-bottom:none}
+      tr:hover td{background:#f5f5ff}
+      .inp{background:#fff;border:none;color:#333;padding:7px 10px;border-radius:8px;font-size:13px;width:100%;font-family:inherit;outline:none;transition:border-color .15s,box-shadow .15s;box-shadow:0 1px 4px rgba(0,0,0,.08),0 2px 8px rgba(0,0,0,.06)}
+      .inp:focus{border-color:#7c7cc8;box-shadow:0 0 0 2px rgba(124,124,200,.15),0 2px 8px rgba(0,0,0,.08)}
+      select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;padding-right:26px}
+      .badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700}
+      .btn-p{background:#7c7cc8;color:#fff;padding:7px 14px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;font-family:inherit;display:inline-flex;align-items:center;gap:5px;transition:all .15s;box-shadow:0 1px 4px rgba(124,124,200,.2)}
+      .btn-p:hover{background:#6a6ab8}
+      .btn-p:active{transform:scale(.97)}
+      .btn-s{background:#fff;color:#555;padding:7px 14px;border-radius:8px;border:1px solid #e0e0e0;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;display:inline-flex;align-items:center;gap:5px;transition:all .15s}
+      .btn-s:hover{background:#f5f5f5}
+      .btn-d{background:#ef5350;color:#fff;padding:7px 14px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;font-family:inherit;display:inline-flex;align-items:center;gap:5px;transition:all .15s}
+      .btn-d:hover{background:#e04747}
+      .btn-sm{padding:4px 10px;font-size:11px}
+      .ov{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.35);backdrop-filter:blur(2px);z-index:200;display:flex;align-items:flex-start;justify-content:center;padding:24px 16px;overflow-y:auto;animation:ovFadeIn .25s}
+      .modal{background:#fff;border-radius:12px;border:1px solid #e0e0e0;padding:22px;width:92%;max-width:500px;max-height:85vh;overflow-y:auto;animation:slideUp .6s cubic-bezier(.22,1,.36,1);box-shadow:0 4px 24px rgba(0,0,0,.16)}
+      .close-btn{background:none;border:none;color:#999;cursor:pointer;font-size:16px;font-family:inherit}
+      .form-col{display:flex;flex-direction:column;gap:14px}
+      .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+      .page-title{font-size:18px;font-weight:800;color:#333;margin-bottom:16px}
+      #place-modal{width:90vw!important;max-width:480px!important;left:50%!important;right:auto!important;transform:translateX(-50%) !important}
+
+      /* 매출 모달 */
+      .sale-modal-wrap .inp,.sale-modal-wrap select.inp{font-size:13.5px !important;padding:8px 10px !important;min-height:38px !important;border-radius:8px !important}
+      .sale-modal-wrap input[type="number"]{font-size:13px !important;padding:6px 8px !important;min-height:36px !important}
+      .sale-svc-name{font-size:13px !important}
+      .sale-dur{font-size:11px !important;color:#aaa}
+      .sale-cat-hdr{font-size:12px !important;font-weight:700}
+      .sale-section-title{font-size:12px !important;font-weight:700}
+      .sale-modal-wrap .sale-pay-row *{font-size:13px !important}
+
+      /* ══ 모바일 ══ */
+      @media(max-width:768px){
+        .hide-mobile{display:none!important}
+        .page-reservations{overflow-x:hidden!important}
+        .sidebar-d{display:none!important}
+        .sidebar-m{display:none!important}
+        .mob-bottom-nav{display:flex!important}
+        .mob-hdr{padding-left:16px!important}
+        .main-c{margin-left:0!important;padding-bottom:56px!important}
+        .page-title{font-size:15px;margin-bottom:10px}
+        .page-pad{padding:8px 6px 8px!important}
+        .grid2{grid-template-columns:1fr!important}
+        .form-col{gap:8px}
+        .sale-grid{grid-template-columns:1fr 1fr!important;gap:8px!important}
+        .sale-pay-row{flex-direction:column!important;gap:8px!important}
+        .res-time-row{flex-wrap:wrap!important;overflow-x:auto!important}
+        .res-time-row .inp{font-size:13px!important;padding:5px 8px!important}
+        .res-room-sep{display:none!important}
+        .res-room-sel{flex:1 1 100%!important;margin-top:4px!important}
+        .cust-row{grid-template-columns:5.5em 1fr 44px!important;gap:6px!important}
+        .cust-row .inp{height:38px!important;box-sizing:border-box!important}
+        .cust-row button{height:38px!important;box-sizing:border-box!important}
+        .form-col .inp,.form-col select.inp{height:38px!important;box-sizing:border-box!important;padding:5px 8px!important}
+        .form-col textarea.inp{height:auto!important}
+        .modal-res{width:100%!important;max-width:100%!important;border-radius:12px!important;margin:0!important}
+        .modal-res .form-col{overflow:visible!important}
+        .ov{top:56px!important;padding:8px 0!important;align-items:flex-start!important;overflow-y:auto!important}
+        .tl-topbar{flex-direction:column!important;gap:4px!important;padding:6px 6px!important;align-items:stretch!important}
+        .mob-hdr{padding:10px 16px!important}
+        .tl-date-label{font-size:15px!important}
+        .tl-room-name{font-size:14px!important}
+        .tl-room-sub{font-size:11px!important}
+        .tl-time-col{position:-webkit-sticky!important;position:sticky!important}
+        .tl-hdr-cell{position:-webkit-sticky!important;position:sticky!important}
+        .tl-days{width:100%;justify-content:space-between;padding:0 2px}
+        .page-filter{flex-wrap:wrap!important;gap:4px!important}
+        .page-filter .inp{max-width:130px!important}
+        table{font-size:11px}
+        th,td{padding:5px 6px}
+        .btn-p,.btn-s,.btn-d{padding:6px 10px;font-size:11px}
+        .btn-sm{padding:4px 8px!important;font-size:10px!important}
+        .stat-cards{grid-template-columns:repeat(auto-fit,minmax(100px,1fr))!important;gap:8px!important}
+        .stat-charts{grid-template-columns:1fr!important}
+        .admin-tw{max-height:calc(100vh - 260px)!important}
+        .modal-res span:not(.badge),.modal-res label,.modal-res p{font-size:13px!important}
+        .modal-res h3{font-size:15px!important}
+        .modal-res button{font-size:13px!important}
+        .modal-res .inp,.modal-res select.inp,.modal-res textarea.inp{font-size:16px!important}
+        .ov>div:not(.modal-res) span:not(.badge),.ov>div:not(.modal-res) label{font-size:13px!important}
+        .ov>div:not(.modal-res) h3{font-size:15px!important}
+        .ov>div:not(.modal-res) button{font-size:13px!important}
+        .ov>div:not(.modal-res) .inp,.ov>div:not(.modal-res) select.inp{font-size:16px!important}
+        .inp,.inp:focus{font-size:16px!important}
+        select.inp{font-size:14px!important}
+        .modal{padding:16px!important;max-height:90vh!important;width:100%!important;max-width:100%!important;border-radius:12px!important;margin:0!important}
+      }
+      @media(max-width:480px){
+        .sale-grid{grid-template-columns:1fr!important}
+        .page-filter .inp{max-width:110px!important;font-size:14px!important}
+        .stat-cards{grid-template-columns:1fr 1fr!important}
+      }
+      @media(min-width:769px){
+        .mob-bottom-nav{display:none!important}
+        .mob-hdr{display:none!important}
+        .sidebar-m{display:none!important}
+      }
     </style>
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      window.addEventListener('error', function(e) {
+        document.getElementById('root').innerHTML += '<pre style="color:red;padding:20px;white-space:pre-wrap;word-break:break-all">ERROR: ' + e.message + '\n' + (e.filename||'') + ':' + (e.lineno||'') + '\n' + (e.error&&e.error.stack||'') + '</pre>';
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        document.getElementById('root').innerHTML += '<pre style="color:orange;padding:20px;white-space:pre-wrap;word-break:break-all">PROMISE: ' + (e.reason&&e.reason.message||e.reason) + '\n' + (e.reason&&e.reason.stack||'') + '</pre>';
+      });
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

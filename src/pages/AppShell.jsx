@@ -4,15 +4,16 @@ import { sb, SB_URL, SB_KEY, sbHeaders } from '../lib/sb'
 import { supabase as _supaClient } from '../lib/supabase'
 import { fromDb, toDb, resolveSystemIds, setActiveBiz, _activeBizId } from '../lib/db'
 import Timeline from '../components/Timeline/TimelinePage'
-import ReservationList from '../components/Reservations/ReservationsPage'
+import ReservationList, { SmartDatePicker } from '../components/Reservations/ReservationsPage'
 import AdminInbox from '../components/Messages/MessagesPage'
 import { todayStr, pad, fmtDate, getDow, genId, fmtLocal } from '../lib/utils'
 import I from '../components/common/I'
-import TimelineModal from '../components/Timeline/ReservationModal'
+import TimelineModal, { DetailedSaleForm } from '../components/Timeline/ReservationModal'
 import SchedulePage from '../components/Schedule/SchedulePage'
-import AdminPage from '../components/Admin/AdminPage'
+import { AdminPage, UsersPage as UsersPageReal } from '../components/Reservations/ReservationsPage'
 
-const BLISS_V = "bliss-app"
+const uid = genId;
+const BLISS_V = "1.1.0"
 const BIZ_ID = 'biz_khvurgshb'
 
 const fmt = (n) => n == null ? "0" : Number(n).toLocaleString("ko-KR");
@@ -37,7 +38,7 @@ function Loading({msg}) {
   return <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100dvh",gap:12,color:T.textSub,fontSize:T.fs.md}}>
     <Spinner size={28}/>
     <div>{msg||"로딩 중..."}</div>
-    <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    <style>{`@keyframes spin{to{transform:rotate(360deg)}} @keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}`}</style>
   </div>;
 }
 
@@ -81,9 +82,9 @@ async function loadAllFromDb(bizId) {
     sb.getByBiz("reservation_sources", bizId).catch(()=>[]),
     sb.getByBiz("app_users", bizId).catch(()=>[]),
     sb.getByBiz("rooms", bizId).catch(()=>[]),
-    sb.getByBiz("customers", bizId).catch(()=>[]),
+    sb.get("customers", `&business_id=eq.${bizId}&is_hidden=eq.false&order=created_at.desc&limit=500`).catch(()=>[]),
     sb.get("reservations", `&business_id=eq.${bizId}&order=date.desc,time.asc&limit=3000`).catch(()=>[]),
-    sb.getByBiz("sales", bizId).catch(()=>[]),
+    sb.get("sales", `&business_id=eq.${bizId}&date=gte.${new Date(Date.now()-90*86400000).toISOString().slice(0,10)}&order=date.desc&limit=5000`).catch(()=>[]),
     sb.getByBiz("products", bizId).catch(()=>[]),
   ]);
   return {
@@ -797,12 +798,35 @@ function CustomersPage({ data, setData, userBranches, isMaster }) {
   const [editItem, setEditItem] = useState(null);
   const [detailCust, setDetailCust] = useState(null);
   const [detailTab, setDetailTab] = useState("pkg"); // "pkg" | "sales"
+  const [serverCusts, setServerCusts] = useState(null);
+  const [searching, setSearching] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
+  const [custPage, setCustPage] = useState(0);
+  const CUST_PER_PAGE = 50;
 
-  const custs = (data?.customers||[]).filter(c => {
+  // 서버사이드 검색 (디바운스)
+  useEffect(() => {
+    if (!q || q.length < 1) { setServerCusts(null); return; }
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const encoded = encodeURIComponent(q);
+        const filter = `&business_id=eq.${_activeBizId}&or=(name.ilike.*${encoded}*,phone.ilike.*${encoded}*,memo.ilike.*${encoded}*)&order=created_at.desc.nullslast&limit=200`;
+        const results = await sb.get("customers", filter);
+        setServerCusts(fromDb("customers", results));
+      } catch(e) { console.error("Customer search failed:", e); }
+      setSearching(false);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [q]);
+
+  const baseCusts = (q && serverCusts !== null) ? serverCusts : (data?.customers||[]);
+  const custs = baseCusts.filter(c => {
     const bm = vb==="all" ? userBranches.includes(c.bid) : c.bid===vb;
-    const sm = !q || c.name.includes(q) || c.phone.includes(q) || (c.memo||"").includes(q);
-    return bm && sm;
-  }).sort((a,b) => b.visits - a.visits);
+    const sm = !q || c.name?.includes(q) || c.phone?.includes(q) || (c.memo||"").includes(q);
+    const hm = q || showHidden || !c.isHidden;
+    return bm && sm && hm;
+  }).sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||""));
 
   const handleSave = (item) => {
     const normalized = {...item, phone: (item.phone || "").replace(/[^0-9]/g, "")};
@@ -815,35 +839,157 @@ function CustomersPage({ data, setData, userBranches, isMaster }) {
     setShowModal(false); setEditItem(null);
   };
 
-  const custSales = detailCust ? (data.sales||[]).filter(s=>s.custId===detailCust.id).sort((a,b)=>b.date.localeCompare(a.date)) : [];
-  const custPkgs  = detailCust ? (data.custPackages||[]).filter(p=>p.customer_id===detailCust.id && (p.total_count-p.used_count)>0) : [];
+  const [custSales, setCustSales] = useState([]);
+  const [custPkgsServer, setCustPkgsServer] = useState([]);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  useEffect(() => {
+    if (!detailCust) { setCustSales([]); setCustPkgsServer([]); setLoadingDetail(false); return; }
+    setLoadingDetail(true);
+    Promise.all([
+      sb.get("sales", `&cust_id=eq.${detailCust.id}&order=date.desc&limit=500`)
+        .then(rows => setCustSales(fromDb("sales", rows)))
+        .catch(() => setCustSales([])),
+      sb.get("customer_packages", `&customer_id=eq.${detailCust.id}`)
+        .then(rows => setCustPkgsServer(rows))
+        .catch(() => setCustPkgsServer([]))
+    ]).finally(() => setLoadingDetail(false));
+  }, [detailCust?.id]);
+  // 동일 이름 → 최신(유효기간 가장 먼 것)만 표시
+  const custPkgs = (() => {
+    const byName = {};
+    custPkgsServer.forEach(p => {
+      const key = p.service_name || p.id;
+      const exp = ((p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1] || "0000";
+      if (!byName[key] || exp > (byName[key]._exp||"0000")) {
+        byName[key] = {...p, _exp: exp};
+      }
+    });
+    return Object.values(byName);
+  })();
   const pkgSvcs   = (data.services||[]).filter(s=>s.isPackage);
 
-  // 다회권 카드
+  // 패키지 타입 판별
+  const pkgType = (p) => {
+    const n = (p.service_name||"").toLowerCase();
+    if (n.includes("다담권") || n.includes("선불") || n.includes("10%추가적립")) return "prepaid"; // 선불카드/다담권
+    if (n.includes("연간") || n.includes("할인권") || n.includes("회원권")) return "annual"; // 연간할인권
+    return "package"; // 일반 다회권(PKG)
+  };
+
+  // 다회권/다담권/연간할인권 카드
   const PkgCard = ({p}) => {
+    const type = pkgType(p);
+    const isPrepaid = type === "prepaid";
+    const isAnnual = type === "annual";
+
+    // 다담권: note에서 잔액 파싱
+    const parseNote = (note) => {
+      const m = (note||"").match(/잔액:([0-9,]+)/);
+      return m ? Number(m[1].replace(/,/g,"")) : 0;
+    };
+    const balance = isPrepaid ? parseNote(p.note) : 0;
+    const charged = isPrepaid ? p.total_count : 0;
+    const spent = isPrepaid ? p.used_count : 0;
+
+    // 유효기간 파싱
+    const parseExpiry = (note) => {
+      const m = (note||"").match(/유효:(\d{4}-\d{2}-\d{2})/);
+      return m ? m[1] : null;
+    };
+    const expiry = parseExpiry(p.note);
+    const isExpired = expiry && expiry < todayStr();
+
+    // 일반 다회권
     const remain = p.total_count - p.used_count;
-    const pct = (remain/p.total_count)*100;
-    return <div style={{border:"1px solid "+T.border,borderRadius:T.radius.md,padding:"10px 12px",background:T.bgCard,minWidth:150,flex:"0 0 auto"}}>
-      <div style={{fontSize:T.fs.xxs,fontWeight:T.fw.bolder,color:T.text,marginBottom:6}}>{p.service_name}</div>
-      <div style={{display:"flex",alignItems:"center",gap:T.sp.sm,marginBottom:6}}>
-        <div style={{flex:1,height:5,background:T.gray300,borderRadius:T.radius.sm,overflow:"hidden"}}>
-          <div style={{width:pct+"%",height:"100%",background:pct>30?"linear-gradient(90deg,"+T.male+","+T.purple+")":T.female,borderRadius:T.radius.sm,transition:"width .3s"}}/>
-        </div>
-        <span style={{fontSize:T.fs.sm,fontWeight:T.fw.black,color:pct>30?T.primary:T.female,whiteSpace:"nowrap"}}>
-          {remain}<span style={{fontSize:T.fs.nano,color:T.textMuted}}>/{p.total_count}</span>
+    const pct = p.total_count > 0 ? (remain/p.total_count)*100 : 0;
+    const isDone = isPrepaid ? balance <= 0 : remain <= 0;
+
+    return <div style={{border:"1px solid "+(isDone?T.gray300:isExpired?T.danger+"44":T.border),borderRadius:T.radius.md,padding:"10px 12px",background:isDone?T.gray100:T.bgCard,minWidth:180,flex:"0 0 auto",opacity:isDone?0.6:1}}>
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+        <span style={{fontSize:9,padding:"1px 5px",borderRadius:T.radius.full,fontWeight:T.fw.bolder,
+          background:isPrepaid?T.orange+"22":isAnnual?T.info+"22":T.primaryLt,
+          color:isPrepaid?T.orange:isAnnual?T.info:T.primary}}>
+          {isPrepaid?"선불":isAnnual?"연간":"다회"}
         </span>
+        <span style={{fontSize:T.fs.xxs,fontWeight:T.fw.bolder,color:T.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.service_name}</span>
       </div>
+
+      {/* 다담권(선불): 잔액 표시 */}
+      {isPrepaid && <div>
+        <div style={{fontSize:T.fs.xl,fontWeight:T.fw.black,color:balance>0?T.primary:T.textMuted,marginBottom:4}}>
+          {balance.toLocaleString()}<span style={{fontSize:T.fs.xxs,color:T.textMuted}}>원</span>
+        </div>
+        <div style={{fontSize:T.fs.nano,color:T.textMuted,marginBottom:6}}>
+          충전 {charged.toLocaleString()} / 사용 {spent.toLocaleString()}
+        </div>
+      </div>}
+
+      {/* 연간할인권: 유효기간 표시 */}
+      {isAnnual && <div>
+        <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:isExpired?T.danger:T.info,marginBottom:4}}>
+          {isExpired ? "만료" : "이용중"} {expiry ? `(~${expiry})` : ""}
+        </div>
+        <div style={{fontSize:T.fs.nano,color:T.textMuted,marginBottom:6}}>연간 할인 적용</div>
+      </div>}
+
+      {/* 일반 다회권: 잔여횟수 + 프로그레스바 */}
+      {!isPrepaid && !isAnnual && <div>
+        <div style={{display:"flex",alignItems:"center",gap:T.sp.sm,marginBottom:6}}>
+          <div style={{flex:1,height:5,background:T.gray300,borderRadius:T.radius.sm,overflow:"hidden"}}>
+            <div style={{width:pct+"%",height:"100%",background:pct>30?"linear-gradient(90deg,"+T.male+","+T.purple+")":T.female,borderRadius:T.radius.sm,transition:"width .3s"}}/>
+          </div>
+          <span style={{fontSize:T.fs.sm,fontWeight:T.fw.black,color:pct>30?T.primary:T.female,whiteSpace:"nowrap"}}>
+            {remain}<span style={{fontSize:T.fs.nano,color:T.textMuted}}>/{p.total_count}</span>
+          </span>
+        </div>
+      </div>}
+
+      {/* 유효기간 (모든 타입 공통) */}
+      {expiry && <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,padding:"4px 8px",borderRadius:T.radius.sm,
+        background:isExpired?T.dangerLt:T.gray100}}>
+        <span style={{fontSize:T.fs.nano,fontWeight:T.fw.bolder,color:isExpired?T.danger:T.textSub}}>
+          유효 ~{expiry} {isExpired?"(만료)":""}
+        </span>
+        <button onClick={(e)=>{
+          e.stopPropagation();
+          const newExp = prompt("새 유효기간 (YYYY-MM-DD):", expiry);
+          if(!newExp || !/^\d{4}-\d{2}-\d{2}$/.test(newExp)) return;
+          const newNote = expiry ? (p.note||"").replace(/유효:\d{4}-\d{2}-\d{2}/, `유효:${newExp}`) : (p.note||"")+` | 유효:${newExp}`;
+          sb.update("customer_packages",p.id,{note:newNote}).catch(console.error);
+          setCustPkgsServer(prev=>prev.map(x=>x.id===p.id?{...x,note:newNote}:x));
+        }} style={{fontSize:9,padding:"1px 6px",borderRadius:T.radius.sm,border:"1px solid "+T.border,
+          background:T.bgCard,color:T.primary,cursor:"pointer",fontFamily:"inherit",fontWeight:T.fw.bold,whiteSpace:"nowrap"}}>
+          연장
+        </button>
+      </div>}
+
+      {/* 액션 버튼 */}
       <div style={{display:"flex",gap:T.sp.xs}}>
-        <Btn variant="primary" size="sm" style={{flex:1,justifyContent:"center",fontSize:T.fs.nano}} onClick={()=>{
+        {/* 다회권: 1회 사용 */}
+        {!isPrepaid && !isAnnual && <Btn variant="primary" size="sm" style={{flex:1,justifyContent:"center",fontSize:T.fs.nano}} onClick={()=>{
           if(remain<=0) return alert("잔여 횟수가 없습니다");
           const up = {...p, used_count:p.used_count+1};
           sb.update("customer_packages",p.id,{used_count:up.used_count}).catch(console.error);
-          setData(prev=>({...prev, custPackages:(prev.custPackages||[]).map(x=>x.id===p.id?up:x)}));
-        }}>1회 사용</Btn>
+          setCustPkgsServer(prev=>prev.map(x=>x.id===p.id?up:x));
+        }}>1회 사용</Btn>}
+
+        {/* 다담권: 금액 차감 */}
+        {isPrepaid && balance > 0 && <Btn variant="primary" size="sm" style={{flex:1,justifyContent:"center",fontSize:T.fs.nano}} onClick={()=>{
+          const amt = prompt("차감할 금액을 입력하세요:", "0");
+          if(!amt || isNaN(amt) || Number(amt) <= 0) return;
+          const deduct = Number(amt);
+          if(deduct > balance) return alert("잔액보다 큰 금액입니다");
+          const newBal = balance - deduct;
+          const newSpent = spent + deduct;
+          const newNote = (p.note||"").replace(/잔액:[0-9,]+/, `잔액:${newBal.toLocaleString()}`);
+          sb.update("customer_packages",p.id,{used_count:newSpent, note:newNote}).catch(console.error);
+          setCustPkgsServer(prev=>prev.map(x=>x.id===p.id?{...x, used_count:newSpent, note:newNote}:x));
+        }}>금액 차감</Btn>}
+
         <Btn variant="danger" size="sm" style={{padding:"3px 8px",fontSize:T.fs.nano}} onClick={()=>{
-          if(!confirm("다회권을 삭제하시겠습니까?")) return;
+          if(!confirm("삭제하시겠습니까?")) return;
           sb.del("customer_packages",p.id).catch(console.error);
-          setData(prev=>({...prev, custPackages:(prev.custPackages||[]).map(x=>x.id===p.id?null:x).filter(Boolean)}));
+          setCustPkgsServer(prev=>prev.filter(x=>x.id!==p.id));
         }}><I name="trash" size={11}/></Btn>
       </div>
     </div>;
@@ -856,62 +1002,71 @@ function CustomersPage({ data, setData, userBranches, isMaster }) {
       <Btn variant="primary" onClick={()=>{setEditItem(null);setShowModal(true)}}><I name="plus" size={12}/> 고객 등록</Btn>
     </div>
 
-    {/* Filters */}
-    <div style={{display:"flex",gap:T.sp.sm,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
-      <div style={{position:"relative",flex:1,minWidth:180}}>
-        <I name="search" size={14} color={T.gray400} style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)"}}/>
-        <input className="inp" style={{paddingLeft:32}} placeholder="이름, 전화번호, 메모 검색..." value={q} onChange={e=>setQ(e.target.value)}/>
+    {/* 검색 & 필터 */}
+    <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
+      <div style={{position:"relative",flex:1,minWidth:200,maxWidth:360}}>
+        <I name="search" size={14} color={T.gray400} style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)"}}/>
+        <input className="inp" style={{paddingLeft:34,height:38,borderRadius:T.radius.md,fontSize:T.fs.xs}} placeholder="이름, 전화번호, 메모 검색..." value={q} onChange={e=>{setQ(e.target.value);setCustPage(0);}}/>
       </div>
-      <select className="inp" style={{maxWidth:140,width:"auto"}} value={vb} onChange={e=>setVb(e.target.value)}>
+      <select className="inp" style={{maxWidth:130,width:"auto",height:38,borderRadius:T.radius.md,fontSize:T.fs.xs}} value={vb} onChange={e=>{setVb(e.target.value);setCustPage(0);}}>
         <option value="all">전체 매장</option>
         {(data.branches||[]).filter(b=>userBranches.includes(b.id)).map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
       </select>
-      <span style={{fontSize:T.fs.sm,color:T.textSub,flexShrink:0}}>{custs.length}명</span>
+      <label style={{display:"flex",alignItems:"center",gap:4,fontSize:T.fs.xxs,color:T.textSub,cursor:"pointer",flexShrink:0}}>
+        <input type="checkbox" checked={showHidden} onChange={e=>setShowHidden(e.target.checked)} style={{accentColor:T.primary}}/>
+        숨김 포함
+      </label>
+      <span style={{fontSize:T.fs.xxs,color:T.textMuted}}>{custs.length}명</span>
+      {searching && <span style={{fontSize:T.fs.xxs,color:T.orange}}>검색중...</span>}
     </div>
 
-    {/* 테이블 */}
-    <DataTable card>
-      <thead><tr>
-        <th>매장</th><th>이름</th><th>연락처</th><th>성별</th><th>방문수</th><th>최근방문</th><th>메모</th><th style={{width:48}}></th>
-      </tr></thead>
-      <tbody>
-        {custs.length===0
-          ? <tr><td colSpan={8}><Empty msg="고객 없음" icon="users"/></td></tr>
-          : custs.map(c => {
+    {/* 카드형 고객 리스트 */}
+    {(()=>{
+      const totalPages = Math.ceil(custs.length / CUST_PER_PAGE);
+      const paged = custs.slice(custPage * CUST_PER_PAGE, (custPage + 1) * CUST_PER_PAGE);
+      return <>
+      {paged.length===0
+        ? <div style={{textAlign:"center",padding:"40px 0",color:T.textMuted}}><I name="users" size={24}/><div style={{marginTop:8,fontSize:T.fs.xs}}>고객 없음</div></div>
+        : <div style={{display:"flex",flexDirection:"column",gap:1,background:T.border,borderRadius:T.radius.md,overflow:"hidden",border:"1px solid "+T.border}}>
+            {paged.map(c => {
               const br = (data.branches||[]).find(b=>b.id===c.bid);
               const isOpen = detailCust?.id===c.id;
-              return <React.Fragment key={c.id}>
-                <tr style={{cursor:"pointer",background:isOpen?T.primaryHover:"transparent"}}
-                  onClick={()=>{ setDetailCust(isOpen?null:c); setDetailTab("pkg"); }}>
-                  <td>
-                    <span style={{fontSize:T.fs.xxs,background:T.gray200,borderRadius:T.radius.sm,padding:"1px 5px"}}>{br?.short||"-"}</span>
-                  </td>
-                  <td>
-                    <span style={{fontWeight:T.fw.bold}}>{c.name}</span>
-                    {c.custNum && <span style={{fontSize:T.fs.nano,color:T.textMuted,marginLeft:4}}>#{c.custNum}</span>}
-                  </td>
-                  <td style={{color:T.primary,fontSize:T.fs.xxs}}>{c.phone}</td>
-                  <td>
-                    {c.gender
-                      ? <span style={sx.genderBadge(c.gender)}>{c.gender==="F"?"여":"남"}</span>
-                      : <span style={{color:T.textMuted}}>-</span>}
-                  </td>
-                  <td>
-                    <span style={{fontWeight:T.fw.bolder,color:c.visits>=5?T.info:T.textSub}}>{c.visits}회</span>
-                  </td>
-                  <td style={{color:T.textSub,fontSize:T.fs.xxs}}>{c.lastVisit||"-"}</td>
-                  <td style={{color:T.textSub,fontSize:T.fs.xxs,maxWidth:160,...sx.ellipsis}}>{c.memo||"-"}</td>
-                  <td onClick={e=>e.stopPropagation()}>
-                    <Btn variant="secondary" size="sm" onClick={()=>{setEditItem(c);setShowModal(true)}}><I name="edit" size={12}/></Btn>
-                  </td>
-                </tr>
+              return <div key={c.id}>
+                <div style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 14px",background:isOpen?T.primaryHover:T.bgCard,cursor:"pointer",transition:"background .15s"}}
+                  onClick={()=>{ setDetailCust(isOpen?null:c); setDetailTab("sales"); }}>
+                  <div style={{flex:"0 0 140px",minWidth:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                      <span style={{fontWeight:T.fw.bolder,fontSize:T.fs.xs,color:T.text}}>{c.name}</span>
+                      {c.gender && <span style={{...sx.genderBadge(c.gender),fontSize:9,padding:"0 4px"}}>{c.gender==="F"?"여":"남"}</span>}
+                    </div>
+                    <div style={{fontSize:T.fs.xxs,color:T.primary,marginBottom:2}}>{c.phone}</div>
+                    <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                      <span style={{fontSize:9,background:T.gray200,borderRadius:T.radius.sm,padding:"1px 5px",color:T.textSub}}>{br?.short||"-"}</span>
+                      <span style={{fontSize:9,color:T.textMuted}}>{c.visits||0}회</span>
+                      {c.lastVisit && <span style={{fontSize:9,color:T.textMuted}}>{c.lastVisit}</span>}
+                      {c.isHidden && <span style={{fontSize:9,color:T.danger,fontWeight:T.fw.bold}}>숨김</span>}
+                    </div>
+                  </div>
+                  <div style={{flex:1,fontSize:T.fs.xxs,color:T.textSub,lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word",maxHeight:isOpen?"none":60,overflow:"hidden"}}>
+                    {c.memo||<span style={{color:T.textMuted}}>-</span>}
+                  </div>
+                  <div style={{flex:"0 0 auto",display:"flex",gap:4}} onClick={e=>e.stopPropagation()}>
+                    <Btn variant="secondary" size="sm" onClick={()=>{setEditItem(c);setShowModal(true)}} style={{padding:"4px 6px"}}><I name="edit" size={11}/></Btn>
+                    <Btn variant="danger" size="sm" style={{padding:"4px 6px"}} onClick={()=>{
+                      if(!confirm(`"${c.name}" 삭제?`)) return;
+                      sb.del("customers",c.id).catch(console.error);
+                      sb.delWhere("customer_packages","customer_id",c.id).catch(console.error);
+                      setData(prev=>({...prev,customers:(prev.customers||[]).filter(x=>x.id!==c.id),custPackages:(prev.custPackages||[]).filter(x=>x.customer_id!==c.id)}));
+                      if(detailCust?.id===c.id) setDetailCust(null);
+                    }}><I name="trash" size={11}/></Btn>
+                  </div>
+                </div>
 
                 {/* 상세 패널 */}
-                {isOpen && <tr><td colSpan={8} style={{padding:0,background:T.gray100}}>
-                  <div style={{borderTop:"2px solid "+T.primaryLt}}>
+                {isOpen && <div style={{background:T.gray100,borderTop:"2px solid "+T.primaryLt}}>
                     {/* 탭 */}
                     <div style={{display:"flex",gap:0,borderBottom:"1px solid "+T.border,background:T.bgCard}}>
-                      {[["pkg","다회권 ("+custPkgs.length+")"],["sales","매출 내역 ("+custSales.length+")"]].map(([tab,lbl])=>(
+                      {[["sales","매출 내역 ("+custSales.length+")"],["pkg","보유권 ("+custPkgs.filter(p=>{const t=pkgType(p);return t==="prepaid"?((p.note||"").match(/잔액:([0-9,]+)/)?.[1]||"0").replace(/,/g,"")>0:(p.total_count-p.used_count)>0;}).length+"/"+custPkgs.length+")"]].map(([tab,lbl])=>(
                         <button key={tab} onClick={()=>setDetailTab(tab)}
                           style={{padding:"8px 16px",fontSize:T.fs.xs,fontWeight:detailTab===tab?T.fw.bolder:T.fw.normal,
                             color:detailTab===tab?T.primary:T.textSub,background:"none",border:"none",
@@ -951,46 +1106,407 @@ function CustomersPage({ data, setData, userBranches, isMaster }) {
                       </div>}
 
                       {/* 매출 내역 탭 */}
-                      {detailTab==="sales" && <div>
-                        {custSales.length===0
+                      {detailTab==="sales" && <div style={{maxHeight:480,overflowY:"auto"}}>
+                        {loadingDetail
+                          ? <div style={{fontSize:T.fs.xs,color:T.textMuted,padding:"8px 0"}}>로딩 중...</div>
+                          : custSales.length===0
                           ? <div style={{fontSize:T.fs.xs,color:T.textMuted,padding:"8px 0"}}>매출 기록 없음</div>
-                          : <DataTable card={false}>
-                              <thead><tr>
-                                <th>날짜</th><th>매장</th><th>담당자</th><th>시술</th><th>제품</th><th>합계</th><th>메모</th>
-                              </tr></thead>
-                              <tbody>
-                                {custSales.map(s=>{
-                                  const sv = s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint;
-                                  const pr = s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint;
-                                  return <tr key={s.id}>
-                                    <td style={{whiteSpace:"nowrap",fontSize:T.fs.xxs,color:T.textSub}}>{s.date}</td>
-                                    <td><span style={{fontSize:T.fs.nano,background:T.gray200,borderRadius:T.radius.sm,padding:"1px 4px"}}>{(data.branches||[]).find(b=>b.id===s.bid)?.short}</span></td>
-                                    <td style={{fontSize:T.fs.xxs,color:T.textSub}}>{s.staffName}</td>
-                                    <td style={{fontWeight:T.fw.bold,color:T.primary}}>{sv>0?fmt(sv):<Z/>}</td>
-                                    <td style={{fontWeight:T.fw.bold,color:T.infoLt2}}>{pr>0?fmt(pr):<Z/>}</td>
-                                    <td style={{fontWeight:T.fw.bolder,color:T.info}}>{fmt(sv+pr+(s.gift||0))}</td>
-                                    <td style={{...sx.ellipsis,maxWidth:100,fontSize:T.fs.xxs,color:T.textSub}}>{s.memo||"-"}</td>
-                                  </tr>;
-                                })}
-                              </tbody>
-                            </DataTable>
+                          : custSales.map(s=>{
+                              const sv = s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint;
+                              const pr = s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint;
+                              const total = sv+pr+(s.gift||0);
+                              const brName = (data.branches||[]).find(b=>b.id===s.bid)?.short||"";
+                              return <div key={s.id} style={{borderBottom:"1px solid "+T.border,padding:"10px 0"}}>
+                                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:6}}>
+                                  <span style={{fontSize:T.fs.sm,fontWeight:T.fw.black,color:T.text}}>{s.date}</span>
+                                  <span style={{fontSize:T.fs.nano,background:T.gray200,borderRadius:T.radius.sm,padding:"2px 6px"}}>{brName}</span>
+                                  <span style={{fontSize:T.fs.xxs,color:T.textSub,fontWeight:T.fw.bold}}>{s.staffName}</span>
+                                </div>
+                                <div style={{display:"flex",gap:12,marginBottom:6,padding:"6px 10px",background:"linear-gradient(90deg,"+T.primaryHover+",transparent)",borderRadius:T.radius.sm}}>
+                                  <span style={{fontSize:T.fs.xs}}>시술 <b style={{color:T.primary}}>{fmt(sv)}</b></span>
+                                  <span style={{fontSize:T.fs.xs}}>제품 <b style={{color:T.infoLt2}}>{fmt(pr)}</b></span>
+                                  <span style={{fontSize:T.fs.xs,marginLeft:"auto"}}>합계 <b style={{color:T.info,fontSize:T.fs.sm}}>{fmt(total)}</b></span>
+                                </div>
+                                {s.memo && <div style={{fontSize:T.fs.xxs,color:T.textSub,whiteSpace:"pre-wrap",lineHeight:1.6,background:T.bgCard,borderRadius:T.radius.sm,padding:"6px 8px"}}>{s.memo}</div>}
+                              </div>;
+                            })
                         }
                       </div>}
                     </div>
-                  </div>
-                </td></tr>}
-              </React.Fragment>;
-            })
-        }
-      </tbody>
-    </DataTable>
+                </div>}
+              </div>;
+            })}
+          </div>}
+
+      {/* 페이지네이션 */}
+      {totalPages > 1 && <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:12}}>
+        <button disabled={custPage===0} onClick={()=>setCustPage(0)} style={{padding:"4px 10px",fontSize:T.fs.xs,border:"1px solid "+T.border,borderRadius:T.radius.sm,background:T.bgCard,cursor:custPage===0?"default":"pointer",opacity:custPage===0?.4:1}}>«</button>
+        <button disabled={custPage===0} onClick={()=>setCustPage(p=>p-1)} style={{padding:"4px 10px",fontSize:T.fs.xs,border:"1px solid "+T.border,borderRadius:T.radius.sm,background:T.bgCard,cursor:custPage===0?"default":"pointer",opacity:custPage===0?.4:1}}>‹</button>
+        <span style={{fontSize:T.fs.xs,color:T.textSub,padding:"0 8px"}}>{custPage+1} / {totalPages}</span>
+        <button disabled={custPage>=totalPages-1} onClick={()=>setCustPage(p=>p+1)} style={{padding:"4px 10px",fontSize:T.fs.xs,border:"1px solid "+T.border,borderRadius:T.radius.sm,background:T.bgCard,cursor:custPage>=totalPages-1?"default":"pointer",opacity:custPage>=totalPages-1?.4:1}}>›</button>
+        <button disabled={custPage>=totalPages-1} onClick={()=>setCustPage(totalPages-1)} style={{padding:"4px 10px",fontSize:T.fs.xs,border:"1px solid "+T.border,borderRadius:T.radius.sm,background:T.bgCard,cursor:custPage>=totalPages-1?"default":"pointer",opacity:custPage>=totalPages-1?.4:1}}>»</button>
+      </div>}
+      </>;
+    })()}
 
     {showModal && <CustModal item={editItem} onSave={handleSave}
       onClose={()=>_mc(()=>{setShowModal(false);setEditItem(null)})}
       defBranch={userBranches[0]} userBranches={userBranches} branches={data.branches||[]}/>}
   </div>;
 }
-function UsersPage(p) { return <div style={{padding:20,color:'#666'}}>계정 관리 페이지 준비 중</div>; }
+function UsersPage(p) { return <UsersPageReal {...p} />; }
+function SuperUsers({ users, businesses, superData, setSuperData }) {
+  const [editId, setEditId] = useState(null);
+  const [form, setForm] = useState(null);
+
+  const startAdd = () => { setEditId("new"); setForm({name:"", loginId:"", pw:"1234", role:"owner", businessId:businesses[0]?.id||"", branches:[], viewBranches:[]}); };
+  const startEdit = (u) => { setEditId(u.id); setForm({...u}); };
+  const cancel = () => { setEditId(null); setForm(null); };
+
+  const save = async () => {
+    if(!form.name||!form.loginId||!form.pw) { alert("이름, 아이디, 비밀번호를 입력하세요."); return; }
+    if(editId==="new") {
+      const newU = {...form, id:"acc_"+uid()};
+      await sb.insert("app_users", {id:newU.id, business_id:newU.businessId||null, login_id:newU.loginId, password:newU.pw, name:newU.name, role:newU.role, branch_ids:JSON.stringify(newU.branches||[]), view_branch_ids:JSON.stringify(newU.viewBranches||[])}).catch(console.error);
+      setSuperData(p=>({...p, users:[...p.users, newU]}));
+    } else {
+      await sb.update("app_users", editId, {business_id:form.businessId||null, login_id:form.loginId, password:form.pw, name:form.name, role:form.role, branch_ids:JSON.stringify(form.branches||[]), view_branch_ids:JSON.stringify(form.viewBranches||[])}).catch(console.error);
+      setSuperData(p=>({...p, users:p.users.map(u=>u.id===editId?{...form}:u)}));
+    }
+    cancel();
+  };
+  const remove = async (id) => {
+    if(!window.confirm("이 사용자를 삭제하시겠습니까?")) return;
+    await sb.del("app_users", id).catch(console.error);
+    setSuperData(p=>({...p, users:(p?.users||[]).filter(u=>u.id!==id)}));
+  };
+
+  const roleLabel = (r) => r==="super"?"슈퍼":r==="owner"?"대표":"직원";
+  const roleBg = (r) => r==="super"?"#e5737315":r==="owner"?"#7c7cc815":T.bg;
+  const roleClr = (r) => r==="super"?T.female:r==="owner"?T.primary:T.gray600;
+
+  return <div>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:T.sp.sm}}>
+      <h2 style={{fontSize:T.fs.xl,fontWeight:T.fw.black,color:T.text}}><I name="user" size={18}/> 전체 사용자 <span style={{fontSize:T.fs.sm,fontWeight:T.fw.normal,color:T.gray500}}>{users.length}명</span></h2>
+      <Btn variant="primary" onClick={startAdd}><I name="plus" size={12}/> 사용자 추가</Btn>
+    </div>
+
+    {form && <div className="card" style={{padding:20,marginBottom:16}}>
+      <h3 style={{fontSize:T.fs.md,fontWeight:T.fw.bolder,marginBottom:12}}>{editId==="new"?"사용자 추가":"사용자 수정"}</h3>
+      <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
+        <FLD label="이름"><input className="inp" style={{width:"100%",maxWidth:120}} value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))}/></FLD>
+        <FLD label="아이디"><input className="inp" style={{width:"100%",maxWidth:120}} value={form.loginId} onChange={e=>setForm(p=>({...p,loginId:e.target.value}))}/></FLD>
+        <FLD label="비밀번호"><input className="inp" style={{width:"100%",maxWidth:100}} value={form.pw} onChange={e=>setForm(p=>({...p,pw:e.target.value}))}/></FLD>
+        <FLD label="유형"><select className="inp" style={{width:"100%",maxWidth:90}} value={form.role} onChange={e=>setForm(p=>({...p,role:e.target.value}))}>
+          <option value="super">슈퍼</option><option value="owner">대표</option><option value="staff">직원</option>
+        </select></FLD>
+        <FLD label="업체"><select className="inp" style={{width:"100%",maxWidth:150}} value={form.businessId||""} onChange={e=>setForm(p=>({...p,businessId:e.target.value}))}>
+          <option value="">없음</option>{businesses.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
+        </select></FLD>
+        <div style={{display:"flex",gap:6}}>
+          <Btn variant="primary" style={{padding:"7px 16px"}} onClick={save}>{editId==="new"?"추가":"저장"}</Btn>
+          <Btn variant="secondary" style={{padding:"7px 16px"}} onClick={cancel}>취소</Btn>
+        </div>
+      </div>
+    </div>}
+
+    <DataTable card><thead><tr>
+        <th>이름</th><th>아이디</th><th>유형</th><th>업체</th><th>비밀번호</th><th style={{width:120}}>관리</th>
+      </tr></thead><tbody>
+        {users.map(u=>{
+          const biz = businesses.find(b=>b.id===u.businessId);
+          return <tr key={u.id}>
+            <td style={{fontWeight:T.fw.bold}}>{u.name}</td>
+            <td style={{color:T.primary}}>{u.loginId||u.login_id}</td>
+            <td><span style={{fontSize:T.fs.xs,padding:"2px 8px",borderRadius:T.radius.lg,background:roleBg(u.role),color:roleClr(u.role),fontWeight:T.fw.bold}}>{roleLabel(u.role)}</span></td>
+            <td style={{fontSize:T.fs.sm,color:T.gray700}}>{biz?.name||"-"}</td>
+            <td style={{color:T.textMuted}}>{"•".repeat((u.pw||u.password||"").length)}</td>
+            <td style={{display:"flex",gap:T.sp.xs}}>
+              <Btn variant="secondary" style={{padding:"4px 10px",fontSize:T.fs.xxs}} onClick={()=>startEdit(u)}>수정</Btn>
+              {u.role!=="super" && <Btn variant="danger" style={{padding:"4px 10px",fontSize:T.fs.xxs}} onClick={()=>remove(u.id)}>삭제</Btn>}
+            </td>
+          </tr>;
+        })}
+      </tbody></DataTable>
+  </div>;
+}
+
+function SuperSystemSettings() {
+  const [key, setKey] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const rows = await sb.get("businesses","&code=eq.__system__");
+        if (rows.length > 0) {
+          const m = JSON.parse(rows[0].settings||"{}");
+          setKey(m.system_gemini_key||"");
+        }
+      } catch(e){}
+      finally { setLoading(false); }
+    })();
+  }, []);
+
+  const save = async () => {
+    try {
+      const rows = await sb.get("businesses","&code=eq.__system__");
+      const settings = JSON.stringify({ system_gemini_key: key.trim() });
+      if (rows.length > 0) {
+        await sb.update("businesses", rows[0].id, { settings });
+      } else {
+        await sb.insert("businesses",{ id:"biz_system", name:"[시스템]", code:"__system__", phone:"", settings });
+      }
+      window.__systemGeminiKey = key.trim();
+      setSaved(true);
+      setTimeout(()=>setSaved(false), 2500);
+    } catch(e) { alert("저장 실패: "+e.message); }
+  };
+
+  if (loading) return <div style={{padding:40,textAlign:"center",color:T.gray500}}>로딩 중...</div>;
+
+  return (
+    <div style={{maxWidth:520,margin:"0 auto",padding:24}}>
+      <div style={{fontSize:T.fs.md,fontWeight:T.fw.black,color:T.text,marginBottom:4}}>시스템 설정</div>
+      <div style={{fontSize:T.fs.sm,color:T.gray500,marginBottom:24}}>일반 사용자에게는 표시되지 않는 개발자 전용 설정입니다.</div>
+
+      <div style={{background:T.bgCard,border:"1px solid #e8e8e8",borderRadius:T.radius.lg,padding:20,display:"flex",flexDirection:"column",gap:T.sp.lg}}>
+        <div>
+          <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.gray700,marginBottom:4}}>Gemini API 키 (시스템)</div>
+          <div style={{fontSize:T.fs.xxs,color:T.textMuted,marginBottom:10}}>
+            가입 시 사업자등록증 자동 인식에 사용됩니다. 사용자에게는 노출되지 않습니다.
+          </div>
+          <div style={{display:"flex",gap:T.sp.sm}}>
+            <input
+              type="password"
+              value={key}
+              onChange={e=>{setKey(e.target.value);setSaved(false);}}
+              placeholder="AIza..."
+              style={{flex:1,padding:"10px 12px",fontSize:T.fs.sm,borderRadius:T.radius.md,border:"1px solid "+T.border,outline:"none",fontFamily:"inherit"}}
+            />
+            <button onClick={save}
+              style={{padding:"10px 20px",borderRadius:T.radius.md,border:"none",background:T.primary,color:T.bgCard,fontSize:T.fs.sm,fontWeight:T.fw.bolder,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
+              {saved ? "✓ 저장됨" : "저장"}
+            </button>
+          </div>
+          {key && <div style={{fontSize:T.fs.xxs,color:T.primary,marginTop:6}}>✓ 키 등록됨 — 신규 가입 시 OCR 자동 활성화</div>}
+          {!key && <div style={{fontSize:T.fs.xxs,color:"#f4a",marginTop:6}}>키 미등록 — 신규 가입자는 직접 입력 방식으로 진행됩니다</div>}
+        </div>
+
+        <div style={{borderTop:"1px solid #f0f0f0",paddingTop:14}}>
+          <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:8}}>요금제 안내</div>
+          <GridLayout cols={3} gap={8}>
+            {[
+              {name:"체험",id:"trial",color:T.gray500,desc:"14일 무료"},
+              {name:"Basic",id:"basic",color:T.male,desc:"지점 1 · 직원 3"},
+              {name:"Pro",id:"pro",color:T.primary,desc:"무제한"},
+            ].map(p=>(
+              <div key={p.id} style={{border:"1px solid #e8e8e8",borderRadius:T.radius.md,padding:"10px 12px",textAlign:"center"}}>
+                <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:p.color}}>{p.name}</div>
+                <div style={{fontSize:T.fs.xxs,color:T.gray500,marginTop:2}}>{p.desc}</div>
+              </div>
+            ))}
+          </GridLayout>
+          <div style={{fontSize:T.fs.xxs,color:T.gray400,marginTop:10}}>* 결제 연동은 추후 구현 예정</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SignupWizard({ onComplete, onBack }) {
+  const [step, setStep] = useState(1);
+  const [saving, setSaving] = useState(false);
+  const [acct, setAcct] = useState({ name:'', loginId:'', pw:'', pw2:'' });
+  const setA = (k,v) => setAcct(p=>({...p,[k]:v}));
+  const [bizName, setBizName] = useState('');
+  const [branches, setBranches] = useState([]);
+  const [addName, setAddName] = useState('');
+  const [addPhone, setAddPhone] = useState('');
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [errs, setErrs] = useState({});
+  const setErr = (k,v) => setErrs(p=>({...p,[k]:v}));
+
+  const nextStep1 = () => {
+    const e = {};
+    if (!acct.name.trim()) e.name = '이름을 입력해주세요';
+    if (!acct.loginId.trim()) e.loginId = '아이디를 입력해주세요';
+    if (!/^[a-zA-Z0-9_]{3,20}$/.test(acct.loginId)) e.loginId = '아이디는 영문/숫자/언더바 3~20자로 입력해주세요';
+    if (acct.pw.length < 4) e.pw = '비밀번호는 4자 이상이어야 해요';
+    if (acct.pw !== acct.pw2) e.pw2 = '비밀번호가 일치하지 않아요';
+    setErrs(e);
+    if (Object.keys(e).length === 0) setStep(2);
+  };
+
+  const addBranchItem = () => {
+    if (!addName.trim()) { setErr('addName','지점 이름을 입력해주세요'); return; }
+    if (branches.length >= 3) return;
+    setBranches(p=>[...p,{name:addName.trim(), phone:addPhone.trim()}]);
+    setAddName(''); setAddPhone(''); setShowAddForm(false); setErr('addName','');
+  };
+  const removeBranch = (i) => setBranches(p=>p.filter((_,idx)=>idx!==i));
+
+  const submit = async () => {
+    if (branches.length === 0) { alert('지점을 먼저 등록해주세요.'); return; }
+    if (!bizName.trim()) { alert('브랜드명을 입력해주세요.'); return; }
+    setSaving(true);
+    try {
+      const ex = await sb.get('app_users','&login_id=eq.'+encodeURIComponent(acct.loginId));
+      if (ex.length > 0) { alert('이미 사용 중인 아이디입니다.'); setSaving(false); return; }
+      const bizId = 'biz_'+uid();
+      const oId = 'acc_'+uid();
+      const exp = new Date(); exp.setDate(exp.getDate()+14);
+      await sb.insert('businesses', {
+        id: bizId, name: bizName.trim(), code: acct.loginId, phone: branches[0].phone||'',
+        settings: JSON.stringify({ plan:'trial', planExpiry: exp.toISOString().slice(0,10) }), use_yn: true
+      });
+      const brIds = [];
+      for (let i=0; i<branches.length; i++) {
+        const brId = 'br_'+uid();
+        brIds.push(brId);
+        await sb.insert('branches', {
+          id: brId, business_id: bizId, name: branches[i].name, short: branches[i].name.slice(0,5),
+          phone: branches[i].phone||'', sort: i, use_yn: true
+        });
+      }
+      await sb.insert('app_users', {
+        id: oId, business_id: bizId, login_id: acct.loginId, password: acct.pw,
+        name: acct.name.trim(), role: 'owner', branch_ids: JSON.stringify(brIds), view_branch_ids: JSON.stringify(brIds)
+      });
+      setStep(3);
+      setTimeout(()=>onComplete({
+        id:oId, businessId:bizId, loginId:acct.loginId, pw:acct.pw,
+        name:acct.name.trim(), role:'owner', branchIds:brIds, viewBranchIds:brIds
+      }), 2000);
+    } catch(e) {
+      alert('가입 실패: '+(e.message||'다시 시도해주세요.'));
+    } finally { setSaving(false); }
+  };
+
+  const inp = {width:'100%',padding:'11px 13px',fontSize:T.fs.md,borderRadius:T.radius.lg,border:'1px solid '+T.border,outline:'none',fontFamily:'inherit',color:T.text,background:'#fff'};
+  const lbl = {fontSize:T.fs.xxs,color:T.gray500,fontWeight:T.fw.bold,marginBottom:5,display:'block'};
+  const errStyle = {fontSize:T.fs.xxs,color:T.danger,marginTop:3};
+
+  const StepBar = () => (
+    <div style={{display:'flex',alignItems:'center',justifyContent:'center',marginBottom:24,gap:0}}>
+      {[['1','계정'],['2','사업장'],['3','완료']].map(([n,lv],i,arr)=><React.Fragment key={n}>
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:5}}>
+          <div style={{width:28,height:28,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',
+            fontSize:12,fontWeight:700,
+            background: step>i+1?T.primary : step===i+1?T.primary:'#e8e8f0',
+            color: step>=i+1?'#fff':T.gray400,
+            boxShadow: step===i+1?'0 0 0 4px #f0f0fa':'none',
+            transition:'all .3s'}}>
+            {step>i+1?'✓':n}
+          </div>
+          <div style={{fontSize:10,fontWeight:600,color:step===i+1?T.primary:T.gray400}}>{lv}</div>
+        </div>
+        {i<2&&<div style={{width:44,height:2,background:step>i+1?T.primary:'#e8e8f0',margin:'0 6px',marginBottom:16,transition:'background .3s'}}/>}
+      </React.Fragment>)}
+    </div>
+  );
+
+  if (step===1) return (
+    <div style={{display:'flex',flexDirection:'column',gap:0}}>
+      <StepBar/>
+      <div style={{fontSize:T.fs.lg,fontWeight:T.fw.black,marginBottom:4}}>계정 만들기</div>
+      <div style={{fontSize:T.fs.sm,color:T.textMuted,marginBottom:20,lineHeight:1.5}}>아이디와 비밀번호로 Bliss 계정을 만들어요.</div>
+      <div style={{marginBottom:13}}>
+        <label style={lbl}>이름</label>
+        <input style={{...inp,borderColor:errs.name?T.danger:T.border}} value={acct.name} onChange={e=>setA('name',e.target.value)} placeholder="홍길동"/>
+        {errs.name&&<div style={errStyle}>{errs.name}</div>}
+      </div>
+      <div style={{marginBottom:13}}>
+        <label style={lbl}>아이디 (영문/숫자/언더바 3~20자)</label>
+        <input style={{...inp,borderColor:errs.loginId?T.danger:T.border}} value={acct.loginId} onChange={e=>setA('loginId',e.target.value.toLowerCase())} placeholder="예: housewaxing"/>
+        {errs.loginId&&<div style={errStyle}>{errs.loginId}</div>}
+      </div>
+      <div style={{marginBottom:13}}>
+        <label style={lbl}>비밀번호</label>
+        <input style={{...inp,borderColor:errs.pw?T.danger:T.border}} type="password" value={acct.pw} onChange={e=>setA('pw',e.target.value)} placeholder="4자 이상"/>
+        {errs.pw&&<div style={errStyle}>{errs.pw}</div>}
+      </div>
+      <div style={{marginBottom:20}}>
+        <label style={lbl}>비밀번호 확인</label>
+        <input style={{...inp,borderColor:errs.pw2?T.danger:T.border}} type="password" value={acct.pw2} onChange={e=>setA('pw2',e.target.value)} placeholder="비밀번호 재입력"/>
+        {errs.pw2&&<div style={errStyle}>{errs.pw2}</div>}
+      </div>
+      <button onClick={nextStep1} style={{width:'100%',padding:13,borderRadius:T.radius.lg,border:'none',background:T.primary,color:'#fff',fontSize:T.fs.md,fontWeight:T.fw.bolder,cursor:'pointer',fontFamily:'inherit'}}>
+        다음 — 사업장 등록 →
+      </button>
+      <button onClick={onBack} style={{background:'none',border:'none',fontSize:T.fs.sm,color:T.gray400,cursor:'pointer',marginTop:12,fontFamily:'inherit'}}>← 로그인으로 돌아가기</button>
+    </div>
+  );
+
+  if (step===2) return (
+    <div style={{display:'flex',flexDirection:'column',gap:0}}>
+      <StepBar/>
+      <div style={{fontSize:T.fs.lg,fontWeight:T.fw.black,marginBottom:4}}>사업장 등록</div>
+      <div style={{fontSize:T.fs.sm,color:T.textMuted,marginBottom:16,lineHeight:1.5}}>운영하시는 브랜드명과 지점을 등록해주세요.</div>
+      <div style={{marginBottom:16}}>
+        <label style={lbl}>브랜드명 <span style={{color:T.danger}}>*</span></label>
+        <input style={inp} value={bizName} onChange={e=>setBizName(e.target.value)} placeholder="예: 하우스왁싱"/>
+      </div>
+      <div style={{marginBottom:10,display:'flex',flexDirection:'column',gap:8}}>
+        {branches.map((b,i)=>(
+          <div key={i} style={{border:'1.5px solid '+(i===0?T.primary:T.border),borderRadius:T.radius.lg,padding:'12px 14px',background:i===0?T.primaryHover:'#fff',position:'relative'}}>
+            <div style={{fontSize:10,fontWeight:800,color:T.primary,marginBottom:4}}>지점 {i+1}</div>
+            <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.text}}>{b.name}</div>
+            {b.phone&&<div style={{fontSize:T.fs.xxs,color:T.textSub,marginTop:2}}>{b.phone}</div>}
+            {i>0&&<button onClick={()=>removeBranch(i)} style={{position:'absolute',top:8,right:10,background:'none',border:'none',cursor:'pointer',color:T.gray400,fontSize:16}}>×</button>}
+          </div>
+        ))}
+      </div>
+      {showAddForm ? (
+        <div style={{border:'1.5px solid '+T.border,borderRadius:T.radius.lg,padding:'14px',marginBottom:10,background:'#fafafa'}}>
+          <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,marginBottom:10,color:T.text}}>지점 등록</div>
+          <div style={{marginBottom:10}}>
+            <label style={lbl}>지점 이름 <span style={{color:T.danger}}>*</span></label>
+            <input style={{...inp,borderColor:errs.addName?T.danger:T.border}} value={addName} onChange={e=>{setAddName(e.target.value);setErr('addName','')}} placeholder="예: 강남점"/>
+            {errs.addName&&<div style={errStyle}>{errs.addName}</div>}
+          </div>
+          <div style={{marginBottom:12}}>
+            <label style={lbl}>전화번호 (선택)</label>
+            <input style={inp} value={addPhone} onChange={e=>setAddPhone(e.target.value)} placeholder="02-0000-0000"/>
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <button onClick={addBranchItem} style={{flex:1,padding:'10px',borderRadius:T.radius.lg,border:'none',background:T.primary,color:'#fff',fontSize:T.fs.sm,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>등록</button>
+            <button onClick={()=>{setShowAddForm(false);setAddName('');setAddPhone('');setErr('addName','');}} style={{padding:'10px 16px',borderRadius:T.radius.lg,border:'1px solid '+T.border,background:'#fff',color:T.gray600,fontSize:T.fs.sm,cursor:'pointer',fontFamily:'inherit'}}>취소</button>
+          </div>
+        </div>
+      ) : (
+        branches.length < 3 && (
+          <button onClick={()=>setShowAddForm(true)} style={{width:'100%',padding:11,border:'1.5px dashed #ccc',borderRadius:T.radius.lg,background:'none',color:T.textMuted,fontSize:T.fs.sm,fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6,marginBottom:10,fontFamily:'inherit'}}>
+            + 지점 등록 ({branches.length}/3)
+          </button>
+        )
+      )}
+      <div style={{fontSize:T.fs.xxs,color:T.textMuted,textAlign:'center',marginBottom:14}}>지점은 최대 <b style={{color:T.primary}}>3개</b>까지 등록할 수 있어요</div>
+      <button onClick={submit} disabled={saving||branches.length===0||!bizName.trim()}
+        style={{width:'100%',padding:13,borderRadius:T.radius.lg,border:'none',
+          background:(saving||branches.length===0||!bizName.trim())?T.gray200:'linear-gradient(135deg,#7c7cc8,#9b9be0)',
+          color:(saving||branches.length===0||!bizName.trim())?T.gray400:'#fff',
+          fontSize:T.fs.md,fontWeight:T.fw.bolder,cursor:saving||branches.length===0?'not-allowed':'pointer',fontFamily:'inherit'}}>
+        {saving?'처리 중...':'완료 — 시작하기 →'}
+      </button>
+      <button onClick={()=>setStep(1)} style={{background:'none',border:'none',fontSize:T.fs.sm,color:T.gray400,cursor:'pointer',marginTop:10,fontFamily:'inherit'}}>← 이전</button>
+    </div>
+  );
+
+  return (
+    <div style={{textAlign:'center',padding:'20px 0',display:'flex',flexDirection:'column',alignItems:'center',gap:16}}>
+      <div style={{fontSize:56}}>🎉</div>
+      <div style={{fontSize:T.fs.xxl,fontWeight:T.fw.black,color:T.successDk||T.primary}}>가입 완료!</div>
+      <div style={{fontSize:T.fs.sm,color:T.gray600,lineHeight:1.8}}>
+        <b style={{color:T.text}}>{acct.name}</b>님,<br/>14일 무료 체험이 시작되었습니다.
+      </div>
+      <div style={{width:'60%',height:4,background:'#e0e0f0',borderRadius:T.radius.sm,overflow:'hidden'}}>
+        <div style={{height:'100%',background:T.primary,borderRadius:T.radius.sm,width:'100%',animation:'loadingBar 1.8s linear forwards'}}/>
+      </div>
+    </div>
+  );
+}
 
 
 function App() {
@@ -1025,26 +1541,35 @@ function App() {
       "br_k57zpkbx1":"101521969","br_lfv2wgdf1":"101522539","br_g768xdu4w":"101517367",
       "br_ybo3rmulv":"101476019","br_xu60omgdf":"101988152"};
     const accIds = (userBranches||[]).map(b=>BR_ACC[b]).filter(Boolean);
+    const SOCIAL_CH = ["whatsapp","telegram","instagram","kakao"];
     const load = () => {
       // userBranches 아직 안 로드됐으면 스킵 (isMaster는 전체 허용)
       if(accIds.length===0 && !isMaster && userBranches !== null) { setUnreadMsgCount(0); return; }
-      let url = SB_URL+"/rest/v1/naver_messages?is_read=eq.false&direction=eq.in&select=id&limit=999";
-      if(accIds.length>0) url += "&account_id=in.("+accIds.join(",")+")";
-      fetch(url,{headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY}})
+      fetch(SB_URL+"/rest/v1/naver_messages?is_read=eq.false&direction=eq.in&select=id,account_id,channel&limit=999",
+        {headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY,"Cache-Control":"no-cache"},cache:"no-store"})
         .then(r=>r.json())
-        .then(arr=>{ if(Array.isArray(arr)) setUnreadMsgCount(arr.length); })
+        .then(arr=>{
+          if(!Array.isArray(arr)) return;
+          // 네이버(지점 필터) + 소셜채널(전체 허용) 합산
+          const count = arr.filter(m =>
+            SOCIAL_CH.includes(m.channel) || accIds.length===0 || accIds.includes(String(m.account_id))
+          ).length;
+          setUnreadMsgCount(count);
+        })
         .catch(()=>{});
     };
     load();
-    // Realtime: INSERT/UPDATE 시 지점 필터 후 재카운트
+    // 10초 폴링 (Realtime 실패 대비)
+    const poll = setInterval(load, 10000);
+    // Realtime: INSERT/UPDATE 시 재카운트
     const rt = window._sbClient?.channel("unread_badge")
       ?.on("postgres_changes",{event:"INSERT",schema:"public",table:"naver_messages"},
-        p=>{ if(p?.new?.direction==="in"&&!p?.new?.is_read&&(accIds.length===0||accIds.includes(p.new.account_id))) load(); }
+        p=>{ if(p?.new?.direction==="in"&&!p?.new?.is_read) load(); }
       )
       ?.on("postgres_changes",{event:"UPDATE",schema:"public",table:"naver_messages"},
-        p=>{ if(p?.new?.is_read===true&&(accIds.length===0||accIds.includes(p.new.account_id))) load(); }
+        p=>{ if(p?.new?.is_read===true) load(); }
       )?.subscribe();
-    return ()=>{ try{rt?.unsubscribe();}catch(e){} };
+    return ()=>{ clearInterval(poll); try{rt?.unsubscribe();}catch(e){} };
   }, [userBranches, isMaster]);
   // App Badge API — 홈화면 아이콘 배지 (미읽 메시지 + 확정대기 예약)
   useEffect(() => {
@@ -1072,8 +1597,8 @@ function App() {
           const diffH = (Date.now() - lastSeen.getTime()) / 3600000;
           const scrapedDiffH = lastScraped ? (Date.now() - lastScraped.getTime()) / 3600000 : 999;
           const scraper = oracleRow.scraper_status || "";
-          // 서버가 1시간 이상 응답 없거나 DEAD면 세션 죽은 것
-          const isSessionDead = scraper.includes("DEAD") || scraper.includes("error") || diffH > 1;
+          // 서버가 6시간 이상 응답 없거나 DEAD면 세션 죽은 것
+          const isSessionDead = scraper.includes("DEAD") || scraper.includes("error") || diffH > 6;
           // last_processed가 없고 서버가 살아있으면 경고 안 띄움 (방금 시작한 것)
           const isScrapingStale = lastScraped ? scrapedDiffH > 12 : false;
           const isWarning = isSessionDead || isScrapingStale;
@@ -1353,7 +1878,7 @@ function App() {
     const onVisible = async () => {
       if (!document.hidden) {
         try {
-          const rows = await sb.getByBiz("reservations", currentBizId);
+          const rows = await sb.get("reservations", `&business_id=eq.${currentBizId}&order=date.desc,time.asc&limit=3000`);
           const parsed = fromDb("reservations", rows);
           setData(prev => prev ? {...prev, reservations: parsed} : prev);
         } catch(e) {}
@@ -1374,6 +1899,21 @@ function App() {
               try {
                 const parsed = row.id ? fromDb("reservations", [row])[0] : null;
                 if (ev === "INSERT" && parsed) {
+                  // 새 예약 → 즉시 알림 (네이버 예약이면 status 무관)
+                  if (parsed.source === "naver" || parsed.source === "네이버") {
+                    try {
+                      const isPending = parsed.status === "pending";
+                      if (window.__blissAlertDiv) window.__blissAlertDiv.remove();
+                      const div = document.createElement("div");
+                      window.__blissAlertDiv = div;
+                      const bg = isPending ? "#ff9800" : "#4CAF50";
+                      const label = isPending ? "확정대기" : "새 예약";
+                      div.innerHTML = `<div style="position:fixed;top:20px;right:20px;z-index:99999;background:${bg};color:#fff;padding:16px 24px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.3);font-size:15px;font-weight:800;animation:slideIn .3s;cursor:pointer;max-width:350px;" onclick="this.parentElement.remove()">🔔 ${label}<br><span style="font-size:13px;font-weight:500;">${parsed.custName||"네이버 예약"} ${parsed.date||""} ${parsed.time||""}</span></div>`;
+                      document.body.appendChild(div);
+                      setTimeout(()=>{ try{div.remove();}catch(e){} }, 20000);
+                      try { new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2Nk4yGfHJ0fIaNkImBd3F2gIqRjYaCeHR4gImQi4R/d3V5goqPi4N+d3Z6g4uPioJ9d3d7hIyOiYF8d3h8hY2NiIF8eHl9hoyMh4B7eXp+h42LhX96ent/iIyKhH56e3yAiYuJg356fH2BiomHgn17fH6Ci4iGgX17fX+Di4eFgH18foGEioSDf3x9f4KFiYOCfn1+gIOGiIKBfn5/gYSHh4GAf39/goWGhYB/f4CBg4aFhIB/gICCg4WEg39/gIGDhISCf3+AgYKDhIOBf4CBgoOEg4F/gIGCg4SDgX+AgYKDg4OBf4CCgoODgoF/gIGCg4OCgX+AgoKDg4KBf4CCgoODgoF/gIGCg4OCgX+AgYKDg4KBf4CBgoKDgoF/gIGCgoOCgX+AgYKCg4KBf4CBgoKDgoF/gIGCgoOCgX+AgYKCg4KBf4CBgoKCgoF/gIGCgoKCgX+AgYKCgoKBf4CBgoKCgoF/gIGCgoKCgX+AgYKCgoKBgICBgoKCgoGAgIGCgoKCgYCAgYKCgoKBgICBgoKCgoGAgIGCgoKCgYCAgYKCgoKBgA==").play(); } catch(e){}
+                    } catch(e){}
+                  }
                   if (isModalOpenRef.current) {
                     if (!pendingRTQueueRef.current.some(q=>q.ev==="INSERT"&&q.data.id===parsed.id)) {
                       pendingRTQueueRef.current = [...pendingRTQueueRef.current, {ev:"INSERT",data:parsed}];
@@ -1411,8 +1951,42 @@ function App() {
       } catch(e) { console.log("RT setup error:", e); }
     }
 
+    // 예약 폴링 (15초) — Realtime 실패 대비
+    const resPoll = setInterval(async () => {
+      try {
+        const rows = await sb.get("reservations", `&business_id=eq.${currentBizId}&order=date.desc,time.asc&limit=3000`);
+        const parsed = fromDb("reservations", rows);
+        setData(prev => {
+          if (!prev) return prev;
+          const oldRes = prev.reservations || [];
+          const oldIds = new Set(oldRes.map(r=>r.id));
+          const changed = parsed.length !== oldRes.length
+            || parsed.some(r => { const o = oldRes.find(x=>x.id===r.id); return !o || o.status !== r.status || o.memo !== r.memo || o.naverConfirmedDt !== r.naverConfirmedDt; });
+          if (changed) {
+            // 새 예약 or 확정대기 감지 → 알림
+            const newPending = parsed.filter(r => r.status === "pending" && !oldIds.has(r.id));
+            const newConfirmed = parsed.filter(r => r.status === "confirmed" && oldRes.find(x=>x.id===r.id && x.status==="pending"));
+            if (newPending.length > 0) {
+              const names = newPending.map(r=>r.custName||"고객").join(", ");
+              if (window.__blissAlertDiv) window.__blissAlertDiv.remove();
+              const div = document.createElement("div");
+              div.id = "bliss-new-res-alert";
+              window.__blissAlertDiv = div;
+              div.innerHTML = `<div style="position:fixed;top:20px;right:20px;z-index:99999;background:#ff9800;color:#fff;padding:16px 24px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.3);font-size:15px;font-weight:800;animation:slideIn .3s;cursor:pointer;max-width:350px;" onclick="this.parentElement.remove()">🔔 새 예약 ${newPending.length}건 (확정대기)<br><span style="font-size:13px;font-weight:500;">${names}</span></div>`;
+              document.body.appendChild(div);
+              setTimeout(()=>{ try{div.remove();}catch(e){} }, 15000);
+              // 소리
+              try { new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2Nk4yGfHJ0fIaNkImBd3F2gIqRjYaCeHR4gImQi4R/d3V5goqPi4N+d3Z6g4uPioJ9d3d7hIyOiYF8d3h8hY2NiIF8eHl9hoyMh4B7eXp+h42LhX96ent/iIyKhH56e3yAiYuJg356fH2BiomHgn17fH6Ci4iGgX17fX+Di4eFgH18foGEioSDf3x9f4KFiYOCfn1+gIOGiIKBfn5/gYSHh4GAf39/goWGhYB/f4CBg4aFhIB/gICCg4WEg39/gIGDhISCf3+AgYKDhIOBf4CBgoOEg4F/gIGCg4SDgX+AgYKDg4OBf4CCgoODgoF/gIGCg4OCgX+AgoKDg4KBf4CCgoODgoF/gIGCg4OCgX+AgYKDg4KBf4CBgoKDgoF/gIGCgoOCgX+AgYKCg4KBf4CBgoKDgoF/gIGCgoOCgX+AgYKCg4KBf4CBgoKCgoF/gIGCgoKCgX+AgYKCgoKBf4CBgoKCgoF/gIGCgoKCgX+AgYKCgoKBgICBgoKCgoGAgIGCgoKCgYCAgYKCgoKBgICBgoKCgoGAgIGCgoKCgYCAgYKCgoKBgA==").play(); } catch(e){}
+            }
+          }
+          return changed ? {...prev, reservations: parsed} : prev;
+        });
+      } catch(e) {}
+    }, 15000);
+
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
+      clearInterval(resPoll);
       if (channel && supaClient) { try { supaClient.removeChannel(channel); } catch(e){} }
     };
   }, [phase, currentBizId]);

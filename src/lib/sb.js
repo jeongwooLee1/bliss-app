@@ -11,9 +11,14 @@ export const sbHeaders = {
 
 export const sb = {
   async get(table, filter="") {
+    // filter가 &로 시작하지 않는 단순 ID면 → &id=eq.{id}&limit=1 로 변환
+    if (filter && !filter.startsWith("&")) {
+      filter = `&id=eq.${filter}&limit=1`;
+    }
     const hasSortCol = ["services","products","service_tags","service_categories","reservation_sources","branches"].includes(table);
     const hasCreatedAt = !["rooms","services","products","service_categories","service_tags"].includes(table);
-    const order = hasSortCol ? "order=sort.asc.nullslast" : (hasCreatedAt ? "order=created_at.asc.nullslast" : "order=id.asc");
+    const descTables = ["customers"];
+    const order = hasSortCol ? "order=sort.asc.nullslast" : (hasCreatedAt ? (descTables.includes(table) ? "order=created_at.desc.nullslast" : "order=created_at.asc.nullslast") : "order=id.asc");
     const r=await fetch(`${SB_URL}/rest/v1/${table}?select=*${filter.includes('order=')?'':('&'+order)}${filter}`,{headers:sbHeaders});
     if(!r.ok){const e=await r.text();console.error(`DB get ${table} failed:`, r.status, e);}
     return r.ok?r.json():[];

@@ -3,7 +3,7 @@
 export const DBMAP = {
   reservations:{business_id:"businessId",room_id:"roomId",cust_id:"custId",cust_name:"custName",cust_phone:"custPhone",cust_gender:"custGender",staff_id:"staffId",service_id:"serviceId",is_schedule:"isSchedule",is_new_cust:"isNewCust",selected_tags:"selectedTags",selected_services:"selectedServices",repeat_group_id:"repeatSourceId",repeat_until:"repeatUntil",reservation_id:"reservationId",updated_at:"_ua",source:"source",request_msg:"requestMsg",owner_comment:"ownerComment",is_prepaid:"isPrepaid",npay_method:"npayMethod",total_price:"totalPrice",visit_count:"visitCount",no_show_count:"noShowCount",is_scraping_done:"isScrapingDone",naver_reg_dt:"naverRegDt",naver_confirmed_dt:"naverConfirmedDt",naver_cancelled_dt:"naverCancelledDt",prev_reservation_id:"prevReservationId",visitor_name:"visitorName",visitor_phone:"visitorPhone"},
   sales:{business_id:"businessId",cust_id:"custId",cust_name:"custName",cust_phone:"custPhone",cust_gender:"custGender",cust_num:"custNum",staff_id:"staffId",staff_name:"staffName",service_id:"serviceId",service_name:"serviceName",product_id:"productId",product_name:"productName",svc_cash:"svcCash",svc_transfer:"svcTransfer",svc_card:"svcCard",svc_point:"svcPoint",prod_cash:"prodCash",prod_transfer:"prodTransfer",prod_card:"prodCard",prod_point:"prodPoint",order_num:"orderNum",reservation_id:"reservationId"},
-  customers:{business_id:"businessId",last_visit:"lastVisit",cust_num:"custNum"},
+  customers:{business_id:"businessId",last_visit:"lastVisit",cust_num:"custNum",is_hidden:"isHidden",created_at:"createdAt"},
   service_tags:{business_id:"businessId",schedule_yn:"scheduleYn",use_yn:"useYn"},
   services:{business_id:"businessId",price_f:"priceF",price_m:"priceM",is_package:"isPackage",pkg_count:"pkgCount",pkg_price_f:"pkgPriceF",pkg_price_m:"pkgPriceM"},
   app_users:{business_id:"businessId",login_id:"loginId",branch_ids:"branches",password:"pw",view_branch_ids:"viewBranches"},
@@ -60,7 +60,7 @@ export function fromDb(table,rows){const m=DBMAP[table];if(!m)return rows;return
 export const DB_COLS={
   reservations:["id","business_id","bid","room_id","cust_id","cust_name","cust_phone","cust_gender","staff_id","service_id","date","time","dur","status","memo","type","is_schedule","is_new_cust","selected_tags","selected_services","repeat","repeat_until","repeat_group_id","reservation_id","updated_at","source","request_msg","owner_comment","is_prepaid","npay_method","total_price","visit_count","no_show_count","is_scraping_done","naver_reg_dt","naver_confirmed_dt","naver_cancelled_dt","visitor_name","visitor_phone"],
   sales:["id","business_id","bid","cust_id","cust_name","cust_phone","cust_gender","cust_num","staff_id","staff_name","date","service_id","service_name","product_id","product_name","svc_cash","svc_transfer","svc_card","svc_point","prod_cash","prod_transfer","prod_card","prod_point","gift","order_num","memo","reservation_id"],
-  customers:["id","business_id","bid","name","phone","gender","visits","last_visit","memo","cust_num"],
+  customers:["id","business_id","bid","name","phone","gender","visits","last_visit","memo","cust_num","is_hidden","created_at"],
   service_tags:["id","business_id","name","dur","schedule_yn","color","use_yn","sort"],
   services:["id","business_id","cat","name","dur","price_f","price_m","note","sort","is_package","pkg_count","pkg_price_f","pkg_price_m"],
   app_users:["id","business_id","login_id","password","name","role","branch_ids","view_branch_ids"],

@@ -46,7 +46,7 @@ export const genId = (prefix='id') => {
 
 export const getStatusLabel = (s) => ({
   confirmed:'진행', completed:'완료', cancelled:'취소',
-  no_show:'노쇼', pending:'확정대기',
+  no_show:'노쇼', pending:'확정대기', request:'AI신청',
   naver_cancelled:'네이버취소', naver_changed:'변경됨',
 }[s] || s)
 
@@ -55,6 +55,7 @@ export const getStatusColor = (s, T) => {
   if (s==='completed') return T.textMuted
   if (s==='cancelled'||s==='naver_cancelled') return T.danger
   if (s==='pending') return T.orange
+  if (s==='request') return '#9C27B0'
   return T.textSub
 }
 

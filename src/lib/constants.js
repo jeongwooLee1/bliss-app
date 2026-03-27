@@ -16,10 +16,7 @@ export const T = {
   radius:{ sm:4, md:8, lg:12, xl:16, full:999 },
   fs:{ nano:9, xxs:11, xs:12, sm:13, md:14, lg:16, xl:18, xxl:22 },
   fw:{ normal:400, medium:500, bold:600, bolder:700, black:800 },
-  shadow:{ sm:'0 1px 3px rgba(0,0,0,.08)', md:'0 4px 12px rgba(0,0,0,.10)' },
-  radius:{ sm:4, md:8, lg:12, xl:16, full:999 },
-  fs:{ nano:9, xxs:11, xs:12, sm:13, md:14, lg:16, xl:18, xxl:22 },
-  fw:{ normal:400, medium:500, bold:600, bolder:700, black:800 },
+  shadow:{ sm:'0 1px 3px rgba(0,0,0,.08)', md:'0 4px 12px rgba(0,0,0,.10)', lg:'0 8px 24px rgba(0,0,0,.14)' },
   sp:{ xs:4, sm:8, md:12, lg:16, xl:24 },
   info: '#5cb5c5', infoLt: '#e0f7fa', infoLt2: '#e8f5f0',
   male: '#4a7cc8', maleLt: '#e3f0ff',
@@ -42,7 +39,7 @@ export const MALE_EMPLOYEES = [
 
 export const STATUS_LABEL = {
   confirmed:'진행', completed:'완료', cancelled:'취소',
-  no_show:'노쇼', pending:'확정대기',
+  no_show:'노쇼', pending:'확정대기', request:'AI신청',
   naver_cancelled:'네이버취소', naver_changed:'변경됨',
 }
 
@@ -93,6 +90,7 @@ export const STATUS_CLR = {
   confirmed: T.male, completed: T.success, cancelled: T.warning,
   no_show: T.danger, naver_cancelled: T.warning, naver_changed: T.gray500,
   pending: T.orange,
+  request: '#9C27B0',
 }
 
 export const BLOCK_COLORS = {
