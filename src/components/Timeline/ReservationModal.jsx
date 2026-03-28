@@ -984,7 +984,17 @@ ${naverText}
                     const branchAccMap={"br_4bcauqvrb":"101171979","br_wkqsxj6k1":"102071377","br_l6yzs2pkq":"102507795","br_k57zpkbx1":"101521969","br_lfv2wgdf1":"101522539","br_g768xdu4w":"101517367","br_ybo3rmulv":"101476019","br_xu60omgdf":"101988152"};
                     const confirmMsg=`${f.custName}님, ${f.date} ${f.time} 예약이 확정되었습니다. 감사합니다!`;
                     if(aiChannel==="instagram"){
-                      try{await sb.insert("send_queue",{account_id:"instagram",user_id:userId,message_text:confirmMsg,status:"pending",channel:"instagram"});}catch(e){console.error("확정 메시지 발송 실패",e);}
+                      // userId는 @username 형태일 수 있으므로 DB에서 실제 sender_id 조회
+                      try{
+                        const igPageId="17841400218759830";
+                        let igUserId=userId;
+                        if(userId.startsWith("@")){
+                          const uname=userId.slice(1);
+                          const rows=await fetch(`${SB_URL}/rest/v1/naver_messages?channel=eq.instagram&user_name=eq.${uname}&select=user_id&limit=1`,{headers:{"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY}}).then(r=>r.json());
+                          if(rows?.length) igUserId=rows[0].user_id;
+                        }
+                        await sb.insert("send_queue",{account_id:igPageId,user_id:igUserId,message_text:confirmMsg,status:"pending",channel:"instagram"});
+                      }catch(e){console.error("확정 메시지 발송 실패",e);}
                     } else {
                       const accId=branchAccMap[f.bid]||"";
                       if(accId){
