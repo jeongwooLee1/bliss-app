@@ -2094,7 +2094,13 @@ function QuickBookModal({ onClose, onParsed, data }) {
       rec.start(1000); mediaRecRef.current = rec;
       setIsListening(true); setRecordSec(0); setAudioData(null); setResult(null); setError(null);
       timerRef.current = setInterval(()=>setRecordSec(s=>s+1), 1000);
-    } catch(e) { alert("마이크 권한이 필요합니다"); }
+    } catch(e) {
+      if (location.protocol === "http:") {
+        alert("음성 입력은 HTTPS 환경에서만 사용 가능합니다.\n텍스트로 입력해 주세요.");
+      } else {
+        alert("마이크 권한이 필요합니다.\n브라우저 설정에서 마이크 접근을 허용해 주세요.");
+      }
+    }
   };
   const stopVoice = () => { mediaRecRef.current?.stop(); setIsListening(false); clearInterval(timerRef.current); };
   useEffect(() => { if (audioData) doParse(null, audioData); }, [audioData]);
