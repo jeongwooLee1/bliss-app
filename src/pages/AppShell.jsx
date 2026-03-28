@@ -2051,8 +2051,11 @@ function App() {
       </div>}
       <main className="main-c" style={S.main}>
         <div className="mob-hdr" style={{...S.mobHdr,position:"relative"}}>
-          {pageHistory.length > 0
-            ? <button onClick={()=>{
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <button onClick={()=>setSideOpen(true)} style={{...S.menuBtn,padding:4}}>
+              <I name="menu" size={22}/>
+            </button>
+            {pageHistory.length > 0 && <button onClick={()=>{
                 setPageHistory(h=>{
                   const prev=h[h.length-1];
                   setPageRaw(prev);
@@ -2060,10 +2063,9 @@ function App() {
                   return h.slice(0,-1);
                 });
               }} style={{...S.menuBtn,display:"flex",alignItems:"center",gap:2,color:T.primary,fontWeight:T.fw.bolder}}>
-                <I name="chevron-left" size={22}/><span style={{fontSize:T.fs.md}}>뒤로</span>
-              </button>
-            : <span/>
-          }
+                <I name="chevron-left" size={18}/><span style={{fontSize:T.fs.sm}}>뒤로</span>
+              </button>}
+          </div>
           {bizName && <span style={{fontSize:T.fs.lg,fontWeight:T.fw.black,color:T.primary,position:"absolute",left:"50%",transform:"translateX(-50%)"}}>{bizName}</span>}
           <div style={{marginLeft:"auto",display:"flex",flexDirection:"column",alignItems:"flex-end",gap:1}}>
             <span style={{fontSize:T.fs.sm,fontWeight:T.fw.black,color:T.danger}}>앱 v{BLISS_V}</span>
