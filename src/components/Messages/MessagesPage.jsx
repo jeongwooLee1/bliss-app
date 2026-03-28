@@ -359,7 +359,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
             <div style={{maxWidth:"75%"}}>
               <div style={{padding:"10px 14px",borderRadius:isOut?"16px 16px 4px 16px":"16px 16px 16px 4px",background:isOut?T.primary:"#fff",color:isOut?"#fff":T.text,fontSize:16,lineHeight:1.5,boxShadow:"0 1px 2px rgba(0,0,0,.08)",border:isOut?"none":"1px solid "+T.border,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
                 {m.message_text}
-                {m.translated_text&&!isOut&&<div style={{marginTop:5,paddingTop:5,borderTop:"1px solid rgba(0,0,0,0.1)",fontSize:12,color:"rgba(0,0,0,0.5)"}}>🔤 {m.translated_text}</div>}
+                {m.translated_text&&<div style={{marginTop:5,paddingTop:5,borderTop:isOut?"1px solid rgba(255,255,255,0.3)":"1px solid rgba(0,0,0,0.1)",fontSize:12,color:isOut?"rgba(255,255,255,0.7)":"rgba(0,0,0,0.5)"}}>🔤 {m.translated_text}</div>}
               </div>
               <div style={{fontSize:10,color:T.textMuted,marginTop:3,textAlign:isOut?"right":"left"}}>{fmtTime(m.created_at)}</div>
             </div>
@@ -465,7 +465,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
                 <div style={{maxWidth:"70%"}}>
                   <div style={{padding:"10px 14px",borderRadius:isOut?"16px 16px 4px 16px":"16px 16px 16px 4px",background:isOut?T.primary:"#fff",color:isOut?"#fff":T.text,fontSize:16,lineHeight:1.5,boxShadow:"0 1px 2px rgba(0,0,0,.08)",border:isOut?"none":"1px solid "+T.border,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
                     {m.message_text}
-                    {m.translated_text&&!isOut&&<div style={{marginTop:5,paddingTop:5,borderTop:"1px solid rgba(0,0,0,0.1)",fontSize:11,color:"rgba(0,0,0,0.55)"}}>🔤 {m.translated_text}</div>}
+                    {m.translated_text&&<div style={{marginTop:5,paddingTop:5,borderTop:isOut?"1px solid rgba(255,255,255,0.3)":"1px solid rgba(0,0,0,0.1)",fontSize:11,color:isOut?"rgba(255,255,255,0.7)":"rgba(0,0,0,0.55)"}}>🔤 {m.translated_text}</div>}
                   </div>
                   <div style={{fontSize:10,color:T.textMuted,marginTop:3,textAlign:isOut?"right":"left"}}>{fmtTime(m.created_at)}</div>
                 </div>
