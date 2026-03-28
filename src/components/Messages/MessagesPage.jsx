@@ -4,6 +4,7 @@ import { sb, SB_URL, SB_KEY, sbHeaders } from '../../lib/sb'
 import { fromDb } from '../../lib/db'
 import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone } from '../../lib/utils'
 import I from '../common/I'
+import AiBookDraftPanel from './AiBookDraftPanel'
 
 
 const _BR_ACC = {
@@ -44,6 +45,8 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   const convoEndRef = useRef(null);
   const inputAreaRef = useRef(null);
   const chatWrapRef = useRef(null);
+  const [aiBookDraft, setAiBookDraft] = useState(null);
+  const [aiBookLoading, setAiBookLoading] = useState(false);
 
   const allowedIds = isMaster ? Object.values(_BR_ACC).map(String) : (userBranches||[]).map(b=>_BR_ACC[b]).filter(Boolean).map(String);
 
@@ -230,6 +233,44 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
     }catch(e){}finally{setAiLoading(false);}
   };
 
+  // AI 예약 분석: 메시지에서 날짜/시간/시술 파싱 → 예약 가능 여부 체크 → 초안 표시
+  const genAiBook = async () => {
+    if (!sel || convo.length === 0) return;
+    setAiBookLoading(true);
+    setAiBookDraft(null);
+    try {
+      const today = new Date();
+      const todayIso = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+      const lastMsgs = convo.slice(-8).map(m => (m.direction==="in"?"고객":"직원")+": "+m.message_text).join("\n");
+      const svcList = (data?.services||[]).map(s=>s.name).join(", ") || "없음";
+      const brList = (data?.branches||[]).map(b=>b.name).join(", ") || "없음";
+      const prompt = `오늘 날짜: ${todayIso}\n지점 목록: ${brList}\n시술 목록: ${svcList}\n\n아래 대화에서 예약 요청 정보를 추출하세요. 상대적 날짜(내일, 다음주 월요일 등)는 오늘 기준 절대 날짜(YYYY-MM-DD)로 변환하세요.\n\n대화:\n${lastMsgs}\n\nJSON만 출력(마크다운 없이):\n{"isBookingRequest":true,"date":"YYYY-MM-DD 또는 null","time":"HH:MM 또는 null","service":"시술명 또는 null","customerName":"고객명 또는 null","customerPhone":"전화번호 또는 null","branch":"지점명 또는 null","replyDraft":"예약 확인/가능 여부 안내 메시지 2-3문장 (한국어)"}`;
+      const res = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="+getGeminiKey(),
+        {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})}
+      );
+      if (res.status===429) { alert("AI 요청 한도 초과. 잠시 후 시도해주세요."); return; }
+      const dd = await res.json();
+      let raw = (dd.candidates?.[0]?.content?.parts?.[0]?.text||"").replace(/```json|```/g,"").trim();
+      try {
+        const parsed = JSON.parse(raw);
+        if (!parsed.isBookingRequest) { alert("예약 요청이 감지되지 않았습니다.\n\n메시지에 날짜·시간 정보가 포함된 예약 요청이 있어야 합니다."); return; }
+        const services = data?.services||[];
+        const branches = data?.branches||[];
+        const matchedSvc = parsed.service
+          ? services.find(s=>s.name===parsed.service || (parsed.service && s.name?.includes(parsed.service.slice(0,3)))) : null;
+        const matchedBr = parsed.branch
+          ? branches.find(b=>b.name===parsed.branch||b.short===parsed.branch||(parsed.branch&&b.name?.includes(parsed.branch.slice(0,2)))) : null;
+        setAiBookDraft({
+          ...parsed,
+          serviceId: matchedSvc?.id||null,
+          branchId: matchedBr?.id||null,
+        });
+      } catch(e) { alert("AI 분석 결과를 파싱하지 못했습니다."); }
+    } catch(e) { console.error("genAiBook error:", e); }
+    finally { setAiBookLoading(false); }
+  };
+
   const sendTranslated = async()=>{
     if(!reply.trim()||!sel) return;
     setSending(true);
@@ -356,10 +397,12 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
         })}
         <div ref={convoEndRef}/>
       </div>
+      {aiBookDraft&&<AiBookDraftPanel draft={aiBookDraft} data={data} onSend={async(r)=>{await sendMsg(r);setAiBookDraft(null);setReply("");}} onCancel={()=>setAiBookDraft(null)}/>}
       {/* 입력창 */}
       <div style={{background:"transparent",padding:"8px 12px 12px",flexShrink:0}}>
         <div style={{display:"flex",gap:6,marginBottom:6}}>
           <button onClick={genAI} disabled={aiLoading} style={{padding:"4px 10px",background:"#f0f4ff",color:"#4338ca",border:"1px solid #c7d2fe",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>{aiLoading?"⏳":"✨ AI"}</button>
+          <button onClick={genAiBook} disabled={aiBookLoading} style={{padding:"4px 10px",background:aiBookDraft?"#7C3AED":"#fdf4ff",color:aiBookDraft?"#fff":"#7C3AED",border:"1px solid #e9d5ff",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>{aiBookLoading?"⏳":"📅 AI예약"}</button>
           <button onClick={()=>setAutoTranslate(v=>!v)} style={{padding:"4px 10px",background:autoTranslate?"#166534":"#f0fdf4",color:autoTranslate?"#fff":"#166534",border:"1px solid #bbf7d0",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🌐 자동번역 {autoTranslate?"ON":"OFF"}</button>
         </div>
         {aiKoDraft&&<div style={{fontSize:12,color:"#4338ca",padding:"4px 8px",background:"#eff6ff",borderRadius:6,marginBottom:6,borderLeft:"3px solid #818cf8"}}>🇰🇷 {aiKoDraft}</div>}
@@ -462,9 +505,11 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
             })}
             <div ref={convoEndRef}/>
           </div>
+          {aiBookDraft&&<AiBookDraftPanel draft={aiBookDraft} data={data} onSend={async(r)=>{await sendMsg(r);setAiBookDraft(null);setReply("");}} onCancel={()=>setAiBookDraft(null)}/>}
           <div style={{padding:"12px 16px",borderTop:"1px solid "+T.border,background:T.bgCard}}>
             <div style={{display:"flex",gap:8,marginBottom:8}}>
               <button onClick={genAI} disabled={aiLoading} style={{padding:"4px 10px",background:"#f0f4ff",color:"#4338ca",border:"1px solid #c7d2fe",borderRadius:6,fontSize:11,cursor:"pointer",fontWeight:600}}>{aiLoading?"⏳":"✨ AI"}</button>
+              <button onClick={genAiBook} disabled={aiBookLoading} style={{padding:"4px 10px",background:aiBookDraft?"#7C3AED":"#fdf4ff",color:aiBookDraft?"#fff":"#7C3AED",border:"1px solid #e9d5ff",borderRadius:6,fontSize:11,cursor:"pointer",fontWeight:600}}>{aiBookLoading?"⏳":"📅 AI예약"}</button>
               <button onClick={()=>setAutoTranslate(v=>!v)} style={{padding:"4px 10px",background:autoTranslate?"#166534":"#f0fdf4",color:autoTranslate?"#fff":"#166534",border:"1px solid #bbf7d0",borderRadius:6,fontSize:11,cursor:"pointer",fontWeight:600}}>🌐 자동번역 {autoTranslate?"ON":"OFF"}</button>
             </div>
             {aiKoDraft&&<div style={{fontSize:11,color:"#4338ca",padding:"3px 8px",background:"#eff6ff",borderRadius:6,marginBottom:4,borderLeft:"3px solid #818cf8"}}>🇰🇷 {aiKoDraft}</div>}
