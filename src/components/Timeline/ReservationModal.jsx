@@ -115,7 +115,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   const visibleTags = tags.filter(tag => tag.useYn !== false && (isSchedule ? tag.scheduleYn === "Y" : tag.scheduleYn !== "Y"));
 
   const BASE_DUR = 5; // 기본 예약시간 5분
-  const isNaverItem = !!(item?.reservationId);
+  const isNaverItem = !!(item?.reservationId) && !String(item.reservationId).startsWith("ai_");
   const itemDur = item?.dur || (isNaverItem ? 60 : BASE_DUR);
   const defaultEnd = () => { const t = item?.time||"10:00"; const [h,m] = t.split(":").map(Number); const em = m + itemDur; return `${String(h+Math.floor(em/60)).padStart(2,"0")}:${String(em%60).padStart(2,"0")}`; };
   const addMin = (t, mins) => { const [h,m] = t.split(":").map(Number); const em = m + mins; return `${String(h+Math.floor(em/60)).padStart(2,"0")}:${String(em%60).padStart(2,"0")}`; };

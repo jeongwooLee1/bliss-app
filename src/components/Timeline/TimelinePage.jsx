@@ -567,7 +567,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const blocks = (data?.reservations||[]).filter(r => {
     if (r.date !== selDate) return false;
     if (!branchesToShow.some(b=>b.id===r.bid)) return false;
-    if (r.status === "naver_changed" || r.status === "naver_cancelled") return false;
+    if (r.status === "naver_changed" || r.status === "naver_cancelled" || r.status === "cancelled") return false;
     const isNaver = r.source === "naver" || r.source === "네이버";
     if (isNaver && !r.isScrapingDone) return false;
     return true;
