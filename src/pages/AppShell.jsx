@@ -2050,7 +2050,7 @@ function App() {
         </div>
       </div>}
       <main className="main-c" style={S.main}>
-        <div className="mob-hdr" style={{...S.mobHdr,position:"relative",...{display:"none"}}}>
+        <div className="mob-hdr" style={{...S.mobHdr,position:"relative"}}>
           {pageHistory.length > 0
             ? <button onClick={()=>{
                 setPageHistory(h=>{
