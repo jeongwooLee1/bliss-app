@@ -2051,28 +2051,10 @@ function App() {
       </div>}
       <main className="main-c" style={S.main}>
         <div className="mob-hdr" style={{...S.mobHdr,position:"relative"}}>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <button onClick={()=>setSideOpen(true)} style={{...S.menuBtn,padding:4}}>
-              <I name="menu" size={22}/>
-            </button>
-            {pageHistory.length > 0 && <button onClick={()=>{
-                setPageHistory(h=>{
-                  const prev=h[h.length-1];
-                  setPageRaw(prev);
-                  try{sessionStorage.setItem("bliss_page",prev);}catch(e){}
-                  return h.slice(0,-1);
-                });
-              }} style={{...S.menuBtn,display:"flex",alignItems:"center",gap:2,color:T.primary,fontWeight:T.fw.bolder}}>
-                <I name="chevron-left" size={18}/><span style={{fontSize:T.fs.sm}}>뒤로</span>
-              </button>}
-          </div>
+          <button onClick={()=>setSideOpen(true)} style={{...S.menuBtn,padding:4}}>
+            <I name="menu" size={22}/>
+          </button>
           {bizName && <span style={{fontSize:T.fs.lg,fontWeight:T.fw.black,color:T.primary,position:"absolute",left:"50%",transform:"translateX(-50%)"}}>{bizName}</span>}
-          <div style={{marginLeft:"auto",display:"flex",flexDirection:"column",alignItems:"flex-end",gap:1}}>
-            <span style={{fontSize:T.fs.sm,fontWeight:T.fw.black,color:T.danger}}>앱 v{BLISS_V}</span>
-            <span style={{fontSize:T.fs.nano,fontWeight:T.fw.medium,color:serverV?"#03C75A":T.textMuted}}>
-              서버 {serverV?`v${serverV}`:"연결중…"}
-            </span>
-          </div>
         </div>
         <div className="page-pad" style={{flex:1,padding:(page==="timeline"||page==="messages")?"0":"16px 20px 16px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
           <div className={page==="timeline"?"":"fade-in"} key={page} style={page==="timeline"?{flex:1,display:"flex",flexDirection:"column",minHeight:0}:{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}>
