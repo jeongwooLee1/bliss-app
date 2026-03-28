@@ -162,6 +162,13 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - AI 자동응답 비활성화 (테스트 중)
 - Nginx: /bliss-app/ location 추가
 
+### AI 예약 분석 (메시지함)
+- 메시지함 채팅창에 "📅 AI예약" 버튼 추가 (모바일/데스크탑 공통)
+- `genAiBook()`: Gemini로 고객 메시지에서 날짜/시간/시술/고객명/지점 파싱
+- `AiBookDraftPanel.jsx`: 파싱 결과 + 실시간 예약 가능 여부 체크 UI
+- [전송만] → 메시지만 발송, [전송 + 예약등록] → 메시지 발송 + Supabase 예약 자동 등록
+- 직원이 초안 확인/편집 후 전송하는 방식 (자동 전송 아님)
+
 ## 대기 중 작업 (라이브 전환 시)
 
 ### AI 자동 예약 전체 활성화
