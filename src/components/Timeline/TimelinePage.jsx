@@ -525,7 +525,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const allRooms = branchesToShow.flatMap(br => {
     const naverCount = br.naverEmail ? (br.naverColCount || 1) : 0;
     const naverRooms = Array.from({length: naverCount}, (_, i) => ({
-      id: `nv_${br.id}_${i}`, name: naverCount > 1 ? `네이버${i+1}` : "네이버",
+      id: `nv_${br.id}_${i}`, name: naverCount > 1 ? `확정대기${i+1}` : "확정대기",
       branch_id: br.id, branchName: br.short||br.name||"", isNaver: true
     }));
     // 출근표 기반 직원 컬럼
@@ -561,6 +561,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     return [...naverRooms, ...staffRooms];
   });
   const isNaverRes = (r) => !!r.reservationId || r.source === "ai_booking";
+  const isPendingRes = (r) => r.status === "pending" || r.status === "request";
   
   const allRoomIds = new Set(allRooms.map(r => r.id));
 
@@ -586,7 +587,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     const asgn = {};
     branchesToShow.forEach(br => {
       const brBlocks = blocks.filter(b => b.bid === br.id);
-      const brNaverBlocks = brBlocks.filter(b => isNaverRes(b));
+      const brNaverBlocks = brBlocks.filter(b => isPendingRes(b));
       if (brNaverBlocks.length === 0) return;
       const naverRooms = allRooms.filter(r => r.isNaver && r.branch_id === br.id);
       const regularRooms = allRooms.filter(r => !r.isNaver && !r.isBlank && r.branch_id === br.id);
@@ -597,7 +598,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       targetRooms.forEach(r => roomOcc.set(r.id, []));
       // Pre-fill regular rooms with existing non-naver, non-schedule blocks (기타일정 무시)
       if (naverRooms.length === 0) {
-        brBlocks.filter(b => !isNaverRes(b) && !b.isSchedule).forEach(b => {
+        brBlocks.filter(b => !isPendingRes(b) && !b.isSchedule).forEach(b => {
           const effectiveRoomId = b.roomId || (b.staffId ? allRooms.find(r=>r.isStaffCol && r.staffId===b.staffId)?.id : null);
           if (effectiveRoomId && roomOcc.has(effectiveRoomId)) roomOcc.get(effectiveRoomId).push({ s: toMin(b.time), e: toMin(b.time) + (b.dur||30) });
           else if (roomOcc.has(b.roomId)) roomOcc.get(b.roomId).push({ s: toMin(b.time), e: toMin(b.time) + (b.dur||30) });
@@ -1411,18 +1412,18 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           {allRooms.map((room, ci) => {
             const roomBlocks = blocks.filter(b => {
               if (room.isNaver) {
-                // 네이버 칼럼: 미배정(roomId 없거나 nv_ 접두) 네이버 예약만
-                if (!isNaverRes(b) || b.bid !== room.branch_id) return false;
-                if (b.roomId && !b.roomId.startsWith("nv_")) return false; // 일반 룸에 이미 배정됨
+                // 확정대기 칼럼: pending/request 상태 예약만
+                if (!isPendingRes(b) || b.bid !== room.branch_id) return false;
+                if (b.roomId && !b.roomId.startsWith("nv_") && !b.roomId.startsWith("blank_")) return false;
                 return naverAssignments[b.id] === room.id;
               }
               if (room.isStaffCol) {
                 // 직원 컬럼: staffId 일치 또는 roomId가 해당 staff col id
                 if (b.bid !== room.branch_id) return false;
+                // pending/request는 확정대기 칼럼에 표시 (확정대기 칼럼이 있으면)
+                if (isPendingRes(b) && allRooms.some(r => r.isNaver && r.branch_id === b.bid)) return false;
                 if (b.staffId && b.staffId === room.staffId) return true;
                 if (b.roomId === room.id) return true;
-                // room_id 없는 네이버 예약도 naverAssignments로 배치
-                if (isNaverRes(b) && !b.roomId && naverAssignments[b.id] === room.id) return true;
                 return false;
               }
               // 일반 룸 칼럼: roomId 기준

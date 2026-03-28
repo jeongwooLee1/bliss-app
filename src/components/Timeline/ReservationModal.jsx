@@ -553,7 +553,7 @@ ${naverText}
           </div>}
           {f.status === "pending" && !(f.memo && f.memo.includes("확정완료")) && <div style={{background:T.orangeLt,borderRadius:T.radius.md,padding:"8px 12px",marginBottom:12,display:"flex",alignItems:"center",gap:T.sp.sm,flexWrap:"wrap",animation:"naverBlink 1.5s infinite",boxShadow:"0 2px 8px rgba(255,152,0,.15)"}}>
             <span style={{fontSize:T.fs.lg}}><I name="bell" size={16} color={T.orange}/></span>
-            <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.orange}}>네이버 확정대기</span>
+            <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.orange}}>확정대기</span>
             <div style={{marginLeft:"auto",display:"flex",gap:6}}>
               {(() => {
               const br = (data.branchSettings||data.branches||[]).find(b=>b.id===branchId);
