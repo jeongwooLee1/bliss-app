@@ -975,20 +975,25 @@ ${naverText}
               {/* AI 예약 확정 버튼 */}
               {f.status==="request" && <Btn style={{padding:"10px 26px",background:"#9C27B0",boxShadow:"0 4px 14px rgba(156,39,176,.35)"}}
                 onClick={async ()=>{
-                  // 확정 메시지 발송 (메모에서 user_id 추출)
+                  // 확정 메시지 발송 (메모에서 채널+user_id 추출)
                   const aiMemo = f.memo||"";
-                  const uidMatch = aiMemo.match(/\[AI예약\]\s*(\S+)/);
+                  const uidMatch = aiMemo.match(/\[AI예약(?:변경)?\](?:\[(\w+)\])?\s*(\S+)/);
                   if(uidMatch){
-                    const userId=uidMatch[1];
+                    const aiChannel=uidMatch[1]||"naver";
+                    const userId=uidMatch[2];
                     const branchAccMap={"br_4bcauqvrb":"101171979","br_wkqsxj6k1":"102071377","br_l6yzs2pkq":"102507795","br_k57zpkbx1":"101521969","br_lfv2wgdf1":"101522539","br_g768xdu4w":"101517367","br_ybo3rmulv":"101476019","br_xu60omgdf":"101988152"};
-                    const accId=branchAccMap[f.bid]||"";
-                    if(accId){
-                      const confirmMsg=`${f.custName}님, ${f.date} ${f.time} 예약이 확정되었습니다. 감사합니다!`;
-                      try{await sb.insert("send_queue",{account_id:accId,user_id:userId,message_text:confirmMsg,status:"pending",channel:"naver"});}catch(e){console.error("확정 메시지 발송 실패",e);}
+                    const confirmMsg=`${f.custName}님, ${f.date} ${f.time} 예약이 확정되었습니다. 감사합니다!`;
+                    if(aiChannel==="instagram"){
+                      try{await sb.insert("send_queue",{account_id:"instagram",user_id:userId,message_text:confirmMsg,status:"pending",channel:"instagram"});}catch(e){console.error("확정 메시지 발송 실패",e);}
+                    } else {
+                      const accId=branchAccMap[f.bid]||"";
+                      if(accId){
+                        try{await sb.insert("send_queue",{account_id:accId,user_id:userId,message_text:confirmMsg,status:"pending",channel:"naver"});}catch(e){console.error("확정 메시지 발송 실패",e);}
+                      }
                     }
                   }
                   // 저장
-                  onSave({...f,status:"confirmed",memo:(f.memo||"").replace(/\[AI예약\].*$/,"").trim()});
+                  onSave({...f,status:"confirmed",memo:(f.memo||"").replace(/\[AI예약(?:변경)?\](?:\[\w+\])?\s*\S*/,"").trim()});
                 }}>예약 확정</Btn>}
             {!isSchedule && f.type === "reservation" && (
               <Btn variant="secondary" onClick={()=>setShowSaleForm(true)} style={{padding:"10px 18px",whiteSpace:"nowrap",border:"2px solid "+T.orange,color:T.orange,background:T.warningLt,fontWeight:800}}>
