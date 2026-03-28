@@ -1424,6 +1424,11 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                 if (isPendingRes(b) && allRooms.some(r => r.isNaver && r.branch_id === b.bid)) return false;
                 if (b.staffId && b.staffId === room.staffId) return true;
                 if (b.roomId === room.id) return true;
+                // roomId/staffId 없는 예약 → 해당 지점 첫 번째 직원 칼럼에 배치
+                if (!b.roomId && !b.staffId) {
+                  const firstStaffCol = allRooms.find(r => r.isStaffCol && r.branch_id === b.bid);
+                  return firstStaffCol?.id === room.id;
+                }
                 return false;
               }
               // 일반 룸 칼럼: roomId 기준
