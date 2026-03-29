@@ -936,15 +936,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
               : {};
             return {...r, time: snap.time, endTime, roomId: snap.roomId||r.roomId, bid: snap.bid||r.bid, ...staffUpdate};
           })}));
-          // 배정(미배정→직원) 또는 내부일정이면 알림톡 없이 바로 확정
-          const isAssigning = (!orig.roomId || orig.roomId.startsWith("nv_") || orig.roomId.startsWith("blank_")) && snap.roomId && !snap.roomId.startsWith("nv_");
-          const skipPopup = block.isSchedule || (isAssigning && snap.time === orig.time);
-          if (skipPopup) {
-            const r2 = (data?.reservations||[]).find(rv => rv.id === block.id);
-            if (r2) sb.update("reservations", block.id, { room_id: r2.roomId, time: r2.time, bid: r2.bid, staff_id: r2.staffId || null }).catch(console.error);
-          } else {
-            setPendingChange({ type: "move", block, data: snap, orig });
-          }
+          setPendingChange({ type: "move", block, data: snap, orig });
         }
       }
       setDragBlock(null); setDragPos(null); setDragSnap(null); dragSnapRef.current = null;
@@ -1759,11 +1751,17 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
               <div style={{fontSize:T.fs.xs,color:T.gray600}}>{desc}</div>
             </div>
             <div style={{display:'flex',flexDirection:'column',borderTop:'1px solid '+T.gray100}}>
-              {!block.isSchedule && block.custPhone && <button onClick={()=>_mc(()=>confirmChange(true))} style={{padding:'11px 0',fontSize:T.fs.sm,fontWeight:700,border:'none',borderBottom:'1px solid '+T.gray100,background:'none',color:T.primary,cursor:'pointer',fontFamily:'inherit'}}>확인 + 예약안내 발송</button>}
-              <div style={{display:'flex'}}>
-                <button onClick={()=>_mc(cancelChange)} style={{flex:1,padding:'11px 0',fontSize:T.fs.sm,fontWeight:600,border:'none',borderRight:'1px solid '+T.gray100,background:'none',color:T.textSub,cursor:'pointer',fontFamily:'inherit'}}>취소</button>
-                <button onClick={()=>_mc(()=>confirmChange(false))} style={{flex:1,padding:'11px 0',fontSize:T.fs.sm,fontWeight:600,border:'none',background:'none',color:T.text,cursor:'pointer',fontFamily:'inherit'}}>예약안내 없이 확인</button>
-              </div>
+              {(()=>{
+                const isAssigning = type==="move" && (!orig.roomId || orig.roomId.startsWith("nv_") || orig.roomId.startsWith("blank_")) && d.roomId && !d.roomId?.startsWith("nv_") && orig.time === d.time;
+                const showAlimtalk = !block.isSchedule && block.custPhone && !isAssigning;
+                return <>
+                  {showAlimtalk && <button onClick={()=>_mc(()=>confirmChange(true))} style={{padding:'11px 0',fontSize:T.fs.sm,fontWeight:700,border:'none',borderBottom:'1px solid '+T.gray100,background:'none',color:T.primary,cursor:'pointer',fontFamily:'inherit'}}>확인 + 예약안내 발송</button>}
+                  <div style={{display:'flex'}}>
+                    <button onClick={()=>_mc(cancelChange)} style={{flex:1,padding:'11px 0',fontSize:T.fs.sm,fontWeight:600,border:'none',borderRight:'1px solid '+T.gray100,background:'none',color:T.textSub,cursor:'pointer',fontFamily:'inherit'}}>취소</button>
+                    <button onClick={()=>_mc(()=>confirmChange(false))} style={{flex:1,padding:'11px 0',fontSize:T.fs.sm,fontWeight:600,border:'none',background:'none',color:T.text,cursor:'pointer',fontFamily:'inherit'}}>{showAlimtalk?"예약안내 없이 확인":"확인"}</button>
+                  </div>
+                </>;
+              })()}
             </div>
           </div>
         </>;
