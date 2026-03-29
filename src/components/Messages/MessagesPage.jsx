@@ -226,7 +226,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       const pkgInfo = findCustPkgInfo(sel.user_id);
       const pkgCtx = pkgInfo ? `\n\n[이 고객의 다회권 정보]\n${pkgInfo}` : "";
 
-      const prompt=`당신은 하우스왁싱 예약 접수 및 상담 직원입니다.${chatCtx}${priceCtx}${pkgCtx}\n\n[예약 접수 안내]\n- 예약 요청 시 적극적으로 접수하세요. "예약 확인 후 안내드리겠습니다"라고 하지 마세요.\n- 예약에 필요한 정보: 이름, 연락처, 희망 날짜/시간, 시술 종류, 지점\n- 부족한 정보가 있으면 친절하게 물어보세요\n- 모든 정보가 있으면 "예약 접수 완료했습니다. [이름]님 [날짜] [시간] [지점] [시술] 예약 확인됩니다." 형태로 답변\n- 영업시간: 매일 10:00~22:00 (마지막 예약 21:00)\n\n중요: 가격, 다회권 잔여 등 사실 정보는 위 자료에 근거해서만 답변하세요. 모르는 정보는 "확인 후 안내드리겠습니다"라고 답하세요. 절대 추측이나 거짓 정보를 말하지 마세요.\n\n대화:\n${lastMsgs}\n\n고객 마지막 메시지에 친절하게 2-3문장으로 답변하세요. JSON만 출력(마크다운 없이):\n{"reply":"${langName}로 작성한 답변","ko":"한국어 번역"}`;
+      const prompt=`당신은 하우스왁싱 예약 접수 및 상담 직원입니다.${chatCtx}${priceCtx}${pkgCtx}\n\n[핵심규칙]\n★ 가격/비용을 묻는 메시지에는 성별을 묻지 말고 여성/남성 가격을 둘 다 바로 알려줘!\n★ 풀바디 = 패키지 가격! 개별 부위 합산 금지! 풀바디(음모포함): 여 400,000 / 남 550,000\n★ 브라질리언 가격은 할인가로 안내: 여 104,000 / 남 126,000\n★ 고객 질문에 먼저 답변한 후 예약 정보 물어보기\n\n[예약 접수 안내]\n- 예약에 필요한 정보: 이름, 연락처, 희망 날짜/시간, 시술 종류, 지점\n- 부족한 정보는 자연스럽게 1~2개씩 물어보기\n- 영업시간: 매일 10:00~22:00\n\n중요: 가격은 위 자료에 근거해서만 답변. 모르면 "확인 후 안내드리겠습니다". 거짓 정보 금지.\n\n대화:\n${lastMsgs}\n\n고객 마지막 메시지에 친절하게 답변하세요. JSON만 출력:\n{"reply":"${langName}로 작성한 답변","ko":"한국어 번역"}`;
       const res=await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="+key,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
       if(res.status===429){alert("AI 요청 한도 초과. 잠시 후 시도해주세요.");return;}
       if(!res.ok){const err=await res.text();alert("AI API 오류: "+res.status);console.error("[genAI] API error:",err);return;}
@@ -388,7 +388,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
 
   // 데스크탑 렌더
   return (
-    <div style={{display:"flex",height:"calc(100vh - 80px)",overflow:"hidden",background:T.bg,borderRadius:12,border:"1px solid "+T.border}}>
+    <div style={{display:"flex",height:"calc(100vh - 76px)",overflow:"hidden",background:T.bg,borderRadius:12,border:"1px solid "+T.border}}>
       {/* 목록 */}
       <div style={{width:300,minWidth:300,borderRight:"1px solid "+T.border,display:"flex",flexDirection:"column",background:T.bgCard,overflow:"hidden",flexShrink:0}}>
         <div style={{padding:"14px 16px",borderBottom:"1px solid "+T.border,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
