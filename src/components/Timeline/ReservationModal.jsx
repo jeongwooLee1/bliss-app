@@ -220,12 +220,10 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
     if (custSearch.length < 2) { setCustResults([]); return; }
     const timer = setTimeout(async () => {
       const q = custSearch.trim();
-      const isPhone = /^\d+$/.test(q);
       try {
         const bizId = _activeBizId || "biz_khvurgshb";
-        const filter = isPhone
-          ? `&business_id=eq.${bizId}&phone=ilike.*${q}*&limit=20`
-          : `&business_id=eq.${bizId}&name=ilike.*${encodeURIComponent(q)}*&limit=20`;
+        // 전화번호+이름 동시 검색 (or 조건)
+        const filter = `&business_id=eq.${bizId}&or=(phone.ilike.*${q}*,name.ilike.*${encodeURIComponent(q)}*)&limit=20`;
         const rows = await sb.get("customers", filter);
         setCustResults(Array.isArray(rows) ? fromDb("customers", rows) : []);
       } catch(e) { console.error("custSearch err:", e); setCustResults([]); }
