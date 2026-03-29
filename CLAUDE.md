@@ -12,7 +12,8 @@ Bliss 하우스왁싱 예약관리 앱.
 ## 서버
 - Oracle Cloud: 158.179.174.30
 - Supabase biz_id: `biz_khvurgshb`
-- 라이브 URL: http://158.179.174.30/bliss-app/
+- 라이브 URL: https://blissme.ai (Cloudflare DNS → 158.179.174.30)
+- GitHub Pages: 비활성화 (구 시스템 차단)
 - Nginx: `/etc/nginx/sites-enabled/bliss` → `/var/www/html/bliss-app/`
 
 ## 로컬 개발
@@ -24,8 +25,11 @@ cd /c/Users/TP005/bliss-app
 rm -rf dist && npx vite build
 ssh bliss-server "sudo rm -rf /var/www/html/bliss-app/*"
 scp -r dist/* bliss-server:/tmp/bliss-app/
+ssh bliss-server "sudo rm -rf /tmp/bliss-app/*"
+scp -r dist/* bliss-server:/tmp/bliss-app/
 ssh bliss-server "sudo cp -r /tmp/bliss-app/* /var/www/html/bliss-app/ && sudo chown -R www-data:www-data /var/www/html/bliss-app"
 ```
+주의: /tmp/bliss-app/ 초기화 필수 (구버전 JS 누적 방지)
 
 ## 서버 프로세스
 - `bliss-naver.service` — 네이버 스크래핑 + WhatsApp webhook + send_queue 폴링 + AI 분석
@@ -169,7 +173,35 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - 라이브 시: `TEST_ALLOWED_USERS` 블록 제거 → 모든 고객 메시지에 AI 자동응답
 - 사용자에게 확인 후 진행
 
-### 인스타그램 DM API 연동
-- Meta 개발자 앱 있음 (WhatsApp용)
-- Instagram Messaging 권한 추가 + Webhook 설정 필요
-- 네이버톡톡과 동일한 AI 예약 접수 적용
+### 인스타그램 DM 연동 완료
+- 전지점 인스타 계정 연동 (IG tokens DB에 등록)
+- AI 자동 예약 접수 (ai_booking.py)
+- 에코 메시지 저장 (인스타/네이버톡 모두)
+- 확정톡 채널 분기 (인스타→DM, 네이버→네이버톡)
+- memo에 @username + 하우스왁싱 계정명 표시
+
+### 도메인 + HTTPS
+- blissme.ai 도메인 구매 (Cloudflare, 2028-03-28 만료)
+- HTTPS: Cloudflare Proxy (Full SSL)
+- HTTP→HTTPS 자동 리다이렉트
+- GitHub Pages 비활성화 (구 시스템 차단)
+
+### 네이버칼럼 → 미배정칼럼 전환
+- 칼럼명: "네이버" → "미배정"
+- 필터: roomId/staffId 없는 모든 예약 표시
+- 확정 여부 무관, 담당자 배정 전까지 미배정칼럼 유지
+
+### 모바일 UI 개선
+- 하단탭: 타임라인|매출|메시지함|고객|더보기
+- 매출통계를 매출관리 안 탭으로 통합
+- 모바일 헤더/버전넘버 정리
+- 좌우 패딩 6px, 하단탭 bottom:16px
+
+### Oracle→Supabase 동기화
+- oracle_sync.py: 증분 동기화 (최근 7일 매출 + 30일 고객)
+- Windows Task Scheduler: 매일 새벽 3시 (BlissOracleSync)
+- Oracle DSN: googlea.withbiz.co.kr:5063/ORA11GHW (로컬 PC에서만 접속 가능)
+
+### 코드 리팩터링 (진행중)
+- Phase 1 완료: src/components/common/index.js — 공통 UI 컴포넌트 라이브러리
+- Phase 2~6 예정: AppShell/ReservationsPage/Timeline/Modal 분리
