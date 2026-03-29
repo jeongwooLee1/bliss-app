@@ -2050,11 +2050,8 @@ function App() {
         </div>
       </div>}
       <main className="main-c" style={S.main}>
-        <div className="mob-hdr" style={{...S.mobHdr,position:"relative"}}>
-          <button onClick={()=>setSideOpen(true)} style={{...S.menuBtn,padding:4}}>
-            <I name="menu" size={22}/>
-          </button>
-          {bizName && <span style={{fontSize:T.fs.lg,fontWeight:T.fw.black,color:T.primary,position:"absolute",left:"50%",transform:"translateX(-50%)"}}>{bizName}</span>}
+        <div className="mob-hdr" style={{...S.mobHdr,position:"relative",justifyContent:"center"}}>
+          {bizName && <span style={{fontSize:T.fs.lg,fontWeight:T.fw.black,color:T.primary}}>{bizName}</span>}
         </div>
         <div className="page-pad" style={{flex:1,padding:(page==="timeline"||page==="messages")?"0":"16px 20px 16px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
           <div className={page==="timeline"?"":"fade-in"} key={page} style={page==="timeline"?{flex:1,display:"flex",flexDirection:"column",minHeight:0}:{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}>
@@ -2080,29 +2077,43 @@ function App() {
 }
 
 function MobileBottomNav({ nav, page, setPage, isChatOpen=false }) {
+  const [moreOpen, setMoreOpen] = React.useState(false);
   if(isChatOpen) return null;
-  const items = [
+  const mainItems = [
     ...(nav.find(n=>n.id==="timeline")    ? [{id:"timeline",   label:"타임라인", icon:"calendar"}]  : []),
     ...(nav.find(n=>n.id==="reservations")? [{id:"reservations",label:"예약목록",  icon:"clipboard"}] : []),
     ...(nav.find(n=>n.id==="messages")    ? [{id:"messages",   label:"메시지함",  icon:"msgSq", badge: nav.find(n=>n.id==="messages")?.badge||0}] : []),
     ...(nav.find(n=>n.id==="customers")   ? [{id:"customers",  label:"고객관리",  icon:"users"}]     : []),
-    ...(nav.find(n=>n.id==="admin")       ? [{id:"admin",      label:"메뉴",       icon:"settings"}]  : []),
   ];
+  const moreItems = nav.filter(n=>!["timeline","reservations","messages","customers"].includes(n.id));
+  const items = [...mainItems, {id:"__more", label:"더보기", icon:"menu"}];
   return (
-    <nav className="mob-bottom-nav" style={{position:"fixed",bottom:0,left:0,right:0,background:T.bgCard,borderTop:`1px solid ${T.border}`,zIndex:100,display:"flex",alignItems:"flex-start",paddingTop:8,paddingBottom:"env(safe-area-inset-bottom)"}}>
-      {items.map(item=>{
-        const active = page===item.id;
-        return (
-          <button key={item.id} onClick={()=>setPage(item.id)} style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",gap:4,flex:1,paddingTop:0,border:"none",background:"none",cursor:"pointer",fontFamily:"inherit",color:active?T.primary:T.textMuted,transition:"color .15s"}}>
-            <div style={{width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
-              <I name={item.icon} size={22} style={{strokeWidth: active ? 2.5 : 1.8}}/>
-              {item.badge>0 && page!==item.id && <span style={{position:"absolute",top:-4,right:-6,background:T.danger,color:"#fff",borderRadius:8,fontSize:9,fontWeight:700,padding:"1px 4px",minWidth:14,textAlign:"center"}}>{item.badge>99?"99+":item.badge}</span>}
-            </div>
-            <span style={{fontSize:10,fontWeight:active?T.fw.bolder:T.fw.medium,letterSpacing:-0.2}}>{item.label}</span>
+    <>
+      {moreOpen && <div style={{position:"fixed",inset:0,zIndex:99}} onClick={()=>setMoreOpen(false)}/>}
+      {moreOpen && <div style={{position:"fixed",bottom:56,left:0,right:0,zIndex:101,background:T.bgCard,borderTop:`1px solid ${T.border}`,borderRadius:"16px 16px 0 0",boxShadow:"0 -4px 20px rgba(0,0,0,.12)",padding:"12px 8px",animation:"slideUp .2s ease-out"}}>
+        {moreItems.map(n=>(
+          <button key={n.id} onClick={()=>{setPage(n.id);setMoreOpen(false);}} style={{display:"flex",alignItems:"center",gap:12,width:"100%",padding:"12px 16px",border:"none",background:page===n.id?T.primaryLt:"none",borderRadius:10,cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:page===n.id?700:500,color:page===n.id?T.primary:T.text}}>
+            {n.icon}{n.label}
+            {n.badge>0 && <span style={{marginLeft:"auto",background:T.danger,color:"#fff",borderRadius:8,fontSize:10,fontWeight:700,padding:"2px 6px"}}>{n.badge}</span>}
           </button>
-        );
-      })}
-    </nav>
+        ))}
+      </div>}
+      <nav className="mob-bottom-nav" style={{position:"fixed",bottom:0,left:0,right:0,background:T.bgCard,borderTop:`1px solid ${T.border}`,zIndex:100,display:"flex",alignItems:"flex-start",paddingTop:8,paddingBottom:"env(safe-area-inset-bottom)"}}>
+        {items.map(item=>{
+          const isMore = item.id==="__more";
+          const active = isMore ? moreOpen : page===item.id;
+          return (
+            <button key={item.id} onClick={()=>isMore?setMoreOpen(v=>!v):setPage(item.id)} style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",gap:4,flex:1,paddingTop:0,border:"none",background:"none",cursor:"pointer",fontFamily:"inherit",color:active?T.primary:T.textMuted,transition:"color .15s"}}>
+              <div style={{width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
+                <I name={item.icon} size={22} style={{strokeWidth: active ? 2.5 : 1.8}}/>
+                {item.badge>0 && !active && <span style={{position:"absolute",top:-4,right:-6,background:T.danger,color:"#fff",borderRadius:8,fontSize:9,fontWeight:700,padding:"1px 4px",minWidth:14,textAlign:"center"}}>{item.badge>99?"99+":item.badge}</span>}
+              </div>
+              <span style={{fontSize:10,fontWeight:active?T.fw.bolder:T.fw.medium,letterSpacing:-0.2}}>{item.label}</span>
+            </button>
+          );
+        })}
+      </nav>
+    </>
   );
 }
 
