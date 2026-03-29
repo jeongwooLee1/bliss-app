@@ -372,10 +372,10 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
         </div>
         {aiKoDraft&&<div style={{fontSize:12,color:"#4338ca",padding:"4px 8px",background:"#eff6ff",borderRadius:6,marginBottom:6,borderLeft:"3px solid #818cf8"}}>🇰🇷 {aiKoDraft}</div>}
         <div style={{position:"relative"}}>
-          <textarea value={reply} onChange={e=>{ setReply(e.target.value); setAiKoDraft(""); e.target.style.height="44px"; e.target.style.height=Math.min(e.target.scrollHeight,120)+"px"; }}
+          <textarea value={reply} onChange={e=>{ setReply(e.target.value); setAiKoDraft(""); e.target.style.height="auto"; e.target.style.height=Math.min(e.target.scrollHeight,160)+"px"; }}
             onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();autoTranslate?sendTranslated():sendMsg(reply.trim());}}}
             placeholder="메시지 입력..."
-            style={{width:"100%",padding:"12px 52px 12px 16px",border:"none",borderRadius:16,fontSize:16,resize:"none",minHeight:80,maxHeight:200,height:80,fontFamily:"inherit",outline:"none",background:"#fff",color:"#1f2937",lineHeight:"24px",overflowY:"auto",boxSizing:"border-box",boxShadow:"0 4px 20px rgba(0,0,0,0.12),0 1px 4px rgba(0,0,0,0.08)",WebkitAppearance:"none",appearance:"none"}}
+            style={{width:"100%",padding:"10px 52px 10px 14px",border:"1px solid "+T.border,borderRadius:12,fontSize:15,resize:"none",minHeight:42,maxHeight:160,height:42,fontFamily:"inherit",outline:"none",background:"#fff",color:"#1f2937",lineHeight:"22px",overflowY:"auto",boxSizing:"border-box",WebkitAppearance:"none",appearance:"none"}}
           />
           {(reply.trim()||sending)&&<button onClick={()=>autoTranslate?sendTranslated():sendMsg(reply.trim())} disabled={sending||!reply.trim()}
             style={{position:"absolute",right:8,bottom:6,width:32,height:32,background:"#7C3AED",color:"#fff",border:"none",borderRadius:"50%",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -388,7 +388,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
 
   // 데스크탑 렌더
   return (
-    <div style={{display:"flex",height:"calc(100vh - 120px)",overflow:"hidden",background:T.bg,borderRadius:12,border:"1px solid "+T.border}}>
+    <div style={{display:"flex",height:"calc(100vh - 80px)",overflow:"hidden",background:T.bg,borderRadius:12,border:"1px solid "+T.border}}>
       {/* 목록 */}
       <div style={{width:300,minWidth:300,borderRight:"1px solid "+T.border,display:"flex",flexDirection:"column",background:T.bgCard,overflow:"hidden",flexShrink:0}}>
         <div style={{padding:"14px 16px",borderBottom:"1px solid "+T.border,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -477,10 +477,10 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
             </div>
             {aiKoDraft&&<div style={{fontSize:11,color:"#4338ca",padding:"3px 8px",background:"#eff6ff",borderRadius:6,marginBottom:4,borderLeft:"3px solid #818cf8"}}>🇰🇷 {aiKoDraft}</div>}
             <div style={{display:"flex",gap:8}}>
-              <textarea value={reply} onChange={e=>setReply(e.target.value)}
+              <textarea value={reply} onChange={e=>{ setReply(e.target.value); e.target.style.height="auto"; e.target.style.height=Math.min(e.target.scrollHeight,160)+"px"; }}
                 onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();autoTranslate?sendTranslated():sendMsg(reply.trim());}}}
                 placeholder="메시지 입력..."
-                style={{flex:1,padding:"10px 14px",border:"1px solid "+T.border,borderRadius:8,fontSize:16,resize:"none",height:60,fontFamily:"inherit",outline:"none",background:"#fff",color:"#1f2937"}}
+                style={{flex:1,padding:"10px 14px",border:"1px solid "+T.border,borderRadius:8,fontSize:15,resize:"none",minHeight:42,height:42,maxHeight:160,fontFamily:"inherit",outline:"none",background:"#fff",color:"#1f2937",lineHeight:"22px",overflowY:"auto"}}
               />
               <button onClick={()=>autoTranslate?sendTranslated():sendMsg(reply.trim())} disabled={sending||!reply.trim()}
                 style={{width:44,height:44,alignSelf:"flex-end",flexShrink:0,background:reply.trim()?"#7C3AED":"#e5e7eb",color:reply.trim()?"#fff":"#9ca3af",border:"none",borderRadius:"50%",cursor:reply.trim()?"pointer":"default",display:"flex",alignItems:"center",justifyContent:"center"}}>
