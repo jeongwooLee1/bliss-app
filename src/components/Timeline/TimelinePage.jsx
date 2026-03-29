@@ -480,6 +480,12 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const isResizing = useRef(false);
   const resizeDurRef = useRef(0);
   const [pendingChange, setPendingChange] = useState(null);
+  // 내부일정 autoConfirm: 팝업 없이 바로 저장
+  useEffect(() => {
+    if (pendingChange?.autoConfirm) {
+      confirmChange(false);
+    }
+  }, [pendingChange]);
   const [hoverCell, setHoverCell] = useState(null); // {roomId, rowIdx}
   const [empMovePopup, setEmpMovePopup] = useState(null); // {empId, date, x, y}
   // 지점별 고정 컬럼 수 - branches.staffColCount에서 읽음
@@ -1724,8 +1730,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         </>;
       })()}
 
-      {pendingChange && (() => {
-        if (pendingChange.autoConfirm) { setTimeout(() => confirmChange(false), 0); return null; }
+      {pendingChange && !pendingChange.autoConfirm && (() => {
         const { type, block, data: d, orig } = pendingChange;
         const name = block.custName || "일정";
         const desc = type === "move"
