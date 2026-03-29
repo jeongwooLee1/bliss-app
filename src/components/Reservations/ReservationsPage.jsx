@@ -488,9 +488,6 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
             ))}
           </div>}
         </div>}
-        <Btn variant="ghost" size="sm" onClick={handleRefresh} disabled={refreshing} style={{gap:T.sp.xs}}>
-          <I name="refresh-cw" size={13} style={{animation:refreshing?"spin 1s linear infinite":undefined}}/>{refreshing?"...":"새로고침"}
-        </Btn>
       </div>
     </div>
 
