@@ -657,45 +657,19 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
             </div>
           </div>
 
-          {/* ── 보유권 차감 ── */}
-          {cust.id && activePkgs.length > 0 && <div style={{background:T.warningLt,border:"1px solid "+T.orange+"33",borderRadius:T.radius.md,padding:"10px 14px",marginBottom:8}}>
-            <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.orange,marginBottom:8}}><I name="pkg" size={12}/> 보유권 차감</div>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              {activePkgs.map(p => {
-                const t = _pkgType(p);
-                const bal = _pkgBalance(p);
-                const remain = p.total_count - p.used_count;
-                const isChecked = !!pkgUse[p.id];
-                if (t === "annual") return null; // 연간할인권은 차감 대상 아님
-                return <div key={p.id} style={{background:T.bgCard,borderRadius:T.radius.md,border:"1px solid "+(isChecked?T.primary:T.border),padding:"8px 10px",minWidth:140,cursor:"pointer"}}
-                  onClick={()=>{
-                    if (t === "package") setPkgUse(prev => ({...prev, [p.id]: prev[p.id] ? false : true}));
-                  }}>
-                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
-                    <span style={{fontSize:9,padding:"1px 5px",borderRadius:T.radius.full,fontWeight:T.fw.bolder,
-                      background:t==="prepaid"?T.orange+"22":T.primaryLt,color:t==="prepaid"?T.orange:T.primary}}>
-                      {t==="prepaid"?"선불":"다회"}
-                    </span>
-                    <span style={{fontSize:T.fs.nano,fontWeight:T.fw.bold,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.service_name}</span>
-                  </div>
-                  {t === "package" && <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <input type="checkbox" checked={isChecked} readOnly style={{accentColor:T.primary}} />
-                    <span style={{fontSize:T.fs.xxs,color:T.textSub}}>1회 차감 (잔여 {remain}/{p.total_count})</span>
-                  </div>}
-                  {t === "prepaid" && <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <input className="inp" type="number" placeholder="차감액" value={pkgUse[p.id]||""}
-                      onClick={e=>e.stopPropagation()}
-                      onChange={e=>{
-                        const v = Number(e.target.value)||0;
-                        setPkgUse(prev=>({...prev, [p.id]: v > 0 ? Math.min(v, bal) : 0}));
-                      }}
-                      style={{width:80,padding:"3px 6px",fontSize:T.fs.xxs,textAlign:"right"}} />
-                    <span style={{fontSize:T.fs.nano,color:T.textMuted}}>/ {bal.toLocaleString()}원</span>
-                  </div>}
-                </div>;
+          {/* ── 보유권 정보 표시 ── */}
+          {cust.id && activePkgs.length > 0 && <div style={{background:"#FFF8E1",border:"1px solid #FFD54F",borderRadius:T.radius.md,padding:"8px 12px",marginBottom:8}}>
+            <div style={{fontSize:T.fs.xxs,fontWeight:T.fw.bolder,color:"#F57F17",marginBottom:4}}>🎫 보유권</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {activePkgs.filter(p=>_pkgType(p)!=="annual").map(p=>{
+                const t=_pkgType(p); const bal=_pkgBalance(p); const remain=p.total_count-p.used_count;
+                return <span key={p.id} style={{fontSize:T.fs.nano,padding:"2px 8px",borderRadius:T.radius.full,fontWeight:T.fw.bolder,
+                  background:t==="prepaid"?"#FFF3E0":"#E8EAF6",color:t==="prepaid"?"#E65100":"#3949AB"}}>
+                  {t==="prepaid"?`${p.service_name}(잔액:${bal.toLocaleString()}원)`:`${p.service_name} ${remain}회 남음`}
+                </span>;
               })}
             </div>
-            {pkgDeduct > 0 && <div style={{marginTop:6,fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.orange}}>보유권 차감: -{pkgDeduct.toLocaleString()}원</div>}
+            {pkgDeduct > 0 && <div style={{marginTop:4,fontSize:T.fs.xxs,fontWeight:T.fw.black,color:"#E65100"}}>차감 적용: -{pkgDeduct.toLocaleString()}원</div>}
           </div>}
 
           {/* 결제수단 분배 */}
@@ -703,6 +677,23 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
             {svcPayTotal > 0 && <div style={{flex:1,minWidth:0,padding:"8px 12px",background:T.bgCard,borderRadius:T.radius.md,border:"1px solid "+T.border}}>
               <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.primary,marginBottom:6}}><I name="scissors" size={12}/> 시술 결제 <span style={{color:T.danger,fontWeight:T.fw.black}}>{fmt(svcPayTotal)}원</span></div>
               <div style={{display:"flex",gap:T.sp.xs,flexWrap:"wrap"}}>
+                {/* 보유권 버튼 (앞쪽, 눈에 띄게) */}
+                {activePkgs.filter(p=>_pkgType(p)!=="annual").map(p=>{
+                  const t=_pkgType(p); const bal=_pkgBalance(p); const remain=p.total_count-p.used_count;
+                  const isActive=!!pkgUse[p.id];
+                  const pkgLabel=t==="prepaid"?`🎫 ${p.service_name?.split("(")[0]||"다담권"} ${bal.toLocaleString()}`:`🎟 ${p.service_name?.split("(")[0]||"다회권"} ${remain}회`;
+                  return <button key={p.id} onClick={()=>{
+                    if(t==="package") setPkgUse(prev=>({...prev,[p.id]:prev[p.id]?false:true}));
+                    if(t==="prepaid") setPkgUse(prev=>({...prev,[p.id]:prev[p.id]?0:Math.min(bal,svcPayTotal)}));
+                  }}
+                  style={{padding:"5px 12px",fontSize:T.fs.xxs,fontWeight:T.fw.black,borderRadius:T.radius.xl,cursor:"pointer",fontFamily:"inherit",transition:"all .2s",
+                    border:isActive?"2px solid #E65100":"2px solid #FFB74D",
+                    background:isActive?"linear-gradient(135deg,#FF9800,#F57C00)":"linear-gradient(135deg,#FFF8E1,#FFE0B2)",
+                    color:isActive?"#fff":"#E65100",
+                    boxShadow:isActive?"0 2px 8px rgba(245,124,0,.35)":"none",
+                    transform:isActive?"scale(1.05)":"scale(1)"}}>{pkgLabel}</button>;
+                })}
+                {/* 일반 결제수단 */}
                 {[
                   {k:"svcCard",label:"카드",clr:T.male,bg:T.maleLt},
                   {k:"svcCash",label:"현금",clr:T.orange,bg:T.orangeLt},
