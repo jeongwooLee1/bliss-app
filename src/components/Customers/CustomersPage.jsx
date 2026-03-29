@@ -19,7 +19,7 @@ const sx = {
 
 function CustModal({ item, onSave, onClose, defBranch, userBranches, branches }) {
   const isNew = !item?.id;
-  const [form, setForm] = React.useState(() => item ? {...item} : {id:'cust_'+uid(),name:'',phone:'',gender:'',bid:defBranch||'',memo:'',visits:0});
+  const [form, setForm] = React.useState(() => item ? {...item, smsConsent: item.smsConsent !== false} : {id:'cust_'+uid(),name:'',phone:'',gender:'',bid:defBranch||'',memo:'',visits:0, joinDate: new Date().toISOString().slice(0,10), smsConsent: true});
   const f = (k,v) => setForm(p=>({...p,[k]:v}));
   return <div style={{position:'fixed',inset:0,zIndex:3000,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,.45)'}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
     <div style={{background:T.bgCard,borderRadius:T.radius.lg,padding:24,width:'100%',maxWidth:440,boxShadow:T.shadow.md}}>
@@ -39,6 +39,16 @@ function CustModal({ item, onSave, onClose, defBranch, userBranches, branches })
           <div style={{display:'flex',gap:8}}>
             {[['F','여성'],['M','남성'],['','미지정']].map(([v,l])=>(
               <button key={v} onClick={()=>f('gender',v)} style={{flex:1,padding:'6px',border:'1.5px solid',borderRadius:T.radius.md,cursor:'pointer',fontFamily:'inherit',fontSize:T.fs.sm,fontWeight:form.gender===v?T.fw.bolder:T.fw.normal,background:form.gender===v?T.primary:T.bgCard,color:form.gender===v?T.bgCard:T.gray700,borderColor:form.gender===v?T.primary:T.border}}>{l}</button>
+            ))}
+          </div>
+        </FLD>
+        <FLD label="가입일">
+          <input className="inp" type="date" value={form.joinDate||''} onChange={e=>f('joinDate',e.target.value)}/>
+        </FLD>
+        <FLD label="문자수신 동의">
+          <div style={{display:'flex',gap:8}}>
+            {[[true,'동의'],[false,'거부']].map(([v,l])=>(
+              <button key={String(v)} onClick={()=>f('smsConsent',v)} style={{flex:1,padding:'6px',border:'1.5px solid',borderRadius:T.radius.md,cursor:'pointer',fontFamily:'inherit',fontSize:T.fs.sm,fontWeight:form.smsConsent===v?T.fw.bolder:T.fw.normal,background:form.smsConsent===v?(v?T.success:T.danger):T.bgCard,color:form.smsConsent===v?T.bgCard:T.gray700,borderColor:form.smsConsent===v?(v?T.success:T.danger):T.border}}>{l}</button>
             ))}
           </div>
         </FLD>
