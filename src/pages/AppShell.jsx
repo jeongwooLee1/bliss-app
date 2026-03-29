@@ -2096,7 +2096,7 @@ function MobileBottomNav({ nav, page, setPage, isChatOpen=false }) {
           </button>
         ))}
       </div>}
-      <nav className="mob-bottom-nav" style={{position:"fixed",bottom:0,left:0,right:0,background:T.bgCard,borderTop:`1px solid ${T.border}`,zIndex:100,display:"flex",alignItems:"center",height:52,padding:0}}>
+      <nav className="mob-bottom-nav" style={{position:"fixed",bottom:8,left:0,right:0,background:T.bgCard,borderTop:`1px solid ${T.border}`,zIndex:100,display:"flex",alignItems:"center",height:48,padding:0}}>
         {items.map(item=>{
           const isMore = item.id==="__more";
           const active = isMore ? moreOpen : page===item.id;
