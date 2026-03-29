@@ -2,17 +2,17 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#7c7cc8" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Bliss" />
     <link rel="apple-touch-icon" href="/bliss-app/icon-192.png" />
     <link rel="manifest" href="/bliss-app/manifest.json" />
     <title>Bliss</title>
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
-      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f9fafb; }
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f9fafb; padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
       #root { min-height: 100dvh; }
       input,select,textarea{font-family:inherit}
 
@@ -175,7 +175,7 @@
         .sidebar-d{display:none!important}
         .mob-bottom-nav{display:flex!important}
         .mob-hdr{padding-left:16px!important}
-        .main-c{margin-left:0!important;padding-bottom:calc(46px + env(safe-area-inset-bottom, 8px))!important}
+        .main-c{margin-left:0!important;padding-bottom:calc(56px + env(safe-area-inset-bottom, 0px))!important}
         .page-title{font-size:15px;margin-bottom:10px}
         .page-pad{padding:0 0 0!important}
         .grid2{grid-template-columns:1fr!important}
