@@ -308,12 +308,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
           if (rows?.length) cid = rows[0].id;
         } catch(e) {}
       }
-      if (!cid && custName && custName.trim()) {
-        try {
-          const rows = await sb.get("customers", `&name=eq.${encodeURIComponent(custName.trim())}&limit=1`);
-          if (rows?.length) cid = rows[0].id;
-        } catch(e) {}
-      }
+      // 이름만으로 검색하면 동명이인 매칭 위험 → 제거
       if (!cid) { setSalesHistory([]); setCustMemo(""); setHistoryLoading(false); return; }
       // 고객 메모 로드
       try {
