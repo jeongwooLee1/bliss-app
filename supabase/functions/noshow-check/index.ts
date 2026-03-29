@@ -1,16 +1,4 @@
-/**
- * 노쇼 자동 처리
- * pg_cron으로 매 시간 호출 — 예약 시간 + 30분 경과한 confirmed 예약 → no_show 처리
- *
- * 활성화: Supabase Dashboard → SQL Editor:
- * SELECT cron.schedule('noshow-check', '0 * * * *',
- *   $$SELECT net.http_post('https://dpftlrsuqxqqeouwbfjd.supabase.co/functions/v1/noshow-check', '{}', '{"Authorization":"Bearer <ANON_KEY>"}')$$
- * );
- *
- * 주의: 이 기능은 자동으로 no_show를 처리하므로,
- * 시술 중이거나 늦게 도착한 고객이 잘못 노쇼 처리될 수 있음.
- * 활성화 전 운영팀 확인 필요.
- */
+// 노쇼 자동 처리
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 

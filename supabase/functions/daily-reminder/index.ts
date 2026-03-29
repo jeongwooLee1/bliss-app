@@ -1,12 +1,4 @@
-/**
- * 예약 리마인더 자동 발송
- * pg_cron으로 매일 오전 10시 호출 — 내일 예약 고객에게 리마인더 알림톡
- *
- * 활성화: Supabase Dashboard → SQL Editor:
- * SELECT cron.schedule('daily-reminder', '0 10 * * *',
- *   $$SELECT net.http_post('https://dpftlrsuqxqqeouwbfjd.supabase.co/functions/v1/daily-reminder', '{}', '{"Authorization":"Bearer <ANON_KEY>"}')$$
- * );
- */
+// 예약 리마인더 자동 발송
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 

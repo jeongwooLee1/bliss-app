@@ -1,13 +1,5 @@
-/**
- * pending 예약 자동 재확인
- * pg_cron으로 30분마다 호출 — pending/request 상태 예약의 네이버 API 확인
- * 변경/취소된 예약 자동 상태 업데이트
- *
- * 활성화: Supabase Dashboard → SQL Editor에서 실행:
- * SELECT cron.schedule('check-pending', '*/30 * * * *',
- *   $$SELECT net.http_post('https://dpftlrsuqxqqeouwbfjd.supabase.co/functions/v1/check-pending', '{}', '{"Authorization":"Bearer <ANON_KEY>"}')$$
- * );
- */
+// pending 예약 자동 재확인 — pg_cron 30분마다 호출
+// 활성화: EDGE_FUNCTIONS.md 참고
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 

@@ -1,14 +1,4 @@
-/**
- * send_queue INSERT 시 즉시 발송
- * DB Webhook으로 호출 — send_queue 테이블 INSERT 트리거
- *
- * 활성화: Supabase Dashboard → Database → Webhooks:
- *   Table: send_queue, Events: INSERT
- *   Type: Supabase Edge Function → send-message
- *
- * 현재는 서버(bliss_naver.py)에서 5초 폴링으로 처리 중.
- * Edge Function 활성화 시 서버 폴링 제거 필요.
- */
+// send_queue INSERT 시 즉시 발송
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 

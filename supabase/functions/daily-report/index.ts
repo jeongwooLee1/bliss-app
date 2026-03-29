@@ -1,12 +1,4 @@
-/**
- * 매일 밤 매출 리포트 텔레그램 발송
- * pg_cron으로 매일 밤 10시 호출
- *
- * 활성화: Supabase Dashboard → SQL Editor:
- * SELECT cron.schedule('daily-report', '0 22 * * *',
- *   $$SELECT net.http_post('https://dpftlrsuqxqqeouwbfjd.supabase.co/functions/v1/daily-report', '{}', '{"Authorization":"Bearer <ANON_KEY>"}')$$
- * );
- */
+// 매일 밤 매출 리포트 텔레그램 발송
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 

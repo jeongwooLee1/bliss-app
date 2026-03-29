@@ -1,17 +1,4 @@
-/**
- * 고객 생일 축하 알림
- * pg_cron으로 매일 오전 9시 호출 — 오늘 생일인 고객에게 축하 메시지/쿠폰 발송
- *
- * 활성화: Supabase Dashboard → SQL Editor:
- * SELECT cron.schedule('birthday-greeting', '0 9 * * *',
- *   $$SELECT net.http_post('https://dpftlrsuqxqqeouwbfjd.supabase.co/functions/v1/birthday-greeting', '{}', '{"Authorization":"Bearer <ANON_KEY>"}')$$
- * );
- *
- * 전제조건:
- * - customers 테이블에 birthday 컬럼 추가 필요 (MM-DD 형식)
- * - 알림톡 템플릿에 생일 축하 템플릿 등록 필요
- * - 쿠폰 시스템 구현 필요 (optional)
- */
+// 고객 생일 축하 알림
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
