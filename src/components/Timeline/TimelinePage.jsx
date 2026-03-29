@@ -480,12 +480,6 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const isResizing = useRef(false);
   const resizeDurRef = useRef(0);
   const [pendingChange, setPendingChange] = useState(null);
-  // 내부일정 autoConfirm: 팝업 없이 바로 저장
-  useEffect(() => {
-    if (pendingChange?.autoConfirm) {
-      confirmChange(false);
-    }
-  }, [pendingChange]);
   const [hoverCell, setHoverCell] = useState(null); // {roomId, rowIdx}
   const [empMovePopup, setEmpMovePopup] = useState(null); // {empId, date, x, y}
   // 지점별 고정 컬럼 수 - branches.staffColCount에서 읽음
@@ -942,7 +936,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
               : {};
             return {...r, time: snap.time, endTime, roomId: snap.roomId||r.roomId, bid: snap.bid||r.bid, ...staffUpdate};
           })}));
-          setPendingChange({ type: "move", block, data: snap, orig, autoConfirm: !!block.isSchedule });
+          setPendingChange({ type: "move", block, data: snap, orig });
         }
       }
       setDragBlock(null); setDragPos(null); setDragSnap(null); dragSnapRef.current = null;
@@ -1029,7 +1023,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           const endTime = `${String(Math.floor(endMin/60)).padStart(2,"0")}:${String(endMin%60).padStart(2,"0")}`;
           return {...r, dur: finalDur, endTime};
         })}));
-        setPendingChange({ type: "resize", block, data: { dur: finalDur }, orig: { dur: origDur }, autoConfirm: !!block.isSchedule });
+        setPendingChange({ type: "resize", block, data: { dur: finalDur }, orig: { dur: origDur } });
       }
       setResizeBlock(null); setResizeDur(0);
       setTimeout(() => { isResizing.current = false; longPressActive.current = false; }, 300);
@@ -1730,7 +1724,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         </>;
       })()}
 
-      {pendingChange && !pendingChange.autoConfirm && (() => {
+      {pendingChange && (() => {
         const { type, block, data: d, orig } = pendingChange;
         const name = block.custName || "일정";
         const desc = type === "move"
