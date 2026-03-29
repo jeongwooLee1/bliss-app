@@ -80,7 +80,7 @@ function AdminSchedule({ currentUser, isMaster }) {
       isMaster: !!isMaster,
       canWrite: !!isMaster,
       canRead: true
-    }, "https://jeongwoolee1.github.io");
+    }, "*");
   }, [currentUser, isMaster]);
 
   return (
@@ -88,7 +88,7 @@ function AdminSchedule({ currentUser, isMaster }) {
       border:"1px solid "+T.border,background:"#fff"}}>
       <iframe
         ref={iframeRef}
-        src="https://jeongwoolee1.github.io/bliss/schedule.html"
+        src="/bliss-app/schedule.html"
         onLoad={onLoad}
         style={{width:"100%",height:"100%",border:"none"}}
         title="직원 근무표"
