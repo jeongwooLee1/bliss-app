@@ -936,7 +936,15 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
               : {};
             return {...r, time: snap.time, endTime, roomId: snap.roomId||r.roomId, bid: snap.bid||r.bid, ...staffUpdate};
           })}));
-          setPendingChange({ type: "move", block, data: snap, orig });
+          // 배정(미배정→직원) 또는 내부일정이면 알림톡 없이 바로 확정
+          const isAssigning = (!orig.roomId || orig.roomId.startsWith("nv_") || orig.roomId.startsWith("blank_")) && snap.roomId && !snap.roomId.startsWith("nv_");
+          const skipPopup = block.isSchedule || (isAssigning && snap.time === orig.time);
+          if (skipPopup) {
+            const r2 = (data?.reservations||[]).find(rv => rv.id === block.id);
+            if (r2) sb.update("reservations", block.id, { room_id: r2.roomId, time: r2.time, bid: r2.bid, staff_id: r2.staffId || null }).catch(console.error);
+          } else {
+            setPendingChange({ type: "move", block, data: snap, orig });
+          }
         }
       }
       setDragBlock(null); setDragPos(null); setDragSnap(null); dragSnapRef.current = null;
