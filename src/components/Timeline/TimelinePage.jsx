@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { createPortal } from 'react-dom'
 import { T, NAVER_COLS, getNaverVal, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, BRANCH_DEFAULT_COLORS, branchColor, STATUS_CLR_DEFAULT, STATUS_KEYS, SCH_BRANCH_MAP, MALE_EMPLOYEES } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY, sbHeaders } from '../../lib/sb'
 import { fromDb, toDb, resolveSystemIds, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS } from '../../lib/db'
 import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone } from '../../lib/utils'
 import I from '../common/I'
 import TimelineModal from './ReservationModal'
+import QuickBookModal from './QuickBookModal'
+import TimelineSettings from './TimelineSettings'
 import useTouchDragSort from '../../hooks/useTouchDragSort'
 
 const _mc = (fn) => { if(fn) fn(); };
@@ -16,18 +17,6 @@ const Btn = ({ children, variant="primary", size="md", disabled, onClick, style=
   const border = variant==="ghost"?"1px solid "+T.border:"none";
   const pd = size==="sm"?"4px 10px":size==="lg"?"10px 20px":"7px 14px";
   return <button onClick={disabled?undefined:onClick} disabled={disabled} style={{background:bg,color,border,borderRadius:T.radius.md,padding:pd,fontSize:T.fs.sm,fontWeight:T.fw.bold,cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.6:1,fontFamily:"inherit",...style}} {...p}>{children}</button>;
-};
-function EyeDrop({ onPick, size=28 }) {
-  const pick = async () => {
-    if (!window.EyeDropper) return;
-    try { const r = await new window.EyeDropper().open(); onPick(r.sRGBHex); } catch(e) {}
-  };
-  if (!window.EyeDropper) return null;
-  return <button onClick={pick} style={{width:size,height:size,border:"1px solid #ddd",borderRadius:T.radius.md,background:T.bgCard,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0}} title="색상 추출"><I name="eyedropper" size={14} color={T.gray600}/></button>;
-}
-const GridLayout = ({ cols=2, gap=12, children, style={}, ...p }) => {
-  const gc = typeof cols === "number" ? `repeat(${cols},1fr)` : cols;
-  return <div style={{display:"grid",gridTemplateColumns:gc,gap,...style}} {...p}>{children}</div>;
 };
 
 function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, currentUser, setPage, bizId, onMenuClick, bizName, pendingOpenRes, setPendingOpenRes, naverColShow={}, scraperStatus=null }) {
@@ -1834,110 +1823,16 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       />}
 
       {/* Settings dropdown — Portal to body to avoid overflow clipping */}
-      {showSettings && createPortal(<>{(() => {
-        const handleTouchStart = e => {
-          const el = e.currentTarget;
-          el.dataset.sy = e.touches[0].clientY;
-          el.dataset.dragging = "1";
-          el.style.transition = "none";
-        };
-        const handleTouchMove = e => {
-          const el = e.currentTarget;
-          if (el.dataset.dragging !== "1") return;
-          const dy = Math.max(0, e.touches[0].clientY - Number(el.dataset.sy||0));
-          el.style.transform = `translateY(${dy}px)`;
-          // fade overlay
-          const ov = el.previousElementSibling;
-          if (ov) ov.style.opacity = Math.max(0, 1 - dy / 300);
-        };
-        const handleTouchEnd = e => {
-          const el = e.currentTarget;
-          el.dataset.dragging = "0";
-          const dy = e.changedTouches[0].clientY - Number(el.dataset.sy||0);
-          if (dy > 80) {
-            el.style.transition = "transform .3s cubic-bezier(.4,0,1,1)";
-            el.style.transform = `translateY(${el.offsetHeight}px)`;
-            const ov = el.previousElementSibling;
-            if (ov) { ov.style.transition = "opacity .3s"; ov.style.opacity = "0"; }
-            setTimeout(() => setShowSettings(false), 300);
-          } else {
-            el.style.transition = "transform .25s cubic-bezier(.22,1,.36,1)";
-            el.style.transform = "translateY(0)";
-            const ov = el.previousElementSibling;
-            if (ov) { ov.style.transition = "opacity .25s"; ov.style.opacity = "1"; }
-          }
-        };
-        return <>
-        <div style={{position:"fixed",inset:0,width:"100vw",height:"100vh",zIndex:99,background:"rgba(0,0,0,.3)",animation:"ovFadeIn .25s"}} onClick={()=>{
-          const p=document.querySelector('[data-settings-panel]');
-          const o=document.querySelector('[data-settings-ov]');
-          if(p){p.style.transition='transform .3s ease-out';p.style.transform='translateY(100%)';}
-          if(o){o.style.transition='opacity .3s';o.style.opacity='0';}
-          setTimeout(()=>setShowSettings(false),300);
-        }} data-settings-ov/>
-        <div
-          data-settings-panel
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-          style={{position:"fixed",bottom:0,left:0,right:0,width:"100vw",boxSizing:"border-box",
-          background:T.bgCard,borderRadius:"16px 16px 0 0",padding:"20px 20px calc(32px + 56px + env(safe-area-inset-bottom))",boxShadow:"0 -8px 32px rgba(0,0,0,.15)",zIndex:100,
-          maxHeight:"80vh",overflowY:"auto",overflowX:"hidden",animation:"bottomSheet .4s cubic-bezier(.22,1,.36,1)",willChange:"transform"}}>
-          <div style={{width:36,height:4,borderRadius:T.radius.sm,background:T.gray300,margin:"0 auto 16px",cursor:"grab"}}/>
-          <div style={{fontSize:T.fs.md,fontWeight:T.fw.bolder,color:T.text,marginBottom:12}}><I name="settings" size={14}/> 타임라인 설정</div>
-          {/* 지점 보기 토글 - staff만 */}
-          {!isMaster && accessibleBids.length > userBranches.length && (
-            <div style={{background:T.gray100,borderRadius:T.radius.lg,padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <div>
-                <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.gray700}}>타 지점 보기</div>
-                <div style={{fontSize:T.fs.xs,color:T.textMuted,marginTop:2}}>{expanded ? "읽기 권한 있는 전 지점 표시 중" : "내 지점만 표시 중"}</div>
-              </div>
-              <div onClick={toggleExpand} style={{width:46,height:26,borderRadius:13,background:expanded?T.primary:T.gray300,cursor:"pointer",position:"relative",transition:"background .2s",flexShrink:0}}>
-                <div style={{position:"absolute",top:3,left:expanded?22:3,width:20,height:20,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 4px rgba(0,0,0,.2)",transition:"left .2s"}}/>
-              </div>
-            </div>
-          )}
-          <GridLayout cols={2} gap={8}>
-        {[
-            {label:"줄간격",val:rowH,dec:()=>setRowH(h=>Math.max(6,h-2)),inc:()=>setRowH(h=>Math.min(30,h+2))},
-            {label:"열너비",val:colW,dec:()=>setColW(w=>Math.max(80,w-20)),inc:()=>setColW(w=>Math.min(300,w+20))},
-            {label:"글자크기",val:blockFs,dec:()=>setBlockFs(f=>Math.max(6,f-1)),inc:()=>setBlockFs(f=>Math.min(16,f+1))},
-            {label:"불투명도",val:blockOp,suffix:"%",dec:()=>setBlockOp(o=>Math.max(10,o-10)),inc:()=>setBlockOp(o=>Math.min(100,o+10))},
-            {label:"시작시간",val:startHour,suffix:"시",dec:()=>setStartHour(h=>Math.max(0,h-1)),inc:()=>setStartHour(h=>Math.min(endHour-1,h+1))},
-            {label:"종료시간",val:endHour,suffix:"시",dec:()=>setEndHour(h=>Math.max(startHour+1,h-1)),inc:()=>setEndHour(h=>Math.min(24,h+1))},
-          ].map(r=><div key={r.label} style={{background:T.gray100,borderRadius:T.radius.lg,padding:"10px 12px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <span style={{fontSize:T.fs.sm,color:T.gray700,fontWeight:T.fw.bold}}>{r.label}</span>
-            <div style={{display:"flex",alignItems:"center",gap:6}}>
-              <button onClick={r.dec} style={{width:32,height:32,border:"1px solid #ddd",borderRadius:T.radius.md,background:T.bgCard,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0}}><I name="minus" size={16} color={T.gray700}/></button>
-              <span style={{fontSize:T.fs.sm,color:T.primary,fontWeight:T.fw.bolder,width:36,textAlign:"center"}}>{r.val}{r.suffix||""}</span>
-              <button onClick={r.inc} style={{width:32,height:32,border:"1px solid #ddd",borderRadius:T.radius.md,background:T.bgCard,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0}}><I name="plus" size={16} color={T.gray700}/></button>
-            </div>
-          </div>)}
-          </GridLayout>
-          <div style={{background:T.gray100,borderRadius:T.radius.lg,padding:"10px 12px",marginTop:8,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <span style={{fontSize:T.fs.sm,color:T.gray700,fontWeight:T.fw.bold}}>시간단위</span>
-            <div style={{display:"flex",gap:T.sp.xs}}>
-              {[5,10,15,30,60].map(u=><button key={u} onClick={()=>setTimeUnit(u)}
-                style={{padding:"6px 12px",fontSize:T.fs.sm,border:"1px solid #ddd",borderRadius:T.radius.md,background:timeUnit===u?T.primary:T.bgCard,
-                  color:timeUnit===u?T.bgCard:T.gray600,fontWeight:timeUnit===u?700:400,cursor:"pointer"}}>{u}분</button>)}
-            </div>
-          </div>
-
-          <div style={{marginTop:8}}>
-            <span style={{fontSize:T.fs.sm,color:T.gray700,fontWeight:T.fw.bold,display:"block",marginBottom:6}}>예약상태 색상</span>
-            <GridLayout cols={2} gap={6}>
-              {STATUS_KEYS.map(k=><div key={k} style={{background:T.gray100,borderRadius:T.radius.lg,padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bold,color:statusClr[k]}}>{STATUS_LABEL[k]}</span>
-                <div style={{display:"flex",alignItems:"center",gap:T.sp.xs}}>
-                  <input type="color" value={statusClr[k]||STATUS_CLR_DEFAULT[k]} onChange={e=>setStatusClr(k,e.target.value)}
-                    style={{width:32,height:28,border:"1px solid #ddd",borderRadius:T.radius.md,cursor:"pointer",padding:1}}/>
-                  <EyeDrop onPick={c=>setStatusClr(k,c)} size={28}/>
-                </div>
-              </div>)}
-            </GridLayout>
-          </div>
-          </div>
-      </>;})()}</>, document.body)}
+      <TimelineSettings
+        showSettings={showSettings} setShowSettings={setShowSettings}
+        isMaster={isMaster} accessibleBids={accessibleBids} userBranches={userBranches}
+        expanded={expanded} toggleExpand={toggleExpand}
+        rowH={rowH} setRowH={setRowH} colW={colW} setColW={setColW}
+        blockFs={blockFs} setBlockFs={setBlockFs} blockOp={blockOp} setBlockOp={setBlockOp}
+        startHour={startHour} setStartHour={setStartHour} endHour={endHour} setEndHour={setEndHour}
+        timeUnit={timeUnit} setTimeUnit={setTimeUnit}
+        statusClr={statusClr} setStatusClr={setStatusClr}
+      />
 
       {/* 알람 팝업 */}
       {alarmPopup && <div className="ov" onClick={()=>_mc(()=>setAlarmPopup(null))} style={{zIndex:9999}}>
@@ -1998,256 +1893,5 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   );
 }
 
-
-function QuickBookModal({ onClose, onParsed, data }) {
-  // 브라우저 뒤로가기 지원
-  useEffect(() => {
-    history.pushState({modal:'quickbook'}, '');
-    const onPop = () => onClose();
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
-  }, [onClose]);
-
-  const [input, setInput] = useState("");
-  const [imgData, setImgData] = useState(null);
-  const [imgPreview, setImgPreview] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
-  const [isListening, setIsListening] = useState(false);
-  const [recordSec, setRecordSec] = useState(0);
-  const mediaRecRef = useRef(null);
-  const chunksRef = useRef([]);
-  const timerRef = useRef(null);
-  const [audioData, setAudioData] = useState(null);
-  const fileRef = useRef(null);
-  const camRef = useRef(null);
-  const inputRef = useRef(null);
-  const apiKey = window.__geminiKey || localStorage.getItem("bliss_gemini_key") || "";
-  const C = T.primary;
-  const G1 = T.google, G2 = T.purple, G3 = T.female;
-
-  const startVoice = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({audio:true});
-      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/mp4";
-      const rec = new MediaRecorder(stream, {mimeType: mime});
-      chunksRef.current = [];
-      rec.ondataavailable = (e) => { if(e.data.size>0) chunksRef.current.push(e.data); };
-      rec.onstop = () => {
-        stream.getTracks().forEach(t=>t.stop());
-        const blob = new Blob(chunksRef.current, {type: mime});
-        const reader = new FileReader();
-        reader.onload = () => setAudioData({base64:reader.result.split(",")[1], mimeType:mime.split(";")[0]});
-        reader.readAsDataURL(blob);
-      };
-      rec.start(1000); mediaRecRef.current = rec;
-      setIsListening(true); setRecordSec(0); setAudioData(null); setResult(null); setError(null);
-      timerRef.current = setInterval(()=>setRecordSec(s=>s+1), 1000);
-    } catch(e) {
-      if (location.protocol === "http:") {
-        alert("음성 입력은 HTTPS 환경에서만 사용 가능합니다.\n텍스트로 입력해 주세요.");
-      } else {
-        alert("마이크 권한이 필요합니다.\n브라우저 설정에서 마이크 접근을 허용해 주세요.");
-      }
-    }
-  };
-  const stopVoice = () => { mediaRecRef.current?.stop(); setIsListening(false); clearInterval(timerRef.current); };
-  useEffect(() => { if (audioData) doParse(null, audioData); }, [audioData]);
-  useEffect(() => { if (imgData) doParse(null, null); }, [imgData]);
-
-  const handleImage = (e) => {
-    const file = e.target.files?.[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => { setImgData({base64:ev.target.result.split(",")[1], mimeType:file.type}); setImgPreview(ev.target.result); };
-    reader.readAsDataURL(file);
-  };
-
-  const handlePaste = (e) => {
-    const items = e.clipboardData?.items;
-    if(!items) return;
-    for(let i=0;i<items.length;i++){
-      if(items[i].type.startsWith("image/")){
-        e.preventDefault();
-        const file = items[i].getAsFile();
-        if(!file) continue;
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          const imgObj = {base64:ev.target.result.split(",")[1], mimeType:file.type};
-          setImgData(imgObj);
-          setImgPreview(ev.target.result);
-          // 즉시 분석 (imgData state 업데이트 전이라 직접 전달)
-          setTimeout(() => doParse(null, null), 100);
-        };
-        reader.readAsDataURL(file);
-        break;
-      }
-    }
-  };
-
-  const buildPrompt = () => {
-    const today = new Date(), dow = ["일","월","화","수","목","금","토"];
-    const ds = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")} (${dow[today.getDay()]})`;
-    const tags = (data?.serviceTags || []).filter(t=>t.useYn!==false && t.scheduleYn!=="Y");
-    const svcs = (data?.services || []).filter(s=>s.useYn!==false);
-    const tagList = tags.map(t=>`"${t.id}":"${t.name}"${t.dur?`(${t.dur}분)`:""}`).join(", ");
-    const svcList = svcs.map(s=>`"${s.id}":"${s.name}"${s.dur?`(${s.dur}분)`:""}`).join(", ");
-    const srcList = (data?.resSources||[]).filter(s=>s.useYn!==false).map(s=>s.name);
-    return `당신은 미용실/왁싱샵 예약 정보를 추출하는 AI입니다.\n오늘 날짜: ${ds}\n\n아래 텍스트/이미지/음성에서 예약 정보를 추출해 JSON으로만 응답하세요.\n마크다운 백틱이나 설명 없이 순수 JSON만 출력하세요.\n\n[이미지] 채팅 앱 스크린샷 분석 시 반드시 다음 순서로 처리:\n1단계: 화면 최상단 헤더 영역에서 전화번호/이름을 먼저 추출\n2단계: 대화 내용에서 날짜, 시간, 시술 정보 추출\n3단계: 앱 종류 판별\n※ 헤더의 전화번호가 고객 전화번호입니다.\n[음성] 오디오 첨부 시 음성을 듣고 추출. 공=0,일=1,이=2,삼=3,사=4,오=5,육=6,칠=7,팔=8,구=9. 공일공=010.\n\n[등록된 서비스태그] {${tagList || "없음"}}\n[등록된 시술상품] {${svcList || "없음"}}\n[등록된 예약경로] [${srcList.length ? srcList.map(s=>`"${s}"`).join(",") : "없음"}]\n\n시술 내용이 언급되면 위 목록에서 가장 적합한 항목의 ID를 매칭하세요.\n[왁싱 용어 매핑] 음모왁싱=브라질리언왁싱, eyebrows=눈썹, underarm=겨드랑이, leg=다리, arm=팔, bikini=비키니, full body=전신\n\n추출 항목:\n- custName: 고객 이름 (없으면 "")\n- custPhone: 전화번호 (010-XXXX-XXXX. 해외번호 원본유지)\n- date: YYYY-MM-DD\n- time: HH:MM 24시간\n- dur: 소요시간(분) (없으면 0)\n- memo: 시술내용만 (지점명/예약경로/연락처/날짜 등은 절대 넣지 말 것. 없으면 "")\n- branch: 지점명 (강남점/홍대점 등 지점이 언급된 경우. 없으면 "")\n- source: 예약경로 (반드시 등록된 예약경로 목록에서 선택! 명시적으로 언급된 경우만. WhatsApp→와츠앱, 카카오톡→카톡. 언급 없으면 반드시 "")\n- custGender: "M" or "F" or ""\n- matchedTagIds: 매칭된 서비스태그 ID 배열. 없으면 []\n- matchedServiceIds: 매칭된 시술상품 ID 배열. 없으면 []`;
-  };
-
-  const doParse = async (evt, overrideAudio) => {
-    const ad = overrideAudio || audioData;
-    if (!apiKey) { setError("관리설정 → AI설정에서 API 키를 등록하세요"); return; }
-    if (!input.trim() && !imgData && !ad) { setError("텍스트, 이미지, 또는 음성을 입력하세요"); return; }
-    setLoading(true); setError(null); setResult(null);
-    try {
-      const parts = [{text: buildPrompt()}];
-      if (input.trim()) parts.push({text: "입력:\n" + input.trim()});
-      if (imgData) parts.push({inlineData:{mimeType:imgData.mimeType, data:imgData.base64}});
-      if (ad) parts.push({inlineData:{mimeType:ad.mimeType, data:ad.base64}});
-      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({contents:[{parts}], generationConfig:{temperature:0}})
-      });
-      if (!r.ok) throw new Error("API: "+(await r.text()).slice(0,120));
-      const d = await r.json();
-      const txt = d.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      const parsed = JSON.parse(txt.replace(/```json|```/g,"").trim());
-      onParsed(parsed);
-    } catch(e) { setError("분석 실패: "+e.message); }
-    setLoading(false);
-  };
-
-  const editResult = (k,v) => setResult(p=>({...p,[k]:v}));
-  const reset = () => { setResult(null);setError(null);setAudioData(null);setRecordSec(0);setImgData(null);setImgPreview(null);setInput(""); };
-  const handleSubmit = () => { if (input.trim() || imgData) doParse(); };
-
-  const sparkle = <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2L13.09 8.26L18 6L14.74 10.91L21 12L14.74 13.09L18 18L13.09 15.74L12 22L10.91 15.74L6 18L9.26 13.09L3 12L9.26 10.91L6 6L10.91 8.26L12 2Z" fill="url(#gsp)"/><defs><linearGradient id="gsp" x1="3" y1="2" x2="21" y2="22"><stop stopColor={T.google}/><stop offset="0.5" stopColor={T.purple}/><stop offset="1" stopColor={T.female}/></linearGradient></defs></svg>;
-
-  return <div style={{position:"fixed",inset:0,zIndex:500,background:T.bgCard,display:"flex",flexDirection:"column"}}>
-    <style>{`@keyframes qb-spin{to{transform:rotate(360deg)}}@keyframes qb-pulse{0%,100%{transform:scale(1);opacity:.7}50%{transform:scale(1.15);opacity:1}}@keyframes qb-mic-idle{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}@keyframes qb-fade{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}@keyframes qb-breathe{0%{transform:scale(1) rotate(0deg);opacity:.85}15%{transform:scale(1.18) rotate(8deg);opacity:1}30%{transform:scale(.95) rotate(-5deg);opacity:.75}45%{transform:scale(1.22) rotate(12deg);opacity:.95}60%{transform:scale(1.05) rotate(-3deg);opacity:.8}75%{transform:scale(1.3) rotate(6deg);opacity:1}90%{transform:scale(.98) rotate(-8deg);opacity:.7}100%{transform:scale(1) rotate(0deg);opacity:.85}}@keyframes qb-glow{0%{box-shadow:0 0 15px #4285f420,0 0 30px #9b72cb10}33%{box-shadow:0 0 25px #9b72cb30,0 0 45px #d9657015}66%{box-shadow:0 0 20px #d9657025,0 0 40px #4285f410}100%{box-shadow:0 0 15px #4285f420,0 0 30px #9b72cb10}}.qb-field:focus{border-color:#7c7cc850!important;background:#fff!important}`}</style>
-
-    {/* Top bar */}
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",flexShrink:0}}>
-      <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",padding:6,display:"flex",color:T.gray600}}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-      </button>
-      <div style={{display:"flex",alignItems:"center",gap:6}}>{sparkle}<span style={{fontSize:T.fs.md,fontWeight:T.fw.bolder,color:T.text}}>AI Book</span></div>
-      <div style={{width:32}}/>
-    </div>
-
-    {/* Content */}
-    <div style={{flex:1,overflow:"auto",padding:"0 20px",display:"flex",flexDirection:"column"}}>
-
-      {/* Empty — voice-first */}
-      {!result && !loading && !error && !imgPreview && !isListening && <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:28,padding:"0 28px"}}>
-        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:18}}>
-          <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <div style={{position:"absolute",width:144,height:144,borderRadius:"50%",background:"rgba(217,101,112,.06)",animation:"qb-mic-idle 3s ease-in-out infinite"}}/>
-            <div style={{position:"absolute",width:116,height:116,borderRadius:"50%",background:"rgba(217,101,112,.1)"}}/>
-            <button onClick={startVoice} style={{position:"relative",zIndex:1,width:92,height:92,borderRadius:"50%",background:"linear-gradient(145deg,#d96570,#c0506b)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 8px 32px rgba(217,101,112,.45)",transition:"transform .12s"}}
-              onTouchStart={e=>e.currentTarget.style.transform="scale(.93)"}
-              onTouchEnd={e=>e.currentTarget.style.transform="scale(1)"}>
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="white"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1 1.93c-3.94-.49-7-3.85-7-7.93H2c0 4.92 3.66 9 8.44 9.44V21h3.11v-3.56C18.34 16.99 22 12.91 22 7.99h-2c0 4.08-3.05 7.44-7 7.93V15h-2v.93z"/></svg>
-            </button>
-          </div>
-          <div style={{textAlign:"center"}}>
-            <div style={{fontSize:22,fontWeight:700,color:T.text,marginBottom:6}}>말씀해 주세요</div>
-            <div style={{fontSize:T.fs.sm,color:T.gray500,lineHeight:1.8}}>마이크를 누르면 잘 듣고 있을게요<br/>카톡 메시지·이미지도 분석해드려요</div>
-          </div>
-        </div>
-        <div style={{display:"flex",gap:10}}>
-          <input ref={fileRef} type="file" accept="image/*" onChange={handleImage} style={{display:"none"}}/>
-          <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={handleImage} style={{display:"none"}}/>
-          <button onClick={()=>fileRef.current?.click()} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:7,padding:"16px 0",borderRadius:16,border:"1.5px solid "+T.border,background:T.bgCard,cursor:"pointer",color:T.textSub,fontSize:T.fs.xs,fontWeight:500}}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>이미지
-          </button>
-          <button onClick={()=>camRef.current?.click()} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:7,padding:"16px 0",borderRadius:16,border:"1.5px solid "+T.border,background:T.bgCard,cursor:"pointer",color:T.textSub,fontSize:T.fs.xs,fontWeight:500}}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>카메라
-          </button>
-        </div>
-        <div style={{width:"100%",background:T.gray100,borderRadius:16,padding:"4px 4px 4px 16px",display:"flex",alignItems:"center",gap:8}}>
-          <textarea ref={inputRef} value={input} onChange={e=>{setInput(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,120)+"px";}}
-            onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();handleSubmit();}}}
-            onPaste={handlePaste} placeholder="카톡 메시지 텍스트 붙여넣기..." rows={1}
-            style={{flex:1,border:"none",background:"transparent",fontSize:T.fs.sm,fontFamily:"inherit",color:T.text,outline:"none",resize:"none",padding:"10px 0",lineHeight:1.5}}/>
-          {input.trim() && <button onClick={handleSubmit} style={{width:36,height:36,borderRadius:12,background:"linear-gradient(135deg,#4285f4,#9b72cb)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-          </button>}
-        </div>
-        {imgPreview && <div style={{fontSize:T.fs.xxs,color:T.gray500}}>📎 이미지 첨부됨</div>}
-      </div>}
-      {/* Image preview */}
-      {imgPreview && !result && !loading && <div style={{animation:"qb-fade .3s ease",marginTop:16}}>
-        <div style={{position:"relative",borderRadius:T.radius.md,overflow:"hidden",border:"1px solid #eee",display:"inline-block"}}>
-          <img src={imgPreview} style={{maxWidth:"100%",maxHeight:240,display:"block",objectFit:"contain"}} alt=""/>
-          <button onClick={()=>{setImgData(null);setImgPreview(null);}} style={{position:"absolute",top:8,right:8,width:28,height:28,borderRadius:T.radius.md,background:"rgba(0,0,0,.5)",color:T.bgCard,border:"none",cursor:"pointer",fontSize:T.fs.md,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
-        </div>
-      </div>}
-
-      {/* Loading */}
-      {loading && <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:T.sp.lg,animation:"qb-fade .3s ease"}}>
-        <div style={{display:"flex",gap:6}}>{[T.google,T.purple,T.female].map((c,i)=><div key={i} style={{width:10,height:10,borderRadius:T.radius.sm,background:c,animation:`qb-pulse .8s ease ${i*.15}s infinite`}}/>)}</div>
-        <div style={{fontSize:T.fs.md,fontWeight:T.fw.bold,color:T.gray700}}>{audioData?"음성을 분석하고 있어요":imgData?"이미지를 읽고 있어요":"분석 중이에요"}</div>
-      </div>}
-
-      {/* Recording — 대화형 */}
-      {isListening && <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:24,animation:"qb-fade .3s ease"}}>
-        <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <div style={{position:"absolute",width:170,height:170,borderRadius:"50%",background:"rgba(217,101,112,.06)",animation:"qb-mic-idle 1.4s ease-in-out infinite"}}/>
-          <div style={{position:"absolute",width:136,height:136,borderRadius:"50%",background:"rgba(217,101,112,.1)",animation:"qb-mic-idle 1.4s ease-in-out infinite .3s"}}/>
-          <div style={{position:"relative",zIndex:1,width:108,height:108,borderRadius:"50%",background:"linear-gradient(145deg,#d96570,#c0506b)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 8px 40px rgba(217,101,112,.5)"}}>
-            <svg width="46" height="46" viewBox="0 0 24 24" fill="white"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1 1.93c-3.94-.49-7-3.85-7-7.93H2c0 4.92 3.66 9 8.44 9.44V21h3.11v-3.56C18.34 16.99 22 12.91 22 7.99h-2c0 4.08-3.05 7.44-7 7.93V15h-2v.93z"/></svg>
-          </div>
-        </div>
-        <div style={{textAlign:"center",display:"flex",flexDirection:"column",gap:6}}>
-          <div style={{fontSize:20,fontWeight:700,color:T.text}}>잘 듣고 있을게요 🎙️</div>
-          <div style={{fontSize:36,fontWeight:700,color:"#d96570",fontFamily:"monospace",letterSpacing:2}}>{Math.floor(recordSec/60)}:{String(recordSec%60).padStart(2,"0")}</div>
-          <div style={{fontSize:T.fs.xs,color:T.gray400}}>말씀이 끝나면 완료를 눌러주세요</div>
-        </div>
-        <button onClick={stopVoice} style={{padding:"13px 48px",fontSize:T.fs.md,fontWeight:700,background:T.gray200,color:T.gray700,border:"none",borderRadius:40,cursor:"pointer"}}>완료</button>
-      </div>}
-      {/* Error */}
-      {error && <div style={{marginTop:20,padding:"14px 16px",background:T.dangerLt,borderRadius:T.radius.lg,fontSize:T.fs.sm,color:T.danger,lineHeight:1.5,animation:"qb-fade .3s ease"}}>{error}<button onClick={reset} style={{display:"block",marginTop:8,fontSize:T.fs.sm,color:T.google,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:T.fw.bold}}>다시 시도</button></div>}
-
-      {/* Results */}
-      {result && <div style={{paddingTop:12,paddingBottom:100,animation:"qb-fade .3s ease"}}>
-        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:14}}>{sparkle}<span style={{fontSize:T.fs.md,fontWeight:T.fw.bolder,color:T.text}}>분석 완료</span><span style={{fontSize:T.fs.xxs,color:T.gray400,marginLeft:4}}>수정 가능</span></div>
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {[["custName","고객명"],["custPhone","전화번호"],["date","날짜"],["time","시간"],["memo","시술/메모"],["source","예약경로"]].map(([key,label])=>
-            <div key={key}><div style={{fontSize:T.fs.xxs,color:T.gray500,marginBottom:4,fontWeight:T.fw.medium}}>{label}</div>
-            <input value={result[key]||""} onChange={e=>editResult(key,e.target.value)} className="qb-field"
-              style={{width:"100%",padding:"11px 14px",fontSize:T.fs.md,border:"1.5px solid #e8e8e8",borderRadius:T.radius.lg,fontFamily:"inherit",color:T.text,outline:"none",background:T.bg,transition:"all .15s"}}/></div>
-          )}
-          <div><div style={{fontSize:T.fs.xxs,color:T.gray500,marginBottom:4,fontWeight:T.fw.medium}}>성별</div>
-            <div style={{display:"flex",gap:6}}>{[["","미정"],["M","남"],["F","여"]].map(([v,l])=>
-              <button key={v} onClick={()=>editResult("custGender",v)} style={{padding:"8px 20px",fontSize:T.fs.sm,fontWeight:result.custGender===v?600:400,background:result.custGender===v?"#7c7cc812":T.bg,color:result.custGender===v?T.primary:T.gray500,border:result.custGender===v?"1.5px solid #7c7cc840":"1.5px solid #eee",borderRadius:T.radius.md,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
-            )}</div>
-          </div>
-          {(()=>{
-            const tags = (data?.serviceTags||[]).filter(t=>t.useYn!==false && t.scheduleYn!=="Y");
-            const svcs = (data?.services||[]).filter(s=>s.useYn!==false);
-            const mTags = result.matchedTagIds || [], mSvcs = result.matchedServiceIds || [];
-            const toggleTag = (id) => editResult("matchedTagIds", mTags.includes(id)?mTags.filter(x=>x!==id):[...mTags,id]);
-            const toggleSvc = (id) => editResult("matchedServiceIds", mSvcs.includes(id)?mSvcs.filter(x=>x!==id):[...mSvcs,id]);
-            if (!tags.length && !svcs.length) return null;
-            return <>{tags.length>0 && <div><div style={{fontSize:T.fs.xxs,color:T.gray500,marginBottom:6,fontWeight:T.fw.medium}}>서비스</div><div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-              {tags.map(t=><button key={t.id} onClick={()=>toggleTag(t.id)} style={{padding:"7px 14px",fontSize:T.fs.sm,fontWeight:mTags.includes(t.id)?600:400,background:mTags.includes(t.id)?(t.color||T.primary)+"15":T.bg,color:mTags.includes(t.id)?t.color||T.primary:T.gray400,border:mTags.includes(t.id)?`1.5px solid ${(t.color||T.primary)}40`:"1.5px solid #eee",borderRadius:T.radius.md,cursor:"pointer",fontFamily:"inherit"}}>{t.name}</button>)}
-            </div></div>}
-            {svcs.length>0 && <div><div style={{fontSize:T.fs.xxs,color:T.gray500,marginBottom:6,fontWeight:T.fw.medium}}>시술</div><div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-              {svcs.map(s=><button key={s.id} onClick={()=>toggleSvc(s.id)} style={{padding:"7px 14px",fontSize:T.fs.sm,fontWeight:mSvcs.includes(s.id)?600:400,background:mSvcs.includes(s.id)?"#7c7cc815":T.bg,color:mSvcs.includes(s.id)?T.primary:T.gray400,border:mSvcs.includes(s.id)?"1.5px solid #7c7cc840":"1.5px solid #eee",borderRadius:T.radius.md,cursor:"pointer",fontFamily:"inherit"}}>{s.name}</button>)}
-            </div></div>}</>;
-          })()}
-        </div>
-        <div style={{display:"flex",gap:10,marginTop:20}}>
-          <button onClick={reset} style={{flex:1,padding:"13px 0",fontSize:T.fs.sm,fontWeight:T.fw.medium,background:T.bg,color:T.textSub,border:"none",borderRadius:T.radius.lg,cursor:"pointer",fontFamily:"inherit"}}>다시</button>
-          <button onClick={()=>onParsed(result)} style={{flex:2,padding:"13px 0",fontSize:T.fs.md,fontWeight:T.fw.bold,background:"linear-gradient(135deg,#4285f4,#9b72cb)",color:T.bgCard,border:"none",borderRadius:T.radius.lg,cursor:"pointer",fontFamily:"inherit"}}>예약폼에 적용</button>
-        </div>
-      </div>}
-    </div>
-
-  </div>;
-}
 
 export default Timeline
