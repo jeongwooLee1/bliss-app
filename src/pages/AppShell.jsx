@@ -363,7 +363,8 @@ const sx = {
   },
 };
 
-function SalesPage({ data, setData, userBranches, isMaster, setPage }) {
+function SalesPage({ data, setData, userBranches, isMaster, setPage, role }) {
+  const [salesTab, setSalesTab] = useState("sales"); // "sales" | "stats"
   const dateAnchorRef = React.useRef(null);
   const [startDate, setStartDate] = useState(todayStr());
   const [endDate, setEndDate] = useState(todayStr());
@@ -449,7 +450,26 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage }) {
     </div>;
   };
 
+  if (salesTab === "stats") return <div>
+    <div style={{display:"flex",gap:0,marginBottom:12}}>
+      {[["sales","매출 관리"],["stats","매출 통계"]].map(([k,l])=>(
+        <button key={k} onClick={()=>setSalesTab(k)} style={{flex:1,padding:"10px 0",fontSize:T.fs.sm,fontWeight:salesTab===k?T.fw.bolder:T.fw.medium,
+          color:salesTab===k?T.primary:T.textMuted,borderBottom:salesTab===k?`2px solid ${T.primary}`:"2px solid transparent",
+          background:"none",border:"none",borderBottom:salesTab===k?`2px solid ${T.primary}`:"2px solid "+T.border,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
+      ))}
+    </div>
+    <StatsPage data={data} userBranches={userBranches} isMaster={isMaster} role={role}/>
+  </div>;
+
   return <div>
+    {/* Tab Segment */}
+    <div style={{display:"flex",gap:0,marginBottom:12}}>
+      {[["sales","매출 관리"],["stats","매출 통계"]].map(([k,l])=>(
+        <button key={k} onClick={()=>setSalesTab(k)} style={{flex:1,padding:"10px 0",fontSize:T.fs.sm,fontWeight:salesTab===k?T.fw.bolder:T.fw.medium,
+          color:salesTab===k?T.primary:T.textMuted,
+          background:"none",border:"none",borderBottom:salesTab===k?`2px solid ${T.primary}`:"2px solid "+T.border,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
+      ))}
+    </div>
     {/* Header */}
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:T.sp.sm}}>
       <h2 className="page-title" style={{marginBottom:0}}>매출 관리</h2>
@@ -2026,7 +2046,6 @@ function App() {
     { id:"timeline", label:"타임라인", icon:<I name="calendar" size={16}/> },
     { id:"reservations", label:"예약목록", icon:<I name="clipboard" size={16}/> },
     { id:"sales", label:"매출관리", icon:<I name="wallet" size={16}/> },
-    { id:"stats", label:"매출통계", icon:<I name="chart" size={16}/> },
     { id:"customers", label:"고객관리", icon:<I name="users" size={16}/> },
     ...(isMaster?[{ id:"users", label:"사용자관리", icon:<I name="user" size={16}/> }]:[]),
     { id:"messages", label:"받은메시지함", icon:<I name="msgSq" size={16}/>, badge:unreadMsgCount },
@@ -2055,8 +2074,7 @@ function App() {
           <div className={page==="timeline"?"":"fade-in"} key={page} style={page==="timeline"?{flex:1,display:"flex",flexDirection:"column",minHeight:0}:{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}>
             {page==="timeline" && <Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus}/>}
             {page==="reservations" && <ReservationList data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} setNaverColShow={setNaverColShow}/>}
-            {page==="sales" && <SalesPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage}/>}
-            {page==="stats" && <StatsPage data={data} userBranches={userBranches} isMaster={isMaster} role={role}/>}
+            {page==="sales" && <SalesPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} role={role}/>}
             {page==="customers" && <CustomersPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster}/>}
             {page==="users" && <UsersPage data={data} setData={setData} bizId={currentBizId}/>}
             {page==="messages" && <AdminInbox sb={sb} branches={data?.branches} data={data} userBranches={userBranches} isMaster={isMaster} onRead={(cnt)=>setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)))} onChatOpen={setIsChatOpen}/>}
@@ -2079,11 +2097,11 @@ function MobileBottomNav({ nav, page, setPage, isChatOpen=false }) {
   if(isChatOpen) return null;
   const mainItems = [
     ...(nav.find(n=>n.id==="timeline")    ? [{id:"timeline",   label:"타임라인", icon:"calendar"}]  : []),
-    ...(nav.find(n=>n.id==="reservations")? [{id:"reservations",label:"예약목록",  icon:"clipboard"}] : []),
+    ...(nav.find(n=>n.id==="sales")       ? [{id:"sales",      label:"매출",     icon:"wallet"}]    : []),
     ...(nav.find(n=>n.id==="messages")    ? [{id:"messages",   label:"메시지함",  icon:"msgSq", badge: nav.find(n=>n.id==="messages")?.badge||0}] : []),
-    ...(nav.find(n=>n.id==="customers")   ? [{id:"customers",  label:"고객관리",  icon:"users"}]     : []),
+    ...(nav.find(n=>n.id==="customers")   ? [{id:"customers",  label:"고객",     icon:"users"}]     : []),
   ];
-  const moreItems = nav.filter(n=>!["timeline","reservations","messages","customers"].includes(n.id));
+  const moreItems = nav.filter(n=>!["timeline","sales","messages","customers"].includes(n.id));
   const items = [...mainItems, {id:"__more", label:"더보기", icon:"menu"}];
   return (
     <>
@@ -2121,7 +2139,7 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
   const cats = [
     { label:"예약 관리", items: nav.filter(n=>["timeline","reservations"].includes(n.id)) },
     { label:"고객 관리", items: nav.filter(n=>["customers"].includes(n.id)) },
-    { label:"매출 관리", items: nav.filter(n=>["sales","stats"].includes(n.id)) },
+    { label:"매출 관리", items: nav.filter(n=>["sales"].includes(n.id)) },
     ...(nav.find(n=>n.id==="admin") ? [{ label:"시스템", items: nav.filter(n=>["users","messages","admin"].includes(n.id)) }] : []),
   ];
   return <>
