@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { T, NAVER_COLS, getNaverVal } from '../../lib/constants'
 import { sb } from '../../lib/sb'
 import { fromDb } from '../../lib/db'
