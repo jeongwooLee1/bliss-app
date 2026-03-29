@@ -315,6 +315,8 @@ function CustomersPage({ data, setData, userBranches, isMaster }) {
                       <span style={{fontSize:9,background:T.gray200,borderRadius:T.radius.sm,padding:"1px 5px",color:T.textSub}}>{br?.short||"-"}</span>
                       <span style={{fontSize:9,color:T.textMuted}}>{c.visits||0}회</span>
                       {c.lastVisit && <span style={{fontSize:9,color:T.textMuted}}>{c.lastVisit}</span>}
+                      {c.joinDate && <span style={{fontSize:9,color:T.textMuted}}>가입:{c.joinDate}</span>}
+                      {c.smsConsent===false && <span style={{fontSize:9,color:T.danger,fontWeight:T.fw.bold}}>수신거부</span>}
                       {c.isHidden && <span style={{fontSize:9,color:T.danger,fontWeight:T.fw.bold}}>숨김</span>}
                     </div>
                   </div>
