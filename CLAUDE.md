@@ -218,3 +218,33 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - pg_cron 7개: check-pending, daily-report, noshow-check, refresh-sales-mv, inactive-custs, cleanup-queue, weekly-report
 - Vault + Edge Secrets (TG_TOKEN, TG_CHAT)
 - Supabase Access Token: sbp_cb8a6191cdc34424538cb5d696d371c8739c2c29
+- Realtime Publication: reservations, schedule_data, naver_messages, send_queue, customers, sales
+- 폴링 전부 제거 → Realtime만 사용 (Egress 절감)
+- Cloudflare 캐시 퍼지 필요 시: Dashboard → Caching → Purge Everything
+
+### v1.4.0 블록 이동 핵심 버그 수정 (2026-03-29)
+- **원인**: staffUpdate가 isNaverBlock(네이버 예약)일 때만 적용. 내부일정/일반예약은 staffUpdate={}로 무시되어, 칼럼 이동 시 roomId만 변경되고 staffId가 빈값으로 남아 양쪽 칼럼 필터에 걸려 중복 표시
+- **수정**: staffUpdate를 모든 블록에 적용 (직원칼럼→staffId 설정, 미배정→초기화)
+- 내부일정 이동: 팝업 없이 바로 DB 저장
+- 칼럼만 이동(시간 동일): 팝업 없이 바로 저장
+- 시간 변경 + 010 고객만 알림톡 팝업
+
+### 보유권 결제수단 통합
+- 결제수단 버튼 앞에 보유권 버튼 배치 (🎫 다담권 / 🎟 다회권)
+- 클릭 한 번으로 즉시 차감 (입력 필드 없음)
+- 그라데이션 오렌지 디자인
+
+### AI 가격표 학습
+- 여성/남성 전체 가격표 프롬프트에 포함
+- 풀바디/풀페이스 = 패키지 가격, 부위별 합산 금지
+- 가격 질문 시 남녀 둘 다 즉시 안내, 성별 묻지 않기
+- 메시지함 AI(genAI) 프롬프트에도 동일 적용
+
+### Cloudflare 캐시 문제 해결
+- 배포 후 Cloudflare가 오래된 index.html 캐싱 → 새 JS 로드 안 됨
+- 해결: nginx no-cache 헤더 + index.html 메타태그 + Cloudflare Purge
+- 배포 후 반드시 Cloudflare 캐시 퍼지 필요
+
+### 서버 OpenSSL 충돌 해결
+- oracledb 설치 시 cryptography 업그레이드 → 시스템 pyOpenSSL과 충돌 → 서버 크래시
+- 해결: sudo pip3 install pyOpenSSL cryptography --upgrade
