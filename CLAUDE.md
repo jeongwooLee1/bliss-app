@@ -202,6 +202,19 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - Windows Task Scheduler: 매일 새벽 3시 (BlissOracleSync)
 - Oracle DSN: googlea.withbiz.co.kr:5063/ORA11GHW (로컬 PC에서만 접속 가능)
 
-### 코드 리팩터링 (진행중)
-- Phase 1 완료: src/components/common/index.js — 공통 UI 컴포넌트 라이브러리
-- Phase 2~6 예정: AppShell/ReservationsPage/Timeline/Modal 분리
+### 코드 리팩터링 완료
+- Phase 1: common/index.jsx — 공통 UI 12개
+- Phase 2: AppShell 2248→1261줄 (SalesPage, CustomersPage, Nav 분리)
+- Phase 3: ReservationsPage 3005→755줄 (Admin 10개 파일 분리)
+- Phase 4: TimelinePage 2253→1897줄 (QuickBook, Settings 분리)
+- Phase 5: ReservationModal 2033→1290줄 (SaleForm 분리)
+
+### Supabase 인프라
+- RLS: 전 테이블 18개 활성화
+- RPC: get_sales_summary, get_sales_by_branch, get_today_stats
+- Materialized View: daily_sales_mv (매 시간 갱신)
+- Edge Functions 6개 배포 (check-pending, send-message, daily-report, noshow-check, daily-reminder, birthday-greeting)
+- DB Webhook: send_queue INSERT → send-message trigger
+- pg_cron 7개: check-pending, daily-report, noshow-check, refresh-sales-mv, inactive-custs, cleanup-queue, weekly-report
+- Vault + Edge Secrets (TG_TOKEN, TG_CHAT)
+- Supabase Access Token: sbp_cb8a6191cdc34424538cb5d696d371c8739c2c29
