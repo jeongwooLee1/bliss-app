@@ -2050,9 +2050,7 @@ function App() {
         </div>
       </div>}
       <main className="main-c" style={S.main}>
-        <div className="mob-hdr" style={{...S.mobHdr,position:"relative",justifyContent:"center"}}>
-          {bizName && <span style={{fontSize:T.fs.lg,fontWeight:T.fw.black,color:T.primary}}>{bizName}</span>}
-        </div>
+        <div className="mob-hdr" style={{display:"none"}}></div>
         <div className="page-pad" style={{flex:1,padding:(page==="timeline"||page==="messages")?"0":"16px 20px 16px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
           <div className={page==="timeline"?"":"fade-in"} key={page} style={page==="timeline"?{flex:1,display:"flex",flexDirection:"column",minHeight:0}:{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}>
             {page==="timeline" && <Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus}/>}
