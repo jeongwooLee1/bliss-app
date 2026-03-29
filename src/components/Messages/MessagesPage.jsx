@@ -388,7 +388,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
 
   // 데스크탑 렌더
   return (
-    <div style={{display:"flex",height:"calc(100vh - 76px)",overflow:"hidden",background:T.bg,borderRadius:12,border:"1px solid "+T.border}}>
+    <div style={{display:"flex",height:"100%",overflow:"hidden",background:T.bg,borderRadius:12,border:"1px solid "+T.border}}>
       {/* 목록 */}
       <div style={{width:300,minWidth:300,borderRight:"1px solid "+T.border,display:"flex",flexDirection:"column",background:T.bgCard,overflow:"hidden",flexShrink:0}}>
         <div style={{padding:"14px 16px",borderBottom:"1px solid "+T.border,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
