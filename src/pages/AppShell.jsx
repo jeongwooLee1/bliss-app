@@ -16,7 +16,7 @@ import MobileBottomNav from '../components/Navigation/MobileBottomNav'
 import Sidebar from '../components/Navigation/Sidebar'
 
 const uid = genId;
-const BLISS_V = "1.3.3"
+const BLISS_V = "1.4.0"
 const BIZ_ID = 'biz_khvurgshb'
 async function loadAllFromDb(bizId) {
   const [branches, services, categories, tags, sources, users, rooms, customers, reservations, sales, products] = await Promise.all([

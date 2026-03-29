@@ -922,21 +922,25 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
             const [sh,sm] = snap.time.split(":").map(Number);
             const endMin = sh*60+sm+(r.dur||60);
             const endTime = `${String(Math.floor(endMin/60)).padStart(2,"0")}:${String(endMin%60).padStart(2,"0")}`;
-            const isNaverBlock = !!r.reservationId;
             const toNaverCol = snap.roomId?.startsWith("nv_");
-            const toRegularCol = snap.roomId && !snap.roomId.startsWith("nv_");
             const targetRoom = allRooms.find(rm => rm.id === snap.roomId);
-            const staffUpdate = isNaverBlock
-              ? (toNaverCol ? { staffId: "", roomId: "" }
-                : toRegularCol
-                  ? (targetRoom?.isStaffCol
-                      ? { staffId: targetRoom.staffId, roomId: snap.roomId }  // 직원컬럼 → staffId=직원명, roomId=컬럼ID
-                      : { staffId: snap.roomId, roomId: snap.roomId })        // 일반룸 → 기존 방식
-                  : {})
-              : {};
+            const staffUpdate = toNaverCol
+              ? { staffId: "", roomId: "" }
+              : targetRoom?.isStaffCol
+                ? { staffId: targetRoom.staffId, roomId: snap.roomId }
+                : snap.roomId ? { roomId: snap.roomId } : {};
             return {...r, time: snap.time, endTime, roomId: snap.roomId||r.roomId, bid: snap.bid||r.bid, ...staffUpdate};
           })}));
-          setPendingChange({ type: "move", block, data: snap, orig });
+          // 내부일정 또는 알림톡 불필요 시 바로 DB 저장
+          const validPhone = block.custPhone && block.custPhone.startsWith("010");
+          const needsPopup = !block.isSchedule && validPhone && snap.time !== orig.time;
+          if (needsPopup) {
+            setPendingChange({ type: "move", block, data: snap, orig });
+          } else {
+            // 바로 DB 저장 (팝업 없음)
+            const r2 = (data?.reservations||[]).find(rv => rv.id === block.id);
+            if (r2) sb.update("reservations", block.id, { room_id: r2.roomId, time: r2.time, bid: r2.bid, staff_id: r2.staffId || null }).catch(console.error);
+          }
         }
       }
       setDragBlock(null); setDragPos(null); setDragSnap(null); dragSnapRef.current = null;
