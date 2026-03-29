@@ -1753,7 +1753,9 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
             <div style={{display:'flex',flexDirection:'column',borderTop:'1px solid '+T.gray100}}>
               {(()=>{
                 const validPhone = block.custPhone && block.custPhone.startsWith("010");
-                const showAlimtalk = !block.isSchedule && validPhone;
+                const isFromUnassigned = !orig.roomId || orig.roomId.startsWith("nv_") || orig.roomId.startsWith("blank_");
+                const isAssigning = type==="move" && isFromUnassigned;
+                const showAlimtalk = !block.isSchedule && validPhone && !isAssigning;
                 return <>
                   {showAlimtalk && <button onClick={()=>_mc(()=>confirmChange(true))} style={{padding:'11px 0',fontSize:T.fs.sm,fontWeight:700,border:'none',borderBottom:'1px solid '+T.gray100,background:'none',color:T.primary,cursor:'pointer',fontFamily:'inherit'}}>확인 + 예약안내 발송</button>}
                   <div style={{display:'flex'}}>
