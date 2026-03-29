@@ -805,12 +805,12 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         return row;
       })).catch(console.error);
     }, 0);
-    // 예약안내 신규 등록 팝업
-    if(!item.isSchedule && isNewItem && item.custPhone) {
+    // 예약안내 팝업 (내부일정 제외, 010 시작 전화번호만)
+    const validPhone = item.custPhone && item.custPhone.startsWith("010");
+    if(!item.isSchedule && validPhone && isNewItem) {
       setAlimtalkConfirm({...item, _alimtalkType: "confirm"});
     }
-    // 예약안내 변경 팝업 (isExistItem이고 고객 전화번호 있을 때)
-    if(isExistItem && !item.isSchedule && item.custPhone) {
+    if(!item.isSchedule && validPhone && isExistItem) {
       setAlimtalkConfirm(item);
     }
     setShowModal(false); setModalData(null);
@@ -1752,10 +1752,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
             </div>
             <div style={{display:'flex',flexDirection:'column',borderTop:'1px solid '+T.gray100}}>
               {(()=>{
-                const isFromUnassigned = !orig.roomId || orig.roomId.startsWith("nv_") || orig.roomId.startsWith("blank_");
-                const isToAssigned = d.roomId && !d.roomId?.startsWith("nv_") && !d.roomId?.startsWith("blank_");
-                const isAssigning = type==="move" && isFromUnassigned && isToAssigned;
-                const showAlimtalk = !block.isSchedule && block.custPhone && !isAssigning;
+                const validPhone = block.custPhone && block.custPhone.startsWith("010");
+                const showAlimtalk = !block.isSchedule && validPhone;
                 return <>
                   {showAlimtalk && <button onClick={()=>_mc(()=>confirmChange(true))} style={{padding:'11px 0',fontSize:T.fs.sm,fontWeight:700,border:'none',borderBottom:'1px solid '+T.gray100,background:'none',color:T.primary,cursor:'pointer',fontFamily:'inherit'}}>확인 + 예약안내 발송</button>}
                   <div style={{display:'flex'}}>
