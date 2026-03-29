@@ -1309,57 +1309,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           <button onClick={()=>setShowQuickBook(true)} style={{padding:"0 12px",height:32,fontSize:T.fs.sm,border:"none",borderRadius:T.radius.xl,background:"linear-gradient(135deg,#4285f4,#9b72cb,#d96570)",color:T.bgCard,cursor:"pointer",fontFamily:"inherit",flexShrink:0,display:"flex",alignItems:"center",gap:5,fontWeight:T.fw.bolder,boxShadow:"0 2px 8px rgba(66,133,244,.25)"}}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill={T.bgCard} style={{flexShrink:0}}><path d="M12 2L13.09 8.26L18 6L14.74 10.91L21 12L14.74 13.09L18 18L13.09 15.74L12 22L10.91 15.74L6 18L9.26 13.09L3 12L9.26 10.91L6 6L10.91 8.26L12 2Z"/></svg> AI Book
           </button>
-          {/* 수동 새로고침 버튼 */}
-          <button
-            title="새로고침"
-            onClick={async () => {
-              if (isRefreshing) return;
-              setIsRefreshing(true);
-              if (pendingRTQueueRef.current.length > 0) {
-                const queue = pendingRTQueueRef.current;
-                pendingRTQueueRef.current = [];
-                setRtPendingCount(0);
-                setData(prev => {
-                  if (!prev) return prev;
-                  let reservations = [...(prev.reservations || [])];
-                  for (const item of queue) {
-                    if (item.ev === "UPDATE") reservations = reservations.map(r => r.id === item.data.id ? {...r, ...item.data} : r);
-                    else if (item.ev === "INSERT") { if (!reservations.some(r => r.id === item.data.id)) reservations = [...reservations, item.data]; }
-                    else if (item.ev === "DELETE") reservations = reservations.filter(r => r.id !== item.data.id);
-                  }
-                  return {...prev, reservations};
-                });
-              }
-              // 직접 fetch하여 강제 갱신
-              try {
-                const rows = await sb.getByBiz("reservations", bizId);
-                const parsed = fromDb("reservations", rows);
-                setData(prev => prev ? {...prev, reservations: parsed} : prev);
-              } catch(e) {}
-              setTimeout(() => setIsRefreshing(false), 800);
-            }}
-            style={{
-              position:"relative", width:32, height:32,
-              border: rtPendingCount > 0 ? "1.5px solid #4285f4" : "1px solid #d0d0d0",
-              borderRadius:T.radius.md, background: rtPendingCount > 0 ? "#e8f0fe" : T.bgCard,
-              cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
-              padding:0, color: rtPendingCount > 0 ? T.google : T.gray600,
-              transition:"all .2s", flexShrink:0
-            }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
-              style={{animation: isRefreshing ? "spin .7s linear infinite" : "none"}}>
-              <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-            </svg>
-            {rtPendingCount > 0 && <span style={{
-              position:"absolute", top:-5, right:-5,
-              background:T.google, color:T.bgCard,
-              borderRadius:"50%", width:16, height:16,
-              fontSize:T.fs.nano, fontWeight:T.fw.bolder,
-              display:"flex", alignItems:"center", justifyContent:"center",
-              lineHeight:1, border:"1.5px solid #fff"
-            }}>{rtPendingCount > 9 ? "9+" : rtPendingCount}</span>}
-          </button>
-          <div style={{position:"relative",flexShrink:0}} ref={el => { if(el) el._settingsBtn = el; }}>
+          <div style={{marginLeft:"auto",position:"relative",flexShrink:0}} ref={el => { if(el) el._settingsBtn = el; }}>
             <button onClick={(e)=>{const next=!showSettings;setShowSettings(next);if(next&&scrollRef.current)scrollRef.current.scrollLeft=0;}} id="settings-btn"
               style={{height:32,padding:"0 12px",border:"none",borderRadius:T.radius.md,background:"transparent",
                 cursor:"pointer",background:showSettings?T.primaryLt:"none",border:showSettings?"1px solid "+T.primary:"1px solid transparent",borderRadius:T.radius.md,padding:"4px 6px",display:"flex",alignItems:"center",justifyContent:"center"}}><I name="settings" size={17} color={showSettings?T.primary:T.gray500}/></button>
