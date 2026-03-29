@@ -81,12 +81,9 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       ?.on("postgres_changes",{event:"UPDATE",schema:"public",table:"naver_messages"},
         p=>{ if(p?.new?.id) { lastMsgRt = Date.now(); setMsgs(prev=>prev.map(m=>m.id===p.new.id?{...m,...p.new}:m)); }}
       )?.subscribe();
-    // 5초 폴링 (Realtime 실패 대비) — RT 수신 직후에는 스킵
-    const poll = setInterval(() => { if (Date.now() - lastMsgRt < 4000) return; loadMsgs(); }, 5000);
     const onVisible = () => { if(document.visibilityState==="visible") loadMsgs(); };
     document.addEventListener("visibilitychange", onVisible);
     return ()=>{
-      clearInterval(poll);
       document.removeEventListener("visibilitychange", onVisible);
       try{ch?.unsubscribe(); window._sbClient?.removeChannel(ch);}catch(e){}
     };

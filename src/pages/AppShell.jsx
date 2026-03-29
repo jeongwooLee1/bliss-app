@@ -683,8 +683,6 @@ function App() {
         .catch(()=>{});
     };
     load();
-    // 10초 폴링 (Realtime 실패 대비)
-    const poll = setInterval(load, 10000);
     // Realtime: INSERT/UPDATE 시 재카운트
     const rt = window._sbClient?.channel("unread_badge")
       ?.on("postgres_changes",{event:"INSERT",schema:"public",table:"naver_messages"},
@@ -693,7 +691,7 @@ function App() {
       ?.on("postgres_changes",{event:"UPDATE",schema:"public",table:"naver_messages"},
         p=>{ if(p?.new?.is_read===true) load(); }
       )?.subscribe();
-    return ()=>{ clearInterval(poll); try{rt?.unsubscribe();}catch(e){} };
+    return ()=>{ try{rt?.unsubscribe();}catch(e){} };
   }, [userBranches, isMaster]);
   // App Badge API — 홈화면 아이콘 배지 (미읽 메시지 + 확정대기 예약)
   useEffect(() => {

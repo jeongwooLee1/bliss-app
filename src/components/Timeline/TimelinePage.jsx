@@ -57,17 +57,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.employees_v1" }, onEmpChange)
         .subscribe();
     }
-    // 폴링 fallback (30초)
-    const empPoll = setInterval(() => {
-      if (Date.now() - empLastRt < 25000) return;
-      fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.employees_v1&select=value`, { headers: {...H, "Cache-Control":"no-cache"}, cache:"no-store" })
-        .then(r => r.json()).then(rows => {
-          if (!rows?.length) return;
-          setEmpList(parseEmp(rows[0].value));
-        }).catch(() => {});
-    }, 10000);
     return () => {
-      clearInterval(empPoll);
       try { empCh?.unsubscribe(); } catch(e) {}
     };
   }, []);
@@ -170,19 +160,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         .on("postgres_changes", { event:"UPDATE", schema:"public", table:"schedule_data", filter:"key=eq.schHistory_v1" }, onSchChange)
         .subscribe();
     }
-    // 폴링도 병행 (Realtime 실패 대비, 10초 간격) — RT 수신 직후에는 스킵
-    pollTimer = setInterval(() => {
-      if (Date.now() - lastRtUpdate < 8000) return;
-      fetch(`${SB_URL_SCH}/rest/v1/schedule_data?key=eq.schHistory_v1&select=value`, { headers: {...H, "Cache-Control":"no-cache"}, cache:"no-store" })
-        .then(r=>r.json()).then(rows=>{
-          if (!rows?.length) return;
-          setSchHistory(p => mergeWithLock(parseSchHistory(rows[0].value)));
-        }).catch(()=>{});
-    }, 10000);
-
     return () => {
       clearInterval(timer);
-      clearInterval(pollTimer);
       try { channel?.unsubscribe(); } catch(e) {}
     };
   }, []);
