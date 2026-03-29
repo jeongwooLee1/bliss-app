@@ -936,13 +936,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
               : {};
             return {...r, time: snap.time, endTime, roomId: snap.roomId||r.roomId, bid: snap.bid||r.bid, ...staffUpdate};
           })}));
-          if (block.isSchedule) {
-            // 내부일정은 확인 없이 바로 저장
-            const r2 = (data?.reservations||[]).find(rv => rv.id === block.id);
-            if (r2) sb.update("reservations", block.id, { room_id: r2.roomId, time: r2.time, bid: r2.bid, staff_id: r2.staffId || null }).catch(console.error);
-          } else {
-            setPendingChange({ type: "move", block, data: snap, orig });
-          }
+          setPendingChange({ type: "move", block, data: snap, orig, autoConfirm: !!block.isSchedule });
         }
       }
       setDragBlock(null); setDragPos(null); setDragSnap(null); dragSnapRef.current = null;
@@ -1029,11 +1023,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           const endTime = `${String(Math.floor(endMin/60)).padStart(2,"0")}:${String(endMin%60).padStart(2,"0")}`;
           return {...r, dur: finalDur, endTime};
         })}));
-        if (block.isSchedule) {
-          sb.update("reservations", block.id, { dur: finalDur }).catch(console.error);
-        } else {
-          setPendingChange({ type: "resize", block, data: { dur: finalDur }, orig: { dur: origDur } });
-        }
+        setPendingChange({ type: "resize", block, data: { dur: finalDur }, orig: { dur: origDur }, autoConfirm: !!block.isSchedule });
       }
       setResizeBlock(null); setResizeDur(0);
       setTimeout(() => { isResizing.current = false; longPressActive.current = false; }, 300);
@@ -1735,6 +1725,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       })()}
 
       {pendingChange && (() => {
+        if (pendingChange.autoConfirm) { setTimeout(() => confirmChange(false), 0); return null; }
         const { type, block, data: d, orig } = pendingChange;
         const name = block.custName || "일정";
         const desc = type === "move"
