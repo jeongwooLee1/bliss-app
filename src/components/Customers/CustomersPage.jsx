@@ -35,6 +35,7 @@ function CustModal({ item, onSave, onClose, defBranch, userBranches, branches })
         </FLD>
         <FLD label="이름"><input className="inp" value={form.name} onChange={e=>f('name',e.target.value)} placeholder="고객 이름"/></FLD>
         <FLD label="연락처"><input className="inp" value={form.phone} onChange={e=>f('phone',e.target.value)} placeholder="01012345678"/></FLD>
+        <FLD label="이메일"><input className="inp" type="email" value={form.email||''} onChange={e=>f('email',e.target.value)} placeholder="example@email.com"/></FLD>
         <FLD label="성별">
           <div style={{display:'flex',gap:8}}>
             {[['F','여성'],['M','남성'],['','미지정']].map(([v,l])=>(

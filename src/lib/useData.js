@@ -92,6 +92,75 @@ export function useSchHistory() {
   return { schHistory, setSchHistory, save, loading }
 }
 
+// ── 남자직원 로테이션 ──────────────────────────────────────
+export function useMaleRotation() {
+  const [maleRotation, setMaleRotation] = useState({})
+
+  useEffect(() => {
+    supabase.from('schedule_data').select('value').eq('key', 'maleRotation_v1').single()
+      .then(({ data }) => {
+        if (data?.value) {
+          const val = typeof data.value === 'string' ? JSON.parse(data.value) : data.value
+          setMaleRotation(val)
+        }
+      })
+
+    const ch = supabase.channel('male_rot_realtime')
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public',
+        table: 'schedule_data', filter: 'key=eq.maleRotation_v1'
+      }, ({ new: n }) => {
+        if (n?.value) {
+          const val = typeof n.value === 'string' ? JSON.parse(n.value) : n.value
+          setMaleRotation(val)
+        }
+      }).subscribe()
+
+    return () => ch.unsubscribe()
+  }, [])
+
+  const getRotationBranch = (empId, dateStr) => {
+    const rot = maleRotation[empId]
+    if (!rot?.branches?.length || !rot.startDate) return null
+    const start = new Date(rot.startDate)
+    const target = new Date(dateStr)
+    const diffDays = Math.floor((target - start) / (1000*60*60*24))
+    const weekIdx = Math.floor(diffDays / 7)
+    const idx = ((weekIdx % rot.branches.length) + rot.branches.length) % rot.branches.length
+    return rot.branches[idx]
+  }
+
+  return { maleRotation, getRotationBranch }
+}
+
+// ── 범용 schedule_data 훅 ─────────────────────────────────
+export function useScheduleData(key, defaultValue = null) {
+  const [data, setData] = useState(defaultValue)
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    supabase.from('schedule_data').select('value').eq('key', key).single()
+      .then(({ data: row }) => {
+        if (row?.value) {
+          const val = typeof row.value === 'string' ? JSON.parse(row.value) : row.value
+          setData(val)
+        }
+        setLoaded(true)
+      })
+  }, [key])
+
+  const save = async (val) => {
+    setData(val)
+    await supabase.from('schedule_data').upsert({
+      id: key, key,
+      value: JSON.stringify(val),
+      updated_at: new Date().toISOString()
+    })
+  }
+
+  return { data, setData, save, loaded }
+}
+
 // ── 앱 전체 데이터 ─────────────────────────────────────────
 export function useAppData() {
   const [data, setData] = useState(null)

@@ -45,6 +45,8 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   const [aiLoading, setAiLoading] = useState(false);
   const [autoTranslate, setAutoTranslate] = useState(true);
   const [aiKoDraft, setAiKoDraft] = useState("");
+  const [aiAutoChannels, setAiAutoChannels] = useState({});
+  const [showAiSettings, setShowAiSettings] = useState(false);
   const [names, setNames] = useState({});
   const convoEndRef = useRef(null);
   const inputAreaRef = useRef(null);
@@ -88,6 +90,29 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       try{ch?.unsubscribe(); window._sbClient?.removeChannel(ch);}catch(e){}
     };
   }, []);
+
+  // AI 자동답변 채널별 ON/OFF 로드
+  const _parseSettings = (raw) => { try { return typeof raw==='string'?JSON.parse(raw):(raw||{}); } catch{ return {}; } };
+  useEffect(()=>{
+    fetch(SB_URL+"/rest/v1/businesses?id=eq.biz_khvurgshb&select=settings",{headers:sbHeaders})
+      .then(r=>r.json()).then(rows=>{
+        const s = _parseSettings(rows?.[0]?.settings);
+        setAiAutoChannels(s.ai_auto_reply_channels || {});
+      }).catch(()=>{});
+  },[]);
+  const toggleAiChannel = async (ch) => {
+    const prev = {...aiAutoChannels};
+    const updated = {...prev, [ch]: !prev[ch]};
+    setAiAutoChannels(updated);
+    try {
+      const r = await fetch(SB_URL+"/rest/v1/businesses?id=eq.biz_khvurgshb&select=settings",{headers:sbHeaders});
+      const rows = await r.json();
+      const settings = _parseSettings(rows?.[0]?.settings);
+      settings.ai_auto_reply_channels = updated;
+      settings.ai_auto_reply_enabled = Object.values(updated).some(v=>v);
+      await fetch(SB_URL+"/rest/v1/businesses?id=eq.biz_khvurgshb",{method:"PATCH",headers:{...sbHeaders,"Prefer":"return=minimal"},body:JSON.stringify({settings:JSON.stringify(settings)})});
+    } catch(e){ setAiAutoChannels(prev); }
+  };
 
   useEffect(()=>{ convoEndRef.current?.scrollIntoView({behavior:"smooth"}); },[sel, msgs.length]);
 
@@ -276,9 +301,20 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   if(isMobile && !sel) return (
     <div style={{display:"flex",flexDirection:"column",background:"#fff",minHeight:"60vh"}}>
       <div style={{padding:"16px 16px 8px",borderBottom:"1px solid "+T.border,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <span style={{fontWeight:800,fontSize:18,color:T.text}}>메시지</span>
-        {totalUnread>0&&<span style={{background:T.danger,color:"#fff",borderRadius:10,fontSize:11,fontWeight:700,padding:"2px 8px"}}>{totalUnread}</span>}
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontWeight:800,fontSize:18,color:T.text}}>메시지</span>
+          {totalUnread>0&&<span style={{background:T.danger,color:"#fff",borderRadius:10,fontSize:11,fontWeight:700,padding:"2px 8px"}}>{totalUnread}</span>}
+        </div>
+        <button onClick={()=>setShowAiSettings(v=>!v)} style={{background:Object.values(aiAutoChannels).some(v=>v)?"#7C3AED":"none",color:Object.values(aiAutoChannels).some(v=>v)?"#fff":T.textMuted,border:"1px solid "+(Object.values(aiAutoChannels).some(v=>v)?"#7C3AED":T.border),borderRadius:6,cursor:"pointer",padding:"3px 8px",fontSize:11,fontWeight:600}}>🤖 AI</button>
       </div>
+      {showAiSettings&&<div style={{padding:"10px 14px",borderBottom:"1px solid "+T.border,background:"#faf5ff"}}>
+        <div style={{fontSize:11,fontWeight:600,color:"#7C3AED",marginBottom:8}}>AI 자동대답 채널 설정</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+          {[["naver","N 네이버","#03C75A"],["instagram","I 인스타","#E1306C"],["whatsapp","W 왓츠앱","#128C7E"],["kakao","K 카카오","#F9E000"]].map(([ch,label,clr])=>(
+            <button key={ch} onClick={()=>toggleAiChannel(ch)} style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer",border:"1.5px solid",borderColor:aiAutoChannels[ch]?clr:T.border,background:aiAutoChannels[ch]?clr+"18":"#fff",color:aiAutoChannels[ch]?clr:T.gray500}}>{label} {aiAutoChannels[ch]?"ON":"OFF"}</button>
+          ))}
+        </div>
+      </div>}
       <div style={{padding:"8px 12px",borderBottom:"1px solid "+T.border}}>
         <input value={msgSearch} onChange={e=>setMsgSearch(e.target.value)} placeholder="이름, 메시지 검색..." style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid "+T.border,fontSize:13,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
       </div>
@@ -358,7 +394,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
                 {m.message_text}
                 {m.translated_text&&<div style={{marginTop:5,paddingTop:5,borderTop:isOut?"1px solid rgba(255,255,255,0.3)":"1px solid rgba(0,0,0,0.1)",fontSize:12,color:isOut?"rgba(255,255,255,0.7)":"rgba(0,0,0,0.5)"}}>🔤 {m.translated_text}</div>}
               </div>
-              <div style={{fontSize:10,color:T.textMuted,marginTop:3,textAlign:isOut?"right":"left"}}>{fmtTime(m.created_at)}</div>
+              <div style={{fontSize:10,color:T.textMuted,marginTop:3,textAlign:isOut?"right":"left"}}>{m.is_ai&&<span style={{background:"#7C3AED",color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,marginRight:4}}>AI</span>}{fmtTime(m.created_at)}</div>
             </div>
           </div>;
         })}
@@ -392,9 +428,20 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       {/* 목록 */}
       <div style={{width:300,minWidth:300,borderRight:"1px solid "+T.border,display:"flex",flexDirection:"column",background:T.bgCard,overflow:"hidden",flexShrink:0}}>
         <div style={{padding:"14px 16px",borderBottom:"1px solid "+T.border,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <span style={{fontWeight:T.fw.bolder,fontSize:T.fs.md}}>메시지함</span>
-          {totalUnread>0&&<span style={{background:T.danger,color:"#fff",borderRadius:10,fontSize:11,fontWeight:700,padding:"2px 7px"}}>{totalUnread}</span>}
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontWeight:T.fw.bolder,fontSize:T.fs.md}}>메시지함</span>
+            {totalUnread>0&&<span style={{background:T.danger,color:"#fff",borderRadius:10,fontSize:11,fontWeight:700,padding:"2px 7px"}}>{totalUnread}</span>}
+          </div>
+          <button onClick={()=>setShowAiSettings(v=>!v)} style={{background:Object.values(aiAutoChannels).some(v=>v)?"#7C3AED":"none",color:Object.values(aiAutoChannels).some(v=>v)?"#fff":T.textMuted,border:"1px solid "+(Object.values(aiAutoChannels).some(v=>v)?"#7C3AED":T.border),borderRadius:6,cursor:"pointer",padding:"3px 8px",fontSize:11,fontWeight:600}}>🤖 AI</button>
         </div>
+        {showAiSettings&&<div style={{padding:"10px 14px",borderBottom:"1px solid "+T.border,background:"#faf5ff"}}>
+          <div style={{fontSize:11,fontWeight:600,color:"#7C3AED",marginBottom:8}}>AI 자동대답 채널 설정</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {[["naver","N 네이버","#03C75A"],["instagram","I 인스타","#E1306C"],["whatsapp","W 왓츠앱","#128C7E"],["kakao","K 카카오","#F9E000"]].map(([ch,label,clr])=>(
+              <button key={ch} onClick={()=>toggleAiChannel(ch)} style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer",border:"1.5px solid",borderColor:aiAutoChannels[ch]?clr:T.border,background:aiAutoChannels[ch]?clr+"18":"#fff",color:aiAutoChannels[ch]?clr:T.gray500}}>{label} {aiAutoChannels[ch]?"ON":"OFF"}</button>
+            ))}
+          </div>
+        </div>}
         <div style={{padding:"8px 10px",borderBottom:"1px solid "+T.border}}>
           <input value={msgSearch} onChange={e=>setMsgSearch(e.target.value)} placeholder="이름, 메시지 검색..." style={{width:"100%",padding:"6px 10px",borderRadius:6,border:"1px solid "+T.border,fontSize:12,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
         </div>
@@ -464,7 +511,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
                     {m.message_text}
                     {m.translated_text&&<div style={{marginTop:5,paddingTop:5,borderTop:isOut?"1px solid rgba(255,255,255,0.3)":"1px solid rgba(0,0,0,0.1)",fontSize:11,color:isOut?"rgba(255,255,255,0.7)":"rgba(0,0,0,0.55)"}}>🔤 {m.translated_text}</div>}
                   </div>
-                  <div style={{fontSize:10,color:T.textMuted,marginTop:3,textAlign:isOut?"right":"left"}}>{fmtTime(m.created_at)}</div>
+                  <div style={{fontSize:10,color:T.textMuted,marginTop:3,textAlign:isOut?"right":"left"}}>{m.is_ai&&<span style={{background:"#7C3AED",color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,marginRight:4}}>AI</span>}{fmtTime(m.created_at)}</div>
                 </div>
               </div>;
             })}

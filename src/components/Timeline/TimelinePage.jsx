@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { T, NAVER_COLS, getNaverVal, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, BRANCH_DEFAULT_COLORS, branchColor, STATUS_CLR_DEFAULT, STATUS_KEYS, SCH_BRANCH_MAP, MALE_EMPLOYEES } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY, sbHeaders } from '../../lib/sb'
+import { useMaleRotation } from '../../lib/useData'
 import { fromDb, toDb, resolveSystemIds, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS } from '../../lib/db'
 import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone } from '../../lib/utils'
 import I from '../common/I'
@@ -33,28 +34,42 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const [empList, setEmpList] = useState([]);
   useEffect(() => {
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
-    const parseEmp = (val) => {
-      const list = typeof val === 'string' ? JSON.parse(val) : val;
-      return [...list, ...MALE_EMPLOYEES];
+    const mergeEmps = (empVal, customVal) => {
+      const base = typeof empVal === 'string' ? JSON.parse(empVal) : (Array.isArray(empVal) ? empVal : []);
+      const custom = typeof customVal === 'string' ? JSON.parse(customVal) : (Array.isArray(customVal) ? customVal : []);
+      const ids = new Set(base.map(e => e.id));
+      const merged = [...base];
+      custom.forEach(e => { if (!ids.has(e.id)) { merged.push(e); ids.add(e.id); } });
+      MALE_EMPLOYEES.forEach(e => { if (!ids.has(e.id)) { merged.push(e); ids.add(e.id); } });
+      return merged;
     };
-    fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.employees_v1&select=value`, { headers: H })
-      .then(r => r.json()).then(rows => {
-        if (!rows?.length) return;
-        setEmpList(parseEmp(rows[0].value));
-      }).catch(() => {});
-    // Realtime 구독
+    // employees_v1 + customEmployees_v1 동시 로드
+    Promise.all([
+      fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.employees_v1&select=value`, { headers: H }).then(r => r.json()),
+      fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.customEmployees_v1&select=value`, { headers: H }).then(r => r.json()),
+    ]).then(([empRows, custRows]) => {
+      const empVal = empRows?.[0]?.value || [];
+      const custVal = custRows?.[0]?.value || [];
+      setEmpList(mergeEmps(empVal, custVal));
+    }).catch(() => {});
+    // Realtime 구독 (employees_v1 + customEmployees_v1)
     let empCh = null;
     let empLastRt = 0;
-    const onEmpChange = (payload) => {
-      if (payload?.new?.value) {
+    const reload = () => {
+      Promise.all([
+        fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.employees_v1&select=value`, { headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY } }).then(r => r.json()),
+        fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.customEmployees_v1&select=value`, { headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY } }).then(r => r.json()),
+      ]).then(([empRows, custRows]) => {
         empLastRt = Date.now();
-        setEmpList(parseEmp(payload.new.value));
-      }
+        setEmpList(mergeEmps(empRows?.[0]?.value || [], custRows?.[0]?.value || []));
+      }).catch(() => {});
     };
     if (window._sbClient) {
-      empCh = window._sbClient.channel("employees_v1_rt")
-        .on("postgres_changes", { event:"UPDATE", schema:"public", table:"schedule_data", filter:"key=eq.employees_v1" }, onEmpChange)
-        .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.employees_v1" }, onEmpChange)
+      empCh = window._sbClient.channel("employees_all_rt")
+        .on("postgres_changes", { event:"UPDATE", schema:"public", table:"schedule_data", filter:"key=eq.employees_v1" }, reload)
+        .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.employees_v1" }, reload)
+        .on("postgres_changes", { event:"UPDATE", schema:"public", table:"schedule_data", filter:"key=eq.customEmployees_v1" }, reload)
+        .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.customEmployees_v1" }, reload)
         .subscribe();
     }
     return () => {
@@ -62,13 +77,22 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     };
   }, []);
 
+  // 남자직원 로테이션
+  const { maleRotation, getRotationBranch } = useMaleRotation();
+
   // employees_v1의 branch("gangnam")를 실제 branch_id("br_4bcauqvrb")로 매핑
+  // 남자직원은 오늘의 로테이션 지점으로 동적 배치
   const BASE_EMP_LIST = React.useMemo(() => {
-    return empList.map(e => ({
-      id: e.id,
-      branch_id: SCH_BRANCH_MAP[e.branch] || e.branch,
-    }));
-  }, [empList]);
+    return empList.map(e => {
+      if (e.isMale) {
+        const rotBranch = getRotationBranch(e.id, selDate);
+        if (rotBranch && SCH_BRANCH_MAP[rotBranch]) {
+          return { id: e.id, branch_id: SCH_BRANCH_MAP[rotBranch] };
+        }
+      }
+      return { id: e.id, branch_id: SCH_BRANCH_MAP[e.branch] || e.branch };
+    });
+  }, [empList, maleRotation, selDate]);
 
   // schHistory 파싱 함수
   const parseSchHistory = (val) => {

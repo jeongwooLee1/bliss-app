@@ -211,6 +211,25 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   })());
   const set = (k,v) => setF(p=>({...p,[k]:v}));
 
+  // 모달 초기화 시 전화번호로 고객 DB 자동 매칭 (성별/신규 자동 판단)
+  useEffect(() => {
+    if (!f.custPhone || f.custId) return; // 이미 고객 연결됨
+    const phone = f.custPhone.replace(/-/g, "");
+    if (phone.length < 8) return;
+    const bizId = _activeBizId || "biz_khvurgshb";
+    sb.get("customers", `&business_id=eq.${bizId}&phone=eq.${phone}&limit=1`).then(rows => {
+      if (!rows?.length) return;
+      const c = fromDb("customers", rows)[0];
+      if (!c) return;
+      setF(p => ({
+        ...p,
+        custId: c.id,
+        custGender: c.gender || p.custGender,
+        isNewCust: false,
+      }));
+    }).catch(() => {});
+  }, []); // 모달 최초 열릴 때 1회
+
   // 고객 검색
   const [custSearch, setCustSearch] = useState("");
   const [showCustDropdown, setShowCustDropdown] = useState(false);
@@ -376,6 +395,8 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
         : "";
       const NEW_CUST_TAG_ID = NEW_CUST_TAG_ID_GLOBAL;
       const custLinked = !!(f.custId) || !!(data?.customers||[]).find(c=>(c.phone||"").replace(/-/g,"") === (f.custPhone||"").replace(/-/g,""));
+      const linkedCust = (data?.customers||[]).find(c=> (f.custId && c.id===f.custId) || (c.phone||"").replace(/-/g,"") === (f.custPhone||"").replace(/-/g,""));
+      const custGender = linkedCust?.gender || "";
       const effectiveIsNew = custLinked ? false : (f.visitCount === 0);
       const prompt = `당신은 왁싱샵/미용실 예약 정보를 분석하는 AI입니다.
 아래 네이버 예약 고객 정보를 분석하여 적합한 태그와 시술상품을 선택하세요.
@@ -390,6 +411,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
 - 커플룸 요청 → "커플룸" 태그
 - 남자 관리사 요청 → "남자선생님" 태그
 - 시술메뉴 내용으로 적합한 시술상품 선택
+- 브라질리언왁싱에는 항문왁싱이 이미 포함됨. 브라질리언왁싱 선택 시 항문왁싱을 별도로 선택하지 마세요. 브라질리언왁싱 하나만 선택하세요.
 - 수량 허용 시술(이름 뒤에 [qty] 표시)은 2개 이상이면 같은 id를 반복해서 넣으세요. 예: 케어가 2개면 ["케어id","케어id"]
 - "예약금완료" 태그는 선택하지 마세요. 이 태그는 시스템이 자동 처리합니다.${customRulesBlock}
 
@@ -401,6 +423,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
 - 시술상품 목록(수량허용=[qty]): ${(data?.services||[]).map(s=>svcAllowQty(s)?`${s.name}[qty](id:${s.id})`:s.name+`(id:${s.id})`).join(', ')}
 - 시술메뉴(네이버): ${(f.selectedServices||[]).length > 0 ? (f.selectedServices||[]).map(id=>{const s=(data?.services||[]).find(x=>x.id===id);return s?s.name:id;}).join(", ") : "미선택"}
 - customers DB 등록 여부: ${custLinked ? "등록된 고객" : "미등록"}
+- 고객 성별(DB): ${custGender==="M"?"남성":custGender==="F"?"여성":"미등록 (대화내용에서 판단하세요)"}
 
 [고객 요청 / 업체 메모]
 ${naverText}
@@ -420,7 +443,13 @@ ${naverText}
       if (effectiveIsNew) newTags = [...newTags, NEW_CUST_TAG_ID];
       // 예약금완료 자동 처리: isPrepaid=true이면 태그 추가 (totalPrice 무관)
       if (f.isPrepaid && !newTags.includes(PREPAID_TAG_ID)) newTags = [...newTags, PREPAID_TAG_ID];
-      const newSvcs = parsed.matchedServiceIds || [];
+      let newSvcs = parsed.matchedServiceIds || [];
+      // 후처리: 브라질리언왁싱 선택 시 항문왁싱 자동 제거 (브라질리언에 포함됨)
+      const svcNames = newSvcs.map(sid => (data?.services||[]).find(s=>s.id===sid)?.name||"");
+      const hasBrazilian = svcNames.some(n => n.includes("브라질리언"));
+      if (hasBrazilian) {
+        newSvcs = newSvcs.filter((sid,i) => !svcNames[i].includes("항문"));
+      }
       const aiGender = parsed.gender || "";
       setF(p => {
         const tagSum = newTags.reduce((s,tid)=>{const t=(data?.serviceTags||[]).find(x=>x.id===tid);return s+(t?.dur||0);},0);
@@ -969,35 +998,49 @@ ${naverText}
               {/* AI 예약 확정 버튼 */}
               {f.status==="request" && <Btn style={{padding:"10px 26px",background:"#9C27B0",boxShadow:"0 4px 14px rgba(156,39,176,.35)"}}
                 onClick={async ()=>{
-                  // 확정 메시지 발송 (메모에서 채널+user_id 추출)
+                  // 확정 메시지 발송: memo의 [AI예약] 태그 또는 고객이름으로 최근 대화 찾기
                   const aiMemo = f.memo||"";
                   const uidMatch = aiMemo.match(/\[AI예약(?:변경)?\](?:\[(\w+)\])?\s*(\S+)/);
+                  const branchAccMap={"br_4bcauqvrb":"101171979","br_wkqsxj6k1":"102071377","br_l6yzs2pkq":"102507795","br_k57zpkbx1":"101521969","br_lfv2wgdf1":"101522539","br_g768xdu4w":"101517367","br_ybo3rmulv":"101476019","br_xu60omgdf":"101988152"};
+                  const confirmMsg=`${f.custName}님, ${f.date} ${f.time} 예약이 확정되었습니다. 감사합니다!`;
+                  let sent=false;
                   if(uidMatch){
                     const aiChannel=uidMatch[1]||"naver";
                     const userId=uidMatch[2];
-                    const branchAccMap={"br_4bcauqvrb":"101171979","br_wkqsxj6k1":"102071377","br_l6yzs2pkq":"102507795","br_k57zpkbx1":"101521969","br_lfv2wgdf1":"101522539","br_g768xdu4w":"101517367","br_ybo3rmulv":"101476019","br_xu60omgdf":"101988152"};
-                    const confirmMsg=`${f.custName}님, ${f.date} ${f.time} 예약이 확정되었습니다. 감사합니다!`;
                     if(aiChannel==="instagram"){
-                      // userId는 @username 형태일 수 있으므로 DB에서 실제 sender_id 조회
                       try{
                         const igPageId="17841400218759830";
                         let igUserId=userId;
-                        if(userId.startsWith("@")){
-                          const uname=userId.slice(1);
+                        const atIdx=userId.indexOf("@");
+                        if(atIdx>=0){
+                          const uname=userId.slice(atIdx+1);
                           const rows=await fetch(`${SB_URL}/rest/v1/naver_messages?channel=eq.instagram&user_name=eq.${uname}&select=user_id&limit=1`,{headers:{"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY}}).then(r=>r.json());
                           if(rows?.length) igUserId=rows[0].user_id;
                         }
                         await sb.insert("send_queue",{account_id:igPageId,user_id:igUserId,message_text:confirmMsg,status:"pending",channel:"instagram"});
+                        sent=true;
                       }catch(e){console.error("확정 메시지 발송 실패",e);}
                     } else {
                       const accId=branchAccMap[f.bid]||"";
                       if(accId){
-                        try{await sb.insert("send_queue",{account_id:accId,user_id:userId,message_text:confirmMsg,status:"pending",channel:"naver"});}catch(e){console.error("확정 메시지 발송 실패",e);}
+                        try{await sb.insert("send_queue",{account_id:accId,user_id:userId,message_text:confirmMsg,status:"pending",channel:"naver"});sent=true;}catch(e){console.error("확정 메시지 발송 실패",e);}
                       }
                     }
                   }
+                  // memo에 태그 없으면 고객이름으로 최근 대화 찾아 발송
+                  if(!sent && f.custName){
+                    try{
+                      const custName=f.custName.trim();
+                      // naver_messages에서 고객이름과 매칭되는 최근 대화 찾기
+                      const rows=await fetch(`${SB_URL}/rest/v1/naver_messages?direction=eq.out&message_text=like.*${encodeURIComponent(custName)}*&order=created_at.desc&limit=1&select=channel,account_id,user_id`,{headers:{"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY}}).then(r=>r.json());
+                      if(rows?.length){
+                        const ch=rows[0].channel||"naver";
+                        await sb.insert("send_queue",{account_id:rows[0].account_id,user_id:rows[0].user_id,message_text:confirmMsg,status:"pending",channel:ch});
+                      }
+                    }catch(e){console.error("확정 메시지 fallback 실패",e);}
+                  }
                   // 저장
-                  onSave({...f,status:"confirmed",memo:(f.memo||"").replace(/\[AI예약(?:변경)?\](?:\[\w+\])?\s*\S*/,"").trim()});
+                  onSave({...f,status:"confirmed"});
                 }}>예약 확정</Btn>}
             {!isSchedule && f.type === "reservation" && (
               <Btn variant="secondary" onClick={()=>setShowSaleForm(true)} style={{padding:"10px 18px",whiteSpace:"nowrap",border:"2px solid "+T.orange,color:T.orange,background:T.warningLt,fontWeight:800}}>
