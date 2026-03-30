@@ -265,10 +265,19 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - 미배정→배정(칼럼 이동): 안 물어봄
 - 시간 변경 + 010 고객만 팝업 표시
 
-### Slash Commands 추가 (2026-03-29)
+### Slash Commands (2026-03-29~30)
 - `/deploy` — 빌드 → 서버 배포 → CF 퍼지 안내
 - `/sync` — Oracle→Supabase 동기화
 - `/check` — 서버 상태 + 로그 확인
+- `/restart` — 서버 서비스 재시작 (bliss-naver, bliss-relay)
+- `/logs` — 서버 로그 조회 (인자: 분 수, 기본 10분)
+- `/naver-login` — 네이버 세션 갱신 (playwright)
+- `/build` — 빌드만 실행 (배포 없이)
+
+### Claude Code 확장 적용 (2026-03-30)
+- **Hooks**: 작업 완료 시 텔레그램 알림 자동 전송, .env 편집 차단, Notification 텔레그램 전달
+- **Rules**: 경로별 코딩 규칙 (timeline, messages, supabase, server)
+- **settings.local.json**: 허용 규칙 간소화
 
 ### 버그 6건 수정 (2026-03-30)
 - 직원근무표 → 타임라인 리얼타임 전달: 직원 추가/근무데이터 변경 시 타임라인에 실시간 반영
