@@ -93,7 +93,7 @@ def _load_history(account_id, user_id, limit=10):
     try:
         cutoff = (datetime.now(KST) - timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%S")
         r = requests.get(
-            f"{SUPABASE_URL}/rest/v1/naver_messages?account_id=eq.{account_id}&user_id=eq.{user_id}"
+            f"{SUPABASE_URL}/rest/v1/messages?account_id=eq.{account_id}&user_id=eq.{user_id}"
             f"&direction=neq.system&created_at=gte.{cutoff}&order=created_at.desc&limit=50&select=direction,message_text,created_at",
             headers=HEADERS, timeout=10
         )
@@ -147,7 +147,7 @@ def _get_display_id(channel, account_id, user_id):
         cust_name = ""
         try:
             r = requests.get(
-                f"{SUPABASE_URL}/rest/v1/naver_messages?channel=eq.instagram&user_id=eq.{user_id}&user_name=not.is.null&select=user_name&limit=1",
+                f"{SUPABASE_URL}/rest/v1/messages?channel=eq.instagram&user_id=eq.{user_id}&user_name=not.is.null&select=user_name&limit=1",
                 headers={k:v for k,v in HEADERS.items() if k != "Content-Type"}, timeout=5)
             rows = r.json() if r.ok else []
             if rows and rows[0].get("user_name"):
@@ -275,6 +275,7 @@ def create_booking_from_ai(booking, account_id, user_id, is_change=False, channe
         "repeat": "none", "repeat_until": "", "repeat_group_id": "",
         "room_id": "", "staff_id": "", "service_id": "", "reservation_id": rid,
         "memo": (f"[AI예약변경][{channel}] {_display_id}" if existing else f"[AI예약][{channel}] {_display_id}"), "owner_comment": "",
+        "chat_channel": channel, "chat_account_id": account_id, "chat_user_id": user_id,
     }
     try:
         r = requests.post(f"{SUPABASE_URL}/rest/v1/reservations", headers={**HEADERS, "Prefer": "return=minimal"}, json=row, timeout=10)

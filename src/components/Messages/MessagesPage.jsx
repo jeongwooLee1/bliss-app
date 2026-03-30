@@ -60,7 +60,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
     if (loadingRef.current) return; // 중복 호출 방지
     loadingRef.current = true;
     try {
-      const r = await fetch(SB_URL+"/rest/v1/naver_messages?order=created_at.desc&limit=300&select=*",{headers:{...sbHeaders,"Cache-Control":"no-cache"},cache:"no-store"});
+      const r = await fetch(SB_URL+"/rest/v1/messages?order=created_at.desc&limit=300&select=*",{headers:{...sbHeaders,"Cache-Control":"no-cache"},cache:"no-store"});
       const d2 = await r.json();
       if (Array.isArray(d2)) {
         setMsgs(d2);
@@ -77,10 +77,10 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
     let lastMsgRt = 0;
     const chName = "inbox_rt_"+Date.now();
     const ch = window._sbClient?.channel(chName)
-      ?.on("postgres_changes",{event:"INSERT",schema:"public",table:"naver_messages"},
+      ?.on("postgres_changes",{event:"INSERT",schema:"public",table:"messages"},
         p=>{ if(p?.new) { lastMsgRt = Date.now(); setMsgs(prev=>prev.some(m=>m.id===p.new.id)?prev:[...prev,p.new]); if(p.new.user_name) setNames(prev=>({...prev,[p.new.user_id]:p.new.user_name})); }}
       )
-      ?.on("postgres_changes",{event:"UPDATE",schema:"public",table:"naver_messages"},
+      ?.on("postgres_changes",{event:"UPDATE",schema:"public",table:"messages"},
         p=>{ if(p?.new?.id) { lastMsgRt = Date.now(); setMsgs(prev=>prev.map(m=>m.id===p.new.id?{...m,...p.new}:m)); }}
       )?.subscribe();
     const onVisible = () => { if(document.visibilityState==="visible") loadMsgs(); };
@@ -160,7 +160,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
 
   const markRead = async(uid)=>{
     const unreadCount = msgs.filter(m=>m.user_id===uid&&!m.is_read&&m.direction==="in").length;
-    await fetch(SB_URL+"/rest/v1/naver_messages?user_id=eq."+uid+"&is_read=eq.false",
+    await fetch(SB_URL+"/rest/v1/messages?user_id=eq."+uid+"&is_read=eq.false",
       {method:"PATCH",headers:{...sbHeaders,Prefer:"return=minimal"},body:JSON.stringify({is_read:true})});
     setMsgs(prev=>prev.map(m=>m.user_id===uid?{...m,is_read:true}:m));
     if(onRead && unreadCount > 0) onRead(unreadCount);

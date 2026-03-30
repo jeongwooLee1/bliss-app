@@ -1022,7 +1022,7 @@ ${naverText}
                           const atIdx=userId.indexOf("@");
                           if(atIdx>=0){
                             const uname=userId.slice(atIdx+1);
-                            const rows=await fetch(`${SB_URL}/rest/v1/naver_messages?channel=eq.instagram&user_name=eq.${encodeURIComponent(uname)}&select=user_id,account_id&order=created_at.desc&limit=1`,{headers:{"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY}}).then(r=>r.json());
+                            const rows=await fetch(`${SB_URL}/rest/v1/messages?channel=eq.instagram&user_name=eq.${encodeURIComponent(uname)}&select=user_id,account_id&order=created_at.desc&limit=1`,{headers:{"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY}}).then(r=>r.json());
                             if(rows?.length){igUserId=rows[0].user_id;igPageId=rows[0].account_id;}
                           }
                           if(!igPageId) igPageId="17841400218759830";

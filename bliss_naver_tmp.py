@@ -1739,7 +1739,7 @@ def naver_talk_webhook_thread():
                     auth_token = NAVER_TALK_ACCOUNTS.get(account_id, {}).get("auth", "")
                     if auth_token:
                         # 이미 이름 아는 경우 스킵
-                        known = sb_get(f"naver_messages?user_id=eq.{user_id}&user_name=not.is.null&limit=1")
+                        known = sb_get(f"messages?user_id=eq.{user_id}&user_name=not.is.null&limit=1")
                         if not known:
                             requests.post(
                                 "https://gw.talk.naver.com/chatbot/v1/event",
@@ -1758,7 +1758,7 @@ def naver_talk_webhook_thread():
                 if result == "SUCCESS" and nickname:
                     try:
                         requests.patch(
-                            f"{SUPABASE_URL}/rest/v1/naver_messages?user_id=eq.{user_id}",
+                            f"{SUPABASE_URL}/rest/v1/messages?user_id=eq.{user_id}",
                             headers={**HEADERS, "Prefer": "return=minimal"},
                             json={"user_name": nickname}, timeout=5
                         )
@@ -1795,7 +1795,7 @@ def naver_talk_webhook_thread():
                                     echo_row["translated_text"] = echo_tr
                         except: pass
                         requests.post(
-                            f"{SUPABASE_URL}/rest/v1/naver_messages",
+                            f"{SUPABASE_URL}/rest/v1/messages",
                             headers={**HEADERS, "Prefer": "return=minimal"},
                             json=echo_row, timeout=5
                         )
@@ -1809,7 +1809,7 @@ def naver_talk_webhook_thread():
                 if user_name is None:
                     # DB에서 기존 저장된 이름 조회
                     try:
-                        known = sb_get(f"naver_messages?user_id=eq.{user_id}&user_name=not.is.null&limit=1")
+                        known = sb_get(f"messages?user_id=eq.{user_id}&user_name=not.is.null&limit=1")
                         if known:
                             user_name = known[0].get("user_name")
                     except Exception as ep:
@@ -1830,7 +1830,7 @@ def naver_talk_webhook_thread():
                 msg_id = None
                 try:
                     ins_r = requests.post(
-                        f"{SUPABASE_URL}/rest/v1/naver_messages",
+                        f"{SUPABASE_URL}/rest/v1/messages",
                         headers={**HEADERS, "Prefer": "return=representation"},
                         json=row, timeout=5
                     )
@@ -1848,19 +1848,19 @@ def naver_talk_webhook_thread():
                 if account_id != "unknown" and not user_name:
                     try:
                         existing = requests.get(
-                            f"{SUPABASE_URL}/rest/v1/naver_messages?user_id=eq.{user_id}&user_name=not.is.null&limit=1",
+                            f"{SUPABASE_URL}/rest/v1/messages?user_id=eq.{user_id}&user_name=not.is.null&limit=1",
                             headers=HEADERS, timeout=5
                         ).json()
                         if not existing:
                             # profile_requested 태그 확인
                             tag_check = requests.get(
-                                f"{SUPABASE_URL}/rest/v1/naver_messages?user_id=eq.{user_id}&message_text=eq.__profile_requested__&limit=1",
+                                f"{SUPABASE_URL}/rest/v1/messages?user_id=eq.{user_id}&message_text=eq.__profile_requested__&limit=1",
                                 headers=HEADERS, timeout=5
                             ).json()
                             if not tag_check:
                                 # 요청 기록 저장
                                 requests.post(
-                                    f"{SUPABASE_URL}/rest/v1/naver_messages",
+                                    f"{SUPABASE_URL}/rest/v1/messages",
                                     headers={**HEADERS, "Prefer": "return=minimal"},
                                     json={"account_id": account_id, "user_id": user_id,
                                           "channel": "naver", "event_type": "system",
@@ -1881,7 +1881,7 @@ def naver_talk_webhook_thread():
                             translated = translate_to_korean(msg_text)
                             if translated and msg_id:
                                 requests.patch(
-                                    f"{SUPABASE_URL}/rest/v1/naver_messages?id=eq.{msg_id}",
+                                    f"{SUPABASE_URL}/rest/v1/messages?id=eq.{msg_id}",
                                     headers={**HEADERS, "Prefer": "return=minimal"},
                                     json={"translated_text": translated}, timeout=5
                                 )
@@ -1889,7 +1889,7 @@ def naver_talk_webhook_thread():
                         # 자동응답 - 이미 봇이 답했으면 스킵 (중복 방지)
                         try:
                             _last = requests.get(
-                                f"{SUPABASE_URL}/rest/v1/naver_messages"
+                                f"{SUPABASE_URL}/rest/v1/messages"
                                 f"?account_id=eq.{account_id}&user_id=eq.{user_id}"
                                 f"&direction=neq.system&order=created_at.desc&limit=1&select=direction",
                                 headers=HEADERS, timeout=5
@@ -1921,7 +1921,7 @@ def naver_talk_webhook_thread():
                         auth_token = NAVER_TALK_ACCOUNTS.get(account_id, {}).get("auth", "")
                         if auth_token:
                             # 이 user_id가 처음인지 확인
-                            prev = sb_get(f"naver_messages?user_id=eq.{user_id}&user_name=not.is.null&limit=1")
+                            prev = sb_get(f"messages?user_id=eq.{user_id}&user_name=not.is.null&limit=1")
                             if not prev:
                                 # 닉네임 동의 요청 발송
                                 requests.post(
@@ -2017,7 +2017,7 @@ def naver_talk_webhook_thread():
                                 try:
                                     # send_queue 발송분은 이미 저장됨 → 중복 스킵
                                     _dup = requests.get(
-                                        f"{SUPABASE_URL}/rest/v1/naver_messages?channel=eq.instagram&account_id=eq.{ig_id}&user_id=eq.{recipient_id}&direction=eq.out&order=created_at.desc&limit=1&select=message_text",
+                                        f"{SUPABASE_URL}/rest/v1/messages?channel=eq.instagram&account_id=eq.{ig_id}&user_id=eq.{recipient_id}&direction=eq.out&order=created_at.desc&limit=1&select=message_text",
                                         headers=HEADERS, timeout=5).json()
                                     if _dup and _dup[0].get("message_text","").strip() == (mtxt or "").strip():
                                         log.info(f"[IG] echo skip (dup): to={recipient_id}")
@@ -2031,7 +2031,7 @@ def naver_talk_webhook_thread():
                                             _et = translate_to_korean(mtxt)
                                             if _et: ig_echo_row["translated_text"] = _et
                                     except: pass
-                                    requests.post(f"{SUPABASE_URL}/rest/v1/naver_messages",
+                                    requests.post(f"{SUPABASE_URL}/rest/v1/messages",
                                         headers={**HEADERS, "Prefer":"return=minimal", "Content-Type":"application/json"},
                                         json=ig_echo_row, timeout=5)
                                     log.info(f"[IG] echo saved: to={recipient_id} text={mtxt[:40]}")
@@ -2050,7 +2050,7 @@ def naver_talk_webhook_thread():
                                 ig_username = udata.get("username") or udata.get("name") or ""
                     except: pass
                     log.info(f"[IG] DM: from={sender_id} @{ig_username} text={mtxt[:50]}")
-                    requests.post(f"{SUPABASE_URL}/rest/v1/naver_messages",
+                    requests.post(f"{SUPABASE_URL}/rest/v1/messages",
                         headers={**HEADERS, "Prefer":"return=minimal", "Content-Type":"application/json"},
                         json={"user_id":sender_id,"account_id":ig_id,"channel":"instagram",
                               "event_type":"send","message_type":"text","user_name":ig_username or "",
@@ -2067,19 +2067,19 @@ def naver_talk_webhook_thread():
                                         # 번역 저장
                                         try:
                                             _msgs = requests.get(
-                                                f"{SUPABASE_URL}/rest/v1/naver_messages?channel=eq.instagram&user_id=eq.{uid}&order=created_at.desc&limit=1&select=id",
+                                                f"{SUPABASE_URL}/rest/v1/messages?channel=eq.instagram&user_id=eq.{uid}&order=created_at.desc&limit=1&select=id",
                                                 headers=HEADERS, timeout=5).json()
                                             if _msgs:
                                                 _mid = _msgs[0].get('id')
                                                 requests.patch(
-                                                    f"{SUPABASE_URL}/rest/v1/naver_messages?id=eq.{_mid}",
+                                                    f"{SUPABASE_URL}/rest/v1/messages?id=eq.{_mid}",
                                                     headers={**HEADERS, "Prefer":"return=minimal"},
                                                     json={"translated_text": translated}, timeout=5)
                                         except: pass
                                 # 중복 방지: 마지막 메시지가 out이면 스킵
                                 try:
                                     _last = requests.get(
-                                        f"{SUPABASE_URL}/rest/v1/naver_messages?channel=eq.instagram&account_id=eq.{acc}&user_id=eq.{uid}&direction=neq.system&order=created_at.desc&limit=1&select=direction",
+                                        f"{SUPABASE_URL}/rest/v1/messages?channel=eq.instagram&account_id=eq.{acc}&user_id=eq.{uid}&direction=neq.system&order=created_at.desc&limit=1&select=direction",
                                         headers=HEADERS, timeout=5).json()
                                     if _last and _last[0].get("direction") == "out":
                                         log.info(f"[IG auto_reply] 이미 답변됨({acc}/{uid[:12]}) → 스킵")
@@ -2130,7 +2130,7 @@ def naver_talk_webhook_thread():
                         if fnum.startswith("82") and len(fnum) >= 11:
                             cust_phone = "0" + fnum[2:]
                         log.info(f"[WA] 수신: from={fnum} name={user_name} phone={cust_phone} type={mtype} text={mtxt[:50]}")
-                        ins = requests.post(f"{SUPABASE_URL}/rest/v1/naver_messages",
+                        ins = requests.post(f"{SUPABASE_URL}/rest/v1/messages",
                             headers={**HEADERS, "Prefer":"return=representation", "Content-Type":"application/json"},
                             json={"user_id":fnum,"account_id":"whatsapp","channel":"whatsapp",
                                   "event_type":"send","message_type":"text","user_name":user_name,
@@ -2148,7 +2148,7 @@ def naver_talk_webhook_thread():
                                         translated = translate_to_korean(msg_text)
                                         if translated and mid:
                                             requests.patch(
-                                                f"{SUPABASE_URL}/rest/v1/naver_messages?id=eq.{mid}",
+                                                f"{SUPABASE_URL}/rest/v1/messages?id=eq.{mid}",
                                                 headers={**HEADERS, "Prefer": "return=minimal"},
                                                 json={"translated_text": translated}, timeout=5
                                             )
@@ -2159,7 +2159,7 @@ def naver_talk_webhook_thread():
                                 if ai_booking_agent:
                                     try:
                                         _last = requests.get(
-                                            f"{SUPABASE_URL}/rest/v1/naver_messages?channel=eq.whatsapp&user_id=eq.{fnum}&direction=neq.system&order=created_at.desc&limit=1&select=direction",
+                                            f"{SUPABASE_URL}/rest/v1/messages?channel=eq.whatsapp&user_id=eq.{fnum}&direction=neq.system&order=created_at.desc&limit=1&select=direction",
                                             headers=HEADERS, timeout=5).json()
                                         if _last and _last[0].get("direction") == "out":
                                             log.info(f"[WA auto_reply] 이미 답변됨({fnum[:12]}) → 스킵")
@@ -2226,7 +2226,7 @@ def send_queue_thread():
                         )
                         if resp.status_code == 200:
                             requests.patch(f"{SB}/rest/v1/send_queue?id=eq.{row_id}", headers={**SB_H, "Prefer":"return=minimal"}, json={"status":"sent"}, timeout=5)
-                            requests.post(f"{SB}/rest/v1/naver_messages", headers={**SB_H, "Prefer":"return=minimal"},
+                            requests.post(f"{SB}/rest/v1/messages", headers={**SB_H, "Prefer":"return=minimal"},
                                 json={"account_id":"whatsapp","user_id":user_id,"channel":"whatsapp",
                                       "event_type":"send","message_type":"text","message_text":text,"direction":"out","is_read":True}, timeout=5)
                             log.info(f"[send_queue] WA발송 완료 → {user_id}")
@@ -2254,7 +2254,7 @@ def send_queue_thread():
                         if resp.status_code == 200:
                             requests.patch(f'{SB}/rest/v1/send_queue?id=eq.{row_id}', headers={**SB_H, 'Prefer':'return=minimal'}, json={'status':'sent'}, timeout=5)
                             _is_ai = bool(row.get('is_ai'))
-                            requests.post(f'{SB}/rest/v1/naver_messages', headers={**SB_H, 'Prefer':'return=minimal'},
+                            requests.post(f'{SB}/rest/v1/messages', headers={**SB_H, 'Prefer':'return=minimal'},
                                 json={'account_id':account_id,'user_id':user_id,'channel':'instagram',
                                       'event_type':'send','message_type':'text','message_text':text,'direction':'out','is_read':True,'is_ai':_is_ai}, timeout=5)
                             log.info(f'[send_queue] IG발송 완료 → {user_id} (ai={_is_ai})')
@@ -2277,7 +2277,7 @@ def send_queue_thread():
                         )
                         if resp.status_code == 200:
                             requests.patch(f"{SB}/rest/v1/send_queue?id=eq.{row_id}", headers={**SB_H, "Prefer":"return=minimal"}, json={"status":"sent"}, timeout=5)
-                            requests.post(f"{SB}/rest/v1/naver_messages", headers={**SB_H, "Prefer":"return=minimal"},
+                            requests.post(f"{SB}/rest/v1/messages", headers={**SB_H, "Prefer":"return=minimal"},
                                 json={"account_id":account_id,"user_id":user_id,"channel":"naver",
                                       "event_type":"send","message_type":"text","message_text":text,"direction":"out","is_read":True}, timeout=5)
                             log.info(f"[send_queue] 발송 완료: {account_id} → {user_id}")

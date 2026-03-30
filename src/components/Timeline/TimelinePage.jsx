@@ -202,7 +202,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       }).catch(()=>{});
   }, []);
   useEffect(() => {
-    const load = () => fetch(SB_URL+"/rest/v1/naver_messages?select=id,is_read,direction&limit=500&order=created_at.desc",
+    const load = () => fetch(SB_URL+"/rest/v1/messages?select=id,is_read,direction&limit=500&order=created_at.desc",
         {headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY}})
       .then(r=>r.json())
       .then(arr=>{ if(Array.isArray(arr)) setUnreadMsgCount(arr.filter(m=>m.direction==="in"&&!m.is_read).length); })

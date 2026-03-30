@@ -681,7 +681,7 @@ function App() {
     const load = () => {
       // userBranches 아직 안 로드됐으면 스킵 (isMaster는 전체 허용)
       if(accIds.length===0 && !isMaster && userBranches !== null) { setUnreadMsgCount(0); return; }
-      fetch(SB_URL+"/rest/v1/naver_messages?is_read=eq.false&direction=eq.in&select=id,account_id,channel&limit=999",
+      fetch(SB_URL+"/rest/v1/messages?is_read=eq.false&direction=eq.in&select=id,account_id,channel&limit=999",
         {headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY,"Cache-Control":"no-cache"},cache:"no-store"})
         .then(r=>r.json())
         .then(arr=>{
@@ -697,10 +697,10 @@ function App() {
     load();
     // Realtime: INSERT/UPDATE 시 재카운트
     const rt = window._sbClient?.channel("unread_badge")
-      ?.on("postgres_changes",{event:"INSERT",schema:"public",table:"naver_messages"},
+      ?.on("postgres_changes",{event:"INSERT",schema:"public",table:"messages"},
         p=>{ if(p?.new?.direction==="in"&&!p?.new?.is_read) load(); }
       )
-      ?.on("postgres_changes",{event:"UPDATE",schema:"public",table:"naver_messages"},
+      ?.on("postgres_changes",{event:"UPDATE",schema:"public",table:"messages"},
         p=>{ if(p?.new?.is_read===true) load(); }
       )?.subscribe();
     return ()=>{ try{rt?.unsubscribe();}catch(e){} };
