@@ -75,7 +75,7 @@ playwright로 네이버 로그인 → 세션 파일 서버 전송 → 서비스 
 - 주의: BASE_EMP_LIST를 data.rooms에서 만들면 안 됨. employees_v1에서 가져와야 함
 
 #### 메시지 시스템
-- `naver_messages` 테이블: 모든 채널(네이버/WhatsApp/카카오 등) 메시지 저장
+- `messages` 테이블: 모든 채널(네이버/WhatsApp/카카오 등) 메시지 저장 (구 naver_messages에서 리네임)
 - `send_queue` 테이블: 발송 대기열 → 서버가 폴링하여 실제 발송
 - WhatsApp account_id: "whatsapp" (네이버 account_id와 다른 체계)
 - 사이드바 배지: WhatsApp 등 소셜 채널도 미읽 카운트에 포함해야 함
@@ -218,7 +218,7 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - pg_cron 7개: check-pending, daily-report, noshow-check, refresh-sales-mv, inactive-custs, cleanup-queue, weekly-report
 - Vault + Edge Secrets (TG_TOKEN, TG_CHAT)
 - Supabase Access Token: sbp_cb8a6191cdc34424538cb5d696d371c8739c2c29
-- Realtime Publication: reservations, schedule_data, naver_messages, send_queue, customers, sales
+- Realtime Publication: reservations, schedule_data, messages, send_queue, customers, sales
 - 폴링 전부 제거 → Realtime만 사용 (Egress 절감)
 - Cloudflare 캐시 퍼지 필요 시: Dashboard → Caching → Purge Everything
 
@@ -309,6 +309,12 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - 근무표 설정: 남자직원 섹션에 로테이션 지점 순서 + 시작일 설정 UI
 - 타임라인: useMaleRotation() 훅으로 로드 → BASE_EMP_LIST에서 동적 branch_id 매핑
 - 재윤: 용산→마곡→홍대, 주용: 천호→위례→잠실 (3/30부터)
+
+### naver_messages → messages 테이블 리네임 (2026-03-31)
+- DB RPC `rename_naver_to_messages` 실행으로 테이블 리네임 완료
+- 서버 코드 (bliss_naver.py, ai_booking.py): naver_messages → messages 전체 치환
+- 앱 코드 (MessagesPage.jsx, AppShell.jsx, ReservationModal.jsx, TimelinePage.jsx): 전체 치환
+- Realtime Publication도 messages로 변경 필요 (Supabase Dashboard에서 수동 확인)
 
 ### 주의사항 (다음 세션에서 참고)
 - Cloudflare 캐시: 배포 후 반드시 Purge Everything (Dashboard → blissme.ai → Caching)
