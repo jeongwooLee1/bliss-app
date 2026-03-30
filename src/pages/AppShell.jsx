@@ -14,6 +14,7 @@ import SalesPage from '../components/Sales/SalesPage'
 import CustomersPage from '../components/Customers/CustomersPage'
 import MobileBottomNav from '../components/Navigation/MobileBottomNav'
 import Sidebar from '../components/Navigation/Sidebar'
+import SchedulePage from '../components/Schedule/SchedulePage'
 
 const uid = genId;
 const BLISS_V = "1.4.0"
@@ -658,6 +659,17 @@ function App() {
   const [serverV, setServerV] = useState(null);
   const [scraperStatus, setScraperStatus] = useState(null); // {lastSeen, lastScraped, isAlive, isWarning}
   const [naverColShow, setNaverColShowRaw] = useState(()=>{ try{return JSON.parse(localStorage.getItem("bliss_naver_cols")||"null")||{};}catch(e){return{};} });
+  // DB에서 컬럼 설정 복원 (localStorage보다 우선)
+  useEffect(()=>{
+    if(!data?.businesses?.[0]?.settings) return;
+    try{
+      const s = typeof data.businesses[0].settings === 'string' ? JSON.parse(data.businesses[0].settings) : data.businesses[0].settings;
+      if(s?.naver_col_show && typeof s.naver_col_show === 'object'){
+        setNaverColShowRaw(s.naver_col_show);
+        try{localStorage.setItem("bliss_naver_cols",JSON.stringify(s.naver_col_show));}catch(e){}
+      }
+    }catch(e){}
+  },[data?.businesses]);
   const [sideOpen, setSideOpen] = useState(false);
   const [loadMsg, setLoadMsg] = useState("연결 중...");
   useEffect(() => {
@@ -736,7 +748,19 @@ function App() {
     const t = setInterval(fetchServerV, 60000);
     return ()=>clearInterval(t);
   },[]);
-  const setNaverColShow = v => { setNaverColShowRaw(v); try{localStorage.setItem("bliss_naver_cols",JSON.stringify(v));}catch(e){} };
+  const setNaverColShow = v => {
+    setNaverColShowRaw(v);
+    try{localStorage.setItem("bliss_naver_cols",JSON.stringify(v));}catch(e){}
+    // DB에도 저장 (businesses.settings)
+    try{
+      const biz = data?.businesses?.[0];
+      if(biz){
+        const s = typeof biz.settings === 'string' ? JSON.parse(biz.settings||"{}") : (biz.settings||{});
+        s.naver_col_show = v;
+        sb.update("businesses", biz.id, {settings: JSON.stringify(s)}).catch(()=>{});
+      }
+    }catch(e){}
+  };
   const setPage = useCallback((p) => {
     console.log("[SESSION] page save:", p);
     setPageRaw(prev => {
@@ -1172,14 +1196,15 @@ function App() {
       </div>}
       <main className="main-c" style={S.main}>
         <div className="mob-hdr" style={{display:"none"}}></div>
-        <div className="page-pad" style={{flex:1,padding:(page==="timeline"||page==="messages")?"0":"16px 20px 16px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
-          <div className={page==="timeline"?"":"fade-in"} key={page} style={page==="timeline"?{flex:1,display:"flex",flexDirection:"column",minHeight:0}:{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}>
+        <div className="page-pad" style={{flex:1,padding:(page==="timeline"||page==="messages"||page==="schedule")?"0":"16px 20px 16px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
+          <div className={page==="timeline"?"":"fade-in"} key={page} style={(page==="timeline"||page==="schedule")?{flex:1,display:"flex",flexDirection:"column",minHeight:0}:{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}>
             {page==="timeline" && <Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus}/>}
             {page==="reservations" && <ReservationList data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} setNaverColShow={setNaverColShow}/>}
             {page==="sales" && <SalesPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} role={role}/>}
             {page==="customers" && <CustomersPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster}/>}
             {page==="users" && <UsersPage data={data} setData={setData} bizId={currentBizId}/>}
             {page==="messages" && <AdminInbox sb={sb} branches={data?.branches} data={data} userBranches={userBranches} isMaster={isMaster} onRead={(cnt)=>setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)))} onChatOpen={setIsChatOpen}/>}
+            {page==="schedule" && <SchedulePage/>}
             {page==="admin" && <AdminPage data={data} setData={setData} bizId={currentBizId} serverV={serverV} onLogout={handleLogout} currentUser={currentUser}/>}
           </div>
         </div>

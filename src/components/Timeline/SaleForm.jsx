@@ -24,19 +24,19 @@ const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amou
   const [localAmt, setLocalAmt] = useState(amount || "");
   useEffect(() => { setLocalAmt(amount || ""); }, [checked]);
   return (
-    <div onClick={() => !disabled && !checked && toggle(id, defPrice)}
-      style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", borderRadius: 6, marginBottom: 2,
+    <div className="sale-svc-row" onClick={() => !disabled && !checked && toggle(id, defPrice)}
+      style={{ display: "flex", alignItems: "center", gap: 4, padding: "1px 8px", borderRadius: 4,
         background: checked ? "#7c7cc810" : "transparent", cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.45 : 1, transition: "background .15s" }}>
+        opacity: disabled ? 0.45 : 1, transition: "background .15s", lineHeight: 1.4 }}>
       <span onClick={e => { e.stopPropagation(); if(!disabled) toggle(id, defPrice); }}
-        className="sale-svc-name" style={{ flex: 1, color: checked ? T.text : T.gray700, fontWeight: checked ? 700 : 400 }}>
-        {checked && <span style={{color:T.primary,marginRight:4}}>✓</span>}{name}
+        className="sale-svc-name" style={{ flex: 1, fontSize: 13, color: checked ? T.text : T.gray700, fontWeight: checked ? 700 : 400, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+        {checked && <span style={{color:T.primary,marginRight:3}}>✓</span>}{name}
       </span>
-      <span className="sale-dur" style={{ flexShrink: 0, width: 34, textAlign: "center", whiteSpace:"nowrap" }}>{dur}분</span>
-      <input className="inp" type="number" value={checked ? localAmt : ""} placeholder={disabled ? "—" : (defPrice||0).toLocaleString()}
+      <span className="sale-dur" style={{ flexShrink: 0, width: 28, textAlign: "right", whiteSpace:"nowrap", fontSize: 10, color: T.gray400 }}>{dur}분</span>
+      <input type="number" value={checked ? localAmt : ""} placeholder={disabled ? "—" : (defPrice||0).toLocaleString()}
         onClick={e => e.stopPropagation()}
         onChange={e => setLocalAmt(e.target.value)} onBlur={e => setAmt(id, e.target.value)} disabled={!checked}
-        style={{ width: 72, padding: "4px 6px", fontSize: 13, textAlign: "right", borderRadius: 6,
+        style={{ width: 76, padding: "2px 5px", fontSize: 13, textAlign: "right", borderRadius: 5, flexShrink: 0, minHeight: 0, height: 24, boxSizing: "border-box", fontFamily: "inherit", outline: "none",
           background: checked ? T.bgCard : "transparent", border: `1px solid ${checked ? T.gray400 : T.border}`,
           color: checked ? T.danger : T.gray400, fontWeight: checked ? 700 : 400 }} />
     </div>
@@ -477,7 +477,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       </div>}
       <div onClick={e => e.stopPropagation()} className="sale-modal-wrap" style={{
         background: T.bgCard, borderRadius: _m?0:12, border:_m?"none":"1px solid "+T.border, padding: 0,
-        width: _m?"100%":"92%", maxWidth: 680, margin: "0 auto",
+        width: _m?"100%":780, maxWidth: 780, margin: "0 auto",
         animation: _m?"none":"slideUp .6s cubic-bezier(.22,1,.36,1)", boxShadow: _m?"none":"0 12px 40px rgba(0,0,0,.18)"
       }}>
         {/* Header */}
@@ -575,8 +575,10 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           </div>
         </div>
 
-        {/* Main Body - 4 columns: svc left, svc right, prod left, prod right */}
-        <GridLayout className="sale-grid" cols={2} gap={12} style={{flex:1,overflow:"auto",padding:"10px 14px",alignContent:"start"}}>
+        {/* Main Body - 2단 레이아웃 */}
+        <div style={{display:_m?"block":"flex",flex:1,overflow:"hidden"}}>
+        {/* 왼쪽: 시술/제품 */}
+        <GridLayout className="sale-grid" cols={2} gap={12} style={{flex:1,overflow:"auto",padding:"10px 14px",alignContent:"start",maxHeight:_m?"none":"70vh",borderRight:_m?"none":"1px solid "+T.border}}>
 
           {/* Col 1+2: Services by category (span 2 columns) */}
           <div style={{gridColumn:"span 2"}}>
@@ -624,8 +626,20 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           </div>
         </GridLayout>
 
-        {/* 결제 정리 */}
-        <div style={{padding:"10px 12px",background:T.bg}}>
+        {/* 오른쪽: 보유권 + 결제 */}
+        <div style={{width:_m?"100%":280,flexShrink:0,overflow:"auto",maxHeight:_m?"none":"70vh",padding:"10px 12px",background:T.bg}}>
+
+          {/* 보유권 잔액 */}
+          {cust.id && activePkgs.filter(p=>_pkgType(p)!=="annual").length > 0 && <div style={{background:"#FFF8E1",border:"1px solid #FFD54F",borderRadius:T.radius.md,padding:"10px 12px",marginBottom:10}}>
+            <div style={{fontSize:13,fontWeight:800,color:"#F57F17",marginBottom:6}}>🎫 보유권</div>
+            {activePkgs.filter(p=>_pkgType(p)!=="annual").map(p=>{
+              const t=_pkgType(p); const bal=_pkgBalance(p); const remain=p.total_count-p.used_count;
+              return <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 0"}}>
+                <span style={{fontSize:12,fontWeight:600,color:t==="prepaid"?"#E65100":"#3949AB"}}>{p.service_name?.split("(")[0]||""}</span>
+                <span style={{fontSize:14,fontWeight:800,color:t==="prepaid"?"#E65100":"#3949AB"}}>{t==="prepaid"?`${bal.toLocaleString()}원`:`${remain}회`}</span>
+              </div>;
+            })}
+          </div>}
           {/* 금액 브레이크다운 */}
           <div style={{marginBottom:8,padding:"7px 10px",background:T.bgCard,borderRadius:T.radius.md,border:"1px solid #e8e8e8"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
@@ -657,24 +671,9 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
             </div>
           </div>
 
-          {/* ── 보유권 정보 표시 ── */}
-          {cust.id && activePkgs.length > 0 && <div style={{background:"#FFF8E1",border:"1px solid #FFD54F",borderRadius:T.radius.md,padding:"8px 12px",marginBottom:8}}>
-            <div style={{fontSize:T.fs.xxs,fontWeight:T.fw.bolder,color:"#F57F17",marginBottom:4}}>🎫 보유권</div>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-              {activePkgs.filter(p=>_pkgType(p)!=="annual").map(p=>{
-                const t=_pkgType(p); const bal=_pkgBalance(p); const remain=p.total_count-p.used_count;
-                return <span key={p.id} style={{fontSize:T.fs.nano,padding:"2px 8px",borderRadius:T.radius.full,fontWeight:T.fw.bolder,
-                  background:t==="prepaid"?"#FFF3E0":"#E8EAF6",color:t==="prepaid"?"#E65100":"#3949AB"}}>
-                  {t==="prepaid"?`${p.service_name}(잔액:${bal.toLocaleString()}원)`:`${p.service_name} ${remain}회 남음`}
-                </span>;
-              })}
-            </div>
-            {pkgDeduct > 0 && <div style={{marginTop:4,fontSize:T.fs.xxs,fontWeight:T.fw.black,color:"#E65100"}}>차감 적용: -{pkgDeduct.toLocaleString()}원</div>}
-          </div>}
-
           {/* 결제수단 분배 */}
-          {grandTotal > 0 && <div className="sale-pay-row" style={{display:"flex",gap:T.sp.lg,flexWrap:"wrap"}}>
-            {svcPayTotal > 0 && <div style={{flex:1,minWidth:0,padding:"8px 12px",background:T.bgCard,borderRadius:T.radius.md,border:"1px solid "+T.border}}>
+          {(svcTotal > 0 || prodTotal > 0) && <div className="sale-pay-row" style={{display:"flex",gap:T.sp.lg,flexWrap:"wrap"}}>
+            {svcTotal > 0 && <div style={{flex:1,minWidth:0,padding:"8px 12px",background:T.bgCard,borderRadius:T.radius.md,border:"1px solid "+T.border}}>
               <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.primary,marginBottom:6}}><I name="scissors" size={12}/> 시술 결제 <span style={{color:T.danger,fontWeight:T.fw.black}}>{fmt(svcPayTotal)}원</span></div>
               <div style={{display:"flex",gap:T.sp.xs,flexWrap:"wrap"}}>
                 {/* 보유권 버튼 (앞쪽, 눈에 띄게) */}
@@ -686,7 +685,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                     if(t==="package") setPkgUse(prev=>({...prev,[p.id]:prev[p.id]?false:true}));
                     if(t==="prepaid") setPkgUse(prev=>({...prev,[p.id]:prev[p.id]?0:Math.min(bal,svcPayTotal)}));
                   }}
-                  style={{padding:"5px 12px",fontSize:T.fs.xxs,fontWeight:T.fw.black,borderRadius:T.radius.xl,cursor:"pointer",fontFamily:"inherit",transition:"all .2s",
+                  style={{padding:"6px 14px",fontSize:13,fontWeight:T.fw.black,borderRadius:T.radius.xl,cursor:"pointer",fontFamily:"inherit",transition:"all .2s",
                     border:isActive?"2px solid #E65100":"2px solid #FFB74D",
                     background:isActive?"linear-gradient(135deg,#FF9800,#F57C00)":"linear-gradient(135deg,#FFF8E1,#FFE0B2)",
                     color:isActive?"#fff":"#E65100",
@@ -711,7 +710,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                 </div>)}
               </div>
             </div>}
-            {prodPayTotal > 0 && <div style={{flex:1,minWidth:0,padding:"8px 12px",background:T.bgCard,borderRadius:T.radius.md,border:"1px solid "+T.border}}>
+            {prodTotal > 0 && <div style={{flex:1,minWidth:0,padding:"8px 12px",background:T.bgCard,borderRadius:T.radius.md,border:"1px solid "+T.border}}>
               <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.infoLt2,marginBottom:6}}><I name="pkg" size={12}/> 제품 결제 <span style={{color:T.danger,fontWeight:T.fw.black}}>{fmt(prodPayTotal)}원</span></div>
               <div style={{display:"flex",gap:T.sp.xs,flexWrap:"wrap"}}>
                 {[
@@ -732,14 +731,15 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
               </div>
             </div>}
           </div>}
-          {grandTotal > 0 && <div style={{fontSize:T.fs.nano,color:T.gray400,marginTop:6}}>결제수단 버튼 클릭 → 전액 입력 / 추가 수단 클릭 → 금액 입력 시 첫 수단에서 차감</div>}
+          {pkgDeduct > 0 && <div style={{marginTop:6,fontSize:13,fontWeight:T.fw.black,color:"#E65100",background:"#FFF3E0",borderRadius:T.radius.md,padding:"6px 12px"}}>🎫 보유권 차감: -{pkgDeduct.toLocaleString()}원</div>}
+          {grandTotal > 0 && <div style={{fontSize:9,color:T.gray400,marginTop:6}}>결제수단 클릭 → 전액 / 추가 클릭 → 분배</div>}
+          {/* 매출 메모 */}
+          <div style={{marginTop:8}}>
+            <textarea className="inp" rows={2} value={saleMemo} onChange={e=>setSaleMemo(e.target.value)}
+              placeholder="매출 메모" style={{resize:"vertical",width:"100%",fontSize:T.fs.sm}}/>
+          </div>
         </div>
-
-        {/* 매출 메모 */}
-        <div style={{padding:"8px 16px",borderTop:"1px solid #eee"}}>
-          <textarea className="inp" rows={2} value={saleMemo} onChange={e=>setSaleMemo(e.target.value)}
-            placeholder="매출 관련 메모를 입력하세요" style={{resize:"vertical",width:"100%",fontSize:T.fs.sm}}/>
-        </div>
+        </div>{/* 2단 레이아웃 끝 */}
 
         {/* Footer */}
         <div style={{ padding: "10px 16px", borderTop: "1px solid #e0e0e0", display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", background: T.gray100, flexWrap: "wrap", borderRadius: "0 0 12px 12px" }}>

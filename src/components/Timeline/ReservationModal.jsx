@@ -998,48 +998,51 @@ ${naverText}
               {/* AI 예약 확정 버튼 */}
               {f.status==="request" && <Btn style={{padding:"10px 26px",background:"#9C27B0",boxShadow:"0 4px 14px rgba(156,39,176,.35)"}}
                 onClick={async ()=>{
-                  // 확정 메시지 발송: memo의 [AI예약] 태그 또는 고객이름으로 최근 대화 찾기
-                  const aiMemo = f.memo||"";
-                  const uidMatch = aiMemo.match(/\[AI예약(?:변경)?\](?:\[(\w+)\])?\s*(\S+)/);
-                  const branchAccMap={"br_4bcauqvrb":"101171979","br_wkqsxj6k1":"102071377","br_l6yzs2pkq":"102507795","br_k57zpkbx1":"101521969","br_lfv2wgdf1":"101522539","br_g768xdu4w":"101517367","br_ybo3rmulv":"101476019","br_xu60omgdf":"101988152"};
                   const confirmMsg=`${f.custName}님, ${f.date} ${f.time} 예약이 확정되었습니다. 감사합니다!`;
+                  const branchAccMap={"br_4bcauqvrb":"101171979","br_wkqsxj6k1":"102071377","br_l6yzs2pkq":"102507795","br_k57zpkbx1":"101521969","br_lfv2wgdf1":"101522539","br_g768xdu4w":"101517367","br_ybo3rmulv":"101476019","br_xu60omgdf":"101988152"};
                   let sent=false;
-                  if(uidMatch){
-                    const aiChannel=uidMatch[1]||"naver";
-                    const userId=uidMatch[2];
-                    if(aiChannel==="instagram"){
-                      try{
-                        const igPageId="17841400218759830";
-                        let igUserId=userId;
-                        const atIdx=userId.indexOf("@");
-                        if(atIdx>=0){
-                          const uname=userId.slice(atIdx+1);
-                          const rows=await fetch(`${SB_URL}/rest/v1/naver_messages?channel=eq.instagram&user_name=eq.${uname}&select=user_id&limit=1`,{headers:{"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY}}).then(r=>r.json());
-                          if(rows?.length) igUserId=rows[0].user_id;
+                  try{
+                    // DB에서 chat_channel/chat_account_id/chat_user_id 직접 조회
+                    const dbRows=await fetch(`${SB_URL}/rest/v1/reservations?id=eq.${f.id||item?.id}&select=chat_channel,chat_account_id,chat_user_id,memo`,{headers:{"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY},cache:"no-store"}).then(r=>r.json());
+                    const dbRes=dbRows?.[0]||{};
+                    // 1순위: chat 필드가 있으면 바로 사용
+                    if(dbRes.chat_channel && dbRes.chat_account_id && dbRes.chat_user_id){
+                      await sb.insert("send_queue",{account_id:dbRes.chat_account_id,user_id:dbRes.chat_user_id,message_text:confirmMsg,status:"pending",channel:dbRes.chat_channel});
+                      sent=true;
+                    }
+                    // 2순위: chat 필드 없으면 memo에서 파싱 (기존 데이터 호환)
+                    if(!sent){
+                      const dbMemo=dbRes.memo||f.memo||"";
+                      const uidMatch=dbMemo.match(/\[AI예약(?:변경)?\](?:\[(\w+)\])?\s*(\S+)/);
+                      if(uidMatch){
+                        const aiChannel=uidMatch[1]||"naver";
+                        const userId=uidMatch[2];
+                        if(aiChannel==="instagram"){
+                          let igPageId="",igUserId=userId;
+                          const atIdx=userId.indexOf("@");
+                          if(atIdx>=0){
+                            const uname=userId.slice(atIdx+1);
+                            const rows=await fetch(`${SB_URL}/rest/v1/naver_messages?channel=eq.instagram&user_name=eq.${encodeURIComponent(uname)}&select=user_id,account_id&order=created_at.desc&limit=1`,{headers:{"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY}}).then(r=>r.json());
+                            if(rows?.length){igUserId=rows[0].user_id;igPageId=rows[0].account_id;}
+                          }
+                          if(!igPageId) igPageId="17841400218759830";
+                          await sb.insert("send_queue",{account_id:igPageId,user_id:igUserId,message_text:confirmMsg,status:"pending",channel:"instagram"});
+                          sent=true;
+                        } else {
+                          const accId=branchAccMap[f.bid]||"";
+                          if(accId){await sb.insert("send_queue",{account_id:accId,user_id:userId,message_text:confirmMsg,status:"pending",channel:"naver"});sent=true;}
                         }
-                        await sb.insert("send_queue",{account_id:igPageId,user_id:igUserId,message_text:confirmMsg,status:"pending",channel:"instagram"});
-                        sent=true;
-                      }catch(e){console.error("확정 메시지 발송 실패",e);}
-                    } else {
-                      const accId=branchAccMap[f.bid]||"";
-                      if(accId){
-                        try{await sb.insert("send_queue",{account_id:accId,user_id:userId,message_text:confirmMsg,status:"pending",channel:"naver"});sent=true;}catch(e){console.error("확정 메시지 발송 실패",e);}
                       }
                     }
-                  }
-                  // memo에 태그 없으면 고객이름으로 최근 대화 찾아 발송
-                  if(!sent && f.custName){
-                    try{
-                      const custName=f.custName.trim();
-                      // naver_messages에서 고객이름과 매칭되는 최근 대화 찾기
-                      const rows=await fetch(`${SB_URL}/rest/v1/naver_messages?direction=eq.out&message_text=like.*${encodeURIComponent(custName)}*&order=created_at.desc&limit=1&select=channel,account_id,user_id`,{headers:{"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY}}).then(r=>r.json());
-                      if(rows?.length){
-                        const ch=rows[0].channel||"naver";
-                        await sb.insert("send_queue",{account_id:rows[0].account_id,user_id:rows[0].user_id,message_text:confirmMsg,status:"pending",channel:ch});
+                    // 3순위: 네이버 기본
+                    if(!sent){
+                      const accId=branchAccMap[f.bid]||"";
+                      if(accId && f.reservationId){
+                        await sb.insert("send_queue",{account_id:accId,user_id:f.reservationId,message_text:confirmMsg,status:"pending",channel:"naver"});
+                        sent=true;
                       }
-                    }catch(e){console.error("확정 메시지 fallback 실패",e);}
-                  }
-                  // 저장
+                    }
+                  }catch(e){console.error("확정 메시지 발송 실패",e);}
                   onSave({...f,status:"confirmed"});
                 }}>예약 확정</Btn>}
             {!isSchedule && f.type === "reservation" && (

@@ -29,7 +29,14 @@ const StatCard = ({ label, value, sub, color }) => (
   </div>
 );
 
-const resGridCols = () => "82px 52px 96px 1fr 108px 90px 1fr 60px 52px";
+const resGridCols = (cols={}) => {
+  const c = ["82px","52px","96px","1fr"]; // 날짜, 매장, 고객, 시술 (항상)
+  if(cols.phone!==false) c.push("108px");
+  if(cols.naver_id!==false) c.push("90px");
+  if(cols.memo!==false) c.push("1fr");
+  c.push("60px","52px"); // 상태, 액션 (항상)
+  return c.join(" ");
+};
 const DEFAULT_SOURCES = ["네이버","전화","방문","소개","인스타","카카오","기타"];
 const STATUS_KEYS = ["confirmed","completed","cancelled","no_show"];
 
@@ -452,7 +459,7 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
           <Btn variant="ghost" size="sm" onClick={()=>setShowColPanel(p=>!p)} style={{gap:T.sp.xs}}>
             <I name="settings" size={13}/> 컬럼
           </Btn>
-          {showColPanel && <div style={{position:"absolute",right:0,top:34,zIndex:200,background:T.bgCard,border:"1px solid "+T.border,borderRadius:T.radius.lg,padding:"14px 16px",boxShadow:T.shadow.md,minWidth:180}}>
+          {showColPanel && <><div style={{position:"fixed",inset:0,zIndex:199}} onClick={()=>setShowColPanel(false)}/><div style={{position:"absolute",right:0,top:34,zIndex:200,background:T.bgCard,border:"1px solid "+T.border,borderRadius:T.radius.lg,padding:"14px 16px",boxShadow:T.shadow.md,minWidth:180}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
               <span style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.primary,display:"flex",alignItems:"center",gap:T.sp.xs}}>
                 <I name="clock" size={11}/> 타임라인 블록
@@ -485,7 +492,7 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
                 {label}
               </label>
             ))}
-          </div>}
+          </div></>}
         </div>}
       </div>
     </div>
@@ -556,8 +563,12 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
       {/* 페이지 정보 */}
       {resFinal.length > RES_PER_PAGE && <div style={{display:"flex",justifyContent:"flex-end",fontSize:T.fs.xxs,color:T.textMuted,marginBottom:4}}>{resPage*RES_PER_PAGE+1}~{Math.min((resPage+1)*RES_PER_PAGE, resFinal.length)} / {resFinal.length}건</div>}
       {/* 그리드 헤더 - 데스크톱만 */}
-      {!isMobile && <div style={{display:"grid",gridTemplateColumns:resGridCols(),gap:8,padding:"6px 14px",borderRadius:T.radius.md,background:T.gray200}}>
-        {["날짜·시간","매장","고객","시술 / 네이버정보","연락처","예약번호","메모","상태",""].map(h=>
+      {!isMobile && <div style={{display:"grid",gridTemplateColumns:resGridCols(showCols),gap:8,padding:"6px 14px",borderRadius:T.radius.md,background:T.gray200}}>
+        {["날짜·시간","매장","고객","시술 / 네이버정보",
+          ...(showCols.phone!==false?["연락처"]:[]),
+          ...(showCols.naver_id!==false?["예약번호"]:[]),
+          ...(showCols.memo!==false?["메모"]:[]),
+          "상태",""].map(h=>
           <span key={h} style={{fontSize:12,fontWeight:700,color:T.textSub}}>{h}</span>
         )}
       </div>}
@@ -662,8 +673,8 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
         </div>;
 
         /* ── 데스크톱 행 ── */
-        return <div key={r.id} style={{
-          display:"grid", gridTemplateColumns:resGridCols(),
+        return <React.Fragment key={r.id}><div style={{
+          display:"grid", gridTemplateColumns:resGridCols(showCols),
           gap:8, alignItems:"center",
           padding:"10px 14px",
           borderRadius:T.radius.md,
@@ -676,10 +687,19 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
           onMouseEnter={e=>e.currentTarget.style.boxShadow=T.shadow.md}
           onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}
         >
-          {/* 날짜·시간 */}
-          <div>
-            <div style={{fontSize:12,color:T.textSub,lineHeight:1.3}}>{r.date.slice(5)}</div>
-            <div style={{fontSize:15,fontWeight:700,color:T.primary,lineHeight:1.3}}>{r.time}</div>
+          {/* 날짜·시간 + 체인 버튼 */}
+          <div style={{display:"flex",alignItems:"center",gap:4}}>
+            {hasChain && <div onClick={e=>toggleChain(r.id,e)} style={{
+              flexShrink:0, width:20, height:20, borderRadius:"50%",
+              background:isExpanded?T.primary:T.gray200,
+              color:isExpanded?T.bgCard:T.gray600,
+              display:"flex", alignItems:"center", justifyContent:"center",
+              fontSize:12, fontWeight:"bold", cursor:"pointer",
+            }}>{isExpanded?"−":"+"}</div>}
+            <div>
+              <div style={{fontSize:12,color:T.textSub,lineHeight:1.3}}>{r.date.slice(5)}</div>
+              <div style={{fontSize:15,fontWeight:700,color:T.primary,lineHeight:1.3}}>{r.time}</div>
+            </div>
           </div>
           {/* 매장 */}
           <div style={{fontSize:13,fontWeight:600,color:T.text}}>{br?.short||"-"}</div>
@@ -699,15 +719,15 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
             </div>}
           </div>
           {/* 연락처 */}
-          <div style={{fontSize:13,color:T.primary,whiteSpace:"nowrap"}} onClick={e=>e.stopPropagation()}>{r.custPhone||"-"}</div>
+          {showCols.phone!==false && <div style={{fontSize:13,color:T.primary,whiteSpace:"nowrap"}} onClick={e=>e.stopPropagation()}>{r.custPhone||"-"}</div>}
           {/* 예약번호 */}
-          <div style={{fontSize:11}} onClick={e=>e.stopPropagation()}>
+          {showCols.naver_id!==false && <div style={{fontSize:11}} onClick={e=>e.stopPropagation()}>
             {r.reservationId
               ? <a href={`https://partner.booking.naver.com/bizes/${br?.naverBizId||"449920"}/booking-list-view/bookings/${r.reservationId}`} target="_blank" rel="noreferrer" style={{color:T.naver,textDecoration:"none",fontWeight:600}}>{r.reservationId}</a>
               : <span style={{color:T.gray300}}>-</span>}
-          </div>
+          </div>}
           {/* 메모 */}
-          <div style={{fontSize:12,color:T.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.ownerComment||r.memo||"-"}</div>
+          {showCols.memo!==false && <div style={{fontSize:12,color:T.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.ownerComment||r.memo||"-"}</div>}
           {/* 상태 */}
           <div style={{textAlign:"center"}}>
             <Badge color={st.color} bg={st.bg}>{st.label}</Badge>
@@ -719,7 +739,21 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
               <I name="trash" size={11}/>
             </Btn>
           </div>
-        </div>;
+        </div>
+        {/* 데스크톱 히스토리 펼침 */}
+        {hasChain && isExpanded && <div style={{marginLeft:30,marginBottom:4,display:"flex",flexDirection:"column",gap:3}}>
+          {chain.map(h=>{
+            const hst = ST[h.status]||{bg:T.gray100,color:T.gray500,label:h.status};
+            const hbr = (data?.branches||[]).find(b=>b.id===h.bid);
+            return <div key={h.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 12px",background:T.gray100,borderRadius:T.radius.md,fontSize:12,color:T.textSub,cursor:"pointer",border:"1px dashed "+T.border}} onClick={()=>setListModalData(h)}>
+              <Badge color={hst.color} bg={hst.bg}>{hst.label}</Badge>
+              <span>{h.date?.slice(5)} {h.time}</span>
+              <span>{hbr?.short||""}</span>
+              <span style={{color:T.gray400}}>#{h.reservationId||""}</span>
+            </div>;
+          })}
+        </div>}
+        </React.Fragment>;
       })}
     </div>}
 

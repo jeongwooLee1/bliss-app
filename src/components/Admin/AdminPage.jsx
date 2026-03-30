@@ -13,6 +13,7 @@ import AdminResSources from './AdminResSources'
 import AdminNoti from './AdminNoti'
 import AdminAISettings from './AdminAISettings'
 import AdminServiceTags from './AdminServiceTags'
+import SchedulePage from '../Schedule/SchedulePage'
 
 const uid = genId;
 
@@ -66,33 +67,11 @@ function AdminMyPage({ currentUser, onLogout }) {
 // ═══════════════════════════════════════════
 // ADMIN — 직원 근무표
 // ═══════════════════════════════════════════
-function AdminSchedule({ currentUser, isMaster }) {
-  const iframeRef = React.useRef(null);
-
-  const onLoad = React.useCallback(function() {
-    var frame = iframeRef.current;
-    if (!frame) return;
-    frame.contentWindow.postMessage({
-      type: "BLISS_AUTH",
-      role: currentUser ? currentUser.role : "staff",
-      userId: currentUser ? currentUser.id : "",
-      branchId: currentUser ? (currentUser.branch_id || currentUser.bid || "") : "",
-      isMaster: !!isMaster,
-      canWrite: !!isMaster,
-      canRead: true
-    }, "*");
-  }, [currentUser, isMaster]);
-
+function AdminSchedule({ data, currentUser, isMaster, employees }) {
   return (
     <div style={{width:"100%",height:"calc(100vh - 120px)",borderRadius:12,overflow:"hidden",
       border:"1px solid "+T.border,background:"#fff"}}>
-      <iframe
-        ref={iframeRef}
-        src="/bliss-app/schedule.html"
-        onLoad={onLoad}
-        style={{width:"100%",height:"100%",border:"none"}}
-        title="직원 근무표"
-      />
+      <SchedulePage employees={employees}/>
     </div>
   );
 }
@@ -369,7 +348,7 @@ function AdminJoinBrand({ currentUser, onBack }) {
 // ADMIN — 메뉴 홈 + 라우터
 // ═══════════════════════════════════════════
 function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser }) {
-  const [tab,setTabRaw]=useState(null);
+  const [tab,setTabRaw]=useState(()=>{try{return sessionStorage.getItem("bliss_adminTab")||null;}catch(e){return null;}});
   const setTab=t=>{setTabRaw(t);try{sessionStorage.setItem("bliss_adminTab",t||"");}catch(e){}};
   const back=()=>setTab(null);
 

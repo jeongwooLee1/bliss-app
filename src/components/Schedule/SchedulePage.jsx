@@ -1,297 +1,904 @@
-import { useState, useMemo, useCallback } from 'react'
-import { T, MALE_EMPLOYEES } from '../../lib/constants'
-import { useSchHistory } from '../../lib/useData'
-import { pad, getMonthDays } from '../../lib/utils'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
+import { T } from '../../lib/constants'
+import { I } from '../common/I'
+import { useScheduleData, useEmployees } from '../../lib/useData'
+import { supabase } from '../../lib/supabase'
 import autoAssign from './autoAssign'
+import { validateSch, exportCSV as doExportCSV } from './scheduleUtils'
+import { BRANCHES_SCH, BRANCH_LABEL, STATUS, S_COLOR, DNAMES, isSupport, getSColor, getDim, fmtDs, getDow0Mon, DB_KEYS } from './scheduleConstants'
+import EditCellModal from './EditCellModal'
+import BulkEditModal from './BulkEditModal'
+import RuleConfigModal from './RuleConfigModal'
+import EmpSettingsModal from './EmpSettingsModal'
+import OwnerSettingsModal from './OwnerSettingsModal'
+import SupportSettingsModal from './SupportSettingsModal'
+import SnapshotModal from './SnapshotModal'
+import DailyView from './DailyView'
 
-const BRANCHES_SCH = [
-  { id:'gangnam',   name:'강남',   color:'#c8793a', minStaff:1 },
-  { id:'wangsimni', name:'왕십리', color:'#d4923a', minStaff:1 },
-  { id:'hongdae',   name:'홍대',   color:'#3a9e8e', minStaff:1 },
-  { id:'magok',     name:'마곡',   color:'#2e8a7a', minStaff:1 },
-  { id:'yongsan',   name:'용산',   color:'#8b6fa3', minStaff:1 },
-  { id:'jamsil',    name:'잠실',   color:'#3a7aaf', minStaff:1 },
-  { id:'wirye',     name:'위례',   color:'#5a9abf', minStaff:1 },
-  { id:'cheonho',   name:'천호',   color:'#a07040', minStaff:1 },
-]
+const mkKey = (y, m) => `${y}-${String(m+1).padStart(2,'0')}`
 
-const STATUS = { WORK:'근무', OFF:'휴무', MUST_OFF:'휴무(꼭)', SUPPORT:'지원' }
-const S_COLOR = {
-  '근무':     { bg:T.successLt, text:T.successDk, border:T.success },
-  '휴무':     { bg:T.purpleLt,  text:T.purple,    border:'#c4a4e8', bold:true },
-  '휴무(꼭)': { bg:T.primaryLt, text:T.primaryDk, border:T.primary, bold:true },
-  '지원':     { bg:T.orangeLt,  text:T.orange,    border:'#ffb74d' },
-}
-const S_CYCLE = [STATUS.WORK, STATUS.OFF, STATUS.MUST_OFF]
-const DOW = ['일','월','화','수','목','금','토']
+export default function SchedulePage({ employees: propEmps }) {
+  const { employees: hookEmployees } = useEmployees()
+  const baseEmployees = propEmps?.length ? propEmps : hookEmployees
 
-export default function SchedulePage({ employees }) {
-  const now = new Date()
-  const [year, setYear]   = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth())
-  const [assigning, setAssigning] = useState(false)
-  const [msg, setMsg] = useState('')
+  const today = new Date()
+  const [year, setYear] = useState(today.getFullYear())
+  const [month, setMonth] = useState(today.getMonth())
 
-  const { schHistory, setSchHistory, save } = useSchHistory()
-  const days = useMemo(() => getMonthDays(year, month), [year, month])
-  const curKey = `${year}-${pad(month+1)}`
+  // DB state
+  const [schHistory, setSchHistory] = useState({})
+  const { data:ownerReqs, setData:setOwnerReqs, save:saveOwnerReqs } = useScheduleData(DB_KEYS.ownerReqs, {})
+  const { data:empReqs, setData:setEmpReqs, save:saveEmpReqs } = useScheduleData(DB_KEYS.empReqs, {})
+  const { data:empReqsTs, setData:setEmpReqsTs } = useScheduleData(DB_KEYS.empReqsTs, {})
+  const { data:ownerRepeat, setData:setOwnerRepeat, save:saveOwnerRepeat } = useScheduleData(DB_KEYS.ownerRepeat, {})
+  const { data:ruleConfigData, save:saveRuleConfig } = useScheduleData(DB_KEYS.ruleConfig, null)
+  const { data:supportOrder, setData:setSupportOrder, save:saveSupportOrder } = useScheduleData(DB_KEYS.supportOrder, ['yongsan'])
+  const { data:maleRotation, save:saveMaleRotation } = useScheduleData(DB_KEYS.maleRotation, {})
+  const { data:customEmployees, setData:setCustomEmployees, save:saveCustomEmployees } = useScheduleData(DB_KEYS.customEmployees, [])
+  const { data:deletedEmpIdsArr, setData:setDeletedEmpIdsArr, save:saveDeletedEmpIds } = useScheduleData(DB_KEYS.deletedEmpIds, [])
 
-  // 현재 월 근무표
-  const sch = useMemo(() => {
-    const base = {}
-    employees.forEach(e => { base[e.id] = {} })
-    const cur = schHistory[curKey] || {}
-    Object.entries(cur).forEach(([emp, dayMap]) => {
-      if (base[emp]) Object.assign(base[emp], dayMap)
+  const deletedEmpIds = useMemo(() => new Set(deletedEmpIdsArr || []), [deletedEmpIdsArr])
+
+  // schHistory: direct supabase load (needs month-based structure preserved)
+  const [dataLoaded, setDataLoaded] = useState(false)
+  useEffect(() => {
+    supabase.from('schedule_data').select('value').eq('key', DB_KEYS.schHistory).single()
+      .then(({ data }) => {
+        if (data?.value) {
+          const val = typeof data.value === 'string' ? JSON.parse(data.value) : data.value
+          setSchHistory(val)
+        }
+        setDataLoaded(true)
+      })
+  }, [])
+
+  const saveSchHistory = async (history) => {
+    await supabase.from('schedule_data').upsert({
+      id: DB_KEYS.schHistory, key: DB_KEYS.schHistory,
+      value: JSON.stringify(history), updated_at: new Date().toISOString()
     })
-    return base
-  }, [schHistory, curKey, employees])
-
-  const getS = (empId, ds) => sch[empId]?.[ds] || STATUS.WORK
-
-  const setCell = useCallback((empId, ds, val) => {
-    setSchHistory(prev => {
-      const cur = prev[curKey] || {}
-      const empDays = { ...(cur[empId]||{}), [ds]: val }
-      const next = { ...prev, [curKey]: { ...cur, [empId]: empDays } }
-      save(next)
-      return next
-    })
-  }, [curKey, setSchHistory, save])
-
-  const cycleCell = (empId, ds) => {
-    const cur = getS(empId, ds)
-    const idx = S_CYCLE.indexOf(cur)
-    const next = S_CYCLE[(idx+1) % S_CYCLE.length]
-    setCell(empId, ds, next)
   }
 
-  const handleAutoAssign = async () => {
-    const nonMale = employees.filter(e => !e.isMale)
-    if (!nonMale.length) { setMsg('직원 데이터 없음'); return }
+  // empSettings: stored inside customEmployees_v1 as object form
+  const [empSettings, setEmpSettings] = useState({})
+  useEffect(() => {
+    // Initialize empSettings from baseEmployees + customEmployees
+    // Note: baseEmployees already includes MALE_EMPLOYEES via useEmployees()
+    const base = {}
+    ;(baseEmployees || []).forEach(e => {
+      base[e.id] = { weeklyWork:7-(e.weeklyOff||2), altPattern:false, isFreelancer:e.isFreelancer||false }
+    })
+    ;(customEmployees || []).forEach(e => {
+      if (!base[e.id]) base[e.id] = { weeklyWork:7-(e.weeklyOff||2), altPattern:false, isFreelancer:e.isFreelancer||false }
+    })
+    setEmpSettings(prev => ({ ...base, ...prev }))
+  }, [baseEmployees, customEmployees])
 
-    setAssigning(true)
-    setMsg('')
-    try {
-      // empSettings 로드
-      const empSettings = {}
-      nonMale.forEach(e => {
-        empSettings[e.id] = {
-          weeklyWork: 7 - (e.weeklyOff||2),
-          altPattern: e.altPattern||false,
-          isFreelancer: e.isFreelancer||false,
+  // Load empSettings from DB — try empSettings_v1 first, fallback to customEmployees_v1 (legacy)
+  useEffect(() => {
+    (async () => {
+      const { data: d1 } = await supabase.from('schedule_data').select('value').eq('key', DB_KEYS.empSettings).single()
+      if (d1?.value) {
+        const val = typeof d1.value === 'string' ? JSON.parse(d1.value) : d1.value
+        if (typeof val === 'object' && !Array.isArray(val)) {
+          setEmpSettings(prev => ({ ...prev, ...val }))
+          return
+        }
+      }
+      // Legacy fallback: customEmployees_v1 might have empSettings as object
+      const { data: d2 } = await supabase.from('schedule_data').select('value').eq('key', DB_KEYS.customEmployees).single()
+      if (d2?.value) {
+        const val = typeof d2.value === 'string' ? JSON.parse(d2.value) : d2.value
+        if (!Array.isArray(val) && typeof val === 'object') {
+          setEmpSettings(prev => ({ ...prev, ...val }))
+        }
+      }
+    })()
+  }, [])
+
+  // Rule config
+  const [ruleConfig, setRuleConfig] = useState({
+    minWork:11, maxWork:15, maxDailyOff:5, maxConsecWork:6,
+    biweeklyConsecOff:true,
+    branchMinStaff:Object.fromEntries(BRANCHES_SCH.map(b => [b.id, b.minStaff])),
+    noSimultaneousOff:[],
+  })
+  useEffect(() => {
+    if (ruleConfigData) {
+      setRuleConfig(prev => ({
+        ...prev, ...ruleConfigData,
+        branchMinStaff:{ ...prev.branchMinStaff, ...(ruleConfigData.branchMinStaff||{}) },
+        noSimultaneousOff:Array.isArray(ruleConfigData.noSimultaneousOff) ? ruleConfigData.noSimultaneousOff : prev.noSimultaneousOff,
+      }))
+    }
+  }, [ruleConfigData])
+
+  const onSetRule = (key, val) => {
+    setRuleConfig(prev => {
+      const next = { ...prev, [key]:val }
+      saveRuleConfig(next)
+      return next
+    })
+  }
+
+  // Lock status
+  const lockStatusRef = useRef({})
+  const [isConfirmed, setIsConfirmed] = useState(false)
+  const [lockedDates, setLockedDates] = useState(new Set())
+  useEffect(() => {
+    supabase.from('schedule_data').select('value').eq('key', DB_KEYS.lockStatus).single()
+      .then(({ data }) => {
+        if (data?.value) {
+          const val = typeof data.value === 'string' ? JSON.parse(data.value) : data.value
+          lockStatusRef.current = val
+          const curKey = mkKey(year, month)
+          const cur = val[curKey]
+          if (cur?.confirmed) {
+            setIsConfirmed(true)
+            setLockedDates(new Set(cur.lockedDates || []))
+          }
         }
       })
+  }, [])
 
-      // 전달 데이터
-      const prevKey = month === 0
-        ? `${year-1}-12`
-        : `${year}-${pad(month)}`
-      const prevSchData = schHistory[prevKey] || {}
+  useEffect(() => {
+    const curKey = mkKey(year, month)
+    const cur = lockStatusRef.current[curKey]
+    const curMonthPrefix = `${year}-${String(month+1).padStart(2,'0')}`
+    const prevY = month === 0 ? year-1 : year
+    const prevM = month === 0 ? 11 : month-1
+    const prevKey = mkKey(prevY, prevM)
+    const prev = lockStatusRef.current[prevKey]
+    const carryOverLocked = new Set()
+    if (prev?.confirmed && prev.lockedDates) {
+      prev.lockedDates.forEach(ds => { if (ds.startsWith(curMonthPrefix)) carryOverLocked.add(ds) })
+    }
+    if (cur?.confirmed) {
+      setIsConfirmed(true)
+      setLockedDates(new Set([...(cur.lockedDates||[]), ...carryOverLocked]))
+    } else {
+      setIsConfirmed(false)
+      setLockedDates(carryOverLocked)
+    }
+  }, [year, month])
 
-      const result = await new Promise((resolve) => {
-        setTimeout(() => {
-          try {
-            const r = autoAssign(year, month, {}, prevSchData, empSettings, {}, nonMale, BRANCHES_SCH)
-            resolve(r)
-          } catch(e) { resolve(null) }
-        }, 10)
-      })
+  const saveLockStatus = (data) => {
+    lockStatusRef.current = data
+    supabase.from('schedule_data').upsert({
+      id:DB_KEYS.lockStatus, key:DB_KEYS.lockStatus,
+      value:JSON.stringify(data), updated_at:new Date().toISOString()
+    })
+  }
 
-      if (result) {
-        setSchHistory(prev => {
-          const next = { ...prev, [curKey]: result }
-          save(next)
-          return next
-        })
-        setMsg('자동배치 완료!')
-      } else {
-        setMsg('자동배치 실패')
+  // UI state
+  const [editCell, setEditCell] = useState(null)
+  const [toast, setToast] = useState(null)
+  const [filterBranch, setFilterBranch] = useState('all')
+  const [showRuleConfig, setShowRuleConfig] = useState(false)
+  const [showEmpSettings, setShowEmpSettings] = useState(false)
+  const [showSupportSettings, setShowSupportSettings] = useState(false)
+  const [showOwnerSettings, setShowOwnerSettings] = useState(false)
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [viewMode, setViewMode] = useState('table') // 'table' | 'daily'
+  const [showSnapshots, setShowSnapshots] = useState(false)
+  const { data:snapshots, save:saveSnapshots } = useScheduleData(DB_KEYS.schSnapshots, {})
+  const [isAssigning, setIsAssigning] = useState(false)
+  const [selectedCells, setSelectedCells] = useState(new Set())
+  const [showBulkModal, setShowBulkModal] = useState(false)
+  const gridDragRef = useRef({ active:false, startEmpIdx:-1, startDayIdx:-1, moved:false })
+  const dragJustEndedRef = useRef(false)
+
+  const toast_ = (msg, type='ok') => { setToast({ msg, type }); setTimeout(() => setToast(null), 2500) }
+
+  // ALL employees
+  const ALL_EMPLOYEES = useMemo(() => {
+    const base = [...(baseEmployees || [])]
+    const custom = Array.isArray(customEmployees) ? customEmployees : []
+    const existing = new Set(base.map(e => e.id))
+    const merged = [...base, ...custom.filter(e => !existing.has(e.id))]
+    return merged
+  }, [baseEmployees, customEmployees])
+
+  const ACTIVE_EMPLOYEES = useMemo(() => ALL_EMPLOYEES.filter(e => !deletedEmpIds.has(e.id)), [ALL_EMPLOYEES, deletedEmpIds])
+
+  // Days
+  const dim = getDim(year, month)
+  const days = useMemo(() => {
+    const arr = Array.from({ length:dim }, (_, i) => {
+      const d = i+1, ds = fmtDs(year, month, d)
+      return { d, ds, dow:getDow0Mon(year, month, d), isNext:false }
+    })
+    const lastDow = getDow0Mon(year, month, dim)
+    if (lastDow !== 6) {
+      const daysToAdd = 6 - lastDow
+      const nextYear = month === 11 ? year+1 : year
+      const nextMonth = month === 11 ? 0 : month+1
+      for (let i = 1; i <= daysToAdd; i++) {
+        const ds = fmtDs(nextYear, nextMonth, i)
+        arr.push({ d:i, ds, dow:getDow0Mon(nextYear, nextMonth, i), isNext:true, nextMonth, nextYear })
       }
-    } finally {
-      setAssigning(false)
+    }
+    return arr
+  }, [year, month, dim])
+
+  const curKey = mkKey(year, month)
+  const prevKey = month === 0 ? mkKey(year-1, 11) : mkKey(year, month-1)
+  const curMonthStr = `${year}-${String(month+1).padStart(2,'0')}`
+  const nextMonthStr = `${month===11 ? year+1 : year}-${String(month+2>12 ? 1 : month+2).padStart(2,'0')}`
+
+  // Schedule data
+  const sch = useMemo(() => {
+    const base = {}
+    ALL_EMPLOYEES.forEach(emp => { base[emp.id] = {} })
+    const curMs = curMonthStr
+    const prevData = schHistory[prevKey] || {}
+    ALL_EMPLOYEES.forEach(emp => {
+      Object.entries(prevData[emp.id] || {}).forEach(([ds, s]) => {
+        if (ds.startsWith(curMs) && s && s !== '') base[emp.id][ds] = s
+      })
+    })
+    const cur = schHistory[curKey] || {}
+    ALL_EMPLOYEES.forEach(emp => {
+      Object.entries(cur[emp.id] || {}).forEach(([ds, s]) => {
+        if (s && s !== '') base[emp.id][ds] = s
+      })
+    })
+    return base
+  }, [schHistory, curKey, prevKey, curMonthStr, ALL_EMPLOYEES])
+
+  const getS = (eid, ds) => sch[eid]?.[ds] || ''
+
+  const setSch = useCallback((updater) => {
+    setSchHistory(prev => {
+      const cur = prev[curKey] || {}
+      const next = typeof updater === 'function' ? updater(cur) : updater
+      const newHistory = { ...prev, [curKey]:next }
+      saveSchHistory(newHistory)
+      return newHistory
+    })
+  }, [curKey])
+
+  const setS = useCallback((eid, ds, s) => {
+    setSch(p => ({ ...p, [eid]:{ ...(p[eid]||{}), [ds]:s } }))
+    // empReqs sync
+    const key = eid + '__' + ds
+    const emp = ALL_EMPLOYEES.find(e => e.id === eid)
+    if (emp && !emp.isOwner) {
+      setEmpReqs(prev => {
+        const next = { ...prev }
+        if (s === '휴무(꼭)') next[key] = '휴무(꼭)'
+        else delete next[key]
+        saveEmpReqs(next)
+        return next
+      })
+    }
+  }, [setSch, ALL_EMPLOYEES, setEmpReqs, saveEmpReqs])
+
+  const onSetEmpSetting = (eid, key, val) => {
+    setEmpSettings(p => {
+      const next = { ...p, [eid]:{ ...p[eid], [key]:val } }
+      supabase.from('schedule_data').upsert({ id:DB_KEYS.empSettings, key:DB_KEYS.empSettings, value:JSON.stringify(next), updated_at:new Date().toISOString() })
+      return next
+    })
+  }
+
+  // Validation
+  const violations = useMemo(() => validateSch(sch, ALL_EMPLOYEES, days, ruleConfig, empSettings), [sch, days, ruleConfig, ALL_EMPLOYEES, empSettings])
+
+  // Daily count
+  const dailyCount = (ds) => ALL_EMPLOYEES.filter(e => {
+    if (e.isMale || e.isFreelancer) return false
+    const s = getS(e.id, ds)
+    return s === STATUS.WORK || isSupport(s) || s === STATUS.SHARE
+  }).length
+
+  // Male rotation helper
+  const getMaleRotBranch = (empId, dateStr) => {
+    const rot = (maleRotation || {})[empId]
+    if (!rot?.branches?.length || !rot.startDate) return null
+    const start = new Date(rot.startDate)
+    const target = new Date(dateStr)
+    const diffDays = Math.floor((target-start) / (1000*60*60*24))
+    const weekIdx = Math.floor(diffDays / 7)
+    const idx = ((weekIdx % rot.branches.length) + rot.branches.length) % rot.branches.length
+    return rot.branches[idx]
+  }
+
+  const isWeekBoundary = (dayObj) => {
+    if (!dayObj.isNext && dayObj.d <= 1) return false
+    if (dayObj.isNext) return dayObj.dow === 0
+    return getDow0Mon(year, month, dayObj.d) === 0
+  }
+
+  // Shown branches
+  const shownBranches = filterBranch === 'all' ? BRANCHES_SCH : filterBranch === 'male' ? [] : BRANCHES_SCH.filter(b => b.id === filterBranch)
+  const renderOrderEmps = useMemo(() => {
+    const list = []
+    shownBranches.forEach(branch => {
+      ALL_EMPLOYEES.filter(e => e.branch === branch.id).forEach(emp => list.push(emp))
+    })
+    if (filterBranch === 'all' || filterBranch === 'male') {
+      ALL_EMPLOYEES.filter(e => e.isMale).forEach(emp => list.push(emp))
+    }
+    return list
+  }, [shownBranches, ALL_EMPLOYEES, filterBranch])
+
+  // Drag select mouseup
+  useEffect(() => {
+    const onMouseUp = () => {
+      if (gridDragRef.current.active && gridDragRef.current.moved) {
+        gridDragRef.current.active = false
+        dragJustEndedRef.current = true
+        setShowBulkModal(true)
+        setTimeout(() => { dragJustEndedRef.current = false }, 200)
+      } else if (gridDragRef.current.active) {
+        gridDragRef.current.active = false
+      }
+    }
+    const onClickOutside = (e) => {
+      if (dragJustEndedRef.current) return
+      if (!e.target.closest('.cc') && !e.target.closest('[data-bulk-modal]')) {
+        setSelectedCells(new Set())
+        setShowBulkModal(false)
+      }
+    }
+    document.addEventListener('mouseup', onMouseUp)
+    document.addEventListener('click', onClickOutside)
+    return () => { document.removeEventListener('mouseup', onMouseUp); document.removeEventListener('click', onClickOutside) }
+  }, [])
+
+  // Auto assign
+  const handleAutoAssign = async () => {
+    if (isAssigning || isConfirmed) return
+    setIsAssigning(true)
+
+    // Refresh reqs from DB
+    let freshEmpReqs = empReqs, freshOwnerReqs = ownerReqs, freshEmpReqsTs = empReqsTs
+    try {
+      const [r1, r2, r3] = await Promise.all([
+        supabase.from('schedule_data').select('value').eq('key', DB_KEYS.empReqs).single(),
+        supabase.from('schedule_data').select('value').eq('key', DB_KEYS.ownerReqs).single(),
+        supabase.from('schedule_data').select('value').eq('key', DB_KEYS.empReqsTs).single(),
+      ])
+      if (r1.data?.value) { const v = typeof r1.data.value === 'string' ? JSON.parse(r1.data.value) : r1.data.value; freshEmpReqs = v; setEmpReqs(v) }
+      if (r2.data?.value) { const v = typeof r2.data.value === 'string' ? JSON.parse(r2.data.value) : r2.data.value; freshOwnerReqs = v; setOwnerReqs(v) }
+      if (r3.data?.value) { const v = typeof r3.data.value === 'string' ? JSON.parse(r3.data.value) : r3.data.value; freshEmpReqsTs = v; setEmpReqsTs(v) }
+    } catch (e) {}
+
+    const prevSch = schHistory[prevKey] || {}
+
+    setTimeout(() => {
+      try {
+        const MAX_RETRY = 30
+        let best = null, bestV = null
+        for (let i = 0; i < MAX_RETRY; i++) {
+          const r = autoAssign(year, month, freshOwnerReqs||{}, prevSch, empSettings||{}, { order:supportOrder||{} }, ruleConfig||{}, ownerRepeat||{}, ACTIVE_EMPLOYEES, freshEmpReqs||{}, Date.now()+i*997, freshEmpReqsTs||{})
+          const v = validateSch(r, ACTIVE_EMPLOYEES, days, ruleConfig, empSettings)
+          if (v.length === 0) { best = r; bestV = []; break }
+          if (!best || v.length < bestV.length) { best = r; bestV = v }
+        }
+        if (bestV.length > 0) toast_('⚠️ '+MAX_RETRY+'회 시도 후 최선 결과 (위반 '+bestV.length+'건)', 'err')
+        else toast_('✅ 자동 배치 완료!')
+
+        // biweekly next phase
+        const biweeklyNextPhase = {}
+        ACTIVE_EMPLOYEES.filter(e => empSettings[e.id]?.altPattern).forEach(emp => {
+          const ws = empSettings[emp.id]
+          const weeklyOff_ = ws ? (7 - ws.weeklyWork) : emp.weeklyOff
+          const lo_ = Math.max(1, weeklyOff_ - 1)
+          const allDs_ = Array.from({ length:dim }, (_, i) => fmtDs(year, month, i+1))
+          let wks_ = [], wk_ = []
+          allDs_.forEach(ds => {
+            const dow_ = new Date(ds).getDay(); const dow2_ = dow_ === 0 ? 6 : dow_-1
+            if (dow2_ === 0 && wk_.length) { wks_.push(wk_); wk_ = [] }
+            wk_.push({ ds, dow:dow2_ })
+          })
+          if (wk_.length) wks_.push(wk_)
+          let lastWi_ = -1
+          wks_.forEach((w, wi) => { if (w.length > 1) lastWi_ = wi })
+          if (lastWi_ >= 0) {
+            const lastWkDays = wks_[lastWi_]
+            const lastDow_ = lastWkDays[lastWkDays.length-1].dow
+            const nextYear_ = month === 11 ? year+1 : year
+            const nextMonth_ = month === 11 ? 0 : month+1
+            const extendedDays = [...lastWkDays]
+            for (let nd = 1; nd <= 6-lastDow_; nd++) extendedDays.push({ ds:fmtDs(nextYear_, nextMonth_, nd) })
+            let cnt_ = 0
+            extendedDays.forEach(({ ds }) => { const s = best[emp.id]?.[ds]; if (s === '휴무' || s === '휴무(꼭)') cnt_++ })
+            const lastRealWeekPhase = cnt_ === 0 ? (lastWi_ % 2 === 0 ? 'lo' : 'hi') : (cnt_ <= lo_ ? 'lo' : 'hi')
+            biweeklyNextPhase[emp.id] = lastRealWeekPhase === 'lo' ? 'hi' : 'lo'
+          }
+        })
+
+        // startDate 이전 날짜 제거
+        const cleaned = { ...best }
+        ACTIVE_EMPLOYEES.forEach(emp => {
+          const sd = empSettings[emp.id]?.startDate
+          if (!sd || !cleaned[emp.id]) return
+          Object.keys(cleaned[emp.id]).forEach(ds => {
+            if (ds < sd) delete cleaned[emp.id][ds]
+          })
+        })
+        const toSave = { ...cleaned, __biweeklyNextPhase:biweeklyNextPhase }
+        setSchHistory(prev => {
+          const n = { ...prev, [curKey]:toSave }
+          saveSchHistory(n)
+          return n
+        })
+      } catch (e) {
+        toast_('❌ 배치 오류: '+e.message, 'err')
+      } finally {
+        setIsAssigning(false)
+      }
+    }, 50)
+  }
+
+  // Reset month
+  const resetMonth = () => {
+    setSchHistory(prev => {
+      const next = { ...prev }
+      delete next[curKey]
+      saveSchHistory(next)
+      return next
+    })
+    setOwnerReqs(prev => {
+      const next = Object.fromEntries(Object.entries(prev).filter(([k]) => !k.includes('__'+curMonthStr)))
+      saveOwnerReqs(next)
+      return next
+    })
+    setEmpReqs(prev => {
+      const next = Object.fromEntries(Object.entries(prev).filter(([k]) => !k.includes('__'+curMonthStr)))
+      saveEmpReqs(next)
+      return next
+    })
+    setShowResetConfirm(false)
+    toast_(`${year}년 ${month+1}월 근무표가 초기화되었습니다.`)
+  }
+
+  // Export
+  const handleExportCSV = () => {
+    doExportCSV(ALL_EMPLOYEES, days, getS, year, month, BRANCHES_SCH, DNAMES)
+    toast_('CSV 다운로드 완료')
+  }
+
+  // Lock/Unlock
+  const toggleLock = () => {
+    if (isConfirmed) {
+      setIsConfirmed(false); setLockedDates(new Set())
+      lockStatusRef.current = { ...lockStatusRef.current, [curKey]:{ confirmed:false, lockedDates:[] } }
+      saveLockStatus(lockStatusRef.current)
+      toast_('배치 확정이 해제되었습니다')
+    } else {
+      const newLocked = days.filter(d => d.isNext).map(d => d.ds)
+      setIsConfirmed(true); setLockedDates(new Set(newLocked))
+      lockStatusRef.current = { ...lockStatusRef.current, [curKey]:{ confirmed:true, lockedDates:newLocked } }
+      saveLockStatus(lockStatusRef.current)
+      // 스냅샷 저장
+      const snapshot = { ts:new Date().toISOString(), data:{ ...sch } }
+      const prev = snapshots || {}
+      const monthSnapshots = [...(prev[curKey] || []), snapshot]
+      const next = { ...prev, [curKey]:monthSnapshots }
+      saveSnapshots(next)
+      toast_('✅ 배치가 확정되었습니다')
     }
   }
 
-  const prevMonth = () => {
-    const d = new Date(year, month-1)
-    setYear(d.getFullYear()); setMonth(d.getMonth())
+  // Delete employee
+  const handleDeleteEmp = (empId) => {
+    const custom = Array.isArray(customEmployees) ? customEmployees : []
+    if (custom.some(ce => ce.id === empId)) {
+      const next = custom.filter(ce => ce.id !== empId)
+      setCustomEmployees(next)
+      saveCustomEmployees(next)
+    } else {
+      const next = [...(deletedEmpIdsArr||[]), empId]
+      setDeletedEmpIdsArr(next)
+      saveDeletedEmpIds(next)
+    }
   }
-  const nextMonth = () => {
-    const d = new Date(year, month+1)
-    setYear(d.getFullYear()); setMonth(d.getMonth())
+
+  // Add employee
+  const handleAddEmp = (emp) => {
+    const custom = Array.isArray(customEmployees) ? customEmployees : []
+    const next = [...custom, emp]
+    setCustomEmployees(next)
+    saveCustomEmployees(next)
+    onSetEmpSetting(emp.id, 'weeklyWork', 7-emp.weeklyOff)
+    onSetEmpSetting(emp.id, 'altPattern', false)
+    onSetEmpSetting(emp.id, 'isFreelancer', emp.isFreelancer||false)
+    if (emp.startDate) onSetEmpSetting(emp.id, 'startDate', emp.startDate)
   }
 
-  const nonMale = employees.filter(e => !e.isMale)
-  const maleEmps = employees.filter(e => e.isMale)
-
-  const grouped = BRANCHES_SCH.map(br => ({
-    ...br, emps: nonMale.filter(e => e.branch === br.id)
-  })).filter(br => br.emps.length > 0)
-
-  // 일 근무인원 집계
-  const dailyCount = (ds) => nonMale.filter(e => {
-    const s = getS(e.id, ds)
-    return s === STATUS.WORK || s?.startsWith('지원')
-  }).length
+  if (!dataLoaded) return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100vh', background:'#f4f2ef', flexDirection:'column', gap:12 }}>
+      <div style={{ fontSize:24 }}>🌿</div>
+      <div style={{ fontSize:14, color:T.textSub, fontWeight:600 }}>근무표 데이터 불러오는 중...</div>
+    </div>
+  )
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', height:'100dvh' }}>
-      {/* 헤더 */}
-      <div style={{ padding:'10px 12px', background:T.bgCard, borderBottom:`1px solid ${T.border}`, flexShrink:0 }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-            <button onClick={prevMonth} style={navBtn}>‹</button>
-            <span style={{ fontSize:T.fs.md, fontWeight:T.fw.bolder }}>{year}년 {month+1}월</span>
-            <button onClick={nextMonth} style={navBtn}>›</button>
+    <div style={{ fontFamily:"'Noto Sans KR',sans-serif", height:'100%', overflow:'hidden', display:'flex', flexDirection:'column', background:T.bg, color:T.text }}>
+      <style>{`
+        *{-webkit-user-select:none;user-select:none}
+        ::-webkit-scrollbar{height:5px;width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#b0b8c1;border-radius:3px}
+        .cc{cursor:pointer}.cc:hover .sch-box{transform:scale(1.06);box-shadow:0 2px 8px rgba(0,0,0,.15)!important}
+        @media print{.np{display:none!important}}
+        @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+      `}</style>
+
+      {/* Toast */}
+      {toast && <div style={{ position:'fixed', bottom:20, left:'50%', transform:'translateX(-50%)', background:toast.type==='err' ? '#b03020' : '#1e6e3a', color:'#fff', padding:'9px 22px', borderRadius:8, fontSize:13, zIndex:999, boxShadow:'0 4px 14px rgba(0,0,0,.2)' }}>{toast.msg}</div>}
+
+      {/* Reset confirm */}
+      {showResetConfirm && <>
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.4)', zIndex:300 }} onClick={() => setShowResetConfirm(false)}/>
+        <div style={{ position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)', background:'#fff', borderRadius:14, padding:'24px 20px', zIndex:301, width:280, textAlign:'center', boxShadow:'0 8px 32px rgba(0,0,0,.2)' }}>
+          <div style={{ fontSize:20, marginBottom:8 }}>🗑</div>
+          <div style={{ fontWeight:700, fontSize:15, color:'#221810', marginBottom:8 }}>{year}년 {month+1}월 초기화</div>
+          <div style={{ fontSize:12, color:T.textSub, marginBottom:20, lineHeight:1.6 }}>이 달의 근무표와 지정 휴무가 모두 삭제됩니다.<br/>되돌릴 수 없습니다.</div>
+          <div style={{ display:'flex', gap:8 }}>
+            <button onClick={() => setShowResetConfirm(false)} style={{ flex:1, padding:'10px 0', borderRadius:8, border:'1px solid #ddd', background:'#f5f5f5', cursor:'pointer', fontSize:13, fontFamily:'inherit', fontWeight:600 }}>취소</button>
+            <button onClick={resetMonth} style={{ flex:1, padding:'10px 0', borderRadius:8, border:'none', background:'#c04040', color:'#fff', cursor:'pointer', fontSize:13, fontFamily:'inherit', fontWeight:700 }}>초기화</button>
           </div>
-          <div style={{ display:'flex', gap:6 }}>
-            {msg && <span style={{ fontSize:T.fs.xxs, color:T.success, alignSelf:'center' }}>{msg}</span>}
-            <button onClick={handleAutoAssign} disabled={assigning} style={{
-              padding:'6px 14px', borderRadius:T.radius.md,
-              background:assigning?T.gray300:T.primary, color:'#fff', border:'none',
-              fontSize:T.fs.xs, fontWeight:T.fw.bold, cursor:'pointer',
+        </div>
+      </>}
+
+      {/* Modals */}
+      {editCell && <EditCellModal editCell={editCell} empSettings={empSettings} onSet={setS} onClose={() => setEditCell(null)}/>}
+      {showBulkModal && selectedCells.size > 0 && <BulkEditModal selectedCells={selectedCells} onSet={setS} onClose={(st) => { setShowBulkModal(false); setSelectedCells(new Set()); if (st) toast_(`✅ ${selectedCells.size}개 셀 → ${st}`) }}/>}
+      {showRuleConfig && <RuleConfigModal ruleConfig={ruleConfig} allEmployees={ALL_EMPLOYEES} empSettings={empSettings} onSetRule={onSetRule} onClose={() => setShowRuleConfig(false)}/>}
+      {showEmpSettings && <EmpSettingsModal allEmployees={ALL_EMPLOYEES} empSettings={empSettings} customEmployees={customEmployees} deletedEmpIds={deletedEmpIds} maleRotation={maleRotation||{}} onSetEmpSetting={onSetEmpSetting} onAddEmp={handleAddEmp} onDeleteEmp={handleDeleteEmp} onSaveMaleRotation={saveMaleRotation} onClose={() => setShowEmpSettings(false)}/>}
+      {showOwnerSettings && <OwnerSettingsModal allEmployees={ALL_EMPLOYEES} empSettings={empSettings} ownerReqs={ownerReqs||{}} empReqs={empReqs||{}} ownerRepeat={ownerRepeat||{}} days={days} year={year} month={month} curMonthStr={curMonthStr} nextMonthStr={nextMonthStr} onSetOwnerReqs={setOwnerReqs} onSetEmpReqs={setEmpReqs} onSaveOwnerReqs={saveOwnerReqs} onSetOwnerRepeat={(rep) => { setOwnerRepeat(rep); saveOwnerRepeat(rep) }} onClose={() => setShowOwnerSettings(false)}/>}
+      {showSupportSettings && <SupportSettingsModal supportOrder={supportOrder||['yongsan']} onSave={(order) => { setSupportOrder(order); saveSupportOrder(order) }} onClose={() => setShowSupportSettings(false)}/>}
+      {showSnapshots && <SnapshotModal snapshots={snapshots||{}} allEmployees={ALL_EMPLOYEES} curKey={curKey} onRollback={(monthKey, data) => {
+        setSchHistory(prev => {
+          const next = { ...prev, [monthKey]:data }
+          saveSchHistory(next)
+          return next
+        })
+        toast_(`✅ ${monthKey} 근무표가 이력으로 복원되었습니다`)
+      }} onClose={() => setShowSnapshots(false)}/>}
+
+      {/* Header */}
+      <div className="np" style={{ background:T.bgCard, borderBottom:'1px solid '+T.border, padding:'8px 12px', flexShrink:0, boxShadow:T.shadow.sm, display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:50, gap:8 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+          <button onClick={() => { if (month===0) { setMonth(11); setYear(y => y-1) } else setMonth(m => m-1) }}
+            style={{ width:30, height:30, borderRadius:T.radius.md, border:'1px solid '+T.border, background:'transparent', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <I name="arrowL" size={14} color={T.textSub}/>
+          </button>
+          <div style={{ fontSize:T.fs.md, fontWeight:T.fw.black, color:T.text, whiteSpace:'nowrap' }}>{String(year).slice(2)}년 {month+1}월</div>
+          <button onClick={() => { if (month===11) { setMonth(0); setYear(y => y+1) } else setMonth(m => m+1) }}
+            style={{ width:30, height:30, borderRadius:T.radius.md, border:'1px solid '+T.border, background:'transparent', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <I name="arrowR" size={14} color={T.textSub}/>
+          </button>
+          {/* 뷰 전환 */}
+          <div style={{ display:'flex', background:T.gray100, borderRadius:6, padding:2, marginLeft:8 }}>
+            {[{k:'table',l:'표'},{k:'daily',l:'날짜별'}].map(({k,l})=>(
+              <button key={k} onClick={()=>setViewMode(k)} style={{
+                padding:'4px 10px', borderRadius:5, border:'none', fontSize:11, fontWeight:viewMode===k?700:400,
+                background:viewMode===k?'#fff':'transparent', color:viewMode===k?T.text:T.textMuted,
+                cursor:'pointer', fontFamily:'inherit', boxShadow:viewMode===k?'0 1px 3px rgba(0,0,0,.08)':'none'
+              }}>{l}</button>
+            ))}
+          </div>
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+          {/* Auto assign */}
+          <button onClick={handleAutoAssign} style={{
+            display:'inline-flex', alignItems:'center', gap:6,
+            background:isConfirmed ? '#aaa' : isAssigning ? T.gray400 : T.primary, color:'#fff', border:'none',
+            borderRadius:T.radius.md, padding:'7px 14px', fontSize:T.fs.sm, fontWeight:T.fw.bolder,
+            cursor:isConfirmed ? 'default' : 'pointer', fontFamily:'inherit',
+            boxShadow:isConfirmed ? 'none' : '0 1px 4px rgba(124,124,200,.35)', opacity:isConfirmed ? 0.7 : 1
+          }}>
+            {isAssigning ? '배치중...' : isConfirmed ? '확정됨' : '⚡ 배치'}
+          </button>
+          <div style={{ width:1, height:24, background:T.border, margin:'0 2px' }}/>
+          {/* Icon buttons */}
+          {[
+            { icon:'lock', tip:isConfirmed ? '잠금해제' : '배치확정', fn:toggleLock, confirmed:isConfirmed },
+            { icon:'trash2', tip:'초기화', fn:() => { if (isConfirmed) { toast_('확정 해제 후 초기화할 수 있습니다', 'err'); return } setShowResetConfirm(true) }, danger:true },
+            { icon:'download', tip:'CSV', fn:handleExportCSV },
+            { icon:'printer', tip:'인쇄', fn:() => window.print() },
+          ].map(({ icon, tip, fn, danger, confirmed }) => (
+            <button key={tip} onClick={fn} title={tip} style={{
+              width:32, height:32, borderRadius:T.radius.md,
+              border:`1px solid ${confirmed ? '#2a9a5a55' : danger ? T.danger+'55' : T.border}`,
+              background:confirmed ? '#e8f8ee' : danger ? T.dangerLt : 'transparent',
+              cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0
             }}>
-              {assigning ? '배치중...' : '⚡ 자동배치'}
+              <I name={icon} size={15} color={confirmed ? '#2a9a5a' : danger ? T.danger : T.textSub}/>
             </button>
+          ))}
+          {/* Settings dropdown */}
+          <div style={{ position:'relative' }}>
+            <button onClick={() => setShowSettings(s => !s)} title="설정" style={{
+              width:32, height:32, borderRadius:T.radius.md,
+              border:'1px solid '+(showSettings ? T.primary : T.border),
+              background:showSettings ? T.primaryLt : 'transparent',
+              cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0
+            }}>
+              <I name="settings" size={15} color={showSettings ? T.primary : T.textSub}/>
+            </button>
+            {showSettings && <>
+              <div style={{ position:'fixed', inset:0, zIndex:149 }} onClick={() => setShowSettings(false)}/>
+              <div style={{ position:'absolute', top:'calc(100% + 6px)', right:0, background:T.bgCard, borderRadius:T.radius.lg, boxShadow:T.shadow.lg, zIndex:150, overflow:'hidden', minWidth:168, border:'1px solid '+T.border }}>
+                {[
+                  { label:'규칙 설정', icon:'settings', action:() => { setShowRuleConfig(true); setShowSettings(false) } },
+                  { label:'원장 설정', icon:'user', action:() => { setShowOwnerSettings(true); setShowSettings(false) } },
+                  { label:'직원 설정', icon:'users', action:() => { setShowEmpSettings(true); setShowSettings(false) } },
+                  { label:'지점지원 설정', icon:'building', action:() => { setShowSupportSettings(true); setShowSettings(false) } },
+                  { label:'확정 이력', icon:'fileText', action:() => { setShowSnapshots(true); setShowSettings(false) } },
+                ].map(({ label, icon, action }, idx, arr) => (
+                  <button key={label} onClick={action} style={{
+                    display:'flex', alignItems:'center', gap:10, width:'100%', padding:'10px 14px', border:'none',
+                    borderBottom:idx < arr.length-1 ? '1px solid '+T.border : 'none',
+                    background:'transparent', fontSize:T.fs.sm, cursor:'pointer', fontFamily:'inherit', color:T.text, fontWeight:T.fw.medium
+                  }}>
+                    <I name={icon} size={14} color={T.primary}/> {label}
+                  </button>
+                ))}
+              </div>
+            </>}
           </div>
         </div>
       </div>
 
-      {/* 근무표 테이블 */}
-      <div style={{ flex:1, overflow:'auto' }}>
-        <table style={{ borderCollapse:'collapse', fontSize:10, minWidth:'max-content', tableLayout:'fixed' }}>
-          <thead style={{ position:'sticky', top:0, zIndex:10 }}>
+      {/* Confirmed banner */}
+      {isConfirmed && (
+        <div style={{ background:'#e8f8ee', borderBottom:'2px solid #2a9a5a', padding:'8px 16px', display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+          <I name="lock" size={14} color="#2a9a5a"/>
+          <span style={{ fontSize:12, fontWeight:700, color:'#1a7a4a' }}>✅ 배치 확정됨 — 자동배치가 비활성화되어 있습니다.</span>
+          <button onClick={toggleLock} style={{ marginLeft:'auto', fontSize:11, padding:'2px 10px', borderRadius:5, border:'1px solid #2a9a5a', background:'transparent', color:'#2a9a5a', cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>확정 해제</button>
+        </div>
+      )}
+
+      {/* Violations */}
+      {violations.length > 0 && (
+        <div className="np" style={{ background:T.dangerLt, borderBottom:'1px solid '+T.danger+'44', padding:'6px 14px', display:'flex', gap:6, flexWrap:'wrap', alignItems:'center', flexShrink:0 }}>
+          <span style={{ fontSize:T.fs.xs, fontWeight:T.fw.bolder, color:T.danger }}>⚠ 규칙 위반 ({violations.length}건):</span>
+          {violations.slice(0,6).map((v, i) => <span key={i} style={{ fontSize:T.fs.xxs, color:T.danger, background:T.bgCard, border:'1px solid '+T.danger+'55', borderRadius:T.radius.sm, padding:'1px 7px', fontWeight:T.fw.bold }}>{v}</span>)}
+        </div>
+      )}
+
+      {/* Main content */}
+      <div style={{ flex:1, overflow:'auto', minHeight:0, overscrollBehavior:'none', background:T.bg, padding:'0 4px' }}>
+      {viewMode === 'daily' ? (
+        <DailyView days={days} sch={sch} allEmployees={ALL_EMPLOYEES} year={year} month={month} maleRotation={maleRotation}/>
+      ) : (
+        <table style={{ borderCollapse:'separate', borderSpacing:'2px 2px', minWidth:dim*46+160 }}>
+          <thead style={{ position:'sticky', top:0, zIndex:20 }}>
             <tr>
-              <th style={{ ...stickyCol, background:T.gray100, padding:'5px 8px', borderBottom:`2px solid ${T.border}`, textAlign:'left', fontSize:T.fs.xxs, color:T.textSub, width:140, minWidth:140 }}>직원</th>
-              {days.map(d => {
-                const isWeekend = d.getDay()===0||d.getDay()===6
-                const ds = d.toISOString().slice(0,10)
-                return (
-                  <th key={ds} style={{ minWidth:36, width:36, padding:'3px 1px', textAlign:'center', borderBottom:`2px solid ${T.border}`, background:T.gray100, color:isWeekend?(d.getDay()===0?T.danger:T.primary):T.textSub }}>
-                    <div style={{ fontSize:10 }}>{d.getDate()}</div>
-                    <div style={{ fontSize:8 }}>{DOW[d.getDay()]}</div>
-                  </th>
-                )
-              })}
-            </tr>
-            {/* 일 근무인원 */}
-            <tr>
-              <td style={{ ...stickyCol, background:T.gray200, padding:'3px 8px', borderBottom:`1px solid ${T.border}`, fontSize:T.fs.xxs, color:T.textSub, fontWeight:T.fw.bold }}>일 근무인원</td>
-              {days.map(d => {
-                const ds = d.toISOString().slice(0,10)
-                const cnt = dailyCount(ds)
-                const ok = cnt >= 10 && cnt <= 15
-                return (
-                  <td key={ds} style={{ textAlign:'center', borderBottom:`1px solid ${T.border}`, background:T.gray200, color:ok?T.successDk:T.danger, fontWeight:T.fw.bolder, fontSize:10 }}>
-                    {cnt}
-                  </td>
-                )
+              <th style={{ ...stickyCol, background:T.bg, fontSize:T.fs.xs, fontWeight:T.fw.bolder, color:T.textSub, textAlign:'left', zIndex:30, top:0, position:'sticky', border:'none' }}>직원</th>
+              {days.map(day => {
+                const isToday = day.ds === fmtDs(today.getFullYear(), today.getMonth(), today.getDate())
+                const isSun = day.dow === 6, isSat = day.dow === 5
+                return <th key={day.ds} style={{ width:44, minWidth:44, padding:'6px 2px', textAlign:'center', position:'sticky', top:0, zIndex:15, background:isToday ? T.primary : T.bg, color:day.isNext ? T.textMuted : isToday ? '#fff' : isSun ? T.danger : isSat ? T.purple : T.textSub, borderRadius:isToday ? 8 : 0, opacity:day.isNext ? 0.5 : 1, border:'none' }}>
+                  <div style={{ fontSize:14, fontWeight:800, lineHeight:1.3 }}>{day.d}</div>
+                  <div style={{ fontSize:10, fontWeight:500, opacity:0.7 }}>{DNAMES[day.dow]}</div>
+                </th>
               })}
             </tr>
           </thead>
           <tbody>
-            {grouped.map(br => (
-              <>
-                <tr key={`hd-${br.id}`}>
-                  <td colSpan={days.length+1} style={{ padding:'4px 8px', background:br.color+'20', borderLeft:`3px solid ${br.color}`, fontSize:T.fs.xxs, fontWeight:T.fw.bolder, color:br.color, borderBottom:`1px solid ${T.border}` }}>
-                    {br.name}
+            {shownBranches.map(branch => {
+              const emps = ALL_EMPLOYEES.filter(e => e.branch === branch.id)
+              return [
+                <tr key={'bh-'+branch.id}>
+                  <td colSpan={days.length+1} style={{ padding:'6px 10px 3px', border:'none', position:'sticky', left:0, zIndex:10 }}>
+                    <div style={{ display:'inline-flex', alignItems:'center', gap:6, background:branch.color+'18', padding:'3px 12px 3px 8px', borderRadius:6, borderLeft:`4px solid ${branch.color}` }}>
+                      <span style={{ fontSize:12, fontWeight:700, color:branch.color }}>{branch.name}</span>
+                    </div>
                   </td>
-                </tr>
-                {br.emps.map(emp => (
-                  <tr key={emp.id}>
-                    <td style={{ ...stickyCol, padding:'3px 8px', borderLeft:`3px solid ${br.color}`, borderBottom:`1px solid ${T.border}` }}>
-                      <EmpCell emp={emp} br={br} sch={sch} year={year} month={month} />
-                    </td>
-                    {days.map(d => {
-                      const ds = d.toISOString().slice(0,10)
-                      const status = getS(emp.id, ds)
-                      const sc = S_COLOR[status] || (status?.startsWith('지원') ? S_COLOR['지원'] : S_COLOR['근무'])
-                      const label = status===STATUS.WORK?'근무':status===STATUS.OFF?'휴':status===STATUS.MUST_OFF?'꼭':status.replace('지원(','↗').replace(')','')
-                      return (
-                        <td key={ds} onClick={()=>cycleCell(emp.id,ds)} style={{ padding:2, textAlign:'center', borderBottom:`1px solid ${T.border}`, cursor:'pointer', userSelect:'none' }}>
-                          <div style={{ background:sc.bg, color:sc.text, border:`1px solid ${sc.border}`, borderRadius:3, padding:'2px 0', fontSize:9, fontWeight:sc.bold?700:500 }}>
-                            {label}
-                          </div>
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))}
-              </>
-            ))}
-
-            {/* 남자직원 */}
-            {maleEmps.length > 0 && <>
-              <tr>
-                <td colSpan={days.length+1} style={{ padding:'4px 8px', background:'#e8f0fb', borderLeft:'3px solid #2a6099', fontSize:T.fs.xxs, fontWeight:T.fw.bolder, color:'#2a6099', borderBottom:`1px solid ${T.border}` }}>
-                  남자직원
-                </td>
-              </tr>
-              {maleEmps.map(emp => (
+                </tr>,
+                ...emps.map((emp, ei) => (
                 <tr key={emp.id}>
-                  <td style={{ ...stickyCol, padding:'3px 8px', borderLeft:'3px solid #2a6099', borderBottom:`1px solid ${T.border}` }}>
-                    <div style={{ fontSize:11 }}>{emp.name}</div>
-                    <div style={{ fontSize:8, color:T.textMuted }}>남직원</div>
+                  <td style={{ ...stickyCol, padding:'6px 10px', borderLeft:`3px solid ${branch.color}`, background:T.bgCard, borderRadius:'8px 0 0 8px', border:'none' }}>
+                    <EmpLabel emp={emp} branch={branch} sch={sch} year={year} month={month} curMonthStr={curMonthStr}/>
                   </td>
-                  {days.map(d => {
-                    const ds = d.toISOString().slice(0,10)
-                    const status = getS(emp.id, ds)
-                    const sc = S_COLOR[status] || S_COLOR['근무']
-                    return (
-                      <td key={ds} onClick={()=>cycleCell(emp.id,ds)} style={{ padding:2, textAlign:'center', borderBottom:`1px solid ${T.border}`, cursor:'pointer', userSelect:'none' }}>
-                        <div style={{ background:sc.bg, color:sc.text, border:`1px solid ${sc.border}`, borderRadius:3, padding:'2px 0', fontSize:9, fontWeight:sc.bold?700:500 }}>
-                          {status===STATUS.WORK?'근':status===STATUS.OFF?'휴':'꼭'}
-                        </div>
-                      </td>
-                    )
+                  {days.map((day, dayIdx) => {
+                    const empIdx = renderOrderEmps.findIndex(e => e.id === emp.id)
+                    return <ScheduleCell key={day.ds} emp={emp} day={day} dayIdx={dayIdx} empIdx={empIdx}
+                      getS={getS} isConfirmed={isConfirmed} lockedDates={lockedDates} selectedCells={selectedCells}
+                      setSelectedCells={setSelectedCells} setEditCell={setEditCell} setShowBulkModal={setShowBulkModal}
+                      gridDragRef={gridDragRef} dragJustEndedRef={dragJustEndedRef} renderOrderEmps={renderOrderEmps}
+                      days={days} isWeekBoundary={isWeekBoundary} today={today} fmtDs={fmtDs}
+                      empStartDate={empSettings[emp.id]?.startDate}/>
                   })}
                 </tr>
-              ))}
-            </>}
+              ))]
+            })}
+
+            {/* Male employees */}
+            {(() => {
+              const maleEmps = ALL_EMPLOYEES.filter(e => e.isMale)
+              if (!maleEmps.length || (filterBranch !== 'all' && filterBranch !== 'male')) return null
+              return [
+                <tr key="bh-male">
+                  <td colSpan={days.length+1} style={{ padding:'6px 10px 3px', border:'none', position:'sticky', left:0, zIndex:10 }}>
+                    <div style={{ display:'inline-flex', alignItems:'center', gap:6, background:T.primary+'18', padding:'3px 12px 3px 8px', borderRadius:6, borderLeft:'4px solid '+T.primary }}>
+                      <span style={{ fontSize:12, fontWeight:700, color:T.primary }}>남자직원</span>
+                    </div>
+                  </td>
+                </tr>,
+                ...maleEmps.map((emp, ei) => (
+                <tr key={emp.id}>
+                  <td style={{ ...stickyCol, padding:'6px 10px', borderLeft:'3px solid '+T.primary, background:T.bgCard, borderRadius:'8px 0 0 8px', border:'none' }}>
+                    <MaleEmpLabel emp={emp} sch={sch} year={year} month={month} curMonthStr={curMonthStr}/>
+                  </td>
+                  {days.map((day, dayIdx) => {
+                    const empIdx = renderOrderEmps.findIndex(e => e.id === emp.id)
+                    const s = getS(emp.id, day.ds)
+                    const rotBranch = s === '근무' ? getMaleRotBranch(emp.id, day.ds) : null
+                    return <ScheduleCell key={day.ds} emp={emp} day={day} dayIdx={dayIdx} empIdx={empIdx}
+                      getS={getS} isConfirmed={isConfirmed} lockedDates={lockedDates} selectedCells={selectedCells}
+                      setSelectedCells={setSelectedCells} setEditCell={setEditCell} setShowBulkModal={setShowBulkModal}
+                      gridDragRef={gridDragRef} dragJustEndedRef={dragJustEndedRef} renderOrderEmps={renderOrderEmps}
+                      days={days} isWeekBoundary={isWeekBoundary} today={today} fmtDs={fmtDs}
+                      rotBranch={rotBranch} isMale
+                      empStartDate={empSettings[emp.id]?.startDate}/>
+                  })}
+                </tr>
+              ))]
+            })()}
+
+            <tr><td colSpan={dim+1} style={{ height:6 }}/></tr>
+
+            {/* Daily count */}
+            <tr>
+              <td style={{ ...stickyCol, padding:'6px 10px', fontSize:12, fontWeight:700, color:T.textSub, background:T.bg, border:'none' }}>일 근무</td>
+              {days.map(day => {
+                const c = dailyCount(day.ds)
+                const ok = c >= 10 && c <= 15
+                return <td key={day.ds} style={{ textAlign:'center', fontWeight:700, fontSize:14, padding:'5px 2px', color:c===0 ? T.gray300 : !ok ? '#fff' : T.textSub, background:c>0 && !ok ? T.danger : T.gray100, borderRadius:6, border:'none' }}>
+                  {c>0 ? c : ''}
+                </td>
+              })}
+            </tr>
+
+            {/* Branch counts */}
+            {shownBranches.map(branch => {
+              const emps = ALL_EMPLOYEES.filter(e => e.branch === branch.id)
+              return <tr key={branch.id+'-cnt'}>
+                <td style={{ ...stickyCol, padding:'4px 10px', fontSize:11, color:branch.color, fontWeight:700, background:T.bg, borderLeft:`3px solid ${branch.color}`, borderRadius:'6px 0 0 6px', border:'none' }}>{branch.name}</td>
+                {days.map(day => {
+                  const supportersIn = ALL_EMPLOYEES.filter(e => e.branch !== branch.id && isSupport(getS(e.id, day.ds)) && getS(e.id, day.ds).includes(branch.name)).length
+                  const c = emps.filter(e => { const s = getS(e.id, day.ds); return !s || s === STATUS.WORK || isSupport(s) || s === STATUS.SHARE }).length + supportersIn
+                  const under = c < branch.minStaff && Object.keys(sch).length > 0
+                  return <td key={day.ds} style={{ textAlign:'center', fontSize:11, fontWeight:600, padding:'3px 2px', color:under ? '#fff' : branch.color, background:under ? T.danger : 'transparent', borderRadius:4, border:'none' }}>
+                    {c}
+                  </td>
+                })}
+              </tr>
+            })}
           </tbody>
         </table>
+      )}
       </div>
     </div>
   )
 }
 
-function EmpCell({ emp, br, sch, year, month }) {
-  const curMs = `${year}-${pad(month+1)}`
-  const empSch = sch[emp.id] || {}
-  const workDays = Object.entries(empSch).filter(([ds,s])=>ds.startsWith(curMs)&&(s==='근무'||s?.startsWith('지원')||s==='')).length
-  const offDays = Object.entries(empSch).filter(([ds,s])=>ds.startsWith(curMs)&&(s==='휴무'||s==='휴무(꼭)')).length
+// ── Sub components ──
 
+function EmpLabel({ emp, branch, sch, year, month, curMonthStr }) {
   const supportMap = {}
-  Object.values(empSch).forEach(s => {
-    if (s?.startsWith('지원(')) {
-      const bn = s.replace('지원(','').replace(')','')
-      supportMap[bn] = (supportMap[bn]||0)+1
-    }
+  Object.values(sch[emp.id] || {}).forEach(s => {
+    if (s?.startsWith('지원(')) { const bn = s.replace('지원(','').replace(')',''); supportMap[bn] = (supportMap[bn]||0)+1 }
   })
-  const supportEntries = Object.entries(supportMap)
+  const entries = Object.entries(supportMap)
+  const workDays = Object.entries(sch[emp.id]||{}).filter(([ds,s]) => ds.startsWith(curMonthStr) && (s===STATUS.WORK || isSupport(s) || s===STATUS.SHARE || s==='')).length
+  const offDays = Object.entries(sch[emp.id]||{}).filter(([ds,s]) => ds.startsWith(curMonthStr) && (s===STATUS.OFF || s===STATUS.MUST_OFF)).length
+  const violations_ = workDays > 0 && (workDays < 11 || workDays > 15)
 
   return (
-    <>
-      <div style={{ fontSize:11, fontWeight:emp.isOwner?T.fw.bolder:T.fw.medium, display:'flex', alignItems:'center', gap:4 }}>
-        {emp.name}
-        {supportEntries.length>0 && (
-          <span style={{ fontSize:8, background:'#fff4e0', color:'#c87020', border:'1px solid #ffd090', borderRadius:3, padding:'0 3px' }}>
-            {supportEntries.map(([bn,cnt])=>`${bn}:${cnt}`).join(' ')}
-          </span>
-        )}
+    <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+      <div style={{ width:8, height:8, borderRadius:'50%', background:branch.color, flexShrink:0 }}/>
+      <div>
+        <div style={{ fontSize:13, fontWeight:emp.isOwner ? 700 : 600, lineHeight:1.3, display:'flex', alignItems:'center', gap:5, overflow:'hidden' }}>
+          {emp.name}
+          {entries.length > 0 && <span style={{ fontSize:9, color:'#c87020', background:'#fff4e0', borderRadius:4, padding:'1px 5px', fontWeight:600, whiteSpace:'nowrap' }}>{entries.map(([bn,cnt]) => `${bn}:${cnt}`).join(' ')}</span>}
+        </div>
+        <div style={{ fontSize:10, color:T.textMuted, display:'flex', gap:4, alignItems:'center', marginTop:1 }}>
+          {branch.name}
+          {(workDays > 0 || offDays > 0) && <span style={{ fontSize:10, fontWeight:700, color:violations_ ? T.danger : T.textSub, background:violations_ ? T.dangerLt : T.gray100, borderRadius:4, padding:'0 4px' }}>근{workDays}·휴{offDays}</span>}
+        </div>
       </div>
-      <div style={{ fontSize:8, color:T.textMuted, display:'flex', gap:4 }}>
-        <span>{br.name}</span>
-        {(workDays>0||offDays>0) && (
-          <span style={{ fontWeight:700, color:(workDays<11||workDays>15)?T.danger:T.textSub }}>
-            근{workDays}·휴{offDays}
-          </span>
-        )}
-      </div>
-    </>
+    </div>
   )
 }
 
-const stickyCol = { position:'sticky', left:0, zIndex:5, background:T.bgCard }
-const navBtn = { width:28, height:28, borderRadius:'50%', border:`1px solid ${T.border}`, background:'none', cursor:'pointer', fontSize:16 }
+function MaleEmpLabel({ emp, sch, year, month, curMonthStr }) {
+  const workDays = Object.entries(sch[emp.id]||{}).filter(([ds,s]) => ds.startsWith(curMonthStr) && (s===STATUS.WORK || isSupport(s) || s===STATUS.SHARE || s==='')).length
+  const offDays = Object.entries(sch[emp.id]||{}).filter(([ds,s]) => ds.startsWith(curMonthStr) && (s===STATUS.OFF || s===STATUS.MUST_OFF)).length
+
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+      <div style={{ width:8, height:8, borderRadius:'50%', background:T.primary, flexShrink:0 }}/>
+      <div>
+        <div style={{ fontSize:13, fontWeight:600 }}>{emp.name}</div>
+        <div style={{ fontSize:10, color:'#88a8c8', display:'flex', gap:4, alignItems:'center', marginTop:1 }}>
+          남자직원
+          {(workDays > 0 || offDays > 0) && <span style={{ fontSize:10, fontWeight:700, color:T.primary, background:T.primary+'15', borderRadius:4, padding:'0 4px' }}>근{workDays}·휴{offDays}</span>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ScheduleCell({ emp, day, dayIdx, empIdx, getS, isConfirmed, lockedDates, selectedCells, setSelectedCells, setEditCell, setShowBulkModal, gridDragRef, dragJustEndedRef, renderOrderEmps, days, isWeekBoundary, today, fmtDs: fmtDsFn, rotBranch, isMale, empStartDate }) {
+  const s = getS(emp.id, day.ds)
+  const sc = getSColor(s)
+  const wb = isWeekBoundary(day)
+  const isToday = day.ds === fmtDsFn(today.getFullYear(), today.getMonth(), today.getDate())
+  const supportLabel = isSupport(s) && s !== '지원' ? s.replace('지원(','').replace(')','') : null
+  const cellKey = `${emp.id}__${day.ds}`
+  const isSelected = selectedCells.has(cellKey)
+  const beforeStart = empStartDate && day.ds < empStartDate
+  const locked = lockedDates.has(day.ds) || isConfirmed || beforeStart
+
+  const onClick = (e) => {
+    if (dragJustEndedRef.current || locked) return
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedCells(prev => { const next = new Set(prev); if (next.has(cellKey)) next.delete(cellKey); else next.add(cellKey); return next })
+      return
+    }
+    if (selectedCells.size > 1 && selectedCells.has(cellKey)) { setShowBulkModal(true); return }
+    setSelectedCells(new Set())
+    setShowBulkModal(false)
+    setEditCell({ emp, day, cur:s })
+  }
+
+  const onMouseDown = (e) => {
+    if (locked || e.ctrlKey || e.metaKey) return
+    e.preventDefault()
+    gridDragRef.current = { active:true, startEmpIdx:empIdx, startDayIdx:dayIdx, moved:false }
+  }
+
+  const onMouseEnter = (e) => {
+    if (lockedDates.has(day.ds)) return
+    if (!gridDragRef.current.active && e.buttons === 1 && !e.ctrlKey && !e.metaKey) {
+      gridDragRef.current = { active:true, startEmpIdx:empIdx, startDayIdx:dayIdx, moved:false }
+      setSelectedCells(new Set([cellKey]))
+      return
+    }
+    if (!gridDragRef.current.active) return
+    gridDragRef.current.moved = true
+    const { startEmpIdx, startDayIdx } = gridDragRef.current
+    const minE = Math.min(startEmpIdx, empIdx), maxE = Math.max(startEmpIdx, empIdx)
+    const minD = Math.min(startDayIdx, dayIdx), maxD = Math.max(startDayIdx, dayIdx)
+    const sel = new Set()
+    for (let ei = minE; ei <= maxE; ei++) {
+      const e2 = renderOrderEmps[ei]; if (!e2) continue
+      for (let di = minD; di <= maxD; di++) {
+        const d2 = days[di]; if (!d2 || lockedDates.has(d2.ds)) continue
+        sel.add(`${e2.id}__${d2.ds}`)
+      }
+    }
+    setSelectedCells(sel)
+  }
+
+  const cellBg = isSelected ? 'rgba(66,133,244,0.15)' : 'transparent'
+  const boxBg = s ? sc.bg : (beforeStart ? T.gray200 : '#fafafa')
+  const boxColor = s ? sc.text : (beforeStart ? T.gray400 : T.gray300)
+  const boxShadow = s ? `0 1px 3px ${sc.border}44` : 'none'
+
+  return (
+    <td className="cc" onClick={onClick} onMouseDown={onMouseDown} onMouseEnter={onMouseEnter}
+      style={{ padding:'2px', textAlign:'center', background:cellBg, border:'none', borderRadius:6, opacity:day.isNext ? 0.5 : beforeStart ? 0.35 : 1, cursor:locked ? 'not-allowed' : 'pointer', userSelect:'none', verticalAlign:'middle' }}>
+      <div className="sch-box" style={{
+        background:boxBg, color:boxColor, boxShadow,
+        borderRadius:6, padding:'4px 2px', fontSize:11, fontWeight:s==='휴무'||s==='휴무(꼭)' ? 700 : s ? 600 : 400,
+        minWidth:40, minHeight:28, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column',
+        position:'relative', border:'none', transition:'transform .1s, box-shadow .1s'
+      }}>
+        {s==='휴무(꼭)' && !emp.isOwner && <span style={{ position:'absolute', top:-5, right:1, fontSize:8, color:'#9060d0', fontWeight:900 }}>★</span>}
+        {isSupport(s) ? <><span style={{ fontSize:10, fontWeight:700, lineHeight:1 }}>지원</span>{supportLabel && <span style={{ fontSize:9, color:sc.text, fontWeight:600, lineHeight:1 }}>→{supportLabel}</span>}</> : <span>{s || '—'}</span>}
+        {rotBranch && <span style={{ fontSize:8, color:'#2a6099', fontWeight:700, lineHeight:1 }}>{BRANCH_LABEL[rotBranch]}</span>}
+      </div>
+    </td>
+  )
+}
+
+const stickyCol = { position:'sticky', left:0, zIndex:10, width:150, minWidth:150, padding:'6px 10px', verticalAlign:'middle', background:T.bgCard, boxShadow:'4px 0 8px rgba(0,0,0,.06)', border:'none' }

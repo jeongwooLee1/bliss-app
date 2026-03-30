@@ -301,6 +301,15 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - 이월 락 보호: 이전 달 확정 시 이월 날짜가 다음 달에서도 잠금 유지
 - check-square 아이콘 추가
 
+### 남자직원 주간 로테이션 지점 배치 (2026-03-30)
+- `maleRotation_v1` 키로 schedule_data에 저장
+- 구조: `{ empId: { branches: ["yongsan","magok","hongdae"], startDate: "2026-03-30" } }`
+- 주 단위(월~일) 로테이션: `(날짜 - startDate) / 7` → branches 인덱스
+- 근무표: 남자직원 근무일 셀에 지점명 태그 표시
+- 근무표 설정: 남자직원 섹션에 로테이션 지점 순서 + 시작일 설정 UI
+- 타임라인: useMaleRotation() 훅으로 로드 → BASE_EMP_LIST에서 동적 branch_id 매핑
+- 재윤: 용산→마곡→홍대, 주용: 천호→위례→잠실 (3/30부터)
+
 ### 주의사항 (다음 세션에서 참고)
 - Cloudflare 캐시: 배포 후 반드시 Purge Everything (Dashboard → blissme.ai → Caching)
 - schedule.html: 서버 배포 시 /var/www/html/bliss-app/schedule.html 별도 복사 필요

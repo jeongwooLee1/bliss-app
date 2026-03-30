@@ -11,4 +11,5 @@ allowed-tools: Bash
 4. `ssh bliss-server "sudo cp -r /tmp/bliss-app/* /var/www/html/bliss-app/ && sudo chown -R www-data:www-data /var/www/html/bliss-app"` 로 배포
 5. schedule.html이 삭제되었으면 `scp /c/Users/TP005/bliss/schedule.html bliss-server:/tmp/schedule.html && ssh bliss-server "sudo cp /tmp/schedule.html /var/www/html/bliss-app/schedule.html && sudo chown www-data:www-data /var/www/html/bliss-app/schedule.html"` 로 복구
 6. 배포된 JS 파일 확인: `ssh bliss-server "ls /var/www/html/bliss-app/assets/index-*.js"`
-7. 사용자에게 "Cloudflare 캐시 퍼지 필요: https://dash.cloudflare.com → blissme.ai → Caching → Purge Everything" 안내
+7. Cloudflare 캐시 자동 퍼지: `source .env && curl -s -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/purge_cache" -H "Authorization: Bearer ${CF_TOKEN}" -H "Content-Type: application/json" -d '{"purge_everything":true}'`
+8. 퍼지 결과 확인 (success:true 여부)
