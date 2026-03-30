@@ -294,6 +294,13 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - 월 변경 시 해당 월의 락 상태 자동 로드/해제
 - 락 버튼 + 확정 해제 배너 모두 DB 저장 연동
 
+### 근무표 드래그/Shift 복수 선택 + 전체 근무 버튼 (2026-03-30)
+- 드래그로 여러 셀 선택 → 파란 하이라이트 → 벌크 편집 모달
+- Shift+클릭으로 직사각형 범위 선택
+- "전체 근무" 버튼: 잠금 날짜 제외하고 모든 셀에 "근무" 채움
+- 이월 락 보호: 이전 달 확정 시 이월 날짜가 다음 달에서도 잠금 유지
+- check-square 아이콘 추가
+
 ### 주의사항 (다음 세션에서 참고)
 - Cloudflare 캐시: 배포 후 반드시 Purge Everything (Dashboard → blissme.ai → Caching)
 - schedule.html: 서버 배포 시 /var/www/html/bliss-app/schedule.html 별도 복사 필요
