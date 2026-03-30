@@ -270,6 +270,14 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - `/sync` — Oracle→Supabase 동기화
 - `/check` — 서버 상태 + 로그 확인
 
+### 버그 6건 수정 (2026-03-30)
+- 직원근무표 → 타임라인 리얼타임 전달: 직원 추가/근무데이터 변경 시 타임라인에 실시간 반영
+- 타임라인 설정 디폴트: 글자크기 13, 불투명도 50%
+- 예약모달 수동입력 시 출근직원 목록: 현재 출근 직원만 정확히 표시
+- 미배정칼럼 등록 시 이중 등록 해결: 다른 칼럼에 중복 기록 방지
+- 시술상품관리 카테고리 순서 변경 시 리스트 즉시 반영
+- 네이버 예약 변경건 데이터 반영 (김민진 건 포함)
+
 ### 주의사항 (다음 세션에서 참고)
 - Cloudflare 캐시: 배포 후 반드시 Purge Everything (Dashboard → blissme.ai → Caching)
 - schedule.html: 서버 배포 시 /var/www/html/bliss-app/schedule.html 별도 복사 필요
