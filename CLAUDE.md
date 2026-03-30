@@ -287,6 +287,13 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - 시술상품관리 카테고리 순서 변경 시 리스트 즉시 반영
 - 네이버 예약 변경건 데이터 반영 (김민진 건 포함)
 
+### 근무표 락 상태 DB 저장 (2026-03-30)
+- `lockStatus_v1` 키로 schedule_data 테이블에 월별 락 상태 저장
+- 구조: `{ "YYYY-MM": { confirmed: bool, lockedDates: [] } }`
+- 페이지 로드 시 DB에서 복원 → 새로고침해도 락 유지
+- 월 변경 시 해당 월의 락 상태 자동 로드/해제
+- 락 버튼 + 확정 해제 배너 모두 DB 저장 연동
+
 ### 주의사항 (다음 세션에서 참고)
 - Cloudflare 캐시: 배포 후 반드시 Purge Everything (Dashboard → blissme.ai → Caching)
 - schedule.html: 서버 배포 시 /var/www/html/bliss-app/schedule.html 별도 복사 필요
