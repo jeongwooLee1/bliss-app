@@ -248,3 +248,32 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 ### 서버 OpenSSL 충돌 해결
 - oracledb 설치 시 cryptography 업그레이드 → 시스템 pyOpenSSL과 충돌 → 서버 크래시
 - 해결: sudo pip3 install pyOpenSSL cryptography --upgrade
+
+### 고객관리 가입일 + 문자수신 동의 (2026-03-29)
+- DB 컬럼: join_date(text), sms_consent(boolean, 디폴트 true)
+- 고객 등록/수정 모달: 가입일 date picker + 동의/거부 버튼
+- 리스트: 가입일 표시 + 수신거부 시 빨간 태그
+- 신규 고객 디폴트: 오늘 날짜 + 수신동의
+
+### 동명이인 매칭 방지 (2026-03-29)
+- 매출 히스토리 로드 시 이름 fallback 검색 제거 (동명이인 메모 잘못 매칭 방지)
+- 고객 검색: 전화번호+이름 OR 조건으로 동시 검색
+
+### 알림톡 조건 정리 (2026-03-29)
+- 내부일정: 알림톡 절대 안 물어봄
+- 전화번호 없음/010 아닌 번호: 안 물어봄
+- 미배정→배정(칼럼 이동): 안 물어봄
+- 시간 변경 + 010 고객만 팝업 표시
+
+### Slash Commands 추가 (2026-03-29)
+- `/deploy` — 빌드 → 서버 배포 → CF 퍼지 안내
+- `/sync` — Oracle→Supabase 동기화
+- `/check` — 서버 상태 + 로그 확인
+
+### 주의사항 (다음 세션에서 참고)
+- Cloudflare 캐시: 배포 후 반드시 Purge Everything (Dashboard → blissme.ai → Caching)
+- schedule.html: 서버 배포 시 /var/www/html/bliss-app/schedule.html 별도 복사 필요
+- Supabase Free Plan: Egress 한도 초과 상태 (4/24 리셋). 폴링 제거 완료로 해결
+- 서버 pyOpenSSL: oracledb 설치 시 충돌 주의 (이미 해결)
+- prev_reservation_id: BLISS_PRESERVE_FIELDS에 포함 (confirm 시 덮어쓰기 방지)
+- reservation_id: NULLS NOT DISTINCT unique constraint → AI 예약에 고유값 필수
