@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { T, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, SYSTEM_TAG_NAME_NEW_CUST, SYSTEM_TAG_NAME_PREPAID, SYSTEM_SRC_NAME_NAVER } from '../../lib/constants'
-import { sb } from '../../lib/sb'
+import { sb, SB_URL, SB_KEY } from '../../lib/sb'
 import { fromDb, toDb, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS, _activeBizId } from '../../lib/db'
 import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, getDow, genId, fmtLocal, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone } from '../../lib/utils'
 import I from '../common/I'
@@ -85,7 +85,7 @@ function DatePick({ value, onChange, style, min }) {
 const STATUS_KEYS = ["confirmed","completed","cancelled","no_show"];
 const DEFAULT_SOURCES = ["네이버","전화","방문","소개","인스타","카카오","기타"];
 
-function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBranch, userBranches, data, setData, setPage, naverColShow={} }) {
+function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBranch, userBranches, data, setData, setPage, naverColShow={}, setPendingChat }) {
   const SVC_LIST = (data?.services || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
   const PROD_LIST = (data?.products || []);
   const CATS = (data?.categories || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
@@ -225,6 +225,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
         ...p,
         custId: c.id,
         custGender: c.gender || p.custGender,
+        custEmail: c.email || p.custEmail || "",
         isNewCust: false,
       }));
     }).catch(() => {});
@@ -249,7 +250,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
     }, 300);
     return () => clearTimeout(timer);
   }, [custSearch]);
-  const selectCust = (c) => { setF(p=>({...p, custId:c.id, custName:c.name, custPhone:c.phone, custGender:c.gender, isNewCust:false})); setCustSearch(""); setShowCustDropdown(false); };
+  const selectCust = (c) => { setF(p=>({...p, custId:c.id, custName:c.name, custPhone:c.phone, custGender:c.gender, custEmail:c.email||"", isNewCust:false})); setCustSearch(""); setShowCustDropdown(false); };
 
   // 태그 선택 → 기본 5분 + 태그 소요시간 합산 → 종료시간 자동 계산
   const toggleTag = (tagId) => {
@@ -692,6 +693,7 @@ ${naverText}
                 style={f.isNewCust?{borderColor:T.danger,background:T.dangerLt}:{}}/></div>
               <div><input className={"inp inp-cust"} value={f.custPhone} onChange={e=>set("custPhone",e.target.value)} placeholder="010"
                 style={f.isNewCust?{borderColor:T.danger,background:T.dangerLt}:{}}/></div>
+              <div style={{gridColumn:"span 2"}}><input className={"inp inp-cust"} type="email" value={f.custEmail||""} onChange={e=>set("custEmail",e.target.value)} placeholder="이메일" style={{fontSize:T.fs.xs}}/></div>
               {/* 방문자(대리예약) */}
               {(f.visitorName||f.visitorPhone||f.isProxy) && <div style={{gridColumn:"span 2",display:"flex",gap:6,alignItems:"center",padding:"4px 8px",background:"#fff8f0",borderRadius:T.radius.md,border:"1px solid #ffd0a0"}}>
                 <span style={{fontSize:T.fs.nano,color:"#c07020",fontWeight:700,flexShrink:0}}>방문자</span>
@@ -798,6 +800,17 @@ ${naverText}
                     const txt = (0.299*r+0.587*g+0.114*b)/255>0.55?T.text:T.bgCard;
                     return <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bold,color:txt,background:bg,borderRadius:T.radius.sm,padding:"1px 7px"}}>{f.source}</span>;
                   })()}
+                  {(f.chatChannel || item?.chatChannel) && setPendingChat && <button onClick={async(e)=>{
+                    e.stopPropagation();
+                    let ch=f.chatChannel, acc=f.chatAccountId, uid=f.chatUserId;
+                    if(!ch && item?.id){
+                      const rows=await fetch(`${SB_URL}/rest/v1/reservations?id=eq.${item.id}&select=chat_channel,chat_account_id,chat_user_id`,{headers:{"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY},cache:"no-store"}).then(r=>r.json());
+                      if(rows?.[0]){ch=rows[0].chat_channel;acc=rows[0].chat_account_id;uid=rows[0].chat_user_id;}
+                    }
+                    if(ch&&uid){setPendingChat({user_id:uid,channel:ch,account_id:acc});setPage("messages");onClose();}
+                  }} style={{fontSize:11,fontWeight:700,color:"#5B63B5",background:"#5B63B510",border:"1px solid #5B63B530",borderRadius:5,padding:"2px 8px",cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:3}}>
+                    💬 대화보기
+                  </button>}
                 </span>
                 <span className={"tags-acc-chev"+(srcOpen?" open":"")}>▾</span>
               </div>

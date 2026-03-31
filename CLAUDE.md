@@ -316,6 +316,30 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - 앱 코드 (MessagesPage.jsx, AppShell.jsx, ReservationModal.jsx, TimelinePage.jsx): 전체 치환
 - Realtime Publication도 messages로 변경 필요 (Supabase Dashboard에서 수동 확인)
 
+### 이메일 필드 추가 (2026-03-31)
+- DB: customers.email, reservations.cust_email 컬럼 추가
+- DBMAP: email, custEmail 매핑
+- 고객관리: 이메일 입력 필드 (이미 추가됨)
+- 예약 모달: 고객명/연락처 아래 이메일 필드 추가
+- 자동 고객 매칭 시 이메일도 가져옴
+
+### 예약-채팅 연동 (2026-03-31)
+- reservations 테이블: chat_channel, chat_account_id, chat_user_id 컬럼
+- ai_booking.py: 예약 생성 시 채팅 정보 자동 저장
+- 예약 모달 → 💬 대화보기 → 메시지함 해당 대화방 자동 이동
+- 메시지함 → 📅 예약 라벨 → 타임라인 예약 모달로 이동
+- 확정 버튼: chat 필드에서 직접 채널/user_id 읽어서 발송 (memo 파싱 불필요)
+
+### 인스타 확정 메시지 발송 수정 (2026-03-31)
+- SB_URL/SB_KEY import 누락 수정 (ReferenceError)
+- 서버 send_queue_thread: Instagram DM 발송 이미 지원
+- ai_booking.py: chat_channel/chat_account_id/chat_user_id 예약에 저장
+
+### Cloudflare Browser Cache TTL (2026-03-31)
+- "4 hours" → "Respect Existing Headers"로 변경
+- nginx no-cache 헤더가 제대로 적용됨
+- 배포 후 캐시 문제 해결
+
 ### 주의사항 (다음 세션에서 참고)
 - Cloudflare 캐시: 배포 후 반드시 Purge Everything (Dashboard → blissme.ai → Caching)
 - schedule.html: 서버 배포 시 /var/www/html/bliss-app/schedule.html 별도 복사 필요
