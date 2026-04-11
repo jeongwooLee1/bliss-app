@@ -1579,21 +1579,21 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             <div style={{fontSize:10,color:T.textMuted,marginBottom:4,fontWeight:700}}>근무시간</div>
                             {(()=>{
                               const whKey = room.staffId+"_"+room.branch_id+"_"+selDate;
-                              const wh = empWorkHours[whKey] || empWorkHours[room.staffId+"_"+room.branch_id] || {start:"11:00",end:"21:00"};
-                              const hours = Array.from({length:24*6},(_,i)=>{const h=Math.floor(i/6),m=(i%6)*10;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;});
+                              const wh = empWorkHours[whKey] || empWorkHours[room.staffId+"_"+room.branch_id] || {start:"10:00",end:"21:00"};
+                              const hours = Array.from({length:24},(_,i)=>`${String(i).padStart(2,"0")}:00`);
                               const selSt = {flex:1,fontSize:11,padding:"4px 3px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"};
                               return <div style={{display:"flex",gap:4,alignItems:"center"}}>
                                 <select defaultValue={wh.start} style={selSt}
-                                  onChange={e=>{const v=e.target.value; _setEmpWorkHours(p=>({...p,[whKey]:{...(p[whKey]||p[room.staffId+"_"+room.branch_id]||{start:"11:00",end:"21:00"}),start:v}}));}}>
+                                  onChange={e=>{const v=e.target.value; _setEmpWorkHours(p=>({...p,[whKey]:{...(p[whKey]||p[room.staffId+"_"+room.branch_id]||{start:"10:00",end:"21:00"}),start:v}}));}}>
                                   {hours.map(h=><option key={h} value={h}>{h}</option>)}
                                 </select>
                                 <span style={{fontSize:11}}>~</span>
                                 <select defaultValue={wh.end} style={selSt}
-                                  onChange={e=>{const v=e.target.value; _setEmpWorkHours(p=>({...p,[whKey]:{...(p[whKey]||p[room.staffId+"_"+room.branch_id]||{start:"11:00",end:"21:00"}),end:v}}));}}>
+                                  onChange={e=>{const v=e.target.value; _setEmpWorkHours(p=>({...p,[whKey]:{...(p[whKey]||p[room.staffId+"_"+room.branch_id]||{start:"10:00",end:"21:00"}),end:v}}));}}>
                                   {hours.map(h=><option key={h} value={h}>{h}</option>)}
                                 </select>
                                 <button onClick={()=>{
-                                  const cur = empWorkHours[whKey] || empWorkHours[room.staffId+"_"+room.branch_id] || {start:"11:00",end:"21:00"};
+                                  const cur = empWorkHours[whKey] || empWorkHours[room.staffId+"_"+room.branch_id] || {start:"10:00",end:"21:00"};
                                   setEmpWorkHours(p=>({...p,[whKey]:cur}));
                                   setEmpMovePopup(null);
                                 }} style={{padding:"4px 8px",fontSize:10,fontWeight:700,border:"none",borderRadius:6,background:T.primary,color:"#fff",cursor:"pointer"}}>저장</button>
