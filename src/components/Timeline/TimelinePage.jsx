@@ -57,6 +57,33 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       }).catch(console.error);
   }, []);
 
+  // 직원 근무시간: {empId: {start,end}, empId_date: {start,end}}
+  const [empWorkHours, _setEmpWorkHours] = useState({});
+  const empWorkHoursLoaded = React.useRef(false);
+  React.useEffect(() => {
+    if (empWorkHoursLoaded.current) return;
+    empWorkHoursLoaded.current = true;
+    fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.empWorkHours_v1&select=value`, {
+      headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
+    }).then(r => r.json()).then(rows => {
+      if (rows?.[0]?.value) {
+        const v = typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value;
+        _setEmpWorkHours(v);
+      }
+    }).catch(console.error);
+  }, []);
+  const setEmpWorkHours = React.useCallback((updater) => {
+    _setEmpWorkHours(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
+      fetch(`${SB_URL}/rest/v1/schedule_data`, {
+        method: "POST", headers: H,
+        body: JSON.stringify({ id: "empWorkHours_v1", key: "empWorkHours_v1", value: JSON.stringify(next) })
+      }).catch(console.error);
+      return next;
+    });
+  }, []);
+
   // 직원 목록: employees_v1 (schedule_data 테이블)에서 동적 로드 + Realtime + 폴링
   const [empList, setEmpList] = useState([]);
   useEffect(() => {
@@ -335,10 +362,13 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   // 직원이 특정 지점에서 활성인 시간 범위 반환 (null=종일)
   const getEmpActiveRange = (empId, date, branchId) => {
     const segs = getEmpBranches(empId, date);
-    if (!segs) return {from: null, until: null};
+    // empWorkHours에서 근무시간 가져오기
+    const wh = empWorkHours[empId+"_"+date] || empWorkHours[empId];
+    if (!segs) return wh ? {from: wh.start, until: wh.end} : {from: null, until: null};
     const seg = segs.find(s => s.branchId === branchId);
     if (!seg) return null; // 이 지점에 없음
-    return {from: seg.from, until: seg.until};
+    // 지점이동 시간 + 근무시간 중 더 제한적인 것
+    return {from: seg.from || (wh?.start || null), until: seg.until || (wh?.end || null)};
   };
   const [showModal, setShowModal] = useState(false);
   const [modalData, setModalData] = useState(null);
@@ -1509,8 +1539,33 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                         onClick={e=>{e.stopPropagation();setEmpMovePopup(p=>p?.empId===room.staffId?null:{empId:room.staffId,date:selDate,x:e.clientX,y:e.clientY});}}>
                         {room.name}
                       </span>
+                      {(()=>{
+                        const wh = empWorkHours[room.staffId+"_"+selDate] || empWorkHours[room.staffId];
+                        if(!wh) return null;
+                        return <span style={{fontSize:9,color:T.textMuted,marginTop:1}}>{wh.start}~{wh.end}</span>;
+                      })()}
                       {empMovePopup?.empId===room.staffId && empMovePopup?.date===selDate && (
                         <div onClick={e=>e.stopPropagation()} style={{position:"fixed",left:Math.min(empMovePopup.x,window.innerWidth-200),top:empMovePopup.y+8,background:T.bgCard,borderRadius:12,boxShadow:"0 4px 24px rgba(0,0,0,.22)",zIndex:9999,padding:"10px 0 6px",minWidth:200}}>
+                          {/* 근무시간 설정 */}
+                          <div style={{padding:"8px 12px",borderBottom:"1px solid "+T.border}}>
+                            <div style={{fontSize:10,color:T.textMuted,marginBottom:4,fontWeight:700}}>근무시간</div>
+                            {(()=>{
+                              const whKey = room.staffId+"_"+selDate;
+                              const wh = empWorkHours[whKey] || empWorkHours[room.staffId] || {start:"11:00",end:"21:00"};
+                              return <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                                <input type="time" defaultValue={wh.start} style={{flex:1,fontSize:11,padding:"4px 5px",borderRadius:6,border:"1px solid "+T.border}}
+                                  onChange={e=>{const v=e.target.value; _setEmpWorkHours(p=>({...p,[whKey]:{...(p[whKey]||p[room.staffId]||{start:"11:00",end:"21:00"}),start:v}}));}}/>
+                                <span style={{fontSize:11}}>~</span>
+                                <input type="time" defaultValue={wh.end} style={{flex:1,fontSize:11,padding:"4px 5px",borderRadius:6,border:"1px solid "+T.border}}
+                                  onChange={e=>{const v=e.target.value; _setEmpWorkHours(p=>({...p,[whKey]:{...(p[whKey]||p[room.staffId]||{start:"11:00",end:"21:00"}),end:v}}));}}/>
+                                <button onClick={()=>{
+                                  const cur = empWorkHours[whKey] || empWorkHours[room.staffId] || {start:"11:00",end:"21:00"};
+                                  setEmpWorkHours(p=>({...p,[whKey]:cur,[room.staffId]:cur}));
+                                  setEmpMovePopup(null);
+                                }} style={{padding:"4px 8px",fontSize:10,fontWeight:700,border:"none",borderRadius:6,background:T.primary,color:"#fff",cursor:"pointer"}}>저장</button>
+                              </div>;
+                            })()}
+                          </div>
                           <div style={{fontSize:11,color:T.textMuted,padding:"0 12px 8px",fontWeight:700,borderBottom:"1px solid "+T.border,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                             <span>{room.name}</span>
                             <div style={{display:"flex",gap:2}}>
