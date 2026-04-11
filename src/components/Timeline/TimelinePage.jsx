@@ -1552,12 +1552,18 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             {(()=>{
                               const whKey = room.staffId+"_"+selDate;
                               const wh = empWorkHours[whKey] || empWorkHours[room.staffId] || {start:"11:00",end:"21:00"};
+                              const hours = Array.from({length:24},(_,i)=>`${String(i).padStart(2,"0")}:00`);
+                              const selSt = {flex:1,fontSize:11,padding:"4px 3px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"};
                               return <div style={{display:"flex",gap:4,alignItems:"center"}}>
-                                <input type="time" defaultValue={wh.start} style={{flex:1,fontSize:11,padding:"4px 5px",borderRadius:6,border:"1px solid "+T.border}}
-                                  onChange={e=>{const v=e.target.value; _setEmpWorkHours(p=>({...p,[whKey]:{...(p[whKey]||p[room.staffId]||{start:"11:00",end:"21:00"}),start:v}}));}}/>
+                                <select defaultValue={wh.start} style={selSt}
+                                  onChange={e=>{const v=e.target.value; _setEmpWorkHours(p=>({...p,[whKey]:{...(p[whKey]||p[room.staffId]||{start:"11:00",end:"21:00"}),start:v}}));}}>
+                                  {hours.map(h=><option key={h} value={h}>{h}</option>)}
+                                </select>
                                 <span style={{fontSize:11}}>~</span>
-                                <input type="time" defaultValue={wh.end} style={{flex:1,fontSize:11,padding:"4px 5px",borderRadius:6,border:"1px solid "+T.border}}
-                                  onChange={e=>{const v=e.target.value; _setEmpWorkHours(p=>({...p,[whKey]:{...(p[whKey]||p[room.staffId]||{start:"11:00",end:"21:00"}),end:v}}));}}/>
+                                <select defaultValue={wh.end} style={selSt}
+                                  onChange={e=>{const v=e.target.value; _setEmpWorkHours(p=>({...p,[whKey]:{...(p[whKey]||p[room.staffId]||{start:"11:00",end:"21:00"}),end:v}}));}}>
+                                  {hours.map(h=><option key={h} value={h}>{h}</option>)}
+                                </select>
                                 <button onClick={()=>{
                                   const cur = empWorkHours[whKey] || empWorkHours[room.staffId] || {start:"11:00",end:"21:00"};
                                   setEmpWorkHours(p=>({...p,[whKey]:cur,[room.staffId]:cur}));
