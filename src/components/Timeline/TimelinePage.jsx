@@ -27,8 +27,41 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const PROD_LIST = (data?.products || []);
   const [selDate, setSelDate] = useState(todayStr());
   const [schHistory, setSchHistory] = useState(null);
-  // 직원 당일 지점 오버라이드: {empId_date: branchId}
-  const [empBranchOverride, setEmpBranchOverride] = useState({});
+  // 직원 당일 지점 오버라이드: {empId_date: {segments:[{branchId,from,until}]}}
+  const [empBranchOverride, _setEmpBranchOverride] = useState({});
+  const empOverrideLoaded = React.useRef(false);
+  const setEmpBranchOverride = React.useCallback((updater) => {
+    _setEmpBranchOverride(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      // DB 저장
+      const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json" };
+      fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.empOverride_v1`, {
+        method: "PATCH", headers: {...H, Prefer: "return=minimal"},
+        body: JSON.stringify({ value: JSON.stringify(next) })
+      }).catch(() => {
+        // 행이 없으면 INSERT
+        fetch(`${SB_URL}/rest/v1/schedule_data`, {
+          method: "POST", headers: H,
+          body: JSON.stringify({ key: "empOverride_v1", value: JSON.stringify(next) })
+        }).catch(console.error);
+      });
+      return next;
+    });
+  }, []);
+  // 초기 로드
+  React.useEffect(() => {
+    if (empOverrideLoaded.current) return;
+    empOverrideLoaded.current = true;
+    const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
+    fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.empOverride_v1&select=value`, { headers: H })
+      .then(r => r.json())
+      .then(rows => {
+        if (rows?.[0]?.value) {
+          const v = typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value;
+          _setEmpBranchOverride(v);
+        }
+      }).catch(console.error);
+  }, []);
 
   // 직원 목록: employees_v1 (schedule_data 테이블)에서 동적 로드 + Realtime + 폴링
   const [empList, setEmpList] = useState([]);
