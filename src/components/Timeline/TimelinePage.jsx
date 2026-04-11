@@ -1695,7 +1695,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                         if(!canEdit(room.branch_id)) return;
                         const h=Math.floor(clickMin/60), m=clickMin%60;
                         const time=`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
-                        setModalData({roomId:room.id,bid:room.branch_id,time,date:selDate,isSchedule:true});
+                        setModalData({roomId:room.id,bid:room.branch_id,time,date:selDate,isSchedule:true,scheduleOnly:true});
                         setShowModal(true);
                         return;
                       }
