@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>예약 확인 - 하우스왁싱</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: 'Pretendard', -apple-system, sans-serif; background:#f5f3ff; min-height:100vh; display:flex; flex-direction:column; align-items:center; padding:20px 16px; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 4px 24px rgba(0,0,0,.08); max-width:440px; width:100%; overflow:hidden; margin-bottom:16px; }
+  .header { background:linear-gradient(135deg,#7c7cc8,#9b72cb); color:#fff; padding:28px 24px; text-align:center; }
+  .header h1 { font-size:20px; font-weight:800; margin-bottom:2px; letter-spacing:-.3px; }
+  .header .sub { font-size:13px; opacity:.85; margin-top:4px; }
+  .section { padding:20px 24px; }
+  .section-title { font-size:12px; font-weight:700; color:#7c7cc8; margin-bottom:12px; text-transform:uppercase; letter-spacing:.5px; }
+  .row { display:flex; justify-content:space-between; align-items:center; padding:11px 0; border-bottom:1px solid #f0f0f5; font-size:14px; }
+  .row:last-child { border-bottom:none; }
+  .label { color:#999; font-weight:500; min-width:70px; flex-shrink:0; }
+  .value { color:#333; font-weight:600; text-align:right; word-break:keep-all; }
+  .value a { color:#7c7cc8; text-decoration:none; }
+  .status-badge { display:inline-block; padding:4px 12px; border-radius:20px; font-size:12px; font-weight:700; }
+  .status-confirmed { background:#e6ffed; color:#22863a; }
+  .status-completed { background:#e8f4fd; color:#0366d6; }
+  .status-cancelled { background:#ffeef0; color:#d73a49; }
+  .status-pending { background:#fff8e1; color:#e65100; }
+  .notice { background:#faf5ff; border-radius:12px; padding:16px; margin:0 24px 20px; }
+  .notice-title { font-size:12px; font-weight:700; color:#7c7cc8; margin-bottom:8px; }
+  .notice p { font-size:12px; color:#666; line-height:1.7; margin:0; white-space:pre-line; }
+  .map-wrap { margin:0 24px 20px; border-radius:12px; overflow:hidden; border:1px solid #eee; }
+  .map-img { width:100%; height:200px; display:flex; align-items:center; justify-content:center; background:#f0eeff; cursor:pointer; text-decoration:none; }
+  .map-img:hover { background:#e8e4ff; }
+  .map-links { display:flex; gap:0; }
+  .map-links a { flex:1; display:flex; align-items:center; justify-content:center; gap:4px; padding:10px; font-size:13px; font-weight:600; text-decoration:none; color:#555; border-top:1px solid #eee; }
+  .map-links a:first-child { border-right:1px solid #eee; }
+  .map-links a:hover { background:#f8f7ff; color:#7c7cc8; }
+  .addr-bar { display:flex; align-items:center; gap:8px; padding:10px 14px; background:#faf8ff; font-size:13px; color:#555; }
+  .addr-bar .pin { color:#7c7cc8; font-size:16px; }
+  .copy-btn { font-size:11px; padding:3px 8px; border:1px solid #ddd; border-radius:6px; background:#fff; color:#7c7cc8; cursor:pointer; font-weight:600; flex-shrink:0; }
+  .phone-bar { display:flex; gap:8px; margin:0 24px 20px; }
+  .phone-btn { flex:1; display:flex; align-items:center; justify-content:center; gap:6px; padding:12px; border-radius:10px; font-size:14px; font-weight:600; text-decoration:none; border:1.5px solid #7c7cc8; color:#7c7cc8; background:#fff; }
+  .phone-btn:active { background:#7c7cc8; color:#fff; }
+  .footer { text-align:center; padding:20px; color:#bbb; font-size:11px; }
+  .loading { text-align:center; padding:60px 20px; color:#999; font-size:14px; }
+  .error { text-align:center; padding:60px 20px; color:#e53e3e; font-size:14px; }
+</style>
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" rel="stylesheet"/>
+<script src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=20e46c5nm6&submodules=geocoder"></script>
+</head>
+<body>
+
+<div class="card">
+  <div class="header">
+    <h1 id="brNameHeader">하우스왁싱</h1>
+    <div class="sub">예약 안내 드립니다.</div>
+  </div>
+  <div id="content">
+    <div class="loading">예약 정보를 불러오는 중...</div>
+  </div>
+</div>
+<div class="footer">Powered by Bliss</div>
+
+<script>
+(async()=>{
+  const SB = "https://dpftlrsuqxqqeouwbfjd.supabase.co";
+  const K = "sb_publishable_3H-KTP0MoV_KuY74ocbefw_3Ze5xBJj";
+  const el = document.getElementById("content");
+  const headerEl = document.getElementById("brNameHeader");
+
+  try {
+    const rid = decodeURIComponent(location.search.slice(1) || location.hash.slice(1));
+    if (!rid) { el.innerHTML = '<div class="error">예약 정보가 없습니다.</div>'; return; }
+
+    let r = await fetch(`${SB}/rest/v1/reservations?reservation_id=eq.${rid}&select=cust_name,date,time,dur,bid,status,service_id,staff_id,selected_services&limit=1`,
+      {headers:{"apikey":K,"Authorization":"Bearer "+K}});
+    let rows = await r.json();
+    if (!rows.length) {
+      r = await fetch(`${SB}/rest/v1/reservations?id=eq.${rid}&select=cust_name,date,time,dur,bid,status,service_id,staff_id,selected_services&limit=1`,
+        {headers:{"apikey":K,"Authorization":"Bearer "+K}});
+      rows = await r.json();
+    }
+    if (!rows.length) { el.innerHTML = '<div class="error">예약을 찾을 수 없습니다.</div>'; return; }
+    const res = rows[0];
+
+    // 지점 정보 (안내문구, 대체연락처 포함)
+    let br = {};
+    if (res.bid) {
+      const brr = await fetch(`${SB}/rest/v1/branches?id=eq.${res.bid}&select=name,short,phone,address,booking_notice,alt_phone`,
+        {headers:{"apikey":K,"Authorization":"Bearer "+K}});
+      const brs = await brr.json();
+      if (brs.length) br = brs[0];
+    }
+
+    // 시술 정보
+    let svcNames = [];
+    const svcIds = res.selected_services || (res.service_id ? [res.service_id] : []);
+    if (svcIds.length) {
+      const svr = await fetch(`${SB}/rest/v1/services?id=in.(${svcIds.join(",")})&select=name`,
+        {headers:{"apikey":K,"Authorization":"Bearer "+K}});
+      svcNames = (await svr.json()).map(s => s.name);
+    }
+
+    // 담당자
+    let staffName = "";
+    if (res.staff_id) {
+      const str = await fetch(`${SB}/rest/v1/rooms?id=eq.${res.staff_id}&select=name`,
+        {headers:{"apikey":K,"Authorization":"Bearer "+K}});
+      const sts = await str.json();
+      if (sts.length) staffName = sts[0].name;
+    }
+
+    headerEl.textContent = br.name || "하우스왁싱";
+
+    const statusMap = {confirmed:"예약 확정",completed:"시술 완료",cancelled:"취소됨",no_show:"노쇼",pending:"대기 중",request:"요청 중"};
+    const statusClass = {confirmed:"status-confirmed",completed:"status-completed",cancelled:"status-cancelled",no_show:"status-cancelled",pending:"status-pending",request:"status-pending"};
+    const dow = ["일","월","화","수","목","금","토"];
+    const d = new Date(res.date);
+    const dateStr = `${res.date} (${dow[d.getDay()]})`;
+    const hh = parseInt(res.time.split(":")[0]);
+    const mm = parseInt(res.time.split(":")[1]);
+    const ampm = hh < 12 ? "오전" : "오후";
+    const h12 = hh === 0 ? 12 : hh > 12 ? hh - 12 : hh;
+    const timeStr = `${ampm} ${h12}시${mm > 0 ? " " + mm + "분" : ""}`;
+
+    let html = `
+      <div class="section">
+        <div class="section-title">예약 정보</div>
+        <div class="row"><span class="label">예약일</span><span class="value">${dateStr}</span></div>
+        <div class="row"><span class="label">예약시간</span><span class="value">${timeStr}</span></div>
+        <div class="row"><span class="label">예약장소</span><span class="value">${br.name || "-"}</span></div>
+        <div class="row"><span class="label">예약상태</span><span class="value"><span class="${statusClass[res.status]||"status-pending"} status-badge">${statusMap[res.status]||res.status}</span></span></div>
+        ${svcNames.length ? `<div class="row"><span class="label">시술</span><span class="value">${svcNames.join(", ")}</span></div>` : ""}
+        ${staffName ? `<div class="row"><span class="label">담당</span><span class="value">${staffName}</span></div>` : ""}
+      </div>
+    `;
+
+    // 지점 안내
+    if (br.name) {
+      html += `<div class="section" style="border-top:8px solid #f8f7ff;">
+        <div class="section-title">지점 안내</div>
+        <div class="row"><span class="label">상호</span><span class="value">${br.name}</span></div>
+      </div>`;
+
+      // 주소 + 네이버 지도
+      if (br.address) {
+        const searchQuery = br.name + ' ' + br.address;
+        const enc = encodeURIComponent(searchQuery);
+        const naverMapUrl = `https://map.naver.com/v5/search/${encodeURIComponent(br.name)}`;
+        const kakaoMapUrl = `https://map.kakao.com/?q=${encodeURIComponent(br.name)}`;
+        html += `
+          <div class="map-wrap">
+            <div id="naverMap" style="width:100%;height:250px;background:#f0eeff;display:flex;align-items:center;justify-content:center;color:#999;font-size:13px">지도 로딩 중...</div>
+            <div class="addr-bar">
+              <span class="pin">&#x1F4CD;</span>
+              <span style="flex:1">${br.address}</span>
+              <button class="copy-btn" onclick="navigator.clipboard.writeText('${br.address.replace(/'/g,"\\'")}').then(()=>this.textContent='복사됨').catch(()=>{})">복사</button>
+            </div>
+            <div class="map-links">
+              <a href="${naverMapUrl}" target="_blank" style="color:#03C75A">&#x1F30F; 네이버 지도</a>
+              <a href="${kakaoMapUrl}" target="_blank" style="color:#E85D04">&#x1F4CD; 카카오맵</a>
+            </div>
+          </div>
+        `;
+      }
+
+      // 전화 버튼
+      const phones = [];
+      if (br.phone) phones.push({label: br.phone, num: br.phone});
+      if (br.alt_phone) phones.push({label: br.alt_phone, num: br.alt_phone});
+      if (phones.length) {
+        html += `<div class="phone-bar">`;
+        phones.forEach(p => {
+          html += `<a href="tel:${p.num}" class="phone-btn">&#x1F4DE; ${p.label}</a>`;
+        });
+        html += `</div>`;
+      }
+    }
+
+    // 안내사항 (DB에서 가져옴)
+    if (br.booking_notice) {
+      html += `
+        <div class="notice">
+          <div class="notice-title">안내사항</div>
+          <p>${br.booking_notice}</p>
+        </div>
+      `;
+    }
+
+    el.innerHTML = html;
+
+    // 네이버 지도 렌더
+    if (br.address) {
+      const waitForSDK = () => new Promise(resolve => {
+        if (window.naver && naver.maps && naver.maps.Service) return resolve();
+        let t = 0;
+        const iv = setInterval(() => {
+          t++;
+          if (window.naver && naver.maps && naver.maps.Service) { clearInterval(iv); resolve(); }
+          if (t > 30) { clearInterval(iv); resolve(); } // 9초 타임아웃
+        }, 300);
+      });
+      waitForSDK().then(() => {
+        const mapEl = document.getElementById("naverMap");
+        if (!mapEl) return;
+        if (!window.naver || !naver.maps || !naver.maps.Service) {
+          useFallback(mapEl, br.address);
+          return;
+        }
+        const showMap = (lat, lng) => {
+          try {
+            const coords = new naver.maps.LatLng(lat, lng);
+            const map = new naver.maps.Map(mapEl, {center: coords, zoom: 16});
+            new naver.maps.Marker({position: coords, map});
+          } catch(e) { useFallback(mapEl, br.address); }
+        };
+        try {
+          naver.maps.Service.geocode({query: br.address}, (status, response) => {
+            try {
+              if (status === naver.maps.Service.Status.OK && response && response.v2 && response.v2.addresses && response.v2.addresses.length) {
+                showMap(response.v2.addresses[0].y, response.v2.addresses[0].x);
+              } else {
+                useFallback(mapEl, br.address);
+              }
+            } catch(e) { useFallback(mapEl, br.address); }
+          });
+        } catch(e) { useFallback(mapEl, br.address); }
+      });
+      function useFallback(el, addr) {
+        if (!el) return;
+        var q = encodeURIComponent(addr);
+        el.outerHTML = '<iframe src="https://maps.google.com/maps?q='+q+'&z=16&output=embed" style="width:100%;height:250px;border:0" loading="lazy"></iframe>';
+      }
+    }
+
+  } catch(e) {
+    console.error(e);
+    el.innerHTML = '<div class="error">정보를 불러올 수 없습니다.</div>';
+  }
+})();
+</script>
+</body>
+</html>
