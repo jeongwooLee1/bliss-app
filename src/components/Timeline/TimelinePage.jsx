@@ -556,14 +556,59 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   }, [data?.branches]);
   const cellLongPress = useRef(null);
 
+  // 직원 컬럼 순서 커스텀 (localStorage)
+  const [empColOrder, setEmpColOrder] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("tl_empColOrder")||"{}"); } catch { return {}; }
+  });
+  const moveEmpCol = (branchId, empId, dir) => {
+    setEmpColOrder(prev => {
+      const key = branchId;
+      const order = [...(prev[key]||[])];
+      const idx = order.indexOf(empId);
+      if (idx < 0) return prev; // 아직 순서 목록에 없음
+      const newIdx = idx + dir;
+      if (newIdx < 0 || newIdx >= order.length) return prev;
+      [order[idx], order[newIdx]] = [order[newIdx], order[idx]];
+      const next = {...prev, [key]: order};
+      localStorage.setItem("tl_empColOrder", JSON.stringify(next));
+      return next;
+    });
+  };
+  const sortStaffByOrder = (staffList, branchId) => {
+    const order = empColOrder[branchId];
+    if (!order || order.length === 0) {
+      // 초기화: 현재 순서를 저장
+      if (staffList.length > 0) {
+        const ids = staffList.map(e => e.id);
+        setEmpColOrder(prev => {
+          if (prev[branchId]?.length >= staffList.length) return prev;
+          const next = {...prev, [branchId]: ids};
+          localStorage.setItem("tl_empColOrder", JSON.stringify(next));
+          return next;
+        });
+      }
+      return staffList;
+    }
+    // order에 없는 신규 직원은 뒤에 추가
+    const sorted = [];
+    for (const id of order) {
+      const e = staffList.find(s => s.id === id);
+      if (e) sorted.push(e);
+    }
+    for (const e of staffList) {
+      if (!sorted.find(s => s.id === e.id)) sorted.push(e);
+    }
+    return sorted;
+  };
+
   const allRooms = branchesToShow.flatMap(br => {
     const naverCount = br.naverEmail ? (br.naverColCount || 1) : 0;
     const naverRooms = Array.from({length: naverCount}, (_, i) => ({
       id: `nv_${br.id}_${i}`, name: naverCount > 1 ? `미배정${i+1}` : "미배정",
       branch_id: br.id, branchName: br.short||br.name||"", isNaver: true
     }));
-    // 출근표 기반 직원 컬럼
-    const workingStaff = getWorkingStaff(br.id, selDate);
+    // 출근표 기반 직원 컬럼 (커스텀 순서 적용)
+    const workingStaff = sortStaffByOrder(getWorkingStaff(br.id, selDate) || [], br.id);
     let staffRooms;
     if (workingStaff && workingStaff.length > 0) {
       staffRooms = workingStaff.map(e => {
@@ -1452,8 +1497,14 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                       </span>
                       {empMovePopup?.empId===room.staffId && empMovePopup?.date===selDate && (
                         <div onClick={e=>e.stopPropagation()} style={{position:"fixed",left:Math.min(empMovePopup.x,window.innerWidth-200),top:empMovePopup.y+8,background:T.bgCard,borderRadius:12,boxShadow:"0 4px 24px rgba(0,0,0,.22)",zIndex:9999,padding:"10px 0 6px",minWidth:200}}>
-                          <div style={{fontSize:11,color:T.textMuted,padding:"0 12px 8px",fontWeight:700,borderBottom:"1px solid "+T.border}}>
-                            {room.name} 이동 설정
+                          <div style={{fontSize:11,color:T.textMuted,padding:"0 12px 8px",fontWeight:700,borderBottom:"1px solid "+T.border,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                            <span>{room.name}</span>
+                            <div style={{display:"flex",gap:2}}>
+                              <button onClick={()=>{moveEmpCol(room.branch_id,room.staffId,-1);setEmpMovePopup(null);}}
+                                style={{width:22,height:22,border:"1px solid "+T.border,borderRadius:4,background:T.bgCard,cursor:"pointer",fontSize:12,padding:0}}>←</button>
+                              <button onClick={()=>{moveEmpCol(room.branch_id,room.staffId,1);setEmpMovePopup(null);}}
+                                style={{width:22,height:22,border:"1px solid "+T.border,borderRadius:4,background:T.bgCard,cursor:"pointer",fontSize:12,padding:0}}>→</button>
+                            </div>
                           </div>
                           {/* 현재 segments */}
                           {(()=>{
