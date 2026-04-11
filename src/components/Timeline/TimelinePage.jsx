@@ -1599,11 +1599,6 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                         onClick={e=>{e.stopPropagation();setEmpMovePopup(p=>p?.empId===room.staffId?null:{empId:room.staffId,date:selDate,x:e.clientX,y:e.clientY});}}>
                         {room.name}
                       </span>
-                      {(()=>{
-                        const wh = empWorkHours[room.staffId+"_"+room.branch_id+"_"+selDate] || empWorkHours[room.staffId+"_"+room.branch_id] || empWorkHours[room.staffId+"_"+selDate] || empWorkHours[room.staffId];
-                        if(!wh) return null;
-                        return <span style={{fontSize:9,color:T.textMuted,marginTop:1}}>{wh.start}~{wh.end}</span>;
-                      })()}
                       {empMovePopup?.empId===room.staffId && empMovePopup?.date===selDate && (
                         <div onClick={e=>e.stopPropagation()} style={{position:"fixed",left:Math.min(empMovePopup.x,window.innerWidth-200),top:empMovePopup.y+8,background:T.bgCard,borderRadius:12,boxShadow:"0 4px 24px rgba(0,0,0,.22)",zIndex:9999,padding:"10px 0 6px",minWidth:200}}>
                           {/* 근무시간 설정 */}
