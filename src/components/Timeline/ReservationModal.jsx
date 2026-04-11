@@ -1242,7 +1242,7 @@ ${rulesBlock}
                     "#{대표전화번호}":branch?.phone||""
                   });
                 }
-                onSave({...f, memo: memoToSave, tsLog: newLog, selectedTags: autoTags});
+                onSave({...f, memo: memoToSave, tsLog: newLog, selectedTags: autoTags, isSchedule});
               }}>{item?.id?"저장":"등록"}</Btn>
               {/* AI 예약 확정 버튼 */}
               {f.status==="request" && <Btn style={{padding:"10px 26px",background:"#9C27B0",boxShadow:"0 4px 14px rgba(156,39,176,.35)"}}
