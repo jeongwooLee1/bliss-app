@@ -52,13 +52,16 @@ while True:
     offset += 1000
 
 phone_map = {}
+custnum_map = {}
 offset = 0
 while True:
-    rows = sb_get(f"{SB_URL}/rest/v1/customers?select=id,phone&business_id=eq.{BIZ}&order=id&limit=1000&offset={offset}")
+    rows = sb_get(f"{SB_URL}/rest/v1/customers?select=id,phone,cust_num&business_id=eq.{BIZ}&order=id&limit=1000&offset={offset}")
     for c in rows:
         p = re.sub(r'\D', '', c.get('phone', ''))
         if p:
             phone_map[p] = c['id']
+        if c.get('cust_num'):
+            custnum_map[str(c['cust_num'])] = c['id']
     if len(rows) < 1000:
         break
     offset += 1000
@@ -96,7 +99,8 @@ for r in cur.fetchall():
     g = 'F' if '여' in str(r[7] or '') else ('M' if '남' in str(r[7] or '') else '')
     new_sales.append({
         "id": f"sale_{uid()}", "business_id": BIZ, "bid": bid,
-        "cust_id": phone_map.get(phone, ''), "cust_name": str(r[2] or ''),
+        "cust_id": phone_map.get(phone, '') or custnum_map.get(str(r[1] or ''), ''),
+        "cust_name": str(r[2] or ''),
         "cust_phone": phone, "cust_gender": g, "cust_num": str(r[1] or ''),
         "staff_name": str(r[8] or ''), "date": d,
         "svc_cash": int(r[9] or 0), "svc_transfer": int(r[10] or 0),
