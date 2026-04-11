@@ -433,6 +433,21 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
           }
         }}>금액 차감</Btn>}
 
+        <Btn variant="outline" size="sm" style={{padding:"3px 8px",fontSize:T.fs.nano}} onClick={()=>{
+          const newName = prompt("패키지 이름:", p.service_name);
+          if(!newName) return;
+          const newTotal = prompt("총 횟수 (다회권) / 충전액 (다담권):", String(p.total_count));
+          if(!newTotal || isNaN(newTotal)) return;
+          const newUsed = prompt("사용 횟수 / 사용액:", String(p.used_count));
+          if(!newUsed || isNaN(newUsed)) return;
+          const updates = {service_name: newName, total_count: Number(newTotal), used_count: Number(newUsed)};
+          if(isPrepaid) {
+            const newBal = Number(newTotal) - Number(newUsed);
+            updates.note = (p.note||"").replace(/잔액:[0-9,]+/, `잔액:${newBal.toLocaleString()}`) || `잔액:${newBal.toLocaleString()}`;
+          }
+          sb.update("customer_packages",p.id,updates).catch(console.error);
+          setCustPkgsServer(prev=>prev.map(x=>x.id===p.id?{...x,...updates}:x));
+        }}>편집</Btn>
         <Btn variant="danger" size="sm" style={{padding:"3px 8px",fontSize:T.fs.nano}} onClick={()=>{
           if(!confirm("삭제하시겠습니까?")) return;
           sb.del("customer_packages",p.id).catch(console.error);
