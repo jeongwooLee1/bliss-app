@@ -33,7 +33,7 @@ const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amou
         {checked && <span style={{color:T.primary,marginRight:3}}>✓</span>}{name}
       </span>
       <span className="sale-dur" style={{ flexShrink: 0, width: 28, textAlign: "right", whiteSpace:"nowrap", fontSize: 10, color: T.gray400 }}>{dur}분</span>
-      <input type="number" value={checked ? localAmt : ""} placeholder={disabled ? "—" : (defPrice||0).toLocaleString()}
+      <input type="number" step="5000" value={checked ? localAmt : ""} placeholder={disabled ? "—" : (defPrice||0).toLocaleString()}
         onClick={e => e.stopPropagation()}
         onChange={e => setLocalAmt(e.target.value)} onBlur={e => setAmt(id, e.target.value)} disabled={!checked}
         style={{ width: 76, padding: "2px 5px", fontSize: 13, textAlign: "right", borderRadius: 5, flexShrink: 0, minHeight: 0, height: 24, boxSizing: "border-box", fontFamily: "inherit", outline: "none",
@@ -54,7 +54,7 @@ const SaleProdRow = React.memo(function SaleProdRow({ id, name, price, checked, 
         style={{ flex: 1, fontSize: 13, color: checked ? T.text : T.gray700, fontWeight: checked ? 700 : 400 }}>
         {checked && <span style={{color:T.infoLt2,marginRight:4}}>✓</span>}{name}
       </span>
-      <input className="inp" type="number" value={checked ? localAmt : ""} placeholder="0"
+      <input className="inp" type="number" step="5000" value={checked ? localAmt : ""} placeholder="0"
         onClick={e => e.stopPropagation()}
         onChange={e => setLocalAmt(e.target.value)} onBlur={e => setAmt(id, e.target.value)} disabled={!checked}
         style={{ width: 72, padding: "4px 6px", fontSize: 13, textAlign: "right", borderRadius: 6,
@@ -77,7 +77,7 @@ const SaleExtraRow = React.memo(function SaleExtraRow({ id, color, placeholder, 
       <input className="inp" value={localLabel} onChange={e => setLocalLabel(e.target.value)}
         onBlur={e => setLabel(id, e.target.value)}
         placeholder={placeholder} style={{ flex: 1, padding: "4px 6px", fontSize: 11, background: "transparent", border:"1px solid "+T.border, borderRadius: 6 }} />
-      <input className="inp" type="number" value={localAmt} placeholder="0"
+      <input className="inp" type="number" step="5000" value={localAmt} placeholder="0"
         onChange={e => { setLocalAmt(e.target.value); setAmt(id, e.target.value); if(!checked && Number(e.target.value)>0) toggle(id, 0); }}
         style={{ width: 72, padding: "4px 6px", fontSize: 11, textAlign: "right", borderRadius: 6,
           border: `1px solid ${checked ? T.gray400 : T.border}`,
@@ -96,7 +96,7 @@ const SaleDiscountRow = React.memo(function SaleDiscountRow({ id, checked, amoun
       style={{ flex: 1, fontSize: 11, color: checked ? T.female : T.gray600, fontWeight: 600, cursor: "pointer" }}>
       {checked ? <span style={{color:T.female}}>✓ </span> : ""}할인
     </span>
-    <input className="inp" type="number" value={checked ? localAmt : ""} placeholder="0"
+    <input className="inp" type="number" step="5000" value={checked ? localAmt : ""} placeholder="0"
       onClick={e => e.stopPropagation()}
       onChange={e => { setLocalAmt(e.target.value); setAmt(id, e.target.value); }} disabled={!checked}
       style={{ width: 72, padding: "4px 6px", fontSize: 11, textAlign: "right", borderRadius: 6,
@@ -658,7 +658,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
               <span style={{fontSize:T.fs.sm,color:T.orange}}><I name="naver" size={11}/> 네이버 예약금</span>
               <div style={{display:"flex",alignItems:"center",gap:T.sp.xs}}>
                 <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.orange}}>-</span>
-                <input className="inp" type="number" value={naverPrepaid||""} placeholder="0"
+                <input className="inp" type="number" step="5000" value={naverPrepaid||""} placeholder="0"
                   onChange={e=>setNaverPrepaid(Number(e.target.value)||0)}
                   style={{width:85,padding:"4px 8px",fontSize:T.fs.sm,textAlign:"right",fontWeight:T.fw.bolder,color:T.orange,
                     border:"2px solid #ff9800",borderRadius:T.radius.md,background:T.warningLt}} />
@@ -702,7 +702,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                     style={{padding:"5px 10px",fontSize:T.fs.xxs,fontWeight:T.fw.bolder,borderRadius:T.radius.md,cursor:"pointer",fontFamily:"inherit",transition:"all .15s",
                       border:openPay[k]?`2px solid ${clr}`:"1px solid #d0d0d0",
                       background:openPay[k]?bg:T.gray100,color:openPay[k]?clr:T.gray500}}>{label}</button>
-                  {openPay[k] && <input className="inp" type="number" value={payMethod[k]||""} placeholder="0"
+                  {openPay[k] && <input className="inp" type="number" step="5000" value={payMethod[k]||""} placeholder="0"
                     onChange={e=>editPay(k,e.target.value,svcPayTotal,"svc")}
                     readOnly={primaryPay.svc===k}
                     style={{width:75,padding:"4px 6px",fontSize:T.fs.sm,textAlign:"right",border:`1.5px solid ${clr}`,color:clr,fontWeight:T.fw.bolder,borderRadius:T.radius.md,
@@ -722,7 +722,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                     style={{padding:"5px 10px",fontSize:T.fs.xxs,fontWeight:T.fw.bolder,borderRadius:T.radius.md,cursor:"pointer",fontFamily:"inherit",transition:"all .15s",
                       border:openPay[k]?`2px solid ${clr}`:"1px solid #d0d0d0",
                       background:openPay[k]?bg:T.gray100,color:openPay[k]?clr:T.gray500}}>{label}</button>
-                  {openPay[k] && <input className="inp" type="number" value={payMethod[k]||""} placeholder="0"
+                  {openPay[k] && <input className="inp" type="number" step="5000" value={payMethod[k]||""} placeholder="0"
                     onChange={e=>editPay(k,e.target.value,prodPayTotal,"prod")}
                     readOnly={primaryPay.prod===k}
                     style={{width:75,padding:"4px 6px",fontSize:T.fs.sm,textAlign:"right",border:`1.5px solid ${clr}`,color:clr,fontWeight:T.fw.bolder,borderRadius:T.radius.md,
