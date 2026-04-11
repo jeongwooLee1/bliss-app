@@ -43,7 +43,34 @@
 
 ---
 
-## 2026-04-11 완료
+## 작업: 오라클 DB 전체 Supabase 마이그레이션
+**상태**: 주요 데이터 완료, 나머지 펜딩.
+
+### 완료
+- MEMBER → customers: 42,849명 (visits 갱신 완료)
+- ORDERS → sales: 176,339건 (cust_id 재매핑 + 중복 정리 완료)
+- daily_sync.py에 cust_num fallback 매칭 추가
+
+### 펜딩 (다음 세션)
+- ORDERDETAIL (402,465건) — 매출 상세 시술별 금액
+- MESSAGE (491,899건) — 문자 발송 이력
+- SMSRESULT (642,702건) — 문자 발송 결과
+- POINT (13,867건) — 포인트/마일리지
+- BOOKING (2,498건) — 예약
+- BANKACCOUNT (15,741건) — 입금 내역
+- SERVICE (544건) — 시술 메뉴
+- GIFTCERT (1,000건) — 상품권
+- BAK/TMP 테이블은 불필요
+
+### 주의
+- 오라클 접속: googlea.withbiz.co.kr:5063/ORA11GHW (housewaxing/oracle)
+- 로컬 PC IP만 허용됨 (Oracle Instant Client: instantclient_21_15)
+- Supabase Pro 플랜 업그레이드 완료 ($25/월)
+- Egress 대량 사용 주의 (한 번에 너무 많이 하지 말 것)
+
+---
+
+## 2026-04-11~12 완료
 
 ### 카카오 소셜 로그인 완료
 - 비즈 앱 전환 완료 (주식회사 테라포트, 632-81-02070)
