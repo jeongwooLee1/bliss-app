@@ -194,7 +194,10 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
         if (bal > 0) out.push({type:"prepaid", label:`🎫 ${bal.toLocaleString()}`, expired: isExpired});
       } else {
         const remain = (p.total_count||0) - (p.used_count||0);
-        if (remain > 0) out.push({type:"package", label:`🎟 ${(n.split("(")[0]||"다회").trim()} ${remain}`, expired: isExpired});
+        if (remain > 0) {
+          const shortName = (n.split("(")[0]||"다회").replace(/\s*5회$/,"").trim();
+          out.push({type:"package", label:`🎟 ${shortName} +${remain}`, expired: isExpired});
+        }
       }
     });
     return out;
@@ -294,18 +297,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       fetchPage(0, true);
     }
   };
-  // 동일 이름 → 최신(유효기간 가장 먼 것)만 표시
-  const custPkgs = (() => {
-    const byName = {};
-    custPkgsServer.forEach(p => {
-      const key = p.service_name || p.id;
-      const exp = ((p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1] || "0000";
-      if (!byName[key] || exp > (byName[key]._exp||"0000")) {
-        byName[key] = {...p, _exp: exp};
-      }
-    });
-    return Object.values(byName);
-  })();
+  const custPkgs = custPkgsServer;
   const pkgSvcs   = (data.services||[]).filter(s=>s.isPackage);
 
   // 패키지 타입 판별
