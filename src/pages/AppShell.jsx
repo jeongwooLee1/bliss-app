@@ -1096,7 +1096,7 @@ function App() {
                       div.innerHTML = `<div style="position:fixed;top:20px;right:20px;z-index:99999;background:${bg};color:#fff;padding:16px 24px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.3);font-size:15px;font-weight:800;animation:slideIn .3s;cursor:pointer;max-width:350px;" onclick="this.parentElement.remove()">🔔 ${label}<br><span style="font-size:13px;font-weight:500;">${parsed.custName||"네이버 예약"} ${parsed.date||""} ${parsed.time||""}</span></div>`;
                       document.body.appendChild(div);
                       setTimeout(()=>{ try{div.remove();}catch(e){} }, 20000);
-                      try { new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2Nk4yGfHJ0fIaNkImBd3F2gIqRjYaCeHR4gImQi4R/d3V5goqPi4N+d3Z6g4uPioJ9d3d7hIyOiYF8d3h8hY2NiIF8eHl9hoyMh4B7eXp+h42LhX96ent/iIyKhH56e3yAiYuJg356fH2BiomHgn17fH6Ci4iGgX17fX+Di4eFgH18foGEioSDf3x9f4KFiYOCfn1+gIOGiIKBfn5/gYSHh4GAf39/goWGhYB/f4CBg4aFhIB/gICCg4WEg39/gIGDhISCf3+AgYKDhIOBf4CBgoOEg4F/gIGCg4SDgX+AgYKDg4OBf4CCgoODgoF/gIGCg4OCgX+AgoKDg4KBf4CCgoODgoF/gIGCg4OCgX+AgYKDg4KBf4CBgoKDgoF/gIGCgoOCgX+AgYKCg4KBf4CBgoKDgoF/gIGCgoOCgX+AgYKCg4KBf4CBgoKCgoF/gIGCgoKCgX+AgYKCgoKBf4CBgoKCgoF/gIGCgoKCgX+AgYKCgoKBgICBgoKCgoGAgIGCgoKCgYCAgYKCgoKBgICBgoKCgoGAgIGCgoKCgYCAgYKCgoKBgA==").play(); } catch(e){}
+                      try { new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2Nk4yGfHJ0fIaNkImBd3F2gIqRjYaCeHR4gImQi4R/d3V5goqPi4N+d3Z6g4uPioJ9d3d7hIyOiYF8d3h8hY2NiIF8eHl9hoyMh4B7eXp+h42LhX96ent/iIyKhH56e3yAiYuJg356fH2BiomHgn17fH6Ci4iGgX17fX+Di4eFgH18foGEioSDf3x9f4KFiYOCfn1+gIOGiIKBfn5/gYSHh4GAf39/goWGhYB/f4CBg4aFhIB/gICCg4WEg39/gIGDhISCf3+AgYKDhIOBf4CBgoOEg4F/gIGCg4SDgX+AgYKDg4OBf4CCgoODgoF/gIGCg4OCgX+AgoKDg4KBf4CCgoODgoF/gIGCg4OCgX+AgYKDg4KBf4CBgoKDgoF/gIGCgoOCgX+AgYKCg4KBf4CBgoKDgoF/gIGCgoOCgX+AgYKCg4KBf4CBgoKCgoF/gIGCgoKCgX+AgYKCgoKBf4CBgoKCgoF/gIGCgoKCgX+AgYKCgoKBgICBgoKCgoGAgIGCgoKCgYCAgYKCgoKBgICBgoKCgoGAgIGCgoKCgYCAgYKCgoKBgA==").play().catch(()=>{}); } catch(e){}
                     } catch(e){}
                   }
                   if (isModalOpenRef.current) {
@@ -1161,7 +1161,7 @@ function App() {
               document.body.appendChild(div);
               setTimeout(()=>{ try{div.remove();}catch(e){} }, 15000);
               // 소리
-              try { new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2Nk4yGfHJ0fIaNkImBd3F2gIqRjYaCeHR4gImQi4R/d3V5goqPi4N+d3Z6g4uPioJ9d3d7hIyOiYF8d3h8hY2NiIF8eHl9hoyMh4B7eXp+h42LhX96ent/iIyKhH56e3yAiYuJg356fH2BiomHgn17fH6Ci4iGgX17fX+Di4eFgH18foGEioSDf3x9f4KFiYOCfn1+gIOGiIKBfn5/gYSHh4GAf39/goWGhYB/f4CBg4aFhIB/gICCg4WEg39/gIGDhISCf3+AgYKDhIOBf4CBgoOEg4F/gIGCg4SDgX+AgYKDg4OBf4CCgoODgoF/gIGCg4OCgX+AgoKDg4KBf4CCgoODgoF/gIGCg4OCgX+AgYKDg4KBf4CBgoKDgoF/gIGCgoOCgX+AgYKCg4KBf4CBgoKDgoF/gIGCgoOCgX+AgYKCg4KBf4CBgoKCgoF/gIGCgoKCgX+AgYKCgoKBf4CBgoKCgoF/gIGCgoKCgX+AgYKCgoKBgICBgoKCgoGAgIGCgoKCgYCAgYKCgoKBgICBgoKCgoGAgIGCgoKCgYCAgYKCgoKBgA==").play(); } catch(e){}
+              try { new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2Nk4yGfHJ0fIaNkImBd3F2gIqRjYaCeHR4gImQi4R/d3V5goqPi4N+d3Z6g4uPioJ9d3d7hIyOiYF8d3h8hY2NiIF8eHl9hoyMh4B7eXp+h42LhX96ent/iIyKhH56e3yAiYuJg356fH2BiomHgn17fH6Ci4iGgX17fX+Di4eFgH18foGEioSDf3x9f4KFiYOCfn1+gIOGiIKBfn5/gYSHh4GAf39/goWGhYB/f4CBg4aFhIB/gICCg4WEg39/gIGDhISCf3+AgYKDhIOBf4CBgoOEg4F/gIGCg4SDgX+AgYKDg4OBf4CCgoODgoF/gIGCg4OCgX+AgoKDg4KBf4CCgoODgoF/gIGCg4OCgX+AgYKDg4KBf4CBgoKDgoF/gIGCgoOCgX+AgYKCg4KBf4CBgoKDgoF/gIGCgoOCgX+AgYKCg4KBf4CBgoKCgoF/gIGCgoKCgX+AgYKCgoKBf4CBgoKCgoF/gIGCgoKCgX+AgYKCgoKBgICBgoKCgoGAgIGCgoKCgYCAgYKCgoKBgICBgoKCgoGAgIGCgoKCgYCAgYKCgoKBgA==").play().catch(()=>{}); } catch(e){}
             }
           }
           return changed ? {...prev, reservations: parsed} : prev;
@@ -1245,7 +1245,7 @@ function App() {
             {page==="customers" && <CustomersPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} pendingOpenCust={pendingOpenCust} setPendingOpenCust={setPendingOpenCust}/>}
             {page==="users" && <UsersPage data={data} setData={setData} bizId={currentBizId}/>}
             {page==="messages" && <AdminInbox sb={sb} branches={data?.branches} data={data} userBranches={userBranches} isMaster={isMaster} onRead={(cnt)=>setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)))} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage}/>}
-            {page==="schedule" && <SchedulePage/>}
+            {page==="schedule" && isMaster && <SchedulePage/>}
             {page==="admin" && <AdminPage data={data} setData={setData} bizId={currentBizId} serverV={serverV} onLogout={handleLogout} currentUser={currentUser} userBranches={userBranches}/>}
             {page==="wizard" && <SetupWizard bizId={currentBizId} bizName={bizName} geminiKey={(() => { try { return window.__systemGeminiKey || window.__geminiKey || JSON.parse(currentBiz?.settings||'{}').gemini_key || localStorage.getItem('bliss_gemini_key') || ''; } catch { return ''; } })()} sb={sb} data={data} setData={setData} onComplete={()=>setPage("timeline")} onClose={()=>setPage("timeline")} />}
           </div>
