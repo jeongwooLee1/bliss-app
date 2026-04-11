@@ -586,9 +586,14 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   }, []);
   const moveEmpCol = (branchId, empId, dir) => {
     setEmpColOrder(prev => {
-      const order = [...(prev[branchId]||[])];
+      let order = [...(prev[branchId]||[])];
+      // order가 비어있거나 empId가 없으면 현재 출근 직원으로 초기화
+      if (order.length === 0 || !order.includes(empId)) {
+        const ws = getWorkingStaff(branchId, selDate) || [];
+        order = ws.map(e => e.id);
+        if (!order.includes(empId)) return prev;
+      }
       const idx = order.indexOf(empId);
-      if (idx < 0) return prev;
       const newIdx = idx + dir;
       if (newIdx < 0 || newIdx >= order.length) return prev;
       [order[idx], order[newIdx]] = [order[newIdx], order[idx]];
