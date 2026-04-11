@@ -306,8 +306,10 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
         out.push({type:"package", active: remain>0, label});
       }
     });
-    // 유효권 먼저, 소진권 뒤로
-    return out.sort((a,b) => (b.active?1:0) - (a.active?1:0));
+    // 유효권만 표시, 소진권은 최대 1개만 (마지막 소진)
+    const active = out.filter(p => p.active);
+    const expired = out.filter(p => !p.active);
+    return [...active, ...expired.slice(0, 1)];
   })();
   // 디바운스 검색 (300ms, 2글자 이상) — DB 직접 검색
   useEffect(() => {
