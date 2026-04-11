@@ -1138,43 +1138,76 @@ ${naverText}
             {!isReadOnly && !isSchedule && <Btn
               style={{padding:"10px 16px",background:"#ff9800",boxShadow:"0 2px 8px rgba(255,152,0,.3)"}}
               onClick={async()=>{
-                const apiKey = window.__geminiKey || window.__systemGeminiKey;
+                const apiKey = window.__systemGeminiKey || window.__geminiKey;
                 if(!apiKey){alert("AI 설정에서 Gemini API 키를 등록하세요");return;}
-                const svcList = SVC_LIST.map(s=>`${s.name} (${s.id})`).join(", ");
-                const tagList = tags.filter(t=>t.useYn!==false&&t.scheduleYn!=="Y").map(t=>`${t.name} (${t.id})`).join(", ");
-                const text = [f.memo, f.requestMsg, f.ownerComment, f.custName].filter(Boolean).join("\n");
-                if(!text.trim()){alert("분석할 메모/요청사항이 없습니다");return;}
-                const prompt = `예약 정보를 분석해서 시술과 태그를 매칭하세요.
+                const svcList = SVC_LIST.map(s=>`"${s.id}":"${s.name}"`).join(", ");
+                const tagList = tags.filter(t=>t.useYn!==false&&t.scheduleYn!=="Y").map(t=>`"${t.id}":"${t.name}"`).join(", ");
+                const neverText = [f.requestMsg, f.ownerComment].filter(Boolean).join("\n");
+                if(!neverText.trim() && !f.memo?.trim()){alert("분석할 메모/요청사항이 없습니다");return;}
+                // AI 규칙 로드
+                const aiRules = JSON.parse(localStorage.getItem("bliss_ai_rules")||"[]");
+                const rulesBlock = aiRules.length > 0
+                  ? "\n[추가 판단 규칙 - 아래 규칙을 기본 기준보다 우선 적용하세요]\n" + aiRules.map((r,i)=>`${i+1}. ${r}`).join("\n")
+                  : "";
+                const prompt = `당신은 왁싱샵/미용실 예약 정보를 분석하는 AI입니다.
+아래 예약 고객 정보를 분석하여 적합한 태그와 시술상품을 선택하세요.
+반드시 순수 JSON만 출력. 코드블록 절대 금지.
 
-고객: ${f.custName||""} (${f.custGender==="M"?"남":"여"})
-메모: ${f.memo||""}
-요청사항: ${f.requestMsg||""}
-직원메모: ${f.ownerComment||""}
+[태그 목록] ${tagList}
+[시술상품 목록] ${svcList}
 
-시술 목록: ${svcList}
-태그 목록: ${tagList}
+[기본 판단 기준]
+- 태그 목록에 있는 태그만 선택하세요. 임의로 판단하지 마세요.
+- 고객 요청에 명시적으로 언급된 경우에만 태그를 선택하세요.
+- "신규" 태그는 선택하지 마세요. 시스템이 자동 처리합니다.
+- "주차" 태그는 고객이 명시적으로 주차를 요청한 경우에만 선택하세요.
 
-JSON으로 반환: {"services":["id1","id2"], "tags":["tagId1"]}
-- 시술: 메모 내용과 매칭되는 시술 ID 배열
-- 태그: 재방문/신규/VIP 등 매칭되는 태그 ID 배열
-매칭 안 되면 빈 배열`;
+[시술상품 선택 규칙]
+- 메모에서 실제 시술명을 찾으세요.
+- 동의어: 음모왁싱=브라질리언, 음부왁싱=브라질리언, 브라질리언왁싱=브라질리언
+- '재방문', '신규', '이벤트' 등 단독으로 나오면 시술이 아닙니다.
+- 시술상품 목록에서 가장 유사한 항목을 선택하세요. 없으면 빈 배열로 두세요.
+${rulesBlock}
+
+[예약 정보]
+- 고객명: ${f.custName||"미상"}
+- 성별: ${f.custGender==="M"?"남성":f.custGender==="F"?"여성":"미상"}
+- 메모: ${f.memo||""}
+- 요청사항: ${f.requestMsg||""}
+- 직원메모: ${f.ownerComment||""}
+
+[특이사항 추출]
+- 고객 요청에서 직원이 알아야 할 특이사항을 추출하세요 (영어 요청, 알레르기, 특수 요청 등)
+
+반드시 순수 JSON만 반환. 마크다운/코드블록 절대 금지.
+응답 형식:
+{"matchedTagIds":["태그id"],"matchedServiceIds":["시술id"],"gender":"F/M/빈문자열","specialNotes":"특이사항 텍스트 또는 빈문자열"}`;
                 try {
                   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,{
                     method:"POST",headers:{"Content-Type":"application/json"},
                     body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.1}})
                   });
                   const d = await r.json();
+                  if(d.error){alert("AI 분석 실패: API: "+JSON.stringify(d.error).slice(0,200));return;}
                   const txt = d?.candidates?.[0]?.content?.parts?.[0]?.text||"";
                   const m = txt.match(/\{[\s\S]*\}/);
                   if(m){
                     const result = JSON.parse(m[0]);
-                    const newSvcs = (result.services||[]).filter(id=>SVC_LIST.find(s=>s.id===id));
-                    const newTags = (result.tags||[]).filter(id=>tags.find(t=>t.id===id));
-                    setF(p=>({...p,
-                      selectedServices: [...new Set([...(p.selectedServices||[]),...newSvcs])],
-                      selectedTags: [...new Set([...(p.selectedTags||[]),...newTags])]
-                    }));
-                    alert(`시술 ${newSvcs.length}개, 태그 ${newTags.length}개 매칭`);
+                    const newSvcs = (result.matchedServiceIds||result.services||[]).filter(id=>SVC_LIST.find(s=>s.id===id));
+                    const newTags = (result.matchedTagIds||result.tags||[]).filter(id=>tags.find(t=>t.id===id));
+                    const notes = result.specialNotes||"";
+                    const updates = {
+                      selectedServices: [...new Set([...(f.selectedServices||[]),...newSvcs])],
+                      selectedTags: [...new Set([...(f.selectedTags||[]),...newTags])]
+                    };
+                    if(result.gender && !f.custGender) updates.custGender = result.gender;
+                    // 특이사항 → 메모에 자동 추가
+                    if(notes) {
+                      const cur = f.memo||"";
+                      if(!cur.includes(notes)) updates.memo = cur ? cur+"\n[AI] "+notes : "[AI] "+notes;
+                    }
+                    setF(p=>({...p,...updates}));
+                    alert(`시술 ${newSvcs.length}개, 태그 ${newTags.length}개 매칭${notes?"\n특이: "+notes:""}`);
                   } else { alert("AI 분석 결과를 파싱할 수 없습니다"); }
                 } catch(e){ alert("AI 분석 실패: "+e.message); }
               }}>AI 분석</Btn>}
