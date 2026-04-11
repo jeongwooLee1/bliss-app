@@ -1659,7 +1659,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                   <select value={supportFrom} onChange={e=>setAddStaffPopup(p=>({...p,supportFrom:e.target.value}))}
                                     style={{flex:1,fontSize:11,padding:"3px 4px",borderRadius:6,border:"1px solid "+T.border}}>
                                     <option value="">시간 선택</option>
-                                    {hours.map(h=><option key={h} value={h}>{h}</option>)}
+                                    {hours.filter(h=>{const hh=parseInt(h);return hh>=startHour&&hh<endHour;}).map(h=><option key={h} value={h}>{h}</option>)}
                                   </select>
                                 </div>
                                 <div style={{display:"flex",gap:6}}>
@@ -1794,7 +1794,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                   <select value={addFrom} onChange={e=>setAddFrom(e.target.value)}
                                     style={{width:82,fontSize:11,padding:"4px 5px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"}}>
                                     <option value="">시간</option>
-                                    {Array.from({length:48},(_,i)=>{const h=Math.floor(i/2),m=(i%2)*30;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;}).map(t=><option key={t} value={t}>{t}</option>)}
+                                    {Array.from({length:48},(_,i)=>{const h=Math.floor(i/2),m=(i%2)*30;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;}).filter(t=>{const hh=parseInt(t);return hh>=startHour&&hh<endHour;}).map(t=><option key={t} value={t}>{t}</option>)}
                                   </select>
                                 </div>
                                 <div style={{display:"flex",gap:4}}>
