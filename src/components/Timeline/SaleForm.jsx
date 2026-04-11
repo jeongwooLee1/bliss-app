@@ -226,12 +226,11 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     if (custSearch.length < 2) { setCustResults([]); return; }
     const timer = setTimeout(async () => {
       const q = custSearch.trim();
-      const isPhone = /^\d+$/.test(q);
       try {
         const bizId = _activeBizId || "biz_khvurgshb";
-        const filter = isPhone
-          ? `&business_id=eq.${bizId}&phone=ilike.*${q}*&limit=20`
-          : `&business_id=eq.${bizId}&name=ilike.*${encodeURIComponent(q)}*&limit=20`;
+        const enc = encodeURIComponent(q);
+        // name/name2/phone/phone2/email/cust_num OR 검색 (부분 일치)
+        const filter = `&business_id=eq.${bizId}&or=(name.ilike.*${enc}*,name2.ilike.*${enc}*,phone.ilike.*${q}*,phone2.ilike.*${q}*,email.ilike.*${enc}*,cust_num.ilike.*${enc}*)&limit=20`;
         const rows = await sb.get("customers", filter);
         setCustResults(Array.isArray(rows) ? fromDb("customers", rows) : []);
       } catch(e) { console.error("custSearch err:", e); setCustResults([]); }
@@ -376,10 +375,11 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   }, [prodPayTotal]);
 
   const handleSubmit = () => {
-    if (grandTotal <= 0) {
-      alert("매출 금액이 0원입니다. 시술 또는 제품을 선택해주세요.");
+    if (svcTotal + prodTotal <= 0) {
+      alert("시술 또는 제품을 선택해주세요.");
       return;
     }
+    // grandTotal=0 허용 (보유권 전액 차감 시에도 매출등록 + 패키지 차감 진행)
     if (!manager) {
       alert("시술자를 선택해주세요.");
       return;

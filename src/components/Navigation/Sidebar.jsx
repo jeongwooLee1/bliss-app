@@ -8,7 +8,7 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
     { label:"예약 관리", items: nav.filter(n=>["timeline","reservations"].includes(n.id)) },
     { label:"고객 관리", items: nav.filter(n=>["customers"].includes(n.id)) },
     { label:"매출 관리", items: nav.filter(n=>["sales"].includes(n.id)) },
-    ...(nav.find(n=>n.id==="admin") ? [{ label:"시스템", items: nav.filter(n=>["users","messages","admin"].includes(n.id)) }] : []),
+    ...(nav.find(n=>n.id==="admin") ? [{ label:"시스템", items: nav.filter(n=>["users","messages","admin","wizard"].includes(n.id)) }] : []),
   ];
   return <>
     <div style={{padding:`${T.sp.lg}px ${T.sp.lg}px ${T.sp.md}px`,borderBottom:`1px solid ${T.border}`}}>

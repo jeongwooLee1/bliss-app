@@ -282,6 +282,33 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
     window.addEventListener("resize",fn);
     return ()=>window.removeEventListener("resize",fn);
   },[]);
+  // 예약에 성별이 없고 local customers에도 없는 cust_id는 서버에서 일괄 조회
+  const [genderMap, setGenderMap] = useState({});
+  React.useEffect(()=>{
+    const custById = {};
+    (data?.customers||[]).forEach(c=>{ custById[c.id] = c; });
+    const missing = new Set();
+    (data?.reservations||[]).forEach(r=>{
+      if (!r.custGender && r.custId && !custById[r.custId]?.gender && !genderMap[r.custId]) {
+        missing.add(r.custId);
+      }
+    });
+    if (missing.size === 0) return;
+    const ids = [...missing];
+    (async()=>{
+      try {
+        const CHUNK = 100;
+        const next = {};
+        for (let i=0;i<ids.length;i+=CHUNK) {
+          const chunk = ids.slice(i,i+CHUNK);
+          const rows = await sb.get("customers", `&id=in.(${chunk.join(",")})&select=id,gender,email`);
+          (rows||[]).forEach(c=>{ next[c.id] = { gender:c.gender||"", email:c.email||"" }; });
+        }
+        setGenderMap(prev=>({...prev, ...next}));
+      } catch(e) { console.error("gender backfill failed:", e); }
+    })();
+  }, [data?.reservations, data?.customers]);
+
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
@@ -312,6 +339,8 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
   const [q, setQ] = useState("");
   const [resPage, setResPage] = useState(0);
   const RES_PER_PAGE = 50;
+  // 필터 변경 시 페이지 0으로 리셋 (필터 결과가 현재 페이지보다 적을 때 빈 화면 방지)
+  React.useEffect(()=>{ setResPage(0); }, [q, vb, statusFilter, startDate, endDate, periodKey]);
 
   // ── 밀도 설정 (localStorage 유지) ─────────────────
   const DENSITY = {
@@ -361,7 +390,13 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
       const sq = q.toLowerCase();
       const svc = (data.services||[]).find(s=>s.id===r.serviceId);
       const staff = (data.staff||[]).find(s=>s.id===r.staffId);
-      return (r.custName||"").toLowerCase().includes(sq)||(r.custPhone||"").includes(sq)||(svc?.name||"").toLowerCase().includes(sq)||(staff?.dn||"").toLowerCase().includes(sq);
+      // 네이버 예약 전용 필드도 검색 대상: reservation_id, 메모, request_msg(네이버 상품/시술메뉴/요청 등), visitor_name/phone
+      const hay = [
+        r.custName, r.custPhone, svc?.name, staff?.dn,
+        r.reservationId, r.memo, r.requestMsg, r.ownerComment,
+        r.visitorName, r.visitorPhone, r.custEmail,
+      ].filter(Boolean).join(" ").toLowerCase();
+      return hay.includes(sq);
     }
     return inRange(r.date);
   }).sort((a,b)=>b.date.localeCompare(a.date)||b.time.localeCompare(a.time));
@@ -580,7 +615,11 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
         const svcDisplay = svcNames.length>0 ? svcNames.join(", ") : (svc?.name||"-");
         const staff = (data.staff||[]).find(s=>s.id===r.staffId);
         const br = (data.branches||[]).find(b=>b.id===r.bid);
-        const g = r.custGender||"";
+        // 예약 자체에 성별 없으면 고객 레코드에서 백필 (로컬 캐시 → 서버 조회 맵)
+        const g = r.custGender
+          || (r.custId && (data.customers||[]).find(c=>c.id===r.custId)?.gender)
+          || (r.custId && genderMap[r.custId]?.gender)
+          || "";
         const st = ST[r.status]||{bg:T.gray100,color:T.gray500,label:r.status};
         const rowBg = ROW_BG[r.status]||T.bgCard;
         const isNaver = r.source==="naver"||r.source==="네이버";

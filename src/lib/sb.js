@@ -1,6 +1,6 @@
 // Supabase fetch-based API wrapper (원본 index.html L32~47 그대로)
 export const SB_URL = "https://dpftlrsuqxqqeouwbfjd.supabase.co"
-export const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRwZnRscnN1cXhxcWVvdXdiZmpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5MDU4MjQsImV4cCI6MjA4NzQ4MTgyNH0.iydEkjtPjZ0jXpUUPJben4IWWneDqLomv-HDlcFayE4"
+export const SB_KEY = "sb_publishable_3H-KTP0MoV_KuY74ocbefw_3Ze5xBJj"
 
 export const sbHeaders = {
   "apikey": SB_KEY,
@@ -29,4 +29,13 @@ export const sb = {
   async update(table,id,row) { const r=await fetch(`${SB_URL}/rest/v1/${table}?id=eq.${id}`,{method:"PATCH",headers:sbHeaders,body:JSON.stringify(row)}); if(!r.ok){const e=await r.text();console.error(`DB update ${table} FAILED [${r.status}]:`,e);alert(`DB수정 실패(${table}): ${e}`);} },
   async del(table,id) { await fetch(`${SB_URL}/rest/v1/${table}?id=eq.${id}`,{method:"DELETE",headers:sbHeaders}); },
   async delWhere(table,col,val) { await fetch(`${SB_URL}/rest/v1/${table}?${col}=eq.${val}`,{method:"DELETE",headers:sbHeaders}); },
+}
+
+/** 알림톡 큐에 추가 — 서버(bliss_naver.py alimtalk_thread)가 10초 내 발송 */
+export function queueAlimtalk(branchId, notiKey, phone, params={}) {
+  if (!branchId || !notiKey || !phone) return;
+  const clean = phone.replace(/[^0-9+]/g,"");
+  if (!clean.startsWith("010")) return; // 010 번호만
+  sb.insert("alimtalk_queue", { branch_id:branchId, noti_key:notiKey, phone:clean, params, status:"pending" })
+    .catch(e=>console.warn("[alimtalk] queue failed:", e));
 }

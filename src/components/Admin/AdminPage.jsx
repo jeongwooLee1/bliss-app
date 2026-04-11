@@ -6,7 +6,7 @@ import I from '../common/I'
 import { AField, AInp, APageHeader, AListItem, AIBtn } from './AdminUI'
 import UsersPage from './UsersPage'
 import AdminPlaces from './AdminPlaces'
-import AdminWorkers from './AdminWorkers'
+// AdminWorkers 제거 — 담당자는 근무표에서 자동 관리
 import AdminSaleItems from './AdminSaleItems'
 import AdminProductItems from './AdminProductItems'
 import AdminResSources from './AdminResSources'
@@ -273,7 +273,7 @@ function AdminJoinBrand({ currentUser, onBack }) {
   const [err, setErr] = React.useState("");
 
   const SUPA_URL = "https://dpftlrsuqxqqeouwbfjd.supabase.co";
-  const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRwZnRscnN1cXhxcWVvdXdiZmpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5MDU4MjQsImV4cCI6MjA4NzQ4MTgyNH0.iydEkjtPjZ0jXpUUPJben4IWWneDqLomv-HDlcFayE4";
+  const ANON = "sb_publishable_3H-KTP0MoV_KuY74ocbefw_3Ze5xBJj";
 
   const submit = async () => {
     if(!brandCode.trim()) { setErr("브랜드 코드를 입력해주세요"); return; }
@@ -328,7 +328,7 @@ function AdminJoinBrand({ currentUser, onBack }) {
     <div style={{fontSize:T.fs.sm,color:T.textMuted,marginBottom:24}}>브랜드 코드를 입력하면 해당 브랜드 어드민에게 가입 요청이 전달돼요.</div>
     <div style={{marginBottom:14}}>
       <label style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.gray600,display:"block",marginBottom:6}}>브랜드 코드</label>
-      <input value={brandCode} onChange={e=>setBrandCode(e.target.value)} placeholder="예: housewaxing"
+      <input value={brandCode} onChange={e=>setBrandCode(e.target.value)} placeholder="예: myshop"
         style={{width:"100%",padding:"11px 13px",borderRadius:T.radius.lg,border:`1px solid ${T.border}`,fontSize:T.fs.md,fontFamily:"inherit",color:T.text,outline:"none",boxSizing:"border-box"}}/>
     </div>
     <div style={{marginBottom:20}}>
@@ -347,7 +347,7 @@ function AdminJoinBrand({ currentUser, onBack }) {
 // ═══════════════════════════════════════════
 // ADMIN — 메뉴 홈 + 라우터
 // ═══════════════════════════════════════════
-function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser }) {
+function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userBranches=[] }) {
   const [tab,setTabRaw]=useState(()=>{try{return sessionStorage.getItem("bliss_adminTab")||null;}catch(e){return null;}});
   const setTab=t=>{setTabRaw(t);try{sessionStorage.setItem("bliss_adminTab",t||"");}catch(e){}};
   const back=()=>setTab(null);
@@ -357,15 +357,17 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser }) {
   },[data]);
   const pendingRequests = (settings.pending_requests || []).filter(r=>r.status==="pending");
   const pendingCount = pendingRequests.length;
-  const isMaster = currentUser?.role === "owner" || currentUser?.role === "super" || currentUser?.role === "manager";
+  const isOwner = currentUser?.role === "owner" || currentUser?.role === "super";
+  const isMaster = isOwner || currentUser?.role === "manager";
 
   const MENU=[
+    {section:"지점 관리",items:[
+      {key:"places", icon:"building", label:"예약장소 관리", desc:isOwner?"지점 추가·수정·삭제":"내 지점 설정"},
+    ]},
     ...(isMaster ? [{section:"사업장 관리",items:[
-      {key:"places",      icon:"building", label:"예약장소 관리",  desc:"지점 추가·수정·삭제"},
-      {key:"workers",     icon:"users",    label:"담당자 관리",    desc:"직원 계정 및 권한 설정"},
       {key:"saleitems",   icon:"scissors", label:"시술 상품 관리", desc:"시술 항목 및 가격 설정"},
       {key:"prodmgmt",    icon:"clipboard",label:"제품 관리",      desc:"판매 제품 관리"},
-      {key:"brandmembers", icon:"userPlus", label:"브랜드 멤버 관리", desc:"지점 가입 요청 승인/거절", badge:pendingCount},
+      ...(isOwner ? [{key:"brandmembers", icon:"userPlus", label:"브랜드 멤버 관리", desc:"지점 가입 요청 승인/거절", badge:pendingCount}] : []),
       {key:"schedule",     icon:"calendar", label:"직원 근무표",      desc:"직원 월별 근무 자동 배정"},
     ]}] : []),
     ...(isMaster ? [{section:"예약 설정",items:[
@@ -374,8 +376,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser }) {
     ]}] : []),
     ...(isMaster ? [{section:"알림 & AI",items:[
       {key:"notiSettings",icon:"bell",     label:"알림톡 설정",    desc:"카카오 알림톡 자동 발송 설정"},
-      {key:"messages",    icon:"chat",    label:"받은메시지함",   desc:"네이버톡톡 고객 메시지 관리"},
-      {key:"aisettings",  icon:"sparkles", label:"AI 설정",        desc:"AI 분석 키 및 규칙 관리"},
+      ...(isOwner ? [{key:"aisettings",  icon:"sparkles", label:"AI 설정",        desc:"AI 분석 규칙 관리"}] : []),
     ]}] : []),
     {section:"내 계정",items:[
       {key:"mypage",      icon:"user",     label:"마이페이지",     desc:"내 계정 정보 및 비밀번호 변경"},
@@ -412,13 +413,12 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser }) {
 
   return <div>
     <BackBtn/>
-    {tab==="places"       && isMaster &&<AdminPlaces       data={data} setData={setData} bizId={bizId}/>}
-    {tab==="workers"      && isMaster &&<AdminWorkers      data={data} setData={setData}/>}
+    {tab==="places"       && <AdminPlaces data={data} setData={setData} bizId={bizId} userBranches={userBranches} isMaster={isOwner}/>}
     {tab==="saleitems"    && isMaster &&<AdminSaleItems    data={data} setData={setData}/>}
     {tab==="prodmgmt"     && isMaster &&<AdminProductItems data={data} setData={setData}/>}
     {tab==="svctags"      && isMaster &&<AdminServiceTags  data={data} setData={setData}/>}
     {tab==="ressrc"       && isMaster &&<AdminResSources   data={data} setData={setData}/>}
-    {tab==="notiSettings" && isMaster &&<AdminNoti         data={data} setData={setData} sb={sb} bizId={bizId} branches={data?.branches||[]}/>}
+    {tab==="notiSettings" && isMaster &&<AdminNoti         data={data} setData={setData} sb={sb} bizId={bizId} branches={(data?.branches||[]).filter(b=>userBranches.includes(b.id))}/>}
     {tab==="aisettings"   && isMaster &&<AdminAISettings   data={data} sb={sb} bizId={bizId}/>}
     {tab==="brandmembers" && isMaster &&<AdminBrandMembers data={data} setData={setData} bizId={bizId} currentUser={currentUser}/>}
     {tab==="mypage"       &&<AdminMyPage       currentUser={currentUser} onLogout={onLogout}/>}

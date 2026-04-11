@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { T } from '../../lib/constants'
-import { sb, SB_URL, SB_KEY } from '../../lib/sb'
+import { sb, SB_URL, SB_KEY, queueAlimtalk } from '../../lib/sb'
 import { toDb, fromDb, _activeBizId } from '../../lib/db'
 import { genId, todayStr } from '../../lib/utils'
-import { Btn, FLD, Empty, fmt, Spinner } from '../common'
+import { Btn, FLD, Empty, fmt, Spinner, DataTable } from '../common'
 import I from '../common/I'
 
 const uid = genId;
@@ -17,8 +17,8 @@ const sx = {
   }),
 };
 
-function CustModal({ item, onSave, onClose, defBranch, userBranches, branches }) {
-  const isNew = !item?.id;
+function CustModal({ item, isEdit, onSave, onClose, defBranch, userBranches, branches }) {
+  const isNew = !isEdit;
   const [form, setForm] = React.useState(() => item ? {...item, smsConsent: item.smsConsent !== false} : {id:'cust_'+uid(),name:'',phone:'',gender:'',bid:defBranch||'',memo:'',visits:0, joinDate: new Date().toISOString().slice(0,10), smsConsent: true});
   const f = (k,v) => setForm(p=>({...p,[k]:v}));
   return <div style={{position:'fixed',inset:0,zIndex:3000,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,.45)'}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
@@ -33,8 +33,10 @@ function CustModal({ item, onSave, onClose, defBranch, userBranches, branches })
             {(branches||[]).filter(b=>userBranches.includes(b.id)).map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         </FLD>
-        <FLD label="이름"><input className="inp" value={form.name} onChange={e=>f('name',e.target.value)} placeholder="고객 이름"/></FLD>
+        <FLD label="이름"><input className="inp" value={form.name} onChange={e=>f('name',e.target.value)} placeholder="회원명"/></FLD>
+        <FLD label="이름 2 (선택)"><input className="inp" value={form.name2||''} onChange={e=>f('name2',e.target.value)} placeholder="회원명2 (오라클 NAME2)"/></FLD>
         <FLD label="연락처"><input className="inp" value={form.phone} onChange={e=>f('phone',e.target.value)} placeholder="01012345678"/></FLD>
+        <FLD label="연락처 2 (선택)"><input className="inp" value={form.phone2||''} onChange={e=>f('phone2',e.target.value)} placeholder="두 번째 연락처 (동일 고객 병합용)"/></FLD>
         <FLD label="이메일"><input className="inp" type="email" value={form.email||''} onChange={e=>f('email',e.target.value)} placeholder="example@email.com"/></FLD>
         <FLD label="성별">
           <div style={{display:'flex',gap:8}}>
@@ -57,65 +59,176 @@ function CustModal({ item, onSave, onClose, defBranch, userBranches, branches })
       </div>
       <div style={{display:'flex',gap:10,marginTop:20}}>
         <Btn variant="secondary" style={{flex:1}} onClick={onClose}>취소</Btn>
-        <Btn variant="primary" style={{flex:2}} onClick={()=>{ if(!form.name.trim()) return alert('이름을 입력하세요'); onSave(form); }}>저장</Btn>
+        <Btn variant="primary" style={{flex:2}} onClick={()=>{ if(!form.name.trim()) return alert('이름을 입력하세요'); onSave(form, isEdit); }}>저장</Btn>
       </div>
     </div>
   </div>;
 }
 
-function CustomersPage({ data, setData, userBranches, isMaster }) {
+function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust, setPendingOpenCust }) {
   const [q, setQ] = useState("");
   const [vb, setVb] = useState("all");
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [detailCust, setDetailCust] = useState(null);
   const [detailTab, setDetailTab] = useState("pkg"); // "pkg" | "sales"
-  const [serverCusts, setServerCusts] = useState(null);
-  const [searching, setSearching] = useState(false);
-  const [showHidden, setShowHidden] = useState(false);
-  const [custPage, setCustPage] = useState(0);
-  const CUST_PER_PAGE = 50;
+  // showHidden 제거 — 숨김 기능 미사용
 
-  // 서버사이드 검색 (디바운스)
+  // ── 서버 페이지네이션 (무한 스크롤) ──
+  const PAGE_SIZE = 50;
+  const [pagedCusts, setPagedCusts] = useState([]); // 누적
+  const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [searching, setSearching] = useState(false); // 검색중 표시
+  const [pkgByCust, setPkgByCust] = useState({}); // {cust_id: [pkg,...]} 페이지 단위 lazy 로드
+  const totalCountRef = useRef(0);
+  const scrollRef = useRef(null);
+  // pendingOpenCust가 있으면 단일 고객 모드 — 리스트 로드 완전 차단
+  const lockSingleRef = useRef(!!pendingOpenCust);
+  const [singleMode, setSingleMode] = useState(!!pendingOpenCust);
+
+  // 필터(검색/매장/숨김)가 바뀌면 처음부터 다시 로드
+  const buildFilter = (offset, limit) => {
+    const bizId = _activeBizId;
+    let parts = [`business_id=eq.${bizId}`];
+    // 매장 필터
+    if (vb !== "all") parts.push(`bid=eq.${vb}`);
+    else if (userBranches.length > 0) parts.push(`bid=in.(${userBranches.join(",")})`);
+    // 숨김 필터 제거 — 전부 표시
+    // 검색: 첫 토큰만 서버에서 OR ilike
+    const tokens = (q||"").trim().split(/\s+/).filter(Boolean);
+    if (tokens.length > 0) {
+      const enc = encodeURIComponent(tokens[0]);
+      parts.push(`or=(name.ilike.*${enc}*,name2.ilike.*${enc}*,phone.ilike.*${enc}*,phone2.ilike.*${enc}*,email.ilike.*${enc}*,memo.ilike.*${enc}*,cust_num.ilike.*${enc}*)`);
+    }
+    // 정렬: 오라클 등록일(join_date = 실제 가입 일시) 최신순 → 없으면 createdAt
+    // cust_num은 text라 문자열 정렬되므로 사용 불가. JOINDATE가 오라클 등록 타임스탬프와 동일.
+    parts.push(`order=join_date.desc.nullslast,created_at.desc.nullslast`);
+    parts.push(`offset=${offset}`);
+    parts.push(`limit=${limit}`);
+    return "&" + parts.join("&");
+  };
+
+  // 다단어 부분검색 매처 (서버 첫 토큰 이후 클라이언트 AND 필터용)
+  const matchesQuery = (c, query) => {
+    if (!query) return true;
+    const tokens = query.trim().split(/\s+/).filter(Boolean);
+    if (tokens.length <= 1) return true; // 첫 토큰은 서버에서 이미 필터됨
+    const haystack = [c.name, c.name2, c.phone, c.phone2, c.email, c.memo, c.custNum, c.custNum2].filter(Boolean).join(" ").toLowerCase();
+    return tokens.slice(1).every(t => haystack.includes(t.toLowerCase()));
+  };
+
+  const fetchPage = async (offset, reset=false) => {
+    if (loading) return;
+    setLoading(true);
+    if (reset) setSearching(true);
+    try {
+      const filter = buildFilter(offset, PAGE_SIZE);
+      const rows = await sb.get("customers", filter);
+      const mapped = fromDb("customers", rows).filter(c => matchesQuery(c, q));
+      setPagedCusts(prev => reset ? mapped : [...prev, ...mapped]);
+      setHasMore(rows.length === PAGE_SIZE);
+      if (reset && scrollRef.current) scrollRef.current.scrollTop = 0;
+      // 이 페이지 고객들의 보유권 batch 로드
+      const ids = mapped.map(c => c.id).filter(Boolean);
+      if (ids.length > 0) {
+        try {
+          const pkgRows = await sb.get("customer_packages", `&customer_id=in.(${ids.join(",")})`);
+          const map = {};
+          (pkgRows||[]).forEach(p => {
+            (map[p.customer_id] = map[p.customer_id] || []).push(p);
+          });
+          setPkgByCust(prev => reset ? map : {...prev, ...map});
+        } catch(e) { console.error("pkg batch load failed:", e); }
+      } else if (reset) {
+        setPkgByCust({});
+      }
+    } catch(e) {
+      console.error("Customer page fetch failed:", e);
+      if (reset) setPagedCusts([]);
+      setHasMore(false);
+    }
+    setLoading(false);
+    setSearching(false);
+  };
+
+  // q/vb/showHidden 변경 시 디바운스 리로드 — pendingOpenCust 처리 중이거나 단일 고객 락 상태면 스킵
   useEffect(() => {
-    if (!q || q.length < 1) { setServerCusts(null); return; }
-    const timer = setTimeout(async () => {
-      setSearching(true);
-      try {
-        const encoded = encodeURIComponent(q);
-        const filter = `&business_id=eq.${_activeBizId}&or=(name.ilike.*${encoded}*,phone.ilike.*${encoded}*,memo.ilike.*${encoded}*)&order=created_at.desc.nullslast&limit=200`;
-        const results = await sb.get("customers", filter);
-        setServerCusts(fromDb("customers", results));
-      } catch(e) { console.error("Customer search failed:", e); }
-      setSearching(false);
-    }, 300);
+    if (pendingOpenCust) return;
+    if (lockSingleRef.current) return;
+    const timer = setTimeout(() => { fetchPage(0, true); }, q ? 300 : 0);
     return () => clearTimeout(timer);
-  }, [q]);
+  }, [q, vb, pendingOpenCust]);
 
-  const baseCusts = (q && serverCusts !== null) ? serverCusts : (data?.customers||[]);
-  const custs = baseCusts.filter(c => {
-    const bm = vb==="all" ? userBranches.includes(c.bid) : c.bid===vb;
-    const sm = !q || c.name?.includes(q) || c.phone?.includes(q) || (c.memo||"").includes(q);
-    const hm = q || showHidden || !c.isHidden;
-    return bm && sm && hm;
-  }).sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||""));
+  // 스크롤 핸들러: 하단 근접 시 다음 페이지 로드
+  const onScroll = (e) => {
+    const el = e.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 200 && hasMore && !loading) {
+      fetchPage(pagedCusts.length, false);
+    }
+  };
 
-  const handleSave = (item) => {
+  const custs = pagedCusts;
+
+  // 보유권 요약: 유효 다회권(남은회차>0) + 다담권(잔액>0), 만료 여부 표시
+  const pkgSummaryForCust = (cid) => {
+    const arr = pkgByCust[cid] || [];
+    const out = [];
+    const today = todayStr();
+    arr.forEach(p => {
+      const n = (p.service_name||"");
+      const nl = n.toLowerCase();
+      const isPrepaid = n.includes("다담권") || n.includes("선불") || nl.includes("10%추가적립");
+      const isAnnual  = n.includes("연간") || n.includes("할인권") || n.includes("회원권");
+      // 유효기간 체크
+      const expiryMatch = (p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/);
+      const expiry = expiryMatch ? expiryMatch[1] : null;
+      const isExpired = expiry && expiry < today;
+      if (isAnnual) {
+        out.push({type:"annual", label: isExpired ? `⏳ 연간(만료)` : `📋 연간`, expired: isExpired});
+        return;
+      }
+      if (isPrepaid) {
+        const m = (p.note||"").match(/잔액:([0-9,]+)/);
+        const bal = m ? Number(m[1].replace(/,/g,"")) : 0;
+        if (bal > 0) out.push({type:"prepaid", label:`🎫 ${bal.toLocaleString()}`, expired: isExpired});
+      } else {
+        const remain = (p.total_count||0) - (p.used_count||0);
+        if (remain > 0) out.push({type:"package", label:`🎟 ${(n.split("(")[0]||"다회").trim()} ${remain}`, expired: isExpired});
+      }
+    });
+    return out;
+  };
+
+  const handleSave = (item, isEdit) => {
     const normalized = {...item, phone: (item.phone || "").replace(/[^0-9]/g, "")};
+    if (isEdit) {
+      // id 제외한 필드만 PATCH
+      const {id, ...rest} = toDb("customers", normalized);
+      sb.update("customers", normalized.id, rest).catch(console.error);
+    } else {
+      sb.insert("customers", toDb("customers", normalized)).catch(console.error);
+    }
     setData(prev => {
-      const ex = (prev?.customers||[]).find(c=>c.id===normalized.id);
-      if (ex) { sb.update("customers",normalized.id,toDb("customers",normalized)).catch(console.error); return {...prev,customers:(prev?.customers||[]).map(c=>c.id===normalized.id?normalized:c)}; }
-      sb.insert("customers",toDb("customers",normalized)).catch(console.error);
-      return {...prev,customers:[...prev.customers,normalized]};
+      const inLocal = (prev?.customers||[]).some(c=>c.id===normalized.id);
+      if (inLocal) return {...prev, customers: prev.customers.map(c=>c.id===normalized.id?normalized:c)};
+      return {...prev, customers: [...(prev?.customers||[]), normalized]};
+    });
+    // pagedCusts(실제 리스트)도 즉시 반영
+    setPagedCusts(prev => {
+      const inList = prev.some(c=>c.id===normalized.id);
+      if (inList) return prev.map(c=>c.id===normalized.id?normalized:c);
+      return [normalized, ...prev];
     });
     setShowModal(false); setEditItem(null);
   };
 
   const [custSales, setCustSales] = useState([]);
   const [custPkgsServer, setCustPkgsServer] = useState([]);
+  const [custResStats, setCustResStats] = useState({total:0,noshow:0,sameday:0});
   const [loadingDetail, setLoadingDetail] = useState(false);
   useEffect(() => {
-    if (!detailCust) { setCustSales([]); setCustPkgsServer([]); setLoadingDetail(false); return; }
+    if (!detailCust) { setCustSales([]); setCustPkgsServer([]); setCustResStats({total:0,noshow:0,sameday:0}); setLoadingDetail(false); return; }
     setLoadingDetail(true);
     Promise.all([
       sb.get("sales", `&cust_id=eq.${detailCust.id}&order=date.desc&limit=500`)
@@ -123,9 +236,63 @@ function CustomersPage({ data, setData, userBranches, isMaster }) {
         .catch(() => setCustSales([])),
       sb.get("customer_packages", `&customer_id=eq.${detailCust.id}`)
         .then(rows => setCustPkgsServer(rows))
-        .catch(() => setCustPkgsServer([]))
+        .catch(() => setCustPkgsServer([])),
+      sb.get("reservations", `&cust_id=eq.${detailCust.id}&select=status,date&limit=2000`)
+        .then(rows => {
+          const today = new Date().toISOString().slice(0,10);
+          setCustResStats({
+            total: rows.filter(r=>["confirmed","completed","no_show"].includes(r.status)).length,
+            noshow: rows.filter(r=>r.status==="no_show").length,
+            sameday: rows.filter(r=>["cancelled","naver_cancelled"].includes(r.status)&&r.date===today).length
+          });
+        })
+        .catch(() => setCustResStats({total:0,noshow:0,sameday:0}))
     ]).finally(() => setLoadingDetail(false));
   }, [detailCust?.id]);
+
+  // 외부(예약모달)에서 특정 고객 자동 오픈 요청 — id로 서버 직접 조회 → 단일 고객 모드
+  useEffect(() => {
+    if (!pendingOpenCust) return;
+    lockSingleRef.current = true;
+    setSingleMode(true);
+    (async () => {
+      try {
+        const rows = await sb.get("customers", `&id=eq.${pendingOpenCust}&limit=1`);
+        const found = fromDb("customers", rows)[0];
+        if (!found) {
+          alert("고객 정보를 찾을 수 없습니다");
+          lockSingleRef.current = false;
+          setSingleMode(false);
+          if (setPendingOpenCust) setPendingOpenCust(null);
+          return;
+        }
+        setPagedCusts([found]);
+        setHasMore(false);
+        setDetailCust(found);
+        setDetailTab("sales");
+        try {
+          const pkgRows = await sb.get("customer_packages", `&customer_id=eq.${found.id}`);
+          setPkgByCust(prev => ({...prev, [found.id]: pkgRows||[]}));
+        } catch(_) {}
+      } catch(e) {
+        console.error("pendingOpenCust fetch failed:", e);
+        lockSingleRef.current = false;
+        setSingleMode(false);
+      } finally {
+        if (setPendingOpenCust) setPendingOpenCust(null);
+      }
+    })();
+  }, [pendingOpenCust]);
+
+  // 단일 고객 모드 해제: 전체 목록 버튼 / 검색어 입력 / 매장 변경 시
+  const unlockSingleAndReload = () => {
+    if (lockSingleRef.current) {
+      lockSingleRef.current = false;
+      setSingleMode(false);
+      setDetailCust(null);
+      fetchPage(0, true);
+    }
+  };
   // 동일 이름 → 최신(유효기간 가장 먼 것)만 표시
   const custPkgs = (() => {
     const byName = {};
@@ -243,6 +410,10 @@ function CustomersPage({ data, setData, userBranches, isMaster }) {
           const up = {...p, used_count:p.used_count+1};
           sb.update("customer_packages",p.id,{used_count:up.used_count}).catch(console.error);
           setCustPkgsServer(prev=>prev.map(x=>x.id===p.id?up:x));
+          if(detailCust?.phone && detailCust?.bid){
+            const br=(data.branches||[]).find(b=>b.id===detailCust.bid);
+            queueAlimtalk(detailCust.bid,"tkt_charge",detailCust.phone,{"#{고객명}":detailCust.name||"","#{총횟수}":String(p.total_count),"#{사용횟수}":String(up.used_count),"#{잔여횟수}":String(p.total_count-up.used_count),"#{시작일}":"","#{종료일}":"","#{매장명}":br?.name||"","#{대표전화번호}":br?.phone||""});
+          }
         }}>1회 사용</Btn>}
 
         {/* 다담권: 금액 차감 */}
@@ -256,6 +427,10 @@ function CustomersPage({ data, setData, userBranches, isMaster }) {
           const newNote = (p.note||"").replace(/잔액:[0-9,]+/, `잔액:${newBal.toLocaleString()}`);
           sb.update("customer_packages",p.id,{used_count:newSpent, note:newNote}).catch(console.error);
           setCustPkgsServer(prev=>prev.map(x=>x.id===p.id?{...x, used_count:newSpent, note:newNote}:x));
+          if(detailCust?.phone && detailCust?.bid){
+            const br=(data.branches||[]).find(b=>b.id===detailCust.bid);
+            queueAlimtalk(detailCust.bid,"pkg_charge",detailCust.phone,{"#{고객명}":detailCust.name||"","#{충전금액}":String(charged),"#{사용금액}":String(newSpent),"#{잔액}":String(newBal),"#{매장명}":br?.name||"","#{대표전화번호}":br?.phone||""});
+          }
         }}>금액 차감</Btn>}
 
         <Btn variant="danger" size="sm" style={{padding:"3px 8px",fontSize:T.fs.nano}} onClick={()=>{
@@ -270,7 +445,14 @@ function CustomersPage({ data, setData, userBranches, isMaster }) {
   return <div>
     {/* Header */}
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:T.sp.sm}}>
-      <h2 className="page-title" style={{marginBottom:0}}>고객 관리</h2>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        {singleMode && <button onClick={unlockSingleAndReload}
+          style={{padding:"6px 12px",borderRadius:T.radius.md,border:"1px solid "+T.primary,background:T.bgCard,color:T.primary,
+            fontSize:T.fs.xs,fontWeight:T.fw.bold,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
+          ← 전체 목록
+        </button>}
+        <h2 className="page-title" style={{marginBottom:0}}>고객 관리</h2>
+      </div>
       <Btn variant="primary" onClick={()=>{setEditItem(null);setShowModal(true)}}><I name="plus" size={12}/> 고객 등록</Btn>
     </div>
 
@@ -278,66 +460,101 @@ function CustomersPage({ data, setData, userBranches, isMaster }) {
     <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
       <div style={{position:"relative",flex:1,minWidth:200,maxWidth:360}}>
         <I name="search" size={14} color={T.gray400} style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)"}}/>
-        <input className="inp" style={{paddingLeft:34,height:38,borderRadius:T.radius.md,fontSize:T.fs.xs}} placeholder="이름, 전화번호, 메모 검색..." value={q} onChange={e=>{setQ(e.target.value);setCustPage(0);}}/>
+        <input className="inp" style={{paddingLeft:34,height:38,borderRadius:T.radius.md,fontSize:T.fs.xs}} placeholder="이름·전화·메모 (공백 구분 다단어 예: 정우 8008)" value={q} onChange={e=>{unlockSingleAndReload();setQ(e.target.value);}}/>
       </div>
-      <select className="inp" style={{maxWidth:130,width:"auto",height:38,borderRadius:T.radius.md,fontSize:T.fs.xs}} value={vb} onChange={e=>{setVb(e.target.value);setCustPage(0);}}>
+      <select className="inp" style={{maxWidth:130,width:"auto",height:38,borderRadius:T.radius.md,fontSize:T.fs.xs}} value={vb} onChange={e=>{unlockSingleAndReload();setVb(e.target.value);}}>
         <option value="all">전체 매장</option>
         {(data.branches||[]).filter(b=>userBranches.includes(b.id)).map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
       </select>
-      <label style={{display:"flex",alignItems:"center",gap:4,fontSize:T.fs.xxs,color:T.textSub,cursor:"pointer",flexShrink:0}}>
-        <input type="checkbox" checked={showHidden} onChange={e=>setShowHidden(e.target.checked)} style={{accentColor:T.primary}}/>
-        숨김 포함
-      </label>
-      <span style={{fontSize:T.fs.xxs,color:T.textMuted}}>{custs.length}명</span>
+      <span style={{fontSize:T.fs.xxs,color:T.textMuted}}>{custs.length}명{hasMore?"+":""}</span>
       {searching && <span style={{fontSize:T.fs.xxs,color:T.orange}}>검색중...</span>}
     </div>
 
-    {/* 카드형 고객 리스트 */}
+    {/* 무한 스크롤 고객 리스트 */}
+    <div ref={scrollRef} onScroll={onScroll} style={{maxHeight:"calc(100vh - 220px)",overflowY:"auto",border:"1px solid "+T.border,borderRadius:T.radius.md}}>
     {(()=>{
-      const totalPages = Math.ceil(custs.length / CUST_PER_PAGE);
-      const paged = custs.slice(custPage * CUST_PER_PAGE, (custPage + 1) * CUST_PER_PAGE);
+      const paged = custs;
       return <>
-      {paged.length===0
+      {paged.length===0 && !loading
         ? <div style={{textAlign:"center",padding:"40px 0",color:T.textMuted}}><I name="users" size={24}/><div style={{marginTop:8,fontSize:T.fs.xs}}>고객 없음</div></div>
-        : <div style={{display:"flex",flexDirection:"column",gap:1,background:T.border,borderRadius:T.radius.md,overflow:"hidden",border:"1px solid "+T.border}}>
+        : <DataTable card>
+            <thead><tr>
+              <th style={{width:70}}>고객번호</th>
+              <th style={{width:100}}>등록일</th>
+              <th>이름</th>
+              <th style={{width:140}}>연락처</th>
+              <th style={{width:160}}>이메일</th>
+              <th style={{width:90}}>매장</th>
+              <th style={{width:60,textAlign:"right"}}>방문수</th>
+              <th style={{width:100}}>최근방문</th>
+              <th style={{width:160}}>보유권</th>
+              <th style={{width:70}}></th>
+            </tr></thead>
+            <tbody>
             {paged.map(c => {
               const br = (data.branches||[]).find(b=>b.id===c.bid);
               const isOpen = detailCust?.id===c.id;
-              return <div key={c.id}>
-                <div style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 14px",background:isOpen?T.primaryHover:T.bgCard,cursor:"pointer",transition:"background .15s"}}
+              return <React.Fragment key={c.id}>
+                <tr style={{cursor:"pointer",background:isOpen?T.primaryHover:"transparent"}}
                   onClick={()=>{ setDetailCust(isOpen?null:c); setDetailTab("sales"); }}>
-                  <div style={{flex:"0 0 140px",minWidth:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
-                      <span style={{fontWeight:T.fw.bolder,fontSize:T.fs.xs,color:T.text}}>{c.name}</span>
-                      {c.gender && <span style={{...sx.genderBadge(c.gender),fontSize:9,padding:"0 4px"}}>{c.gender==="F"?"여":"남"}</span>}
+                  <td style={{fontSize:T.fs.xxs,color:T.textMuted,fontFamily:"monospace"}}>{c.custNum||"-"}</td>
+                  <td style={{fontSize:T.fs.xxs,color:T.textSub,whiteSpace:"nowrap"}}>{c.joinDate||(c.createdAt||"").slice(0,10)||"-"}</td>
+                  <td style={{fontWeight:T.fw.bold}}>
+                    {c.gender && <span style={{...sx.genderBadge(c.gender),marginRight:4}}>{c.gender==="F"?"여":"남"}</span>}
+                    {c.name}
+                    {c.name2 && <span style={{color:T.textSub,fontWeight:T.fw.normal,marginLeft:4,fontSize:T.fs.xxs}}>({c.name2})</span>}
+                    {c.smsConsent===false && <span style={{fontSize:9,color:T.danger,fontWeight:T.fw.bold,marginLeft:4}}>수신거부</span>}
+                  </td>
+                  <td style={{fontSize:T.fs.xxs,color:T.primary,whiteSpace:"nowrap"}}>
+                    {c.phone||"-"}
+                    {c.phone2 && <div style={{color:T.textSub,fontSize:9}}>{c.phone2}</div>}
+                  </td>
+                  <td style={{fontSize:T.fs.xxs,color:T.textSub,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:160}}>{c.email||"-"}</td>
+                  <td><span style={{fontSize:T.fs.xxs,background:T.gray200,borderRadius:T.radius.sm,padding:"1px 5px"}}>{br?.short||"-"}</span></td>
+                  <td style={{textAlign:"right",fontWeight:T.fw.bold,color:T.textSub}}>{c.visits||0}</td>
+                  <td style={{fontSize:T.fs.xxs,color:T.textMuted,whiteSpace:"nowrap"}}>{c.lastVisit||"-"}</td>
+                  <td>
+                    {(() => {
+                      const pkgs = pkgSummaryForCust(c.id);
+                      if (pkgs.length === 0) return <span style={{color:T.textMuted,fontSize:T.fs.nano}}>-</span>;
+                      return <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
+                        {pkgs.map((pkg,i) => (
+                          <span key={i}
+                            style={{fontSize:9,fontWeight:800,padding:"1px 6px",borderRadius:10,
+                              background:pkg.expired?"linear-gradient(135deg,#eee,#ddd)":pkg.type==="prepaid"?"linear-gradient(135deg,#FFE0B2,#FFCC80)":"linear-gradient(135deg,#FFF3E0,#FFE0B2)",
+                              color:pkg.expired?"#999":"#E65100",border:pkg.expired?"1px solid #ccc":"1px solid #FFB74D",whiteSpace:"nowrap",
+                              textDecoration:pkg.expired?"line-through":"none"}}>{pkg.label}</span>
+                        ))}
+                      </div>;
+                    })()}
+                  </td>
+                  <td onClick={e=>e.stopPropagation()}>
+                    <div style={{display:"flex",gap:3}}>
+                      <Btn variant="secondary" size="sm" style={{padding:"2px 5px"}} onClick={()=>{setEditItem(c);setShowModal(true)}}><I name="edit" size={11}/></Btn>
+                      <Btn variant="danger" size="sm" style={{padding:"2px 5px"}} onClick={()=>{
+                        if(!confirm(`"${c.name}" 삭제?`)) return;
+                        sb.del("customers",c.id).catch(console.error);
+                        sb.delWhere("customer_packages","customer_id",c.id).catch(console.error);
+                        setData(prev=>({...prev,customers:(prev.customers||[]).filter(x=>x.id!==c.id),custPackages:(prev.custPackages||[]).filter(x=>x.customer_id!==c.id)}));
+                        if(detailCust?.id===c.id) setDetailCust(null);
+                      }}><I name="trash" size={11}/></Btn>
                     </div>
-                    <div style={{fontSize:T.fs.xxs,color:T.primary,marginBottom:2}}>{c.phone}</div>
-                    <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-                      <span style={{fontSize:9,background:T.gray200,borderRadius:T.radius.sm,padding:"1px 5px",color:T.textSub}}>{br?.short||"-"}</span>
-                      <span style={{fontSize:9,color:T.textMuted}}>{c.visits||0}회</span>
-                      {c.lastVisit && <span style={{fontSize:9,color:T.textMuted}}>{c.lastVisit}</span>}
-                      {c.joinDate && <span style={{fontSize:9,color:T.textMuted}}>가입:{c.joinDate}</span>}
-                      {c.smsConsent===false && <span style={{fontSize:9,color:T.danger,fontWeight:T.fw.bold}}>수신거부</span>}
-                      {c.isHidden && <span style={{fontSize:9,color:T.danger,fontWeight:T.fw.bold}}>숨김</span>}
-                    </div>
-                  </div>
-                  <div style={{flex:1,fontSize:T.fs.xxs,color:T.textSub,lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word",maxHeight:isOpen?"none":60,overflow:"hidden"}}>
-                    {c.memo||<span style={{color:T.textMuted}}>-</span>}
-                  </div>
-                  <div style={{flex:"0 0 auto",display:"flex",gap:4}} onClick={e=>e.stopPropagation()}>
-                    <Btn variant="secondary" size="sm" onClick={()=>{setEditItem(c);setShowModal(true)}} style={{padding:"4px 6px"}}><I name="edit" size={11}/></Btn>
-                    <Btn variant="danger" size="sm" style={{padding:"4px 6px"}} onClick={()=>{
-                      if(!confirm(`"${c.name}" 삭제?`)) return;
-                      sb.del("customers",c.id).catch(console.error);
-                      sb.delWhere("customer_packages","customer_id",c.id).catch(console.error);
-                      setData(prev=>({...prev,customers:(prev.customers||[]).filter(x=>x.id!==c.id),custPackages:(prev.custPackages||[]).filter(x=>x.customer_id!==c.id)}));
-                      if(detailCust?.id===c.id) setDetailCust(null);
-                    }}><I name="trash" size={11}/></Btn>
-                  </div>
-                </div>
+                  </td>
+                </tr>
 
                 {/* 상세 패널 */}
-                {isOpen && <div style={{background:T.gray100,borderTop:"2px solid "+T.primaryLt}}>
+                {isOpen && <tr><td colSpan={10} style={{padding:0,background:T.gray100,borderTop:"2px solid "+T.primaryLt}}><div>
+                    {/* 예약 통계 */}
+                    <div style={{display:"flex",gap:8,padding:"8px 12px",background:T.bgCard,borderBottom:"1px solid "+T.border}}>
+                      {[
+                        {label:"예약",val:custResStats.total,color:T.primary},
+                        {label:"노쇼",val:custResStats.noshow,color:custResStats.noshow>0?"#e53e3e":T.gray500},
+                        {label:"당일취소",val:custResStats.sameday,color:custResStats.sameday>0?"#dd6b20":T.gray500}
+                      ].map(s=><div key={s.label} style={{display:"flex",alignItems:"center",gap:4}}>
+                        <span style={{fontSize:T.fs.xs,color:T.textMuted}}>{s.label}</span>
+                        <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:s.color}}>{s.val}</span>
+                      </div>)}
+                    </div>
                     {/* 탭 */}
                     <div style={{display:"flex",gap:0,borderBottom:"1px solid "+T.border,background:T.bgCard}}>
                       {[["sales","매출 내역 ("+custSales.length+")"],["pkg","보유권 ("+custPkgs.filter(p=>{const t=pkgType(p);return t==="prepaid"?((p.note||"").match(/잔액:([0-9,]+)/)?.[1]||"0").replace(/,/g,"")>0:(p.total_count-p.used_count)>0;}).length+"/"+custPkgs.length+")"]].map(([tab,lbl])=>(
@@ -407,23 +624,19 @@ function CustomersPage({ data, setData, userBranches, isMaster }) {
                         }
                       </div>}
                     </div>
-                </div>}
-              </div>;
+                </div></td></tr>}
+              </React.Fragment>;
             })}
-          </div>}
+            </tbody>
+          </DataTable>}
 
-      {/* 페이지네이션 */}
-      {totalPages > 1 && <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:12}}>
-        <button disabled={custPage===0} onClick={()=>setCustPage(0)} style={{padding:"4px 10px",fontSize:T.fs.xs,border:"1px solid "+T.border,borderRadius:T.radius.sm,background:T.bgCard,cursor:custPage===0?"default":"pointer",opacity:custPage===0?.4:1}}>«</button>
-        <button disabled={custPage===0} onClick={()=>setCustPage(p=>p-1)} style={{padding:"4px 10px",fontSize:T.fs.xs,border:"1px solid "+T.border,borderRadius:T.radius.sm,background:T.bgCard,cursor:custPage===0?"default":"pointer",opacity:custPage===0?.4:1}}>‹</button>
-        <span style={{fontSize:T.fs.xs,color:T.textSub,padding:"0 8px"}}>{custPage+1} / {totalPages}</span>
-        <button disabled={custPage>=totalPages-1} onClick={()=>setCustPage(p=>p+1)} style={{padding:"4px 10px",fontSize:T.fs.xs,border:"1px solid "+T.border,borderRadius:T.radius.sm,background:T.bgCard,cursor:custPage>=totalPages-1?"default":"pointer",opacity:custPage>=totalPages-1?.4:1}}>›</button>
-        <button disabled={custPage>=totalPages-1} onClick={()=>setCustPage(totalPages-1)} style={{padding:"4px 10px",fontSize:T.fs.xs,border:"1px solid "+T.border,borderRadius:T.radius.sm,background:T.bgCard,cursor:custPage>=totalPages-1?"default":"pointer",opacity:custPage>=totalPages-1?.4:1}}>»</button>
-      </div>}
+      {loading && <div style={{textAlign:"center",padding:"12px 0",fontSize:T.fs.xxs,color:T.textMuted}}>불러오는 중...</div>}
+      {!hasMore && custs.length > 0 && <div style={{textAlign:"center",padding:"12px 0",fontSize:T.fs.xxs,color:T.textMuted}}>— 끝 —</div>}
       </>;
     })()}
+    </div>
 
-    {showModal && <CustModal item={editItem} onSave={handleSave}
+    {showModal && <CustModal item={editItem} isEdit={!!editItem?.id} onSave={handleSave}
       onClose={()=>_mc(()=>{setShowModal(false);setEditItem(null)})}
       defBranch={userBranches[0]} userBranches={userBranches} branches={data.branches||[]}/>}
   </div>;

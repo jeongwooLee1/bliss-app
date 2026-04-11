@@ -9,8 +9,8 @@ import { AConfirm, ASheet, AField, AInp, AEmpty, APageHeader, AListItem, AIBtn }
 const uid = genId;
 
 function AdminProductItems({ data, setData }) {
-const [items,setItems]=useState(()=>[...(data?.productItems||[])].sort((a,b)=>(a.sort||0)-(b.sort||0)));
-useEffect(()=>{setItems([...(data?.productItems||[])].sort((a,b)=>(a.sort||0)-(b.sort||0)));},[data?.productItems?.length]);
+const [items,setItems]=useState(()=>[...(data?.products||[])].sort((a,b)=>(a.sort||0)-(b.sort||0)));
+useEffect(()=>{setItems([...(data?.products||[])].sort((a,b)=>(a.sort||0)-(b.sort||0)));},[data?.products?.length]);
   const [sheet,setSheet]=useState(false);
   const [edit,setEdit]=useState(null);
   const [form,setForm]=useState({name:"",price:0,stock:0,note:""});
@@ -25,15 +25,15 @@ const onDragEnd_p=()=>{
   if(di===null||oi===null||di===oi)return;
   const r=[...items];const [m]=r.splice(di,1);r.splice(oi,0,m);
   const updated=r.map((it,idx2)=>({...it,sort:idx2}));
-  setItems(updated);setData(p=>({...p,productItems:updated}));
-  updated.forEach((it,idx2)=>sb.update("product_items",it.id,{sort:idx2}).catch(console.error));
+  setItems(updated);setData(p=>({...p,products:updated}));
+  updated.forEach((it,idx2)=>sb.update("products",it.id,{sort:idx2}).catch(console.error));
 };
 const moveItem_p=(i,dir)=>{
   const ni=i+dir;if(ni<0||ni>=items.length)return;
   const r=[...items];[r[i],r[ni]]=[r[ni],r[i]];
   const updated=r.map((it,idx2)=>({...it,sort:idx2}));
-  setItems(updated);setData(p=>({...p,productItems:updated}));
-  updated.forEach((it,idx2)=>sb.update("product_items",it.id,{sort:idx2}).catch(console.error));
+  setItems(updated);setData(p=>({...p,products:updated}));
+  updated.forEach((it,idx2)=>sb.update("products",it.id,{sort:idx2}).catch(console.error));
 };
   const set=(k,v)=>setForm(p=>({...p,[k]:v}));
 
@@ -46,12 +46,12 @@ const moveItem_p=(i,dir)=>{
     try{
       const pl={name:form.name,price:+form.price,stock:+form.stock,note:form.note};
       if(edit){
-        await sb.update("product_items",edit.id,pl);
-        setData(p=>({...p,productItems:(p.productItems||[]).map(it=>it.id===edit.id?{...it,...pl}:it)}));
+        await sb.update("products",edit.id,pl);
+        setData(p=>({...p,products:(p.products||[]).map(it=>it.id===edit.id?{...it,...pl}:it)}));
       }else{
         const id="pi_"+uid();
-        await sb.insert("product_items",{id,business_id:_activeBizId,...pl});
-        setData(p=>({...p,productItems:[...(p.productItems||[]),{id,...pl}]}));
+        await sb.insert("products",{id,business_id:_activeBizId,...pl});
+        setData(p=>({...p,products:[...(p.products||[]),{id,...pl}]}));
       }
       setSheet(false);
     }catch(e){alert("저장 실패: "+e.message);}
@@ -59,8 +59,8 @@ const moveItem_p=(i,dir)=>{
   };
 
   const doDelete=async id=>{
-    await sb.del("product_items",id).catch(console.error);
-    setData(p=>({...p,productItems:(p.productItems||[]).filter(it=>it.id!==id)}));
+    await sb.del("products",id).catch(console.error);
+    setData(p=>({...p,products:(p.products||[]).filter(it=>it.id!==id)}));
     setDel(null);
   };
 

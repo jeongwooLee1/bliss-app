@@ -33,6 +33,7 @@ function AdminNoti({ data, setData, sb, bizId, branches }) {
       {key:"rsv_today",  label:"당일 알림",   desc:"당일 아침 지정 시각에 발송",hasTime:true},
       {key:"rsv_cancel", label:"예약 취소",   desc:"예약 취소 시 발송"},
       {key:"rsv_naver",  label:"네이버 대기", desc:"네이버 예약 대기 상태 시 발송"},
+      {key:"rsv_aftercare",label:"사후관리", desc:"시술 3일 후 자동 발송"},
     ]},
     {label:"정액권 알림",items:[
       {key:"pkg_pay",   label:"결제 완료",  desc:"정액권 결제 완료 시 발송"},
@@ -45,6 +46,16 @@ function AdminNoti({ data, setData, sb, bizId, branches }) {
       {key:"tkt_charge",label:"충전 완료",  desc:"티켓 충전 시 발송"},
       {key:"tkt_exp_1m",label:"만기 1달 전",desc:"만료 30일 전 발송"},
       {key:"tkt_exp_1w",label:"만기 1주 전",desc:"만료 7일 전 발송"},
+    ]},
+    {label:"연간할인권 알림",items:[
+      {key:"annual_reg",label:"등록 완료",  desc:"연간할인권 등록 시 발송"},
+    ]},
+    {label:"시술후 케어 알림",items:[
+      {key:"after_5d", label:"시술 후 5일",desc:"시술 5일 후 스크럽 안내"},
+      {key:"after_10d",label:"시술 후 10일",desc:"시술 10일 후 관리 안내"},
+      {key:"after_21d",label:"시술 후 21일",desc:"시술 21일 후 재방문 안내"},
+      {key:"after_35d",label:"시술 후 35일",desc:"시술 35일 후 재방문 안내"},
+      {key:"after_53d",label:"시술 후 53일",desc:"시술 53일 후 재방문 안내"},
     ]},
     {label:"포인트 알림",items:[
       {key:"pt_earn",label:"포인트 적립",desc:"포인트 적립 시 발송"},

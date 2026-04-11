@@ -63,11 +63,8 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role }) {
     if (!(vb==="all" ? userBranches.includes(s.bid) : s.bid===vb)) return false;
     if (q) {
       const sq = q.toLowerCase();
-      return (s.custName||"").toLowerCase().includes(sq) ||
-             (s.custPhone||"").includes(sq) ||
-             (s.staffName||"").toLowerCase().includes(sq) ||
-             (s.custNum||"").includes(sq) ||
-             (s.memo||"").toLowerCase().includes(sq);
+      const hay = [s.custName, s.custPhone, s.staffName, s.custNum, s.memo, s.custEmail].filter(Boolean).join(" ").toLowerCase();
+      return hay.includes(sq);
     }
     return inRange(s.date);
   });
@@ -165,7 +162,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role }) {
       </button>
       <select className="inp" style={{flex:1,minWidth:100,height:36}} value={vb} onChange={e=>setVb(e.target.value)}>
         <option value="all">전체 매장</option>
-        {(data.branches||[]).map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
+        {(data.branches||[]).filter(b=>userBranches.includes(b.id)).map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
       </select>
       <div style={{position:"relative",flex:2,minWidth:160}}>
         <I name="search" size={14} color={T.gray400} style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)"}}/>
@@ -355,9 +352,9 @@ function StatsPage({ data, userBranches, isMaster, role }) {
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:10}}>
       <h2 className="page-title" style={{marginBottom:0}}>매출 통계</h2>
       <div style={{display:"flex",gap:T.sp.sm}}>
-        {<select className="inp" style={{maxWidth:130,width:"auto"}} value={vb} onChange={e=>setVb(e.target.value)}>
+        {<select className="inp" style={{maxWidth:150,width:"auto"}} value={vb} onChange={e=>setVb(e.target.value)}>
           <option value="all">전체 매장</option>
-          {(data.branches||[]).map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
+          {(data.branches||[]).filter(b=>userBranches.includes(b.id)).map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
         </select>}
         <select className="inp" style={{maxWidth:110,width:"auto"}} value={period} onChange={e=>setPeriod(e.target.value)}>
           <option value="7">7일</option><option value="14">14일</option><option value="30">30일</option>

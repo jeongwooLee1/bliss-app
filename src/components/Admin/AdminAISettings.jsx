@@ -7,14 +7,17 @@ import { AField, AInp, AEmpty, APageHeader, ABadge, AIBtn } from './AdminUI'
 const AI_RULES_KEY = "bliss_ai_rules";
 
 function AdminAISettings({ data, sb: sbProp, bizId }) {
-  const [activeAiTab,setActiveAiTab]=useState("api"); // "api" | "rules" | "chat"
-  const [apiKey,setApiKey]=useState(()=>window.__geminiKey||localStorage.getItem("bliss_gemini_key")||"");
+  const hasSystemKey = !!window.__systemGeminiKey;
+  const [activeAiTab,setActiveAiTab]=useState(hasSystemKey ? "rules" : "api"); // "rules" | "chat" | "api"(시스템키 없을때만)
+  const [apiKey,setApiKey]=useState(()=>window.__systemGeminiKey||window.__geminiKey||localStorage.getItem("bliss_gemini_key")||"");
   const [saved,setSaved]=useState(false);
   const [testing,setTesting]=useState(false);
   const [testResult,setTestResult]=useState(null);
   const [rules,setRules]=useState(()=>{try{return JSON.parse(localStorage.getItem(AI_RULES_KEY)||"[]");}catch{return [];}});
   const [chatPrompt,setChatPrompt]=useState(()=>localStorage.getItem("bliss_ai_chat_prompt")||"");
   const [chatSaved,setChatSaved]=useState(false);
+  const [analyzePrompt,setAnalyzePrompt]=useState(()=>localStorage.getItem("bliss_ai_analyze_prompt")||"");
+  const [analyzeSaved,setAnalyzeSaved]=useState(false);
 
   useEffect(()=>{
     if(!bizId)return;
@@ -25,6 +28,7 @@ function AdminAISettings({ data, sb: sbProp, bizId }) {
         if(memo.gemini_key){setApiKey(memo.gemini_key);localStorage.setItem("bliss_gemini_key",memo.gemini_key);}
         if(memo.ai_rules?.length){setRules(memo.ai_rules);localStorage.setItem(AI_RULES_KEY,JSON.stringify(memo.ai_rules));}
         if(memo.ai_chat_prompt!=null){setChatPrompt(memo.ai_chat_prompt);localStorage.setItem("bliss_ai_chat_prompt",memo.ai_chat_prompt);window.__aiChatPrompt=memo.ai_chat_prompt;}
+        if(memo.ai_analyze_prompt!=null){setAnalyzePrompt(memo.ai_analyze_prompt);localStorage.setItem("bliss_ai_analyze_prompt",memo.ai_analyze_prompt);}
       }catch(e){}
     }).catch(()=>{});
   },[bizId]);
@@ -78,6 +82,21 @@ function AdminAISettings({ data, sb: sbProp, bizId }) {
   const startEdit=i=>{setEditIdx(i);setEditVal(rules[i]);};
   const saveEdit=()=>{if(editVal.trim()){saveRules(rules.map((r,i)=>i===editIdx?editVal.trim():r));setEditIdx(null);}};
 
+  const saveAnalyzePrompt=async()=>{
+    const t=analyzePrompt;
+    localStorage.setItem("bliss_ai_analyze_prompt",t);
+    if(bizId){
+      try{
+        const r=await fetch(`${SB_URL}/rest/v1/businesses?id=eq.${bizId}&select=settings`,{headers:sbHeaders});
+        const rows=await r.json();
+        let memo={};try{memo=JSON.parse(rows[0]?.settings||"{}");}catch{}
+        memo.ai_analyze_prompt=t;
+        await fetch(`${SB_URL}/rest/v1/businesses?id=eq.${bizId}`,{method:"PATCH",headers:{...sbHeaders,"Prefer":"return=minimal"},body:JSON.stringify({settings:JSON.stringify(memo)})});
+      }catch(e){}
+    }
+    setAnalyzeSaved(true); setTimeout(()=>setAnalyzeSaved(false),2000);
+  };
+
   const saveChatPrompt=async()=>{
     const t=chatPrompt;
     localStorage.setItem("bliss_ai_chat_prompt",t);
@@ -109,7 +128,7 @@ function AdminAISettings({ data, sb: sbProp, bizId }) {
   },[data?.services]);
 
   const AI_TABS=[
-    {id:"api",label:"API 키"},
+    ...(!hasSystemKey ? [{id:"api",label:"API 키"}] : []),
     {id:"rules",label:"분석 규칙"},
     {id:"chat",label:"자동 응대"},
   ];
@@ -146,7 +165,22 @@ function AdminAISettings({ data, sb: sbProp, bizId }) {
     </div>}
 
     {/* 분석 규칙 탭 */}
-    {activeAiTab==="rules" && <div className="card" style={{padding:20}}>
+    {activeAiTab==="rules" && <div>
+    <div className="card" style={{padding:20,marginBottom:16}}>
+      <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.text,marginBottom:4,display:"flex",alignItems:"center",gap:7}}>
+        <I name="sparkles" size={14} style={{color:T.primary}}/> 분석 프롬프트 (전체)
+      </div>
+      <div style={{fontSize:T.fs.xs,color:T.textMuted,marginBottom:12,lineHeight:1.6}}>
+        네이버 예약을 AI가 분석할 때 사용하는 프롬프트 전체입니다. 비워두면 시스템 기본 프롬프트를 사용합니다.<br/>
+        사용 가능 변수: <code>{"{tags}"}</code> <code>{"{services}"}</code> <code>{"{cust_name}"}</code> <code>{"{visit_count}"}</code> <code>{"{naver_text}"}</code> <code>{"{custom_rules}"}</code>
+      </div>
+      <AField label="프롬프트">
+        <textarea style={{...AInp,minHeight:240,resize:"vertical",lineHeight:1.6,fontFamily:"monospace",fontSize:T.fs.xs}} value={analyzePrompt} onChange={e=>setAnalyzePrompt(e.target.value)}
+          placeholder={"예시:\n당신은 왁싱샵 예약 정보를 분석하는 AI입니다.\n[태그 목록] {tags}\n[시술상품 목록] {services}\n\n[규칙]\n- 태그 목록에 있는 태그만 선택\n- '신규','예약금완료' 제외\n- 음모왁싱/음부왁싱/브라질리언왁싱 = 브라질리언\n- '재방문','이벤트','할인권' 단독은 시술 아님\n{custom_rules}\n\n[예약 정보]\n고객명: {cust_name}\n방문횟수: {visit_count}\n\n[고객 요청]\n{naver_text}"}/>
+      </AField>
+      <AIBtn onClick={saveAnalyzePrompt} label={analyzeSaved?"✓ 저장됨":"저장"} style={{background:analyzeSaved?T.success:T.primary}}/>
+    </div>
+    <div className="card" style={{padding:20}}>
       <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.text,marginBottom:4,display:"flex",alignItems:"center",gap:7}}>
         <I name="fileText" size={14} style={{color:T.primary}}/> AI 분석 커스텀 규칙
         <ABadge color={T.primary}>{rules.length}개</ABadge>
@@ -176,6 +210,7 @@ function AdminAISettings({ data, sb: sbProp, bizId }) {
         <textarea style={{...AInp,minHeight:80,resize:"vertical",marginBottom:10,lineHeight:1.6}} value={newRule} onChange={e=>setNewRule(e.target.value)} placeholder="예: 다리안쪽은 다리 절반 시술이다"/>
       </AField>
       <AIBtn onClick={addRule} disabled={!newRule.trim()} label="규칙 추가"/>
+    </div>
     </div>}
 
     {/* 자동 응대 탭 */}

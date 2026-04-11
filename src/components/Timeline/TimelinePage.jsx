@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { T, NAVER_COLS, getNaverVal, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, BRANCH_DEFAULT_COLORS, branchColor, STATUS_CLR_DEFAULT, STATUS_KEYS, SCH_BRANCH_MAP, MALE_EMPLOYEES } from '../../lib/constants'
-import { sb, SB_URL, SB_KEY, sbHeaders } from '../../lib/sb'
+import { sb, SB_URL, SB_KEY, sbHeaders, queueAlimtalk } from '../../lib/sb'
 import { useMaleRotation } from '../../lib/useData'
 import { fromDb, toDb, resolveSystemIds, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS } from '../../lib/db'
 import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone } from '../../lib/utils'
@@ -20,7 +20,7 @@ const Btn = ({ children, variant="primary", size="md", disabled, onClick, style=
   return <button onClick={disabled?undefined:onClick} disabled={disabled} style={{background:bg,color,border,borderRadius:T.radius.md,padding:pd,fontSize:T.fs.sm,fontWeight:T.fw.bold,cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.6:1,fontFamily:"inherit",...style}} {...p}>{children}</button>;
 };
 
-function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, currentUser, setPage, bizId, onMenuClick, bizName, pendingOpenRes, setPendingOpenRes, naverColShow={}, scraperStatus=null, setPendingChat }) {
+function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, currentUser, setPage, bizId, onMenuClick, bizName, pendingOpenRes, setPendingOpenRes, naverColShow={}, scraperStatus=null, setPendingChat, setPendingOpenCust }) {
   // 타임라인 블록 표시 항목 — App에서 prop으로 받음
   const effectiveNaverColShow = naverColShow;
   const SVC_LIST = (data?.services || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
@@ -143,7 +143,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
 
   // schHistory_v1 초기 로드 + Realtime 구독
   const SB_URL_SCH = "https://dpftlrsuqxqqeouwbfjd.supabase.co";
-  const SB_KEY_SCH = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRwZnRscnN1cXhxcWVvdXdiZmpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5MDU4MjQsImV4cCI6MjA4NzQ4MTgyNH0.iydEkjtPjZ0jXpUUPJben4IWWneDqLomv-HDlcFayE4";
+  const SB_KEY_SCH = "sb_publishable_3H-KTP0MoV_KuY74ocbefw_3Ze5xBJj";
 
   useEffect(() => {
     const H = { apikey: SB_KEY_SCH, Authorization: "Bearer " + SB_KEY_SCH };
@@ -238,13 +238,13 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     const map = {};
     (data?.branches || []).forEach(b => {
       if (b.short) map[b.short] = b.id;                          // "강남점"
-      if (b.name) map[b.name] = b.id;                            // "하우스왁싱 강남본점"
+      if (b.name) map[b.name] = b.id;
       // "강남점" → "강남", "왕십리점" → "왕십리" 매칭
       if (b.short && b.short.endsWith("점")) map[b.short.slice(0, -1)] = b.id;
       if (b.name && b.name.endsWith("점")) map[b.name.slice(0, -1)] = b.id;
-      // "하우스왁싱 강남본점" → "강남본점", "강남본" 매칭
-      if (b.name && b.name.startsWith("하우스왁싱 ")) {
-        const n = b.name.replace("하우스왁싱 ", "");
+      // "브랜드명 강남본점" → "강남본점", "강남본" 매칭 (브랜드명 prefix 동적 제거)
+      if (b.name && bizName && b.name.startsWith(bizName + " ")) {
+        const n = b.name.replace(bizName + " ", "");
         map[n] = b.id;
         if (n.endsWith("점")) map[n.slice(0, -1)] = b.id;
       }
@@ -1119,12 +1119,12 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         const r = (data?.reservations||[]).find(rv => rv.id === block.id);
         const branch = (data?.branches||[]).find(b => b.id === (r?.bid || block.bid));
         const rsvUrlId = (r?.reservationId) || block.id || "";
-        const rsvUrl = rsvUrlId ? "https://jeongwoolee1.github.io/bliss/r.html?"+encodeURIComponent(rsvUrlId) : "";
-        sendAlimtalk("rsv_change", block.custPhone, {
+        const rsvUrl = rsvUrlId ? "https://blissme.ai/bliss-app/r.html?"+encodeURIComponent(rsvUrlId) : "";
+        queueAlimtalk(branch?.id, "rsv_change", block.custPhone, {
           "#{사용자명}":branch?.name||"", "#{날짜}":r?.date||block.date||"", "#{시간}":r?.time||block.time||"",
           "#{작업자}":r?.worker||"", "#{작업장소}":branch?.name||"",
           "#{대표전화번호}":branch?.phone||"", "#{예약URL}":rsvUrl
-        }, (typeof branch?.notiConfig==="string"?JSON.parse(branch?.notiConfig)||{}:branch?.notiConfig||{}), branch?.id);
+        });
       } catch(e) { console.warn("예약안내 변경:", e); }
     }
     setPendingChange(null);
@@ -1642,7 +1642,10 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             {block.selectedTags?.length>3 && <span style={{fontSize:Math.max(6,blockFs-2),color:T.bgCard,background:T.gray500,borderRadius:T.radius.sm,padding:"1px 2px",flexShrink:0}}>+{block.selectedTags.length-3}</span>}
                             {/* 이름 */}
                             <span style={{fontWeight:T.fw.bold,color:isNaverCancelled?T.gray500:T.text,textDecoration:isNaverCancelled?"line-through":"none",flexShrink:1,minWidth:0}}>
-                              {block.custGender && <span style={{color:block.custGender==="M"?T.male:T.female}}>{block.custGender==="M"?"남":"여"}</span>} {block.custName}
+                              {(() => {
+                                const g = block.custGender || (block.custId && (data?.customers||[]).find(c=>c.id===block.custId)?.gender) || "";
+                                return g ? <span style={{color:g==="M"?T.male:T.female}}>{g==="M"?"남":"여"}</span> : null;
+                              })()} {block.custName}
                             </span>
                           </div>
                           {block.selectedServices?.length>0 && <div style={{fontSize:Math.max(6,blockFs-2),color:T.text,fontWeight:T.fw.bold,marginTop:1}}>
@@ -1723,12 +1726,12 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           try {
             const branch = (data?.branches||[]).find(b=>b.id===item.bid);
             const rsvUrlId = item.reservationId || item.id || "";
-            const rsvUrl = rsvUrlId ? "https://jeongwoolee1.github.io/bliss/r.html?"+encodeURIComponent(rsvUrlId) : "";
-            sendAlimtalk(notiKey, item.custPhone, {
+            const rsvUrl = rsvUrlId ? "https://blissme.ai/bliss-app/r.html?"+encodeURIComponent(rsvUrlId) : "";
+            queueAlimtalk(branch?.id, notiKey, item.custPhone, {
               "#{사용자명}":branch?.name||"", "#{날짜}":item.date||"", "#{시간}":item.time||"",
               "#{작업자}":item.worker||"", "#{작업장소}":branch?.name||"",
               "#{대표전화번호}":branch?.phone||"", "#{예약URL}":rsvUrl
-            }, (typeof branch?.notiConfig==="string"?JSON.parse(branch?.notiConfig)||{}:branch?.notiConfig||{}), branch?.id);
+            });
           } catch(e) { console.warn("예약안내:", e); }
           setAlimtalkConfirm(null);
         };
@@ -1797,7 +1800,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         </>;
       })()}
 
-      {showModal && <TimelineModal item={modalData} onSave={handleSave} onDelete={handleDelete} onDeleteRequest={handleDeleteRequest} naverColShow={naverColShow} onClose={()=>_mc(()=>{setShowModal(false);setModalData(null)})} selBranch={userBranches[0]} userBranches={userBranches} data={{...data, staff: BASE_EMP_LIST.map(e=>({id:e.id,bid:e.branch_id,dn:e.id,name:e.id,branch_id:e.branch_id})), workingStaffIds: (() => { const ws = getWorkingStaff(modalData?.bid, selDate); return ws ? ws.map(e=>e.id) : null; })() }} setData={setData} setPage={setPage} setPendingChat={setPendingChat}/>}
+      {showModal && <TimelineModal item={modalData} onSave={handleSave} onDelete={handleDelete} onDeleteRequest={handleDeleteRequest} naverColShow={naverColShow} onClose={()=>_mc(()=>{setShowModal(false);setModalData(null)})} selBranch={userBranches[0]} userBranches={userBranches} data={{...data, staff: BASE_EMP_LIST.map(e=>({id:e.id,bid:e.branch_id,dn:e.id,name:e.id,branch_id:e.branch_id})), workingStaffIds: (() => { const ws = getWorkingStaff(modalData?.bid, selDate); return ws ? ws.map(e=>e.id) : null; })() }} setData={setData} setPage={setPage} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust}/>}
 
       {showQuickBook && <QuickBookModal
         onClose={()=>setShowQuickBook(false)}
@@ -1842,6 +1845,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         showSettings={showSettings} setShowSettings={setShowSettings}
         isMaster={isMaster} accessibleBids={accessibleBids} userBranches={userBranches}
         expanded={expanded} toggleExpand={toggleExpand}
+        viewBids={viewBids} toggleView={toggleView} allBranchList={allBranchList}
         rowH={rowH} setRowH={setRowH} colW={colW} setColW={setColW}
         blockFs={blockFs} setBlockFs={setBlockFs} blockOp={blockOp} setBlockOp={setBlockOp}
         startHour={startHour} setStartHour={setStartHour} endHour={endHour} setEndHour={setEndHour}

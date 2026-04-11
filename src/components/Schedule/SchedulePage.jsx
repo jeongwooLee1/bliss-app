@@ -125,42 +125,35 @@ export default function SchedulePage({ employees: propEmps }) {
   const lockStatusRef = useRef({})
   const [isConfirmed, setIsConfirmed] = useState(false)
   const [lockedDates, setLockedDates] = useState(new Set())
-  useEffect(() => {
+  const loadLockStatus = useCallback(() => {
     supabase.from('schedule_data').select('value').eq('key', DB_KEYS.lockStatus).single()
       .then(({ data }) => {
         if (data?.value) {
           const val = typeof data.value === 'string' ? JSON.parse(data.value) : data.value
           lockStatusRef.current = val
-          const curKey = mkKey(year, month)
-          const cur = val[curKey]
-          if (cur?.confirmed) {
-            setIsConfirmed(true)
-            setLockedDates(new Set(cur.lockedDates || []))
-          }
+        }
+        const curKey = mkKey(year, month)
+        const cur = lockStatusRef.current[curKey]
+        const curMonthPrefix = `${year}-${String(month+1).padStart(2,'0')}`
+        const prevY = month === 0 ? year-1 : year
+        const prevM = month === 0 ? 11 : month-1
+        const prevKey = mkKey(prevY, prevM)
+        const prev = lockStatusRef.current[prevKey]
+        const carryOverLocked = new Set()
+        if (prev?.confirmed && prev.lockedDates) {
+          prev.lockedDates.forEach(ds => { if (ds.startsWith(curMonthPrefix)) carryOverLocked.add(ds) })
+        }
+        if (cur?.confirmed) {
+          setIsConfirmed(true)
+          setLockedDates(new Set([...(cur.lockedDates||[]), ...carryOverLocked]))
+        } else {
+          setIsConfirmed(false)
+          setLockedDates(carryOverLocked)
         }
       })
-  }, [])
-
-  useEffect(() => {
-    const curKey = mkKey(year, month)
-    const cur = lockStatusRef.current[curKey]
-    const curMonthPrefix = `${year}-${String(month+1).padStart(2,'0')}`
-    const prevY = month === 0 ? year-1 : year
-    const prevM = month === 0 ? 11 : month-1
-    const prevKey = mkKey(prevY, prevM)
-    const prev = lockStatusRef.current[prevKey]
-    const carryOverLocked = new Set()
-    if (prev?.confirmed && prev.lockedDates) {
-      prev.lockedDates.forEach(ds => { if (ds.startsWith(curMonthPrefix)) carryOverLocked.add(ds) })
-    }
-    if (cur?.confirmed) {
-      setIsConfirmed(true)
-      setLockedDates(new Set([...(cur.lockedDates||[]), ...carryOverLocked]))
-    } else {
-      setIsConfirmed(false)
-      setLockedDates(carryOverLocked)
-    }
   }, [year, month])
+
+  useEffect(() => { loadLockStatus() }, [year, month])
 
   const saveLockStatus = (data) => {
     lockStatusRef.current = data

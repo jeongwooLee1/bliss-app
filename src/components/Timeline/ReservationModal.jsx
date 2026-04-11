@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { T, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, SYSTEM_TAG_NAME_NEW_CUST, SYSTEM_TAG_NAME_PREPAID, SYSTEM_SRC_NAME_NAVER } from '../../lib/constants'
-import { sb, SB_URL, SB_KEY } from '../../lib/sb'
+import { sb, SB_URL, SB_KEY, queueAlimtalk } from '../../lib/sb'
 import { fromDb, toDb, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS, _activeBizId } from '../../lib/db'
 import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, getDow, genId, fmtLocal, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone } from '../../lib/utils'
 import I from '../common/I'
@@ -85,8 +85,14 @@ function DatePick({ value, onChange, style, min }) {
 const STATUS_KEYS = ["confirmed","completed","cancelled","no_show"];
 const DEFAULT_SOURCES = ["네이버","전화","방문","소개","인스타","카카오","기타"];
 
-function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBranch, userBranches, data, setData, setPage, naverColShow={}, setPendingChat }) {
-  const SVC_LIST = (data?.services || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
+function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBranch, userBranches, data, setData, setPage, naverColShow={}, setPendingChat, setPendingOpenCust }) {
+  // 카테고리 순서 → 카테고리 내 시술 순서 (시술상품관리와 동일)
+  const _catSort = {};
+  (data?.categories || []).forEach(c => { _catSort[c.id] = c.sort ?? 9999; });
+  const SVC_LIST = (data?.services || []).slice().sort((a,b) => {
+    const ca = _catSort[a.cat] ?? 9999, cb = _catSort[b.cat] ?? 9999;
+    return ca !== cb ? ca - cb : (a.sort??9999) - (b.sort??9999);
+  });
   const PROD_LIST = (data?.products || []);
   const CATS = (data?.categories || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
   const isNew = !item?.id || item?.roomId;
@@ -211,12 +217,42 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   })());
   const set = (k,v) => setF(p=>({...p,[k]:v}));
 
-  // 모달 초기화 시 전화번호로 고객 DB 자동 매칭 (성별/신규 자동 판단)
+  // 모달 초기화 시 고객 DB 자동 매칭/백필 (성별·이메일이 예약 row에 없을 때 고객 레코드에서 가져옴)
   useEffect(() => {
-    if (!f.custPhone || f.custId) return; // 이미 고객 연결됨
+    const bizId = _activeBizId || "biz_khvurgshb";
+
+    // Case A: custId 있음 → 고객 레코드에서 빈 필드(성별/이메일) 백필
+    if (f.custId) {
+      if (f.custGender && f.custEmail) return; // 이미 다 채워짐
+      const local = (data?.customers||[]).find(c => c.id === f.custId);
+      if (local) {
+        setF(p => ({
+          ...p,
+          custGender: p.custGender || local.gender || "",
+          custEmail: p.custEmail || local.email || "",
+          isNewCust: false,
+        }));
+        return;
+      }
+      // 목록에 없으면 서버 조회
+      sb.get("customers", `&id=eq.${f.custId}&limit=1`).then(rows => {
+        if (!rows?.length) return;
+        const c = fromDb("customers", rows)[0];
+        if (!c) return;
+        setF(p => ({
+          ...p,
+          custGender: p.custGender || c.gender || "",
+          custEmail: p.custEmail || c.email || "",
+          isNewCust: false,
+        }));
+      }).catch(() => {});
+      return;
+    }
+
+    // Case B: custId 없음 + 전화번호로 자동 매칭 시도
+    if (!f.custPhone) return;
     const phone = f.custPhone.replace(/-/g, "");
     if (phone.length < 8) return;
-    const bizId = _activeBizId || "biz_khvurgshb";
     sb.get("customers", `&business_id=eq.${bizId}&phone=eq.${phone}&limit=1`).then(rows => {
       if (!rows?.length) return;
       const c = fromDb("customers", rows)[0];
@@ -224,8 +260,8 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
       setF(p => ({
         ...p,
         custId: c.id,
-        custGender: c.gender || p.custGender,
-        custEmail: c.email || p.custEmail || "",
+        custGender: p.custGender || c.gender || "",
+        custEmail: p.custEmail || c.email || "",
         isNewCust: false,
       }));
     }).catch(() => {});
@@ -235,6 +271,44 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   const [custSearch, setCustSearch] = useState("");
   const [showCustDropdown, setShowCustDropdown] = useState(false);
   const [custResults, setCustResults] = useState([]);
+  const [editingCust, setEditingCust] = useState(false);
+  const [custPkgsInfo, setCustPkgsInfo] = useState([]); // 보유권 요약 표시용
+  // 고객의 보유권(다담권/다회권) 로드 — 고객이 변경되거나 custId 백필될 때마다
+  useEffect(() => {
+    if (!f.custId) { setCustPkgsInfo([]); return; }
+    sb.get("customer_packages", `&customer_id=eq.${f.custId}`).then(rows => {
+      setCustPkgsInfo(Array.isArray(rows) ? rows : []);
+    }).catch(() => setCustPkgsInfo([]));
+  }, [f.custId]);
+  // 보유권 요약: 유효권(잔액>0/회차>0) + 소진권 모두 표시 (소진은 흐리게)
+  const activePkgSummary = (() => {
+    const out = [];
+    (custPkgsInfo||[]).forEach(p => {
+      const n = (p.service_name||"");
+      const nl = n.toLowerCase();
+      const isPrepaid = n.includes("다담권") || n.includes("선불") || nl.includes("10%추가적립");
+      const isAnnual  = n.includes("연간") || n.includes("할인권") || n.includes("회원권");
+      if (isPrepaid) {
+        const m = (p.note||"").match(/잔액:([0-9,]+)/);
+        const bal = m ? Number(m[1].replace(/,/g,"")) : 0;
+        const label = bal > 0
+          ? `🎫 ${n.split("(")[0]||"다담권"} ${bal.toLocaleString()}원`
+          : `🎫 ${n.split("(")[0]||"다담권"} 소진`;
+        out.push({type:"prepaid", active: bal>0, label});
+      } else if (isAnnual) {
+        // 연간권: 있음 여부만 표시
+        out.push({type:"annual", active:true, label:`🏷 ${n.split("(")[0]||"연간권"}`});
+      } else {
+        const remain = (p.total_count||0) - (p.used_count||0);
+        const label = remain > 0
+          ? `🎟 ${n.split("(")[0]||"다회권"} ${remain}회`
+          : `🎟 ${n.split("(")[0]||"다회권"} 소진`;
+        out.push({type:"package", active: remain>0, label});
+      }
+    });
+    // 유효권 먼저, 소진권 뒤로
+    return out.sort((a,b) => (b.active?1:0) - (a.active?1:0));
+  })();
   // 디바운스 검색 (300ms, 2글자 이상) — DB 직접 검색
   useEffect(() => {
     if (custSearch.length < 2) { setCustResults([]); return; }
@@ -242,8 +316,9 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
       const q = custSearch.trim();
       try {
         const bizId = _activeBizId || "biz_khvurgshb";
-        // 전화번호+이름 동시 검색 (or 조건)
-        const filter = `&business_id=eq.${bizId}&or=(phone.ilike.*${q}*,name.ilike.*${encodeURIComponent(q)}*)&limit=20`;
+        // name/name2/phone/phone2/email/cust_num OR 검색 (부분 일치)
+        const enc = encodeURIComponent(q);
+        const filter = `&business_id=eq.${bizId}&or=(name.ilike.*${enc}*,name2.ilike.*${enc}*,phone.ilike.*${q}*,phone2.ilike.*${q}*,email.ilike.*${enc}*,cust_num.ilike.*${enc}*)&limit=20`;
         const rows = await sb.get("customers", filter);
         setCustResults(Array.isArray(rows) ? fromDb("customers", rows) : []);
       } catch(e) { console.error("custSearch err:", e); setCustResults([]); }
@@ -359,7 +434,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
 
   // ── AI 자동분석: 네이버 request_msg → 시술상품 + 예약태그 자동 선택 ──
   const handleAiAnalyze = async () => {
-    let apiKey = window.__geminiKey || localStorage.getItem("bliss_gemini_key") || "";
+    let apiKey = window.__systemGeminiKey || window.__geminiKey || localStorage.getItem("bliss_gemini_key") || "";
     if (!apiKey) {
       try {
         const r = await fetch(`${SB_URL}/rest/v1/businesses?select=settings&limit=1`, {headers: sbHeaders});
@@ -439,12 +514,27 @@ ${naverText}
       const d2 = await r.json();
       const txt = d2.candidates?.[0]?.content?.parts?.[0]?.text || "";
       const parsed = JSON.parse(txt.replace(/```json|```/g,"").trim());
+      // fuzzy fix: AI가 1-2글자 틀린 ID 반환 시 가장 유사한 valid ID로 보정
+      const fuzzyFix = (ids, validSet) => ids.map(id => {
+        if (validSet.has(id)) return id;
+        let best = null, bestDist = 999;
+        for (const vid of validSet) {
+          if (vid.length !== id.length) continue;
+          let dist = 0;
+          for (let i = 0; i < id.length; i++) if (id[i] !== vid[i]) dist++;
+          if (dist < bestDist) { best = vid; bestDist = dist; }
+        }
+        if (best && bestDist <= 2) { console.log(`AI ID 보정: ${id} → ${best}`); return best; }
+        return id;
+      });
+      const validSvcSet = new Set((data?.services||[]).map(s=>s.id));
+      const validTagSet = new Set((data?.serviceTags||[]).map(t=>t.id));
       // AI 결과에서 신규 태그 제거 후 코드가 직접 판단
-      let newTags = (parsed.matchedTagIds || []).filter(id => !SYSTEM_TAG_IDS.includes(id));
+      let newTags = fuzzyFix(parsed.matchedTagIds || [], validTagSet).filter(id => !SYSTEM_TAG_IDS.includes(id) && validTagSet.has(id));
       if (effectiveIsNew) newTags = [...newTags, NEW_CUST_TAG_ID];
       // 예약금완료 자동 처리: isPrepaid=true이면 태그 추가 (totalPrice 무관)
       if (f.isPrepaid && !newTags.includes(PREPAID_TAG_ID)) newTags = [...newTags, PREPAID_TAG_ID];
-      let newSvcs = parsed.matchedServiceIds || [];
+      let newSvcs = fuzzyFix(parsed.matchedServiceIds || [], validSvcSet).filter(id => validSvcSet.has(id));
       // 후처리: 브라질리언왁싱 선택 시 항문왁싱 자동 제거 (브라질리언에 포함됨)
       const svcNames = newSvcs.map(sid => (data?.services||[]).find(s=>s.id===sid)?.name||"");
       const hasBrazilian = svcNames.some(n => n.includes("브라질리언"));
@@ -606,6 +696,7 @@ ${naverText}
                 {/* 지점 */}
                 <I name="mapPin" size={11} color={T.gray400}/>
                 <select className="res-room-sel fld-sel" style={{flex:"1 1 auto",minWidth:100}} value={`${f.roomId}|${f.staffId}`} onChange={e=>{const [r,s]=e.target.value.split("|");set("roomId",r);set("staffId",s)}}>
+                  <option value="|">미배정</option>
                   {branchRooms.map(rm => branchStaff.map(st => {
                     const br = (data.branches||[]).find(b=>b.id===branchId);
                     const brName = br?.short||br?.name||"";
@@ -660,55 +751,108 @@ ${naverText}
 
           {/* ═══ 예약 모드 ═══ */}
           {!isSchedule && <>
-            {/* 고객 검색 */}
-            <div>
-              <div style={{position:"relative"}}>
-                <div style={{position:"relative",display:"flex",alignItems:"center"}}>
-                  <span style={{position:"absolute",left:12,color:T.gray500,display:"flex",alignItems:"center",pointerEvents:"none"}}><I name="search" size={15}/></span>
-                  <input className="inp inp-search" style={{flex:1,minHeight:40,borderRadius:T.radius.lg,paddingLeft:36}} value={custSearch} onChange={e=>{setCustSearch(e.target.value);setShowCustDropdown(true)}}
-                    placeholder="고객명, 전화번호, 차량번호 (2글자 이상)" onFocus={()=>setShowCustDropdown(true)}/>
-                </div>
-                {showCustDropdown && custSearch.length >= 2 && <div style={{position:"absolute",top:"100%",left:0,right:0,background:T.bgCard,borderRadius:T.radius.md,maxHeight:220,overflow:"auto",zIndex:10,marginTop:4,boxShadow:"0 8px 24px rgba(0,0,0,.12)"}}>
-                  {custResults.map(c=><div key={c.id} onClick={()=>{selectCust(c);setF(p=>({...p,isNewCust:false}))}}
-                    style={{padding:"8px 12px",cursor:"pointer",borderBottom:"1px solid #e0e0e030",display:"flex",gap:T.sp.sm,alignItems:"center",fontSize:T.fs.sm}}
-                    onMouseOver={e=>e.currentTarget.style.background=T.gray200} onMouseOut={e=>e.currentTarget.style.background="transparent"}>
-                    <span className="badge" style={{background:c.gender==="M"?T.infoLt:c.gender==="F"?T.femaleLt:T.gray200,color:c.gender==="M"?T.primary:c.gender==="F"?T.female:T.gray500,fontSize:T.fs.sm}}>{c.gender==="M"?"남":c.gender==="F"?"여":"-"}</span>
-                    <span style={{fontWeight:T.fw.bold}}>{c.name}</span>
-                    <span style={{color:T.textSub}}>{c.phone}</span>
-                  </div>)}
-                  {custResults.length===0 && <div style={{padding:"10px 12px",fontSize:T.fs.sm,color:T.gray500,textAlign:"center"}}>검색결과 없음</div>}
-                  <div onClick={()=>{setF(p=>({...p,isNewCust:true,custId:null,custName:custSearch.replace(/[0-9\-]/g,"").trim(),custPhone:custSearch.replace(/[^0-9]/g,"")}));setCustSearch("");setShowCustDropdown(false)}}
-                    style={{padding:"10px 12px",cursor:"pointer",display:"flex",gap:T.sp.sm,alignItems:"center",fontSize:T.fs.sm,
-                      background:"#d0d0d020",borderTop:"1px solid "+T.border,color:T.danger,fontWeight:T.fw.bolder}}
-                    onMouseOver={e=>e.currentTarget.style.background="#d0d0d040"} onMouseOut={e=>e.currentTarget.style.background="#d0d0d020"}>
-                    <I name="plus" size={14}/> 신규고객으로 등록 {custSearch && <span style={{fontWeight:T.fw.normal,color:T.textSub}}>"{custSearch}"</span>}
+            {/* 고객 정보 — 컴팩트 인라인 */}
+            <div style={{position:"relative"}}>
+              {/* 고객 선택됨: Contact Chip 카드 */}
+              {f.custName ? (
+                <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"linear-gradient(135deg,#f8f9fb,#f0f2f5)",borderRadius:10,border:"1px solid #e2e5ea"}}>
+                  {/* 아바타 — 성별 표시 (클릭: 남↔여↔미지정 순환) */}
+                  <button onClick={()=>set("custGender",f.custGender==="F"?"M":f.custGender==="M"?"":"F")}
+                    title="클릭해서 성별 변경"
+                    style={{width:36,height:36,borderRadius:"50%",border:"2px solid "+(f.custGender==="F"?"#e91e6320":f.custGender==="M"?"#3f51b520":"#0000"),cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:800,flexShrink:0,
+                      background:f.custGender==="F"?"linear-gradient(135deg,#fce4ec,#f8bbd0)":f.custGender==="M"?"linear-gradient(135deg,#e8eaf6,#c5cae9)":"linear-gradient(135deg,#f5f5f5,#e0e0e0)",
+                      color:f.custGender==="F"?"#c2185b":f.custGender==="M"?"#283593":"#999",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    {f.custGender==="F"?"여":f.custGender==="M"?"남":"?"}
+                  </button>
+                  {/* 정보 */}
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      {editingCust ? (
+                        <>
+                          <input value={f.custName||""} onChange={e=>{set("custName",e.target.value);if(f.custId)set("custId",null)}} placeholder="이름"
+                            style={{flex:"0 1 80px",minWidth:50,fontSize:14,fontWeight:700,color:"#1a1a2e",border:"1px solid #ccc",borderRadius:4,padding:"2px 6px",background:"#fff",fontFamily:"inherit",outline:"none"}}/>
+                          <input value={f.custPhone||""} onChange={e=>{set("custPhone",e.target.value.replace(/[^0-9]/g,""));if(f.custId)set("custId",null)}} placeholder="연락처"
+                            style={{flex:"1 1 110px",minWidth:90,fontSize:13,color:T.primary,fontWeight:500,border:"1px solid #ccc",borderRadius:4,padding:"2px 6px",background:"#fff",fontFamily:"inherit",outline:"none"}}/>
+                        </>
+                      ) : (
+                        <>
+                          <span style={{fontSize:14,fontWeight:700,color:"#1a1a2e"}}>{f.custName}</span>
+                          <span style={{fontSize:11,color:"#888"}}>·</span>
+                          <span style={{fontSize:13,color:T.primary,fontWeight:500}}>{f.custPhone||"연락처 없음"}</span>
+                        </>
+                      )}
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:4,marginTop:2}}>
+                      <span style={{fontSize:11,color:"#aaa"}}>✉</span>
+                      <input type="email" value={f.custEmail||""} onChange={e=>set("custEmail",e.target.value)} placeholder="이메일 입력"
+                        style={{flex:1,padding:"0 2px",fontSize:12,border:"none",background:"transparent",color:"#777",outline:"none",fontFamily:"inherit"}}/>
+                    </div>
+                    {activePkgSummary.length > 0 && <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:3}}>
+                      {activePkgSummary.map((pkg,i) => {
+                        const activeBg = pkg.type==="prepaid"?"linear-gradient(135deg,#FFE0B2,#FFCC80)":pkg.type==="annual"?"linear-gradient(135deg,#E1BEE7,#CE93D8)":"linear-gradient(135deg,#FFF3E0,#FFE0B2)";
+                        const activeClr = pkg.type==="annual"?"#6A1B9A":"#E65100";
+                        const activeBdr = pkg.type==="annual"?"1px solid #BA68C8":"1px solid #FFB74D";
+                        return (
+                          <span key={i} title={pkg.active?"유효":"소진/만료"}
+                            style={{fontSize:10,fontWeight:800,padding:"2px 6px",borderRadius:10,
+                              background:pkg.active?activeBg:"#EEEEEE",
+                              color:pkg.active?activeClr:"#9E9E9E",
+                              border:pkg.active?activeBdr:"1px solid #E0E0E0",
+                              textDecoration:pkg.active?"none":"line-through",
+                              whiteSpace:"nowrap"}}>{pkg.label}</span>
+                        );
+                      })}
+                    </div>}
                   </div>
-                </div>}
-              </div>
-            </div>
-
-            {/* 고객 정보 */}
-            <GridLayout className="cust-row" cols="1fr 1fr 60px" gap={8}>
-              <div><input className={"inp inp-cust"} value={f.custName} onChange={e=>set("custName",e.target.value)} placeholder="고객명"
-                style={f.isNewCust?{borderColor:T.danger,background:T.dangerLt}:{}}/></div>
-              <div><input className={"inp inp-cust"} value={f.custPhone} onChange={e=>set("custPhone",e.target.value)} placeholder="010"
-                style={f.isNewCust?{borderColor:T.danger,background:T.dangerLt}:{}}/></div>
-              <div style={{gridColumn:"span 2"}}><input className={"inp inp-cust"} type="email" value={f.custEmail||""} onChange={e=>set("custEmail",e.target.value)} placeholder="이메일" style={{fontSize:T.fs.xs}}/></div>
-              {/* 방문자(대리예약) */}
-              {(f.visitorName||f.visitorPhone||f.isProxy) && <div style={{gridColumn:"span 2",display:"flex",gap:6,alignItems:"center",padding:"4px 8px",background:"#fff8f0",borderRadius:T.radius.md,border:"1px solid #ffd0a0"}}>
-                <span style={{fontSize:T.fs.nano,color:"#c07020",fontWeight:700,flexShrink:0}}>방문자</span>
-                <input className="inp" value={f.visitorName||""} onChange={e=>set("visitorName",e.target.value)} placeholder="방문자명" style={{flex:1,fontSize:T.fs.xs,padding:"3px 6px"}}/>
-                <input className="inp" value={f.visitorPhone||""} onChange={e=>set("visitorPhone",e.target.value)} placeholder="방문자 연락처" style={{flex:1,fontSize:T.fs.xs,padding:"3px 6px"}}/>
-              </div>}
-              <div>
-                <div style={{display:"flex",gap:2,height:40}}>
-                  <button onClick={()=>set("custGender",f.custGender==="F"?"":"F")} style={{flex:1,fontSize:T.fs.sm,fontWeight:T.fw.bold,border:"none",borderRadius:T.radius.md,cursor:"pointer",fontFamily:"inherit",
-                    background:f.custGender==="F"?"#ffb8cb":T.gray100,color:f.custGender==="F"?"#8a0030":T.gray400,transition:"background .15s"}}>여</button>
-                  <button onClick={()=>set("custGender",f.custGender==="M"?"":"M")} style={{flex:1,fontSize:T.fs.sm,fontWeight:T.fw.bold,border:"none",borderRadius:T.radius.md,cursor:"pointer",fontFamily:"inherit",
-                    background:f.custGender==="M"?"#bfc2f0":T.gray100,color:f.custGender==="M"?"#2a2a88":T.gray400,transition:"background .15s"}}>남</button>
+                  {/* 변경/다른고객/완료 + 고객관리 */}
+                  {editingCust ? (
+                    <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                      <button onClick={()=>setEditingCust(false)}
+                        style={{padding:"3px 8px",borderRadius:5,border:"1px solid "+T.primary,background:T.primary,color:"#fff",fontSize:10,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>완료</button>
+                      <button onClick={()=>{set("custName","");set("custPhone","");set("custId",null);set("custEmail","");setCustSearch("");setEditingCust(false);}}
+                        style={{padding:"3px 8px",borderRadius:5,border:"1px solid #ddd",background:"#fff",color:"#999",fontSize:10,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>다른고객</button>
+                    </div>
+                  ) : (
+                    <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                      <button onClick={()=>setEditingCust(true)}
+                        style={{padding:"3px 8px",borderRadius:5,border:"1px solid #ddd",background:"#fff",color:"#999",fontSize:10,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>변경</button>
+                      {f.custId && setPage && <button onClick={()=>{if(setPendingOpenCust)setPendingOpenCust(f.custId);setPage("customers");onClose();}}
+                        title="고객관리에서 상세정보 보기"
+                        style={{padding:"3px 8px",borderRadius:5,border:"1px solid "+T.primary,background:T.primaryLt||"#fff0ec",color:T.primary,fontSize:10,cursor:"pointer",fontFamily:"inherit",fontWeight:600,whiteSpace:"nowrap"}}>고객정보 ↗</button>}
+                    </div>
+                  )}
                 </div>
-              </div>
-            </GridLayout>
+              ) : (
+                /* 고객 미선택: 검색바 */
+                <div style={{position:"relative",display:"flex",alignItems:"center"}}>
+                  <span style={{position:"absolute",left:10,color:T.gray500,display:"flex",alignItems:"center",pointerEvents:"none"}}><I name="search" size={14}/></span>
+                  <input className="inp inp-search" style={{flex:1,minHeight:36,borderRadius:T.radius.md,paddingLeft:32,fontSize:13}} value={custSearch} onChange={e=>{setCustSearch(e.target.value);setShowCustDropdown(true)}}
+                    placeholder="고객명, 전화번호 (2글자 이상)" onFocus={()=>setShowCustDropdown(true)}/>
+                </div>
+              )}
+              {/* 검색 드롭다운 */}
+              {showCustDropdown && custSearch.length >= 2 && <div style={{position:"absolute",top:"100%",left:0,right:0,background:T.bgCard,borderRadius:T.radius.md,maxHeight:200,overflow:"auto",zIndex:10,marginTop:2,boxShadow:"0 8px 24px rgba(0,0,0,.12)"}}>
+                {custResults.map(c=><div key={c.id} onClick={()=>{selectCust(c);setF(p=>({...p,isNewCust:false}))}}
+                  style={{padding:"7px 12px",cursor:"pointer",borderBottom:"1px solid #e0e0e020",display:"flex",gap:6,alignItems:"center",fontSize:12}}
+                  onMouseOver={e=>e.currentTarget.style.background=T.gray200} onMouseOut={e=>e.currentTarget.style.background="transparent"}>
+                  <span className="badge" style={{background:c.gender==="M"?T.infoLt:c.gender==="F"?T.femaleLt:T.gray200,color:c.gender==="M"?T.primary:c.gender==="F"?T.female:T.gray500,fontSize:10}}>{c.gender==="M"?"남":c.gender==="F"?"여":"-"}</span>
+                  <span style={{fontWeight:600}}>{c.name}</span>
+                  <span style={{color:T.textSub}}>{c.phone}</span>
+                </div>)}
+                {custResults.length===0 && <div style={{padding:"8px 12px",fontSize:12,color:T.gray500,textAlign:"center"}}>검색결과 없음</div>}
+                <div onClick={()=>{const q=custSearch.trim();const isEmail=q.includes("@");setF(p=>({...p,isNewCust:true,custId:null,custName:isEmail?"":q.replace(/[0-9\-@.]/g,"").trim(),custPhone:q.replace(/[^0-9]/g,""),custEmail:isEmail?q:""}));setCustSearch("");setShowCustDropdown(false)}}
+                  style={{padding:"8px 12px",cursor:"pointer",display:"flex",gap:6,alignItems:"center",fontSize:12,background:"#d0d0d020",borderTop:"1px solid "+T.border,color:T.danger,fontWeight:700}}
+                  onMouseOver={e=>e.currentTarget.style.background="#d0d0d040"} onMouseOut={e=>e.currentTarget.style.background="#d0d0d020"}>
+                  <I name="plus" size={13}/> 신규등록 {custSearch && <span style={{fontWeight:400,color:T.textSub}}>"{custSearch}"</span>}
+                </div>
+              </div>}
+            </div>
+            {/* 방문자(대리예약) */}
+            {(f.visitorName||f.visitorPhone||f.isProxy) && <div style={{display:"flex",gap:6,alignItems:"center",padding:"4px 8px",background:"#fff8f0",borderRadius:T.radius.md,border:"1px solid #ffd0a0"}}>
+              <span style={{fontSize:T.fs.nano,color:"#c07020",fontWeight:700,flexShrink:0}}>방문자</span>
+              <input className="inp" value={f.visitorName||""} onChange={e=>set("visitorName",e.target.value)} placeholder="방문자명" style={{flex:1,fontSize:T.fs.xs,padding:"3px 6px"}}/>
+              <input className="inp" value={f.visitorPhone||""} onChange={e=>set("visitorPhone",e.target.value)} placeholder="방문자 연락처" style={{flex:1,fontSize:T.fs.xs,padding:"3px 6px"}}/>
+            </div>}
 
             {/* 예약기간 + 장소/담당자 */}
             <div>
@@ -724,6 +868,7 @@ ${naverText}
                 {/* 지점 */}
                 <I name="mapPin" size={11} color={T.gray400}/>
                 <select className="res-room-sel fld-sel" style={{flex:"1 1 auto",minWidth:100}} value={`${f.roomId}|${f.staffId}`} onChange={e=>{const [r,s]=e.target.value.split("|");set("roomId",r);set("staffId",s)}}>
+                  <option value="|">미배정</option>
                   {branchRooms.map(rm => branchStaff.map(st => {
                     const br = (data.branches||[]).find(b=>b.id===branchId);
                     const brName = br?.short||br?.name||"";
@@ -772,9 +917,9 @@ ${naverText}
         borderBottom:"none",opacity:disabled?0.3:1,background:sel?"#7c7cc810":"transparent",borderRadius:T.radius.sm,transition:"background .1s"}}>
         {sel && !aqty && <span style={{color:T.primary,fontWeight:T.fw.bolder,fontSize:T.fs.sm,flexShrink:0}}>✓</span>}
         {catName && <span style={{fontSize:T.fs.sm,color:T.primary,background:T.primaryHover,borderRadius:T.radius.sm,padding:"1px 5px"}}>{catName}</span>}
-        <span style={{flex:1,fontSize:T.fs.sm,fontWeight:sel?600:400,color:sel?T.text:T.gray600}}>{svc.name}</span>
-        <span style={{fontSize:T.fs.sm,color:T.gray500}}>{svc.dur}분</span>
-        <span style={{fontSize:T.fs.sm,color:price===null?T.gray400:T.danger,fontWeight:T.fw.bold,width:55,textAlign:"right"}}>{price===null?"성별 필요":price===0?"무료":price?.toLocaleString()+"원"}</span>
+        <span style={{flex:1,fontSize:T.fs.sm,fontWeight:sel?600:400,color:sel?T.text:T.gray600,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{svc.name}</span>
+        <span style={{fontSize:T.fs.sm,color:T.gray500,flexShrink:0,whiteSpace:"nowrap"}}>{svc.dur}분</span>
+        <span style={{fontSize:T.fs.sm,color:price===null?T.gray400:T.danger,fontWeight:T.fw.bold,minWidth:55,textAlign:"right",flexShrink:0,whiteSpace:"nowrap"}}>{price===null?"성별 필요":price===0?"무료":price?.toLocaleString()+"원"}</span>
         {aqty && <div style={{display:"flex",alignItems:"center",gap:4}} onClick={e=>e.stopPropagation()}>
           {qty>0 && <button onClick={()=>toggleService(svc.id,-1)} style={{width:22,height:22,borderRadius:"50%",border:"1px solid "+T.border,background:T.bgCard,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",color:T.danger}}>−</button>}
           {qty>0 && <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.primary,minWidth:16,textAlign:"center"}}>{qty}</span>}
@@ -1006,13 +1151,30 @@ ${naverText}
                 if (f.isPrepaid && !autoTags.includes(PREPAID_TAG_ID)) autoTags = [...autoTags, PREPAID_TAG_ID];
                 if (!f.isPrepaid && autoTags.includes(PREPAID_TAG_ID)) autoTags = autoTags.filter(id => id !== PREPAID_TAG_ID);
                 const memoToSave = (f.memo||"").split("\n").filter(l => { const t=l.trim(); return !(/^\[등록:|^\[수정:/.test(t)) && !(/^\d+\.\d+\s+\d+:\d+\s*(예약)?(접수|변경|확정|취소|신청|확정완료)/.test(t)); }).join("\n").trim();
+                // 고객 DB에 이메일/성별 자동 업데이트
+                if(f.custId && !f.custId.startsWith("new_")){
+                  const custUpdate={};
+                  if(f.custEmail) custUpdate.email=f.custEmail;
+                  if(f.custGender) custUpdate.gender=f.custGender;
+                  if(Object.keys(custUpdate).length>0) sb.update("customers",f.custId,custUpdate).catch(()=>{});
+                }
+                // 상태가 cancelled로 변경되었고 이전 상태가 cancelled가 아니면 취소 알림톡
+                if(f.status==="cancelled" && item?.status!=="cancelled" && f.custPhone && !isSchedule){
+                  const branch = (data?.branches||[]).find(b=>b.id===f.bid);
+                  queueAlimtalk(f.bid, "rsv_cancel", f.custPhone, {
+                    "#{사용자명}":branch?.name||"", "#{날짜}":f.date||"", "#{시간}":f.time||"",
+                    "#{대표전화번호}":branch?.phone||""
+                  });
+                }
                 onSave({...f, memo: memoToSave, tsLog: newLog, selectedTags: autoTags});
               }}>{item?.id?"저장":"등록"}</Btn>
               {/* AI 예약 확정 버튼 */}
               {f.status==="request" && <Btn style={{padding:"10px 26px",background:"#9C27B0",boxShadow:"0 4px 14px rgba(156,39,176,.35)"}}
                 onClick={async ()=>{
                   const confirmMsg=`${f.custName}님, ${f.date} ${f.time} 예약이 확정되었습니다. 감사합니다!`;
-                  const branchAccMap={"br_4bcauqvrb":"101171979","br_wkqsxj6k1":"102071377","br_l6yzs2pkq":"102507795","br_k57zpkbx1":"101521969","br_lfv2wgdf1":"101522539","br_g768xdu4w":"101517367","br_ybo3rmulv":"101476019","br_xu60omgdf":"101988152"};
+                  // data.branches에서 동적으로 계정 매핑
+                  const branchAccMap={};
+                  (data?.branches||[]).forEach(b=>{ if(b.naverAccountId) branchAccMap[b.id]=b.naverAccountId; });
                   let sent=false;
                   try{
                     // DB에서 chat_channel/chat_account_id/chat_user_id 직접 조회
@@ -1038,7 +1200,7 @@ ${naverText}
                             const rows=await fetch(`${SB_URL}/rest/v1/messages?channel=eq.instagram&user_name=eq.${encodeURIComponent(uname)}&select=user_id,account_id&order=created_at.desc&limit=1`,{headers:{"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY}}).then(r=>r.json());
                             if(rows?.length){igUserId=rows[0].user_id;igPageId=rows[0].account_id;}
                           }
-                          if(!igPageId) igPageId="17841400218759830";
+                          if(!igPageId) igPageId=(data?.branches||[]).find(b=>b.id===f.bid)?.instagramAccountId || (data?.branches||[]).find(b=>b.instagramAccountId)?.instagramAccountId || "";
                           await sb.insert("send_queue",{account_id:igPageId,user_id:igUserId,message_text:confirmMsg,status:"pending",channel:"instagram"});
                           sent=true;
                         } else {

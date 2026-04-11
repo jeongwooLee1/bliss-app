@@ -25,7 +25,7 @@ function QuickBookModal({ onClose, onParsed, data }) {
   const fileRef = useRef(null);
   const camRef = useRef(null);
   const inputRef = useRef(null);
-  const apiKey = window.__geminiKey || localStorage.getItem("bliss_gemini_key") || "";
+  const apiKey = window.__systemGeminiKey || window.__geminiKey || localStorage.getItem("bliss_gemini_key") || "";
   const C = T.primary;
   const G1 = T.google, G2 = T.purple, G3 = T.female;
 

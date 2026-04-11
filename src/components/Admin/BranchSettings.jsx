@@ -39,7 +39,7 @@ export default function BranchSettings({ data, setData, onBack }) {
         <h3 style={{ margin:0, fontSize:T.fs.lg, fontWeight:T.fw.bolder }}>{editing==='new'?'지점 추가':'지점 수정'}</h3>
       </div>
       {[
-        {key:'name', label:'지점명*', placeholder:'하우스왁싱 강남점'},
+        {key:'name', label:'지점명*', placeholder:'강남점'},
         {key:'short', label:'약칭', placeholder:'강남'},
         {key:'phone', label:'전화번호', placeholder:'02-0000-0000'},
         {key:'address', label:'주소', placeholder:'서울시...'},

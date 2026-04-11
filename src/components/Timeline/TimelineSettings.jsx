@@ -20,6 +20,7 @@ const GridLayout = ({ cols=2, gap=12, children, style={}, ...p }) => {
 function TimelineSettings({
   showSettings, setShowSettings,
   isMaster, accessibleBids, userBranches, expanded, toggleExpand,
+  viewBids, toggleView, allBranchList,
   rowH, setRowH, colW, setColW, blockFs, setBlockFs, blockOp, setBlockOp,
   startHour, setStartHour, endHour, setEndHour,
   timeUnit, setTimeUnit,
@@ -87,6 +88,22 @@ function TimelineSettings({
           </div>
           <div onClick={toggleExpand} style={{width:46,height:26,borderRadius:13,background:expanded?T.primary:T.gray300,cursor:"pointer",position:"relative",transition:"background .2s",flexShrink:0}}>
             <div style={{position:"absolute",top:3,left:expanded?22:3,width:20,height:20,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 4px rgba(0,0,0,.2)",transition:"left .2s"}}/>
+          </div>
+        </div>
+      )}
+      {/* 지점별 표시 토글 */}
+      {allBranchList && allBranchList.length > 1 && (
+        <div style={{background:T.gray100,borderRadius:T.radius.lg,padding:"10px 14px",marginBottom:8}}>
+          <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.gray700,marginBottom:8}}>지점 표시</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {allBranchList.filter(b => isMaster || accessibleBids.includes(b.id)).map(b => {
+              const on = (viewBids||[]).includes(b.id);
+              return <button key={b.id} onClick={()=>toggleView(b.id)}
+                style={{padding:"5px 12px",fontSize:T.fs.sm,border:"1px solid "+(on?T.primary:"#ddd"),borderRadius:T.radius.md,
+                  background:on?T.primary:T.bgCard,color:on?"#fff":T.gray600,fontWeight:on?700:400,cursor:"pointer",transition:"all .15s"}}>
+                {(b.short||b.name||"").replace(/하우스왁싱\s*/,"")}
+              </button>;
+            })}
           </div>
         </div>
       )}

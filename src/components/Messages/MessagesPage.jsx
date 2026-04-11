@@ -6,27 +6,7 @@ import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, g
 import I from '../common/I'
 
 
-const _BR_ACC = {
-  "br_4bcauqvrb": 101171979,
-  "br_wkqsxj6k1": 102071377,
-  "br_xu60omgdf": 101988152,
-  "br_k57zpkbx1": 101521969,
-  "br_g768xdu4w": 101517367,
-  "br_ybo3rmulv": 101476019,
-  "br_l6yzs2pkq": 102507795,
-  "br_lfv2wgdf1": 101522539,
-};
-const _ACC_NAME = {
-  101171979: "강남", 102071377: "왕십리", 101988152: "천호",
-  101521969: "마곡", 101517367: "위례", 101476019: "용산",
-  102507795: "홍대", 101522539: "잠실",
-  // Instagram IG ID → 지점 (문자열 키)
-  "17841400218759830": "강남", "17841455170480955": "서울",
-  "17841451286389128": "왕십리", "17841424540907024": "홍대",
-  "17841424994371009": "마곡", "17841449388904548": "잠실",
-  "17841445864668171": "용산",
-};
-const _ACC_BR = Object.fromEntries(Object.entries(_BR_ACC).map(([k,v])=>[v,k]));
+// 지점 매핑은 data.branches에서 동적 생성 (하드코딩 제거)
 
 
 function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], isMaster=false, pendingChat=null, onPendingChatDone, setPendingOpenRes, setPage }) {
@@ -35,7 +15,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   const CH_NAME = {naver:"네이버톡톡",kakao:"카카오",instagram:"인스타",whatsapp:"왓츠앱",telegram:"텔레그램"};
   const CH_COLOR = {naver:"#03C75A",kakao:"#F9E000",instagram:"#E1306C",whatsapp:"#128C7E",telegram:"#2AABEE"};
   const CH_LABEL = {naver:"N",kakao:"K",instagram:"I",whatsapp:"W",telegram:"T"};
-  const getGeminiKey = () => window.__geminiKey || localStorage.getItem("bliss_gemini_key") || "";
+  const getGeminiKey = () => window.__systemGeminiKey || window.__geminiKey || localStorage.getItem("bliss_gemini_key") || "";
 
   const [msgs, setMsgs] = useState([]);
   const [sel, setSel] = useState(null);
@@ -59,7 +39,16 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   const inputAreaRef = useRef(null);
   const chatWrapRef = useRef(null);
 
-  const allowedIds = isMaster ? Object.values(_BR_ACC).map(String) : (userBranches||[]).map(b=>_BR_ACC[b]).filter(Boolean).map(String);
+  // 담당 지점 메시지만 표시 (owner/super는 userBranches에 전체 지점 포함)
+  // data.branches에서 동적으로 계정 ID 매핑 생성
+  const branchList = data?.branches || [];
+  const _BR_ACC = {};
+  const _ACC_NAME = {};
+  branchList.forEach(b => {
+    if (b.naverAccountId) { _BR_ACC[b.id] = b.naverAccountId; _ACC_NAME[b.naverAccountId] = b.short || b.name; }
+    if (b.instagramAccountId) { _ACC_NAME[b.instagramAccountId] = b.short || b.name; }
+  });
+  const allowedIds = (userBranches||[]).map(b=>_BR_ACC[b]).filter(Boolean).map(String);
 
   // 메시지 로드 (캐시 방지용 _t 파라미터 추가)
   const loadingRef = useRef(false);
@@ -271,7 +260,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       const pkgInfo = findCustPkgInfo(sel.user_id);
       const pkgCtx = pkgInfo ? `\n\n[이 고객의 다회권 정보]\n${pkgInfo}` : "";
 
-      const prompt=`당신은 하우스왁싱 예약 접수 및 상담 직원입니다.${chatCtx}${priceCtx}${pkgCtx}\n\n[핵심규칙]\n★ 가격/비용을 묻는 메시지에는 성별을 묻지 말고 여성/남성 가격을 둘 다 바로 알려줘!\n★ 풀바디 = 패키지 가격! 개별 부위 합산 금지! 풀바디(음모포함): 여 400,000 / 남 550,000\n★ 브라질리언 가격은 할인가로 안내: 여 104,000 / 남 126,000\n★ 고객 질문에 먼저 답변한 후 예약 정보 물어보기\n\n[예약 접수 안내]\n- 예약에 필요한 정보: 이름, 연락처, 희망 날짜/시간, 시술 종류, 지점\n- 부족한 정보는 자연스럽게 1~2개씩 물어보기\n- 영업시간: 매일 10:00~22:00\n\n중요: 가격은 위 자료에 근거해서만 답변. 모르면 "확인 후 안내드리겠습니다". 거짓 정보 금지.\n\n대화:\n${lastMsgs}\n\n고객 마지막 메시지에 친절하게 답변하세요. JSON만 출력:\n{"reply":"${langName}로 작성한 답변","ko":"한국어 번역"}`;
+      const prompt=`당신은 뷰티샵 예약 접수 및 상담 직원입니다.${chatCtx}${priceCtx}${pkgCtx}\n\n[핵심규칙]\n★ 가격/비용을 묻는 메시지에는 시술상품 가격표에 근거하여 안내!\n★ 고객 질문에 먼저 답변한 후 예약 정보 물어보기\n\n[예약 접수 안내]\n- 예약에 필요한 정보: 이름, 연락처, 희망 날짜/시간, 시술 종류, 지점\n- 부족한 정보는 자연스럽게 1~2개씩 물어보기\n- 영업시간: 매일 10:00~22:00\n\n중요: 가격은 위 자료에 근거해서만 답변. 모르면 "확인 후 안내드리겠습니다". 거짓 정보 금지.\n\n대화:\n${lastMsgs}\n\n고객 마지막 메시지에 친절하게 답변하세요. JSON만 출력:\n{"reply":"${langName}로 작성한 답변","ko":"한국어 번역"}`;
       const res=await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="+key,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
       if(res.status===429){alert("AI 요청 한도 초과. 잠시 후 시도해주세요.");return;}
       if(!res.ok){const err=await res.text();alert("AI API 오류: "+res.status);console.error("[genAI] API error:",err);return;}

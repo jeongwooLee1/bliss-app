@@ -15,6 +15,7 @@ import CustomersPage from '../components/Customers/CustomersPage'
 import MobileBottomNav from '../components/Navigation/MobileBottomNav'
 import Sidebar from '../components/Navigation/Sidebar'
 import SchedulePage from '../components/Schedule/SchedulePage'
+import SetupWizard from '../components/SetupWizard/SetupWizard'
 
 const uid = genId;
 const BLISS_V = "1.4.0"
@@ -28,7 +29,7 @@ async function loadAllFromDb(bizId) {
     sb.getByBiz("reservation_sources", bizId).catch(()=>[]),
     sb.getByBiz("app_users", bizId).catch(()=>[]),
     sb.getByBiz("rooms", bizId).catch(()=>[]),
-    sb.get("customers", `&business_id=eq.${bizId}&is_hidden=eq.false&order=created_at.desc&limit=500`).catch(()=>[]),
+    sb.get("customers", `&business_id=eq.${bizId}&is_hidden=eq.false&order=join_date.desc.nullslast,created_at.desc&limit=100`).catch(()=>[]),
     sb.get("reservations", `&business_id=eq.${bizId}&order=date.desc,time.asc&limit=3000`).catch(()=>[]),
     sb.get("sales", `&business_id=eq.${bizId}&date=gte.${new Date(Date.now()-90*86400000).toISOString().slice(0,10)}&order=date.desc&limit=5000`).catch(()=>[]),
     sb.getByBiz("products", bizId).catch(()=>[]),
@@ -260,6 +261,11 @@ function Login({ users, onLogin, onSignup }) {
           <div style={{fontSize:T.fs.sm,color:T.textMuted,marginTop:T.sp.sm}}>통합 예약 & 매출 관리 시스템</div>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          {/* 소셜 로그인 */}
+          <button onClick={()=>{import('../lib/supabase').then(m=>m.supabase.auth.signInWithOAuth({provider:'kakao',options:{redirectTo:window.location.origin+'/bliss-app/'}}))}} style={{width:"100%",height:48,display:"flex",alignItems:"center",justifyContent:"center",gap:10,background:"#FEE500",color:"#3C1E1E",border:"none",borderRadius:T.radius.md,fontSize:T.fs.md,fontWeight:T.fw.bold,cursor:"pointer",fontFamily:"inherit"}}>💬 카카오로 시작하기</button>
+          <button onClick={()=>{import('../lib/supabase').then(m=>m.supabase.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin+'/bliss-app/'}}))}} style={{width:"100%",height:48,display:"flex",alignItems:"center",justifyContent:"center",gap:10,background:"#fff",color:"#333",border:`1px solid ${T.border}`,borderRadius:T.radius.md,fontSize:T.fs.md,fontWeight:T.fw.bold,cursor:"pointer",fontFamily:"inherit"}}>🔍 Google로 시작하기</button>
+          {/* 구분선 */}
+          <div style={{display:"flex",alignItems:"center",gap:12,margin:"4px 0"}}><div style={{flex:1,height:1,background:T.border}}/><span style={{fontSize:T.fs.xs,color:T.textMuted}}>또는</span><div style={{flex:1,height:1,background:T.border}}/></div>
           <FLD label="아이디"><input className="inp" placeholder="아이디 입력" value={loginId} onChange={e=>{setLoginId(e.target.value);setErr("")}}/></FLD>
           <FLD label="비밀번호"><input className="inp" type="password" placeholder="비밀번호 입력" value={pw} onChange={e=>{setPw(e.target.value);setErr("")}} onKeyDown={e=>e.key==="Enter"&&handleLogin()}/></FLD>
           {err && <div style={{fontSize:T.fs.sm,color:T.danger,textAlign:"center"}}>{err}</div>}
@@ -473,8 +479,9 @@ function SignupWizard({ onComplete, onBack }) {
   const removeBranch = (i) => setBranches(p=>p.filter((_,idx)=>idx!==i));
 
   const submit = async () => {
-    if (branches.length === 0) { alert('지점을 먼저 등록해주세요.'); return; }
     if (!bizName.trim()) { alert('브랜드명을 입력해주세요.'); return; }
+    // 지점 없으면 브랜드명으로 기본 지점 자동 생성
+    const finalBranches = branches.length > 0 ? branches : [{name: bizName.trim(), phone: ''}];
     setSaving(true);
     try {
       const ex = await sb.get('app_users','&login_id=eq.'+encodeURIComponent(acct.loginId));
@@ -483,16 +490,16 @@ function SignupWizard({ onComplete, onBack }) {
       const oId = 'acc_'+uid();
       const exp = new Date(); exp.setDate(exp.getDate()+14);
       await sb.insert('businesses', {
-        id: bizId, name: bizName.trim(), code: acct.loginId, phone: branches[0].phone||'',
+        id: bizId, name: bizName.trim(), code: acct.loginId, phone: finalBranches[0].phone||'',
         settings: JSON.stringify({ plan:'trial', planExpiry: exp.toISOString().slice(0,10) }), use_yn: true
       });
       const brIds = [];
-      for (let i=0; i<branches.length; i++) {
+      for (let i=0; i<finalBranches.length; i++) {
         const brId = 'br_'+uid();
         brIds.push(brId);
         await sb.insert('branches', {
-          id: brId, business_id: bizId, name: branches[i].name, short: branches[i].name.slice(0,5),
-          phone: branches[i].phone||'', sort: i, use_yn: true
+          id: brId, business_id: bizId, name: finalBranches[i].name, short: finalBranches[i].name.slice(0,5),
+          phone: finalBranches[i].phone||'', sort: i, use_yn: true
         });
       }
       await sb.insert('app_users', {
@@ -544,7 +551,7 @@ function SignupWizard({ onComplete, onBack }) {
       </div>
       <div style={{marginBottom:13}}>
         <label style={lbl}>아이디 (영문/숫자/언더바 3~20자)</label>
-        <input style={{...inp,borderColor:errs.loginId?T.danger:T.border}} value={acct.loginId} onChange={e=>setA('loginId',e.target.value.toLowerCase())} placeholder="예: housewaxing"/>
+        <input style={{...inp,borderColor:errs.loginId?T.danger:T.border}} value={acct.loginId} onChange={e=>setA('loginId',e.target.value.toLowerCase())} placeholder="예: myshop"/>
         {errs.loginId&&<div style={errStyle}>{errs.loginId}</div>}
       </div>
       <div style={{marginBottom:13}}>
@@ -568,10 +575,10 @@ function SignupWizard({ onComplete, onBack }) {
     <div style={{display:'flex',flexDirection:'column',gap:0}}>
       <StepBar/>
       <div style={{fontSize:T.fs.lg,fontWeight:T.fw.black,marginBottom:4}}>사업장 등록</div>
-      <div style={{fontSize:T.fs.sm,color:T.textMuted,marginBottom:16,lineHeight:1.5}}>운영하시는 브랜드명과 지점을 등록해주세요.</div>
+      <div style={{fontSize:T.fs.sm,color:T.textMuted,marginBottom:16,lineHeight:1.5}}>사업장 정보를 등록해주세요.</div>
       <div style={{marginBottom:16}}>
         <label style={lbl}>브랜드명 <span style={{color:T.danger}}>*</span></label>
-        <input style={inp} value={bizName} onChange={e=>setBizName(e.target.value)} placeholder="예: 하우스왁싱"/>
+        <input style={inp} value={bizName} onChange={e=>setBizName(e.target.value)} placeholder="브랜드 또는 상호명"/>
       </div>
       <div style={{marginBottom:10,display:'flex',flexDirection:'column',gap:8}}>
         {branches.map((b,i)=>(
@@ -607,12 +614,12 @@ function SignupWizard({ onComplete, onBack }) {
           </button>
         )
       )}
-      <div style={{fontSize:T.fs.xxs,color:T.textMuted,textAlign:'center',marginBottom:14}}>지점은 최대 <b style={{color:T.primary}}>3개</b>까지 등록할 수 있어요</div>
-      <button onClick={submit} disabled={saving||branches.length===0||!bizName.trim()}
+      <div style={{fontSize:T.fs.xxs,color:T.textMuted,textAlign:'center',marginBottom:14}}>여러 지점이 있으면 추가해주세요 (선택)</div>
+      <button onClick={submit} disabled={saving||!bizName.trim()}
         style={{width:'100%',padding:13,borderRadius:T.radius.lg,border:'none',
-          background:(saving||branches.length===0||!bizName.trim())?T.gray200:'linear-gradient(135deg,#7c7cc8,#9b9be0)',
-          color:(saving||branches.length===0||!bizName.trim())?T.gray400:'#fff',
-          fontSize:T.fs.md,fontWeight:T.fw.bolder,cursor:saving||branches.length===0?'not-allowed':'pointer',fontFamily:'inherit'}}>
+          background:(saving||!bizName.trim())?T.gray200:'linear-gradient(135deg,#7c7cc8,#9b9be0)',
+          color:(saving||!bizName.trim())?T.gray400:'#fff',
+          fontSize:T.fs.md,fontWeight:T.fw.bolder,cursor:saving?'not-allowed':'pointer',fontFamily:'inherit'}}>
         {saving?'처리 중...':'완료 — 시작하기 →'}
       </button>
       <button onClick={()=>setStep(1)} style={{background:'none',border:'none',fontSize:T.fs.sm,color:T.gray400,cursor:'pointer',marginTop:10,fontFamily:'inherit'}}>← 이전</button>
@@ -656,6 +663,7 @@ function App() {
     try { const p = sessionStorage.getItem("bliss_page"); console.log("[SESSION] page restore:", p); return p || "timeline"; } catch(e){ return "timeline"; }
   });
   const [pendingOpenRes, setPendingOpenRes] = useState(null);
+  const [pendingOpenCust, setPendingOpenCust] = useState(null); // 고객관리 페이지에서 자동 오픈할 cust_id
   const [pendingChat, setPendingChat] = useState(null); // {user_id, channel, account_id}
   const [serverV, setServerV] = useState(null);
   const [scraperStatus, setScraperStatus] = useState(null); // {lastSeen, lastScraped, isAlive, isWarning}
@@ -674,10 +682,8 @@ function App() {
   const [sideOpen, setSideOpen] = useState(false);
   const [loadMsg, setLoadMsg] = useState("연결 중...");
   useEffect(() => {
-    const BR_ACC = {"br_4bcauqvrb":"101171979","br_wkqsxj6k1":"102071377","br_l6yzs2pkq":"102507795",
-      "br_k57zpkbx1":"101521969","br_lfv2wgdf1":"101522539","br_g768xdu4w":"101517367",
-      "br_ybo3rmulv":"101476019","br_xu60omgdf":"101988152"};
-    const accIds = (userBranches||[]).map(b=>BR_ACC[b]).filter(Boolean);
+    // data.branches에서 동적으로 계정 매핑
+    const accIds = (userBranches||[]).map(bid => (data?.branches||[]).find(b=>b.id===bid)?.naverAccountId).filter(Boolean);
     const SOCIAL_CH = ["whatsapp","telegram","instagram","kakao"];
     const load = () => {
       // userBranches 아직 안 로드됐으면 스킵 (isMaster는 전체 허용)
@@ -839,6 +845,33 @@ function App() {
               }
             }
           } catch(e){}
+          // OAuth 리다이렉트 체크 (Google/Kakao 로그인 후 돌아온 경우)
+          const { data: { session: authSession } } = await _supaClient.auth.getSession();
+          if (authSession?.user) {
+            const authUser = authSession.user;
+            const email = authUser.email || '';
+            const authId = authUser.id;
+            const provider = authUser.app_metadata?.provider || 'oauth';
+            // 이메일 또는 login_id(provider_xxx)로 기존 유저 검색
+            let oauthUser = email ? users.find(u => u.email === email) : null;
+            if (!oauthUser) oauthUser = users.find(u => u.login_id?.startsWith(provider + '_'));
+            if (!oauthUser) {
+              // 신규 OAuth 유저 → 자동 계정 생성
+              const name = authUser.user_metadata?.full_name || authUser.user_metadata?.name || authUser.user_metadata?.preferred_username || (email ? email.split('@')[0] : provider + '사용자');
+              const bizId = 'biz_' + uid(); const brId = 'br_' + uid(); const accId = 'acc_' + uid();
+              const loginId = provider + '_' + uid();
+              const bizName = name + '님의 사업장';
+              const exp = new Date(); exp.setDate(exp.getDate() + 14);
+              await sb.insert('businesses', { id: bizId, name: bizName, code: loginId, phone: '', settings: JSON.stringify({ plan:'trial', planExpiry: exp.toISOString().slice(0,10) }), use_yn: true });
+              await sb.insert('branches', { id: brId, business_id: bizId, name: bizName, short: name.slice(0,5), phone: '', sort: 0, use_yn: true });
+              await sb.insert('app_users', { id: accId, business_id: bizId, login_id: loginId, password: uid(), name, role: 'owner', email: email || null, branch_ids: JSON.stringify([brId]), view_branch_ids: JSON.stringify([brId]) });
+              const newUsers = fromDb("app_users", await sb.get("app_users"));
+              setAllUsers(newUsers);
+              oauthUser = newUsers.find(u => u.id === accId);
+              sessionStorage.setItem('bliss_new_oauth_user', 'true');
+            }
+            if (oauthUser) { handleLogin(oauthUser, true); return; }
+          }
           setPhase("login");
         }
       } catch(e) {
@@ -913,7 +946,7 @@ function App() {
         if (!db.resSources.find(s=>s.name===SYSTEM_SRC_NAME_NAVER)) {
           const ns={id:"src_naver_sys",name:SYSTEM_SRC_NAME_NAVER,color:T.naver,useYn:true,sort:0};
           db.resSources=[ns,...db.resSources.map((s,i)=>({...s,sort:i+1}))];
-          sb.insert("reservation_sources",{id:ns.id,business_id:_activeBizId,name:ns.name,color:ns.color,use_yn:true,sort:0}).catch(()=>{});
+          sb.upsert("reservation_sources",[{id:ns.id,business_id:_activeBizId,name:ns.name,color:ns.color,use_yn:true,sort:0}]);
           resolveSystemIds(db.serviceTags, db.resSources);
         } else {
           const ni=db.resSources.findIndex(s=>s.name===SYSTEM_SRC_NAME_NAVER);
@@ -941,6 +974,11 @@ function App() {
         setViewBranches(user.viewBranches || []);
         // page is already restored from sessionStorage("bliss_page") via useState initializer
         setPhase("app");
+        // 새 OAuth 유저 → 설정 마법사 자동 시작
+        if (sessionStorage.getItem('bliss_new_oauth_user')) {
+          sessionStorage.removeItem('bliss_new_oauth_user');
+          setTimeout(() => setPage("wizard"), 500);
+        }
       } catch(e) {
         console.error("Data load error:", e);
         setLoadMsg("데이터 로딩 실패");
@@ -964,7 +1002,7 @@ function App() {
       if (!db.resSources.find(s=>s.name===SYSTEM_SRC_NAME_NAVER)) {
         const ns={id:"src_naver_sys",name:SYSTEM_SRC_NAME_NAVER,color:T.naver,useYn:true,sort:0};
         db.resSources=[ns,...db.resSources.map((s,i)=>({...s,sort:i+1}))];
-        sb.insert("reservation_sources",{id:ns.id,business_id:_activeBizId,name:ns.name,color:ns.color,use_yn:true,sort:0}).catch(()=>{});
+        sb.upsert("reservation_sources",[{id:ns.id,business_id:_activeBizId,name:ns.name,color:ns.color,use_yn:true,sort:0}]);
         resolveSystemIds(db.serviceTags, db.resSources);
       } else {
         const ni=db.resSources.findIndex(s=>s.name===SYSTEM_SRC_NAME_NAVER);
@@ -1154,6 +1192,7 @@ function App() {
   if (phase === "login") return <Login users={allUsers} onLogin={handleLogin} onSignup={async (newUser) => {
     setAllUsers(prev => [...prev, newUser]);
     await handleLogin(newUser);
+    setTimeout(() => setPage("wizard"), 500); // 가입 직후 설정 마법사 자동 시작
   }} />;
   if (phase === "super") return <SuperDashboard superData={superData} setSuperData={setSuperData} currentUser={currentUser} onLogout={handleLogout} onEnterBiz={handleEnterBiz} />;
 
@@ -1174,9 +1213,10 @@ function App() {
     { id:"reservations", label:"예약목록", icon:<I name="clipboard" size={16}/> },
     { id:"sales", label:"매출관리", icon:<I name="wallet" size={16}/> },
     { id:"customers", label:"고객관리", icon:<I name="users" size={16}/> },
-    ...(isMaster?[{ id:"users", label:"사용자관리", icon:<I name="user" size={16}/> }]:[]),
+    ...((role==="owner"||role==="super")?[{ id:"users", label:"사용자관리", icon:<I name="user" size={16}/> }]:[]),
     { id:"messages", label:"받은메시지함", icon:<I name="msgSq" size={16}/>, badge:unreadMsgCount },
     { id:"admin", label:"관리설정", icon:<I name="settings" size={16}/> },
+    ...((()=>{ try { const s=JSON.parse(currentBiz?.settings||'{}'); return !s.wizard_progress?.completed; } catch { return true; } })() ? [{ id:"wizard", label:"설정 마법사", icon:"✨" }] : []),
   ];
 
   const branchNames = userBranches.map(bid => (data.branches||[]).find(b=>b.id===bid)?.short||bid).filter(Boolean).join(", ");
@@ -1198,15 +1238,16 @@ function App() {
       <main className="main-c" style={S.main}>
         <div className="mob-hdr" style={{display:"none"}}></div>
         <div className="page-pad" style={{flex:1,padding:(page==="timeline"||page==="messages"||page==="schedule")?"0":"16px 20px 16px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
-          <div className={page==="timeline"?"":"fade-in"} key={page} style={(page==="timeline"||page==="schedule")?{flex:1,display:"flex",flexDirection:"column",minHeight:0}:{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}>
-            {page==="timeline" && <Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat}/>}
+          <div className={page==="timeline"?"":"fade-in"} key={page} style={(page==="timeline"||page==="schedule"||page==="wizard")?{flex:1,display:"flex",flexDirection:"column",minHeight:0}:{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}>
+            {page==="timeline" && <Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust}/>}
             {page==="reservations" && <ReservationList data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} setNaverColShow={setNaverColShow}/>}
             {page==="sales" && <SalesPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} role={role}/>}
-            {page==="customers" && <CustomersPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster}/>}
+            {page==="customers" && <CustomersPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} pendingOpenCust={pendingOpenCust} setPendingOpenCust={setPendingOpenCust}/>}
             {page==="users" && <UsersPage data={data} setData={setData} bizId={currentBizId}/>}
             {page==="messages" && <AdminInbox sb={sb} branches={data?.branches} data={data} userBranches={userBranches} isMaster={isMaster} onRead={(cnt)=>setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)))} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage}/>}
             {page==="schedule" && <SchedulePage/>}
-            {page==="admin" && <AdminPage data={data} setData={setData} bizId={currentBizId} serverV={serverV} onLogout={handleLogout} currentUser={currentUser}/>}
+            {page==="admin" && <AdminPage data={data} setData={setData} bizId={currentBizId} serverV={serverV} onLogout={handleLogout} currentUser={currentUser} userBranches={userBranches}/>}
+            {page==="wizard" && <SetupWizard bizId={currentBizId} bizName={bizName} geminiKey={(() => { try { return window.__systemGeminiKey || window.__geminiKey || JSON.parse(currentBiz?.settings||'{}').gemini_key || localStorage.getItem('bliss_gemini_key') || ''; } catch { return ''; } })()} sb={sb} data={data} setData={setData} onComplete={()=>setPage("timeline")} onClose={()=>setPage("timeline")} />}
           </div>
         </div>
       </main>

@@ -54,6 +54,21 @@
 - 카카오 로그인 테스트 성공: cripiss@kakao.com → "이정우님의 사업장" 자동 생성 + 설정 마법사 시작
 - 참고: 카카오 앱 아이콘(bliss_logo.png) 등록은 이전 세션에서 완료됨
 
+### 타임라인 지점 표시 설정
+- TimelineSettings에 지점별 토글 버튼 UI 추가
+- allBranchList, viewBids, toggleView props 전달
+- isMaster: 전 지점 토글 가능, 일반: accessibleBids 내 토글
+
+### alimtalk_thread watchdog 추가
+- watchdog에 t7(alimtalk) 생존 체크 + 자동 재시작 추가
+- 상태 로그에 alimtalk 상태 포함
+- 폴링 디버그 로그 (처음 3회 + 매 1시간)
+- naver-sync repo push 완료 → crontab 자동 동기화
+
+### 고객관리 예약통계 표시
+- 상세 패널에 예약횟수/노쇼/당일취소 카운트 표시
+- reservations 테이블에서 cust_id 기준 조회 (status 기반 집계)
+
 ### 참고: Google OAuth 설정
 - Google Cloud 프로젝트: bliss-492906
 - Client ID: 483655734800-mbus7qgbdhsr5hdjprub7vmfhekeecdj.apps.googleusercontent.com
@@ -95,20 +110,6 @@
 
 ---
 
-## 작업: 타임라인 지점 표시 설정
-**상태**: UI 구현 필요.
-
-### 상황
-- `toggleView(bid)`, `toggleExpand()` 함수 존재 (TimelinePage.jsx line 446-456)
-- `TimelineSettings`에 prop 전달됨 but **설정 패널에 지점 토글 UI 없음**
-- `accessibleBids`, `viewBids` 로직은 완성
-
-### 다음 행동
-- `TimelineSettings` 컴포넌트에 지점별 토글 체크박스 추가
-- `toggleView` prop 사용
-
----
-
 ## 작업: 시술후 케어 알림톡 (5/10/21/35/53일)
 **상태**: 알리고 등록 완료, 카카오 심사 대기 (2~3일).
 
@@ -120,20 +121,6 @@
 
 ### 다음 행동
 - 카카오 심사 승인 확인 → 알림톡 ON으로 전환
-
----
-
-## 작업: alimtalk_thread 자동 폴링 문제
-**상태**: 서비스 내 스레드가 while loop 실행 안 됨.
-
-### 상황
-- "스레드 시작" 로그 후 폴링 로그 없음
-- 수동 파이썬 스크립트로는 정상 발송 (9건 테스트 완료)
-- result_code 판정 버그 수정됨 (code==0이 성공)
-
-### 다음 행동
-- 스레드 내부 디버그 로그 추가 (while 루프 진입 확인)
-- 또는 별도 cron 스크립트로 분리 (10초마다 alimtalk_queue 폴링)
 
 ---
 
