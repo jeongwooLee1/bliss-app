@@ -1601,7 +1601,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                           +
                         </span>
                         {addStaffPopup?.branchId===room.branch_id && (<>
-                          <div style={{position:"fixed",inset:0,zIndex:9998}} onClick={()=>setAddStaffPopup(null)}/>
+                          <div style={{position:"fixed",inset:0,zIndex:9998}} onClick={e=>{e.stopPropagation();setAddStaffPopup(null);}}/>
                           <div onClick={e=>e.stopPropagation()} style={{position:"fixed",left:Math.min(addStaffPopup.x,window.innerWidth-220),top:addStaffPopup.y+8,background:T.bgCard,borderRadius:12,boxShadow:"0 4px 24px rgba(0,0,0,.22)",zIndex:9999,padding:"8px 0",minWidth:200,maxHeight:300,overflowY:"auto"}}>
                             <div style={{fontSize:11,color:T.textMuted,padding:"0 12px 6px",fontWeight:700,borderBottom:"1px solid "+T.border}}>직원 추가 (당일)</div>
                             {addStaffPopup?.selectedEmp ? null : BASE_EMP_LIST.filter(e => {
@@ -1669,7 +1669,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                         onClick={e=>{e.stopPropagation();setEmpMovePopup(p=>p?.empId===room.staffId?null:{empId:room.staffId,date:selDate,x:e.clientX,y:e.clientY});}}>
                         {room.name}
                       </span>
-                      {empMovePopup?.empId===room.staffId && empMovePopup?.date===selDate && (
+                      {empMovePopup?.empId===room.staffId && empMovePopup?.date===selDate && (<>
+                        <div style={{position:"fixed",inset:0,zIndex:9998}} onClick={e=>{e.stopPropagation();setEmpMovePopup(null);}}/>
                         <div onClick={e=>e.stopPropagation()} style={{position:"fixed",left:Math.min(empMovePopup.x,window.innerWidth-200),top:empMovePopup.y+8,background:T.bgCard,borderRadius:12,boxShadow:"0 4px 24px rgba(0,0,0,.22)",zIndex:9999,padding:"10px 0 6px",minWidth:200}}>
                           {/* 근무시간 설정 */}
                           <div style={{padding:"8px 12px",borderBottom:"1px solid "+T.border}}>
@@ -1800,7 +1801,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             </>;
                           })()}
                         </div>
-                      )}
+                      </>)}
                     </div>
                   ) : (
                     <span className="tl-room-sub" style={{fontSize:T.fs.nano,color:room.isNaver?T.successDk:T.gray500}}>{room.isNaver?<I name="naver" size={11}/>:""}{room.name}</span>
