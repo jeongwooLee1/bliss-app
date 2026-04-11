@@ -966,9 +966,12 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           const movedEndTime = `${String(Math.floor(mEndMin/60)).padStart(2,"0")}:${String(mEndMin%60).padStart(2,"0")}`;
 
           const validPhone = block.custPhone && block.custPhone.startsWith("010");
-          const needsPopup = !block.isSchedule && validPhone && snap.time !== orig.time;
+          const branchChanged = movedBid && movedBid !== block.bid;
+          const needsPopup = !block.isSchedule && (
+            (validPhone && snap.time !== orig.time) || branchChanged
+          );
           if (needsPopup) {
-            setPendingChange({ type: "move", block, data: snap, orig });
+            setPendingChange({ type: "move", block, data: snap, orig, branchChanged });
           } else {
             // 바로 DB 저장 — snap 기준 계산값 사용
             sb.update("reservations", block.id, {
@@ -1771,10 +1774,14 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       })()}
 
       {pendingChange && (() => {
-        const { type, block, data: d, orig } = pendingChange;
+        const { type, block, data: d, orig, branchChanged } = pendingChange;
         const name = block.custName || "일정";
+        const fromBr = (data?.branches||[]).find(b=>b.id===block.bid);
+        const toBr = branchChanged ? (data?.branches||[]).find(b=>b.id===d.bid) : null;
         const desc = type === "move"
-          ? `${name}: ${orig.time} → ${d.time}`
+          ? branchChanged
+            ? `${name}: ${fromBr?.short||fromBr?.name||""} → ${toBr?.short||toBr?.name||""} (${orig.time}→${d.time})`
+            : `${name}: ${orig.time} → ${d.time}`
           : `${name}: ${orig.dur}분 → ${d.dur}분`;
         const popW = Math.min(320, Math.max(260, Math.round(window.innerWidth * 0.8)));
         const vw = window.innerWidth; const vh = window.innerHeight;
