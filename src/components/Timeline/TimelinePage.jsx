@@ -1632,28 +1632,42 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             {addStaffPopup?.selectedEmp && addStaffPopup?.selectedBranch===room.branch_id && (()=>{
                               const empName = addStaffPopup.selectedEmp;
                               const targetBid = addStaffPopup.selectedBranch;
+                              const empBase = BASE_EMP_LIST.find(e=>e.id===empName);
+                              const baseBid = empBase?.branch_id;
+                              const baseBr = (data?.branches||[]).find(b=>b.id===baseBid);
+                              const supportFrom = addStaffPopup.supportFrom || "";
+                              const hours = Array.from({length:24},(_,i)=>`${String(i).padStart(2,"0")}:00`);
                               const doAdd = (exclusive) => {
                                 const overrideKey = empName+"_"+selDate;
                                 if(exclusive) {
+                                  // 이동: 대상 지점에만
                                   setEmpBranchOverride(p=>({...p,[overrideKey]:{segments:[{branchId:targetBid,from:null,until:null}],exclusive:true}}));
                                 } else {
-                                  setEmpBranchOverride(p=>{
-                                    const existing = p[overrideKey]?.segments || [];
-                                    return {...p,[overrideKey]:{segments:[...existing.filter(s=>s.branchId!==targetBid),{branchId:targetBid,from:null,until:null}]}};
-                                  });
+                                  // 지원: 원래 지점(~시작시간) + 대상 지점(시작시간~)
+                                  const from = supportFrom || "14:00";
+                                  const segs = [];
+                                  if(baseBid) segs.push({branchId:baseBid, from:null, until:from});
+                                  segs.push({branchId:targetBid, from, until:null});
+                                  setEmpBranchOverride(p=>({...p,[overrideKey]:{segments:segs}}));
                                 }
                                 setAddStaffPopup(null);
                               };
-                              const baseBr = (data?.branches||[]).find(b=>b.id===BASE_EMP_LIST.find(e=>e.id===empName)?.branch_id);
                               return <div style={{borderTop:"2px solid "+T.primary,padding:"8px 12px"}}>
                                 <div style={{fontSize:12,fontWeight:700,marginBottom:6}}>{empName} <span style={{fontWeight:400,color:T.textMuted}}>({baseBr?.short||""})</span></div>
+                                <div style={{display:"flex",gap:4,alignItems:"center",marginBottom:6}}>
+                                  <span style={{fontSize:10,color:T.textMuted}}>시작</span>
+                                  <select value={supportFrom||"14:00"} onChange={e=>setAddStaffPopup(p=>({...p,supportFrom:e.target.value}))}
+                                    style={{flex:1,fontSize:11,padding:"3px 4px",borderRadius:6,border:"1px solid "+T.border}}>
+                                    {hours.map(h=><option key={h} value={h}>{h}</option>)}
+                                  </select>
+                                </div>
                                 <div style={{display:"flex",gap:6}}>
                                   <button onClick={()=>doAdd(false)}
                                     style={{flex:1,padding:"6px 0",borderRadius:7,border:"none",background:"#4CAF50",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}
-                                    title="원래 매장에도 남아있음">지원</button>
+                                    title="원래 매장은 시작시간까지, 이후 이 매장">지원</button>
                                   <button onClick={()=>doAdd(true)}
                                     style={{flex:1,padding:"6px 0",borderRadius:7,border:"none",background:T.primary,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}
-                                    title="원래 매장에서 제거">이동</button>
+                                    title="원래 매장에서 제거, 종일 이 매장">이동</button>
                                   <button onClick={()=>setAddStaffPopup(p=>({...p,selectedEmp:null}))}
                                     style={{padding:"6px 8px",borderRadius:7,border:"1px solid "+T.border,background:T.bgCard,fontSize:11,cursor:"pointer"}}>취소</button>
                                 </div>
