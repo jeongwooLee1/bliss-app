@@ -704,19 +704,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       // schHistory 미로드 시 직원 컬럼 표시 안 함 (로딩 후 리렌더링됨)
       staffRooms = [];
     }
-    // 고정 컬럼 수 적용 - 부족하면 빈 컬럼 추가
-    const fixedCols = br.staffColCount || branchColCount[br.id] || 0;
-    if (fixedCols > staffRooms.length) {
-      const blanks = fixedCols - staffRooms.length;
-      for (let i = 0; i < blanks; i++) {
-        staffRooms.push({
-          id: `blank_${br.id}_${i}`, name: "미배정",
-          branch_id: br.id, branchName: br.short||br.name||"",
-          isBlank: true
-        });
-      }
-    }
-    // 항상 오른쪽 끝에 미배정 컬럼 1개 추가
+    // 오른쪽 끝에 + 컬럼 추가
     staffRooms.push({
       id: `blank_${br.id}_add`, name: "+",
       branch_id: br.id, branchName: br.short||br.name||"",
