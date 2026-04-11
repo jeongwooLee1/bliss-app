@@ -1614,7 +1614,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                               const selSt = {flex:1,fontSize:11,padding:"4px 3px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"};
                               return <div style={{display:"flex",gap:4,alignItems:"center"}}>
                                 <select defaultValue={wh.start} style={selSt}
-                                  onChange={e=>{const v=e.target.value; _setEmpWorkHours(p=>({...p,[whKey]:{...(p[whKey]||p[room.staffId+"_"+room.branch_id]||{start:"10:00",end:"21:00"}),start:v}}));}}>
+                                  onChange={e=>{const v=e.target.value; const sh=parseInt(v); const eh=Math.min(23,sh+10); const endStr=`${String(eh).padStart(2,"0")}:00`; _setEmpWorkHours(p=>({...p,[whKey]:{start:v,end:endStr}}));}}>
                                   {hours.map(h=><option key={h} value={h}>{h}</option>)}
                                 </select>
                                 <span style={{fontSize:11}}>~</span>
