@@ -958,8 +958,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           // 이동된 값을 snap 기준으로 직접 계산 (setData는 비동기라 data가 아직 갱신 안 됨)
           const toNaverCol2 = snap.roomId?.startsWith("nv_");
           const targetRoom2 = allRooms.find(rm => rm.id === snap.roomId);
-          const movedStaffId = toNaverCol2 ? "" : targetRoom2?.isStaffCol ? targetRoom2.staffId : (block.staffId || "");
-          const movedRoomId = toNaverCol2 ? "" : snap.roomId || block.roomId;
+          const movedStaffId = toNaverCol2 ? "" : targetRoom2?.isStaffCol ? targetRoom2.staffId : "";
+          const movedRoomId = toNaverCol2 ? "" : snap.roomId || "";
           const movedBid = snap.bid || block.bid;
           const [mh,mm] = snap.time.split(":").map(Number);
           const mEndMin = mh*60+mm+(block.dur||60);
@@ -1112,10 +1112,14 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     const { type, block, data: d } = pendingChange;
     // 이미 미리보기로 state에 반영됨 → DB만 저장
     if (type === "move") {
+      // data state에서 최신 값 읽기 (팝업 후이므로 갱신되어 있음)
       const r = (data?.reservations||[]).find(r => r.id === block.id);
+      // d(=snap)에서 직접 계산한 값도 fallback으로 사용
+      const targetRoom = allRooms.find(rm => rm.id === d?.roomId);
+      const fallbackStaff = targetRoom?.isStaffCol ? targetRoom.staffId : "";
       if (r) sb.update("reservations", block.id, {
-        room_id: r.roomId, time: r.time,
-        bid: r.bid, staff_id: r.staffId || null
+        room_id: r.roomId || d?.roomId || "", time: r.time || d?.time,
+        bid: r.bid || d?.bid, staff_id: r.staffId || fallbackStaff || null
       }).catch(console.error);
     }
     if (type === "resize") {
