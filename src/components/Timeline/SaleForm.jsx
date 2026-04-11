@@ -701,7 +701,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                     const label=g.type==="prepaid"?`🎫 ${g.name} +${g.totalBal.toLocaleString()}`:`🎟 ${g.name} +${g.totalRemain}`;
                     return <button key={g.ids[0]} onClick={()=>{
                       if(g.type==="package") {
-                        // 유효기간 있는 것부터 토글
+                        // 유효기간 있는 것 1개만 토글 (1회 차감)
                         const sorted=[...g.ids].sort((a,b)=>{
                           const pa=activePkgs.find(p=>p.id===a), pb=activePkgs.find(p=>p.id===b);
                           const ea=((pa?.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1]||"9999";
@@ -711,7 +711,8 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                         setPkgUse(prev=>{
                           const anyActive=sorted.some(id=>!!prev[id]);
                           const next={...prev};
-                          sorted.forEach(id=>{next[id]=anyActive?false:true;});
+                          sorted.forEach(id=>{next[id]=false;}); // 전부 해제
+                          if(!anyActive && sorted[0]) next[sorted[0]]=true; // 첫 번째만 활성
                           return next;
                         });
                       }
