@@ -635,8 +635,8 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
             {activePkgs.filter(p=>_pkgType(p)!=="annual").map(p=>{
               const t=_pkgType(p); const bal=_pkgBalance(p); const remain=p.total_count-p.used_count;
               return <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 0"}}>
-                <span style={{fontSize:12,fontWeight:600,color:t==="prepaid"?"#E65100":"#3949AB"}}>{p.service_name?.split("(")[0]||""}</span>
-                <span style={{fontSize:14,fontWeight:800,color:t==="prepaid"?"#E65100":"#3949AB"}}>{t==="prepaid"?`${bal.toLocaleString()}원`:`${remain}회`}</span>
+                <span style={{fontSize:12,fontWeight:600,color:t==="prepaid"?"#E65100":"#3949AB"}}>{(p.service_name?.split("(")[0]||"").replace(/\s*5회$/,"")}</span>
+                <span style={{fontSize:14,fontWeight:800,color:t==="prepaid"?"#E65100":"#3949AB"}}>{t==="prepaid"?`+${bal.toLocaleString()}원`:`+${remain}회`}</span>
               </div>;
             })}
           </div>}
@@ -680,7 +680,8 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                 {activePkgs.filter(p=>_pkgType(p)!=="annual").map(p=>{
                   const t=_pkgType(p); const bal=_pkgBalance(p); const remain=p.total_count-p.used_count;
                   const isActive=!!pkgUse[p.id];
-                  const pkgLabel=t==="prepaid"?`🎫 ${p.service_name?.split("(")[0]||"다담권"} ${bal.toLocaleString()}`:`🎟 ${p.service_name?.split("(")[0]||"다회권"} ${remain}회`;
+                  const shortName=(p.service_name?.split("(")[0]||"다회권").replace(/\s*5회$/,"").trim();
+                  const pkgLabel=t==="prepaid"?`🎫 ${shortName} +${bal.toLocaleString()}`:`🎟 ${shortName} +${remain}`;
                   return <button key={p.id} onClick={()=>{
                     if(t==="package") setPkgUse(prev=>({...prev,[p.id]:prev[p.id]?false:true}));
                     if(t==="prepaid") setPkgUse(prev=>({...prev,[p.id]:prev[p.id]?0:Math.min(bal,svcPayTotal)}));
