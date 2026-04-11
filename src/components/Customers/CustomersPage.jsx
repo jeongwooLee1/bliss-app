@@ -638,7 +638,19 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                         {custPkgs.length===0
                           ? <div style={{fontSize:T.fs.xs,color:T.textMuted,padding:"8px 0"}}>보유 다회권 없음</div>
                           : <div style={{display:"flex",gap:T.sp.sm,flexWrap:"wrap"}}>
-                              {custPkgs.map(p=><PkgCard key={p.id} p={p}/>)}
+                              {[...custPkgs].sort((a,b)=>{
+                                const remA=(a.total_count||0)-(a.used_count||0), remB=(b.total_count||0)-(b.used_count||0);
+                                const expA=((a.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1]||"";
+                                const expB=((b.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1]||"";
+                                const today=todayStr();
+                                const expiredA=expA&&expA<today, expiredB=expB&&expB<today;
+                                const activeA=remA>0&&!expiredA, activeB=remB>0&&!expiredB;
+                                const freshA=remA>0&&!expA, freshB=remB>0&&!expB;
+                                // 1.유효(잔여+미만료) 2.미사용(유효기간없음) 3.만료/소진
+                                if(activeA!==activeB) return activeA?-1:1;
+                                if(freshA!==freshB) return freshA?-1:1;
+                                return 0;
+                              }).map(p=><PkgCard key={p.id} p={p}/>)}
                             </div>
                         }
                       </div>}
