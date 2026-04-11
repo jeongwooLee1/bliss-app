@@ -339,12 +339,17 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     return branchNameToId[match[1]] || null;
   };
 
+  const schHistoryLoaded = React.useRef(false);
   const getWorkingStaff = (branchId, date) => {
     if (!schHistory) {
-      // 근무표 없으면 원래 소속 직원만
-      const branchEmps = BASE_EMP_LIST.filter(e => empInBranch(e.id, date, branchId));
-      return branchEmps.length > 0 ? branchEmps : null;
+      if (schHistoryLoaded.current) {
+        // 근무표 로드 완료인데 비어있음 → 원래 소속 직원만
+        const branchEmps = BASE_EMP_LIST.filter(e => empInBranch(e.id, date, branchId));
+        return branchEmps.length > 0 ? branchEmps : null;
+      }
+      return null; // 아직 로딩 중 → 컬럼 안 보여줌
     }
+    schHistoryLoaded.current = true;
 
     // 모든 직원 중 이 지점에 해당하는 직원 찾기
     const working = [];
@@ -1348,11 +1353,16 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   // Scroll to current time on mount
   useEffect(() => {
     if (scrollRef.current) {
-      const now = new Date();
-      const y = timeToY(`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`);
-      // Offset for mob-hdr + topbar + headerH that are now inside scroll container
-      const gridTop = (window.innerWidth<=768?42:0) + topbarH + headerH;
-      scrollRef.current.scrollTop = Math.max(0, gridTop + y - 200);
+      if (selDate === todayStr()) {
+        // 당일: 현재 시간 위치로 스크롤
+        const now = new Date();
+        const y = timeToY(`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`);
+        const gridTop = (window.innerWidth<=768?42:0) + topbarH + headerH;
+        scrollRef.current.scrollTop = Math.max(0, gridTop + y - 200);
+      } else {
+        // 다른 날: 맨 위
+        scrollRef.current.scrollTop = 0;
+      }
     }
   }, [selDate]);
 
