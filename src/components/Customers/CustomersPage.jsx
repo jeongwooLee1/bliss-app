@@ -451,7 +451,16 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
         {!isPrepaid && !isAnnual && <Btn variant="primary" size="sm" style={{flex:1,justifyContent:"center",fontSize:T.fs.nano}} onClick={()=>{
           if(remain<=0) return alert("잔여 횟수가 없습니다");
           const up = {...p, used_count:p.used_count+1};
-          sb.update("customer_packages",p.id,{used_count:up.used_count}).catch(console.error);
+          const dbUpdate = {used_count:up.used_count};
+          // 첫 사용 시 유효기간 자동 설정 (1년)
+          if(!expiry && p.used_count===0) {
+            const d=new Date(); d.setFullYear(d.getFullYear()+1);
+            const exp=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+            const newNote = (p.note||"") ? (p.note+" | 유효:"+exp) : "유효:"+exp;
+            dbUpdate.note = newNote;
+            up.note = newNote;
+          }
+          sb.update("customer_packages",p.id,dbUpdate).catch(console.error);
           setCustPkgsServer(prev=>prev.map(x=>x.id===p.id?up:x));
           if(detailCust?.phone && detailCust?.bid){
             const br=(data.branches||[]).find(b=>b.id===detailCust.bid);
