@@ -1135,6 +1135,49 @@ ${naverText}
               </div>
             </div>}
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            {!isReadOnly && !isSchedule && <Btn
+              style={{padding:"10px 16px",background:"#ff9800",boxShadow:"0 2px 8px rgba(255,152,0,.3)"}}
+              onClick={async()=>{
+                const apiKey = window.__geminiKey || window.__systemGeminiKey;
+                if(!apiKey){alert("AI 설정에서 Gemini API 키를 등록하세요");return;}
+                const svcList = SVC_LIST.map(s=>`${s.name} (${s.id})`).join(", ");
+                const tagList = tags.filter(t=>t.useYn!==false&&t.scheduleYn!=="Y").map(t=>`${t.name} (${t.id})`).join(", ");
+                const text = [f.memo, f.requestMsg, f.ownerComment, f.custName].filter(Boolean).join("\n");
+                if(!text.trim()){alert("분석할 메모/요청사항이 없습니다");return;}
+                const prompt = `예약 정보를 분석해서 시술과 태그를 매칭하세요.
+
+고객: ${f.custName||""} (${f.custGender==="M"?"남":"여"})
+메모: ${f.memo||""}
+요청사항: ${f.requestMsg||""}
+직원메모: ${f.ownerComment||""}
+
+시술 목록: ${svcList}
+태그 목록: ${tagList}
+
+JSON으로 반환: {"services":["id1","id2"], "tags":["tagId1"]}
+- 시술: 메모 내용과 매칭되는 시술 ID 배열
+- 태그: 재방문/신규/VIP 등 매칭되는 태그 ID 배열
+매칭 안 되면 빈 배열`;
+                try {
+                  const r = await fetch(\`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=\${apiKey}\`,{
+                    method:"POST",headers:{"Content-Type":"application/json"},
+                    body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.1}})
+                  });
+                  const d = await r.json();
+                  const txt = d?.candidates?.[0]?.content?.parts?.[0]?.text||"";
+                  const m = txt.match(/\{[\s\S]*\}/);
+                  if(m){
+                    const result = JSON.parse(m[0]);
+                    const newSvcs = (result.services||[]).filter(id=>SVC_LIST.find(s=>s.id===id));
+                    const newTags = (result.tags||[]).filter(id=>tags.find(t=>t.id===id));
+                    setF(p=>({...p,
+                      selectedServices: [...new Set([...(p.selectedServices||[]),...newSvcs])],
+                      selectedTags: [...new Set([...(p.selectedTags||[]),...newTags])]
+                    }));
+                    alert(\`시술 \${newSvcs.length}개, 태그 \${newTags.length}개 매칭\`);
+                  } else { alert("AI 분석 결과를 파싱할 수 없습니다"); }
+                } catch(e){ alert("AI 분석 실패: "+e.message); }
+              }}>AI 분석</Btn>}
             {!isReadOnly && <><Btn
                 disabled={!isSchedule && f.type==="reservation" && !f.custName?.trim()}
                 style={{padding:"10px 26px",background:isSchedule?T.orange:T.primary,boxShadow:isSchedule?"0 4px 14px rgba(225,112,85,.35)":`0 4px 14px rgba(124,124,200,.35)`}}
