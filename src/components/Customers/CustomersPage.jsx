@@ -225,6 +225,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
 
   const [custSales, setCustSales] = useState([]);
   const [custPkgsServer, setCustPkgsServer] = useState([]);
+  const [pkgEditId, setPkgEditId] = useState(null);
   const [custResStats, setCustResStats] = useState({total:0,noshow:0,sameday:0});
   const [loadingDetail, setLoadingDetail] = useState(false);
   useEffect(() => {
@@ -402,6 +403,50 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
         </button>
       </div>}
 
+      {/* 편집 모드 */}
+      {pkgEditId === p.id && <div style={{borderTop:"1px solid "+T.border,paddingTop:8,marginBottom:6}}>
+        <div style={{marginBottom:6}}>
+          <span style={{fontSize:10,color:T.textMuted}}>패키지 종류</span>
+          <select defaultValue={p.service_name} id={`pkg-edit-name-${p.id}`}
+            style={{width:"100%",fontSize:11,padding:"4px 6px",borderRadius:6,border:"1px solid "+T.border,marginTop:2}}>
+            {(data?.services||[]).filter(s=>s.name?.includes("PKG")||s.name?.includes("다담")||s.name?.includes("연간")||s.name?.includes("패키지")||s.name?.includes("산모")||s.name?.includes("회원권")).map(s=>
+              <option key={s.id} value={s.name}>{s.name} ({s.price_f?.toLocaleString()}원)</option>
+            )}
+            <option value={p.service_name}>{p.service_name} (현재)</option>
+          </select>
+        </div>
+        <div style={{display:"flex",gap:6,marginBottom:6}}>
+          <div style={{flex:1}}>
+            <span style={{fontSize:10,color:T.textMuted}}>{isPrepaid?"충전액":"총 횟수"}</span>
+            <input type="number" defaultValue={p.total_count} id={`pkg-edit-total-${p.id}`}
+              style={{width:"100%",fontSize:11,padding:"4px 6px",borderRadius:6,border:"1px solid "+T.border,marginTop:2}}/>
+          </div>
+          <div style={{flex:1}}>
+            <span style={{fontSize:10,color:T.textMuted}}>{isPrepaid?"사용액":"사용 횟수"}</span>
+            <input type="number" defaultValue={p.used_count} id={`pkg-edit-used-${p.id}`}
+              style={{width:"100%",fontSize:11,padding:"4px 6px",borderRadius:6,border:"1px solid "+T.border,marginTop:2}}/>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:4}}>
+          <Btn variant="primary" size="sm" style={{flex:1,justifyContent:"center",fontSize:10}} onClick={()=>{
+            const newName = document.getElementById(`pkg-edit-name-${p.id}`)?.value || p.service_name;
+            const newTotal = Number(document.getElementById(`pkg-edit-total-${p.id}`)?.value || p.total_count);
+            const newUsed = Number(document.getElementById(`pkg-edit-used-${p.id}`)?.value || p.used_count);
+            const updates = {service_name: newName, total_count: newTotal, used_count: newUsed};
+            if(isPrepaid) {
+              const newBal = newTotal - newUsed;
+              updates.note = (p.note||"").includes("잔액:")
+                ? (p.note||"").replace(/잔액:[0-9,]+/, `잔액:${newBal.toLocaleString()}`)
+                : `잔액:${newBal.toLocaleString()}`;
+            }
+            sb.update("customer_packages",p.id,updates).catch(console.error);
+            setCustPkgsServer(prev=>prev.map(x=>x.id===p.id?{...x,...updates}:x));
+            setPkgEditId(null);
+          }}>저장</Btn>
+          <Btn variant="outline" size="sm" style={{fontSize:10}} onClick={()=>setPkgEditId(null)}>취소</Btn>
+        </div>
+      </div>}
+
       {/* 액션 버튼 */}
       <div style={{display:"flex",gap:T.sp.xs}}>
         {/* 다회권: 1회 사용 */}
@@ -434,19 +479,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
         }}>금액 차감</Btn>}
 
         <Btn variant="outline" size="sm" style={{padding:"3px 8px",fontSize:T.fs.nano}} onClick={()=>{
-          const newName = prompt("패키지 이름:", p.service_name);
-          if(!newName) return;
-          const newTotal = prompt("총 횟수 (다회권) / 충전액 (다담권):", String(p.total_count));
-          if(!newTotal || isNaN(newTotal)) return;
-          const newUsed = prompt("사용 횟수 / 사용액:", String(p.used_count));
-          if(!newUsed || isNaN(newUsed)) return;
-          const updates = {service_name: newName, total_count: Number(newTotal), used_count: Number(newUsed)};
-          if(isPrepaid) {
-            const newBal = Number(newTotal) - Number(newUsed);
-            updates.note = (p.note||"").replace(/잔액:[0-9,]+/, `잔액:${newBal.toLocaleString()}`) || `잔액:${newBal.toLocaleString()}`;
-          }
-          sb.update("customer_packages",p.id,updates).catch(console.error);
-          setCustPkgsServer(prev=>prev.map(x=>x.id===p.id?{...x,...updates}:x));
+          setPkgEditId(prev => prev === p.id ? null : p.id);
         }}>편집</Btn>
         <Btn variant="danger" size="sm" style={{padding:"3px 8px",fontSize:T.fs.nano}} onClick={()=>{
           if(!confirm("삭제하시겠습니까?")) return;
