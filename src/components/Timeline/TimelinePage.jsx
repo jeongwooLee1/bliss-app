@@ -956,10 +956,38 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     setTimeout(()=>{
       if(allItems.length) sb.upsert("reservations", allItems.map(i=>{
         const row = toDb("reservations", i);
-        if (!row.reservation_id) row.reservation_id = null; // 수동등록 시 null 명시
+        if (!row.reservation_id) row.reservation_id = null;
         return row;
       })).catch(console.error);
     }, 0);
+    // AI 시술 분석 (수동예약 + 시술 미선택 시)
+    if (isNewItem && !item.isSchedule && (!item.selectedServices || item.selectedServices.length === 0)) {
+      const apiKey = window.__geminiKey || window.__systemGeminiKey;
+      if (apiKey && item.custName) {
+        const svcList = (data?.services||[]).map(s => s.name).join(", ");
+        const prompt = `고객: ${item.custName}\n메모: ${item.memo||""}\n요청사항: ${item.requestMsg||""}\n\n시술 목록: ${svcList}\n\n위 정보로 고객이 받을 시술을 JSON 배열로 반환하세요. 형식: ["시술명1","시술명2"]\n매칭 안 되면 빈 배열 []`;
+        fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+          method: "POST", headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.1}})
+        }).then(r=>r.json()).then(d=>{
+          try {
+            const txt = d?.candidates?.[0]?.content?.parts?.[0]?.text||"";
+            const match = txt.match(/\[.*\]/s);
+            if(match) {
+              const names = JSON.parse(match[0]);
+              if(names.length > 0) {
+                const matched = names.map(n => (data?.services||[]).find(s => s.name === n)).filter(Boolean);
+                if(matched.length > 0) {
+                  const selSvcs = matched.map(s => ({id:s.id, name:s.name, price:s.price_f||s.price_m||0}));
+                  sb.update("reservations", item.id, {selected_services: JSON.stringify(selSvcs)}).catch(console.error);
+                  setData(prev=>({...prev,reservations:(prev?.reservations||[]).map(r=>r.id===item.id?{...r,selectedServices:selSvcs}:r)}));
+                }
+              }
+            }
+          } catch(e) { console.warn("AI 분석:", e); }
+        }).catch(console.error);
+      }
+    }
     // 예약안내 팝업 (내부일정 제외, 010 시작 전화번호만)
     const validPhone = item.custPhone && item.custPhone.startsWith("010");
     if(!item.isSchedule && validPhone && isNewItem) {
