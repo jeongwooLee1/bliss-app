@@ -334,7 +334,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
     // 일반 다회권
     const remain = p.total_count - p.used_count;
     const pct = p.total_count > 0 ? (remain/p.total_count)*100 : 0;
-    const isDone = isPrepaid ? balance <= 0 : remain <= 0;
+    const isDone = isPrepaid ? balance <= 0 : isAnnual ? isExpired : remain <= 0;
 
     return <div style={{border:"1px solid "+(isDone?T.gray300:isExpired?T.danger+"44":T.border),borderRadius:T.radius.md,padding:"10px 12px",background:isDone?T.gray100:T.bgCard,minWidth:180,flex:"0 0 auto",opacity:isDone?0.6:1}}>
       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
@@ -630,20 +630,25 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                       {/* 다회권 탭 */}
                       {detailTab==="pkg" && <div>
                         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                          {pkgSvcs.length>0 && <select className="inp" style={{width:"auto",fontSize:T.fs.xs,height:30}}
+                          {<select className="inp" style={{width:"auto",fontSize:T.fs.xs,height:30}}
                             value="" onChange={e=>{
                               if(!e.target.value) return;
-                              const svc = pkgSvcs.find(s=>s.id===e.target.value);
+                              const svc = (data?.services||[]).find(s=>s.id===e.target.value);
                               if(!svc) return;
+                              const isAnn = svc.name?.includes("연간")||svc.name?.includes("회원권");
+                              const isPre = svc.name?.includes("다담");
+                              const tc = isAnn ? 99 : isPre ? 1 : 5;
                               const pkg = {id:genId(),business_id:_activeBizId,customer_id:c.id,service_id:svc.id,
-                                service_name:svc.name,total_count:svc.pkgCount||5,used_count:0,
+                                service_name:svc.name,total_count:tc,used_count:0,
                                 purchased_at:new Date().toISOString(),note:""};
                               sb.insert("customer_packages",pkg).catch(console.error);
                               setData(prev=>({...prev,custPackages:[...(prev.custPackages||[]),pkg]}));
                               e.target.value="";
                             }}>
-                            <option value="">+ 다회권 추가</option>
-                            {pkgSvcs.map(s=><option key={s.id} value={s.id}>{s.name} ({s.pkgCount}회)</option>)}
+                            <option value="">+ 패키지 추가</option>
+                            {(data?.services||[]).filter(s=>s.name?.includes("PKG")||s.name?.includes("다담")||s.name?.includes("연간")||s.name?.includes("패키지")||s.name?.includes("산모")||s.name?.includes("회원권")).map(s=>
+                              <option key={s.id} value={s.id}>{s.name} ({(s.price_f||0).toLocaleString()}원)</option>
+                            )}
                           </select>}
                         </div>
                         {custPkgs.length===0

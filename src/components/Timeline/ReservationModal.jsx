@@ -296,7 +296,10 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
           : `🎫 ${n.split("(")[0]||"다담권"} 소진`;
         out.push({type:"prepaid", active: bal>0, label});
       } else if (isAnnual) {
-        out.push({type:"annual", active:true, label:`🏷 ${n.split("(")[0]||"연간권"}`});
+        const expM = (p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/);
+        const exp = expM ? expM[1] : null;
+        const isExp = exp && exp < new Date().toISOString().slice(0,10);
+        out.push({type:"annual", active:!isExp, label: isExp ? `🏷 ${n.split("(")[0]||"연간권"} 만료` : `🏷 ${n.split("(")[0]||"연간권"}`});
       } else {
         const remain = (p.total_count||0) - (p.used_count||0);
         const shortName = (n.split("(")[0]||"다회권").replace(/\s*5회$/,"").trim();
