@@ -1791,8 +1791,11 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                     <option value="">지점 선택</option>
                                     {allBranches.map(b=><option key={b.id} value={b.id}>{b.short||b.name}</option>)}
                                   </select>
-                                  <input type="time" value={addFrom} onChange={e=>setAddFrom(e.target.value)}
-                                    style={{width:82,fontSize:11,padding:"4px 5px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"}}/>
+                                  <select value={addFrom} onChange={e=>setAddFrom(e.target.value)}
+                                    style={{width:82,fontSize:11,padding:"4px 5px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"}}>
+                                    <option value="">시간</option>
+                                    {Array.from({length:48},(_,i)=>{const h=Math.floor(i/2),m=(i%2)*30;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;}).map(t=><option key={t} value={t}>{t}</option>)}
+                                  </select>
                                 </div>
                                 <div style={{display:"flex",gap:4}}>
                                   <button onClick={saveSeg} disabled={!addBranch}
