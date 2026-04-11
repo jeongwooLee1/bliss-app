@@ -955,15 +955,26 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                 : snap.roomId ? { roomId: snap.roomId } : {};
             return {...r, time: snap.time, endTime, roomId: snap.roomId||r.roomId, bid: snap.bid||r.bid, ...staffUpdate};
           })}));
-          // 내부일정 또는 알림톡 불필요 시 바로 DB 저장
+          // 이동된 값을 snap 기준으로 직접 계산 (setData는 비동기라 data가 아직 갱신 안 됨)
+          const toNaverCol2 = snap.roomId?.startsWith("nv_");
+          const targetRoom2 = allRooms.find(rm => rm.id === snap.roomId);
+          const movedStaffId = toNaverCol2 ? "" : targetRoom2?.isStaffCol ? targetRoom2.staffId : (block.staffId || "");
+          const movedRoomId = toNaverCol2 ? "" : snap.roomId || block.roomId;
+          const movedBid = snap.bid || block.bid;
+          const [mh,mm] = snap.time.split(":").map(Number);
+          const mEndMin = mh*60+mm+(block.dur||60);
+          const movedEndTime = `${String(Math.floor(mEndMin/60)).padStart(2,"0")}:${String(mEndMin%60).padStart(2,"0")}`;
+
           const validPhone = block.custPhone && block.custPhone.startsWith("010");
           const needsPopup = !block.isSchedule && validPhone && snap.time !== orig.time;
           if (needsPopup) {
             setPendingChange({ type: "move", block, data: snap, orig });
           } else {
-            // 바로 DB 저장 (팝업 없음)
-            const r2 = (data?.reservations||[]).find(rv => rv.id === block.id);
-            if (r2) sb.update("reservations", block.id, { room_id: r2.roomId, time: r2.time, bid: r2.bid, staff_id: r2.staffId || null }).catch(console.error);
+            // 바로 DB 저장 — snap 기준 계산값 사용
+            sb.update("reservations", block.id, {
+              room_id: movedRoomId, time: snap.time, end_time: movedEndTime,
+              bid: movedBid, staff_id: movedStaffId || null
+            }).catch(console.error);
           }
         }
       }
