@@ -683,7 +683,15 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         };
       });
     } else {
-      staffRooms = (data.rooms||[]).filter(r=>r.branch_id===br.id).map(r=>({...r, branchName:br.short||br.name||""}));
+      // rooms fallback — 근무표에서 휴무인 직원은 제외
+      staffRooms = (data.rooms||[]).filter(r=>{
+        if(r.branch_id!==br.id) return false;
+        if(schHistory && r.name) {
+          const ds = schHistory[r.name]?.[selDate];
+          if(ds === "휴무" || ds === "휴무(꼭)") return false;
+        }
+        return true;
+      }).map(r=>({...r, branchName:br.short||br.name||""}));
     }
     // 고정 컬럼 수 적용 - 부족하면 빈 컬럼 추가
     const fixedCols = br.staffColCount || branchColCount[br.id] || 0;
