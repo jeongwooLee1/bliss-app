@@ -1621,14 +1621,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                               const empBase = BASE_EMP_LIST.find(b=>b.id===e.id);
                               const baseBr = (data?.branches||[]).find(b=>b.id===empBase?.branch_id);
                               return <div key={e.id} onClick={()=>{
-                                // 해당 직원을 이 지점에 지원으로 추가
-                                const overrideKey = e.id+"_"+selDate;
-                                setEmpBranchOverride(p=>{
-                                  const existing = p[overrideKey]?.segments || [];
-                                  const newSeg = {branchId:room.branch_id, from:null, until:null};
-                                  return {...p,[overrideKey]:{segments:[...existing.filter(s=>s.branchId!==room.branch_id), newSeg]}};
-                                });
-                                setAddStaffPopup(null);
+                                setAddStaffPopup(p=>({...p, selectedEmp:e.id, selectedBranch:room.branch_id}));
                               }} style={{padding:"6px 12px",cursor:"pointer",fontSize:12,display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid #f5f5f5"}}
                                 onMouseOver={e2=>e2.currentTarget.style.background=T.gray100}
                                 onMouseOut={e2=>e2.currentTarget.style.background=""}>
@@ -1638,6 +1631,37 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             })}
                             {BASE_EMP_LIST.filter(e => !allRooms.some(r => r.isStaffCol && r.branch_id === room.branch_id && r.staffId === e.id)).length === 0 &&
                               <div style={{padding:"8px 12px",fontSize:11,color:T.textMuted}}>추가 가능한 직원 없음</div>}
+                            {/* 지원/이동 선택 */}
+                            {addStaffPopup?.selectedEmp && addStaffPopup?.selectedBranch===room.branch_id && (()=>{
+                              const empName = addStaffPopup.selectedEmp;
+                              const targetBid = addStaffPopup.selectedBranch;
+                              const doAdd = (exclusive) => {
+                                const overrideKey = empName+"_"+selDate;
+                                if(exclusive) {
+                                  setEmpBranchOverride(p=>({...p,[overrideKey]:{segments:[{branchId:targetBid,from:null,until:null}],exclusive:true}}));
+                                } else {
+                                  setEmpBranchOverride(p=>{
+                                    const existing = p[overrideKey]?.segments || [];
+                                    return {...p,[overrideKey]:{segments:[...existing.filter(s=>s.branchId!==targetBid),{branchId:targetBid,from:null,until:null}]}};
+                                  });
+                                }
+                                setAddStaffPopup(null);
+                              };
+                              const baseBr = (data?.branches||[]).find(b=>b.id===BASE_EMP_LIST.find(e=>e.id===empName)?.branch_id);
+                              return <div style={{borderTop:"2px solid "+T.primary,padding:"8px 12px"}}>
+                                <div style={{fontSize:12,fontWeight:700,marginBottom:6}}>{empName} <span style={{fontWeight:400,color:T.textMuted}}>({baseBr?.short||""})</span></div>
+                                <div style={{display:"flex",gap:6}}>
+                                  <button onClick={()=>doAdd(false)}
+                                    style={{flex:1,padding:"6px 0",borderRadius:7,border:"none",background:"#4CAF50",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}
+                                    title="원래 매장에도 남아있음">지원</button>
+                                  <button onClick={()=>doAdd(true)}
+                                    style={{flex:1,padding:"6px 0",borderRadius:7,border:"none",background:T.primary,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}
+                                    title="원래 매장에서 제거">이동</button>
+                                  <button onClick={()=>setAddStaffPopup(p=>({...p,selectedEmp:null}))}
+                                    style={{padding:"6px 8px",borderRadius:7,border:"1px solid "+T.border,background:T.bgCard,fontSize:11,cursor:"pointer"}}>취소</button>
+                                </div>
+                              </div>;
+                            })()}
                           </div>
                         )}
                       </div>
