@@ -441,19 +441,30 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       <div style={{display:"flex",gap:T.sp.xs}}>
         {/* 다회권: 1회 사용 */}
         {!isPrepaid && !isAnnual && <Btn variant="primary" size="sm" style={{flex:1,justifyContent:"center",fontSize:T.fs.nano}} onClick={()=>{
-          if(remain<=0) return alert("잔여 횟수가 없습니다");
-          const up = {...p, used_count:p.used_count+1};
+          // 같은 이름 PKG 중 유효기간 있는 것부터 차감
+          const sameName = custPkgsServer.filter(x => x.service_name === p.service_name && (x.total_count-x.used_count) > 0);
+          const withExpiry = sameName.filter(x => (x.note||"").match(/유효:\d{4}-\d{2}-\d{2}/)).sort((a,b) => {
+            const ea = ((a.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1]||"9999";
+            const eb = ((b.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1]||"9999";
+            return ea.localeCompare(eb); // 유효기간 빠른 것부터
+          });
+          const withoutExpiry = sameName.filter(x => !(x.note||"").match(/유효:\d{4}-\d{2}-\d{2}/));
+          const target = withExpiry[0] || withoutExpiry[0] || p;
+          const tRemain = (target.total_count||0) - (target.used_count||0);
+          if(tRemain <= 0) return alert("잔여 횟수가 없습니다");
+          const up = {...target, used_count:target.used_count+1};
           const dbUpdate = {used_count:up.used_count};
           // 첫 사용 시 유효기간 자동 설정 (1년)
-          if(!expiry && p.used_count===0) {
+          const tExpiry = ((target.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1];
+          if(!tExpiry && target.used_count===0) {
             const d=new Date(); d.setFullYear(d.getFullYear()+1);
             const exp=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-            const newNote = (p.note||"") ? (p.note+" | 유효:"+exp) : "유효:"+exp;
+            const newNote = (target.note||"") ? (target.note+" | 유효:"+exp) : "유효:"+exp;
             dbUpdate.note = newNote;
             up.note = newNote;
           }
-          sb.update("customer_packages",p.id,dbUpdate).catch(console.error);
-          setCustPkgsServer(prev=>prev.map(x=>x.id===p.id?up:x));
+          sb.update("customer_packages",target.id,dbUpdate).catch(console.error);
+          setCustPkgsServer(prev=>prev.map(x=>x.id===target.id?up:x));
           if(detailCust?.phone && detailCust?.bid){
             const br=(data.branches||[]).find(b=>b.id===detailCust.bid);
             queueAlimtalk(detailCust.bid,"tkt_charge",detailCust.phone,{"#{고객명}":detailCust.name||"","#{총횟수}":String(p.total_count),"#{사용횟수}":String(up.used_count),"#{잔여횟수}":String(p.total_count-up.used_count),"#{시작일}":"","#{종료일}":"","#{매장명}":br?.name||"","#{대표전화번호}":br?.phone||""});
