@@ -247,23 +247,32 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
 
   // 선택 날짜의 지점별 출근자 계산
   // 직원 override 헬퍼: 해당 날짜에 어느 지점에 있는지
-  const getEmpBranches = (empId, date) => {
+  const getEmpOverride = (empId, date) => {
     const overrideKey = empId + "_" + date;
     const ov = empBranchOverride[overrideKey];
-    if (!ov) return null; // 오버라이드 없음
-    if (typeof ov === "string") return [{branchId: ov, from: null, until: null}]; // 하위호환
-    return ov.segments || null; // [{branchId, from, until}]
+    if (!ov) return null;
+    if (typeof ov === "string") return { segments: [{branchId: ov, from: null, until: null}], exclusive: false };
+    return { segments: ov.segments || [], exclusive: !!ov.exclusive };
+  };
+  const getEmpBranches = (empId, date) => {
+    const ov = getEmpOverride(empId, date);
+    return ov ? ov.segments : null;
   };
 
   // 직원이 특정 지점에 있는지 (오버라이드 기준)
   const empInBranch = (empId, date, branchId) => {
-    const segs = getEmpBranches(empId, date);
-    if (!segs) {
-      // 오버라이드 없으면 원래 지점 (rooms의 branch_id로 직접 비교)
+    const ov = getEmpOverride(empId, date);
+    if (!ov) {
       const emp = BASE_EMP_LIST.find(e => e.id === empId);
       return emp && emp.branch_id === branchId;
     }
-    return segs.some(s => s.branchId === branchId);
+    // exclusive(이동): segments에 있는 지점만 표시, 원래 지점 제거
+    if (ov.exclusive) return ov.segments.some(s => s.branchId === branchId);
+    // 지원: segments에 있거나 원래 지점이면 표시
+    const inSegs = ov.segments.some(s => s.branchId === branchId);
+    if (inSegs) return true;
+    const emp = BASE_EMP_LIST.find(e => e.id === empId);
+    return emp && emp.branch_id === branchId;
   };
 
   // "지원(강남)" → 강남 branch_id로 매핑하는 헬퍼
@@ -1517,10 +1526,25 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                   <input type="time" value={addFrom} onChange={e=>setAddFrom(e.target.value)}
                                     style={{width:82,fontSize:11,padding:"4px 5px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"}}/>
                                 </div>
-                                <button onClick={saveSeg} disabled={!addBranch}
-                                  style={{width:"100%",padding:"5px 0",borderRadius:7,border:"none",background:addBranch?T.primary:T.gray300,color:"#fff",fontSize:12,fontWeight:700,cursor:addBranch?"pointer":"not-allowed",fontFamily:"inherit"}}>
-                                  적용
-                                </button>
+                                <div style={{display:"flex",gap:4}}>
+                                  <button onClick={saveSeg} disabled={!addBranch}
+                                    style={{flex:1,padding:"5px 0",borderRadius:7,border:"none",background:addBranch?"#4CAF50":T.gray300,color:"#fff",fontSize:11,fontWeight:700,cursor:addBranch?"pointer":"not-allowed",fontFamily:"inherit"}}
+                                    title="원래 매장에도 남아있음">
+                                    지원
+                                  </button>
+                                  <button onClick={()=>{
+                                    if(!addBranch) return;
+                                    const overrideKey2 = room.staffId+"_"+selDate;
+                                    // 완전 이동: 원래 매장 제거, 대상 매장만
+                                    const newSeg = {branchId:addBranch, from:addFrom||null, until:null};
+                                    setEmpBranchOverride(p=>({...p,[overrideKey2]:{segments:[newSeg], exclusive:true}}));
+                                    setEmpMovePopup(null);
+                                  }} disabled={!addBranch}
+                                    style={{flex:1,padding:"5px 0",borderRadius:7,border:"none",background:addBranch?T.primary:T.gray300,color:"#fff",fontSize:11,fontWeight:700,cursor:addBranch?"pointer":"not-allowed",fontFamily:"inherit"}}
+                                    title="원래 매장에서 제거됨">
+                                    이동
+                                  </button>
+                                </div>
                               </div>
                             </>;
                           })()}
