@@ -556,40 +556,57 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   }, [data?.branches]);
   const cellLongPress = useRef(null);
 
-  // 직원 컬럼 순서 커스텀 (localStorage)
-  const [empColOrder, setEmpColOrder] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("tl_empColOrder")||"{}"); } catch { return {}; }
-  });
+  // 직원 컬럼 순서 커스텀 (DB: schedule_data.empColOrder_v1)
+  const [empColOrder, _setEmpColOrder] = useState({});
+  const empColOrderLoaded = React.useRef(false);
+  React.useEffect(() => {
+    if (empColOrderLoaded.current) return;
+    empColOrderLoaded.current = true;
+    fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.empColOrder_v1&select=value`, {
+      headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
+    }).then(r => r.json()).then(rows => {
+      if (rows?.[0]?.value) {
+        const v = typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value;
+        _setEmpColOrder(v);
+      }
+    }).catch(console.error);
+  }, []);
+  const setEmpColOrder = React.useCallback((updater) => {
+    _setEmpColOrder(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json" };
+      fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.empColOrder_v1`, {
+        method: "PATCH", headers: {...H, Prefer: "return=minimal"},
+        body: JSON.stringify({ value: JSON.stringify(next) })
+      }).then(r => { if (!r.ok) return fetch(`${SB_URL}/rest/v1/schedule_data`, {
+        method: "POST", headers: H, body: JSON.stringify({ key: "empColOrder_v1", value: JSON.stringify(next) })
+      }); }).catch(console.error);
+      return next;
+    });
+  }, []);
   const moveEmpCol = (branchId, empId, dir) => {
     setEmpColOrder(prev => {
-      const key = branchId;
-      const order = [...(prev[key]||[])];
+      const order = [...(prev[branchId]||[])];
       const idx = order.indexOf(empId);
-      if (idx < 0) return prev; // 아직 순서 목록에 없음
+      if (idx < 0) return prev;
       const newIdx = idx + dir;
       if (newIdx < 0 || newIdx >= order.length) return prev;
       [order[idx], order[newIdx]] = [order[newIdx], order[idx]];
-      const next = {...prev, [key]: order};
-      localStorage.setItem("tl_empColOrder", JSON.stringify(next));
-      return next;
+      return {...prev, [branchId]: order};
     });
   };
   const sortStaffByOrder = (staffList, branchId) => {
     const order = empColOrder[branchId];
     if (!order || order.length === 0) {
-      // 초기화: 현재 순서를 저장
       if (staffList.length > 0) {
         const ids = staffList.map(e => e.id);
         setEmpColOrder(prev => {
           if (prev[branchId]?.length >= staffList.length) return prev;
-          const next = {...prev, [branchId]: ids};
-          localStorage.setItem("tl_empColOrder", JSON.stringify(next));
-          return next;
+          return {...prev, [branchId]: ids};
         });
       }
       return staffList;
     }
-    // order에 없는 신규 직원은 뒤에 추가
     const sorted = [];
     for (const id of order) {
       const e = staffList.find(s => s.id === id);
