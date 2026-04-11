@@ -62,7 +62,8 @@ function AdminSaleItems({ data, setData }) {
         setServices(p=>p.map(s=>s.id===edit.id?{...s,...pl}:s));
       }else{
         const id="sv_"+uid();
-        await sb.insert("services",{id,business_id:_activeBizId,...pl,sort:services.length});
+        const res=await sb.insert("services",{id,business_id:_activeBizId,...pl,sort:services.length});
+        if(!res)return;
         setServices(p=>[...p,{id,...pl,sort:services.length}]);
       }
       setSheet(false);
@@ -138,9 +139,15 @@ function AdminSaleItems({ data, setData }) {
     </div>}
     <ASheet open={sheet} onClose={()=>setSheet(false)} title={edit?"시술 수정":"시술 추가"} onSave={save} saving={saving} saveDisabled={saving||!form.name.trim()} saveLabel={edit?"저장":"시술 추가"}>
       <AField label="카테고리">
-        <select style={{...AInp}} value={form.cat} onChange={e=>set("cat",e.target.value)}>
-          {cats.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        {cats.length===0
+          ? <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:T.fs.sm,color:T.textMuted}}>카테고리 없음</span>
+              <button type="button" onClick={()=>{setSheet(false);setTimeout(()=>setCatSheet(true),200);}} style={{padding:"4px 10px",borderRadius:8,border:"1px dashed "+T.primary,background:"none",color:T.primary,fontSize:T.fs.xs,cursor:"pointer",fontFamily:"inherit"}}>+ 카테고리 추가</button>
+            </div>
+          : <select style={{...AInp}} value={form.cat} onChange={e=>set("cat",e.target.value)}>
+              {cats.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+        }
       </AField>
       <AField label="시술명" required><input style={AInp} value={form.name} onChange={e=>set("name",e.target.value)} placeholder="예: 브라질리언" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>

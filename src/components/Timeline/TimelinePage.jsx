@@ -966,7 +966,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       if (apiKey && item.custName) {
         const svcList = (data?.services||[]).map(s => s.name).join(", ");
         const prompt = `고객: ${item.custName}\n메모: ${item.memo||""}\n요청사항: ${item.requestMsg||""}\n\n시술 목록: ${svcList}\n\n위 정보로 고객이 받을 시술을 JSON 배열로 반환하세요. 형식: ["시술명1","시술명2"]\n매칭 안 되면 빈 배열 []`;
-        fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+        fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
           method: "POST", headers: {"Content-Type":"application/json"},
           body: JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.1}})
         }).then(r=>r.json()).then(d=>{

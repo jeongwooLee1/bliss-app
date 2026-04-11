@@ -4,7 +4,7 @@ import { sb } from '../../lib/sb'
 import { _activeBizId } from '../../lib/db'
 import { genId } from '../../lib/utils'
 import I from '../common/I'
-import { AConfirm, ASheet, AField, AInp, AEmpty, APageHeader, AListItem, AIBtn } from './AdminUI'
+import { AConfirm, ASheet, AField, AInp, AEmpty, APageHeader, AListItem } from './AdminUI'
 
 const uid = genId;
 
@@ -50,7 +50,8 @@ const moveItem_p=(i,dir)=>{
         setData(p=>({...p,products:(p.products||[]).map(it=>it.id===edit.id?{...it,...pl}:it)}));
       }else{
         const id="pi_"+uid();
-        await sb.insert("products",{id,business_id:_activeBizId,...pl});
+        const res=await sb.insert("products",{id,business_id:_activeBizId,...pl});
+        if(!res)return;
         setData(p=>({...p,products:[...(p.products||[]),{id,...pl}]}));
       }
       setSheet(false);
@@ -89,7 +90,6 @@ const moveItem_p=(i,dir)=>{
         <AField label="재고"><input style={AInp} type="number" value={form.stock} onChange={e=>set("stock",e.target.value)} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
       </div>
       <AField label="비고"><input style={AInp} value={form.note} onChange={e=>set("note",e.target.value)} placeholder="메모" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
-      <AIBtn onClick={save} saving={saving} disabled={saving||!form.name.trim()} label={edit?"저장":"제품 추가"} style={{marginTop:4}}/>
     </ASheet>
     <AConfirm open={!!del} title="제품 삭제" onOk={()=>doDelete(del)} onCancel={()=>setDel(null)}/>
   </div>;

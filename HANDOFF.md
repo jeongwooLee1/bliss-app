@@ -125,6 +125,44 @@
 
 ---
 
+## 작업: schedule_data 비즈니스 격리 (critical)
+**상태**: 미착수. 우선순위 높음.
+
+### 문제
+- `schedule_data` 테이블 쿼리가 **business_id 필터 없이** key만으로 조회
+- 모든 사업장이 동일한 employees_v1, schHistory_v1, maleRotation_v1 데이터를 공유
+- 새 사업장 가입 시 기존 하우스왁싱 근무표 데이터가 그대로 노출됨
+
+### 영향 범위 (수정 필요한 파일)
+- `src/lib/useData.js`: useEmployees, useSchHistory, useMaleRotation, useScheduleData 훅 — 전부 `.eq('business_id', bizId)` 추가
+- `src/components/Schedule/SchedulePage.jsx`: 직접 조회 (line 45, 56, 160, 274)
+- `src/components/Timeline/TimelinePage.jsx`: REST fetch (line 48-49)
+- `src/components/SetupWizard/SetupWizard.jsx`: employees_v1 upsert (line 289-294, 320-325)
+- 기존 DB 행에 business_id 컬럼 값 채워야 함 (마이그레이션)
+
+### 수정 방안
+1. 모든 schedule_data 읽기에 `.eq('business_id', bizId)` 추가
+2. 모든 schedule_data 쓰기에 `business_id: bizId` 포함
+3. id를 `${bizId}_${key}` 형식으로 변경 (PK 충돌 방지)
+4. 기존 데이터: `UPDATE schedule_data SET business_id='biz_khvurgshb' WHERE business_id IS NULL`
+5. hooks에 bizId 파라미터 추가 → SchedulePage, TimelinePage에서 전달
+
+### 주의
+- SchedulePage는 현재 props 없이 렌더링됨 → bizId prop 추가 필요
+- TimelinePage는 이미 bizId prop 있음
+- 알림톡 세션 작업 끝난 후 진행 (파일 충돌 방지)
+
+---
+
+## 작업: 시술상품/제품관리 버그 수정 (2026-04-11 완료)
+
+### 수정 내용
+- **시술 카테고리 입력 불가**: 카테고리 없을 때 빈 select → "카테고리 없음 + 추가 버튼" 표시
+- **DB 저장실패 메시지**: sb.insert 실패 시 alert만 띄우고 throw 안 함 → 로컬 상태 업데이트 차단 (`if(!res)return;`)
+- **제품 모달 버튼 2개**: ASheet onSave + 내부 AIBtn 중복 → AIBtn 제거
+
+---
+
 ## 작업: 고객관리 권한 + 노쇼 카운트
 **상태**: 미착수.
 

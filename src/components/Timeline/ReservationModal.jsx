@@ -1159,7 +1159,7 @@ JSON으로 반환: {"services":["id1","id2"], "tags":["tagId1"]}
 - 태그: 재방문/신규/VIP 등 매칭되는 태그 ID 배열
 매칭 안 되면 빈 배열`;
                 try {
-                  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,{
+                  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,{
                     method:"POST",headers:{"Content-Type":"application/json"},
                     body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.1}})
                   });
