@@ -157,10 +157,24 @@ export default function SchedulePage({ employees: propEmps }) {
 
   const saveLockStatus = (data) => {
     lockStatusRef.current = data
-    supabase.from('schedule_data').upsert({
+    const payload = {
       id:DB_KEYS.lockStatus, key:DB_KEYS.lockStatus,
       value:JSON.stringify(data), updated_at:new Date().toISOString()
-    })
+    }
+    supabase.from('schedule_data').upsert(payload)
+      .then(({error}) => {
+        if(error) {
+          console.error('lockStatus 저장 실패:', error)
+          // fallback: REST API로 직접 저장
+          fetch(`https://dpftlrsuqxqqeouwbfjd.supabase.co/rest/v1/schedule_data`, {
+            method:'POST',
+            headers:{'apikey':'sb_publishable_3H-KTP0MoV_KuY74ocbefw_3Ze5xBJj',
+              'Authorization':'Bearer sb_publishable_3H-KTP0MoV_KuY74ocbefw_3Ze5xBJj',
+              'Content-Type':'application/json','Prefer':'resolution=merge-duplicates'},
+            body:JSON.stringify(payload)
+          }).catch(e=>console.error('lockStatus fallback 실패:', e))
+        }
+      })
   }
 
   // UI state
