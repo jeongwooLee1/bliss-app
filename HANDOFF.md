@@ -52,6 +52,7 @@
 - daily_sync.py에 cust_num fallback 매칭 추가
 
 ### 펜딩 (다음 세션)
+- 패키지 추가구매 고객 분석: 마지막 매출 분석 → PKG 추가구매 건 자동 탐지
 - ORDERDETAIL (402,465건) — 매출 상세 시술별 금액
 - MESSAGE (491,899건) — 문자 발송 이력
 - SMSRESULT (642,702건) — 문자 발송 결과
