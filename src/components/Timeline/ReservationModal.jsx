@@ -1027,14 +1027,6 @@ ${naverText}
               <I name="naver" size={14}/>
               <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.successDk}}>네이버 예약정보</span>
               {f.reservationId && <span style={{fontSize:T.fs.xxs,fontWeight:T.fw.bolder,color:T.successDk,background:T.successLt,borderRadius:T.radius.sm,padding:"1px 6px",letterSpacing:0.5}}>#{f.reservationId}</span>}
-              {!isReadOnly && (f.requestMsg || f.ownerComment) && <button
-                onClick={handleAiAnalyze} disabled={aiAnalyzing}
-                style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:T.sp.xs,padding:"3px 10px",fontSize:T.fs.sm,fontWeight:T.fw.bolder,
-                  border:"none",borderRadius:T.radius.lg,cursor:aiAnalyzing?"not-allowed":"pointer",
-                  background:aiAnalyzing?T.gray300:"linear-gradient(135deg,#7c7cc8,#9b72cb)",
-                  color:aiAnalyzing?T.gray500:T.bgCard,transition:"all .2s"}}>
-                {aiAnalyzing ? <><span>⏳</span> 분석중...</> : <><span>✨</span> AI 분석</>}
-              </button>}
             </div>
             {/* 항목 리스트 - 통일된 row 디자인 */}
             {(()=>{
@@ -1137,7 +1129,7 @@ ${naverText}
               </div>
             </div>}
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            {!isReadOnly && !isSchedule && <Btn
+            {false && !isReadOnly && !isSchedule && <Btn
               style={{padding:"10px 16px",background:"#ff9800",boxShadow:"0 2px 8px rgba(255,152,0,.3)"}}
               onClick={async()=>{
                 const apiKey = window.__systemGeminiKey || window.__geminiKey;
