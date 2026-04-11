@@ -1607,7 +1607,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                         {addStaffPopup?.branchId===room.branch_id && (
                           <div onClick={e=>e.stopPropagation()} style={{position:"fixed",left:Math.min(addStaffPopup.x,window.innerWidth-220),top:addStaffPopup.y+8,background:T.bgCard,borderRadius:12,boxShadow:"0 4px 24px rgba(0,0,0,.22)",zIndex:9999,padding:"8px 0",minWidth:200,maxHeight:300,overflowY:"auto"}}>
                             <div style={{fontSize:11,color:T.textMuted,padding:"0 12px 6px",fontWeight:700,borderBottom:"1px solid "+T.border}}>직원 추가 (당일)</div>
-                            {BASE_EMP_LIST.filter(e => {
+                            {addStaffPopup?.selectedEmp ? null : BASE_EMP_LIST.filter(e => {
                               // 이 지점에 아직 없는 직원만
                               const already = allRooms.some(r => r.isStaffCol && r.branch_id === room.branch_id && r.staffId === e.id);
                               if (already) return false;
@@ -1629,7 +1629,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                 <span style={{fontSize:10,color:T.textMuted}}>{baseBr?.short||""}</span>
                               </div>;
                             })}
-                            {BASE_EMP_LIST.filter(e => !allRooms.some(r => r.isStaffCol && r.branch_id === room.branch_id && r.staffId === e.id)).length === 0 &&
+                            {!addStaffPopup?.selectedEmp && BASE_EMP_LIST.filter(e => !allRooms.some(r => r.isStaffCol && r.branch_id === room.branch_id && r.staffId === e.id)).length === 0 &&
                               <div style={{padding:"8px 12px",fontSize:11,color:T.textMuted}}>추가 가능한 직원 없음</div>}
                             {/* 지원/이동 선택 */}
                             {addStaffPopup?.selectedEmp && addStaffPopup?.selectedBranch===room.branch_id && (()=>{
