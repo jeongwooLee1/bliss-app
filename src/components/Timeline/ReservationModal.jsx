@@ -292,17 +292,17 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
         const m = (p.note||"").match(/잔액:([0-9,]+)/);
         const bal = m ? Number(m[1].replace(/,/g,"")) : 0;
         const label = bal > 0
-          ? `🎫 ${n.split("(")[0]||"다담권"} ${bal.toLocaleString()}원`
+          ? `🎫 ${n.split("(")[0]||"다담권"} +${bal.toLocaleString()}원`
           : `🎫 ${n.split("(")[0]||"다담권"} 소진`;
         out.push({type:"prepaid", active: bal>0, label});
       } else if (isAnnual) {
-        // 연간권: 있음 여부만 표시
         out.push({type:"annual", active:true, label:`🏷 ${n.split("(")[0]||"연간권"}`});
       } else {
         const remain = (p.total_count||0) - (p.used_count||0);
+        const shortName = (n.split("(")[0]||"다회권").replace(/\s*5회$/,"").trim();
         const label = remain > 0
-          ? `🎟 ${n.split("(")[0]||"다회권"} ${remain}회`
-          : `🎟 ${n.split("(")[0]||"다회권"} 소진`;
+          ? `🎟 ${shortName} +${remain}`
+          : `🎟 ${shortName} 소진`;
         out.push({type:"package", active: remain>0, label});
       }
     });
