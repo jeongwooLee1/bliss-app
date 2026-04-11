@@ -632,13 +632,22 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           {/* 보유권 잔액 */}
           {cust.id && activePkgs.filter(p=>_pkgType(p)!=="annual").length > 0 && <div style={{background:"#FFF8E1",border:"1px solid #FFD54F",borderRadius:T.radius.md,padding:"10px 12px",marginBottom:10}}>
             <div style={{fontSize:13,fontWeight:800,color:"#F57F17",marginBottom:6}}>🎫 보유권</div>
-            {activePkgs.filter(p=>_pkgType(p)!=="annual").map(p=>{
-              const t=_pkgType(p); const bal=_pkgBalance(p); const remain=p.total_count-p.used_count;
-              return <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 0"}}>
-                <span style={{fontSize:12,fontWeight:600,color:t==="prepaid"?"#E65100":"#3949AB"}}>{(p.service_name?.split("(")[0]||"").replace(/\s*5회$/,"")}</span>
-                <span style={{fontSize:14,fontWeight:800,color:t==="prepaid"?"#E65100":"#3949AB"}}>{t==="prepaid"?`+${bal.toLocaleString()}원`:`+${remain}회`}</span>
-              </div>;
-            })}
+            {(()=>{
+              const groups={};
+              activePkgs.filter(p=>_pkgType(p)!=="annual").forEach(p=>{
+                const t=_pkgType(p); const name=(p.service_name?.split("(")[0]||"").replace(/\s*5회$/,"").trim();
+                const key=name+"_"+t;
+                if(!groups[key]) groups[key]={name,type:t,totalRemain:0,totalBal:0};
+                if(t==="prepaid") groups[key].totalBal+=_pkgBalance(p);
+                else groups[key].totalRemain+=(p.total_count-p.used_count);
+              });
+              return Object.values(groups).map(g=>
+                <div key={g.name} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 0"}}>
+                  <span style={{fontSize:12,fontWeight:600,color:g.type==="prepaid"?"#E65100":"#3949AB"}}>{g.name}</span>
+                  <span style={{fontSize:14,fontWeight:800,color:g.type==="prepaid"?"#E65100":"#3949AB"}}>{g.type==="prepaid"?`+${g.totalBal.toLocaleString()}원`:`+${g.totalRemain}회`}</span>
+                </div>
+              );
+            })()}
           </div>}
           {/* 금액 브레이크다운 */}
           <div style={{marginBottom:8,padding:"7px 10px",background:T.bgCard,borderRadius:T.radius.md,border:"1px solid #e8e8e8"}}>
@@ -676,23 +685,53 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
             {svcTotal > 0 && <div style={{flex:1,minWidth:0,padding:"8px 12px",background:T.bgCard,borderRadius:T.radius.md,border:"1px solid "+T.border}}>
               <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.primary,marginBottom:6}}><I name="scissors" size={12}/> 시술 결제 <span style={{color:T.danger,fontWeight:T.fw.black}}>{fmt(svcPayTotal)}원</span></div>
               <div style={{display:"flex",gap:T.sp.xs,flexWrap:"wrap"}}>
-                {/* 보유권 버튼 (앞쪽, 눈에 띄게) */}
-                {activePkgs.filter(p=>_pkgType(p)!=="annual").map(p=>{
-                  const t=_pkgType(p); const bal=_pkgBalance(p); const remain=p.total_count-p.used_count;
-                  const isActive=!!pkgUse[p.id];
-                  const shortName=(p.service_name?.split("(")[0]||"다회권").replace(/\s*5회$/,"").trim();
-                  const pkgLabel=t==="prepaid"?`🎫 ${shortName} +${bal.toLocaleString()}`:`🎟 ${shortName} +${remain}`;
-                  return <button key={p.id} onClick={()=>{
-                    if(t==="package") setPkgUse(prev=>({...prev,[p.id]:prev[p.id]?false:true}));
-                    if(t==="prepaid") setPkgUse(prev=>({...prev,[p.id]:prev[p.id]?0:Math.min(bal,svcPayTotal)}));
-                  }}
-                  style={{padding:"6px 14px",fontSize:13,fontWeight:T.fw.black,borderRadius:T.radius.xl,cursor:"pointer",fontFamily:"inherit",transition:"all .2s",
-                    border:isActive?"2px solid #E65100":"2px solid #FFB74D",
-                    background:isActive?"linear-gradient(135deg,#FF9800,#F57C00)":"linear-gradient(135deg,#FFF8E1,#FFE0B2)",
-                    color:isActive?"#fff":"#E65100",
-                    boxShadow:isActive?"0 2px 8px rgba(245,124,0,.35)":"none",
-                    transform:isActive?"scale(1.05)":"scale(1)"}}>{pkgLabel}</button>;
-                })}
+                {/* 보유권 버튼 - 같은 이름 합산 */}
+                {(()=>{
+                  const groups = {};
+                  activePkgs.filter(p=>_pkgType(p)!=="annual").forEach(p=>{
+                    const t=_pkgType(p); const name=(p.service_name?.split("(")[0]||"").replace(/\s*5회$/,"").trim();
+                    const key=name+"_"+t;
+                    if(!groups[key]) groups[key]={name,type:t,ids:[],totalRemain:0,totalBal:0};
+                    groups[key].ids.push(p.id);
+                    if(t==="prepaid") groups[key].totalBal+=_pkgBalance(p);
+                    else groups[key].totalRemain+=(p.total_count-p.used_count);
+                  });
+                  return Object.values(groups).map(g=>{
+                    const isActive=g.ids.some(id=>!!pkgUse[id]);
+                    const label=g.type==="prepaid"?`🎫 ${g.name} +${g.totalBal.toLocaleString()}`:`🎟 ${g.name} +${g.totalRemain}`;
+                    return <button key={g.ids[0]} onClick={()=>{
+                      if(g.type==="package") {
+                        // 유효기간 있는 것부터 토글
+                        const sorted=[...g.ids].sort((a,b)=>{
+                          const pa=activePkgs.find(p=>p.id===a), pb=activePkgs.find(p=>p.id===b);
+                          const ea=((pa?.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1]||"9999";
+                          const eb=((pb?.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1]||"9999";
+                          return ea.localeCompare(eb);
+                        });
+                        setPkgUse(prev=>{
+                          const anyActive=sorted.some(id=>!!prev[id]);
+                          const next={...prev};
+                          sorted.forEach(id=>{next[id]=anyActive?false:true;});
+                          return next;
+                        });
+                      }
+                      if(g.type==="prepaid") {
+                        setPkgUse(prev=>{
+                          const anyActive=g.ids.some(id=>!!prev[id]);
+                          const next={...prev};
+                          g.ids.forEach(id=>{next[id]=anyActive?0:Math.min(_pkgBalance(activePkgs.find(p=>p.id===id)),svcPayTotal);});
+                          return next;
+                        });
+                      }
+                    }}
+                    style={{padding:"6px 14px",fontSize:13,fontWeight:T.fw.black,borderRadius:T.radius.xl,cursor:"pointer",fontFamily:"inherit",transition:"all .2s",
+                      border:isActive?"2px solid #E65100":"2px solid #FFB74D",
+                      background:isActive?"linear-gradient(135deg,#FF9800,#F57C00)":"linear-gradient(135deg,#FFF8E1,#FFE0B2)",
+                      color:isActive?"#fff":"#E65100",
+                      boxShadow:isActive?"0 2px 8px rgba(245,124,0,.35)":"none",
+                      transform:isActive?"scale(1.05)":"scale(1)"}}>{label}</button>;
+                  });
+                })()}
                 {/* 일반 결제수단 */}
                 {[
                   {k:"svcCard",label:"카드",clr:T.male,bg:T.maleLt},
