@@ -405,30 +405,28 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
 
       {/* 편집 모드 */}
       {pkgEditId === p.id && <div style={{borderTop:"1px solid "+T.border,paddingTop:8,marginBottom:6}}>
-        <div style={{marginBottom:6}}>
-          <span style={{fontSize:10,color:T.textMuted}}>패키지 종류</span>
-          <select defaultValue={p.service_name} id={`pkg-edit-name-${p.id}`}
-            style={{width:"100%",fontSize:11,padding:"4px 6px",borderRadius:6,border:"1px solid "+T.border,marginTop:2}}>
-            {(data?.services||[]).filter(s=>s.name?.includes("PKG")||s.name?.includes("다담")||s.name?.includes("연간")||s.name?.includes("패키지")||s.name?.includes("산모")||s.name?.includes("회원권")).map(s=>
-              <option key={s.id} value={s.name}>{s.name} ({s.price_f?.toLocaleString()}원)</option>
-            )}
-            <option value={p.service_name}>{p.service_name} (현재)</option>
-          </select>
-        </div>
-        <div style={{display:"flex",gap:6,marginBottom:6}}>
+        <div style={{fontSize:10,color:T.textMuted,marginBottom:2}}>패키지 종류</div>
+        <select defaultValue={p.service_name} id={`pkg-edit-name-${p.id}`}
+          style={{width:"100%",fontSize:11,padding:"5px 6px",borderRadius:6,border:"1px solid "+T.border,marginBottom:6,boxSizing:"border-box"}}>
+          {(data?.services||[]).filter(s=>s.name?.includes("PKG")||s.name?.includes("다담")||s.name?.includes("연간")||s.name?.includes("패키지")||s.name?.includes("산모")||s.name?.includes("회원권")).map(s=>
+            <option key={s.id} value={s.name}>{s.name} ({s.price_f?.toLocaleString()}원)</option>
+          )}
+          {!(data?.services||[]).some(s=>s.name===p.service_name) && <option value={p.service_name}>{p.service_name} (현재)</option>}
+        </select>
+        <div style={{display:"flex",gap:8,marginBottom:6}}>
           <div style={{flex:1}}>
-            <span style={{fontSize:10,color:T.textMuted}}>{isPrepaid?"충전액":"총 횟수"}</span>
+            <div style={{fontSize:10,color:T.textMuted,marginBottom:2}}>{isPrepaid?"충전액":"총 횟수"}</div>
             <input type="number" defaultValue={p.total_count} id={`pkg-edit-total-${p.id}`}
-              style={{width:"100%",fontSize:11,padding:"4px 6px",borderRadius:6,border:"1px solid "+T.border,marginTop:2}}/>
+              style={{width:"100%",fontSize:12,padding:"5px 6px",borderRadius:6,border:"1px solid "+T.border,boxSizing:"border-box"}}/>
           </div>
           <div style={{flex:1}}>
-            <span style={{fontSize:10,color:T.textMuted}}>{isPrepaid?"사용액":"사용 횟수"}</span>
+            <div style={{fontSize:10,color:T.textMuted,marginBottom:2}}>{isPrepaid?"사용액":"사용 횟수"}</div>
             <input type="number" defaultValue={p.used_count} id={`pkg-edit-used-${p.id}`}
-              style={{width:"100%",fontSize:11,padding:"4px 6px",borderRadius:6,border:"1px solid "+T.border,marginTop:2}}/>
+              style={{width:"100%",fontSize:12,padding:"5px 6px",borderRadius:6,border:"1px solid "+T.border,boxSizing:"border-box"}}/>
           </div>
         </div>
         <div style={{display:"flex",gap:4}}>
-          <Btn variant="primary" size="sm" style={{flex:1,justifyContent:"center",fontSize:10}} onClick={()=>{
+          <Btn variant="primary" size="sm" style={{flex:1,justifyContent:"center",fontSize:11}} onClick={()=>{
             const newName = document.getElementById(`pkg-edit-name-${p.id}`)?.value || p.service_name;
             const newTotal = Number(document.getElementById(`pkg-edit-total-${p.id}`)?.value || p.total_count);
             const newUsed = Number(document.getElementById(`pkg-edit-used-${p.id}`)?.value || p.used_count);
@@ -443,7 +441,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
             setCustPkgsServer(prev=>prev.map(x=>x.id===p.id?{...x,...updates}:x));
             setPkgEditId(null);
           }}>저장</Btn>
-          <Btn variant="outline" size="sm" style={{fontSize:10}} onClick={()=>setPkgEditId(null)}>취소</Btn>
+          <Btn variant="outline" size="sm" style={{fontSize:11}} onClick={()=>setPkgEditId(null)}>취소</Btn>
         </div>
       </div>}
 
