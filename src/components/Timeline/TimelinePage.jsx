@@ -357,10 +357,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     const working = [];
     BASE_EMP_LIST.forEach(e => {
       const dayStatus = schHistory[e.id]?.[date];
-      if (dayStatus === "휴무" || dayStatus === "휴무(꼭)") {
-        if(branchId==="br_4bcauqvrb") console.log(`[GWS] ${e.id} ${date}: ${dayStatus} → 제외`);
-        return;
-      }
+      if (dayStatus === "휴무" || dayStatus === "휴무(꼭)") return;
 
       // "지원(강남)" → 해당 지점에 표시
       const supportBid = parseSupportBranch(dayStatus);
@@ -677,13 +674,11 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     const rawStaff = getWorkingStaff(br.id, selDate);
     const workingStaff = rawStaff ? sortStaffByOrder(rawStaff, br.id) : null;
     let staffRooms;
-    if(br.id==="br_4bcauqvrb") console.log(`[ALLROOMS] 강남 rawStaff=${rawStaff?.length} workingStaff=${workingStaff?.length} schHistory=${!!schHistory}`);
     if (workingStaff !== null) {
       // 근무표 기반 — 휴무 직원 한번 더 필터 (override 경유 포함 방지)
       const filteredStaff = workingStaff.filter(e => {
         if (!schHistory) return true;
         const ds = schHistory[e.id]?.[selDate];
-        if(br.id==="br_4bcauqvrb") console.log(`[FILTER] ${e.id} selDate=${selDate} ds=${ds} pass=${ds !== "휴무" && ds !== "휴무(꼭)"}`);
         return ds !== "휴무" && ds !== "휴무(꼭)";
       });
       staffRooms = filteredStaff.map(e => {
