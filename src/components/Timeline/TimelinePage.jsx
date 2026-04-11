@@ -149,8 +149,10 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   }, [empList, maleRotation, selDate]);
 
   // schHistory 파싱 함수
-  const parseSchHistory = (val) => {
+  const parseSchHistory = (rawVal) => {
+    const val = typeof rawVal === "string" ? JSON.parse(rawVal) : rawVal;
     const merged = {};
+    if (!val || typeof val !== "object") return merged;
     Object.values(val).forEach(monthData => {
       if (typeof monthData !== "object") return;
       Object.entries(monthData).forEach(([emp, days]) => {
@@ -355,7 +357,10 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     const working = [];
     BASE_EMP_LIST.forEach(e => {
       const dayStatus = schHistory[e.id]?.[date];
-      if (dayStatus === "휴무" || dayStatus === "휴무(꼭)") return; // 휴무는 제외
+      if (dayStatus === "휴무" || dayStatus === "휴무(꼭)") {
+        if(branchId==="br_4bcauqvrb") console.log(`[GWS] ${e.id} ${date}: ${dayStatus} → 제외`);
+        return;
+      }
 
       // "지원(강남)" → 해당 지점에 표시
       const supportBid = parseSupportBranch(dayStatus);
@@ -672,9 +677,16 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     const rawStaff = getWorkingStaff(br.id, selDate);
     const workingStaff = rawStaff ? sortStaffByOrder(rawStaff, br.id) : null;
     let staffRooms;
+    if(br.id==="br_4bcauqvrb") console.log(`[ALLROOMS] 강남 rawStaff=${rawStaff?.length} workingStaff=${workingStaff?.length} schHistory=${!!schHistory}`);
     if (workingStaff !== null) {
-      // 근무표 기반 (빈 배열 = 전원 휴무 → 컬럼 없음)
-      staffRooms = workingStaff.map(e => {
+      // 근무표 기반 — 휴무 직원 한번 더 필터 (override 경유 포함 방지)
+      const filteredStaff = workingStaff.filter(e => {
+        if (!schHistory) return true;
+        const ds = schHistory[e.id]?.[selDate];
+        if(br.id==="br_4bcauqvrb") console.log(`[FILTER] ${e.id} selDate=${selDate} ds=${ds} pass=${ds !== "휴무" && ds !== "휴무(꼭)"}`);
+        return ds !== "휴무" && ds !== "휴무(꼭)";
+      });
+      staffRooms = filteredStaff.map(e => {
         const range = getEmpActiveRange(e.id, selDate, br.id);
         return {
           id: `st_${br.id}_${e.id}`, name: e.id,
@@ -685,15 +697,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         };
       });
     } else {
-      // rooms fallback — 근무표에서 휴무인 직원은 제외
-      staffRooms = (data.rooms||[]).filter(r=>{
-        if(r.branch_id!==br.id) return false;
-        if(schHistory && r.name) {
-          const ds = schHistory[r.name]?.[selDate];
-          if(ds === "휴무" || ds === "휴무(꼭)") return false;
-        }
-        return true;
-      }).map(r=>({...r, branchName:br.short||br.name||""}));
+      // schHistory 미로드 시 직원 컬럼 표시 안 함 (로딩 후 리렌더링됨)
+      staffRooms = [];
     }
     // 고정 컬럼 수 적용 - 부족하면 빈 컬럼 추가
     const fixedCols = br.staffColCount || branchColCount[br.id] || 0;
