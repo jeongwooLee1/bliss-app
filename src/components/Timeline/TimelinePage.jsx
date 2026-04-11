@@ -238,8 +238,20 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         .on("postgres_changes", { event:"UPDATE", schema:"public", table:"schedule_data", filter:"key=eq.schHistory_v1" }, onSchChange)
         .subscribe();
     }
+    // 폴링 fallback (30초마다 - Realtime 불안정 시)
+    pollTimer = setInterval(() => {
+      if (Date.now() - lastRtUpdate < 25000) return; // Realtime 작동 중이면 스킵
+      fetch(`${SB_URL_SCH}/rest/v1/schedule_data?key=eq.schHistory_v1&select=value`, { headers: H })
+        .then(r=>r.json()).then(rows=>{
+          if (!rows?.length) return;
+          const newSch = parseSchHistory(rows[0].value);
+          setSchHistory(p => mergeWithLock(newSch));
+        }).catch(()=>{});
+    }, 30000);
+
     return () => {
       clearInterval(timer);
+      clearInterval(pollTimer);
       try { channel?.unsubscribe(); } catch(e) {}
     };
   }, []);
