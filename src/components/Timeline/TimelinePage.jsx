@@ -1636,7 +1636,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                               const baseBid = empBase?.branch_id;
                               const baseBr = (data?.branches||[]).find(b=>b.id===baseBid);
                               const supportFrom = addStaffPopup.supportFrom || "";
-                              const hours = Array.from({length:24},(_,i)=>`${String(i).padStart(2,"0")}:00`);
+                              const hours = Array.from({length:48},(_,i)=>{const h=Math.floor(i/2),m=(i%2)*30;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;}).filter(t=>{const hh=parseInt(t);return hh>=startHour&&hh<endHour;});
                               const doAdd = (exclusive) => {
                                 const overrideKey = empName+"_"+selDate;
                                 if(exclusive) {
@@ -1693,7 +1693,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             {(()=>{
                               const whKey = room.staffId+"_"+room.branch_id+"_"+selDate;
                               const wh = empWorkHours[whKey] || empWorkHours[room.staffId+"_"+room.branch_id] || {start:"10:00",end:"21:00"};
-                              const hours = Array.from({length:24},(_,i)=>`${String(i).padStart(2,"0")}:00`);
+                              const hours = Array.from({length:48},(_,i)=>{const h=Math.floor(i/2),m=(i%2)*30;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;}).filter(t=>{const hh=parseInt(t);return hh>=startHour&&hh<endHour;});
                               const selSt = {flex:1,fontSize:11,padding:"4px 3px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"};
                               return <div style={{display:"flex",gap:4,alignItems:"center"}}>
                                 <select defaultValue={wh.start} style={selSt}
