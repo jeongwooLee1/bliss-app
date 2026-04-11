@@ -1594,7 +1594,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                 </select>
                                 <button onClick={()=>{
                                   const cur = empWorkHours[whKey] || empWorkHours[room.staffId+"_"+room.branch_id] || {start:"11:00",end:"21:00"};
-                                  setEmpWorkHours(p=>({...p,[whKey]:cur,[room.staffId+"_"+room.branch_id]:cur}));
+                                  setEmpWorkHours(p=>({...p,[whKey]:cur}));
                                   setEmpMovePopup(null);
                                 }} style={{padding:"4px 8px",fontSize:10,fontWeight:700,border:"none",borderRadius:6,background:T.primary,color:"#fff",cursor:"pointer"}}>저장</button>
                               </div>;
