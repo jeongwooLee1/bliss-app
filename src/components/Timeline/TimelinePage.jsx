@@ -373,7 +373,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       }
     });
 
-    return working.length > 0 ? working : null;
+    return working; // 빈 배열도 반환 (전원 휴무 시 rooms fallback 방지)
   };
 
   // 직원이 특정 지점에서 활성인 시간 범위 반환 (null=종일)
@@ -669,9 +669,11 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       branch_id: br.id, branchName: br.short||br.name||"", isNaver: true
     }));
     // 출근표 기반 직원 컬럼 (커스텀 순서 적용)
-    const workingStaff = sortStaffByOrder(getWorkingStaff(br.id, selDate) || [], br.id);
+    const rawStaff = getWorkingStaff(br.id, selDate);
+    const workingStaff = rawStaff ? sortStaffByOrder(rawStaff, br.id) : null;
     let staffRooms;
-    if (workingStaff && workingStaff.length > 0) {
+    if (workingStaff !== null) {
+      // 근무표 기반 (빈 배열 = 전원 휴무 → 컬럼 없음)
       staffRooms = workingStaff.map(e => {
         const range = getEmpActiveRange(e.id, selDate, br.id);
         return {
