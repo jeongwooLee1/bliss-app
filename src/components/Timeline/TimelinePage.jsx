@@ -591,6 +591,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const [pendingChange, setPendingChange] = useState(null);
   const [hoverCell, setHoverCell] = useState(null); // {roomId, rowIdx}
   const [empMovePopup, setEmpMovePopup] = useState(null); // {empId, date, x, y}
+  const [addStaffPopup, setAddStaffPopup] = useState(null); // {branchId, x, y}
   // 지점별 고정 컬럼 수 - branches.staffColCount에서 읽음
   const branchColCount = React.useMemo(() => {
     const map = {};
@@ -698,7 +699,6 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     // 고정 컬럼 수 적용 - 부족하면 빈 컬럼 추가
     const fixedCols = br.staffColCount || branchColCount[br.id] || 0;
     if (fixedCols > staffRooms.length) {
-      const empCols = staffRooms.filter(r => r.isStaffCol).length;
       const blanks = fixedCols - staffRooms.length;
       for (let i = 0; i < blanks; i++) {
         staffRooms.push({
@@ -708,6 +708,12 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         });
       }
     }
+    // 항상 오른쪽 끝에 미배정 컬럼 1개 추가
+    staffRooms.push({
+      id: `blank_${br.id}_add`, name: "+",
+      branch_id: br.id, branchName: br.short||br.name||"",
+      isBlank: true, isAddCol: true
+    });
     return [...naverRooms, ...staffRooms];
   });
   const isNaverRes = (r) => !!r.reservationId || r.source === "ai_booking";
@@ -1592,7 +1598,50 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                 <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:10,background:room.isBlank?T.gray100:room.isNaver?T.successLt:(branchColor||T.bgCard),display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",lineHeight:1.2}}>
                   <span className="tl-room-name" style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:room.isNaver?T.successDk:T.text}}>{room.branchName}</span>
                   {room.isBlank ? (
-                    <span className="tl-room-sub" style={{fontSize:T.fs.xs,color:T.gray400,fontStyle:"italic"}}>미배정</span>
+                    room.isAddCol ? (
+                      <div style={{position:"relative"}}>
+                        <span className="tl-room-sub" style={{fontSize:18,color:T.primary,cursor:"pointer",fontWeight:900,userSelect:"none"}}
+                          onClick={e=>{e.stopPropagation();setAddStaffPopup(p=>p?.branchId===room.branch_id?null:{branchId:room.branch_id,x:e.clientX,y:e.clientY});}}>
+                          +
+                        </span>
+                        {addStaffPopup?.branchId===room.branch_id && (
+                          <div onClick={e=>e.stopPropagation()} style={{position:"fixed",left:Math.min(addStaffPopup.x,window.innerWidth-220),top:addStaffPopup.y+8,background:T.bgCard,borderRadius:12,boxShadow:"0 4px 24px rgba(0,0,0,.22)",zIndex:9999,padding:"8px 0",minWidth:200,maxHeight:300,overflowY:"auto"}}>
+                            <div style={{fontSize:11,color:T.textMuted,padding:"0 12px 6px",fontWeight:700,borderBottom:"1px solid "+T.border}}>직원 추가 (당일)</div>
+                            {BASE_EMP_LIST.filter(e => {
+                              // 이 지점에 아직 없는 직원만
+                              const already = allRooms.some(r => r.isStaffCol && r.branch_id === room.branch_id && r.staffId === e.id);
+                              if (already) return false;
+                              // 휴무 직원 제외
+                              if (schHistory) {
+                                const ds = schHistory[e.id]?.[selDate];
+                                if (ds === "휴무" || ds === "휴무(꼭)") return false;
+                              }
+                              return true;
+                            }).map(e => {
+                              const empBase = BASE_EMP_LIST.find(b=>b.id===e.id);
+                              const baseBr = (data?.branches||[]).find(b=>b.id===empBase?.branch_id);
+                              return <div key={e.id} onClick={()=>{
+                                // 해당 직원을 이 지점에 지원으로 추가
+                                const overrideKey = e.id+"_"+selDate;
+                                setEmpBranchOverride(p=>{
+                                  const existing = p[overrideKey]?.segments || [];
+                                  const newSeg = {branchId:room.branch_id, from:null, until:null};
+                                  return {...p,[overrideKey]:{segments:[...existing.filter(s=>s.branchId!==room.branch_id), newSeg]}};
+                                });
+                                setAddStaffPopup(null);
+                              }} style={{padding:"6px 12px",cursor:"pointer",fontSize:12,display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid #f5f5f5"}}
+                                onMouseOver={e2=>e2.currentTarget.style.background=T.gray100}
+                                onMouseOut={e2=>e2.currentTarget.style.background=""}>
+                                <span style={{fontWeight:600}}>{e.id}</span>
+                                <span style={{fontSize:10,color:T.textMuted}}>{baseBr?.short||""}</span>
+                              </div>;
+                            })}
+                            {BASE_EMP_LIST.filter(e => !allRooms.some(r => r.isStaffCol && r.branch_id === room.branch_id && r.staffId === e.id)).length === 0 &&
+                              <div style={{padding:"8px 12px",fontSize:11,color:T.textMuted}}>추가 가능한 직원 없음</div>}
+                          </div>
+                        )}
+                      </div>
+                    ) : <span className="tl-room-sub" style={{fontSize:T.fs.xs,color:T.gray400,fontStyle:"italic"}}>미배정</span>
                   ) : room.isStaffCol ? (
                     <div style={{position:"relative"}}>
                       <span className="tl-room-sub" style={{fontSize:14,fontWeight:800,color:T.text,cursor:"pointer",borderBottom:"1px dashed "+T.gray400}}
