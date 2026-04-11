@@ -108,7 +108,7 @@ export const groupSvcNames = (ids, svcs) => {
   (ids||[]).forEach(id => { counts[id] = (counts[id]||0)+1; });
   return Object.entries(counts).map(([id,qty]) => {
     const s = svcs?.find(x=>x.id===id);
-    const n = s?.name||'?';
-    return qty>1 ? n+' x'+qty : n;
-  });
+    if (!s) return null;
+    return qty>1 ? s.name+' x'+qty : s.name;
+  }).filter(Boolean);
 }
