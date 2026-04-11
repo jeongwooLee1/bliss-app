@@ -1656,14 +1656,15 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                 <div style={{fontSize:12,fontWeight:700,marginBottom:6}}>{empName} <span style={{fontWeight:400,color:T.textMuted}}>({baseBr?.short||""})</span></div>
                                 <div style={{display:"flex",gap:4,alignItems:"center",marginBottom:6}}>
                                   <span style={{fontSize:10,color:T.textMuted}}>시작</span>
-                                  <select value={supportFrom||"14:00"} onChange={e=>setAddStaffPopup(p=>({...p,supportFrom:e.target.value}))}
+                                  <select value={supportFrom} onChange={e=>setAddStaffPopup(p=>({...p,supportFrom:e.target.value}))}
                                     style={{flex:1,fontSize:11,padding:"3px 4px",borderRadius:6,border:"1px solid "+T.border}}>
+                                    <option value="">시간 선택</option>
                                     {hours.map(h=><option key={h} value={h}>{h}</option>)}
                                   </select>
                                 </div>
                                 <div style={{display:"flex",gap:6}}>
-                                  <button onClick={()=>doAdd(false)}
-                                    style={{flex:1,padding:"6px 0",borderRadius:7,border:"none",background:"#4CAF50",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}
+                                  <button onClick={()=>doAdd(false)} disabled={!supportFrom}
+                                    style={{flex:1,padding:"6px 0",borderRadius:7,border:"none",background:supportFrom?"#4CAF50":T.gray300,color:"#fff",fontSize:11,fontWeight:700,cursor:supportFrom?"pointer":"not-allowed"}}
                                     title="원래 매장은 시작시간까지, 이후 이 매장">지원</button>
                                   <button onClick={()=>doAdd(true)}
                                     style={{flex:1,padding:"6px 0",borderRadius:7,border:"none",background:T.primary,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}
