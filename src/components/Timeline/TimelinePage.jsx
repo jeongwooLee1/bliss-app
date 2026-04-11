@@ -676,13 +676,21 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     const workingStaff = rawStaff ? sortStaffByOrder(rawStaff, br.id) : null;
     let staffRooms;
     if (workingStaff !== null) {
-      // 근무표 기반 — 휴무 직원 한번 더 필터 (override 경유 포함 방지)
+      // 근무표 기반 — 휴무 필터 + 원래소속/지원 분리 (지원은 맨 뒤)
       const filteredStaff = workingStaff.filter(e => {
         if (!schHistory) return true;
         const ds = schHistory[e.id]?.[selDate];
         return ds !== "휴무" && ds !== "휴무(꼭)";
       });
-      staffRooms = filteredStaff.map(e => {
+      const baseStaff = filteredStaff.filter(e => {
+        const emp = BASE_EMP_LIST.find(b=>b.id===e.id);
+        return emp && emp.branch_id === br.id;
+      });
+      const guestStaff = filteredStaff.filter(e => {
+        const emp = BASE_EMP_LIST.find(b=>b.id===e.id);
+        return !emp || emp.branch_id !== br.id;
+      });
+      staffRooms = [...baseStaff, ...guestStaff].map(e => {
         const range = getEmpActiveRange(e.id, selDate, br.id);
         return {
           id: `st_${br.id}_${e.id}`, name: e.id,
