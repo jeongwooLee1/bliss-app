@@ -1766,6 +1766,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                 const reindexed = newSegs.sort((a,b)=>(!a.from?-1:!b.from?1:a.from.localeCompare(b.from))).map((s,i,arr)=>({...s,until:arr[i+1]?.from||null}));
                                 setEmpBranchOverride(p=>({...p,[overrideKey2]:{segments:reindexed}}));
                               }
+                              setEmpMovePopup(null);
                             };
 
                             return <>
