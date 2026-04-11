@@ -1197,8 +1197,8 @@ ${rulesBlock}
                     const newTags = (result.matchedTagIds||result.tags||[]).filter(id=>tags.find(t=>t.id===id));
                     const notes = result.specialNotes||"";
                     const updates = {
-                      selectedServices: [...new Set([...(f.selectedServices||[]),...newSvcs])],
-                      selectedTags: [...new Set([...(f.selectedTags||[]),...newTags])]
+                      selectedServices: newSvcs,
+                      selectedTags: newTags
                     };
                     if(result.gender && !f.custGender) updates.custGender = result.gender;
                     // 특이사항 → 메모에 자동 추가
