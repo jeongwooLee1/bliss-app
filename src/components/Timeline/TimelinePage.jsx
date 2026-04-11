@@ -33,18 +33,12 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const setEmpBranchOverride = React.useCallback((updater) => {
     _setEmpBranchOverride(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
-      // DB 저장
-      const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json" };
-      fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.empOverride_v1`, {
-        method: "PATCH", headers: {...H, Prefer: "return=minimal"},
-        body: JSON.stringify({ value: JSON.stringify(next) })
-      }).catch(() => {
-        // 행이 없으면 INSERT
-        fetch(`${SB_URL}/rest/v1/schedule_data`, {
-          method: "POST", headers: H,
-          body: JSON.stringify({ key: "empOverride_v1", value: JSON.stringify(next) })
-        }).catch(console.error);
-      });
+      // DB 저장 (upsert)
+      const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
+      fetch(`${SB_URL}/rest/v1/schedule_data`, {
+        method: "POST", headers: H,
+        body: JSON.stringify({ id: "empOverride_v1", key: "empOverride_v1", value: JSON.stringify(next) })
+      }).catch(console.error);
       return next;
     });
   }, []);
@@ -574,13 +568,11 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const setEmpColOrder = React.useCallback((updater) => {
     _setEmpColOrder(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
-      const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json" };
-      fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.empColOrder_v1`, {
-        method: "PATCH", headers: {...H, Prefer: "return=minimal"},
-        body: JSON.stringify({ value: JSON.stringify(next) })
-      }).then(r => { if (!r.ok) return fetch(`${SB_URL}/rest/v1/schedule_data`, {
-        method: "POST", headers: H, body: JSON.stringify({ key: "empColOrder_v1", value: JSON.stringify(next) })
-      }); }).catch(console.error);
+      const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
+      fetch(`${SB_URL}/rest/v1/schedule_data`, {
+        method: "POST", headers: H,
+        body: JSON.stringify({ id: "empColOrder_v1", key: "empColOrder_v1", value: JSON.stringify(next) })
+      }).catch(console.error);
       return next;
     });
   }, []);
