@@ -1684,13 +1684,21 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                 {/* Grid Area */}
                 <div style={{position:"relative",height:totalRows*rowH,cursor:room.isBlank?"default":room.isNaver?"default":(canEdit(room.branch_id)?"pointer":"default"),...(room.isBlank?{background:"repeating-linear-gradient(45deg,#f5f5f5,#f5f5f5 6px,#fafafa 6px,#fafafa 12px)"}:gridBg)}}
                   onClick={e=>{
-                    // 비활성 시간대 클릭 방지
+                    // 비활성 시간대: 내부일정만 허용
                     if(room.isStaffCol && (room.activeFrom||room.activeUntil)) {
-                      const rect=e.currentTarget.getBoundingClientRect();
-                      const clickMin = startHour*60 + Math.floor((e.clientY-rect.top)/rowH)*5;
+                      const rect2=e.currentTarget.getBoundingClientRect();
+                      const clickMin = startHour*60 + Math.floor((e.clientY-rect2.top)/rowH)*5;
                       const fromMin = room.activeFrom ? parseInt(room.activeFrom.split(":")[0])*60+parseInt(room.activeFrom.split(":")[1]) : 0;
                       const untilMin = room.activeUntil ? parseInt(room.activeUntil.split(":")[0])*60+parseInt(room.activeUntil.split(":")[1]) : 24*60;
-                      if(clickMin < fromMin || clickMin >= untilMin) return;
+                      if(clickMin < fromMin || clickMin >= untilMin) {
+                        // 근무 외 시간 → 내부일정 모드로 모달 열기
+                        if(!canEdit(room.branch_id)) return;
+                        const h=Math.floor(clickMin/60), m=clickMin%60;
+                        const time=`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+                        setModalData({roomId:room.id,bid:room.branch_id,time,date:selDate,isSchedule:true});
+                        setShowModal(true);
+                        return;
+                      }
                     }
                     const rect=e.currentTarget.getBoundingClientRect();handleCellClick(room,e.clientY-rect.top);
                   }}
