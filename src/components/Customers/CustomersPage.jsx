@@ -642,6 +642,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                                 service_name:svc.name,total_count:tc,used_count:0,
                                 purchased_at:new Date().toISOString(),note:""};
                               sb.insert("customer_packages",pkg).catch(console.error);
+                              setCustPkgsServer(prev=>[...prev, pkg]);
                               setData(prev=>({...prev,custPackages:[...(prev.custPackages||[]),pkg]}));
                               e.target.value="";
                             }}>
