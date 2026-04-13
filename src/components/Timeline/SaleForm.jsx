@@ -79,7 +79,7 @@ const SaleExtraRow = React.memo(function SaleExtraRow({ id, color, placeholder, 
         placeholder={placeholder} style={{ flex: 1, padding: "4px 6px", fontSize: 11, background: "transparent", border:"1px solid "+T.border, borderRadius: 6 }} />
       <input className="inp" type="number" step="5000" value={localAmt} placeholder="0"
         onChange={e => { setLocalAmt(e.target.value); setAmt(id, e.target.value); if(!checked && Number(e.target.value)>0) toggle(id, 0); }}
-        style={{ width: 72, padding: "4px 6px", fontSize: 11, textAlign: "right", borderRadius: 6,
+        style={{ width: 95, padding: "4px 6px", fontSize: 13, textAlign: "right", borderRadius: 6,
           border: `1px solid ${checked ? T.gray400 : T.border}`,
           color: checked ? T.danger : T.gray500, fontWeight: checked ? 700 : 400 }} />
     </div>
