@@ -526,9 +526,14 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
 - 연락처: ${f.custPhone||"미상"}
 - 방문횟수: ${f.visitCount||0}회
 - 예약일시: ${f.date||""} ${f.time||""}
-- 시술상품 목록(수량허용=[qty]): ${(data?.services||[]).map(s=>svcAllowQty(s)?`${s.name}[qty](id:${s.id})`:s.name+`(id:${s.id})`).join(', ')}
-- 보유 패키지: ${(()=>{const mp=(custPkgsInfo||[]).filter(p=>{const n=(p.service_name||"").toLowerCase();return !n.includes("다담권")&&!n.includes("선불")&&!n.includes("10%추가적립")&&!n.includes("연간")&&!n.includes("할인권")&&!n.includes("회원권")&&(p.total_count||0)-(p.used_count||0)>0;});if(!mp.length)return"없음";const g={};mp.forEach(p=>{const nm=(p.service_name?.split("(")[0]||"").replace(/\s*\d+회$/,"").trim();if(!g[nm])g[nm]=0;g[nm]+=(p.total_count||0)-(p.used_count||0);});return Object.entries(g).map(([n,r])=>n+" "+r+"회(id:pkg__"+n+")").join(", ");})()}
-- 패키지 사용 규칙: 고객이 패키지를 보유하고 있고, 시술옵션에서 "패키지/패키지이용/PKG"가 포함되어 있으면 해당 패키지(pkg__이름)를 matchedServiceIds에 포함시키세요. 일반 시술과 패키지를 동시에 선택 가능합니다.
+- 시술상품 목록(수량허용=[qty]): ${(()=>{
+  const pkgItems=(custPkgsInfo||[]).filter(p=>{const n=(p.service_name||"").toLowerCase();return !n.includes("다담권")&&!n.includes("선불")&&!n.includes("10%추가적립")&&!n.includes("연간")&&!n.includes("할인권")&&!n.includes("회원권")&&(p.total_count||0)-(p.used_count||0)>0;});
+  const g={};pkgItems.forEach(p=>{const nm=(p.service_name?.split("(")[0]||"").replace(/\s*\d+회$/,"").trim();if(!g[nm])g[nm]=0;g[nm]+=(p.total_count||0)-(p.used_count||0);});
+  const pkgList=Object.entries(g).map(([n,r])=>`[패키지] ${n} ${r}회남음(id:pkg__${n})`);
+  const svcItems=(data?.services||[]).map(s=>s.name+`(id:${s.id})`);
+  return [...pkgList,...svcItems].join(', ');
+})()}
+- 패키지 선택 규칙: [패키지] 표시 항목은 고객 보유 패키지. 시술옵션에 "패키지/PKG/연간할인권/이용중" 키워드가 있으면 일반 시술 대신 해당 [패키지]의 pkg__ id를 선택하세요.
 - 시술메뉴(네이버): ${(f.selectedServices||[]).length > 0 ? (f.selectedServices||[]).map(id=>{const s=(data?.services||[]).find(x=>x.id===id);return s?s.name:id;}).join(", ") : "미선택"}
 - customers DB 등록 여부: ${custLinked ? "등록된 고객" : "미등록"}
 - 고객 성별(DB): ${custGender==="M"?"남성":custGender==="F"?"여성":"미등록 (대화내용에서 판단하세요)"}
@@ -1205,7 +1210,13 @@ ${naverText}
               onClick={async()=>{
                 const apiKey = window.__systemGeminiKey || window.__geminiKey;
                 if(!apiKey){alert("AI 설정에서 Gemini API 키를 등록하세요");return;}
-                const svcList = SVC_LIST.map(s=>`"${s.id}":"${s.name}"`).join(", ");
+                // 시술 목록 + 보유 패키지를 합쳐서 AI에 전달
+                const pkgEntries = (()=>{
+                  const mp=(custPkgsInfo||[]).filter(p=>{const n=(p.service_name||"").toLowerCase();return !n.includes("다담권")&&!n.includes("선불")&&!n.includes("10%추가적립")&&!n.includes("연간")&&!n.includes("할인권")&&!n.includes("회원권")&&(p.total_count||0)-(p.used_count||0)>0;});
+                  const g={};mp.forEach(p=>{const nm=(p.service_name?.split("(")[0]||"").replace(/\s*\d+회$/,"").trim();if(!g[nm])g[nm]=0;g[nm]+=(p.total_count||0)-(p.used_count||0);});
+                  return Object.entries(g).map(([n,r])=>`"pkg__${n}":"[패키지] ${n} (${r}회 남음)"`);
+                })();
+                const svcList = [...pkgEntries, ...SVC_LIST.map(s=>`"${s.id}":"${s.name}"`)].join(", ");
                 const tagList = tags.filter(t=>t.useYn!==false&&t.scheduleYn!=="Y").map(t=>`"${t.id}":"${t.name}"`).join(", ");
                 const neverText = [f.requestMsg, f.ownerComment].filter(Boolean).join("\n");
                 if(!neverText.trim() && !f.memo?.trim()){alert("분석할 메모/요청사항이 없습니다");return;}
@@ -1229,10 +1240,10 @@ ${naverText}
 
 [시술상품 선택 규칙]
 - 메모에서 실제 시술명을 찾으세요.
-- 동의어: 음모왁싱=브라질리언, 음부왁싱=브라질리언, 브라질리언왁싱=브라질리언, 패키지/연간할인권 이용중=브라질리언
+- 동의어: 음모왁싱=브라질리언, 음부왁싱=브라질리언, 브라질리언왁싱=브라질리언
 - '재방문', '신규', '이벤트' 등 단독으로 나오면 시술이 아닙니다.
 - 시술상품 목록에서 가장 유사한 항목을 선택하세요. 없으면 빈 배열로 두세요.
-- 패키지/연간할인권/PKG 이용 고객도 실제 시술(브라질리언 등)을 반드시 선택하세요. 패키지는 결제수단일 뿐 시술 자체를 대체하지 않습니다.
+- [패키지] 표시가 붙은 항목은 고객의 보유 패키지입니다. 시술옵션에 "패키지", "PKG", "연간할인권", "이용중", "패키지이용" 키워드가 있으면 일반 시술 대신 해당 [패키지] 항목의 id(pkg__로 시작)를 선택하세요.
 ${rulesBlock}
 
 [예약 정보]
