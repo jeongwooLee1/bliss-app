@@ -249,7 +249,6 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   // 고객 보유권 (다회권/다담권/연간할인권)
   const [custPkgs, setCustPkgs] = useState([]);
   const [pkgUse, setPkgUse] = useState({}); // {pkgId: true(다회권체크) 또는 금액(다담권)}
-  const [pkgUseMode, setPkgUseMode] = useState(false); // "패키지 사용" 모드 (시술 0원 + 다회권 1회 차감)
   // 초기 로드: 예약에서 넘어온 고객
   useEffect(() => {
     const cid = reservation?.custId || cust?.id;
@@ -283,8 +282,6 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     if (t === "annual") return true;
     return (p.total_count - p.used_count) > 0;
   });
-  // 활성 다회권 목록 (패키지 사용 버튼 표시용)
-  const activeMultiPkgs = activePkgs.filter(p => _pkgType(p) === "package");
 
   // State: { [id]: { checked, amount } }
   const [items, setItems] = useState(() => {
@@ -308,9 +305,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       const newChecked = !cur.checked;
       return { ...prev, [id]: { ...cur, checked: newChecked, amount: newChecked ? (cur.amount || defPrice || 0) : 0 } };
     });
-    // 시술 선택 시 패키지 사용 모드 해제
-    if (pkgUseMode) setPkgUseMode(false);
-  }, [pkgUseMode]);
+  }, []);
   const setAmt = useCallback((id, v) => setItems(prev => ({ ...prev, [id]: { ...prev[id], amount: Number(v) || 0 } })), []);
   const setLabel = useCallback((id, v) => setItems(prev => ({ ...prev, [id]: { ...prev[id], label: v } })), []);
 
@@ -380,7 +375,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   }, [prodPayTotal]);
 
   const handleSubmit = () => {
-    if (svcTotal + prodTotal <= 0 && !pkgUseMode) {
+    if (svcTotal + prodTotal <= 0) {
       alert("시술 또는 제품을 선택해주세요.");
       return;
     }
@@ -452,7 +447,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       svcCash: payMethod.svcCash, svcTransfer: payMethod.svcTransfer, svcCard: payMethod.svcCard, svcPoint: payMethod.svcPoint,
       prodCash: payMethod.prodCash, prodTransfer: payMethod.prodTransfer, prodCard: payMethod.prodCard, prodPoint: payMethod.prodPoint,
       gift: 0, orderNum: String(252000 + Math.floor(Math.random() * 200)),
-      memo: (pkgUseMode ? "[패키지 사용] " : "") + (isNaver && naverPrepaid > 0 ? `[네이버예약금 ${naverPrepaid.toLocaleString()}원] ` : "") + (saleMemo || ""),
+      memo: (isNaver && naverPrepaid > 0 ? `[네이버예약금 ${naverPrepaid.toLocaleString()}원] ` : "") + (saleMemo || ""),
       createdAt: new Date().toISOString(),
     };
     onSubmit(sale);
@@ -587,71 +582,6 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
 
           {/* Col 1+2: Services by category (span 2 columns) */}
           <div style={{gridColumn:"span 2"}}>
-            {/* 패키지 사용 버튼 — 활성 다회권 있을 때만 표시 */}
-            {cust.id && activeMultiPkgs.length > 0 && (()=>{
-              // 다회권 그룹핑 (같은 이름 합산)
-              const pkgGroups = {};
-              activeMultiPkgs.forEach(p => {
-                const name = (p.service_name?.split("(")[0]||"").replace(/\s*5회$/,"").trim();
-                if (!pkgGroups[name]) pkgGroups[name] = { name, ids: [], totalRemain: 0 };
-                pkgGroups[name].ids.push(p.id);
-                pkgGroups[name].totalRemain += (p.total_count - p.used_count);
-              });
-              return <div style={{marginBottom:8,border:"2px solid #7C4DFF",borderRadius:10,overflow:"hidden",background:"linear-gradient(135deg,#EDE7F6,#E8EAF6)"}}>
-                <div style={{padding:"8px 12px",fontSize:13,fontWeight:800,color:"#4527A0",display:"flex",alignItems:"center",gap:6}}>
-                  📦 패키지 사용 <span style={{fontSize:11,fontWeight:600,color:"#7C4DFF"}}>(시술 선택 없이 1회 차감)</span>
-                </div>
-                <div style={{padding:"4px 12px 10px",display:"flex",gap:6,flexWrap:"wrap"}}>
-                  {Object.values(pkgGroups).map(g => {
-                    // 이 그룹이 현재 pkgUseMode로 활성화되었는지
-                    const isActive = pkgUseMode && g.ids.some(id => !!pkgUse[id]);
-                    return <button key={g.name} onClick={() => {
-                      // 유효기간 기준 정렬
-                      const sorted = [...g.ids].sort((a,b) => {
-                        const pa = activeMultiPkgs.find(p=>p.id===a), pb = activeMultiPkgs.find(p=>p.id===b);
-                        const ea = ((pa?.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1]||"9999";
-                        const eb = ((pb?.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1]||"9999";
-                        return ea.localeCompare(eb);
-                      });
-                      if (isActive) {
-                        // 해제
-                        setPkgUseMode(false);
-                        setPkgUse(prev => {
-                          const next = {...prev};
-                          sorted.forEach(id => { next[id] = false; });
-                          return next;
-                        });
-                      } else {
-                        // 활성화: 시술 선택 전부 해제 + 다회권 1개 선택
-                        setPkgUseMode(true);
-                        setItems(prev => {
-                          const next = {...prev};
-                          SVC_LIST.forEach(s => { next[s.id] = { checked: false, amount: 0 }; });
-                          next.extra_svc = { checked: false, amount: 0, label: "" };
-                          next.discount = { checked: false, amount: 0 };
-                          return next;
-                        });
-                        setPkgUse(prev => {
-                          const next = {};
-                          // 다른 패키지 전부 해제
-                          Object.keys(prev).forEach(k => { next[k] = false; });
-                          if (sorted[0]) next[sorted[0]] = true;
-                          return next;
-                        });
-                      }
-                    }}
-                    style={{padding:"8px 16px",fontSize:14,fontWeight:800,borderRadius:10,cursor:"pointer",fontFamily:"inherit",transition:"all .2s",
-                      border:isActive?"2px solid #4527A0":"2px solid #B39DDB",
-                      background:isActive?"linear-gradient(135deg,#7C4DFF,#651FFF)":"linear-gradient(135deg,#F3E5F5,#E8EAF6)",
-                      color:isActive?"#fff":"#4527A0",
-                      boxShadow:isActive?"0 3px 12px rgba(101,31,255,.4)":"none",
-                      transform:isActive?"scale(1.05)":"scale(1)"}}>
-                      🎟 {g.name} ({g.totalRemain}회 남음)
-                    </button>;
-                  })}
-                </div>
-              </div>;
-            })()}
             <div style={{ color:T.primary, padding: "6px 0 4px", marginBottom: 6, fontSize:14, fontWeight:800 }}>시술 ({SVC_LIST.length})</div>
             {catGroups.map(({cat, svcs}) => {
               const isOpen = isCatOpen(cat.id);
@@ -843,18 +773,6 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
             </div>}
           </div>}
           {pkgDeduct > 0 && <div style={{marginTop:6,fontSize:13,fontWeight:T.fw.black,color:"#E65100",background:"#FFF3E0",borderRadius:T.radius.md,padding:"6px 12px"}}>🎫 보유권 차감: -{pkgDeduct.toLocaleString()}원</div>}
-          {pkgUseMode && <div style={{marginTop:8,fontSize:13,fontWeight:800,color:"#4527A0",background:"linear-gradient(135deg,#EDE7F6,#E8EAF6)",borderRadius:T.radius.md,padding:"10px 12px",border:"2px solid #7C4DFF"}}>
-            📦 패키지 1회 차감
-            <div style={{fontSize:11,fontWeight:600,color:"#7C4DFF",marginTop:4}}>
-              {(()=>{
-                const usedPkg = Object.entries(pkgUse).find(([,v])=>v===true);
-                const pkg = usedPkg ? custPkgs.find(p=>p.id===usedPkg[0]) : null;
-                if (!pkg) return "선택된 패키지 없음";
-                const remain = (pkg.total_count||0) - (pkg.used_count||0);
-                return `${(pkg.service_name||"").split("(")[0].trim()} — 잔여 ${remain}회 → ${remain-1}회`;
-              })()}
-            </div>
-          </div>}
           {grandTotal > 0 && <div style={{fontSize:9,color:T.gray400,marginTop:6}}>결제수단 클릭 → 전액 / 추가 클릭 → 분배</div>}
           {/* 매출 메모 */}
           <div style={{marginTop:8}}>
@@ -871,8 +789,8 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           </div>
           <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
             <Btn variant="secondary" onClick={onClose}>취소</Btn>
-            <Btn variant="primary" style={{ padding: "10px 20px", fontSize: 13, fontWeight: 800, background: pkgUseMode ? "linear-gradient(135deg,#7C4DFF,#651FFF)" : undefined }} onClick={handleSubmit}>
-              <I name="wallet" size={12}/> {pkgUseMode ? "📦 패키지 사용 등록" : `매출 등록 (${fmt(grandTotal)}원)`}
+            <Btn variant="primary" style={{ padding: "10px 20px", fontSize: 13, fontWeight: 800 }} onClick={handleSubmit}>
+              <I name="wallet" size={12}/> 매출 등록 ({fmt(grandTotal)}원)
             </Btn>
           </div>
         </div>
