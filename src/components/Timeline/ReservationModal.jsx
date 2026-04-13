@@ -232,6 +232,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
           custEmail: p.custEmail || local.email || "",
           isNewCust: false,
         }));
+        if (local.custNum) setCustNum(local.custNum);
         return;
       }
       // 목록에 없으면 서버 조회
@@ -245,6 +246,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
           custEmail: p.custEmail || c.email || "",
           isNewCust: false,
         }));
+        if (c.custNum) setCustNum(c.custNum);
       }).catch(() => {});
       return;
     }
@@ -264,11 +266,13 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
         custEmail: p.custEmail || c.email || "",
         isNewCust: false,
       }));
+      if (c.custNum) setCustNum(c.custNum);
     }).catch(() => {});
   }, []); // 모달 최초 열릴 때 1회
 
   // 고객 검색
   const [custSearch, setCustSearch] = useState("");
+  const [custNum, setCustNum] = useState("");
   const [showCustDropdown, setShowCustDropdown] = useState(false);
   const [custResults, setCustResults] = useState([]);
   const [editingCust, setEditingCust] = useState(false);
@@ -328,7 +332,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
     }, 300);
     return () => clearTimeout(timer);
   }, [custSearch]);
-  const selectCust = (c) => { setF(p=>({...p, custId:c.id, custName:c.name, custPhone:c.phone, custGender:c.gender, custEmail:c.email||"", isNewCust:false})); setCustSearch(""); setShowCustDropdown(false); };
+  const selectCust = (c) => { setF(p=>({...p, custId:c.id, custName:c.name, custPhone:c.phone, custGender:c.gender, custEmail:c.email||"", isNewCust:false})); setCustNum(c.custNum||""); setCustSearch(""); setShowCustDropdown(false); };
 
   // 태그 선택 → 기본 5분 + 태그 소요시간 합산 → 종료시간 자동 계산
   const toggleTag = (tagId) => {
@@ -782,8 +786,7 @@ ${naverText}
                           <span style={{fontSize:14,fontWeight:700,color:"#1a1a2e"}}>{f.custName}</span>
                           <span style={{fontSize:11,color:"#888"}}>·</span>
                           <span style={{fontSize:13,color:T.primary,fontWeight:500}}>{f.custPhone||"연락처 없음"}</span>
-                          {(()=>{const lc=(data?.customers||[]).find(c=>(f.custId&&c.id===f.custId)||(c.phone||"").replace(/-/g,"")===(f.custPhone||"").replace(/-/g,""));
-                            return lc?.custNum ? <span style={{fontSize:10,color:"#aaa",fontFamily:"monospace"}}>#{lc.custNum}</span> : null;})()}
+                          {custNum && <span style={{fontSize:10,color:"#aaa",fontFamily:"monospace"}}>#{custNum}</span>}
                         </>
                       )}
                     </div>
