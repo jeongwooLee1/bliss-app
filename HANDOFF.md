@@ -8,6 +8,44 @@
 
 ---
 
+## 2026-04-13 완료
+
+### 타임라인 ↔ 근무표 양방향 연동
+- TimelinePage: `syncOverrideToSch()` 함수로 empBranchOverride → schHistory에 `지원(지점)` 반영
+- SchedulePage: `syncSchToOverride()` 함수로 schHistory 변경 → empBranchOverride 반영
+- `branchIdToSchName` / `schNameToBranchId` 매핑 memo
+
+### 패키지 고객 매출등록 워크플로우
+- 패키지 보유 고객: 시술 선택 영역 상단에 보유 패키지 표시 + qty 스테퍼 (증감 버튼)
+- `pkgItems` state: `{id: {qty: N}}`, 그룹 기반 분배 (같은 그룹 내 균등 배분)
+- 선불잔액(다담권) 결제수단 버튼, 다회권은 수량 기반 차감 (금액 차감 아님)
+- `getSvcDur()`: pkg__ ID에서 PKG 카테고리 서비스 매칭하여 시술시간 반환
+
+### SaleForm UI 전면 개편
+- 모든 금액 필드 comma formatting (`fmtAmt`/`parseAmt`)
+- 시술/제품/추가/할인 행 통일 디자인 (width 95px)
+- 결제수단 세로 배치 (flexDirection: column)
+- 메모 자동 높이 + 템플릿 자동 채움 (businesses.settings.memo_templates.sale)
+
+### 예약모달 개선
+- 고객번호 표시 (서버 조회 + 로컬 캐시)
+- CopySpan: 이름/연락처/고객번호/이메일 클릭 복사 + "복사 ❤️" 토스트
+- AI 분석: 코드 레벨 패키지 자동 감지 (regex)
+- 보유 패키지 서비스 picker에 표시 + pkg__ 선택 → SaleForm 자동 전달
+
+### 메모 템플릿 기능
+- AdminMemoTemplates.jsx: 매출/예약/고객 메모 템플릿 관리 (3탭)
+- businesses.settings.memo_templates에 저장/로드
+- SaleForm: 메모 비어있으면 템플릿 자동 채움
+
+### Oracle ORDERDETAIL 전체 마이그레이션
+- Phase 1: 누락 ORDERS 60,151건 → sales 추가 (migrate_all_orders.py)
+- Phase 2: ORDERDETAIL 287,943건 → sale_details 추가 (migrate_orderdetail2.py)
+- ROW_NUMBER() OVER (PARTITION BY ORDERNO) 사용하여 고유 ID 생성
+- 임시 스크립트 삭제 완료
+
+---
+
 ## 2026-04-10~11 완료
 
 ### 네이버 세션 자동 갱신
@@ -55,12 +93,12 @@
 
 ### 완료
 - MEMBER → customers: 42,849명 (visits 갱신 완료)
-- ORDERS → sales: 176,339건 (cust_id 재매핑 + 중복 정리 완료)
+- ORDERS → sales: 176,400건 (116,249 기존 + 60,151 추가 마이그레이션)
+- ORDERDETAIL → sale_details: ~600,000건 (312,022 기존 + 287,943 추가)
 - daily_sync.py에 cust_num fallback 매칭 추가
 
 ### 펜딩 (다음 세션)
 - 패키지 추가구매 고객 분석: 마지막 매출 분석 → PKG 추가구매 건 자동 탐지
-- ORDERDETAIL (402,465건) — 매출 상세 시술별 금액
 - MESSAGE (491,899건) — 문자 발송 이력
 - SMSRESULT (642,702건) — 문자 발송 결과
 - POINT (13,867건) — 포인트/마일리지
@@ -72,7 +110,7 @@
 
 ### 주의
 - 오라클 접속: googlea.withbiz.co.kr:5063/ORA11GHW (housewaxing/oracle)
-- 로컬 PC IP만 허용됨 (Oracle Instant Client: instantclient_21_15)
+- 로컬 PC IP만 허용됨 (Oracle Instant Client: instantclient_23_7)
 - Supabase Pro 플랜 업그레이드 완료 ($25/월)
 - Egress 대량 사용 주의 (한 번에 너무 많이 하지 말 것)
 
@@ -253,16 +291,12 @@
 ---
 
 ## 작업: 타임라인 이동 ↔ 근무표 양방향 연동
-**상태**: 미착수.
+**상태**: 완료 (2026-04-13).
 
-### 문제
-- 타임라인에서 직원 이동 시 empBranchOverride에만 저장, schHistory에 미반영
-- 근무표에서는 이동 상태를 모름
-
-### 요구사항
-- 타임라인 이동 버튼 클릭 → schHistory에도 `지원(지점)` / 이동 상태 반영
-- 근무표 ↔ 타임라인 양방향 동기화
-- empBranchOverride 역할 정리 (schHistory와 중복 제거 검토)
+### 구현
+- TimelinePage: `syncOverrideToSch()` — 4곳(doAdd, saveSeg, removeSeg, 이동 버튼)에서 호출
+- SchedulePage: `syncSchToOverride()` — setS() 콜백에서 호출
+- branchId ↔ 근무표 키 양방향 매핑
 
 ---
 
@@ -289,11 +323,16 @@
 ---
 
 ## 작업: 매출관리 상세내역
-**상태**: 미착수.
+**상태**: 데이터 준비 완료, UI 미착수.
+
+### 현황
+- sale_details 테이블에 ~600,000건 마이그레이션 완료 (Oracle ORDERDETAIL)
+- 구조: id, sale_id, order_num, service_no, service_name, unit_price, qty, cash, card, bank, point, sex_div
 
 ### 요구사항
-- 현금/입금/카드 내역 표시
-- 오라클 시술 세부내역 동기화 (oracle_sync.py)
+- 매출 리스트에서 상세내역 펼치기 (시술별 금액)
+- 현금/입금/카드 결제수단별 합계 표시
+- oracle_sync.py에 sale_details 증분 동기화 추가
 
 ---
 
