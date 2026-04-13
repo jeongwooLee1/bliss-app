@@ -587,8 +587,8 @@ ${naverText}
         return {...p, selectedTags:newTags, selectedServices:newSvcs, dur, endTime, custGender: aiGender || p.custGender};
       });
       console.log("[AI RESULT] svcs:", newSvcs, "tags:", newTags);
-      if (parsed.reason) alert(`✅ AI 분석 완료\n시술 ${newSvcs.length}개, 태그 ${newTags.length}개\n${parsed.reason}`);
-      else alert(`✅ AI 분석 완료: 시술 ${newSvcs.length}개, 태그 ${newTags.length}개`);
+      const debugInfo = `svcs: ${JSON.stringify(newSvcs)}\nraw: ${JSON.stringify(parsed.matchedServiceIds||[])}\nvalid: ${[...validSvcSet].slice(0,5).join(",")}...`;
+      alert(`✅ AI 분석 완료\n시술 ${newSvcs.length}개, 태그 ${newTags.length}개\n${parsed.reason||""}\n\n[DEBUG]\n${debugInfo}`);
     } catch(e) { console.error("[AI ERROR]", e); alert("AI 분석 실패: "+e.message); }
     setAiAnalyzing(false);
   };
