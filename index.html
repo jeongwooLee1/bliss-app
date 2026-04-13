@@ -18,6 +18,16 @@
       body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f9fafb; }
       #root { min-height: 100dvh; }
       input,select,textarea{font-family:inherit}
+      /* 타임라인 배경/블록: 드래그 선택 차단 */
+      .tl-grid, .tl-block, .tl-col-header, .tl-time-col,
+      nav, aside, [class*="Sidebar"], [class*="sidebar"] {
+        -webkit-user-select: none !important; user-select: none !important;
+      }
+      /* 모달/목록/상세: 텍스트 복사 허용 */
+      table td, table th, [role="dialog"], [style*="position: fixed"],
+      [style*="position:fixed"], pre, code, p, span, div, a, li, label {
+        -webkit-user-select: text; user-select: text;
+      }
 
       /* ══ 타임라인 블록 ══ */
       div:hover>.resize-handle{opacity:1 !important}
@@ -238,7 +248,7 @@
         .sidebar-m{display:none!important}
       }
     </style>
-    <script type="module" crossorigin src="/bliss-app/assets/index-yX_97jIe.js"></script>
+    <script type="module" crossorigin src="/bliss-app/assets/index-Bre3Q9s-.js"></script>
     <link rel="modulepreload" crossorigin href="/bliss-app/assets/vendor-MDtgRJzl.js">
     <link rel="modulepreload" crossorigin href="/bliss-app/assets/supabase-DywSbxor.js">
   </head>
