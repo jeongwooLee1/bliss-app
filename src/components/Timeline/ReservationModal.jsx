@@ -783,17 +783,23 @@ ${naverText}
                         </>
                       ) : (
                         <>
-                          <span style={{fontSize:14,fontWeight:700,color:"#1a1a2e"}}>{f.custName}</span>
+                          <span onClick={()=>{navigator.clipboard.writeText(f.custName||"");}} title="이름 복사"
+                            style={{fontSize:14,fontWeight:700,color:"#1a1a2e",cursor:"pointer"}}>{f.custName}</span>
                           <span style={{fontSize:11,color:"#888"}}>·</span>
-                          <span style={{fontSize:13,color:T.primary,fontWeight:500}}>{f.custPhone||"연락처 없음"}</span>
-                          {custNum && <span style={{fontSize:10,color:"#aaa",fontFamily:"monospace"}}>#{custNum}</span>}
+                          <span onClick={()=>{navigator.clipboard.writeText(f.custPhone||"");}} title="연락처 복사"
+                            style={{fontSize:13,color:T.primary,fontWeight:500,cursor:"pointer"}}>{f.custPhone||"연락처 없음"}</span>
+                          {custNum && <span onClick={()=>{navigator.clipboard.writeText(custNum);}} title="고객번호 복사"
+                            style={{fontSize:13,color:"#999",fontFamily:"monospace",cursor:"pointer"}}>{custNum}</span>}
                         </>
                       )}
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:4,marginTop:2}}>
                       <span style={{fontSize:11,color:"#aaa"}}>✉</span>
-                      <input type="email" value={f.custEmail||""} onChange={e=>set("custEmail",e.target.value)} placeholder="이메일 입력"
-                        style={{flex:1,padding:"0 2px",fontSize:12,border:"none",background:"transparent",color:"#777",outline:"none",fontFamily:"inherit"}}/>
+                      <span onClick={()=>{if(f.custEmail) navigator.clipboard.writeText(f.custEmail);}} title="이메일 복사"
+                        style={{cursor:f.custEmail?"pointer":"default"}}>
+                        <input type="email" value={f.custEmail||""} onChange={e=>set("custEmail",e.target.value)} placeholder="이메일 입력"
+                          style={{flex:1,padding:"0 2px",fontSize:12,border:"none",background:"transparent",color:"#777",outline:"none",fontFamily:"inherit",cursor:"inherit"}}/>
+                      </span>
                     </div>
                     {activePkgSummary.length > 0 && <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:3}}>
                       {activePkgSummary.map((pkg,i) => {
