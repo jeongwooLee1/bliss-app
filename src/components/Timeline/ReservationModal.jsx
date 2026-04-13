@@ -1206,7 +1206,7 @@ ${naverText}
               </div>
             </div>}
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            {false && !isReadOnly && !isSchedule && <Btn
+            {!isReadOnly && !isSchedule && <Btn
               style={{padding:"10px 16px",background:"#ff9800",boxShadow:"0 2px 8px rgba(255,152,0,.3)"}}
               onClick={async()=>{
                 const apiKey = window.__systemGeminiKey || window.__geminiKey;
@@ -1238,6 +1238,8 @@ ${naverText}
 - 동의어: 음모왁싱=브라질리언, 음부왁싱=브라질리언, 브라질리언왁싱=브라질리언
 - '재방문', '신규', '이벤트' 등 단독으로 나오면 시술이 아닙니다.
 - 시술상품 목록에서 가장 유사한 항목을 선택하세요. 없으면 빈 배열로 두세요.
+- 보유 패키지: ${(()=>{const mp=(custPkgsInfo||[]).filter(p=>{const n=(p.service_name||"").toLowerCase();return !n.includes("다담권")&&!n.includes("선불")&&!n.includes("10%추가적립")&&!n.includes("연간")&&!n.includes("할인권")&&!n.includes("회원권")&&(p.total_count||0)-(p.used_count||0)>0;});if(!mp.length)return"없음";const g={};mp.forEach(p=>{const nm=(p.service_name?.split("(")[0]||"").replace(/\s*\\d+회$/,"").trim();if(!g[nm])g[nm]=0;g[nm]+=(p.total_count||0)-(p.used_count||0);});return Object.entries(g).map(([n,r])=>n+" "+r+"회(id:pkg__"+n+")").join(", ");})()}
+- 패키지 규칙: 시술옵션에 "패키지/PKG/패키지이용" 키워드가 있고 보유 패키지가 있으면 해당 pkg__이름 id를 matchedServiceIds에 포함시키세요.
 ${rulesBlock}
 
 [예약 정보]
@@ -1264,7 +1266,7 @@ ${rulesBlock}
                   const m = txt.match(/\{[\s\S]*\}/);
                   if(m){
                     const result = JSON.parse(m[0]);
-                    const newSvcs = (result.matchedServiceIds||result.services||[]).filter(id=>SVC_LIST.find(s=>s.id===id));
+                    const newSvcs = (result.matchedServiceIds||result.services||[]).filter(id=>id.startsWith("pkg__")||SVC_LIST.find(s=>s.id===id));
                     const newTags = (result.matchedTagIds||result.tags||[]).filter(id=>tags.find(t=>t.id===id));
                     const notes = result.specialNotes||"";
                     const updates = {
