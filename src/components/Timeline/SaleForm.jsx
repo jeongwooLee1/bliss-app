@@ -99,7 +99,7 @@ const SaleDiscountRow = React.memo(function SaleDiscountRow({ id, checked, amoun
     <input className="inp" type="number" step="5000" value={checked ? localAmt : ""} placeholder="0"
       onClick={e => e.stopPropagation()}
       onChange={e => { setLocalAmt(e.target.value); setAmt(id, e.target.value); }} disabled={!checked}
-      style={{ width: 72, padding: "4px 6px", fontSize: 11, textAlign: "right", borderRadius: 6,
+      style={{ width: 95, padding: "4px 6px", fontSize: 13, textAlign: "right", borderRadius: 6,
         background: checked ? T.bgCard : "transparent", border: `1px solid ${checked ? T.gray400 : T.border}`,
         color: checked ? T.danger : T.gray400, fontWeight: checked ? 700 : 400 }} />
   </div>;
