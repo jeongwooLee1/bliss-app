@@ -566,7 +566,7 @@ ${naverText}
           for (let i = 0; i < id.length; i++) if (id[i] !== vid[i]) dist++;
           if (dist < bestDist) { best = vid; bestDist = dist; }
         }
-        if (best && bestDist <= 2) { console.log(`AI ID 보정: ${id} → ${best}`); return best; }
+        if (best && bestDist <= 2) { return best; }
         return id;
       });
       const validSvcSet = new Set((data?.services||[]).map(s=>s.id));
@@ -606,8 +606,7 @@ ${naverText}
         const endTime = `${String(Math.min(22,Math.floor(endMin/60))).padStart(2,"0")}:${String(endMin%60).padStart(2,"0")}`;
         return {...p, selectedTags:newTags, selectedServices:newSvcs, dur, endTime, custGender: aiGender || p.custGender};
       });
-      if (parsed.reason) alert(`✅ AI 분석 완료\n${parsed.reason}`);
-    } catch(e) { alert("AI 분석 실패: "+e.message); }
+    } catch(e) { console.warn("AI 분석 실패:", e.message); }
     setAiAnalyzing(false);
   };
 
@@ -1314,9 +1313,8 @@ ${rulesBlock}
                       if(!cur.includes(notes)) updates.memo = cur ? cur+"\n[AI] "+notes : "[AI] "+notes;
                     }
                     setF(p=>({...p,...updates}));
-                    alert(`✅ 시술 ${newSvcs.length}개, 태그 ${newTags.length}개 매칭${notes?"\n특이: "+notes:""}\n\nraw: ${JSON.stringify(result.matchedServiceIds||result.services||[]).slice(0,200)}\nfinal: ${JSON.stringify(newSvcs).slice(0,200)}`);
-                  } else { alert("AI 분석 결과를 파싱할 수 없습니다"); }
-                } catch(e){ alert("AI 분석 실패: "+e.message); }
+                  } else { console.warn("AI 분석 결과 파싱 불가"); }
+                } catch(e){ console.warn("AI 분석 실패:", e.message); }
               }}>AI 분석</Btn>}
             {!isReadOnly && <><Btn
                 disabled={!isSchedule && f.type==="reservation" && !f.custName?.trim()}

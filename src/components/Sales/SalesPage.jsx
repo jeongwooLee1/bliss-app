@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useCallback } from 'react'
 import { T } from '../../lib/constants'
 import { sb } from '../../lib/sb'
 import { toDb } from '../../lib/db'
@@ -8,9 +8,20 @@ import I from '../common/I'
 import { SmartDatePicker } from '../Reservations/ReservationsPage'
 import { DetailedSaleForm } from '../Timeline/ReservationModal'
 
+/* ── sale_details 캐시 ── */
+const _detailCache = {};  // { saleId: [rows...] | "loading" }
+
 const _mc = (fn) => { if(fn) fn(); };
 
 function Z() { return <span style={{color:T.gray400}}>0</span>; }
+
+function PaySummary({label, val, color}) {
+  if (!val || val <= 0) return null;
+  return <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:T.fs.xxs}}>
+    <span style={{fontWeight:T.fw.bold,color}}>{label}</span>
+    <span style={{fontWeight:T.fw.bolder,color}}>{fmt(val)}</span>
+  </span>;
+}
 
 const SC = ({label, val, sub, clr}) => <StatCard label={label} value={val} sub={sub} color={clr}/>;
 
@@ -52,6 +63,21 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role }) {
   const [editSale, setEditSale] = useState(null);
   const [q, setQ] = useState("");
   const [expandedId, setExpandedId] = useState(null);
+  const [detailMap, setDetailMap] = useState({});  // saleId → [detail rows]
+
+  /* ── sale_details lazy 로드 ── */
+  const loadDetails = useCallback(async (saleId) => {
+    if (detailMap[saleId] || _detailCache[saleId]) return;
+    _detailCache[saleId] = "loading";
+    try {
+      const rows = await sb.get("sale_details", `&sale_id=eq.${saleId}&order=id.asc`);
+      _detailCache[saleId] = rows || [];
+      setDetailMap(prev => ({...prev, [saleId]: rows || []}));
+    } catch(e) {
+      _detailCache[saleId] = [];
+      console.error("sale_details load fail:", e);
+    }
+  }, [detailMap]);
 
   const inRange = (date) => {
     if (periodKey==="all" || (!startDate && !endDate)) return true;
@@ -217,7 +243,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role }) {
               const br = (data.branches||[]).find(b=>b.id===s.bid);
               return <React.Fragment key={s.id}>
                 <tr style={{cursor:"pointer",background:isExp?T.primaryHover:"transparent"}}
-                  onClick={()=>setExpandedId(isExp?null:s.id)}>
+                  onClick={()=>{setExpandedId(isExp?null:s.id); if(!isExp) loadDetails(s.id);}}>
                   <td style={{color:T.textMuted}}>{i+1}</td>
                   <td style={{whiteSpace:"nowrap",color:T.textSub,fontSize:T.fs.xxs}}>{s.date}</td>
                   <td><span style={{fontSize:T.fs.xxs,background:T.gray200,borderRadius:T.radius.sm,padding:"1px 5px"}}>{br?.short||"-"}</span></td>
@@ -239,23 +265,55 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role }) {
                   </td>
                 </tr>
                 {isExp && <tr><td colSpan={10} style={{padding:0,background:T.gray100}}>
-                  <div style={{padding:"10px 16px",display:"flex",gap:T.sp.lg,flexWrap:"wrap",alignItems:"flex-start"}}>
-                    <div>
-                      <div style={{fontSize:T.fs.xxs,color:T.textMuted,marginBottom:4}}>결제 수단</div>
-                      <PayChips {...s}/>
+                  <div style={{padding:"10px 16px"}}>
+                    {/* 결제수단 요약 - 한줄 표시 */}
+                    <div style={{display:"flex",gap:16,flexWrap:"wrap",alignItems:"center",marginBottom:8}}>
+                      <PaySummary label="현금" val={(s.svcCash||0)+(s.prodCash||0)} color="#16a34a"/>
+                      <PaySummary label="카드" val={(s.svcCard||0)+(s.prodCard||0)} color={T.primary}/>
+                      <PaySummary label="입금" val={(s.svcTransfer||0)+(s.prodTransfer||0)} color={T.info}/>
+                      <PaySummary label="포인트" val={(s.svcPoint||0)+(s.prodPoint||0)} color={T.orange}/>
+                      {(s.gift||0)>0 && <PaySummary label="상품권" val={s.gift} color={T.danger}/>}
+                      {s.custPhone && <span style={{fontSize:T.fs.xxs,color:T.primary,marginLeft:"auto"}}>{s.custPhone}</span>}
+                      {s.createdAt && <span style={{fontSize:T.fs.xxs,color:T.textMuted}}>
+                        {new Date(s.createdAt).toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}
+                      </span>}
                     </div>
-                    {s.custPhone && <div>
-                      <div style={{fontSize:T.fs.xxs,color:T.textMuted,marginBottom:4}}>연락처</div>
-                      <span style={{fontSize:T.fs.sm,color:T.primary}}>{s.custPhone}</span>
-                    </div>}
-                    {s.memo && <div style={{flex:1}}>
-                      <div style={{fontSize:T.fs.xxs,color:T.textMuted,marginBottom:4}}>메모</div>
-                      <span style={{fontSize:T.fs.sm,color:T.text}}>{s.memo}</span>
-                    </div>}
-                    {s.createdAt && <div>
-                      <div style={{fontSize:T.fs.xxs,color:T.textMuted,marginBottom:4}}>등록시간</div>
-                      <span style={{fontSize:T.fs.xxs,color:T.textSub}}>{new Date(s.createdAt).toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
-                    </div>}
+                    {/* 시술 상세 내역 (sale_details) */}
+                    {(()=>{
+                      const details = detailMap[s.id];
+                      if (!details) return <div style={{fontSize:T.fs.xxs,color:T.textMuted,padding:"4px 0"}}>상세 로딩중...</div>;
+                      if (details.length === 0) return null;
+                      return <div style={{background:T.bgCard,border:"1px solid "+T.border,borderRadius:T.radius.md,overflow:"hidden"}}>
+                        <table style={{width:"100%",borderCollapse:"collapse",fontSize:T.fs.xxs}}>
+                          <thead><tr style={{background:T.gray200}}>
+                            <th style={{padding:"4px 8px",textAlign:"left",fontWeight:T.fw.bold,color:T.textSub}}>시술/제품명</th>
+                            <th style={{padding:"4px 8px",textAlign:"right",fontWeight:T.fw.bold,color:T.textSub,width:50}}>수량</th>
+                            <th style={{padding:"4px 8px",textAlign:"right",fontWeight:T.fw.bold,color:"#16a34a",width:70}}>현금</th>
+                            <th style={{padding:"4px 8px",textAlign:"right",fontWeight:T.fw.bold,color:T.primary,width:70}}>카드</th>
+                            <th style={{padding:"4px 8px",textAlign:"right",fontWeight:T.fw.bold,color:T.info,width:70}}>입금</th>
+                            <th style={{padding:"4px 8px",textAlign:"right",fontWeight:T.fw.bold,color:T.orange,width:70}}>포인트</th>
+                          </tr></thead>
+                          <tbody>{details.map((d,di)=>{
+                            const dTotal = (d.cash||0)+(d.card||0)+(d.bank||0)+(d.point||0);
+                            return <tr key={di} style={{borderTop:"1px solid "+T.border}}>
+                              <td style={{padding:"4px 8px",color:T.text}}>
+                                {d.service_name||"-"}
+                                {d.sex_div && <span style={{fontSize:T.fs.nano,marginLeft:4,color:d.sex_div==="M"?T.male:d.sex_div==="F"?T.female:T.textMuted}}>
+                                  ({d.sex_div==="M"?"남":d.sex_div==="F"?"여":d.sex_div})
+                                </span>}
+                              </td>
+                              <td style={{padding:"4px 8px",textAlign:"right",color:T.textSub}}>{d.qty||1}</td>
+                              <td style={{padding:"4px 8px",textAlign:"right",color:(d.cash||0)>0?"#16a34a":T.gray400}}>{(d.cash||0)>0?fmt(d.cash):"-"}</td>
+                              <td style={{padding:"4px 8px",textAlign:"right",color:(d.card||0)>0?T.primary:T.gray400}}>{(d.card||0)>0?fmt(d.card):"-"}</td>
+                              <td style={{padding:"4px 8px",textAlign:"right",color:(d.bank||0)>0?T.info:T.gray400}}>{(d.bank||0)>0?fmt(d.bank):"-"}</td>
+                              <td style={{padding:"4px 8px",textAlign:"right",color:(d.point||0)>0?T.orange:T.gray400}}>{(d.point||0)>0?fmt(d.point):"-"}</td>
+                            </tr>;
+                          })}</tbody>
+                        </table>
+                      </div>;
+                    })()}
+                    {/* 메모 */}
+                    {s.memo && <div style={{marginTop:6,fontSize:T.fs.xxs,color:T.text,whiteSpace:"pre-wrap",lineHeight:1.4}}>{s.memo}</div>}
                   </div>
                 </td></tr>}
               </React.Fragment>;

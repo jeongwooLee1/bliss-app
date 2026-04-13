@@ -36,7 +36,6 @@ export function resolveSystemIds(tags, sources) {
     NAVER_SRC_ID           = naverSrc?.id   || null;
     SYSTEM_TAG_IDS = [NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID].filter(Boolean);
     SYSTEM_SRC_IDS = [NAVER_SRC_ID].filter(Boolean);
-    console.log("[Bliss] 시스템 ID 해석:", { NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID });
   } catch(e) {
     console.error("[Bliss] resolveSystemIds 오류:", e);
     SYSTEM_TAG_IDS = []; SYSTEM_SRC_IDS = [];

@@ -930,12 +930,10 @@ function App() {
           if (memo.gemini_key) {
             localStorage.setItem("bliss_gemini_key", memo.gemini_key);
             window.__geminiKey = memo.gemini_key;
-            console.log("✅ Gemini key 복원");
           }
           const AI_RULES_KEY = "bliss_ai_rules";
           if (memo.ai_rules?.length && !localStorage.getItem(AI_RULES_KEY)) {
             localStorage.setItem(AI_RULES_KEY, JSON.stringify(memo.ai_rules));
-            console.log("✅ AI 규칙 복원:", memo.ai_rules.length + "개");
           }
         } catch(e) {}
         // Load business data

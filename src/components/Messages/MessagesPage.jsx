@@ -257,10 +257,8 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   },[reply]);
 
   const genAI = async()=>{
-    console.log("[genAI] called, sel:", sel?.channel, "convo:", convo.length);
     if(!sel||convo.length===0){alert("대화가 선택되지 않았습니다.");return;}
     const key=getGeminiKey();
-    console.log("[genAI] key exists:", !!key);
     if(!key){alert("AI API 키가 설정되지 않았습니다. 관리설정에서 Gemini 키를 입력하세요.");return;}
     setAiLoading(true); setAiKoDraft("");
     try{
