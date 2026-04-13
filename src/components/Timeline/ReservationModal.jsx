@@ -545,10 +545,8 @@ ${naverText}
       if (!r.ok) throw new Error("API: "+(await r.text()).slice(0,120));
       const d2 = await r.json();
       const txt = d2.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      console.log("[AI RAW]", txt);
       const jsonMatch = txt.match(/\{[\s\S]*\}/);
       const parsed = JSON.parse((jsonMatch ? jsonMatch[0] : txt).replace(/```json|```/g,"").trim());
-      console.log("[AI PARSED]", parsed);
       // fuzzy fix: AI가 1-2글자 틀린 ID 반환 시 가장 유사한 valid ID로 보정
       const fuzzyFix = (ids, validSet) => ids.map(id => {
         if (validSet.has(id)) return id;
@@ -586,10 +584,8 @@ ${naverText}
         const endTime = `${String(Math.min(22,Math.floor(endMin/60))).padStart(2,"0")}:${String(endMin%60).padStart(2,"0")}`;
         return {...p, selectedTags:newTags, selectedServices:newSvcs, dur, endTime, custGender: aiGender || p.custGender};
       });
-      console.log("[AI RESULT] svcs:", newSvcs, "tags:", newTags);
-      const debugInfo = `svcs: ${JSON.stringify(newSvcs)}\nraw: ${JSON.stringify(parsed.matchedServiceIds||[])}\nvalid: ${[...validSvcSet].slice(0,5).join(",")}...`;
-      alert(`✅ AI 분석 완료\n시술 ${newSvcs.length}개, 태그 ${newTags.length}개\n${parsed.reason||""}\n\n[DEBUG]\n${debugInfo}`);
-    } catch(e) { console.error("[AI ERROR]", e); alert("AI 분석 실패: "+e.message); }
+      if (parsed.reason) alert(`✅ AI 분석 완료\n${parsed.reason}`);
+    } catch(e) { alert("AI 분석 실패: "+e.message); }
     setAiAnalyzing(false);
   };
 
@@ -1213,7 +1209,6 @@ ${naverText}
                 const tagList = tags.filter(t=>t.useYn!==false&&t.scheduleYn!=="Y").map(t=>`"${t.id}":"${t.name}"`).join(", ");
                 const neverText = [f.requestMsg, f.ownerComment].filter(Boolean).join("\n");
                 if(!neverText.trim() && !f.memo?.trim()){alert("분석할 메모/요청사항이 없습니다");return;}
-                console.log("[AI2 INPUT] svcList:", svcList.slice(0,200), "\nneverText:", neverText.slice(0,200));
                 // AI 규칙 로드
                 const aiRules = JSON.parse(localStorage.getItem("bliss_ai_rules")||"[]");
                 const rulesBlock = aiRules.length > 0
@@ -1278,10 +1273,9 @@ ${rulesBlock}
                       if(!cur.includes(notes)) updates.memo = cur ? cur+"\n[AI] "+notes : "[AI] "+notes;
                     }
                     setF(p=>({...p,...updates}));
-                    console.log("[AI2 RAW]", result);
-                    alert(`시술 ${newSvcs.length}개, 태그 ${newTags.length}개 매칭${notes?"\n특이: "+notes:""}\n\n[DEBUG] raw=${JSON.stringify(result.matchedServiceIds||[])}\nfinal=${JSON.stringify(newSvcs)}`);
-                  } else { alert("AI 분석 결과를 파싱할 수 없습니다\n\nraw: "+txt.slice(0,300)); }
-                } catch(e){ console.error("[AI2 ERROR]",e); alert("AI 분석 실패: "+e.message); }
+                    alert(`✅ 시술 ${newSvcs.length}개, 태그 ${newTags.length}개 매칭${notes?"\n특이: "+notes:""}`);
+                  } else { alert("AI 분석 결과를 파싱할 수 없습니다"); }
+                } catch(e){ alert("AI 분석 실패: "+e.message); }
               }}>AI 분석</Btn>}
             {!isReadOnly && <><Btn
                 disabled={!isSchedule && f.type==="reservation" && !f.custName?.trim()}
