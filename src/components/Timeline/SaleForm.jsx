@@ -6,6 +6,9 @@ import { todayStr, genId } from '../../lib/utils'
 import I from '../common/I'
 
 const uid = genId;
+// 금액 콤마 포맷 유틸
+const fmtAmt = (v) => { const n = Number(String(v).replace(/,/g,"")); return n ? n.toLocaleString() : ""; };
+const parseAmt = (v) => Number(String(v).replace(/,/g,"")) || 0;
 
 const Btn = ({ children, variant="primary", size="md", disabled, onClick, style={} }) => {
   const bg = variant==="primary"?T.primary:variant==="danger"?T.danger:variant==="ghost"?"transparent":T.gray100;
@@ -21,8 +24,9 @@ const GridLayout = ({ cols=2, gap=12, children, style={} }) => {
 
 const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amount, defPrice, toggle, setAmt }) {
   const disabled = defPrice === 0;
-  const [localAmt, setLocalAmt] = useState(amount || "");
-  useEffect(() => { setLocalAmt(amount || ""); }, [checked]);
+  const [localAmt, setLocalAmt] = useState(fmtAmt(amount));
+  const [editing, setEditing] = useState(false);
+  useEffect(() => { if(!editing) setLocalAmt(fmtAmt(amount)); }, [amount, checked]);
   return (
     <div className="sale-svc-row" onClick={() => !disabled && !checked && toggle(id, defPrice)}
       style={{ display: "flex", alignItems: "center", gap: 4, padding: "1px 8px", borderRadius: 4,
@@ -33,9 +37,10 @@ const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amou
         {checked && <span style={{color:T.primary,marginRight:3}}>✓</span>}{name}
       </span>
       <span className="sale-dur" style={{ flexShrink: 0, width: 28, textAlign: "right", whiteSpace:"nowrap", fontSize: 10, color: T.gray400 }}>{dur}분</span>
-      <input type="number" step="5000" value={checked ? localAmt : ""} placeholder={disabled ? "—" : (defPrice||0).toLocaleString()}
-        onClick={e => e.stopPropagation()}
-        onChange={e => setLocalAmt(e.target.value)} onBlur={e => setAmt(id, e.target.value)} disabled={!checked}
+      <input type="text" inputMode="numeric" value={checked ? localAmt : ""} placeholder={disabled ? "—" : (defPrice||0).toLocaleString()}
+        onClick={e => e.stopPropagation()} onFocus={()=>setEditing(true)}
+        onChange={e => { const raw=e.target.value.replace(/[^0-9]/g,""); setLocalAmt(raw?Number(raw).toLocaleString():""); }}
+        onBlur={e => { setEditing(false); setAmt(id, parseAmt(e.target.value)); }} disabled={!checked}
         style={{ width: 95, padding: "2px 5px", fontSize: 13, textAlign: "right", borderRadius: 5, flexShrink: 0, minHeight: 0, height: 24, boxSizing: "border-box", fontFamily: "inherit", outline: "none",
           background: checked ? T.bgCard : "transparent", border: `1px solid ${checked ? T.gray400 : T.border}`,
           color: checked ? T.danger : T.gray400, fontWeight: checked ? 700 : 400 }} />
@@ -44,8 +49,9 @@ const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amou
 });
 
 const SaleProdRow = React.memo(function SaleProdRow({ id, name, price, checked, amount, toggle, setAmt }) {
-  const [localAmt, setLocalAmt] = useState(amount || "");
-  useEffect(() => { setLocalAmt(amount || ""); }, [checked]);
+  const [localAmt, setLocalAmt] = useState(fmtAmt(amount));
+  const [editing, setEditing] = useState(false);
+  useEffect(() => { if(!editing) setLocalAmt(fmtAmt(amount)); }, [amount, checked]);
   return (
     <div className="sale-svc-row" onClick={() => !checked && toggle(id, price)}
       style={{ display: "flex", alignItems: "center", gap: 4, padding: "1px 8px", borderRadius: 4,
@@ -54,9 +60,10 @@ const SaleProdRow = React.memo(function SaleProdRow({ id, name, price, checked, 
         style={{ flex: 1, fontSize: 13, color: checked ? T.text : T.gray700, fontWeight: checked ? 700 : 400, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
         {checked && <span style={{color:T.primary,marginRight:3}}>✓</span>}{name}
       </span>
-      <input type="number" step="5000" value={checked ? localAmt : ""} placeholder={price ? price.toLocaleString() : "0"}
-        onClick={e => e.stopPropagation()}
-        onChange={e => setLocalAmt(e.target.value)} onBlur={e => setAmt(id, e.target.value)} disabled={!checked}
+      <input type="text" inputMode="numeric" value={checked ? localAmt : ""} placeholder={price ? price.toLocaleString() : "0"}
+        onClick={e => e.stopPropagation()} onFocus={()=>setEditing(true)}
+        onChange={e => { const raw=e.target.value.replace(/[^0-9]/g,""); setLocalAmt(raw?Number(raw).toLocaleString():""); }}
+        onBlur={e => { setEditing(false); setAmt(id, parseAmt(e.target.value)); }} disabled={!checked}
         style={{ width: 95, padding: "2px 5px", fontSize: 13, textAlign: "right", borderRadius: 5, flexShrink: 0, minHeight: 0, height: 24, boxSizing: "border-box", fontFamily: "inherit", outline: "none",
           background: checked ? T.bgCard : "transparent", border: `1px solid ${checked ? T.gray400 : T.border}`,
           color: checked ? T.danger : T.gray400, fontWeight: checked ? 700 : 400 }} />
@@ -66,8 +73,8 @@ const SaleProdRow = React.memo(function SaleProdRow({ id, name, price, checked, 
 
 const SaleExtraRow = React.memo(function SaleExtraRow({ id, color, placeholder, checked, amount, label, toggle, setAmt, setLabel }) {
   const [localLabel, setLocalLabel] = useState(label || "");
-  const [localAmt, setLocalAmt] = useState(amount || "");
-  useEffect(() => { setLocalAmt(amount || ""); }, [checked]);
+  const [localAmt, setLocalAmt] = useState(fmtAmt(amount));
+  useEffect(() => { setLocalAmt(fmtAmt(amount)); }, [checked]);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 8px", borderTop: "1px solid #e0e0e0", marginTop: 4 }}>
       <span onClick={() => toggle(id, 0)}
@@ -77,8 +84,8 @@ const SaleExtraRow = React.memo(function SaleExtraRow({ id, color, placeholder, 
       <input className="inp" value={localLabel} onChange={e => setLocalLabel(e.target.value)}
         onBlur={e => setLabel(id, e.target.value)}
         placeholder={placeholder} style={{ flex: 1, padding: "4px 6px", fontSize: 11, background: "transparent", border:"1px solid "+T.border, borderRadius: 6 }} />
-      <input className="inp" type="number" step="5000" value={localAmt} placeholder="0"
-        onChange={e => { setLocalAmt(e.target.value); setAmt(id, e.target.value); if(!checked && Number(e.target.value)>0) toggle(id, 0); }}
+      <input type="text" inputMode="numeric" value={localAmt} placeholder="0"
+        onChange={e => { const raw=e.target.value.replace(/[^0-9]/g,""); const v=raw?Number(raw).toLocaleString():""; setLocalAmt(v); setAmt(id, parseAmt(raw)); if(!checked && parseAmt(raw)>0) toggle(id, 0); }}
         style={{ width: 95, padding: "4px 6px", fontSize: 13, textAlign: "right", borderRadius: 6,
           border: `1px solid ${checked ? T.gray400 : T.border}`,
           color: checked ? T.danger : T.gray500, fontWeight: checked ? 700 : 400 }} />
@@ -87,8 +94,8 @@ const SaleExtraRow = React.memo(function SaleExtraRow({ id, color, placeholder, 
 });
 
 const SaleDiscountRow = React.memo(function SaleDiscountRow({ id, checked, amount, toggle, setAmt }) {
-  const [localAmt, setLocalAmt] = useState(amount || "");
-  useEffect(() => { setLocalAmt(amount || ""); }, [checked]);
+  const [localAmt, setLocalAmt] = useState(fmtAmt(amount));
+  useEffect(() => { setLocalAmt(fmtAmt(amount)); }, [checked]);
   return <div onClick={() => !checked && toggle(id, 0)}
     style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", cursor: "pointer", borderRadius: 6,
       background: checked ? "#e8a0a010" : "transparent", transition: "background .15s" }}>
@@ -96,9 +103,9 @@ const SaleDiscountRow = React.memo(function SaleDiscountRow({ id, checked, amoun
       style={{ flex: 1, fontSize: 11, color: checked ? T.female : T.gray600, fontWeight: 600, cursor: "pointer" }}>
       {checked ? <span style={{color:T.female}}>✓ </span> : ""}할인
     </span>
-    <input className="inp" type="number" step="5000" value={checked ? localAmt : ""} placeholder="0"
+    <input type="text" inputMode="numeric" value={checked ? localAmt : ""} placeholder="0"
       onClick={e => e.stopPropagation()}
-      onChange={e => { setLocalAmt(e.target.value); setAmt(id, e.target.value); }} disabled={!checked}
+      onChange={e => { const raw=e.target.value.replace(/[^0-9]/g,""); const v=raw?Number(raw).toLocaleString():""; setLocalAmt(v); setAmt(id, parseAmt(raw)); }} disabled={!checked}
       style={{ width: 95, padding: "4px 6px", fontSize: 13, textAlign: "right", borderRadius: 6,
         background: checked ? T.bgCard : "transparent", border: `1px solid ${checked ? T.gray400 : T.border}`,
         color: checked ? T.danger : T.gray400, fontWeight: checked ? 700 : 400 }} />
