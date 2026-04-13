@@ -655,9 +655,12 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
 
           {/* Col 1+2: Services by category (span 2 columns) */}
           <div style={{gridColumn:"span 2"}}>
-            {/* 다회권 패키지 — 시술 목록 최상단 */}
-            {activeMultiPkgs.length > 0 && <div style={{marginBottom:10,border:"1px solid "+T.border,borderRadius:10,overflow:"hidden",background:T.gray100}}>
-              <div style={{padding:"8px 12px 4px",fontSize:13,fontWeight:800,color:T.text}}>📦 보유 패키지</div>
+            {/* 다회권 패키지 — 시술과 동일한 UI */}
+            {activeMultiPkgs.length > 0 && <div style={{marginBottom:6,border:"1px solid "+T.border,borderRadius:8,overflow:"hidden"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 10px",background:hasPkgChecked()?T.primaryHover:T.gray100}}>
+                <span style={{fontSize:13,fontWeight:700,color:hasPkgChecked()?T.primary:T.text}}>📦 보유 패키지{hasPkgChecked()&&<span style={{marginLeft:6,fontSize:11,color:T.primary}}>✓ {totalPkgQty()}회 사용</span>}</span>
+              </div>
+              <div style={{padding:"4px 0"}}>
               {(()=>{
                 const groups = {};
                 activeMultiPkgs.forEach(p => {
@@ -669,33 +672,34 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                 return Object.values(groups).map(g => {
                   const useQty = g.pkgs.reduce((s,p) => s + (pkgItems["pkg__"+p.id]?.qty||0), 0);
                   const isActive = useQty > 0;
-                  return <div key={g.name}
-                  style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",transition:"all .15s",
-                    background:isActive?T.primaryHover:"transparent",
-                    borderTop:"1px solid "+T.border}}>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:14,fontWeight:800,color:isActive?T.primary:T.text}}>{g.name}</div>
-                      <div style={{fontSize:11,color:isActive?T.primary:T.textMuted,fontWeight:600}}>
-                        잔여 {g.totalRemain}회{isActive && ` → ${g.totalRemain - useQty}회`}
-                      </div>
-                    </div>
-                    {/* 증감 스테퍼 */}
+                  return <div key={g.name} className="sale-svc-row"
+                    onClick={() => { if (useQty === 0) setPkgQty(g.name, 1); }}
+                    style={{display:"flex",alignItems:"center",gap:4,padding:"1px 8px",borderRadius:4,
+                      background:isActive?"#7c7cc810":"transparent",cursor:"pointer",lineHeight:1.4}}>
+                    <span style={{flex:1,fontSize:13,color:isActive?T.text:T.gray700,fontWeight:isActive?700:400,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}
+                      onClick={e=>{e.stopPropagation(); if(useQty===0) setPkgQty(g.name,1); else setPkgQty(g.name,0);}}>
+                      {isActive&&<span style={{color:T.primary,marginRight:3}}>✓</span>}{g.name}
+                    </span>
+                    <span style={{flexShrink:0,fontSize:10,color:T.gray400}}>{g.totalRemain}회</span>
+                    {/* 증감 스테퍼 — 가격 입력 자리 */}
                     <div style={{display:"flex",alignItems:"center",gap:0,flexShrink:0}} onClick={e=>e.stopPropagation()}>
                       <button onClick={()=>setPkgQty(g.name, Math.max(0, useQty-1))}
-                        style={{width:32,height:32,borderRadius:"8px 0 0 8px",border:"1px solid "+T.border,borderRight:"none",
-                          background:T.bgCard,color:T.primary,fontSize:18,fontWeight:900,
+                        style={{width:24,height:24,borderRadius:"5px 0 0 5px",border:"1px solid "+(isActive?T.gray400:T.border),borderRight:"none",
+                          background:isActive?T.bgCard:"transparent",color:T.primary,fontSize:14,fontWeight:900,
                           cursor:useQty>0?"pointer":"not-allowed",opacity:useQty>0?1:.4,fontFamily:"inherit",padding:0}}>−</button>
-                      <div style={{width:36,height:32,display:"flex",alignItems:"center",justifyContent:"center",
-                        border:"1px solid "+T.border,borderLeft:"none",borderRight:"none",
-                        background:T.bgCard,fontSize:16,fontWeight:900,color:isActive?T.primary:T.gray400}}>{useQty}</div>
+                      <div style={{width:28,height:24,display:"flex",alignItems:"center",justifyContent:"center",
+                        border:"1px solid "+(isActive?T.gray400:T.border),borderLeft:"none",borderRight:"none",
+                        background:isActive?T.bgCard:"transparent",
+                        fontSize:13,fontWeight:isActive?700:400,color:isActive?T.danger:T.gray400}}>{useQty}</div>
                       <button onClick={()=>setPkgQty(g.name, Math.min(g.totalRemain, useQty+1))}
-                        style={{width:32,height:32,borderRadius:"0 8px 8px 0",border:"1px solid "+T.border,borderLeft:"none",
-                          background:T.bgCard,color:T.primary,fontSize:18,fontWeight:900,
+                        style={{width:24,height:24,borderRadius:"0 5px 5px 0",border:"1px solid "+(isActive?T.gray400:T.border),borderLeft:"none",
+                          background:isActive?T.bgCard:"transparent",color:T.primary,fontSize:14,fontWeight:900,
                           cursor:useQty<g.totalRemain?"pointer":"not-allowed",opacity:useQty<g.totalRemain?1:.4,fontFamily:"inherit",padding:0}}>+</button>
                     </div>
                   </div>;
                 });
               })()}
+              </div>
             </div>}
             <div style={{ color:T.primary, padding: "6px 0 4px", marginBottom: 6, fontSize:14, fontWeight:800 }}>시술 ({SVC_LIST.length})</div>
             {catGroups.map(({cat, svcs}) => {
