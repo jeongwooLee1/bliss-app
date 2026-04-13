@@ -390,7 +390,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   const toggleService = (svcId, delta=1) => {
     setF(p => {
       const svcObj = SVC_LIST.find(s=>s.id===svcId);
-      const allowQty = svcAllowQty(svcObj);
+      const allowQty = svcObj ? svcAllowQty(svcId) : false;
       let newSvcs;
       if (allowQty) {
         // 수량 허용: delta=+1이면 추가, delta=-1이면 하나 제거
@@ -959,8 +959,9 @@ ${naverText}
                   return <div style={{borderBottom:"1px solid "+T.border,paddingBottom:4,marginBottom:4}}>
                     <div style={{padding:"4px 10px",fontSize:11,fontWeight:700,color:T.textMuted}}>📦 보유 패키지</div>
                     {Object.values(groups).map(g=>{
-                      const sel=(f.selectedServices||[]).includes("pkg__"+g.name);
-                      return <div key={g.name} onClick={()=>toggleService("pkg__"+g.name,1)}
+                      const pkgId="pkg__"+g.name;
+                      const sel=(f.selectedServices||[]).includes(pkgId);
+                      return <div key={g.name} onClick={(e)=>{e.stopPropagation();toggleService(pkgId,1);}}
                         style={{padding:"6px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:6,
                           background:sel?"#7c7cc810":"transparent",borderRadius:T.radius.sm,transition:"background .1s"}}>
                         {sel && <span style={{color:T.primary,fontWeight:700,fontSize:T.fs.sm,flexShrink:0}}>✓</span>}
