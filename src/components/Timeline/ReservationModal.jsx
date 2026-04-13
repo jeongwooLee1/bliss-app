@@ -813,11 +813,11 @@ ${naverText}
                         </>
                       )}
                     </div>
-                    <div style={{display:"flex",alignItems:"center",gap:4,marginTop:2}}>
+                    <div style={{display:"flex",alignItems:"center",gap:editingCust?6:4,marginTop:2}}>
                       <span style={{fontSize:11,color:"#aaa"}}>✉</span>
                       {editingCust ? (
-                        <input type="email" value={f.custEmail||""} onChange={e=>set("custEmail",e.target.value)} placeholder="이메일 입력"
-                          style={{flex:1,padding:"0 2px",fontSize:12,border:"none",background:"transparent",color:"#777",outline:"none",fontFamily:"inherit"}}/>
+                        <input type="email" value={f.custEmail||""} onChange={e=>set("custEmail",e.target.value)} placeholder="이메일"
+                          style={{flex:1,minWidth:90,fontSize:13,color:"#777",fontWeight:500,border:"1px solid #ccc",borderRadius:4,padding:"2px 6px",background:"#fff",fontFamily:"inherit",outline:"none"}}/>
                       ) : (
                         <CopySpan text={f.custEmail} style={{fontSize:12,color:"#777"}}>{f.custEmail||<span style={{color:"#ccc"}}>이메일 없음</span>}</CopySpan>
                       )}
