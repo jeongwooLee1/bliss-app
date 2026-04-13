@@ -85,25 +85,26 @@ function DatePick({ value, onChange, style, min }) {
 const STATUS_KEYS = ["confirmed","completed","cancelled","no_show"];
 const DEFAULT_SOURCES = ["네이버","전화","방문","소개","인스타","카카오","기타"];
 
-// 클릭 → 클립보드 복사 + 호버/복사 애니메이션
+// 클릭 → 클립보드 복사 + 호버(진하게)/복사(❤️ 토스트) 애니메이션
 function CopySpan({ text, children, style={} }) {
   const [copied, setCopied] = React.useState(false);
   const [hover, setHover] = React.useState(false);
   const copy = (e) => {
-    e.stopPropagation();
+    e.stopPropagation(); e.preventDefault();
     if (!text) return;
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 1200);
   };
   return <span onClick={copy} onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}
-    style={{...style, cursor:"pointer", position:"relative", transition:"all .15s",
-      borderBottom: hover ? "1px dashed "+(style.color||T.primary) : "1px dashed transparent",
+    style={{...style, cursor:"pointer", position:"relative", transition:"all .15s", userSelect:"none",
+      filter: hover ? "brightness(0.7)" : "none",
+      fontWeight: hover ? 800 : (style.fontWeight || 400),
       opacity: copied ? 0.6 : 1, transform: copied ? "scale(0.95)" : "scale(1)"}}>
     {children}
-    {copied && <span style={{position:"absolute",top:-18,left:"50%",transform:"translateX(-50%)",
+    {copied && <span style={{position:"absolute",top:-20,left:"50%",transform:"translateX(-50%)",
       fontSize:9,fontWeight:700,color:"#fff",background:"#333",borderRadius:4,padding:"2px 6px",
-      whiteSpace:"nowrap",animation:"fadeInUp .3s",zIndex:10,pointerEvents:"none"}}>복사됨</span>}
+      whiteSpace:"nowrap",animation:"fadeInUp .3s",zIndex:10,pointerEvents:"none"}}>복사 ❤️</span>}
   </span>;
 }
 
@@ -813,11 +814,9 @@ ${naverText}
                       )}
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:4,marginTop:2}}>
-                      <span style={{fontSize:11,color:"#aaa"}}>✉</span>
-                      <CopySpan text={f.custEmail} style={{fontSize:12,color:"#777"}}>
-                        <input type="email" value={f.custEmail||""} onChange={e=>set("custEmail",e.target.value)} placeholder="이메일 입력"
-                          style={{flex:1,padding:"0 2px",fontSize:12,border:"none",background:"transparent",color:"#777",outline:"none",fontFamily:"inherit",cursor:"pointer"}}/>
-                      </CopySpan>
+                      <CopySpan text={f.custEmail} style={{fontSize:11,color:"#aaa"}}>✉</CopySpan>
+                      <input type="email" value={f.custEmail||""} onChange={e=>set("custEmail",e.target.value)} placeholder="이메일 입력"
+                        style={{flex:1,padding:"0 2px",fontSize:12,border:"none",background:"transparent",color:"#777",outline:"none",fontFamily:"inherit"}}/>
                     </div>
                     {activePkgSummary.length > 0 && <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:3}}>
                       {activePkgSummary.map((pkg,i) => {
