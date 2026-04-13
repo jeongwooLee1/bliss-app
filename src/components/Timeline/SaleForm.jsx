@@ -282,6 +282,8 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     if (t === "annual") return true;
     return (p.total_count - p.used_count) > 0;
   });
+  // 활성 다회권 목록 (패키지 사용 자동 차감용)
+  const activeMultiPkgs = activePkgs.filter(p => _pkgType(p) === "package");
 
   // State: { [id]: { checked, amount } }
   const [items, setItems] = useState(() => {
