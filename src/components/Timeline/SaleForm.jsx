@@ -47,17 +47,17 @@ const SaleProdRow = React.memo(function SaleProdRow({ id, name, price, checked, 
   const [localAmt, setLocalAmt] = useState(amount || "");
   useEffect(() => { setLocalAmt(amount || ""); }, [checked]);
   return (
-    <div onClick={() => !checked && toggle(id, price)}
-      style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", borderRadius: 6, marginBottom: 2,
-        background: checked ? "#6bab9e10" : "transparent", cursor: "pointer", transition: "background .15s" }}>
+    <div className="sale-svc-row" onClick={() => !checked && toggle(id, price)}
+      style={{ display: "flex", alignItems: "center", gap: 4, padding: "1px 8px", borderRadius: 4,
+        background: checked ? "#7c7cc810" : "transparent", cursor: "pointer", transition: "background .15s", lineHeight: 1.4 }}>
       <span onClick={e => { e.stopPropagation(); toggle(id, price); }}
-        style={{ flex: 1, fontSize: 13, color: checked ? T.text : T.gray700, fontWeight: checked ? 700 : 400 }}>
-        {checked && <span style={{color:T.infoLt2,marginRight:4}}>✓</span>}{name}
+        style={{ flex: 1, fontSize: 13, color: checked ? T.text : T.gray700, fontWeight: checked ? 700 : 400, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+        {checked && <span style={{color:T.primary,marginRight:3}}>✓</span>}{name}
       </span>
-      <input className="inp" type="number" step="5000" value={checked ? localAmt : ""} placeholder="0"
+      <input type="number" step="5000" value={checked ? localAmt : ""} placeholder={price ? price.toLocaleString() : "0"}
         onClick={e => e.stopPropagation()}
         onChange={e => setLocalAmt(e.target.value)} onBlur={e => setAmt(id, e.target.value)} disabled={!checked}
-        style={{ width: 72, padding: "4px 6px", fontSize: 13, textAlign: "right", borderRadius: 6,
+        style={{ width: 95, padding: "2px 5px", fontSize: 13, textAlign: "right", borderRadius: 5, flexShrink: 0, minHeight: 0, height: 24, boxSizing: "border-box", fontFamily: "inherit", outline: "none",
           background: checked ? T.bgCard : "transparent", border: `1px solid ${checked ? T.gray400 : T.border}`,
           color: checked ? T.danger : T.gray400, fontWeight: checked ? 700 : 400 }} />
     </div>
