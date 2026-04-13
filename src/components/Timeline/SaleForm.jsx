@@ -836,10 +836,10 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
             {svcTotal > 0 && <div style={{flex:1,minWidth:0,padding:"8px 12px",background:T.bgCard,borderRadius:T.radius.md,border:"1px solid "+T.border}}>
               <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.primary,marginBottom:6}}><I name="scissors" size={12}/> 시술 결제 <span style={{color:T.danger,fontWeight:T.fw.black}}>{fmt(svcPayTotal)}원</span></div>
               <div style={{display:"flex",gap:T.sp.xs,flexWrap:"wrap"}}>
-                {/* 보유권 버튼 - 같은 이름 합산 */}
+                {/* 보유권 버튼 - 다담권만 (다회권은 왼쪽 패키지 섹션에서 관리) */}
                 {(()=>{
                   const groups = {};
-                  activePkgs.filter(p=>_pkgType(p)!=="annual").forEach(p=>{
+                  activePkgs.filter(p=>_pkgType(p)==="prepaid").forEach(p=>{
                     const t=_pkgType(p); const name=(p.service_name?.split("(")[0]||"").replace(/\s*5회$/,"").trim();
                     const key=name+"_"+t;
                     if(!groups[key]) groups[key]={name,type:t,ids:[],totalRemain:0,totalBal:0};
@@ -849,32 +849,14 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                   });
                   return Object.values(groups).map(g=>{
                     const isActive=g.ids.some(id=>!!pkgUse[id]);
-                    const label=g.type==="prepaid"?`🎫 ${g.name} +${g.totalBal.toLocaleString()}`:`🎟 ${g.name} +${g.totalRemain}`;
+                    const label=`🎫 ${g.name} +${g.totalBal.toLocaleString()}`;
                     return <button key={g.ids[0]} onClick={()=>{
-                      if(g.type==="package") {
-                        // 유효기간 있는 것 1개만 토글 (1회 차감)
-                        const sorted=[...g.ids].sort((a,b)=>{
-                          const pa=activePkgs.find(p=>p.id===a), pb=activePkgs.find(p=>p.id===b);
-                          const ea=((pa?.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1]||"9999";
-                          const eb=((pb?.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1]||"9999";
-                          return ea.localeCompare(eb);
-                        });
-                        setPkgUse(prev=>{
-                          const anyActive=sorted.some(id=>!!prev[id]);
-                          const next={...prev};
-                          sorted.forEach(id=>{next[id]=false;}); // 전부 해제
-                          if(!anyActive && sorted[0]) next[sorted[0]]=true; // 첫 번째만 활성
-                          return next;
-                        });
-                      }
-                      if(g.type==="prepaid") {
                         setPkgUse(prev=>{
                           const anyActive=g.ids.some(id=>!!prev[id]);
                           const next={...prev};
                           g.ids.forEach(id=>{next[id]=anyActive?0:Math.min(_pkgBalance(activePkgs.find(p=>p.id===id)),svcPayTotal);});
                           return next;
                         });
-                      }
                     }}
                     style={{padding:"6px 14px",fontSize:13,fontWeight:T.fw.black,borderRadius:T.radius.xl,cursor:"pointer",fontFamily:"inherit",transition:"all .2s",
                       border:isActive?"2px solid #E65100":"2px solid #FFB74D",
