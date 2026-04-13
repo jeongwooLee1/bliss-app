@@ -1233,11 +1233,10 @@ ${naverText}
 
 [시술상품 선택 규칙]
 - 메모에서 실제 시술명을 찾으세요.
-- 동의어: 음모왁싱=브라질리언, 음부왁싱=브라질리언, 브라질리언왁싱=브라질리언
+- 동의어: 음모왁싱=브라질리언, 음부왁싱=브라질리언, 브라질리언왁싱=브라질리언, 패키지/연간할인권 이용중=브라질리언
 - '재방문', '신규', '이벤트' 등 단독으로 나오면 시술이 아닙니다.
 - 시술상품 목록에서 가장 유사한 항목을 선택하세요. 없으면 빈 배열로 두세요.
-- 보유 패키지: ${(()=>{const mp=(custPkgsInfo||[]).filter(p=>{const n=(p.service_name||"").toLowerCase();return !n.includes("다담권")&&!n.includes("선불")&&!n.includes("10%추가적립")&&!n.includes("연간")&&!n.includes("할인권")&&!n.includes("회원권")&&(p.total_count||0)-(p.used_count||0)>0;});if(!mp.length)return"없음";const g={};mp.forEach(p=>{const nm=(p.service_name?.split("(")[0]||"").replace(/\s*\\d+회$/,"").trim();if(!g[nm])g[nm]=0;g[nm]+=(p.total_count||0)-(p.used_count||0);});return Object.entries(g).map(([n,r])=>n+" "+r+"회(id:pkg__"+n+")").join(", ");})()}
-- 패키지 규칙: 시술옵션에 "패키지/PKG/패키지이용" 키워드가 있고 보유 패키지가 있으면 해당 pkg__이름 id를 matchedServiceIds에 포함시키세요.
+- 패키지/연간할인권/PKG 이용 고객도 실제 시술(브라질리언 등)을 반드시 선택하세요. 패키지는 결제수단일 뿐 시술 자체를 대체하지 않습니다.
 ${rulesBlock}
 
 [예약 정보]
@@ -1278,7 +1277,8 @@ ${rulesBlock}
                       if(!cur.includes(notes)) updates.memo = cur ? cur+"\n[AI] "+notes : "[AI] "+notes;
                     }
                     setF(p=>({...p,...updates}));
-                    alert(`시술 ${newSvcs.length}개, 태그 ${newTags.length}개 매칭${notes?"\n특이: "+notes:""}`);
+                    console.log("[AI2 RAW]", result);
+                    alert(`시술 ${newSvcs.length}개, 태그 ${newTags.length}개 매칭${notes?"\n특이: "+notes:""}\n\n[DEBUG] raw=${JSON.stringify(result.matchedServiceIds||[])}\nfinal=${JSON.stringify(newSvcs)}`);
                   } else { alert("AI 분석 결과를 파싱할 수 없습니다"); }
                 } catch(e){ alert("AI 분석 실패: "+e.message); }
               }}>AI 분석</Btn>}
