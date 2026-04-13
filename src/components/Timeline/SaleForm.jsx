@@ -299,13 +299,42 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     return init;
   });
 
+  // "패키지 사용" 시술 판별
+  const isPkgUseSvc = (svcId) => svcId === "svc_pkg_use_35" || svcId === "svc_pkg_use_45";
+  const hasPkgUseChecked = () => items["svc_pkg_use_35"]?.checked || items["svc_pkg_use_45"]?.checked;
+
   const toggle = useCallback((id, defPrice) => {
     setItems(prev => {
       const cur = prev[id] || { checked: false, amount: 0 };
       const newChecked = !cur.checked;
       return { ...prev, [id]: { ...cur, checked: newChecked, amount: newChecked ? (cur.amount || defPrice || 0) : 0 } };
     });
-  }, []);
+    // "패키지 사용" 시술 체크 → 다회권 자동 선택
+    if (isPkgUseSvc(id)) {
+      const willCheck = !(items[id]?.checked);
+      if (willCheck && activeMultiPkgs.length > 0) {
+        // 유효기간 기준 정렬 → 첫 번째 자동 선택
+        const sorted = [...activeMultiPkgs].sort((a,b) => {
+          const ea = ((a.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1]||"9999";
+          const eb = ((b.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1]||"9999";
+          return ea.localeCompare(eb);
+        });
+        setPkgUse(prev => {
+          const next = {...prev};
+          sorted.forEach(p => { next[p.id] = false; });
+          if (sorted[0]) next[sorted[0].id] = true;
+          return next;
+        });
+      } else if (!willCheck) {
+        // 체크 해제 → 다회권도 해제
+        setPkgUse(prev => {
+          const next = {...prev};
+          activeMultiPkgs.forEach(p => { next[p.id] = false; });
+          return next;
+        });
+      }
+    }
+  }, [items, activeMultiPkgs]);
   const setAmt = useCallback((id, v) => setItems(prev => ({ ...prev, [id]: { ...prev[id], amount: Number(v) || 0 } })), []);
   const setLabel = useCallback((id, v) => setItems(prev => ({ ...prev, [id]: { ...prev[id], label: v } })), []);
 
@@ -375,7 +404,8 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   }, [prodPayTotal]);
 
   const handleSubmit = () => {
-    if (svcTotal + prodTotal <= 0) {
+    const isPkgUseSubmit = hasPkgUseChecked() && Object.values(pkgUse).some(v => v === true);
+    if (svcTotal + prodTotal <= 0 && !isPkgUseSubmit) {
       alert("시술 또는 제품을 선택해주세요.");
       return;
     }
@@ -447,7 +477,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       svcCash: payMethod.svcCash, svcTransfer: payMethod.svcTransfer, svcCard: payMethod.svcCard, svcPoint: payMethod.svcPoint,
       prodCash: payMethod.prodCash, prodTransfer: payMethod.prodTransfer, prodCard: payMethod.prodCard, prodPoint: payMethod.prodPoint,
       gift: 0, orderNum: String(252000 + Math.floor(Math.random() * 200)),
-      memo: (isNaver && naverPrepaid > 0 ? `[네이버예약금 ${naverPrepaid.toLocaleString()}원] ` : "") + (saleMemo || ""),
+      memo: (isPkgUseSubmit ? "[패키지 사용] " : "") + (isNaver && naverPrepaid > 0 ? `[네이버예약금 ${naverPrepaid.toLocaleString()}원] ` : "") + (saleMemo || ""),
       createdAt: new Date().toISOString(),
     };
     onSubmit(sale);
