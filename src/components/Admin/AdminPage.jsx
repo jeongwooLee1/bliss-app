@@ -12,6 +12,7 @@ import AdminProductItems from './AdminProductItems'
 import AdminResSources from './AdminResSources'
 import AdminNoti from './AdminNoti'
 import AdminAISettings from './AdminAISettings'
+import AdminMemoTemplates from './AdminMemoTemplates'
 import AdminServiceTags from './AdminServiceTags'
 import SchedulePage from '../Schedule/SchedulePage'
 
@@ -376,6 +377,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     ]}] : []),
     ...(isMaster ? [{section:"알림 & AI",items:[
       {key:"notiSettings",icon:"bell",     label:"알림톡 설정",    desc:"카카오 알림톡 자동 발송 설정"},
+      {key:"memoTemplates",icon:"file",      label:"메모 템플릿",    desc:"매출·예약·고객 메모 양식 설정"},
       ...(isOwner ? [{key:"aisettings",  icon:"sparkles", label:"AI 설정",        desc:"AI 분석 규칙 관리"}] : []),
     ]}] : []),
     {section:"내 계정",items:[
@@ -419,6 +421,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     {tab==="svctags"      && isMaster &&<AdminServiceTags  data={data} setData={setData}/>}
     {tab==="ressrc"       && isMaster &&<AdminResSources   data={data} setData={setData}/>}
     {tab==="notiSettings" && isMaster &&<AdminNoti         data={data} setData={setData} sb={sb} bizId={bizId} branches={(data?.branches||[]).filter(b=>userBranches.includes(b.id))}/>}
+    {tab==="memoTemplates"&&<AdminMemoTemplates bizId={bizId}/>}
     {tab==="aisettings"   && isMaster &&<AdminAISettings   data={data} sb={sb} bizId={bizId}/>}
     {tab==="brandmembers" && isMaster &&<AdminBrandMembers data={data} setData={setData} bizId={bizId} currentUser={currentUser}/>}
     {tab==="mypage"       &&<AdminMyPage       currentUser={currentUser} onLogout={onLogout}/>}

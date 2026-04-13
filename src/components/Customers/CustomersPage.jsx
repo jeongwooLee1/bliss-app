@@ -17,7 +17,7 @@ const sx = {
   }),
 };
 
-function CustModal({ item, isEdit, onSave, onClose, defBranch, userBranches, branches }) {
+function CustModal({ item, isEdit, onSave, onClose, defBranch, userBranches, branches, memoTemplate }) {
   const isNew = !isEdit;
   const [form, setForm] = React.useState(() => item ? {...item, smsConsent: item.smsConsent !== false} : {id:'cust_'+uid(),name:'',phone:'',gender:'',bid:defBranch||'',memo:'',visits:0, joinDate: new Date().toISOString().slice(0,10), smsConsent: true});
   const f = (k,v) => setForm(p=>({...p,[k]:v}));
@@ -55,7 +55,11 @@ function CustModal({ item, isEdit, onSave, onClose, defBranch, userBranches, bra
             ))}
           </div>
         </FLD>
-        <FLD label="메모"><textarea className="inp" rows={2} value={form.memo||''} onChange={e=>f('memo',e.target.value)} placeholder="메모"/></FLD>
+        <FLD label={<span style={{display:"flex",alignItems:"center",gap:6}}>메모
+          {memoTemplate && <button onClick={()=>f('memo',(form.memo||"")?form.memo+"\n"+memoTemplate:memoTemplate)}
+            style={{padding:"1px 6px",fontSize:10,fontWeight:600,borderRadius:4,border:"1px solid #ddd",background:"#fff",color:T.primary,cursor:"pointer",fontFamily:"inherit"}}
+            title="템플릿 불러오기">📋</button>}
+        </span>}><textarea className="inp" rows={2} value={form.memo||''} onChange={e=>f('memo',e.target.value)} placeholder="메모"/></FLD>
       </div>
       <div style={{display:'flex',gap:10,marginTop:20}}>
         <Btn variant="secondary" style={{flex:1}} onClick={onClose}>취소</Btn>
@@ -714,7 +718,8 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
 
     {showModal && <CustModal item={editItem} isEdit={!!editItem?.id} onSave={handleSave}
       onClose={()=>_mc(()=>{setShowModal(false);setEditItem(null)})}
-      defBranch={userBranches[0]} userBranches={userBranches} branches={data.branches||[]}/>}
+      defBranch={userBranches[0]} userBranches={userBranches} branches={data.branches||[]}
+      memoTemplate={(()=>{try{const s=typeof (data?.businesses||[])[0]?.settings==='string'?JSON.parse((data.businesses||[])[0].settings):(data?.businesses||[])[0]?.settings||{};return s?.memo_templates?.customer||"";}catch{return "";}})()}/>}
   </div>;
 }
 

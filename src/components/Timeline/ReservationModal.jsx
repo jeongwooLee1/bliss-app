@@ -1111,6 +1111,16 @@ ${naverText}
 
           {/* 예약메모 - 직원 메모 (네이버 포함 모두 수정 가능) */}
           <div>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+              <span style={{fontSize:11,color:T.textMuted,fontWeight:600}}>직원 메모</span>
+              {(()=>{
+                try{const s=typeof (data?.businesses||[])[0]?.settings==='string'?JSON.parse((data.businesses||[])[0].settings):(data?.businesses||[])[0]?.settings||{};
+                  if(s?.memo_templates?.reservation) return <button onClick={()=>set("memo",(f.memo||"")?f.memo+"\n"+s.memo_templates.reservation:s.memo_templates.reservation)}
+                    style={{padding:"2px 8px",fontSize:11,fontWeight:600,borderRadius:5,border:"1px solid "+T.border,background:T.bgCard,color:T.primary,cursor:"pointer",fontFamily:"inherit"}}
+                    title="템플릿 불러오기">📋 템플릿</button>;
+                }catch{} return null;
+              })()}
+            </div>
             <textarea className="inp inp-memo" rows={4} value={f.memo} onChange={e=>set("memo",e.target.value)} style={{resize:"vertical",minHeight:90}} placeholder="직원 메모를 입력하세요"/>
             
           </div>
