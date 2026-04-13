@@ -317,11 +317,38 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   // 다회권 → 시술 목록 최상단에 증감 버튼으로 표시
   // pkgItems: { "pkg__{pkgId}": { qty: 0~N } }
   const [pkgItems, setPkgItems] = useState({});
-  // 다회권 로드 시 자동: 첫 번째 다회권 qty=1
+  // 예약에서 넘어온 pkg__ 항목 또는 다회권 자동 선택
   const pkgAutoSelected = useRef(false);
   useEffect(() => {
     if (pkgAutoSelected.current || activeMultiPkgs.length === 0) return;
     pkgAutoSelected.current = true;
+    // 예약에서 넘어온 selectedServices에 pkg__ 항목이 있으면 그걸 사용
+    const selSvcs = reservation?.selectedServices || [];
+    const pkgFromRes = selSvcs.filter(id => id.startsWith("pkg__"));
+    if (pkgFromRes.length > 0) {
+      // 예약에서 선택된 패키지를 매칭
+      const newPkgItems = {};
+      const newPkgUse = {};
+      pkgFromRes.forEach(pkgId => {
+        const pkgName = pkgId.replace("pkg__","");
+        // 이름으로 activeMultiPkgs에서 매칭
+        const matched = activeMultiPkgs.find(p => {
+          const nm = (p.service_name?.split("(")[0]||"").replace(/\s*\d+회$/,"").trim();
+          return nm === pkgName;
+        });
+        if (matched) {
+          newPkgItems["pkg__" + matched.id] = { qty: 1 };
+          newPkgUse[matched.id] = 1;
+        }
+      });
+      if (Object.keys(newPkgItems).length > 0) {
+        setPkgItems(newPkgItems);
+        setPkgUse(prev => ({ ...prev, ...newPkgUse }));
+        // 일반 시술은 예약에서 넘어온 것 유지 (pkg__ 제외한 시술)
+        return;
+      }
+    }
+    // 예약에 pkg__가 없으면 첫 번째 다회권 자동 선택
     const sorted = [...activeMultiPkgs].sort((a,b) => {
       const ea = ((a.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1]||"9999";
       const eb = ((b.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1]||"9999";
