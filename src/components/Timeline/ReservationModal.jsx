@@ -85,6 +85,28 @@ function DatePick({ value, onChange, style, min }) {
 const STATUS_KEYS = ["confirmed","completed","cancelled","no_show"];
 const DEFAULT_SOURCES = ["네이버","전화","방문","소개","인스타","카카오","기타"];
 
+// 클릭 → 클립보드 복사 + 호버/복사 애니메이션
+function CopySpan({ text, children, style={} }) {
+  const [copied, setCopied] = React.useState(false);
+  const [hover, setHover] = React.useState(false);
+  const copy = (e) => {
+    e.stopPropagation();
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1200);
+  };
+  return <span onClick={copy} onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}
+    style={{...style, cursor:"pointer", position:"relative", transition:"all .15s",
+      borderBottom: hover ? "1px dashed "+(style.color||T.primary) : "1px dashed transparent",
+      opacity: copied ? 0.6 : 1, transform: copied ? "scale(0.95)" : "scale(1)"}}>
+    {children}
+    {copied && <span style={{position:"absolute",top:-18,left:"50%",transform:"translateX(-50%)",
+      fontSize:9,fontWeight:700,color:"#fff",background:"#333",borderRadius:4,padding:"2px 6px",
+      whiteSpace:"nowrap",animation:"fadeInUp .3s",zIndex:10,pointerEvents:"none"}}>복사됨</span>}
+  </span>;
+}
+
 function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBranch, userBranches, data, setData, setPage, naverColShow={}, setPendingChat, setPendingOpenCust }) {
   // 카테고리 순서 → 카테고리 내 시술 순서 (시술상품관리와 동일)
   const _catSort = {};
@@ -783,23 +805,19 @@ ${naverText}
                         </>
                       ) : (
                         <>
-                          <span onClick={()=>{navigator.clipboard.writeText(f.custName||"");}} title="이름 복사"
-                            style={{fontSize:14,fontWeight:700,color:"#1a1a2e",cursor:"pointer"}}>{f.custName}</span>
+                          <CopySpan text={f.custName} style={{fontSize:14,fontWeight:700,color:"#1a1a2e"}}>{f.custName}</CopySpan>
                           <span style={{fontSize:11,color:"#888"}}>·</span>
-                          <span onClick={()=>{navigator.clipboard.writeText(f.custPhone||"");}} title="연락처 복사"
-                            style={{fontSize:13,color:T.primary,fontWeight:500,cursor:"pointer"}}>{f.custPhone||"연락처 없음"}</span>
-                          {custNum && <span onClick={()=>{navigator.clipboard.writeText(custNum);}} title="고객번호 복사"
-                            style={{fontSize:13,color:"#999",fontFamily:"monospace",cursor:"pointer"}}>{custNum}</span>}
+                          <CopySpan text={f.custPhone} style={{fontSize:13,color:T.primary,fontWeight:500}}>{f.custPhone||"연락처 없음"}</CopySpan>
+                          {custNum && <CopySpan text={custNum} style={{fontSize:13,color:"#999",fontFamily:"monospace"}}>{custNum}</CopySpan>}
                         </>
                       )}
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:4,marginTop:2}}>
                       <span style={{fontSize:11,color:"#aaa"}}>✉</span>
-                      <span onClick={()=>{if(f.custEmail) navigator.clipboard.writeText(f.custEmail);}} title="이메일 복사"
-                        style={{cursor:f.custEmail?"pointer":"default"}}>
+                      <CopySpan text={f.custEmail} style={{fontSize:12,color:"#777"}}>
                         <input type="email" value={f.custEmail||""} onChange={e=>set("custEmail",e.target.value)} placeholder="이메일 입력"
-                          style={{flex:1,padding:"0 2px",fontSize:12,border:"none",background:"transparent",color:"#777",outline:"none",fontFamily:"inherit",cursor:"inherit"}}/>
-                      </span>
+                          style={{flex:1,padding:"0 2px",fontSize:12,border:"none",background:"transparent",color:"#777",outline:"none",fontFamily:"inherit",cursor:"pointer"}}/>
+                      </CopySpan>
                     </div>
                     {activePkgSummary.length > 0 && <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:3}}>
                       {activePkgSummary.map((pkg,i) => {
