@@ -527,6 +527,8 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
 - 방문횟수: ${f.visitCount||0}회
 - 예약일시: ${f.date||""} ${f.time||""}
 - 시술상품 목록(수량허용=[qty]): ${(data?.services||[]).map(s=>svcAllowQty(s)?`${s.name}[qty](id:${s.id})`:s.name+`(id:${s.id})`).join(', ')}
+- 보유 패키지: ${(()=>{const mp=(custPkgsInfo||[]).filter(p=>{const n=(p.service_name||"").toLowerCase();return !n.includes("다담권")&&!n.includes("선불")&&!n.includes("10%추가적립")&&!n.includes("연간")&&!n.includes("할인권")&&!n.includes("회원권")&&(p.total_count||0)-(p.used_count||0)>0;});if(!mp.length)return"없음";const g={};mp.forEach(p=>{const nm=(p.service_name?.split("(")[0]||"").replace(/\s*\d+회$/,"").trim();if(!g[nm])g[nm]=0;g[nm]+=(p.total_count||0)-(p.used_count||0);});return Object.entries(g).map(([n,r])=>n+" "+r+"회(id:pkg__"+n+")").join(", ");})()}
+- 패키지 사용 규칙: 고객이 패키지를 보유하고 있고, 시술옵션에서 "패키지/패키지이용/PKG"가 포함되어 있으면 해당 패키지(pkg__이름)를 matchedServiceIds에 포함시키세요. 일반 시술과 패키지를 동시에 선택 가능합니다.
 - 시술메뉴(네이버): ${(f.selectedServices||[]).length > 0 ? (f.selectedServices||[]).map(id=>{const s=(data?.services||[]).find(x=>x.id===id);return s?s.name:id;}).join(", ") : "미선택"}
 - customers DB 등록 여부: ${custLinked ? "등록된 고객" : "미등록"}
 - 고객 성별(DB): ${custGender==="M"?"남성":custGender==="F"?"여성":"미등록 (대화내용에서 판단하세요)"}
@@ -929,13 +931,47 @@ ${naverText}
                 <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bold,color:T.gray700,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                   시술상품
                   {(f.selectedServices||[]).length > 0
-                    ? <span style={{color:T.primary,fontWeight:T.fw.bolder}}>{groupSvcNames(f.selectedServices, SVC_LIST).join(", ")} <span style={{background:"rgba(140,80,220,.12)",borderRadius:T.radius.sm,padding:"1px 6px",fontSize:T.fs.sm}}>{svcDurTotal}분{!hasGender&&hasGenderDep?"":" / "+fmt(svcPriceTotal)+"원"}</span></span>
+                    ? <span style={{color:T.primary,fontWeight:T.fw.bolder}}>{[
+                        ...(f.selectedServices||[]).filter(id=>id.startsWith("pkg__")).map(id=>"📦"+id.replace("pkg__","")),
+                        ...groupSvcNames((f.selectedServices||[]).filter(id=>!id.startsWith("pkg__")), SVC_LIST)
+                      ].join(", ")} <span style={{background:"rgba(140,80,220,.12)",borderRadius:T.radius.sm,padding:"1px 6px",fontSize:T.fs.sm}}>{svcDurTotal}분{!hasGender&&hasGenderDep?"":" / "+fmt(svcPriceTotal)+"원"}</span></span>
                     : <span style={{color:T.textMuted,fontWeight:T.fw.normal}}>선택하세요</span>}
                 </span>
                 <span className={"tags-acc-chev"+(showSvcPicker?" open":"")}>▾</span>
               </div>
               <div className={"tags-acc-body"+(showSvcPicker?" open":"")}>
               <div style={{maxHeight:280,overflow:"auto"}}>
+                {/* 보유 패키지 — 시술 목록 최상단 */}
+                {(()=>{
+                  const multiPkgs = (custPkgsInfo||[]).filter(p => {
+                    const n=(p.service_name||"").toLowerCase();
+                    if(n.includes("다담권")||n.includes("선불")||n.includes("10%추가적립")) return false;
+                    if(n.includes("연간")||n.includes("할인권")||n.includes("회원권")) return false;
+                    return (p.total_count||0)-(p.used_count||0)>0;
+                  });
+                  if(!multiPkgs.length) return null;
+                  const groups={};
+                  multiPkgs.forEach(p=>{
+                    const name=(p.service_name?.split("(")[0]||"").replace(/\s*\d+회$/,"").trim();
+                    if(!groups[name]) groups[name]={name,totalRemain:0};
+                    groups[name].totalRemain+=(p.total_count||0)-(p.used_count||0);
+                  });
+                  return <div style={{borderBottom:"1px solid "+T.border,paddingBottom:4,marginBottom:4}}>
+                    <div style={{padding:"4px 10px",fontSize:11,fontWeight:700,color:T.textMuted}}>📦 보유 패키지</div>
+                    {Object.values(groups).map(g=>{
+                      const sel=(f.selectedServices||[]).includes("pkg__"+g.name);
+                      return <div key={g.name} onClick={()=>toggleService("pkg__"+g.name,1)}
+                        style={{padding:"6px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:6,
+                          background:sel?"#7c7cc810":"transparent",borderRadius:T.radius.sm,transition:"background .1s"}}>
+                        {sel && <span style={{color:T.primary,fontWeight:700,fontSize:T.fs.sm,flexShrink:0}}>✓</span>}
+                        <span style={{fontSize:T.fs.sm,color:"#7C4DFF",background:"#EDE7F6",borderRadius:T.radius.sm,padding:"1px 5px"}}>패키지</span>
+                        <span style={{flex:1,fontSize:T.fs.sm,fontWeight:sel?600:400,color:sel?T.text:T.gray600}}>{g.name}</span>
+                        <span style={{fontSize:T.fs.sm,color:"#999"}}>{g.totalRemain}회</span>
+                        <span style={{fontSize:T.fs.sm,color:T.gray400,fontWeight:700,minWidth:55,textAlign:"right"}}>0원</span>
+                      </div>;
+                    })}
+                  </div>;
+                })()}
                 {SVC_LIST.length===0 && <div style={{padding:12,fontSize:T.fs.sm,color:T.gray500,textAlign:"center"}}>시술 상품이 없습니다 (관리설정 → 시술상품관리에서 등록)</div>}
                 {SVC_LIST.length>0 && SVC_LIST.map(svc=>{
                       const sel = (f.selectedServices||[]).includes(svc.id);
