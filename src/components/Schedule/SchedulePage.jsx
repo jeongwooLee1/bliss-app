@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
-import { T } from '../../lib/constants'
+import { T, SCH_BRANCH_MAP } from '../../lib/constants'
 import { I } from '../common/I'
 import { useScheduleData, useEmployees } from '../../lib/useData'
 import { supabase } from '../../lib/supabase'
@@ -267,8 +267,43 @@ export default function SchedulePage({ employees: propEmps }) {
     })
   }, [curKey])
 
+  // 근무표→타임라인 동기화: "지원(강남)" ↔ empOverride_v1
+  const schNameToBranchId = useMemo(() => {
+    const map = {};
+    BRANCHES_SCH.forEach(b => {
+      if (SCH_BRANCH_MAP[b.id]) map[b.name] = SCH_BRANCH_MAP[b.id];
+    });
+    return map;
+  }, []);
+
+  const syncSchToOverride = useCallback((empId, date, status) => {
+    const overrideKey = empId + "_" + date;
+    supabase.from('schedule_data').select('value').eq('key', 'empOverride_v1').single()
+      .then(({ data: row }) => {
+        const raw = row?.value ? (typeof row.value === 'string' ? JSON.parse(row.value) : row.value) : {};
+        if (isSupport(status)) {
+          // "지원(강남)" → branchId 찾기
+          const match = status.match(/^지원\((.+)\)$/);
+          const brName = match?.[1];
+          const targetBid = brName ? schNameToBranchId[brName] : null;
+          if (targetBid) {
+            raw[overrideKey] = { segments: [{ branchId: targetBid, from: null, until: null }] };
+          }
+        } else {
+          // 근무/휴무 등 → override 삭제
+          delete raw[overrideKey];
+        }
+        return supabase.from('schedule_data').upsert({
+          id: 'empOverride_v1', key: 'empOverride_v1',
+          value: JSON.stringify(raw), updated_at: new Date().toISOString()
+        });
+      }).catch(console.error);
+  }, [schNameToBranchId]);
+
   const setS = useCallback((eid, ds, s) => {
     setSch(p => ({ ...p, [eid]:{ ...(p[eid]||{}), [ds]:s } }))
+    // empOverride_v1 동기화 (지원 상태 변경 시)
+    syncSchToOverride(eid, ds, s)
     // empReqs sync
     const key = eid + '__' + ds
     const emp = ALL_EMPLOYEES.find(e => e.id === eid)
@@ -281,7 +316,7 @@ export default function SchedulePage({ employees: propEmps }) {
         return next
       })
     }
-  }, [setSch, ALL_EMPLOYEES, setEmpReqs, saveEmpReqs])
+  }, [setSch, ALL_EMPLOYEES, setEmpReqs, saveEmpReqs, syncSchToOverride])
 
   const onSetEmpSetting = (eid, key, val) => {
     setEmpSettings(p => {

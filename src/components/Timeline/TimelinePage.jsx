@@ -341,6 +341,48 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     return branchNameToId[match[1]] || null;
   };
 
+  // branchId → 근무표 지점명 역변환 (타임라인→근무표 동기화용)
+  const branchIdToSchName = React.useMemo(() => {
+    const map = {};
+    // SCH_BRANCH_MAP: gangnam→br_4bcauqvrb, BRANCHES_SCH 대신 data.branches 사용
+    Object.entries(SCH_BRANCH_MAP).forEach(([key, bid]) => {
+      const br = (data?.branches || []).find(b => b.id === bid);
+      if (br) {
+        const name = (br.short || br.name || "").replace(/본?점$/, "");
+        if (name) map[bid] = name;
+      }
+    });
+    return map;
+  }, [data?.branches]);
+
+  // 타임라인 override 변경 → schHistory_v1 DB 동기화
+  const syncOverrideToSch = (empId, date, overrideData) => {
+    const monthKey = date.slice(0, 7);
+    let newStatus = "근무";
+    if (overrideData && overrideData.segments?.length) {
+      const emp = BASE_EMP_LIST.find(e => e.id === empId);
+      const baseBid = emp?.branch_id;
+      const targetSeg = overrideData.segments.find(s => s.branchId !== baseBid)
+                     || overrideData.segments[overrideData.segments.length - 1];
+      const brName = branchIdToSchName[targetSeg?.branchId];
+      if (brName) newStatus = `지원(${brName})`;
+    }
+    // schHistory_v1 raw fetch → patch → upsert
+    const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
+    fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.schHistory_v1&select=value`, { headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY } })
+      .then(r => r.json())
+      .then(rows => {
+        const raw = rows?.[0]?.value ? (typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value) : {};
+        if (!raw[monthKey]) raw[monthKey] = {};
+        if (!raw[monthKey][empId]) raw[monthKey][empId] = {};
+        raw[monthKey][empId][date] = newStatus;
+        return fetch(`${SB_URL}/rest/v1/schedule_data`, {
+          method: "POST", headers: H,
+          body: JSON.stringify({ id: "schHistory_v1", key: "schHistory_v1", value: JSON.stringify(raw), updated_at: new Date().toISOString() })
+        });
+      }).catch(console.error);
+  };
+
   const schHistoryLoaded = React.useRef(false);
   const getWorkingStaff = (branchId, date) => {
     if (!schHistory) {
@@ -1658,17 +1700,20 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                               const hours = Array.from({length:48},(_,i)=>{const h=Math.floor(i/2),m=(i%2)*30;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;}).filter(t=>{const hh=parseInt(t);return hh>=startHour&&hh<endHour;});
                               const doAdd = (exclusive) => {
                                 const overrideKey = empName+"_"+selDate;
+                                let ovData;
                                 if(exclusive) {
                                   // 이동: 대상 지점에만
-                                  setEmpBranchOverride(p=>({...p,[overrideKey]:{segments:[{branchId:targetBid,from:null,until:null}],exclusive:true}}));
+                                  ovData = {segments:[{branchId:targetBid,from:null,until:null}],exclusive:true};
                                 } else {
                                   // 지원: 원래 지점(~시작시간) + 대상 지점(시작시간~)
                                   const from = supportFrom || "14:00";
                                   const segs = [];
                                   if(baseBid) segs.push({branchId:baseBid, from:null, until:from});
                                   segs.push({branchId:targetBid, from, until:null});
-                                  setEmpBranchOverride(p=>({...p,[overrideKey]:{segments:segs}}));
+                                  ovData = {segments:segs};
                                 }
+                                setEmpBranchOverride(p=>({...p,[overrideKey]:ovData}));
+                                syncOverrideToSch(empName, selDate, ovData);
                                 setAddStaffPopup(null);
                               };
                               return <div style={{borderTop:"2px solid "+T.primary,padding:"8px 12px"}}>
@@ -1772,7 +1817,9 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                 const firstFrom = merged[0]?.from || null;
                                 merged = [{branchId:baseBranchId, from:null, until:firstFrom}, ...merged];
                               }
-                              setEmpBranchOverride(p=>({...p,[overrideKey2]:{segments:merged}}));
+                              const ovData = {segments:merged};
+                              setEmpBranchOverride(p=>({...p,[overrideKey2]:ovData}));
+                              syncOverrideToSch(room.staffId, selDate, ovData);
                               setEmpMovePopup(null);
                             };
 
@@ -1781,9 +1828,12 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                               const newSegs = segs.filter(s=>s.branchId!==branchId);
                               if(newSegs.length===0) {
                                 setEmpBranchOverride(p=>{const n={...p};delete n[overrideKey2];return n;});
+                                syncOverrideToSch(room.staffId, selDate, null);
                               } else {
                                 const reindexed = newSegs.sort((a,b)=>(!a.from?-1:!b.from?1:a.from.localeCompare(b.from))).map((s,i,arr)=>({...s,until:arr[i+1]?.from||null}));
-                                setEmpBranchOverride(p=>({...p,[overrideKey2]:{segments:reindexed}}));
+                                const ovData = {segments:reindexed};
+                                setEmpBranchOverride(p=>({...p,[overrideKey2]:ovData}));
+                                syncOverrideToSch(room.staffId, selDate, ovData);
                               }
                               setEmpMovePopup(null);
                             };
@@ -1827,7 +1877,9 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                     const overrideKey2 = room.staffId+"_"+selDate;
                                     // 완전 이동: 원래 매장 제거, 대상 매장만
                                     const newSeg = {branchId:addBranch, from:addFrom||null, until:null};
-                                    setEmpBranchOverride(p=>({...p,[overrideKey2]:{segments:[newSeg], exclusive:true}}));
+                                    const ovData = {segments:[newSeg], exclusive:true};
+                                    setEmpBranchOverride(p=>({...p,[overrideKey2]:ovData}));
+                                    syncOverrideToSch(room.staffId, selDate, ovData);
                                     setEmpMovePopup(null);
                                   }} disabled={!addBranch}
                                     style={{flex:1,padding:"5px 0",borderRadius:7,border:"none",background:addBranch?T.primary:T.gray300,color:"#fff",fontSize:11,fontWeight:700,cursor:addBranch?"pointer":"not-allowed",fontFamily:"inherit"}}
