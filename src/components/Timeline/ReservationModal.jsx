@@ -814,9 +814,13 @@ ${naverText}
                       )}
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:4,marginTop:2}}>
-                      <CopySpan text={f.custEmail} style={{fontSize:11,color:"#aaa"}}>✉</CopySpan>
-                      <input type="email" value={f.custEmail||""} onChange={e=>set("custEmail",e.target.value)} placeholder="이메일 입력"
-                        style={{flex:1,padding:"0 2px",fontSize:12,border:"none",background:"transparent",color:"#777",outline:"none",fontFamily:"inherit"}}/>
+                      <span style={{fontSize:11,color:"#aaa"}}>✉</span>
+                      {editingCust ? (
+                        <input type="email" value={f.custEmail||""} onChange={e=>set("custEmail",e.target.value)} placeholder="이메일 입력"
+                          style={{flex:1,padding:"0 2px",fontSize:12,border:"none",background:"transparent",color:"#777",outline:"none",fontFamily:"inherit"}}/>
+                      ) : (
+                        <CopySpan text={f.custEmail} style={{fontSize:12,color:"#777"}}>{f.custEmail||<span style={{color:"#ccc"}}>이메일 없음</span>}</CopySpan>
+                      )}
                     </div>
                     {activePkgSummary.length > 0 && <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:3}}>
                       {activePkgSummary.map((pkg,i) => {
