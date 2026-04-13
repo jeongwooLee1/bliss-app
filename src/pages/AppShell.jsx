@@ -964,6 +964,7 @@ function App() {
         ensureTag(SYSTEM_TAG_NAME_NEW_CUST, T.primary);
         ensureTag(SYSTEM_TAG_NAME_PREPAID,  T.success);
         setData({
+          businesses: bizList,
           branches: db.branches, rooms: db.rooms, services: db.services, products: db.products,
           categories: db.cats, serviceTags: db.serviceTags,
           branchSettings: db.branches.map(b => ({...b, useYn: b.use_yn !== false})),
@@ -1019,6 +1020,7 @@ function App() {
       ensureTag2(SYSTEM_TAG_NAME_NEW_CUST, T.primary);
       ensureTag2(SYSTEM_TAG_NAME_PREPAID,  T.success);
       setData({
+        businesses: bizList,
         branches: db.branches, rooms: db.rooms, services: db.services, products: db.products,
         categories: db.cats, serviceTags: db.serviceTags,
         branchSettings: db.branches.map(b => ({...b, useYn: b.use_yn !== false})),
