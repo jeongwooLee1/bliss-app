@@ -796,13 +796,13 @@ ${naverText}
                   </button>
                   {/* 정보 */}
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
                       {editingCust ? (
                         <>
                           <input value={f.custName||""} onChange={e=>{set("custName",e.target.value);if(f.custId)set("custId",null)}} placeholder="이름"
-                            style={{flex:"0 1 80px",minWidth:50,fontSize:14,fontWeight:700,color:"#1a1a2e",border:"1px solid #ccc",borderRadius:4,padding:"2px 6px",background:"#fff",fontFamily:"inherit",outline:"none"}}/>
+                            style={{flex:"0 1 80px",minWidth:50,fontSize:14,fontWeight:700,color:"#1a1a2e",border:"1px solid #ccc",borderRadius:6,padding:"4px 8px",background:"#fff",fontFamily:"inherit",outline:"none"}}/>
                           <input value={f.custPhone||""} onChange={e=>{set("custPhone",e.target.value.replace(/[^0-9]/g,""));if(f.custId)set("custId",null)}} placeholder="연락처"
-                            style={{flex:"1 1 110px",minWidth:90,fontSize:13,color:T.primary,fontWeight:500,border:"1px solid #ccc",borderRadius:4,padding:"2px 6px",background:"#fff",fontFamily:"inherit",outline:"none"}}/>
+                            style={{flex:"1 1 110px",minWidth:90,fontSize:13,color:T.primary,fontWeight:500,border:"1px solid #ccc",borderRadius:6,padding:"4px 8px",background:"#fff",fontFamily:"inherit",outline:"none"}}/>
                         </>
                       ) : (
                         <>
@@ -813,11 +813,11 @@ ${naverText}
                         </>
                       )}
                     </div>
-                    <div style={{display:"flex",alignItems:"center",gap:editingCust?6:4,marginTop:2}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginTop:editingCust?6:3}}>
                       <span style={{fontSize:11,color:"#aaa"}}>✉</span>
                       {editingCust ? (
                         <input type="email" value={f.custEmail||""} onChange={e=>set("custEmail",e.target.value)} placeholder="이메일"
-                          style={{flex:1,minWidth:90,fontSize:13,color:"#777",fontWeight:500,border:"1px solid #ccc",borderRadius:4,padding:"2px 6px",background:"#fff",fontFamily:"inherit",outline:"none"}}/>
+                          style={{flex:1,minWidth:90,fontSize:13,color:"#777",fontWeight:500,border:"1px solid #ccc",borderRadius:6,padding:"4px 8px",background:"#fff",fontFamily:"inherit",outline:"none"}}/>
                       ) : (
                         <CopySpan text={f.custEmail} style={{fontSize:12,color:"#777"}}>{f.custEmail||<span style={{color:"#ccc"}}>이메일 없음</span>}</CopySpan>
                       )}
@@ -839,13 +839,11 @@ ${naverText}
                       })}
                     </div>}
                   </div>
-                  {/* 변경/다른고객/완료 + 고객관리 */}
+                  {/* 변경/완료 + 고객관리 */}
                   {editingCust ? (
                     <div style={{display:"flex",flexDirection:"column",gap:3}}>
                       <button onClick={()=>setEditingCust(false)}
                         style={{padding:"3px 8px",borderRadius:5,border:"1px solid "+T.primary,background:T.primary,color:"#fff",fontSize:10,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>완료</button>
-                      <button onClick={()=>{set("custName","");set("custPhone","");set("custId",null);set("custEmail","");setCustSearch("");setEditingCust(false);}}
-                        style={{padding:"3px 8px",borderRadius:5,border:"1px solid #ddd",background:"#fff",color:"#999",fontSize:10,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>다른고객</button>
                     </div>
                   ) : (
                     <div style={{display:"flex",flexDirection:"column",gap:3}}>
