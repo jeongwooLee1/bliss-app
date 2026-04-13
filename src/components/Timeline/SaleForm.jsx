@@ -22,8 +22,9 @@ const GridLayout = ({ cols=2, gap=12, children, style={} }) => {
   return <div style={{display:"grid",gridTemplateColumns:tpl,gap,...style}}>{children}</div>;
 };
 
-const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amount, defPrice, toggle, setAmt }) {
+const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amount, defPrice, regularPrice, toggle, setAmt }) {
   const disabled = defPrice === 0;
+  const isMember = regularPrice && regularPrice > defPrice;
   const [localAmt, setLocalAmt] = useState(fmtAmt(amount));
   const [editing, setEditing] = useState(false);
   useEffect(() => { if(!editing) setLocalAmt(fmtAmt(amount)); }, [amount, checked]);
@@ -35,8 +36,10 @@ const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amou
       <span onClick={e => { e.stopPropagation(); if(!disabled) toggle(id, defPrice); }}
         className="sale-svc-name" style={{ flex: 1, fontSize: 13, color: checked ? T.text : T.gray700, fontWeight: checked ? 700 : 400, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
         {checked && <span style={{color:T.primary,marginRight:3}}>✓</span>}{name}
+        {isMember && <span style={{fontSize:9,color:T.primary,marginLeft:3,fontWeight:700}}>회원</span>}
       </span>
       <span className="sale-dur" style={{ flexShrink: 0, width: 28, textAlign: "right", whiteSpace:"nowrap", fontSize: 10, color: T.gray400 }}>{dur}분</span>
+      {isMember && <span style={{flexShrink:0,fontSize:10,color:T.gray400,textDecoration:"line-through"}}>{(regularPrice||0).toLocaleString()}</span>}
       <input type="text" inputMode="numeric" value={checked ? localAmt : ""} placeholder={disabled ? "—" : (defPrice||0).toLocaleString()}
         onClick={e => e.stopPropagation()} onFocus={()=>setEditing(true)}
         onChange={e => { const raw=e.target.value.replace(/[^0-9]/g,""); setLocalAmt(raw?Number(raw).toLocaleString():""); }}
@@ -298,13 +301,29 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   // 활성 다회권 목록 (패키지 사용 자동 차감용)
   const activeMultiPkgs = activePkgs.filter(p => _pkgType(p) === "package");
 
+  // 회원가 자격: 다담권/다회권(에너지·제품 제외)/연간회원권/연간할인권 보유 시
+  const _isEnergyOrProduct = (p) => {
+    const n = (p.service_name||"").toLowerCase();
+    return n.includes("에너지") || n.includes("제품") || n.includes("구매권");
+  };
+  const isMemberPrice = activePkgs.some(p => !_isEnergyOrProduct(p));
+
+  // 성별+회원가에 따른 기본 가격 계산
+  const _defPrice = (svc, g) => {
+    if (!g) return (svc.priceF === svc.priceM ? svc.priceF : 0);
+    const regular = g === "M" ? svc.priceM : svc.priceF;
+    if (!isMemberPrice) return regular;
+    const member = g === "M" ? svc.memberPriceM : svc.memberPriceF;
+    return member || regular; // 회원가 없으면 정상가
+  };
+
   // State: { [id]: { checked, amount } }
   const [items, setItems] = useState(() => {
     const init = {};
     const selSvcs = reservation?.selectedServices || [];
     SVC_LIST.forEach(svc => {
       const preSelected = selSvcs.includes(svc.id);
-      const defPrice = gender ? ((gender==="M") ? svc.priceM : svc.priceF) : (svc.priceF===svc.priceM ? svc.priceF : 0);
+      const defPrice = _defPrice(svc, gender);
       init[svc.id] = { checked: preSelected, amount: preSelected ? defPrice : 0 };
     });
     PROD_LIST.forEach(p => { init[p.id] = { checked: false, amount: 0 }; });
@@ -671,11 +690,14 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           </div>
           {/* Gender - changeable buttons */}
           <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-            {["F","M"].map(g => <button key={g} onClick={() => { setGender(g); setCust(p=>({...p,gender:g})); }}
+            {["F","M"].map(g => <button key={g} onClick={() => { setGender(g); setCust(p=>({...p,gender:g}));
+              // 성별 변경 시 체크된 시술 가격 재계산
+              setItems(prev => { const next = {...prev}; SVC_LIST.forEach(svc => { if(next[svc.id]?.checked){ next[svc.id] = {...next[svc.id], amount: _defPrice(svc, g)}; } }); return next; });
+            }}
               style={{ padding: "4px 10px", fontSize: 11, fontWeight: 700, borderRadius: g==="F"?"6px 0 0 6px":"0 6px 6px 0", cursor: "pointer", fontFamily: "inherit", border: "none",
                 background: gender === g ? (g==="F" ? "#e5737340" : "#7c7cc840") : T.gray200,
                 color: gender === g ? (g==="F" ? T.female : T.info) : T.gray400 }}>{g === "F" ? "여" : "남"}</button>)}
-            <span style={{ fontSize: 9, color: T.gray400, marginLeft: 2 }}>{gender ? (gender==="F"?"여성":"남성")+" 가격" : "성별 미선택"}</span>
+            <span style={{ fontSize: 9, color: isMemberPrice ? T.primary : T.gray400, marginLeft: 2 }}>{gender ? (gender==="F"?"여성":"남성")+(isMemberPrice?" 회원가":" 가격") : "성별 미선택"}{isMemberPrice && " ★"}</span>
           </div>
           {/* Totals */}
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
@@ -751,7 +773,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                   <I name={isOpen?"chevU":"chevD"} size={12} style={{color:T.gray400}}/>
                 </div>
                 {isOpen && <div style={{padding:"4px 0"}}>{svcs.map(svc => {
-                  const it=items[svc.id]||{}; const dp=gender?(gender==="M"?svc.priceM:svc.priceF):(svc.priceF===svc.priceM?svc.priceF:0);
+                  const it=items[svc.id]||{}; const dp=_defPrice(svc,gender);
                   // 케어 카테고리: 수량 증감 버튼
                   if (cat.id === "cat_care_001" && dp > 0) {
                     const qty = it.qty || (it.checked ? 1 : 0);
@@ -781,14 +803,15 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                       </span>
                     </div>;
                   }
-                  return <SaleSvcRow key={svc.id} id={svc.id} name={svc.name} dur={svc.dur} checked={!!it.checked} amount={it.amount||0} defPrice={dp} toggle={toggle} setAmt={setAmt} />;
+                  const rp = gender ? (gender==="M" ? svc.priceM : svc.priceF) : 0;
+                  return <SaleSvcRow key={svc.id} id={svc.id} name={svc.name} dur={svc.dur} checked={!!it.checked} amount={it.amount||0} defPrice={dp} regularPrice={rp} toggle={toggle} setAmt={setAmt} />;
                 })}</div>}
               </div>
               );
             })}
             {uncatSvcs.length>0 && <div style={{marginBottom:8}}>
               <div style={{fontSize:T.fs.nano,fontWeight:T.fw.bolder,color:T.textMuted,background:T.bg,borderRadius:T.radius.sm,padding:"2px 6px",marginBottom:2,display:"inline-block"}}>기타</div>
-              {uncatSvcs.map(svc => { const it=items[svc.id]||{}; const dp=gender?(gender==="M"?svc.priceM:svc.priceF):(svc.priceF===svc.priceM?svc.priceF:0); return <SaleSvcRow key={svc.id} id={svc.id} name={svc.name} dur={svc.dur} checked={!!it.checked} amount={it.amount||0} defPrice={dp} toggle={toggle} setAmt={setAmt} />; })}
+              {uncatSvcs.map(svc => { const it=items[svc.id]||{}; const dp=_defPrice(svc,gender); const rp=gender?(gender==="M"?svc.priceM:svc.priceF):0; return <SaleSvcRow key={svc.id} id={svc.id} name={svc.name} dur={svc.dur} checked={!!it.checked} amount={it.amount||0} defPrice={dp} regularPrice={rp} toggle={toggle} setAmt={setAmt} />; })}
             </div>}
             <SaleExtraRow id="extra_svc" color={T.primary} placeholder="추가 시술명 입력" checked={!!(items.extra_svc||{}).checked} amount={(items.extra_svc||{}).amount||0} label={(items.extra_svc||{}).label||""} toggle={toggle} setAmt={setAmt} setLabel={setLabel} />
             <div style={{ marginTop: 4 }}>

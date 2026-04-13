@@ -463,6 +463,21 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - **수동 배포 시에도 마지막 단계로 반드시 퍼지 실행** (memory feedback 저장)
 - 명령: `source .env && curl -s -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/purge_cache" -H "Authorization: Bearer ${CF_TOKEN}" -H "Content-Type: application/json" -d '{"purge_everything":true}'`
 
+### 회원가(Member Pricing) 시스템 (2026-04-13)
+- DB: services 테이블에 `member_price_f`, `member_price_m` integer 컬럼 추가
+- 10개 시술에 회원가 설정 (브라질리언 계열, 케어, 풀페이스, 속눈썹 등)
+- db.js: DBMAP/DB_COLS에 memberPriceF/memberPriceM 매핑
+- SaleForm: `_defPrice()` 함수 — 보유권 자격에 따라 회원가 자동 적용
+- 회원가 자격: 다담권/다회권/연간회원권/연간할인권 보유 시 (에너지이용권/제품구매권 제외)
+- AdminSaleItems: 회원가 표시(→화살표) + 편집 폼 입력 필드
+- ReservationModal: 시술 가격에 회원가 반영
+
+### 매출 리스트 상세 표시 + AI 디버그 정리 (2026-04-13)
+- SalesPage: sale_details 레이지 로딩 + PaySummary 컴포넌트 (결제수단 표시)
+- 프로덕션 코드에서 debug alert()/console.log() 전량 제거
+- oracle_sync.py: 이름 없는 매출 Oracle MEMBER 직접 조회 fallback
+- sale_details 중복 237K건 + sales 중복 60K건 삭제 (FK 처리 포함)
+
 ### 주의사항 (다음 세션에서 참고)
 - Cloudflare 캐시: 배포 후 반드시 Purge Everything (Dashboard → blissme.ai → Caching)
 - schedule.html: 서버 배포 시 /var/www/html/bliss-app/schedule.html 별도 복사 필요

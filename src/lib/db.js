@@ -5,7 +5,7 @@ export const DBMAP = {
   sales:{business_id:"businessId",cust_id:"custId",cust_name:"custName",cust_phone:"custPhone",cust_gender:"custGender",cust_num:"custNum",staff_id:"staffId",staff_name:"staffName",service_id:"serviceId",service_name:"serviceName",product_id:"productId",product_name:"productName",svc_cash:"svcCash",svc_transfer:"svcTransfer",svc_card:"svcCard",svc_point:"svcPoint",prod_cash:"prodCash",prod_transfer:"prodTransfer",prod_card:"prodCard",prod_point:"prodPoint",order_num:"orderNum",reservation_id:"reservationId"},
   customers:{business_id:"businessId",last_visit:"lastVisit",cust_num:"custNum",cust_num2:"custNum2",phone2:"phone2",is_hidden:"isHidden",created_at:"createdAt",join_date:"joinDate",sms_consent:"smsConsent",email:"email"},
   service_tags:{business_id:"businessId",schedule_yn:"scheduleYn",use_yn:"useYn"},
-  services:{business_id:"businessId",price_f:"priceF",price_m:"priceM",is_package:"isPackage",pkg_count:"pkgCount",pkg_price_f:"pkgPriceF",pkg_price_m:"pkgPriceM"},
+  services:{business_id:"businessId",price_f:"priceF",price_m:"priceM",member_price_f:"memberPriceF",member_price_m:"memberPriceM",is_package:"isPackage",pkg_count:"pkgCount",pkg_price_f:"pkgPriceF",pkg_price_m:"pkgPriceM"},
   app_users:{business_id:"businessId",login_id:"loginId",branch_ids:"branches",password:"pw",view_branch_ids:"viewBranches"},
   branches:{business_id:"businessId",use_yn:"useYn",naver_email:"naverEmail",naver_biz_id:"naverBizId",naver_col_count:"naverColCount",noti_config:"notiConfig",staff_col_count:"staffColCount",naver_account_id:"naverAccountId",instagram_account_id:"instagramAccountId",whatsapp_account_id:"whatsappAccountId",booking_notice:"bookingNotice",alt_phone:"altPhone",timeline_settings:"timelineSettings"},
   reservation_sources:{business_id:"businessId",use_yn:"useYn"},
@@ -61,7 +61,7 @@ export const DB_COLS={
   sales:["id","business_id","bid","cust_id","cust_name","cust_phone","cust_gender","cust_num","staff_id","staff_name","date","service_id","service_name","product_id","product_name","svc_cash","svc_transfer","svc_card","svc_point","prod_cash","prod_transfer","prod_card","prod_point","gift","order_num","memo","reservation_id"],
   customers:["id","business_id","bid","name","name2","phone","phone2","gender","visits","last_visit","memo","cust_num","cust_num2","is_hidden","created_at","email","join_date","sms_consent"],
   service_tags:["id","business_id","name","dur","schedule_yn","color","use_yn","sort"],
-  services:["id","business_id","cat","name","dur","price_f","price_m","note","sort","is_package","pkg_count","pkg_price_f","pkg_price_m"],
+  services:["id","business_id","cat","name","dur","price_f","price_m","member_price_f","member_price_m","note","sort","is_package","pkg_count","pkg_price_f","pkg_price_m"],
   app_users:["id","business_id","login_id","password","name","role","branch_ids","view_branch_ids"],
   reservation_sources:["id","business_id","name","color","sort","use_yn"],
 };

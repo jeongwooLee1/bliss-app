@@ -42,21 +42,21 @@ function AdminSaleItems({ data, setData }) {
 
   const [sheet,setSheet]=useState(false);
   const [edit,setEdit]=useState(null);
-  const [form,setForm]=useState({cat:"",name:"",dur:20,priceF:0,priceM:0,note:"",isPackage:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0});
+  const [form,setForm]=useState({cat:"",name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0});
   const [catSheet,setCatSheet]=useState(false);
   const [newCatName,setNewCatName]=useState("");
   const [saving,setSaving]=useState(false);
   const [del,setDel]=useState(null);
   const set=(k,v)=>setForm(p=>({...p,[k]:v}));
 
-  const openNew=()=>{setEdit(null);setForm({cat:cats[0]?.id||"",name:"",dur:20,priceF:0,priceM:0,note:"",isPackage:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0});setSheet(true);};
-  const openEdit=s=>{setEdit(s);setForm({cat:s.cat||"",name:s.name||"",dur:s.dur||20,priceF:s.priceF||0,priceM:s.priceM||0,note:s.note||"",isPackage:!!s.isPackage,pkgCount:s.pkgCount||10,pkgPriceF:s.pkgPriceF||0,pkgPriceM:s.pkgPriceM||0});setSheet(true);};
+  const openNew=()=>{setEdit(null);setForm({cat:cats[0]?.id||"",name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0});setSheet(true);};
+  const openEdit=s=>{setEdit(s);setForm({cat:s.cat||"",name:s.name||"",dur:s.dur||20,priceF:s.priceF||0,priceM:s.priceM||0,memberPriceF:s.memberPriceF||0,memberPriceM:s.memberPriceM||0,note:s.note||"",isPackage:!!s.isPackage,pkgCount:s.pkgCount||10,pkgPriceF:s.pkgPriceF||0,pkgPriceM:s.pkgPriceM||0});setSheet(true);};
 
   const save=async()=>{
     if(!form.name.trim())return;
     setSaving(true);
     try{
-      const pl={cat:form.cat,name:form.name,dur:+form.dur,priceF:+form.priceF,priceM:+form.priceM,note:form.note,isPackage:form.isPackage,pkgCount:+form.pkgCount,pkgPriceF:+form.pkgPriceF,pkgPriceM:+form.pkgPriceM};
+      const pl={cat:form.cat,name:form.name,dur:+form.dur,priceF:+form.priceF,priceM:+form.priceM,memberPriceF:+form.memberPriceF||null,memberPriceM:+form.memberPriceM||null,note:form.note,isPackage:form.isPackage,pkgCount:+form.pkgCount,pkgPriceF:+form.pkgPriceF,pkgPriceM:+form.pkgPriceM};
       if(edit){
         await sb.update("services",edit.id,pl);
         setServices(p=>p.map(s=>s.id===edit.id?{...s,...pl}:s));
@@ -121,8 +121,8 @@ function AdminSaleItems({ data, setData }) {
             </div>
             <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:6}}>
               <span style={{fontSize:T.fs.xxs,color:T.textMuted}}><I name="clock" size={10}/> {s.dur}분</span>
-              <span style={{fontSize:T.fs.xxs,color:T.female}}>여 {fmtSvc(s.priceF)}</span>
-              <span style={{fontSize:T.fs.xxs,color:T.male}}>남 {fmtSvc(s.priceM)}</span>
+              <span style={{fontSize:T.fs.xxs,color:T.female}}>여 {fmtSvc(s.priceF)}{s.memberPriceF?<span style={{color:T.primary,marginLeft:3}}>→{fmtSvc(s.memberPriceF)}</span>:""}</span>
+              <span style={{fontSize:T.fs.xxs,color:T.male}}>남 {fmtSvc(s.priceM)}{s.memberPriceM?<span style={{color:T.primary,marginLeft:3}}>→{fmtSvc(s.memberPriceM)}</span>:""}</span>
             </div>
             <ABadge color={T.gray500} bg={T.gray100}>{catName(s.cat)}</ABadge>
           </div>
@@ -152,8 +152,12 @@ function AdminSaleItems({ data, setData }) {
       <AField label="시술명" required><input style={AInp} value={form.name} onChange={e=>set("name",e.target.value)} placeholder="예: 브라질리언" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
         <AField label="소요(분)"><input style={AInp} type="number" value={form.dur} onChange={e=>set("dur",e.target.value)} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
-        <AField label="여성가"><input style={AInp} type="number" value={form.priceF} onChange={e=>set("priceF",e.target.value)} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
-        <AField label="남성가"><input style={AInp} type="number" value={form.priceM} onChange={e=>set("priceM",e.target.value)} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
+        <AField label="여성 정상가"><input style={AInp} type="number" value={form.priceF} onChange={e=>set("priceF",e.target.value)} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
+        <AField label="남성 정상가"><input style={AInp} type="number" value={form.priceM} onChange={e=>set("priceM",e.target.value)} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <AField label="여성 회원가"><input style={{...AInp,borderColor:"#e0d4f5"}} type="number" value={form.memberPriceF} onChange={e=>set("memberPriceF",e.target.value)} placeholder="없으면 0" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e0d4f5"}/></AField>
+        <AField label="남성 회원가"><input style={{...AInp,borderColor:"#e0d4f5"}} type="number" value={form.memberPriceM} onChange={e=>set("memberPriceM",e.target.value)} placeholder="없으면 0" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e0d4f5"}/></AField>
       </div>
       <div style={{display:"flex",gap:20,padding:"12px 0",borderTop:"1px solid "+T.gray100,borderBottom:"1px solid "+T.gray100,marginBottom:14}}>
         <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>

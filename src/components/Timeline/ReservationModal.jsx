@@ -940,11 +940,19 @@ ${naverText}
             {/* 시술 상품 선택 */}
             {(() => {
               const hasGender = !!f.custGender;
+              // 회원가 자격: 에너지/제품 제외한 활성 보유권이 있으면 회원가 적용
+              const _isEnergyOrProd = p => { const n=(p.service_name||"").toLowerCase(); return n.includes("에너지")||n.includes("제품")||n.includes("구매권"); };
+              const isMember = (custPkgsInfo||[]).some(p => !_isEnergyOrProd(p) && ((p.total_count||0)-(p.used_count||0)>0 || (p.note||"").match(/잔액:[1-9]/) || (p.service_name||"").match(/연간|할인권|회원권/i)));
+              const _memberPrice = (svc, g) => {
+                if (!isMember || !g) return g ? (g==="M"?svc.priceM:svc.priceF) : svc.priceF;
+                const mp = g==="M" ? svc.memberPriceM : svc.memberPriceF;
+                return mp || (g==="M"?svc.priceM:svc.priceF);
+              };
               const svcPriceTotal = (f.selectedServices||[]).reduce((sum, sid) => {
                 const svc = SVC_LIST.find(s=>s.id===sid);
                 if (!svc) return sum;
                 if (!hasGender && svc.priceF !== svc.priceM) return sum;
-                return sum + (hasGender ? (f.custGender==="M"?svc.priceM:svc.priceF) : svc.priceF);
+                return sum + _memberPrice(svc, hasGender ? f.custGender : null);
               }, 0);
               const hasGenderDep = (f.selectedServices||[]).some(sid => {const s=SVC_LIST.find(x=>x.id===sid); return s && s.priceF!==s.priceM;});
               return <div>
@@ -1001,7 +1009,7 @@ ${naverText}
         const qty = (f.selectedServices||[]).filter(id=>id===svc.id).length;
         const aqty = svcAllowQty(svc);
         const genderDep = svc.priceF !== svc.priceM;
-        const price = hasGender ? (f.custGender==="M"?svc.priceM:svc.priceF) : (genderDep ? null : svc.priceF);
+        const price = hasGender ? _memberPrice(svc, f.custGender) : (genderDep ? null : svc.priceF);
         const disabled = hasGender && price===0;
         const catName = CATS.find(c=>c.id===svc.cat)?.name||"";
         return <div key={svc.id} onClick={()=>!disabled&&toggleService(svc.id,1)}

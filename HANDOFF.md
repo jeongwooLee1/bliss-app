@@ -8,6 +8,30 @@
 
 ---
 
+## 2026-04-13 회원가 시스템
+
+### 회원가(Member Pricing) 구현
+- DB: services 테이블에 `member_price_f`, `member_price_m` 컬럼 추가 (Supabase SQL Editor)
+- 10개 시술에 회원가 설정: 브라질리언+케어, 브라질리언, 비키니, 항문, 산모관리, 재생관리, 기기진정관리, 진정팩, 풀페이스, 속눈썹펌
+- db.js: DBMAP/DB_COLS에 memberPriceF/memberPriceM 추가
+- **SaleForm**: `_defPrice()` 함수로 회원가 자동 적용, `isMemberPrice` 플래그 (에너지/제품 제외)
+  - 보유권(다담권/다회권/연간회원권/연간할인권) 보유 고객 → 회원가 자동 적용
+  - 에너지이용권/제품구매권은 회원가 자격 미해당
+  - SaleSvcRow에 "회원" 태그 + 정상가 취소선 표시
+  - 성별 변경 시 체크된 시술 가격 재계산
+- **AdminSaleItems**: 시술 카드에 회원가 화살표(→) 표시, 편집 폼에 회원가 입력 필드 추가
+- **ReservationModal**: 시술 선택 시 회원가 반영된 가격 표시
+
+### 이전 세션 완료 (매출 리스트 개선 + AI 디버그 정리)
+- SalesPage: sale_details 레이지 로딩 + 결제수단 표시 (PaySummary 컴포넌트)
+- ReservationModal/MessagesPage/AppShell/db.js: debug alert()/console.log() 제거
+- oracle_sync.py: 이름 없는 매출 수정 (Oracle MEMBER 직접 조회 fallback)
+- sale_details 중복 237K건 삭제, sales 중복 60K건 삭제
+
+### 매출 메모 패키지 분석
+- pkg_analysis.tsv/json: 1,201명 고객, 1,394건 패키지 엔트리
+- 유저 확인 후 customer_packages 업데이트 예정
+
 ## 2026-04-13 완료
 
 ### 타임라인 ↔ 근무표 양방향 연동
