@@ -656,8 +656,8 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           {/* Col 1+2: Services by category (span 2 columns) */}
           <div style={{gridColumn:"span 2"}}>
             {/* 다회권 패키지 — 시술 목록 최상단 */}
-            {activeMultiPkgs.length > 0 && <div style={{marginBottom:10,border:"2px solid #7C4DFF",borderRadius:10,overflow:"hidden",background:"linear-gradient(135deg,#EDE7F6,#E8EAF6)"}}>
-              <div style={{padding:"8px 12px 4px",fontSize:13,fontWeight:800,color:"#4527A0"}}>📦 보유 패키지</div>
+            {activeMultiPkgs.length > 0 && <div style={{marginBottom:10,border:"1px solid "+T.border,borderRadius:10,overflow:"hidden",background:T.gray100}}>
+              <div style={{padding:"8px 12px 4px",fontSize:13,fontWeight:800,color:T.text}}>📦 보유 패키지</div>
               {(()=>{
                 const groups = {};
                 activeMultiPkgs.forEach(p => {
@@ -671,28 +671,27 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                   const isActive = useQty > 0;
                   return <div key={g.name}
                   style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",transition:"all .15s",
-                    background:isActive?"linear-gradient(135deg,#7C4DFF,#651FFF)":"transparent",
-                    borderTop:"1px solid "+(isActive?"#5E35B1":"#D1C4E9")}}>
+                    background:isActive?T.primaryHover:"transparent",
+                    borderTop:"1px solid "+T.border}}>
                     <div style={{flex:1}}>
-                      <div style={{fontSize:14,fontWeight:800,color:isActive?"#fff":"#4527A0"}}>{g.name}</div>
-                      <div style={{fontSize:11,color:isActive?"#E8EAF6":"#7C4DFF",fontWeight:600}}>
+                      <div style={{fontSize:14,fontWeight:800,color:isActive?T.primary:T.text}}>{g.name}</div>
+                      <div style={{fontSize:11,color:isActive?T.primary:T.textMuted,fontWeight:600}}>
                         잔여 {g.totalRemain}회{isActive && ` → ${g.totalRemain - useQty}회`}
                       </div>
                     </div>
                     {/* 증감 스테퍼 */}
                     <div style={{display:"flex",alignItems:"center",gap:0,flexShrink:0}} onClick={e=>e.stopPropagation()}>
                       <button onClick={()=>setPkgQty(g.name, Math.max(0, useQty-1))}
-                        style={{width:32,height:32,borderRadius:"8px 0 0 8px",border:"2px solid "+(isActive?"#fff":"#B39DDB"),borderRight:"none",
-                          background:isActive?"rgba(255,255,255,.2)":"#fff",color:isActive?"#fff":"#7C4DFF",fontSize:18,fontWeight:900,
-                          cursor:useQty>0?"pointer":"not-allowed",opacity:useQty>0?1:.4,fontFamily:"inherit"}}>−</button>
+                        style={{width:32,height:32,borderRadius:"8px 0 0 8px",border:"1px solid "+T.border,borderRight:"none",
+                          background:T.bgCard,color:T.primary,fontSize:18,fontWeight:900,
+                          cursor:useQty>0?"pointer":"not-allowed",opacity:useQty>0?1:.4,fontFamily:"inherit",padding:0}}>−</button>
                       <div style={{width:36,height:32,display:"flex",alignItems:"center",justifyContent:"center",
-                        border:"2px solid "+(isActive?"#fff":"#B39DDB"),borderLeft:"none",borderRight:"none",
-                        background:isActive?"rgba(255,255,255,.15)":"#fff",
-                        fontSize:16,fontWeight:900,color:isActive?"#fff":"#4527A0"}}>{useQty}</div>
+                        border:"1px solid "+T.border,borderLeft:"none",borderRight:"none",
+                        background:T.bgCard,fontSize:16,fontWeight:900,color:isActive?T.primary:T.gray400}}>{useQty}</div>
                       <button onClick={()=>setPkgQty(g.name, Math.min(g.totalRemain, useQty+1))}
-                        style={{width:32,height:32,borderRadius:"0 8px 8px 0",border:"2px solid "+(isActive?"#fff":"#B39DDB"),borderLeft:"none",
-                          background:isActive?"rgba(255,255,255,.2)":"#fff",color:isActive?"#fff":"#7C4DFF",fontSize:18,fontWeight:900,
-                          cursor:useQty<g.totalRemain?"pointer":"not-allowed",opacity:useQty<g.totalRemain?1:.4,fontFamily:"inherit"}}>+</button>
+                        style={{width:32,height:32,borderRadius:"0 8px 8px 0",border:"1px solid "+T.border,borderLeft:"none",
+                          background:T.bgCard,color:T.primary,fontSize:18,fontWeight:900,
+                          cursor:useQty<g.totalRemain?"pointer":"not-allowed",opacity:useQty<g.totalRemain?1:.4,fontFamily:"inherit",padding:0}}>+</button>
                     </div>
                   </div>;
                 });
@@ -829,7 +828,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           </div>
 
           {/* 결제수단 분배 */}
-          {(svcTotal > 0 || prodTotal > 0) && <div className="sale-pay-row" style={{display:"flex",gap:T.sp.lg,flexWrap:"wrap"}}>
+          {(svcTotal > 0 || prodTotal > 0 || hasPkgChecked()) && <div className="sale-pay-row" style={{display:"flex",gap:T.sp.lg,flexWrap:"wrap"}}>
             {svcTotal > 0 && <div style={{flex:1,minWidth:0,padding:"8px 12px",background:T.bgCard,borderRadius:T.radius.md,border:"1px solid "+T.border}}>
               <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.primary,marginBottom:6}}><I name="scissors" size={12}/> 시술 결제 <span style={{color:T.danger,fontWeight:T.fw.black}}>{fmt(svcPayTotal)}원</span></div>
               <div style={{display:"flex",gap:T.sp.xs,flexWrap:"wrap"}}>
@@ -921,7 +920,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
             </div>}
           </div>}
           {pkgDeduct > 0 && <div style={{marginTop:6,fontSize:13,fontWeight:T.fw.black,color:"#E65100",background:"#FFF3E0",borderRadius:T.radius.md,padding:"6px 12px"}}>🎫 보유권 차감: -{pkgDeduct.toLocaleString()}원</div>}
-          {hasPkgChecked() && <div style={{marginTop:6,fontSize:13,fontWeight:800,color:"#4527A0",background:"linear-gradient(135deg,#EDE7F6,#E8EAF6)",borderRadius:T.radius.md,padding:"8px 12px",border:"2px solid #7C4DFF"}}>
+          {hasPkgChecked() && <div style={{marginTop:6,fontSize:13,fontWeight:800,color:T.primary,background:T.primaryHover,borderRadius:T.radius.md,padding:"8px 12px",border:"1px solid "+T.border}}>
             📦 패키지 {totalPkgQty()}회 차감
             {(()=>{
               const groups = {};
@@ -932,7 +931,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                 groups[name].useQty += (pkgItems["pkg__"+p.id]?.qty||0);
               });
               return Object.values(groups).filter(g=>g.useQty>0).map(g=>
-                <div key={g.name} style={{fontSize:11,fontWeight:600,color:"#7C4DFF",marginTop:2}}>
+                <div key={g.name} style={{fontSize:11,fontWeight:600,color:T.textSub,marginTop:2}}>
                   {g.name} — {g.useQty}회 차감 ({g.totalRemain}→{g.totalRemain-g.useQty}회)
                 </div>
               );
@@ -954,8 +953,8 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           </div>
           <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
             <Btn variant="secondary" onClick={onClose}>취소</Btn>
-            <Btn variant="primary" style={{ padding: "10px 20px", fontSize: 13, fontWeight: 800, background: hasPkgChecked() && grandTotal===0 ? "linear-gradient(135deg,#7C4DFF,#651FFF)" : undefined }} onClick={handleSubmit}>
-              <I name="wallet" size={12}/> {hasPkgChecked() && grandTotal===0 ? "📦 패키지 사용 등록" : `매출 등록 (${fmt(grandTotal)}원)`}
+            <Btn variant="primary" style={{ padding: "10px 20px", fontSize: 13, fontWeight: 800 }} onClick={handleSubmit}>
+              <I name="wallet" size={12}/> 매출 등록 ({fmt(grandTotal)}원){hasPkgChecked() && ` +📦${totalPkgQty()}회`}
             </Btn>
           </div>
         </div>
