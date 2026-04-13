@@ -320,14 +320,21 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       const key = "pkg__" + first.id;
       setPkgItems({ [key]: { checked: true, amount: 0 } });
       setPkgUse(prev => ({ ...prev, [first.id]: true }));
+      // 기존 시술 선택 전부 해제 (패키지 사용이니까 0원)
+      setItems(prev => {
+        const next = { ...prev };
+        SVC_LIST.forEach(s => { next[s.id] = { checked: false, amount: 0 }; });
+        next.extra_svc = { checked: false, amount: 0, label: "" };
+        next.discount = { checked: false, amount: 0 };
+        return next;
+      });
     }
   }, [activeMultiPkgs]);
 
   const togglePkg = (pkgId) => {
     const key = "pkg__" + pkgId;
+    const wasChecked = pkgItems[key]?.checked;
     setPkgItems(prev => {
-      const wasChecked = prev[key]?.checked;
-      // 다른 패키지 전부 해제 후 이것만 토글
       const next = {};
       activeMultiPkgs.forEach(p => { next["pkg__" + p.id] = { checked: false, amount: 0 }; });
       if (!wasChecked) next[key] = { checked: true, amount: 0 };
@@ -336,10 +343,19 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     setPkgUse(prev => {
       const next = {};
       activeMultiPkgs.forEach(p => { next[p.id] = false; });
-      const wasChecked = pkgItems["pkg__" + pkgId]?.checked;
       if (!wasChecked) next[pkgId] = true;
       return next;
     });
+    // 패키지 선택 시 → 시술 전부 해제, 해제 시 → 그대로 (직접 시술 선택하도록)
+    if (!wasChecked) {
+      setItems(prev => {
+        const next = { ...prev };
+        SVC_LIST.forEach(s => { next[s.id] = { checked: false, amount: 0 }; });
+        next.extra_svc = { checked: false, amount: 0, label: "" };
+        next.discount = { checked: false, amount: 0 };
+        return next;
+      });
+    }
   };
 
   const hasPkgChecked = () => Object.values(pkgItems).some(v => v?.checked);
