@@ -782,6 +782,8 @@ ${naverText}
                           <span style={{fontSize:14,fontWeight:700,color:"#1a1a2e"}}>{f.custName}</span>
                           <span style={{fontSize:11,color:"#888"}}>·</span>
                           <span style={{fontSize:13,color:T.primary,fontWeight:500}}>{f.custPhone||"연락처 없음"}</span>
+                          {(()=>{const lc=(data?.customers||[]).find(c=>(f.custId&&c.id===f.custId)||(c.phone||"").replace(/-/g,"")===(f.custPhone||"").replace(/-/g,""));
+                            return lc?.custNum ? <span style={{fontSize:10,color:"#aaa",fontFamily:"monospace"}}>#{lc.custNum}</span> : null;})()}
                         </>
                       )}
                     </div>
