@@ -11,9 +11,16 @@
 ## 2026-04-10~11 완료
 
 ### 네이버 세션 자동 갱신
-- login_auto.py (비대화식 Playwright) + Windows Task Scheduler 매주 일 03:00
-- 서버 keepalive 6시간마다 (04/10/16/22시) + 알림 Gmail→텔레그램 전환
-- 주의: CAPTCHA 뜨면 수동 login_local.py 필요 (login_auto.py는 CAPTCHA 자동 해결 불가)
+- tg_daemon.py: 텔레그램 봇 폴링 데몬 (로컬 PC 상시 실행, Windows 시작 시 자동)
+  - 10분마다 서버 scraper 상태 체크 → dead면 login_auto.py 자동 실행
+  - /login 명령 → 즉시 재로그인
+  - /status 명령 → 서버 상태 체크
+  - /stop 명령 → 데몬 종료
+- login_auto.py / login_local.py: CDP Network 모니터링으로 NID_AUT 캡처 (핵심!)
+  - Playwright storage_state()는 NID_AUT를 못 잡음 → fetch 실행 후 Request Cookie 헤더에서 추출
+  - CAPTCHA 시 텔레그램 이미지 → 유저 답변 → 입력 (login_auto.py)
+- 서버 keepalive 6시간마다 (04/10/16/22시)
+- Task Scheduler: BlissNaverSession, BlissSessionCheck 비활성화
 
 ### 서버 복구 (bliss_naver.py)
 - Supabase 키: 레거시→publishable (4/8 비활성화 대응)
@@ -191,6 +198,87 @@
 
 ---
 
+## 2026-04-12 완료
+
+### 보유권 유효한 것만 표시
+- 고객 리스트 보유권 셀: 만료/소진 제외, 유효만 pill
+- 보유권 탭 카운트: `2/4` → `2` (유효만)
+- 예약모달 보유권 pill: 유효만
+
+### 네이버 세션 갱신 자동화
+- tg_daemon.py: 텔레그램 봇 폴링 데몬 (10분마다 서버 체크 + /login /status /stop 명령)
+- login_auto.py/login_local.py: CDP Network 모니터링으로 NID_AUT 캡처
+- Windows 시작프로그램 바로가기 등록 (BlissTGDaemon.lnk)
+- subprocess 창 숨김 (startupinfo=_SW_HIDE)
+
+### 직원 통합 관리
+- MALE_EMPLOYEES 하드코딩 제거 → 전 직원 employees_v1에 통합 (21명)
+- 재윤/주용/한솔/령은 employees_v1 추가
+- 직급 시스템: 원장/마스터/시니어/인턴 (rank 필드)
+- 직원 설정 모달에 직급 선택 UI + 휴무 설정 탭 (원장설정 통합)
+- 원장설정 메뉴 제거
+
+### 지점 영업시간 / 직원 근무시간
+- branches.timeline_settings에 openTime/closeTime/defaultWorkStart/defaultWorkEnd 저장
+- 예약장소 관리(AdminPlaces)에 영업시간 + 기본 근무시간 UI
+- 직원 디폴트 근무시간 = 지점 기본 근무시간 (empWorkHoursDefault_v1 대체)
+- 헤더 팝업 근무시간: 저장 버튼 전까지 state 변경 안 함, +10시간 자동계산 수정
+- 출퇴근 시간 텍스트 제거 (회색 영역만 표시)
+
+### 4월 근무표 엑셀 파싱 → schHistory 반영
+- 26년 휴무11111.xlsx 4월 시트 파싱 (openpyxl rich_text)
+- 빨간 글자 = 휴무, (논) = 강남이동, (홍용쉐) = 홍대+용산지원
+- schHistory_v1 월별 구조 (`{"2026-04": {"직원": {"날짜": "상태"}}}`)
+- 파싱 버그 수정: 날짜행→데이터행 매핑 (date_row+1), RED 우선 휴무 확정
+
+### 서버 rescrape 버그 수정
+- NameError: `row.get(cust_name,)` → `row.get('cust_name', '')`
+- pending 강제 설정: rescrape action="new" → "rescrape" (confirmed 유지)
+
+### AI 가격 안내 개선
+- svcPriceText 카테고리별 대표 시술만 (priorityCats)
+- data.serviceCategories → data.cats 매핑 수정
+- 프롬프트: 대표 가격 즉시 안내, 시술 종류 되묻지 않기
+- 스킨케어 = 얼굴관리, 애프터케어(케어/재생관리/진정팩) 가격에서 제외
+
+### 기타
+- 복사/드래그: 타임라인만 차단, 모달/목록 복사 허용
+- 예약번호 검색: 이미 동작 중 확인
+- 시술항목: 산모1회 삭제, 케어 카테고리 생성 (케어/재생관리/진정팩/기기진정관리)
+- 카테고리 순서: 브라질리언→케어→바디→페이셜→패키지→에너지테라피→나머지
+- supportOrder 배열 방어코드 추가
+- 메시지 textarea 자동 높이 조정 (useEffect + 고정 height 제거)
+- db.js DBMAP: timeline_settings 매핑 추가
+
+---
+
+## 작업: 타임라인 이동 ↔ 근무표 양방향 연동
+**상태**: 미착수.
+
+### 문제
+- 타임라인에서 직원 이동 시 empBranchOverride에만 저장, schHistory에 미반영
+- 근무표에서는 이동 상태를 모름
+
+### 요구사항
+- 타임라인 이동 버튼 클릭 → schHistory에도 `지원(지점)` / 이동 상태 반영
+- 근무표 ↔ 타임라인 양방향 동기화
+- empBranchOverride 역할 정리 (schHistory와 중복 제거 검토)
+
+---
+
+## 작업: 근무표 엑셀 파싱 개선
+**상태**: 미착수.
+
+### 문제
+- 소속 지점이 아닌 라인에 나오는 직원을 자동으로 해당 지점 지원 처리 안 됨
+- 워크샵 등 특수 케이스 (출+무급반차) 파싱 미지원
+
+### 요구사항
+- 직원 소속 지점 기준으로 다른 지점 라인에 나오면 자동 `지원(지점)` 처리
+- 괄호 내 특수 표기 (출+휴무반, 전쉐 등) 파싱 규칙 추가
+
+---
+
 ## 작업: 고객관리 권한 + 노쇼 카운트
 **상태**: 미착수.
 
@@ -206,6 +294,21 @@
 ### 요구사항
 - 현금/입금/카드 내역 표시
 - 오라클 시술 세부내역 동기화 (oracle_sync.py)
+
+---
+
+## 작업: 패키지 명칭 통일
+**상태**: 미착수.
+
+### 문제
+- 오라클에서 마이그레이션된 패키지 명칭이 불일치
+- 예: "여)왁싱PKG 5회" vs "여)왁싱PKG" vs "왁싱패키지", "재생 PKG 5회" vs "재생트탈패키지" 등
+- customer_packages.service_name이 제각각이라 집계/표시 시 혼란
+
+### 요구사항
+- 패키지 명칭 표준 정의 (유저 확인 필요)
+- customer_packages 기존 데이터 일괄 UPDATE
+- 신규 추가 시에도 통일된 명칭 사용
 
 ---
 

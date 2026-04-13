@@ -18,15 +18,15 @@ function AdminPlaces({ data, setData, bizId, userBranches=[], isMaster=false }) 
   const [del,setDel]=useState(null);
   const set=(k,v)=>setForm(p=>({...p,[k]:v}));
 
-  const openNew=()=>{setEdit(null);setForm({name:"",short:"",phone:"",address:"",color:"",useYn:true,staffColCount:0,naverAccountId:"",instagramAccountId:"",whatsappAccountId:"",bookingNotice:"",altPhone:""});setSheet(true);};
-  const openEdit=b=>{setEdit(b);setForm({name:b.name||"",short:b.short||"",phone:b.phone||"",address:b.address||"",color:b.color||"",useYn:b.useYn!==false,staffColCount:b.staffColCount||0,naverAccountId:b.naverAccountId||"",instagramAccountId:b.instagramAccountId||"",whatsappAccountId:b.whatsappAccountId||"",bookingNotice:b.bookingNotice||"",altPhone:b.altPhone||""});setSheet(true);};
+  const openNew=()=>{setEdit(null);setForm({name:"",short:"",phone:"",address:"",color:"",useYn:true,staffColCount:0,naverAccountId:"",instagramAccountId:"",whatsappAccountId:"",bookingNotice:"",altPhone:"",openTime:"11:00",closeTime:"21:00",defaultWorkStart:"11:00",defaultWorkEnd:"21:00"});setSheet(true);};
+  const openEdit=b=>{const ts=b.timelineSettings||{};setEdit(b);setForm({name:b.name||"",short:b.short||"",phone:b.phone||"",address:b.address||"",color:b.color||"",useYn:b.useYn!==false,staffColCount:b.staffColCount||0,naverAccountId:b.naverAccountId||"",instagramAccountId:b.instagramAccountId||"",whatsappAccountId:b.whatsappAccountId||"",bookingNotice:b.bookingNotice||"",altPhone:b.altPhone||"",openTime:ts.openTime||"11:00",closeTime:ts.closeTime||"21:00",defaultWorkStart:ts.defaultWorkStart||ts.openTime||"11:00",defaultWorkEnd:ts.defaultWorkEnd||ts.closeTime||"21:00"});setSheet(true);};
 
   const save=async()=>{
     if(!form.name.trim())return;
     setSaving(true);
     try{
       if(edit){
-        await sb.update("branches",edit.id,{name:form.name,short:form.short||form.name.slice(0,5),phone:form.phone,address:form.address,color:form.color,use_yn:form.useYn,staff_col_count:form.staffColCount||0,naver_account_id:form.naverAccountId||null,instagram_account_id:form.instagramAccountId||null,whatsapp_account_id:form.whatsappAccountId||null,booking_notice:form.bookingNotice||null,alt_phone:form.altPhone||null});
+        await sb.update("branches",edit.id,{name:form.name,short:form.short||form.name.slice(0,5),phone:form.phone,address:form.address,color:form.color,use_yn:form.useYn,staff_col_count:form.staffColCount||0,naver_account_id:form.naverAccountId||null,instagram_account_id:form.instagramAccountId||null,whatsapp_account_id:form.whatsappAccountId||null,booking_notice:form.bookingNotice||null,alt_phone:form.altPhone||null,timeline_settings:{openTime:form.openTime||"11:00",closeTime:form.closeTime||"21:00",defaultWorkStart:form.defaultWorkStart||form.openTime||"11:00",defaultWorkEnd:form.defaultWorkEnd||form.closeTime||"21:00"}});
         setData(p=>({...p,branches:(p.branches||[]).map(b=>b.id===edit.id?{...b,...form}:b),branchSettings:(p.branchSettings||[]).map(b=>b.id===edit.id?{...b,...form}:b)}));
       }else{
         const id="br_"+uid();
@@ -50,7 +50,7 @@ function AdminPlaces({ data, setData, bizId, userBranches=[], isMaster=false }) 
     :<div className="card" style={{padding:0,overflow:"hidden"}}>
       {branches.map((b,i)=><AListItem key={b.id}
         left={<AColorDot color={b.color} size={22}/>} title={b.name}
-        sub={[b.short&&("약칭: "+b.short),b.phone,b.address].filter(Boolean).join(" · ")||"정보 없음"}
+        sub={[b.short&&("약칭: "+b.short),(b.timelineSettings?.openTime||"11:00")+"~"+(b.timelineSettings?.closeTime||"21:00"),b.phone,b.address].filter(Boolean).join(" · ")||"정보 없음"}
         borderBottom={i<branches.length-1}
         right={<div style={{display:"flex",alignItems:"center",gap:8}}>
           <ABadge color={b.useYn!==false?T.success:T.gray400}>{b.useYn!==false?"운영":"중지"}</ABadge>
@@ -63,6 +63,24 @@ function AdminPlaces({ data, setData, bizId, userBranches=[], isMaster=false }) 
       <AField label="약칭" hint="타임라인 등 좁은 공간에 표시"><input style={AInp} value={form.short} onChange={e=>set("short",e.target.value)} placeholder="예: 강남" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
       <AField label="전화번호"><input style={AInp} value={form.phone} onChange={e=>set("phone",e.target.value)} placeholder="02-0000-0000" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
       <AField label="주소"><input style={AInp} value={form.address} onChange={e=>set("address",e.target.value)} placeholder="서울특별시 강남구…" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
+      <AField label="영업시간">
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <select style={{...AInp,flex:1}} value={form.openTime} onChange={e=>{const v=e.target.value;set("openTime",v);const sh=parseInt(v);const eh=Math.min(23,sh+10);set("closeTime",`${String(eh).padStart(2,"0")}:00`);}}>
+            {Array.from({length:36},(_,i)=>{const h=Math.floor(i/2)+6,m=(i%2)*30;const t=`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;return <option key={t} value={t}>{t}</option>;})}</select>
+          <span style={{fontSize:T.fs.sm}}>~</span>
+          <select style={{...AInp,flex:1}} value={form.closeTime} onChange={e=>set("closeTime",e.target.value)}>
+            {Array.from({length:36},(_,i)=>{const h=Math.floor(i/2)+6,m=(i%2)*30;const t=`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;return <option key={t} value={t}>{t}</option>;})}</select>
+        </div>
+      </AField>
+      <AField label="기본 근무시간" hint="직원 디폴트 출퇴근 (개별 설정 가능)">
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <select style={{...AInp,flex:1}} value={form.defaultWorkStart} onChange={e=>{const v=e.target.value;set("defaultWorkStart",v);const sh=parseInt(v);const eh=Math.min(23,sh+10);set("defaultWorkEnd",`${String(eh).padStart(2,"0")}:00`);}}>
+            {Array.from({length:36},(_,i)=>{const h=Math.floor(i/2)+6,m=(i%2)*30;const t=`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;return <option key={t} value={t}>{t}</option>;})}</select>
+          <span style={{fontSize:T.fs.sm}}>~</span>
+          <select style={{...AInp,flex:1}} value={form.defaultWorkEnd} onChange={e=>set("defaultWorkEnd",e.target.value)}>
+            {Array.from({length:36},(_,i)=>{const h=Math.floor(i/2)+6,m=(i%2)*30;const t=`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;return <option key={t} value={t}>{t}</option>;})}</select>
+        </div>
+      </AField>
       <AField label="색상"><APalette value={form.color} onChange={v=>set("color",v)}/></AField>
       <AField label="타임라인 컬럼 수" hint="0=자동(출근 직원 수), 숫자 설정 시 빈 컬럼 포함">
         <div style={{display:"flex",alignItems:"center",gap:8}}>

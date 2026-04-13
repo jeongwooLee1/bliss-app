@@ -7,7 +7,7 @@ export const DBMAP = {
   service_tags:{business_id:"businessId",schedule_yn:"scheduleYn",use_yn:"useYn"},
   services:{business_id:"businessId",price_f:"priceF",price_m:"priceM",is_package:"isPackage",pkg_count:"pkgCount",pkg_price_f:"pkgPriceF",pkg_price_m:"pkgPriceM"},
   app_users:{business_id:"businessId",login_id:"loginId",branch_ids:"branches",password:"pw",view_branch_ids:"viewBranches"},
-  branches:{business_id:"businessId",use_yn:"useYn",naver_email:"naverEmail",naver_biz_id:"naverBizId",naver_col_count:"naverColCount",noti_config:"notiConfig",staff_col_count:"staffColCount",naver_account_id:"naverAccountId",instagram_account_id:"instagramAccountId",whatsapp_account_id:"whatsappAccountId",booking_notice:"bookingNotice",alt_phone:"altPhone"},
+  branches:{business_id:"businessId",use_yn:"useYn",naver_email:"naverEmail",naver_biz_id:"naverBizId",naver_col_count:"naverColCount",noti_config:"notiConfig",staff_col_count:"staffColCount",naver_account_id:"naverAccountId",instagram_account_id:"instagramAccountId",whatsapp_account_id:"whatsappAccountId",booking_notice:"bookingNotice",alt_phone:"altPhone",timeline_settings:"timelineSettings"},
   reservation_sources:{business_id:"businessId",use_yn:"useYn"},
 };
 

@@ -18,7 +18,7 @@ import DailyView from './DailyView'
 const mkKey = (y, m) => `${y}-${String(m+1).padStart(2,'0')}`
 
 export default function SchedulePage({ employees: propEmps }) {
-  const { employees: hookEmployees } = useEmployees()
+  const { employees: hookEmployees, save: saveEmployees } = useEmployees()
   const baseEmployees = propEmps?.length ? propEmps : hookEmployees
 
   const today = new Date()
@@ -32,7 +32,8 @@ export default function SchedulePage({ employees: propEmps }) {
   const { data:empReqsTs, setData:setEmpReqsTs } = useScheduleData(DB_KEYS.empReqsTs, {})
   const { data:ownerRepeat, setData:setOwnerRepeat, save:saveOwnerRepeat } = useScheduleData(DB_KEYS.ownerRepeat, {})
   const { data:ruleConfigData, save:saveRuleConfig } = useScheduleData(DB_KEYS.ruleConfig, null)
-  const { data:supportOrder, setData:setSupportOrder, save:saveSupportOrder } = useScheduleData(DB_KEYS.supportOrder, ['yongsan'])
+  const { data:supportOrderRaw, setData:setSupportOrder, save:saveSupportOrder } = useScheduleData(DB_KEYS.supportOrder, ['yongsan'])
+  const supportOrder = Array.isArray(supportOrderRaw) ? supportOrderRaw : ['yongsan']
   const { data:maleRotation, save:saveMaleRotation } = useScheduleData(DB_KEYS.maleRotation, {})
   const { data:customEmployees, setData:setCustomEmployees, save:saveCustomEmployees } = useScheduleData(DB_KEYS.customEmployees, [])
   const { data:deletedEmpIdsArr, setData:setDeletedEmpIdsArr, save:saveDeletedEmpIds } = useScheduleData(DB_KEYS.deletedEmpIds, [])
@@ -63,7 +64,7 @@ export default function SchedulePage({ employees: propEmps }) {
   const [empSettings, setEmpSettings] = useState({})
   useEffect(() => {
     // Initialize empSettings from baseEmployees + customEmployees
-    // Note: baseEmployees already includes MALE_EMPLOYEES via useEmployees()
+    // 전 직원이 employees_v1에 통합되어 있음
     const base = {}
     ;(baseEmployees || []).forEach(e => {
       base[e.id] = { weeklyWork:7-(e.weeklyOff||2), altPattern:false, isFreelancer:e.isFreelancer||false }
@@ -555,7 +556,15 @@ export default function SchedulePage({ employees: propEmps }) {
       {editCell && <EditCellModal editCell={editCell} empSettings={empSettings} onSet={setS} onClose={() => setEditCell(null)}/>}
       {showBulkModal && selectedCells.size > 0 && <BulkEditModal selectedCells={selectedCells} onSet={setS} onClose={(st) => { setShowBulkModal(false); setSelectedCells(new Set()); if (st) toast_(`✅ ${selectedCells.size}개 셀 → ${st}`) }}/>}
       {showRuleConfig && <RuleConfigModal ruleConfig={ruleConfig} allEmployees={ALL_EMPLOYEES} empSettings={empSettings} onSetRule={onSetRule} onClose={() => setShowRuleConfig(false)}/>}
-      {showEmpSettings && <EmpSettingsModal allEmployees={ALL_EMPLOYEES} empSettings={empSettings} customEmployees={customEmployees} deletedEmpIds={deletedEmpIds} maleRotation={maleRotation||{}} onSetEmpSetting={onSetEmpSetting} onAddEmp={handleAddEmp} onDeleteEmp={handleDeleteEmp} onSaveMaleRotation={saveMaleRotation} onClose={() => setShowEmpSettings(false)}/>}
+      {showEmpSettings && <EmpSettingsModal allEmployees={ALL_EMPLOYEES} empSettings={empSettings} customEmployees={customEmployees} deletedEmpIds={deletedEmpIds} maleRotation={maleRotation||{}} onSetEmpSetting={onSetEmpSetting} onAddEmp={handleAddEmp} onDeleteEmp={handleDeleteEmp} onSaveMaleRotation={saveMaleRotation} onUpdateEmp={(empId, key, value) => {
+        const updated = baseEmployees.map(e => e.id===empId ? {...e, [key]:value, isOwner:key==='rank'?value==='원장':e.isOwner} : e);
+        saveEmployees(updated);
+      }}
+        ownerReqs={ownerReqs||{}} empReqs={empReqs||{}} ownerRepeat={ownerRepeat||{}} days={days} year={year} month={month}
+        curMonthStr={curMonthStr} nextMonthStr={nextMonthStr}
+        onSetOwnerReqs={setOwnerReqs} onSetEmpReqs={setEmpReqs} onSaveOwnerReqs={saveOwnerReqs}
+        onSetOwnerRepeat={(rep)=>{setOwnerRepeat(rep);saveOwnerRepeat(rep)}}
+        onClose={() => setShowEmpSettings(false)}/>}
       {showOwnerSettings && <OwnerSettingsModal allEmployees={ALL_EMPLOYEES} empSettings={empSettings} ownerReqs={ownerReqs||{}} empReqs={empReqs||{}} ownerRepeat={ownerRepeat||{}} days={days} year={year} month={month} curMonthStr={curMonthStr} nextMonthStr={nextMonthStr} onSetOwnerReqs={setOwnerReqs} onSetEmpReqs={setEmpReqs} onSaveOwnerReqs={saveOwnerReqs} onSetOwnerRepeat={(rep) => { setOwnerRepeat(rep); saveOwnerRepeat(rep) }} onClose={() => setShowOwnerSettings(false)}/>}
       {showSupportSettings && <SupportSettingsModal supportOrder={supportOrder||['yongsan']} onSave={(order) => { setSupportOrder(order); saveSupportOrder(order) }} onClose={() => setShowSupportSettings(false)}/>}
       {showSnapshots && <SnapshotModal snapshots={snapshots||{}} allEmployees={ALL_EMPLOYEES} curKey={curKey} onRollback={(monthKey, data) => {
@@ -633,7 +642,7 @@ export default function SchedulePage({ employees: propEmps }) {
               <div style={{ position:'absolute', top:'calc(100% + 6px)', right:0, background:T.bgCard, borderRadius:T.radius.lg, boxShadow:T.shadow.lg, zIndex:150, overflow:'hidden', minWidth:168, border:'1px solid '+T.border }}>
                 {[
                   { label:'규칙 설정', icon:'settings', action:() => { setShowRuleConfig(true); setShowSettings(false) } },
-                  { label:'원장 설정', icon:'user', action:() => { setShowOwnerSettings(true); setShowSettings(false) } },
+                  // 원장 설정 → 직원 설정의 "휴무 설정" 탭으로 통합
                   { label:'직원 설정', icon:'users', action:() => { setShowEmpSettings(true); setShowSettings(false) } },
                   { label:'지점지원 설정', icon:'building', action:() => { setShowSupportSettings(true); setShowSettings(false) } },
                   { label:'확정 이력', icon:'fileText', action:() => { setShowSnapshots(true); setShowSettings(false) } },

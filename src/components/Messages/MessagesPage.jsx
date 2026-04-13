@@ -201,17 +201,29 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
 
   // 시술 가격표 텍스트 생성
   const svcPriceText = React.useMemo(()=>{
-    const svcs=(data?.services||[]).filter(s=>s.name);
+    const svcs=(data?.services||[]).filter(s=>s.name&&(s.priceF||s.priceM));
     if(!svcs.length) return "";
-    return svcs.map(s=>{
-      const parts=[s.name];
-      if(s.dur) parts.push(s.dur+"분");
-      if(s.priceF) parts.push("여성 "+Number(s.priceF).toLocaleString()+"원");
-      if(s.priceM) parts.push("남성 "+Number(s.priceM).toLocaleString()+"원");
-      if(s.price && !s.priceF && !s.priceM) parts.push(Number(s.price).toLocaleString()+"원");
-      return "- "+parts.join(" / ");
-    }).join("\n");
-  },[data?.services]);
+    const cats=data?.cats||[];
+    const catMap={};
+    svcs.forEach(s=>{
+      const cat=cats.find(c=>c.id===s.cat);
+      const catName=cat?.name||"기타";
+      if(!catMap[catName]) catMap[catName]=[];
+      catMap[catName].push(s);
+    });
+    // 대표 시술만 선별 (고객 문의 빈도 높은 카테고리 우선)
+    const priorityCats=['브라질리언','케어','바디','페이셜','에너지테라피','PKG (패키지)'];
+    const lines=[];
+    const fmt=s=>{const p=[];if(s.priceF)p.push("여"+Number(s.priceF).toLocaleString());if(s.priceM)p.push("남"+Number(s.priceM).toLocaleString());return `${s.name}: ${p.join("/")}`;};
+    priorityCats.forEach(catName=>{
+      const items=catMap[catName];
+      if(!items) return;
+      lines.push(`[${catName}]`);
+      items.slice(0,4).forEach(s=>lines.push("  "+fmt(s)));
+      if(items.length>4) lines.push(`  ...외 ${items.length-4}개`);
+    });
+    return lines.join("\n");
+  },[data?.services,data?.cats]);
 
   // 고객 패키지 잔여 조회 헬퍼
   const findCustPkgInfo = useCallback((userId)=>{
@@ -235,6 +247,14 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
     });
     return lines.length>0 ? lines.join("\n") : "";
   },[data?.customers, data?.custPackages, msgs, names]);
+
+  // reply 변경 시 textarea 높이 자동 조정
+  React.useEffect(()=>{
+    const adjust=()=>{const ta=document.getElementById('bliss-reply-ta');if(ta){ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,200)+'px';}};
+    adjust();
+    const t=setTimeout(adjust,50);
+    return ()=>clearTimeout(t);
+  },[reply]);
 
   const genAI = async()=>{
     console.log("[genAI] called, sel:", sel?.channel, "convo:", convo.length);
@@ -260,7 +280,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       const pkgInfo = findCustPkgInfo(sel.user_id);
       const pkgCtx = pkgInfo ? `\n\n[이 고객의 다회권 정보]\n${pkgInfo}` : "";
 
-      const prompt=`당신은 뷰티샵 예약 접수 및 상담 직원입니다.${chatCtx}${priceCtx}${pkgCtx}\n\n[핵심규칙]\n★ 가격/비용을 묻는 메시지에는 시술상품 가격표에 근거하여 안내!\n★ 고객 질문에 먼저 답변한 후 예약 정보 물어보기\n\n[예약 접수 안내]\n- 예약에 필요한 정보: 이름, 연락처, 희망 날짜/시간, 시술 종류, 지점\n- 부족한 정보는 자연스럽게 1~2개씩 물어보기\n- 영업시간: 매일 10:00~22:00\n\n중요: 가격은 위 자료에 근거해서만 답변. 모르면 "확인 후 안내드리겠습니다". 거짓 정보 금지.\n\n대화:\n${lastMsgs}\n\n고객 마지막 메시지에 친절하게 답변하세요. JSON만 출력:\n{"reply":"${langName}로 작성한 답변","ko":"한국어 번역"}`;
+      const prompt=`당신은 뷰티샵 예약 접수 및 상담 직원입니다.${chatCtx}${priceCtx}${pkgCtx}\n\n[핵심규칙]\n★★★ 가격 문의 시 아래 형식으로 안내 (숫자는 [시술 가격표]에서 가져올 것!):\n\n🔸 Brazilian Waxing: Women ₩154,000 / Men ₩176,000\n🔸 Skincare (Face): From ₩120,000~\n🔸 Energy Therapy: 60min ₩198,000\n🔸 Body Waxing: ₩10,000~₩150,000 (by area)\n\n★ 스킨케어 = 얼굴 관리 (베이직케어/리버스하이드라케어 등). 애프터케어(케어,재생관리,진정팩)는 브라질리언왁싱 사후관리이므로 가격 안내에 포함하지 말 것!\n★ 시술 종류를 되묻지 말고 바로 가격 안내\n★ DM이므로 5줄 이내로 짧게\n\n[예약 접수 안내]\n- 예약에 필요한 정보: 이름, 연락처, 희망 날짜/시간, 시술 종류, 지점\n- 부족한 정보는 자연스럽게 1~2개씩 물어보기\n- 영업시간: 매일 10:00~22:00\n\n중요: 가격은 위 자료에 근거해서만 답변. 모르면 "확인 후 안내드리겠습니다". 거짓 정보 금지.\n\n대화:\n${lastMsgs}\n\n고객 마지막 메시지에 친절하게 답변하세요. JSON만 출력:\n{"reply":"${langName}로 작성한 답변","ko":"한국어 번역"}`;
       const res=await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="+key,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
       if(res.status===429){alert("AI 요청 한도 초과. 잠시 후 시도해주세요.");return;}
       if(!res.ok){const err=await res.text();alert("AI API 오류: "+res.status);console.error("[genAI] API error:",err);return;}
@@ -419,10 +439,10 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
         </div>
         {aiKoDraft&&<div style={{fontSize:12,color:"#4338ca",padding:"4px 8px",background:"#eff6ff",borderRadius:6,marginBottom:6,borderLeft:"3px solid #818cf8"}}>🇰🇷 {aiKoDraft}</div>}
         <div style={{position:"relative"}}>
-          <textarea value={reply} onChange={e=>{ setReply(e.target.value); setAiKoDraft(""); e.target.style.height="auto"; e.target.style.height=Math.min(e.target.scrollHeight,160)+"px"; }}
+          <textarea id="bliss-reply-ta" value={reply} onChange={e=>{ setReply(e.target.value); setAiKoDraft(""); }}
             onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();autoTranslate?sendTranslated():sendMsg(reply.trim());}}}
             placeholder="메시지 입력..."
-            style={{width:"100%",padding:"10px 52px 10px 14px",border:"1px solid "+T.border,borderRadius:12,fontSize:15,resize:"none",minHeight:42,maxHeight:160,height:42,fontFamily:"inherit",outline:"none",background:"#fff",color:"#1f2937",lineHeight:"22px",overflowY:"auto",boxSizing:"border-box",WebkitAppearance:"none",appearance:"none"}}
+            style={{width:"100%",padding:"10px 52px 10px 14px",border:"1px solid "+T.border,borderRadius:12,fontSize:15,resize:"none",minHeight:42,maxHeight:200,fontFamily:"inherit",outline:"none",background:"#fff",color:"#1f2937",lineHeight:"22px",overflowY:"auto",boxSizing:"border-box",WebkitAppearance:"none",appearance:"none"}}
           />
           {(reply.trim()||sending)&&<button onClick={()=>autoTranslate?sendTranslated():sendMsg(reply.trim())} disabled={sending||!reply.trim()}
             style={{position:"absolute",right:8,bottom:6,width:32,height:32,background:"#7C3AED",color:"#fff",border:"none",borderRadius:"50%",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -537,10 +557,10 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
             </div>
             {aiKoDraft&&<div style={{fontSize:11,color:"#4338ca",padding:"3px 8px",background:"#eff6ff",borderRadius:6,marginBottom:4,borderLeft:"3px solid #818cf8"}}>🇰🇷 {aiKoDraft}</div>}
             <div style={{display:"flex",gap:8}}>
-              <textarea value={reply} onChange={e=>{ setReply(e.target.value); e.target.style.height="auto"; e.target.style.height=Math.min(e.target.scrollHeight,160)+"px"; }}
+              <textarea id="bliss-reply-ta" value={reply} onChange={e=>{ setReply(e.target.value); }}
                 onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();autoTranslate?sendTranslated():sendMsg(reply.trim());}}}
                 placeholder="메시지 입력..."
-                style={{flex:1,padding:"10px 14px",border:"1px solid "+T.border,borderRadius:8,fontSize:15,resize:"none",minHeight:42,height:42,maxHeight:160,fontFamily:"inherit",outline:"none",background:"#fff",color:"#1f2937",lineHeight:"22px",overflowY:"auto"}}
+                style={{flex:1,padding:"10px 14px",border:"1px solid "+T.border,borderRadius:8,fontSize:15,resize:"none",minHeight:42,maxHeight:200,fontFamily:"inherit",outline:"none",background:"#fff",color:"#1f2937",lineHeight:"22px",overflowY:"auto"}}
               />
               <button onClick={()=>autoTranslate?sendTranslated():sendMsg(reply.trim())} disabled={sending||!reply.trim()}
                 style={{width:44,height:44,alignSelf:"flex-end",flexShrink:0,background:reply.trim()?"#7C3AED":"#e5e7eb",color:reply.trim()?"#fff":"#9ca3af",border:"none",borderRadius:"50%",cursor:reply.trim()?"pointer":"default",display:"flex",alignItems:"center",justifyContent:"center"}}>

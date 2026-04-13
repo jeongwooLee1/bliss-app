@@ -32,10 +32,8 @@ export const SCH_BRANCH_MAP = {
   wirye:'br_g768xdu4w', cheonho:'br_xu60omgdf',
 }
 
-export const MALE_EMPLOYEES = [
-  { id:'재윤', name:'재윤', branch:'male', branches:['male'], isOwner:false, weeklyOff:2, isMale:true },
-  { id:'주용', name:'주용', branch:'male', branches:['male'], isOwner:false, weeklyOff:2, isMale:true },
-]
+// MALE_EMPLOYEES 삭제됨 — 전 직원이 employees_v1에 통합
+export const MALE_EMPLOYEES = []
 
 export const STATUS_LABEL = {
   confirmed:'진행', completed:'완료', cancelled:'취소',

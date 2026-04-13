@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
-import { BUSINESS_ID, MALE_EMPLOYEES } from './constants'
+import { BUSINESS_ID } from './constants'
 
 // ── 직원 목록 (Supabase employees_v1) ──────────────────────
 export function useEmployees() {
@@ -12,7 +12,7 @@ export function useEmployees() {
       .from('schedule_data').select('value').eq('key', 'employees_v1').single()
     if (data?.value) {
       const list = typeof data.value === 'string' ? JSON.parse(data.value) : data.value
-      setEmployees([...list, ...MALE_EMPLOYEES])
+      setEmployees(list)
     }
     setLoading(false)
   }
@@ -20,12 +20,11 @@ export function useEmployees() {
   useEffect(() => { load() }, [])
 
   const save = async (list) => {
-    const withoutMale = list.filter(e => !e.isMale)
     await supabase.from('schedule_data').upsert({
       id: 'employees_v1', key: 'employees_v1',
-      value: JSON.stringify(withoutMale)
+      value: JSON.stringify(list)
     })
-    setEmployees([...withoutMale, ...MALE_EMPLOYEES])
+    setEmployees(list)
   }
 
   return { employees, setEmployees, save, loading, reload: load }

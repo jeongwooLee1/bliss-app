@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { T, NAVER_COLS, getNaverVal, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, BRANCH_DEFAULT_COLORS, branchColor, STATUS_CLR_DEFAULT, STATUS_KEYS, SCH_BRANCH_MAP, MALE_EMPLOYEES } from '../../lib/constants'
+import { T, NAVER_COLS, getNaverVal, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, BRANCH_DEFAULT_COLORS, branchColor, STATUS_CLR_DEFAULT, STATUS_KEYS, SCH_BRANCH_MAP } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY, sbHeaders, queueAlimtalk } from '../../lib/sb'
 import { useMaleRotation } from '../../lib/useData'
 import { fromDb, toDb, resolveSystemIds, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS } from '../../lib/db'
@@ -94,7 +94,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       const ids = new Set(base.map(e => e.id));
       const merged = [...base];
       custom.forEach(e => { if (!ids.has(e.id)) { merged.push(e); ids.add(e.id); } });
-      MALE_EMPLOYEES.forEach(e => { if (!ids.has(e.id)) { merged.push(e); ids.add(e.id); } });
+      // MALE_EMPLOYEES 하드코딩 제거 — 전 직원 employees_v1에 통합
       return merged;
     };
     // employees_v1 + customEmployees_v1 동시 로드
@@ -381,8 +381,12 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   // 직원이 특정 지점에서 활성인 시간 범위 반환 (null=종일)
   const getEmpActiveRange = (empId, date, branchId) => {
     const segs = getEmpBranches(empId, date);
-    // empWorkHours에서 근무시간 가져오기 (지점별)
-    const wh = empWorkHours[empId+"_"+branchId+"_"+date] || empWorkHours[empId+"_"+branchId] || empWorkHours[empId+"_"+date] || empWorkHours[empId];
+    // empWorkHours에서 근무시간 가져오기 (일별 > 지점 기본근무시간)
+    const branchTs = (data?.branches||[]).find(b=>b.id===branchId)?.timelineSettings;
+    const branchHours = branchTs?.defaultWorkStart ? {start:branchTs.defaultWorkStart, end:branchTs.defaultWorkEnd||"21:00"}
+      : branchTs?.openTime ? {start:branchTs.openTime, end:branchTs.closeTime||"21:00"} : null;
+    const wh = empWorkHours[empId+"_"+branchId+"_"+date] || empWorkHours[empId+"_"+branchId] || empWorkHours[empId+"_"+date] || empWorkHours[empId]
+      || branchHours;
     if (!segs) return wh ? {from: wh.start, until: wh.end} : {from: null, until: null};
     const seg = segs.find(s => s.branchId === branchId);
     if (!seg) return null; // 이 지점에 없음
@@ -629,10 +633,15 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const moveEmpCol = (branchId, empId, dir) => {
     setEmpColOrder(prev => {
       let order = [...(prev[branchId]||[])];
-      // order가 비어있거나 empId가 없으면 현재 출근 직원으로 초기화
-      if (order.length === 0 || !order.includes(empId)) {
-        const ws = getWorkingStaff(branchId, selDate) || [];
-        order = ws.map(e => e.id);
+      // order에 empId가 없으면 현재 렌더된 컬럼 전체(지원 직원 포함)로 초기화
+      if (!order.includes(empId)) {
+        // allRooms에서 해당 지점 직원 ID 수집
+        const brRooms = (allRoomsRef.current||[]).filter(r=>r.branch_id===branchId && r.staffId);
+        const ids = brRooms.map(r=>r.staffId);
+        // 기존 order에 없는 직원만 추가
+        for (const id of ids) {
+          if (!order.includes(id)) order.push(id);
+        }
         if (!order.includes(empId)) return prev;
       }
       const idx = order.indexOf(empId);
@@ -642,6 +651,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       return {...prev, [branchId]: order};
     });
   };
+  const allRoomsRef = React.useRef([]);
   const sortStaffByOrder = (staffList, branchId) => {
     const order = empColOrder[branchId];
     if (!order || order.length === 0) {
@@ -676,21 +686,29 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     const workingStaff = rawStaff ? sortStaffByOrder(rawStaff, br.id) : null;
     let staffRooms;
     if (workingStaff !== null) {
-      // 근무표 기반 — 휴무 필터 + 원래소속/지원 분리 (지원은 맨 뒤)
+      // 근무표 기반 — 휴무 필터
       const filteredStaff = workingStaff.filter(e => {
         if (!schHistory) return true;
         const ds = schHistory[e.id]?.[selDate];
         return ds !== "휴무" && ds !== "휴무(꼭)";
       });
-      const baseStaff = filteredStaff.filter(e => {
-        const emp = BASE_EMP_LIST.find(b=>b.id===e.id);
-        return emp && emp.branch_id === br.id;
-      });
-      const guestStaff = filteredStaff.filter(e => {
-        const emp = BASE_EMP_LIST.find(b=>b.id===e.id);
-        return !emp || emp.branch_id !== br.id;
-      });
-      staffRooms = [...baseStaff, ...guestStaff].map(e => {
+      // 커스텀 순서가 있으면 그대로, 없으면 base→guest 순서
+      const hasCustomOrder = empColOrder[br.id]?.length > 0;
+      let orderedStaff;
+      if (hasCustomOrder) {
+        orderedStaff = sortStaffByOrder(filteredStaff, br.id);
+      } else {
+        const baseStaff = filteredStaff.filter(e => {
+          const emp = BASE_EMP_LIST.find(b=>b.id===e.id);
+          return emp && emp.branch_id === br.id;
+        });
+        const guestStaff = filteredStaff.filter(e => {
+          const emp = BASE_EMP_LIST.find(b=>b.id===e.id);
+          return !emp || emp.branch_id !== br.id;
+        });
+        orderedStaff = [...baseStaff, ...guestStaff];
+      }
+      staffRooms = orderedStaff.map(e => {
         const range = getEmpActiveRange(e.id, selDate, br.id);
         return {
           id: `st_${br.id}_${e.id}`, name: e.id,
@@ -712,6 +730,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     });
     return [...naverRooms, ...staffRooms];
   });
+  allRoomsRef.current = allRooms;
   const isNaverRes = (r) => !!r.reservationId || r.source === "ai_booking";
   const isPendingRes = (r) => r.status === "pending" || r.status === "request";
   const isUnassigned = (r) => !r.roomId && !r.staffId || r.roomId?.startsWith("nv_") || r.roomId?.startsWith("blank_");
@@ -1692,22 +1711,24 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             <div style={{fontSize:10,color:T.textMuted,marginBottom:4,fontWeight:700}}>근무시간</div>
                             {(()=>{
                               const whKey = room.staffId+"_"+room.branch_id+"_"+selDate;
-                              const wh = empWorkHours[whKey] || empWorkHours[room.staffId+"_"+room.branch_id] || {start:"10:00",end:"21:00"};
-                              const hours = Array.from({length:48},(_,i)=>{const h=Math.floor(i/2),m=(i%2)*30;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;}).filter(t=>{const hh=parseInt(t);return hh>=startHour&&hh<endHour;});
+                              const wh = empWorkHours[whKey] || empWorkHours[room.staffId+"_"+room.branch_id] || (()=>{const bts=(data?.branches||[]).find(b=>b.id===room.branch_id)?.timelineSettings;return bts?.defaultWorkStart?{start:bts.defaultWorkStart,end:bts.defaultWorkEnd||"21:00"}:bts?.openTime?{start:bts.openTime,end:bts.closeTime||"21:00"}:null;})() || {start:"10:00",end:"21:00"};
+                              const hours = Array.from({length:36},(_,i)=>{const h=Math.floor(i/2)+6,m=(i%2)*30;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;});
                               const selSt = {flex:1,fontSize:11,padding:"4px 3px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"};
+                              const startRef = React.createRef();
+                              const endRef = React.createRef();
                               return <div style={{display:"flex",gap:4,alignItems:"center"}}>
-                                <select defaultValue={wh.start} style={selSt}
-                                  onChange={e=>{const v=e.target.value; const sh=parseInt(v); const eh=Math.min(23,sh+10); const endStr=`${String(eh).padStart(2,"0")}:00`; _setEmpWorkHours(p=>({...p,[whKey]:{start:v,end:endStr}}));}}>
+                                <select ref={startRef} defaultValue={wh.start} style={selSt}
+                                  onChange={e=>{const v=e.target.value; const sh=parseInt(v); const eh=Math.min(23,sh+10); if(endRef.current) endRef.current.value=`${String(eh).padStart(2,"0")}:00`;}}>
                                   {hours.map(h=><option key={h} value={h}>{h}</option>)}
                                 </select>
                                 <span style={{fontSize:11}}>~</span>
-                                <select defaultValue={wh.end} style={selSt}
-                                  onChange={e=>{const v=e.target.value; _setEmpWorkHours(p=>({...p,[whKey]:{...(p[whKey]||p[room.staffId+"_"+room.branch_id]||{start:"10:00",end:"21:00"}),end:v}}));}}>
+                                <select ref={endRef} defaultValue={wh.end} style={selSt}>
                                   {hours.map(h=><option key={h} value={h}>{h}</option>)}
                                 </select>
                                 <button onClick={()=>{
-                                  const cur = empWorkHours[whKey] || empWorkHours[room.staffId+"_"+room.branch_id] || {start:"10:00",end:"21:00"};
-                                  setEmpWorkHours(p=>({...p,[whKey]:cur}));
+                                  const s = startRef.current?.value || wh.start;
+                                  const en = endRef.current?.value || wh.end;
+                                  setEmpWorkHours(p=>({...p,[whKey]:{start:s,end:en}}));
                                   setEmpMovePopup(null);
                                 }} style={{padding:"4px 8px",fontSize:10,fontWeight:700,border:"none",borderRadius:6,background:T.primary,color:"#fff",cursor:"pointer"}}>저장</button>
                               </div>;
@@ -1729,9 +1750,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             const segs = ov ? (typeof ov==="string" ? [{branchId:ov,from:null,until:null}] : (ov.segments||[])) : [];
                             const empBase = BASE_EMP_LIST.find(e=>e.id===room.staffId);
                             const baseBranch = empBase ? empBase.branch_id : null;
-                            const allBranches = (data.branches||[]).filter(b=>
-                              branchesToShow.some(bs=>bs.id===b.id) || b.id===baseBranch
-                            );
+                            const allBranches = (data.branches||[]).filter(b=>b.useYn!==false);
                             // 추가할 지점 + 시간 상태
                             const [addBranch,setAddBranch] = [empMovePopup.addBranch||"", v=>setEmpMovePopup(p=>({...p,addBranch:v}))];
                             const [addFrom,setAddFrom] = [empMovePopup.addFrom||"", v=>setEmpMovePopup(p=>({...p,addFrom:v}))];
@@ -1887,14 +1906,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                     return <>
                       {beforeH2>0&&<div style={{position:"absolute",top:0,left:0,right:0,height:beforeH2,background:"rgba(0,0,0,.06)",zIndex:2,pointerEvents:"none",borderBottom:"2px dashed rgba(0,0,0,.12)"}}/>}
                       {afterH2>0&&<div style={{position:"absolute",top:afterTop2,left:0,right:0,height:afterH2,background:"rgba(0,0,0,.06)",zIndex:2,pointerEvents:"none",borderTop:"2px dashed rgba(0,0,0,.12)"}}/>}
-                      {room.activeFrom&&fromMin2>startMin2&&<div style={{position:"absolute",top:(fromMin2-startMin2)/5*rowH,left:0,right:0,zIndex:3,pointerEvents:"none",display:"flex",alignItems:"center"}}>
-                        <div style={{flex:1,height:2,background:T.primary,opacity:.5}}/>
-                        <span style={{fontSize:9,color:T.primary,fontWeight:700,background:T.bgCard,padding:"0 3px",borderRadius:3,whiteSpace:"nowrap",flexShrink:0}}>{room.activeFrom}~</span>
-                      </div>}
-                      {room.activeUntil&&<div style={{position:"absolute",top:(untilMin2-startMin2)/5*rowH-1,left:0,right:0,zIndex:3,pointerEvents:"none",display:"flex",alignItems:"center"}}>
-                        <div style={{flex:1,height:2,background:T.danger,opacity:.5}}/>
-                        <span style={{fontSize:9,color:T.danger,fontWeight:700,background:T.bgCard,padding:"0 3px",borderRadius:3,whiteSpace:"nowrap",flexShrink:0}}>~{room.activeUntil}</span>
-                      </div>}
+                      {/* 출퇴근 시간 텍스트 제거 — 회색 영역만 표시 */}
                     </>;
                   })()}
                   {hoverCell?.roomId===room.id && hoverCell.rowIdx>=0 && <div style={{position:"absolute",top:hoverCell.rowIdx*rowH,left:0,right:0,height:rowH,background:"rgba(124,124,200,0.12)",borderTop:"1px solid rgba(124,124,200,0.3)",borderBottom:"1px solid rgba(124,124,200,0.3)",zIndex:1,pointerEvents:"none",transition:"top 0.05s ease"}}/>}

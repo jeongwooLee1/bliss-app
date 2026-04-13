@@ -1042,9 +1042,13 @@ function App() {
     setPhase("login");
   };
 
-  // ─── 복사/선택 방지 ───
+  // ─── 타임라인에서만 복사/선택 방지, 그 외(모달/목록)는 허용 ───
   useEffect(() => {
-    const prevent = e => { if (e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA") e.preventDefault(); };
+    const prevent = e => {
+      const el = e.target;
+      if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") return;
+      if (el.closest(".tl-grid, .tl-block, .tl-col-header, nav, aside")) e.preventDefault();
+    };
     document.addEventListener("copy", prevent);
     document.addEventListener("cut", prevent);
     return () => { document.removeEventListener("copy", prevent); document.removeEventListener("cut", prevent); };
@@ -1181,11 +1185,16 @@ function App() {
     try{const s=JSON.parse(localStorage.getItem("bliss_session")||"{}");delete s.bizId;localStorage.setItem("bliss_session",JSON.stringify(s));}catch(e){}
     setLoadMsg("관리자 데이터 로딩 중...");
     setPhase("loading");
-    const sd = await loadAllFromDb(null);
-    setSuperData(sd);
-    setRole("super");
-    setCurrentBizId(null); setCurrentBiz(null); setData(null); setActiveBiz(null);
-    setPhase("super");
+    try {
+      const sd = await loadAllFromDb(null);
+      setSuperData(sd);
+      setRole("super");
+      setCurrentBizId(null); setCurrentBiz(null); setData(null); setActiveBiz(null);
+      setPhase("super");
+    } catch(e) {
+      console.error("handleBackToSuper error:", e);
+      setPhase("super");
+    }
   };
 
   if (phase === "loading") return <Loading msg={loadMsg} />;

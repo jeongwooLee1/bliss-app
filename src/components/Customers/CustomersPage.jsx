@@ -185,18 +185,18 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       const expiry = expiryMatch ? expiryMatch[1] : null;
       const isExpired = expiry && expiry < today;
       if (isAnnual) {
-        out.push({type:"annual", label: isExpired ? `⏳ 연간(만료)` : `📋 연간`, expired: isExpired});
+        if (!isExpired) out.push({type:"annual", label:`📋 연간`, expired: false});
         return;
       }
       if (isPrepaid) {
         const m = (p.note||"").match(/잔액:([0-9,]+)/);
         const bal = m ? Number(m[1].replace(/,/g,"")) : 0;
-        if (bal > 0) out.push({type:"prepaid", label:`🎫 ${bal.toLocaleString()}`, expired: isExpired});
+        if (bal > 0 && !isExpired) out.push({type:"prepaid", label:`🎫 ${bal.toLocaleString()}`, expired: false});
       } else {
         const remain = (p.total_count||0) - (p.used_count||0);
-        if (remain > 0) {
+        if (remain > 0 && !isExpired) {
           const shortName = (n.split("(")[0]||"다회").replace(/\s*5회$/,"").trim();
-          out.push({type:"package", label:`🎟 ${shortName} +${remain}`, expired: isExpired});
+          out.push({type:"package", label:`🎟 ${shortName} +${remain}`, expired: false});
         }
       }
     });
@@ -615,7 +615,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                     </div>
                     {/* 탭 */}
                     <div style={{display:"flex",gap:0,borderBottom:"1px solid "+T.border,background:T.bgCard}}>
-                      {[["sales","매출 내역 ("+custSales.length+")"],["pkg","보유권 ("+custPkgs.filter(p=>{const t=pkgType(p);return t==="prepaid"?((p.note||"").match(/잔액:([0-9,]+)/)?.[1]||"0").replace(/,/g,"")>0:(p.total_count-p.used_count)>0;}).length+"/"+custPkgs.length+")"]].map(([tab,lbl])=>(
+                      {[["sales","매출 내역 ("+custSales.length+")"],["pkg","보유권 ("+custPkgs.filter(p=>{const t=pkgType(p);const ex=(p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/);const isExp=ex&&ex[1]<todayStr();if(isExp)return false;return t==="prepaid"?((p.note||"").match(/잔액:([0-9,]+)/)?.[1]||"0").replace(/,/g,"")>0:(p.total_count-p.used_count)>0;}).length+")"]].map(([tab,lbl])=>(
                         <button key={tab} onClick={()=>setDetailTab(tab)}
                           style={{padding:"8px 16px",fontSize:T.fs.xs,fontWeight:detailTab===tab?T.fw.bolder:T.fw.normal,
                             color:detailTab===tab?T.primary:T.textSub,background:"none",border:"none",
