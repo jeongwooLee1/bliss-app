@@ -400,13 +400,12 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     + (items.extra_prod?.checked ? items.extra_prod.amount : 0);
   const discount = items.discount?.checked ? items.discount.amount : 0;
   const naverDeduct = isNaver ? naverPrepaid : 0;
-  // 보유권 차감 합산 (다회권: 시술가격, 다담권: 입력 금액)
+  // 보유권 차감 합산 (다담권만 금액 차감, 다회권은 횟수만 차감 — 금액 영향 없음)
   const pkgDeduct = Object.entries(pkgUse).reduce((sum, [pkgId, val]) => {
     if (!val) return sum;
     const pkg = custPkgs.find(p => p.id === pkgId);
     if (!pkg) return sum;
     const t = _pkgType(pkg);
-    if (t === "package" && typeof val === "number" && val > 0) return sum + svcTotal; // 다회권: 시술 전액
     if (t === "prepaid" && typeof val === "number" && val > 0) return sum + val;
     return sum;
   }, 0);
