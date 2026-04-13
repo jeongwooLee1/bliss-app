@@ -180,7 +180,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     });
   };
   const editPay = (k, v, total, prefix) => {
-    const val = Number(v) || 0;
+    const val = parseAmt(v);
     const fields = prefix === "svc" ? ["svcCard","svcCash","svcTransfer"] : ["prodCard","prodCash","prodTransfer"];
     const pri = primaryPay[prefix];
     setPayMethod(prev => {
@@ -911,10 +911,10 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                     style={{padding:"5px 10px",fontSize:T.fs.xxs,fontWeight:T.fw.bolder,borderRadius:T.radius.md,cursor:"pointer",fontFamily:"inherit",transition:"all .15s",
                       border:openPay[k]?`2px solid ${clr}`:"1px solid #d0d0d0",
                       background:openPay[k]?bg:T.gray100,color:openPay[k]?clr:T.gray500}}>{label}</button>
-                  {openPay[k] && <input className="inp" type="number" step="5000" value={payMethod[k]||""} placeholder="0"
+                  {openPay[k] && <input type="text" inputMode="numeric" value={payMethod[k]?fmtAmt(payMethod[k]):""} placeholder="0"
                     onChange={e=>editPay(k,e.target.value,svcPayTotal,"svc")}
                     readOnly={primaryPay.svc===k}
-                    style={{width:75,padding:"4px 6px",fontSize:T.fs.sm,textAlign:"right",border:`1.5px solid ${clr}`,color:clr,fontWeight:T.fw.bolder,borderRadius:T.radius.md,
+                    style={{width:85,padding:"4px 6px",fontSize:T.fs.sm,textAlign:"right",border:`1.5px solid ${clr}`,color:clr,fontWeight:T.fw.bolder,borderRadius:T.radius.md,
                       background:primaryPay.svc===k?T.bg:T.bgCard}}/>}
                 </div>)}
               </div>
@@ -931,10 +931,10 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                     style={{padding:"5px 10px",fontSize:T.fs.xxs,fontWeight:T.fw.bolder,borderRadius:T.radius.md,cursor:"pointer",fontFamily:"inherit",transition:"all .15s",
                       border:openPay[k]?`2px solid ${clr}`:"1px solid #d0d0d0",
                       background:openPay[k]?bg:T.gray100,color:openPay[k]?clr:T.gray500}}>{label}</button>
-                  {openPay[k] && <input className="inp" type="number" step="5000" value={payMethod[k]||""} placeholder="0"
+                  {openPay[k] && <input type="text" inputMode="numeric" value={payMethod[k]?fmtAmt(payMethod[k]):""} placeholder="0"
                     onChange={e=>editPay(k,e.target.value,prodPayTotal,"prod")}
                     readOnly={primaryPay.prod===k}
-                    style={{width:75,padding:"4px 6px",fontSize:T.fs.sm,textAlign:"right",border:`1.5px solid ${clr}`,color:clr,fontWeight:T.fw.bolder,borderRadius:T.radius.md,
+                    style={{width:85,padding:"4px 6px",fontSize:T.fs.sm,textAlign:"right",border:`1.5px solid ${clr}`,color:clr,fontWeight:T.fw.bolder,borderRadius:T.radius.md,
                       background:primaryPay.prod===k?T.bg:T.bgCard}}/>}
                 </div>)}
               </div>
