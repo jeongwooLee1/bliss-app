@@ -921,7 +921,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           {grandTotal > 0 && <div style={{fontSize:9,color:T.gray400,marginTop:6}}>결제수단 클릭 → 전액 / 추가 클릭 → 분배</div>}
           {/* 매출 메모 */}
           <div style={{marginTop:8}}>
-            <textarea className="inp" rows={2} value={saleMemo} onChange={e=>setSaleMemo(e.target.value)}
+            <textarea className="inp" rows={5} value={saleMemo} onChange={e=>setSaleMemo(e.target.value)}
               placeholder="매출 메모" style={{resize:"vertical",width:"100%",fontSize:T.fs.sm}}/>
           </div>
         </div>
