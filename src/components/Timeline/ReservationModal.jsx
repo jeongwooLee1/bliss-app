@@ -566,7 +566,7 @@ ${naverText}
       if (effectiveIsNew) newTags = [...newTags, NEW_CUST_TAG_ID];
       // 예약금완료 자동 처리: isPrepaid=true이면 태그 추가 (totalPrice 무관)
       if (f.isPrepaid && !newTags.includes(PREPAID_TAG_ID)) newTags = [...newTags, PREPAID_TAG_ID];
-      let newSvcs = fuzzyFix(parsed.matchedServiceIds || [], validSvcSet).filter(id => validSvcSet.has(id));
+      let newSvcs = fuzzyFix(parsed.matchedServiceIds || [], validSvcSet).filter(id => id.startsWith("pkg__") || validSvcSet.has(id));
       // 후처리: 브라질리언왁싱 선택 시 항문왁싱 자동 제거 (브라질리언에 포함됨)
       const svcNames = newSvcs.map(sid => (data?.services||[]).find(s=>s.id===sid)?.name||"");
       const hasBrazilian = svcNames.some(n => n.includes("브라질리언"));
