@@ -838,7 +838,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           </div>
 
           {/* 결제수단 분배 */}
-          {(svcTotal > 0 || prodTotal > 0 || hasPkgChecked()) && <div className="sale-pay-row" style={{display:"flex",gap:T.sp.lg,flexWrap:"wrap"}}>
+          {(svcTotal > 0 || prodTotal > 0 || hasPkgChecked()) && <div className="sale-pay-row" style={{display:"flex",flexDirection:"column",gap:8}}>
             {svcTotal > 0 && <div style={{flex:1,minWidth:0,padding:"8px 12px",background:T.bgCard,borderRadius:T.radius.md,border:"1px solid "+T.border}}>
               <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.primary,marginBottom:6}}><I name="scissors" size={12}/> 시술 결제 <span style={{color:T.danger,fontWeight:T.fw.black}}>{fmt(svcPayTotal)}원</span></div>
               <div style={{display:"flex",gap:T.sp.xs,flexWrap:"wrap"}}>
