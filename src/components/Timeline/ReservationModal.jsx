@@ -1284,7 +1284,7 @@ ${rulesBlock}
                       if(!cur.includes(notes)) updates.memo = cur ? cur+"\n[AI] "+notes : "[AI] "+notes;
                     }
                     setF(p=>({...p,...updates}));
-                    alert(`✅ 시술 ${newSvcs.length}개, 태그 ${newTags.length}개 매칭${notes?"\n특이: "+notes:""}`);
+                    alert(`✅ 시술 ${newSvcs.length}개, 태그 ${newTags.length}개 매칭${notes?"\n특이: "+notes:""}\n\nraw: ${JSON.stringify(result.matchedServiceIds||result.services||[]).slice(0,200)}\nfinal: ${JSON.stringify(newSvcs).slice(0,200)}`);
                   } else { alert("AI 분석 결과를 파싱할 수 없습니다"); }
                 } catch(e){ alert("AI 분석 실패: "+e.message); }
               }}>AI 분석</Btn>}
