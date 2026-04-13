@@ -1213,6 +1213,7 @@ ${naverText}
                 const tagList = tags.filter(t=>t.useYn!==false&&t.scheduleYn!=="Y").map(t=>`"${t.id}":"${t.name}"`).join(", ");
                 const neverText = [f.requestMsg, f.ownerComment].filter(Boolean).join("\n");
                 if(!neverText.trim() && !f.memo?.trim()){alert("분석할 메모/요청사항이 없습니다");return;}
+                console.log("[AI2 INPUT] svcList:", svcList.slice(0,200), "\nneverText:", neverText.slice(0,200));
                 // AI 규칙 로드
                 const aiRules = JSON.parse(localStorage.getItem("bliss_ai_rules")||"[]");
                 const rulesBlock = aiRules.length > 0
@@ -1279,8 +1280,8 @@ ${rulesBlock}
                     setF(p=>({...p,...updates}));
                     console.log("[AI2 RAW]", result);
                     alert(`시술 ${newSvcs.length}개, 태그 ${newTags.length}개 매칭${notes?"\n특이: "+notes:""}\n\n[DEBUG] raw=${JSON.stringify(result.matchedServiceIds||[])}\nfinal=${JSON.stringify(newSvcs)}`);
-                  } else { alert("AI 분석 결과를 파싱할 수 없습니다"); }
-                } catch(e){ alert("AI 분석 실패: "+e.message); }
+                  } else { alert("AI 분석 결과를 파싱할 수 없습니다\n\nraw: "+txt.slice(0,300)); }
+                } catch(e){ console.error("[AI2 ERROR]",e); alert("AI 분석 실패: "+e.message); }
               }}>AI 분석</Btn>}
             {!isReadOnly && <><Btn
                 disabled={!isSchedule && f.type==="reservation" && !f.custName?.trim()}
