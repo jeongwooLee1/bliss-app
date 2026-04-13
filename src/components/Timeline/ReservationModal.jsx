@@ -130,6 +130,19 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
     const s = (data?.services||[]).find(x=>x.id===svcId);
     return s?.allow_qty ?? false;
   };
+  // pkg__ ID의 dur를 PKG 카테고리 시술에서 매칭
+  const getSvcDur = (sid) => {
+    if (sid.startsWith("pkg__")) {
+      const pkgName = sid.replace("pkg__","").toLowerCase();
+      // PKG 카테고리 시술에서 이름 유사 매칭
+      const pkgSvc = SVC_LIST.find(s => {
+        const sn = s.name.toLowerCase();
+        return sn.includes("pkg") && pkgName.split(/\s+/).some(w => w.length > 1 && sn.includes(w));
+      });
+      return pkgSvc?.dur || 50; // 못 찾으면 기본 50분
+    }
+    return SVC_LIST.find(s=>s.id===sid)?.dur || 0;
+  };
   const getStatusClr = () => {
     try { const v = localStorage.getItem("tl_sc"); return v ? JSON.parse(v) : {}; } catch { return {}; }
   };
@@ -365,7 +378,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
         const tag = tags.find(t => t.id === tid);
         return sum + (tag?.dur || 0);
       }, 0);
-      const svcSum = (p.selectedServices||[]).reduce((sum, sid) => sum + (SVC_LIST.find(s=>s.id===sid)?.dur||0), 0);
+      const svcSum = (p.selectedServices||[]).reduce((sum, sid) => sum + getSvcDur(sid), 0);
       const dur = (tagSum + svcSum) || itemDur;
       const [sh, sm] = p.time.split(":").map(Number);
       const endMin = sh * 60 + sm + dur;
@@ -381,10 +394,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   }, 0);
 
   // 선택된 시술 소요시간 합계
-  const svcDurTotal = (f.selectedServices||[]).reduce((sum, sid) => {
-    const svc = SVC_LIST.find(s => s.id === sid);
-    return sum + (svc?.dur || 0);
-  }, 0);
+  const svcDurTotal = (f.selectedServices||[]).reduce((sum, sid) => sum + getSvcDur(sid), 0);
 
   // 시술 선택 토글
   const toggleService = (svcId, delta=1) => {
@@ -404,7 +414,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
       } else {
         newSvcs = p.selectedServices?.includes(svcId) ? (p.selectedServices||[]).filter(s=>s!==svcId) : [...(p.selectedServices||[]), svcId];
       }
-      const svcSum = newSvcs.reduce((sum, sid) => sum + (SVC_LIST.find(s=>s.id===sid)?.dur||0), 0);
+      const svcSum = newSvcs.reduce((sum, sid) => sum + getSvcDur(sid), 0);
       const tagSum = (p.selectedTags||[]).reduce((sum, tid) => sum + (tags.find(t=>t.id===tid)?.dur||0), 0);
       const dur = (svcSum + tagSum) || itemDur;
       const [sh, sm] = p.time.split(":").map(Number);
@@ -589,7 +599,7 @@ ${naverText}
       const aiGender = parsed.gender || "";
       setF(p => {
         const tagSum = newTags.reduce((s,tid)=>{const t=(data?.serviceTags||[]).find(x=>x.id===tid);return s+(t?.dur||0);},0);
-        const svcSum = newSvcs.reduce((s,sid)=>{const sv=(data?.services||[]).find(x=>x.id===sid);return s+(sv?.dur||0);},0);
+        const svcSum = newSvcs.reduce((s,sid)=>s+getSvcDur(sid),0);
         const dur = (tagSum+svcSum) || p.dur || itemDur;
         const [sh,sm] = p.time.split(":").map(Number);
         const endMin = sh*60+sm+dur;
