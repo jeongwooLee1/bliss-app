@@ -134,7 +134,13 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       return svcs.some(s=>items?.[s.id]?.checked);
     } catch(e) { return false; }
   };
-  const [saleMemo, setSaleMemo] = useState(reservation?.saleMemo || "");
+  const [saleMemo, setSaleMemo] = useState(() => {
+    if (reservation?.saleMemo) return reservation.saleMemo;
+    try {
+      const s = typeof (data?.businesses||[])[0]?.settings === 'string' ? JSON.parse((data.businesses||[])[0].settings) : (data?.businesses||[])[0]?.settings || {};
+      return s?.memo_templates?.sale || "";
+    } catch { return ""; }
+  });
 
   // 결제수단 분배
   const [payMethod, setPayMethod] = useState({ svcCash:0, svcCard:0, svcTransfer:0, svcPoint:0, prodCash:0, prodCard:0, prodTransfer:0, prodPoint:0 });
@@ -928,18 +934,10 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           {grandTotal > 0 && <div style={{fontSize:9,color:T.gray400,marginTop:6}}>결제수단 클릭 → 전액 / 추가 클릭 → 분배</div>}
           {/* 매출 메모 */}
           <div style={{marginTop:8}}>
-            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
-              <span style={{fontSize:11,color:T.textMuted,fontWeight:600}}>매출 메모</span>
-              {(()=>{
-                try{const s=typeof (data?.businesses||[])[0]?.settings==='string'?JSON.parse((data.businesses||[])[0].settings):(data?.businesses||[])[0]?.settings||{};
-                  if(s?.memo_templates?.sale) return <button onClick={()=>setSaleMemo(prev=>prev?prev+"\n"+s.memo_templates.sale:s.memo_templates.sale)}
-                    style={{padding:"2px 8px",fontSize:11,fontWeight:600,borderRadius:5,border:"1px solid "+T.border,background:T.bgCard,color:T.primary,cursor:"pointer",fontFamily:"inherit"}}
-                    title="템플릿 불러오기">📋 템플릿</button>;
-                }catch{} return null;
-              })()}
-            </div>
-            <textarea className="inp" rows={5} value={saleMemo} onChange={e=>setSaleMemo(e.target.value)}
-              placeholder="매출 메모" style={{resize:"vertical",width:"100%",fontSize:T.fs.sm}}/>
+            <span style={{fontSize:11,color:T.textMuted,fontWeight:600}}>매출 메모</span>
+            <textarea className="inp" ref={el=>{if(el){el.style.height="auto";el.style.height=Math.max(120,el.scrollHeight)+"px";}}}
+              value={saleMemo} onChange={e=>{setSaleMemo(e.target.value);const t=e.target;t.style.height="auto";t.style.height=Math.max(120,t.scrollHeight)+"px";}}
+              placeholder="매출 메모" style={{resize:"vertical",width:"100%",fontSize:T.fs.sm,minHeight:120,marginTop:4,lineHeight:1.6}}/>
           </div>
         </div>
         </div>{/* 2단 레이아웃 끝 */}

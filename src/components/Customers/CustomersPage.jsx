@@ -55,11 +55,9 @@ function CustModal({ item, isEdit, onSave, onClose, defBranch, userBranches, bra
             ))}
           </div>
         </FLD>
-        <FLD label={<span style={{display:"flex",alignItems:"center",gap:6}}>메모
-          {memoTemplate && <button onClick={()=>f('memo',(form.memo||"")?form.memo+"\n"+memoTemplate:memoTemplate)}
-            style={{padding:"1px 6px",fontSize:10,fontWeight:600,borderRadius:4,border:"1px solid #ddd",background:"#fff",color:T.primary,cursor:"pointer",fontFamily:"inherit"}}
-            title="템플릿 불러오기">📋</button>}
-        </span>}><textarea className="inp" rows={2} value={form.memo||''} onChange={e=>f('memo',e.target.value)} placeholder="메모"/></FLD>
+        <FLD label="메모"><textarea className="inp" rows={3} value={form.memo||''} onChange={e=>f('memo',e.target.value)} placeholder="메모"
+          ref={el=>{if(el){el.style.height="auto";el.style.height=Math.max(60,el.scrollHeight)+"px";}}}
+          style={{resize:"vertical",minHeight:60,lineHeight:1.6}}/></FLD>
       </div>
       <div style={{display:'flex',gap:10,marginTop:20}}>
         <Btn variant="secondary" style={{flex:1}} onClick={onClose}>취소</Btn>
