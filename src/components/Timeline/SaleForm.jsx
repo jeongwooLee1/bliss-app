@@ -301,9 +301,48 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     return init;
   });
 
-  // "패키지 사용" 시술 판별
-  const isPkgUseSvc = (svcId) => svcId === "svc_pkg_use_35" || svcId === "svc_pkg_use_45";
-  const hasPkgUseChecked = () => items["svc_pkg_use_35"]?.checked || items["svc_pkg_use_45"]?.checked;
+  // 다회권 → 시술 목록 최상단에 가상 항목으로 표시 + 자동 선택
+  // pkgItems: { "pkg__{pkgId}": { checked, amount:0 } }
+  const [pkgItems, setPkgItems] = useState({});
+  // 다회권 로드 시 자동 선택: 첫 번째 다회권만
+  const pkgAutoSelected = useRef(false);
+  useEffect(() => {
+    if (pkgAutoSelected.current || activeMultiPkgs.length === 0) return;
+    pkgAutoSelected.current = true;
+    // 유효기간 빠른 순 정렬
+    const sorted = [...activeMultiPkgs].sort((a,b) => {
+      const ea = ((a.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1]||"9999";
+      const eb = ((b.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1]||"9999";
+      return ea.localeCompare(eb);
+    });
+    const first = sorted[0];
+    if (first) {
+      const key = "pkg__" + first.id;
+      setPkgItems({ [key]: { checked: true, amount: 0 } });
+      setPkgUse(prev => ({ ...prev, [first.id]: true }));
+    }
+  }, [activeMultiPkgs]);
+
+  const togglePkg = (pkgId) => {
+    const key = "pkg__" + pkgId;
+    setPkgItems(prev => {
+      const wasChecked = prev[key]?.checked;
+      // 다른 패키지 전부 해제 후 이것만 토글
+      const next = {};
+      activeMultiPkgs.forEach(p => { next["pkg__" + p.id] = { checked: false, amount: 0 }; });
+      if (!wasChecked) next[key] = { checked: true, amount: 0 };
+      return next;
+    });
+    setPkgUse(prev => {
+      const next = {};
+      activeMultiPkgs.forEach(p => { next[p.id] = false; });
+      const wasChecked = pkgItems["pkg__" + pkgId]?.checked;
+      if (!wasChecked) next[pkgId] = true;
+      return next;
+    });
+  };
+
+  const hasPkgChecked = () => Object.values(pkgItems).some(v => v?.checked);
 
   const toggle = useCallback((id, defPrice) => {
     setItems(prev => {
@@ -311,32 +350,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       const newChecked = !cur.checked;
       return { ...prev, [id]: { ...cur, checked: newChecked, amount: newChecked ? (cur.amount || defPrice || 0) : 0 } };
     });
-    // "패키지 사용" 시술 체크 → 다회권 자동 선택
-    if (isPkgUseSvc(id)) {
-      const willCheck = !(items[id]?.checked);
-      if (willCheck && activeMultiPkgs.length > 0) {
-        // 유효기간 기준 정렬 → 첫 번째 자동 선택
-        const sorted = [...activeMultiPkgs].sort((a,b) => {
-          const ea = ((a.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1]||"9999";
-          const eb = ((b.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1]||"9999";
-          return ea.localeCompare(eb);
-        });
-        setPkgUse(prev => {
-          const next = {...prev};
-          sorted.forEach(p => { next[p.id] = false; });
-          if (sorted[0]) next[sorted[0].id] = true;
-          return next;
-        });
-      } else if (!willCheck) {
-        // 체크 해제 → 다회권도 해제
-        setPkgUse(prev => {
-          const next = {...prev};
-          activeMultiPkgs.forEach(p => { next[p.id] = false; });
-          return next;
-        });
-      }
-    }
-  }, [items, activeMultiPkgs]);
+  }, []);
   const setAmt = useCallback((id, v) => setItems(prev => ({ ...prev, [id]: { ...prev[id], amount: Number(v) || 0 } })), []);
   const setLabel = useCallback((id, v) => setItems(prev => ({ ...prev, [id]: { ...prev[id], label: v } })), []);
 
@@ -406,7 +420,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   }, [prodPayTotal]);
 
   const handleSubmit = () => {
-    const isPkgUseSubmit = hasPkgUseChecked() && Object.values(pkgUse).some(v => v === true);
+    const isPkgUseSubmit = hasPkgChecked();
     if (svcTotal + prodTotal <= 0 && !isPkgUseSubmit) {
       alert("시술 또는 제품을 선택해주세요.");
       return;
@@ -614,6 +628,50 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
 
           {/* Col 1+2: Services by category (span 2 columns) */}
           <div style={{gridColumn:"span 2"}}>
+            {/* 다회권 패키지 — 시술 목록 최상단 */}
+            {activeMultiPkgs.length > 0 && <div style={{marginBottom:10,border:"2px solid #7C4DFF",borderRadius:10,overflow:"hidden",background:"linear-gradient(135deg,#EDE7F6,#E8EAF6)"}}>
+              <div style={{padding:"8px 12px 4px",fontSize:13,fontWeight:800,color:"#4527A0"}}>📦 보유 패키지</div>
+              {(()=>{
+                // 같은 이름 그룹핑
+                const groups = {};
+                activeMultiPkgs.forEach(p => {
+                  const name = (p.service_name?.split("(")[0]||"").replace(/\s*5회$/,"").replace(/\s*8회$/,"").trim();
+                  if (!groups[name]) groups[name] = { name, pkgs: [], totalRemain: 0 };
+                  groups[name].pkgs.push(p);
+                  groups[name].totalRemain += (p.total_count - p.used_count);
+                });
+                return Object.values(groups).map(g => {
+                  // 이 그룹 중 하나라도 선택됐는지
+                  const isChecked = g.pkgs.some(p => pkgItems["pkg__"+p.id]?.checked);
+                  // 선택된 패키지의 ID (표시용)
+                  const selPkg = g.pkgs.find(p => pkgItems["pkg__"+p.id]?.checked);
+                  return <div key={g.name} onClick={() => {
+                    // 유효기간 빠른 순 정렬 → 첫 번째 토글
+                    const sorted = [...g.pkgs].sort((a,b) => {
+                      const ea = ((a.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1]||"9999";
+                      const eb = ((b.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/)||[])[1]||"9999";
+                      return ea.localeCompare(eb);
+                    });
+                    if (sorted[0]) togglePkg(sorted[0].id);
+                  }}
+                  style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",cursor:"pointer",transition:"all .15s",
+                    background:isChecked?"linear-gradient(135deg,#7C4DFF,#651FFF)":"transparent",
+                    borderTop:"1px solid "+(isChecked?"#5E35B1":"#D1C4E9")}}>
+                    <div style={{width:22,height:22,borderRadius:6,border:isChecked?"2px solid #fff":"2px solid #B39DDB",display:"flex",alignItems:"center",justifyContent:"center",
+                      background:isChecked?"#fff":"transparent",flexShrink:0}}>
+                      {isChecked && <span style={{color:"#7C4DFF",fontWeight:900,fontSize:14}}>✓</span>}
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:14,fontWeight:800,color:isChecked?"#fff":"#4527A0"}}>{g.name}</div>
+                      <div style={{fontSize:11,color:isChecked?"#E8EAF6":"#7C4DFF",fontWeight:600}}>
+                        잔여 {g.totalRemain}회{selPkg && ` · 차감 후 ${g.totalRemain-1}회`}
+                      </div>
+                    </div>
+                    <div style={{fontSize:12,fontWeight:800,color:isChecked?"#E8EAF6":"#9575CD"}}>0원</div>
+                  </div>;
+                });
+              })()}
+            </div>}
             <div style={{ color:T.primary, padding: "6px 0 4px", marginBottom: 6, fontSize:14, fontWeight:800 }}>시술 ({SVC_LIST.length})</div>
             {catGroups.map(({cat, svcs}) => {
               const isOpen = isCatOpen(cat.id);
@@ -805,6 +863,17 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
             </div>}
           </div>}
           {pkgDeduct > 0 && <div style={{marginTop:6,fontSize:13,fontWeight:T.fw.black,color:"#E65100",background:"#FFF3E0",borderRadius:T.radius.md,padding:"6px 12px"}}>🎫 보유권 차감: -{pkgDeduct.toLocaleString()}원</div>}
+          {hasPkgChecked() && <div style={{marginTop:6,fontSize:13,fontWeight:800,color:"#4527A0",background:"linear-gradient(135deg,#EDE7F6,#E8EAF6)",borderRadius:T.radius.md,padding:"8px 12px",border:"2px solid #7C4DFF"}}>
+            📦 패키지 1회 차감
+            {(()=>{
+              const usedPkg = Object.entries(pkgUse).find(([,v])=>v===true);
+              const pkg = usedPkg ? custPkgs.find(p=>p.id===usedPkg[0]) : null;
+              if (!pkg) return null;
+              const remain = (pkg.total_count||0) - (pkg.used_count||0);
+              const name = (pkg.service_name?.split("(")[0]||"").replace(/\s*5회$/,"").replace(/\s*8회$/,"").trim();
+              return <div style={{fontSize:11,fontWeight:600,color:"#7C4DFF",marginTop:2}}>{name} — {remain}회 → {remain-1}회</div>;
+            })()}
+          </div>}
           {grandTotal > 0 && <div style={{fontSize:9,color:T.gray400,marginTop:6}}>결제수단 클릭 → 전액 / 추가 클릭 → 분배</div>}
           {/* 매출 메모 */}
           <div style={{marginTop:8}}>
@@ -821,8 +890,8 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           </div>
           <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
             <Btn variant="secondary" onClick={onClose}>취소</Btn>
-            <Btn variant="primary" style={{ padding: "10px 20px", fontSize: 13, fontWeight: 800 }} onClick={handleSubmit}>
-              <I name="wallet" size={12}/> 매출 등록 ({fmt(grandTotal)}원)
+            <Btn variant="primary" style={{ padding: "10px 20px", fontSize: 13, fontWeight: 800, background: hasPkgChecked() && grandTotal===0 ? "linear-gradient(135deg,#7C4DFF,#651FFF)" : undefined }} onClick={handleSubmit}>
+              <I name="wallet" size={12}/> {hasPkgChecked() && grandTotal===0 ? "📦 패키지 사용 등록" : `매출 등록 (${fmt(grandTotal)}원)`}
             </Btn>
           </div>
         </div>
