@@ -1218,7 +1218,12 @@ ${naverText}
                 })();
                 const svcList = [...pkgEntries, ...SVC_LIST.map(s=>`"${s.id}":"${s.name}"`)].join(", ");
                 const tagList = tags.filter(t=>t.useYn!==false&&t.scheduleYn!=="Y").map(t=>`"${t.id}":"${t.name}"`).join(", ");
-                const neverText = [f.requestMsg, f.ownerComment].filter(Boolean).join("\n");
+                // requestMsg가 JSON 배열이면 텍스트로 변환
+                let reqText = f.requestMsg || "";
+                if (reqText.trim().startsWith("[")) {
+                  try { const items = JSON.parse(reqText); reqText = items.map(it=>it.label+": "+it.value).join("\n"); } catch {}
+                }
+                const neverText = [reqText, f.ownerComment].filter(Boolean).join("\n");
                 if(!neverText.trim() && !f.memo?.trim()){alert("분석할 메모/요청사항이 없습니다");return;}
                 // AI 규칙 로드
                 const aiRules = JSON.parse(localStorage.getItem("bliss_ai_rules")||"[]");
