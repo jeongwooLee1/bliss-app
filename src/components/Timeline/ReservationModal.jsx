@@ -545,7 +545,10 @@ ${naverText}
       if (!r.ok) throw new Error("API: "+(await r.text()).slice(0,120));
       const d2 = await r.json();
       const txt = d2.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      const parsed = JSON.parse(txt.replace(/```json|```/g,"").trim());
+      console.log("[AI RAW]", txt);
+      const jsonMatch = txt.match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse((jsonMatch ? jsonMatch[0] : txt).replace(/```json|```/g,"").trim());
+      console.log("[AI PARSED]", parsed);
       // fuzzy fix: AI가 1-2글자 틀린 ID 반환 시 가장 유사한 valid ID로 보정
       const fuzzyFix = (ids, validSet) => ids.map(id => {
         if (validSet.has(id)) return id;
@@ -583,8 +586,10 @@ ${naverText}
         const endTime = `${String(Math.min(22,Math.floor(endMin/60))).padStart(2,"0")}:${String(endMin%60).padStart(2,"0")}`;
         return {...p, selectedTags:newTags, selectedServices:newSvcs, dur, endTime, custGender: aiGender || p.custGender};
       });
-      if (parsed.reason) alert(`✅ AI 분석 완료\n${parsed.reason}`);
-    } catch(e) { alert("AI 분석 실패: "+e.message); }
+      console.log("[AI RESULT] svcs:", newSvcs, "tags:", newTags);
+      if (parsed.reason) alert(`✅ AI 분석 완료\n시술 ${newSvcs.length}개, 태그 ${newTags.length}개\n${parsed.reason}`);
+      else alert(`✅ AI 분석 완료: 시술 ${newSvcs.length}개, 태그 ${newTags.length}개`);
+    } catch(e) { console.error("[AI ERROR]", e); alert("AI 분석 실패: "+e.message); }
     setAiAnalyzing(false);
   };
 
