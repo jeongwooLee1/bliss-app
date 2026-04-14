@@ -8,6 +8,39 @@
 
 ---
 
+## 2026-04-14 세션 작업
+
+### 네이버 스크래핑 세션 복구
+- login_local.py 쿠키 캡처 방식 변경: CDP request interception → `Network.getAllCookies` (NID_AUT httpOnly 캡처 불가 문제 해결)
+- 로그인 타임아웃 180s → 300s (CAPTCHA 대응)
+- 서버 세션 전송 + 서비스 재시작 + last_processed 갱신 완료
+
+### 누락 예약 15건 복구
+- 스크래핑 중단 기간(4/14 01:09~07:39) 누락 15건 식별
+- 2건 취소, 13건 수동 DB insert
+- 13건 request_msg(네이버 예약폼 JSON) 별도 스크립트로 보정
+- 13건 AI 분석(Gemini) 수동 실행 → selected_services/selected_tags 채움
+
+### 타임라인 직원근무시간 자동계산 수정
+- `parseInt("11:30")` → 11로만 파싱, 종료시간 항상 `:00`이던 버그
+- 분까지 파싱하여 +10시간 정확 계산 (11:30 → 21:30)
+
+### 설정마법사 버그 4건 수정 (배포 완료)
+1. **텍스트 무응답**: photo_upload 스텝에서 parsedData=null일 때 Gemini 대화 fallback 추가
+2. **한국어 IME Enter**: `onKeyDown` → `onKeyUp` 변경 (isComposing 문제)
+3. **수동모드 대화 안 됨**: `parsedData._manual` 체크 추가 → 수동 진입 시 Gemini 대화 정상 작동
+4. **employees_v1 duplicate key (23505)**: `insert` → `upsert` 변경
+5. **complete 스텝**: 정적 "감사합니다!" → callGemini() 대화형으로 변경
+- wizardSteps.js: photo_upload/complete 스텝에 systemPrompt 추가
+
+### 서버: AI 메모 쓰기 비활성화
+- bliss_naver.py: `if ai_special_notes:` → `if False and ai_special_notes:` (owner_comment에 [AI] 꼼꼼 등 안 씀)
+
+### 배포 상태
+- 위 모든 수정 빌드 + 서버 배포 + CF 캐시 퍼지 완료 (2026-04-14)
+
+---
+
 ## 2026-04-13 회원가 시스템
 
 ### 회원가(Member Pricing) 구현

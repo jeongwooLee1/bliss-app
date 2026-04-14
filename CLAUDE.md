@@ -478,6 +478,14 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - oracle_sync.py: 이름 없는 매출 Oracle MEMBER 직접 조회 fallback
 - sale_details 중복 237K건 + sales 중복 60K건 삭제 (FK 처리 포함)
 
+### 설정마법사 대화형 완성 + 버그 수정 (2026-04-14)
+- photo_upload/complete 스텝에 systemPrompt 추가 → 전 스텝 Gemini 대화 가능
+- 한국어 IME Enter: onKeyDown → onKeyUp (isComposing 문제)
+- 수동모드(parsedData._manual) 분기 수정
+- employees_v1 upsert로 중복키(23505) 해결
+- login_local.py: CDP Network.getAllCookies로 NID_AUT 캡처 (httpOnly 대응)
+- 서버 AI 메모 쓰기(owner_comment) 비활성화
+
 ### 주의사항 (다음 세션에서 참고)
 - Cloudflare 캐시: 배포 후 반드시 Purge Everything (Dashboard → blissme.ai → Caching)
 - schedule.html: 서버 배포 시 /var/www/html/bliss-app/schedule.html 별도 복사 필요
