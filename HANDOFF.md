@@ -8,6 +8,67 @@
 
 ---
 
+## 완료: pkg_audit bliss_packages 캐시 갱신 (2026-04-14)
+- customer_packages 명칭 변경(13건) DB 완료
+- pkg_audit bliss_packages JSON 캐시 819건 PATCH 완료 (8,344건 전수 갱신)
+
+---
+
+## 2026-04-14 세션 2 작업
+
+### 서버: 세션 에러 시 fail_count 미증가
+- scrape_reservation: 세션 만료 시 SESSION_ERROR 반환 → fail_count 안 올림
+- 서비스 재시작/keepalive 성공 시 fail_counts 자동 리셋
+- 박민아 #1207530167 예약 수동 confirmed + 시간 20:30 수정
+
+### 알림톡 팝업: 시간 변경 시에만
+- 메모/담당자 변경 시 알림톡 팝업 안 뜨도록 수정
+
+### MiniCal 에러 수정
+- AppShell.jsx에서 MiniCal export, TimelinePage에서 import 추가
+
+### 매출등록 시술 선택 연동 수정
+- SaleForm: 다회권 자동선택 시 예약에서 넘어온 시술 선택 유지
+- SaleForm: 패키지 수량 변경 시 시술 선택 해제 안 함
+
+### 설정마법사 항상 표시
+- AppShell: wizard_progress 완료 여부 무관하게 메뉴 항상 표시
+
+### 고객검색 개선
+- ReservationModal: cust_num 정확매칭 우선 조회 (숫자 검색 시)
+- ReservationsPage: cust_num, name2 검색 대상 추가
+
+### 타임라인 프리랜서 추가
+- "+" 팝업 하단에 프리랜서 이름 입력 → customEmployees_v1에 저장
+- 즉시 해당 지점 컬럼에 표시
+
+### 예약모달 담당자 변경 → 컬럼 이동
+- handleSave에서 staffId 변경 감지 → room_id + bid 자동 업데이트
+
+### 브랜드 권한: 같은 사업장 전 지점 편집 가능
+- AppShell: 모든 역할에서 userBranches = 전 지점
+
+### 타임라인 예약블록에 보유패키지 표시
+- 해당 날짜 예약 고객의 customer_packages 일괄 로드
+- 패키지(회색)/다담(노란) pill 표시
+
+### 패키지 정리 페이지 (AdminPkgAudit)
+- Supabase pkg_audit 테이블 생성 (3소스 병합 데이터)
+- scripts/upload_pkg_audit.py: 매출메모(pkg_analysis.xlsx) + 오라클 + 블리스 → 8,344명 업로드
+- AdminPkgAudit.jsx: 3소스 비교 카드, 지점/상태 필터, 검색
+- 매출 이력 보기: 인라인 매출 테이블 + 패키지/다담 자동 파싱
+- 블리스 수정: 인라인 편집 (모달 제거), 만료된 항목 비활성화
+- 만료일 표시/수정 가능
+- 유효 항목 없는 고객 자동 필터링
+- 다담권 소진(0원) 3소스 일치 시 제외
+
+### 패키지 명칭 정형화
+- 남)/여) 접두사 제거, 패키지→PKG 통일
+- 13개 명칭 일괄 변경 (customer_packages DB)
+- 쿠폰 카테고리: 10%적립쿠폰, 제품전용쿠폰, 기기스크럽
+
+---
+
 ## 2026-04-14 세션 작업
 
 ### 네이버 스크래핑 세션 복구
@@ -409,12 +470,6 @@
 ---
 
 ## 기존 작업
-
-### 박유라 #1203011690 변경 예약 수동 연결
-**상태**: 유저 액션 대기 (네이버에서 새 예약번호 확인 필요)
-
-### "재방문) 와본적 있어요" 시술 매칭
-**상태**: 유저 결정 대기 (3가지 선택지)
 
 ### Gemini 403 재발 방지
 **상태**: 일시적 복구. Google Cloud Console 확인 필요.

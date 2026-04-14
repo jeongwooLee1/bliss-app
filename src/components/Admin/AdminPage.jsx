@@ -15,6 +15,7 @@ import AdminAISettings from './AdminAISettings'
 import AdminMemoTemplates from './AdminMemoTemplates'
 import AdminServiceTags from './AdminServiceTags'
 import SchedulePage from '../Schedule/SchedulePage'
+import AdminPkgAudit from './AdminPkgAudit'
 
 const uid = genId;
 
@@ -380,6 +381,9 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
       {key:"memoTemplates",icon:"file",      label:"메모 템플릿",    desc:"매출·예약·고객 메모 양식 설정"},
       ...(isOwner ? [{key:"aisettings",  icon:"sparkles", label:"AI 설정",        desc:"AI 분석 규칙 관리"}] : []),
     ]}] : []),
+    ...(isMaster ? [{section:"데이터 관리",items:[
+      {key:"pkgaudit",    icon:"clipboard",label:"패키지 정리",    desc:"3소스 비교·수정 (메모/오라클/블리스)"},
+    ]}] : []),
     {section:"내 계정",items:[
       {key:"mypage",      icon:"user",     label:"마이페이지",     desc:"내 계정 정보 및 비밀번호 변경"},
       ...(!isMaster ? [{key:"joinbrand", icon:"link", label:"브랜드 가입 요청", desc:"브랜드 코드로 가입 요청"}] : []),
@@ -426,6 +430,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     {tab==="brandmembers" && isMaster &&<AdminBrandMembers data={data} setData={setData} bizId={bizId} currentUser={currentUser}/>}
     {tab==="mypage"       &&<AdminMyPage       currentUser={currentUser} onLogout={onLogout}/>}
     {tab==="schedule"    && isMaster &&<AdminSchedule currentUser={currentUser} isMaster={isMaster}/>}
+    {tab==="pkgaudit"    && isMaster &&<AdminPkgAudit data={data} setData={setData} userBranches={userBranches}/>}
     {tab==="joinbrand"    && !isMaster &&<AdminJoinBrand   currentUser={currentUser} onBack={back}/>}
     {tab && !["mypage","schedule"].includes(tab) && !isMaster && <div style={{textAlign:"center",padding:"60px 20px",color:T.textMuted}}>
       <div style={{fontSize:32,marginBottom:12}}>&#128274;</div>

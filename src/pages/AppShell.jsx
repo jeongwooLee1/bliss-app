@@ -18,7 +18,7 @@ import SchedulePage from '../components/Schedule/SchedulePage'
 import SetupWizard from '../components/SetupWizard/SetupWizard'
 
 const uid = genId;
-const BLISS_V = "1.4.0"
+const BLISS_V = "1.4.1"
 const BIZ_ID = 'biz_khvurgshb'
 async function loadAllFromDb(bizId) {
   const [branches, services, categories, tags, sources, users, rooms, customers, reservations, sales, products] = await Promise.all([
@@ -799,12 +799,11 @@ function App() {
   useEffect(() => {
   let timer;
   const check = () => {
-  fetch("/bliss/version.txt?t=" + Date.now())
-    .then(r => r.text())
+  fetch("/bliss-app/version.txt?t=" + Date.now())
+    .then(r => r.ok ? r.text() : "")
     .then(remote => {
       remote = remote.trim();
-      // bliss-app은 별도 배포 - 자동 새로고침 비활성화
-      // if (remote && remote !== BLISS_V) { location.reload(true); }
+      if (remote && remote !== BLISS_V) location.reload(true);
     }).catch(() => {});
   timer = setTimeout(check, 30000);
   };
@@ -969,8 +968,9 @@ function App() {
           users: db.users, customers: db.customers, reservations: db.reservations, sales: db.sales,
           staff, resSources: db.resSources || [],
         });
-        setUserBranches((user.role === "owner" || user.role === "super") ? db.branches.map(b=>b.id) : (user.branches || []));
-        setViewBranches(user.viewBranches || []);
+        // 같은 브랜드(사업장) 소속이면 모든 지점 편집 가능
+        setUserBranches(db.branches.map(b=>b.id));
+        setViewBranches([]);
         // page is already restored from sessionStorage("bliss_page") via useState initializer
         setPhase("app");
         // 새 OAuth 유저 → 설정 마법사 자동 시작
@@ -1225,7 +1225,7 @@ function App() {
     ...((role==="owner"||role==="super")?[{ id:"users", label:"사용자관리", icon:<I name="user" size={16}/> }]:[]),
     { id:"messages", label:"받은메시지함", icon:<I name="msgSq" size={16}/>, badge:unreadMsgCount },
     { id:"admin", label:"관리설정", icon:<I name="settings" size={16}/> },
-    ...((()=>{ try { const s=JSON.parse(currentBiz?.settings||'{}'); return !s.wizard_progress?.completed; } catch { return true; } })() ? [{ id:"wizard", label:"설정 마법사", icon:"✨" }] : []),
+    { id:"wizard", label:"설정 마법사", icon:"✨" },
   ];
 
   const branchNames = userBranches.map(bid => (data.branches||[]).find(b=>b.id===bid)?.short||bid).filter(Boolean).join(", ");
@@ -1269,7 +1269,7 @@ function App() {
 // ═══════════════════════════════════════════
 // TIMELINE VIEW (myCream-style)
 // ═══════════════════════════════════════════
-function MiniCal({ selDate, onSelect, onClose }) {
+export function MiniCal({ selDate, onSelect, onClose }) {
   const [viewDate, setViewDate] = useState(() => {
     const d = new Date(selDate); return { y: d.getFullYear(), m: d.getMonth() };
   });

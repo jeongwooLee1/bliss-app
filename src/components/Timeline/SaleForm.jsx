@@ -377,13 +377,17 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     if (first) {
       setPkgItems({ ["pkg__" + first.id]: { qty: 1 } });
       setPkgUse(prev => ({ ...prev, [first.id]: 1 }));
-      setItems(prev => {
-        const next = { ...prev };
-        SVC_LIST.forEach(s => { next[s.id] = { checked: false, amount: 0 }; });
-        next.extra_svc = { checked: false, amount: 0, label: "" };
-        next.discount = { checked: false, amount: 0 };
-        return next;
-      });
+      // 예약에서 넘어온 시술 선택은 유지
+      const resSvcs = new Set((reservation?.selectedServices || []).filter(id => !id.startsWith("pkg__")));
+      if (resSvcs.size === 0) {
+        setItems(prev => {
+          const next = { ...prev };
+          SVC_LIST.forEach(s => { next[s.id] = { checked: false, amount: 0 }; });
+          next.extra_svc = { checked: false, amount: 0, label: "" };
+          next.discount = { checked: false, amount: 0 };
+          return next;
+        });
+      }
     }
   }, [activeMultiPkgs]);
 
@@ -415,16 +419,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     });
     setPkgItems(newPkgItems);
     setPkgUse(newPkgUse);
-    // 수량 > 0 이 되면 시술 해제, 0이 되면 그대로
-    if (newQty > 0) {
-      setItems(prev => {
-        const next = { ...prev };
-        SVC_LIST.forEach(s => { next[s.id] = { checked: false, amount: 0 }; });
-        next.extra_svc = { checked: false, amount: 0, label: "" };
-        next.discount = { checked: false, amount: 0 };
-        return next;
-      });
-    }
+    // 패키지 수량 변경 시 시술 선택은 유지 (독립적)
   };
 
   const hasPkgChecked = () => Object.values(pkgItems).some(v => (v?.qty||0) > 0);
@@ -555,7 +550,15 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       if (t === "package" && typeof val === "number" && val > 0) {
         // 다회권: N회 차감
         const newUsed = (pkg.used_count || 0) + val;
-        sb.update("customer_packages", pkgId, { used_count: newUsed }).catch(console.error);
+        const upd = { used_count: newUsed };
+        // 첫 사용 시 만료일 자동 기록 (사용 시작일 +1년)
+        if ((pkg.used_count || 0) === 0 && !(/유효:\d{4}-\d{2}-\d{2}/.test(pkg.note||""))) {
+          const exp = new Date(); exp.setFullYear(exp.getFullYear()+1);
+          const expStr = exp.toISOString().slice(0,10);
+          const n = pkg.note||"";
+          upd.note = n.includes("유효:") ? n.replace(/유효:\s*(?!\d)/, `유효:${expStr} `) : (n ? `${n} | 유효:${expStr}` : `유효:${expStr}`);
+        }
+        sb.update("customer_packages", pkgId, upd).catch(console.error);
       } else if (t === "prepaid" && typeof val === "number" && val > 0) {
         // 다담권: 금액 차감
         const bal = _pkgBalance(pkg);

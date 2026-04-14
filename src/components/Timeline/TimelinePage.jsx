@@ -8,6 +8,7 @@ import I from '../common/I'
 import TimelineModal from './ReservationModal'
 import QuickBookModal from './QuickBookModal'
 import TimelineSettings from './TimelineSettings'
+import { MiniCal } from '../../pages/AppShell'
 import useTouchDragSort from '../../hooks/useTouchDragSort'
 
 const _mc = (fn) => { if(fn) fn(); };
@@ -587,6 +588,40 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const toggleView = (bid) => setViewBids(prev => (prev||[]).includes(bid) ? (prev||[]).filter(x=>x!==bid) : [...(prev||[]), bid]);
   const canEdit = (bid) => isMaster || userBranches.includes(bid);
 
+  // ── 고객 보유 패키지 로드 (현재 날짜 예약 기준) ──
+  const [custPkgMap, setCustPkgMap] = useState({});  // {custId: [{svc_name, remain}]}
+  useEffect(() => {
+    const custIds = [...new Set((data?.reservations||[]).filter(r => r.date === selDate && r.custId && !r.isSchedule).map(r => r.custId))];
+    if (custIds.length === 0) { setCustPkgMap({}); return; }
+    const batchSize = 30;
+    const batches = [];
+    for (let i = 0; i < custIds.length; i += batchSize) batches.push(custIds.slice(i, i + batchSize));
+    Promise.all(batches.map(batch =>
+      fetch(`${SB_URL}/rest/v1/customer_packages?customer_id=in.(${batch.join(",")})&select=customer_id,service_name,total_count,used_count,note`, {
+        headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
+      }).then(r => r.json()).catch(() => [])
+    )).then(results => {
+      const map = {};
+      results.flat().forEach(p => {
+        if (!Array.isArray(map[p.customer_id])) map[p.customer_id] = [];
+        const sn = p.service_name||"";
+        const isDadam = sn.includes("다담") || sn.includes("선불");
+        if (isDadam) {
+          const m = (p.note||"").match(/잔액:([0-9,]+)/);
+          const bal = m ? Number(m[1].replace(/,/g,"")) : 0;
+          if (bal > 0) map[p.customer_id].push({ name: sn.replace(/\(잔액:[^)]*\)/,"").trim(), remain: bal, isDadam: true });
+        } else {
+          const remain = (p.total_count||0) - (p.used_count||0);
+          if (remain > 0) map[p.customer_id].push({
+            name: sn.replace(/[여남]\)/,"").trim(),
+            remain, isDadam: false
+          });
+        }
+      });
+      setCustPkgMap(map);
+    });
+  }, [selDate, data?.reservations?.length]);
+
   const branchesToShow = allBranchList.filter(b => viewBids.includes(b.id) && (isMaster || accessibleBids.includes(b.id)));
 
   // ── Alarm system ──
@@ -1013,6 +1048,14 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     setData(prev => {
       const exists = (prev?.reservations||[]).find(r => r.id === item.id);
       if (exists) {
+        // 담당자 변경 시 room_id도 연동
+        if (item.staffId && item.staffId !== exists.staffId) {
+          const targetRoom = allRooms.find(r => r.isStaffCol && r.staffId === item.staffId);
+          if (targetRoom) {
+            item.roomId = targetRoom.id;
+            item.bid = targetRoom.branch_id;
+          }
+        }
         const updateRow = toDb("reservations", item);
         if (!updateRow.reservation_id) updateRow.reservation_id = null;
         sb.update("reservations", item.id, updateRow).catch(console.error);
@@ -1084,7 +1127,11 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       setAlimtalkConfirm({...item, _alimtalkType: "confirm"});
     }
     if(!item.isSchedule && validPhone && isExistItem) {
-      setAlimtalkConfirm(item);
+      // 시간 변경 시에만 알림톡 팝업 (메모/담당자 등 변경은 제외)
+      const orig = data?.reservations?.find(r => r.id === item.id);
+      if(orig && (orig.date !== item.date || orig.time !== item.time)) {
+        setAlimtalkConfirm(item);
+      }
     }
     setShowModal(false); setModalData(null);
   };
@@ -1689,6 +1736,35 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             })}
                             {!addStaffPopup?.selectedEmp && BASE_EMP_LIST.filter(e => !allRooms.some(r => r.isStaffCol && r.branch_id === room.branch_id && r.staffId === e.id)).length === 0 &&
                               <div style={{padding:"8px 12px",fontSize:11,color:T.textMuted}}>추가 가능한 직원 없음</div>}
+                            {/* 프리랜서 추가 */}
+                            {!addStaffPopup?.selectedEmp && (()=>{
+                              const [flName, setFlName] = [addStaffPopup?._flName||"", v=>setAddStaffPopup(p=>({...p,_flName:v}))];
+                              const targetBid = room.branch_id;
+                              const schKey = Object.entries(SCH_BRANCH_MAP).find(([k,v])=>v===targetBid)?.[0] || "";
+                              const addFreelancer = async () => {
+                                if(!flName.trim()) return;
+                                const newEmp = {id: flName.trim(), branch: schKey, isMale: false, isFreelancer: true};
+                                // customEmployees_v1에 추가
+                                const H = {apikey:SB_KEY, Authorization:"Bearer "+SB_KEY, "Content-Type":"application/json", "Prefer":"resolution=merge-duplicates"};
+                                try {
+                                  const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.customEmployees_v1&select=value`, {headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY}});
+                                  const rows = await r.json();
+                                  const existing = typeof rows?.[0]?.value === 'string' ? JSON.parse(rows[0].value) : (Array.isArray(rows?.[0]?.value) ? rows[0].value : []);
+                                  if(existing.some(e=>e.id===newEmp.id)){alert("이미 존재하는 이름입니다.");return;}
+                                  const updated = [...existing, newEmp];
+                                  await fetch(`${SB_URL}/rest/v1/schedule_data`, {method:"POST", headers:H, body:JSON.stringify({id:"customEmployees_v1",key:"customEmployees_v1",value:JSON.stringify(updated)})});
+                                  setEmpList(prev=>[...prev.filter(e=>e.id!==newEmp.id), newEmp]);
+                                  setAddStaffPopup(null);
+                                } catch(e){console.error("프리랜서 추가 실패:",e);}
+                              };
+                              return <div style={{borderTop:"1px solid "+T.border,padding:"8px 12px",display:"flex",gap:4,alignItems:"center"}}>
+                                <input value={flName} onChange={e=>setFlName(e.target.value)} placeholder="프리랜서 이름"
+                                  onKeyUp={e=>{if(e.key==="Enter")addFreelancer();}}
+                                  style={{flex:1,fontSize:11,padding:"5px 8px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"}}/>
+                                <button onClick={addFreelancer} disabled={!flName.trim()}
+                                  style={{padding:"5px 10px",borderRadius:6,border:"none",background:flName.trim()?T.primary:T.gray300,color:"#fff",fontSize:11,fontWeight:700,cursor:flName.trim()?"pointer":"not-allowed",whiteSpace:"nowrap"}}>추가</button>
+                              </div>;
+                            })()}
                             {/* 지원/이동 선택 */}
                             {addStaffPopup?.selectedEmp && addStaffPopup?.selectedBranch===room.branch_id && (()=>{
                               const empName = addStaffPopup.selectedEmp;
@@ -1763,7 +1839,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                               const endRef = React.createRef();
                               return <div style={{display:"flex",gap:4,alignItems:"center"}}>
                                 <select ref={startRef} defaultValue={wh.start} style={selSt}
-                                  onChange={e=>{const v=e.target.value; const sh=parseInt(v); const eh=Math.min(23,sh+10); if(endRef.current) endRef.current.value=`${String(eh).padStart(2,"0")}:00`;}}>
+                                  onChange={e=>{const v=e.target.value; const [hh,mm]=v.split(":").map(Number); const totalMin=Math.min(23*60+30,(hh+10)*60+mm); const eh=Math.floor(totalMin/60),em=totalMin%60; if(endRef.current) endRef.current.value=`${String(eh).padStart(2,"0")}:${String(em).padStart(2,"0")}`;}}>
                                   {hours.map(h=><option key={h} value={h}>{h}</option>)}
                                 </select>
                                 <span style={{fontSize:11}}>~</span>
@@ -2069,6 +2145,14 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                           {block.selectedServices?.length>0 && <div style={{fontSize:Math.max(6,blockFs-2),color:T.text,fontWeight:T.fw.bold,marginTop:1}}>
                             {groupSvcNames(block.selectedServices, SVC_LIST).slice(0,2).join(", ")}
                             {block.selectedServices.length>2 && ` +${block.selectedServices.length-2}`}
+                          </div>}
+                          {block.custId && custPkgMap[block.custId]?.length > 0 && <div style={{display:"flex",gap:2,flexWrap:"wrap",marginTop:1}}>
+                            {custPkgMap[block.custId].slice(0,3).map((pkg,pi) => <span key={pi} style={{
+                              fontSize:Math.max(6,blockFs-3),padding:"0px 3px",borderRadius:3,lineHeight:"14px",fontWeight:700,
+                              background:pkg.isDadam?"#ffeaa7":"#dfe6e9",
+                              color:pkg.isDadam?"#d35400":"#2d3436"
+                            }}>{pkg.isDadam?`${pkg.name} ${pkg.remain.toLocaleString()}원`:`${pkg.name} ${pkg.remain}회`}</span>)}
+                            {custPkgMap[block.custId].length>3 && <span style={{fontSize:Math.max(6,blockFs-3),color:T.gray400}}>+{custPkgMap[block.custId].length-3}</span>}
                           </div>}
                           {h >= rowH * 3 && (()=>{
                             // 체크된 네이버 필드만 표시

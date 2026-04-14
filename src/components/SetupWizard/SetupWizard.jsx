@@ -290,8 +290,7 @@ export default function SetupWizard({ bizId, bizName, geminiKey: propKey, sb, da
         const existing = rows?.[0]?.value ? (typeof rows[0].value === 'string' ? JSON.parse(rows[0].value) : rows[0].value) : [];
         const newEmps = d.staffNames.filter(n => !existing.some(e => e.name === n)).map(n => ({ id: uid(), name: n }));
         const merged = [...existing, ...newEmps];
-        if (rows?.[0]) await sb.update('schedule_data', rows[0].id, { value: JSON.stringify(merged) });
-        else await sb.insert('schedule_data', { id: 'employees_v1', key: 'employees_v1', value: JSON.stringify(merged) });
+        await sb.upsert([{ id: 'employees_v1', key: 'employees_v1', value: JSON.stringify(merged) }]);
       }
     } catch (e) {
       console.error('[wizard] save error:', e);
@@ -321,8 +320,7 @@ export default function SetupWizard({ bizId, bizName, geminiKey: propKey, sb, da
         const existing = rows?.[0]?.value ? (typeof rows[0].value === 'string' ? JSON.parse(rows[0].value) : rows[0].value) : [];
         const newEmps = (stepData.staff || []).filter(n => !existing.some(e => e.name === n)).map(n => ({ id: uid(), name: n }));
         const merged = [...existing, ...newEmps];
-        if (rows?.[0]) await sb.update('schedule_data', rows[0].id, { value: JSON.stringify(merged) });
-        else await sb.insert('schedule_data', { id: 'employees_v1', key: 'employees_v1', value: JSON.stringify(merged) });
+        await sb.upsert([{ id: 'employees_v1', key: 'employees_v1', value: JSON.stringify(merged) }]);
       }
     } catch (e) { console.error('[wizard] save step:', e); }
   };
@@ -373,24 +371,22 @@ export default function SetupWizard({ bizId, bizName, geminiKey: propKey, sb, da
           }
         } else if (text) {
           // 텍스트 + 이미 파싱된 데이터가 있으면 review로 이동
-          if (parsedData && /확인|좋아|넘어|ok|ㅇㅋ|네|응|그래/i.test(text)) {
+          if (parsedData && !parsedData._manual && /확인|좋아|넘어|ok|ㅇㅋ|네|응|그래/i.test(text)) {
             await saveAllData(parsedData);
             addBot('등록 완료했어요!');
             const hasStaff = parsedData.staffNames?.length > 0;
             const newProg = { ...progress, completedSteps: ['photo_upload', 'review'], data: { photo: parsedData } };
             setProgress(newProg);
-            // 직원이 사진에서 파싱됐으면 스킵
-            const nextIdx = hasStaff ? 3 : 2; // sources or staff
+            const nextIdx = hasStaff ? 3 : 2;
             if (hasStaff) newProg.completedSteps.push('staff');
             setStepIdx(nextIdx);
             setTimeout(() => addBot(STEPS[nextIdx].greeting), 500);
-          } else if (parsedData) {
-            // 수정 요청
+          } else if (parsedData && !parsedData._manual) {
+            // 사진 파싱 후 수정 요청
             const result = await callGemini('review', text);
             if (result?.data && Object.keys(result.data).length > 0) {
               const merged = { ...parsedData };
               if (result.data.services) {
-                // 개별 서비스 수정
                 result.data.services.forEach(mod => {
                   const idx = merged.services?.findIndex(s => s.name === mod.name);
                   if (idx >= 0) Object.assign(merged.services[idx], mod);
@@ -405,14 +401,31 @@ export default function SetupWizard({ bizId, bizName, geminiKey: propKey, sb, da
             } else {
               addBot(result?.message || '수정할 내용을 다시 말씀해주세요.');
             }
+          } else {
+            // 텍스트 대화 → Gemini로 처리
+            const result = await callGemini(step.id, text);
+            if (result) {
+              addBot(result.message);
+              if (result.done && result.data && Object.keys(result.data).length > 0) {
+                await saveStepData(step.id, result.data);
+                const newProg = { ...progress, completedSteps: [...progress.completedSteps, step.id], data: { ...progress.data, [step.id]: result.data } };
+                setProgress(newProg);
+                const nextIdx = findNextStep(stepIdx + 1, newProg);
+                setStepIdx(nextIdx);
+                if (STEPS[nextIdx]) setTimeout(() => addBot(STEPS[nextIdx].greeting), 500);
+              }
+            } else {
+              addBot('답변을 이해하지 못했어요. 다시 말씀해주세요.');
+            }
           }
         }
         return;
       }
 
-      // ── 일반 스텝 ──
+      // ── 완료 스텝: Gemini 대화 ──
       if (step.id === 'complete') {
-        addBot('감사합니다! 왼쪽 메뉴에서 원하는 페이지로 이동해주세요.');
+        const result = await callGemini(step.id, text);
+        addBot(result?.message || '추가로 궁금한 게 있으면 물어보세요!');
         return;
       }
 
@@ -606,7 +619,7 @@ export default function SetupWizard({ bizId, bizName, geminiKey: propKey, sb, da
           <input
             ref={inputRef} value={input}
             onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleSend()}
+            onKeyUp={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleSend()}
             placeholder={isComplete ? '추가 질문을 입력하세요' : '답변을 입력하세요...'}
             disabled={loading}
             style={{

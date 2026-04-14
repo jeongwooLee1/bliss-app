@@ -336,7 +336,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
     // 일반 다회권
     const remain = p.total_count - p.used_count;
     const pct = p.total_count > 0 ? (remain/p.total_count)*100 : 0;
-    const isDone = isPrepaid ? balance <= 0 : isAnnual ? isExpired : remain <= 0;
+    const isDone = isPrepaid ? (balance <= 0 || isExpired) : isAnnual ? isExpired : (remain <= 0 || isExpired);
 
     return <div style={{border:"1px solid "+(isDone?T.gray300:isExpired?T.danger+"44":T.border),borderRadius:T.radius.md,padding:"10px 12px",background:isDone?T.gray100:T.bgCard,minWidth:180,flex:"0 0 auto",opacity:isDone?0.6:1}}>
       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>

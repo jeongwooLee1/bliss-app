@@ -264,6 +264,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
       if (local) {
         setF(p => ({
           ...p,
+          custName2: p.custName2 || local.name2 || "",
           custGender: p.custGender || local.gender || "",
           custEmail: p.custEmail || local.email || "",
           isNewCust: false,
@@ -278,6 +279,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
         if (!c) return;
         setF(p => ({
           ...p,
+          custName2: p.custName2 || c.name2 || "",
           custGender: p.custGender || c.gender || "",
           custEmail: p.custEmail || c.email || "",
           isNewCust: false,
@@ -298,6 +300,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
       setF(p => ({
         ...p,
         custId: c.id,
+        custName2: p.custName2 || c.name2 || "",
         custGender: p.custGender || c.gender || "",
         custEmail: p.custEmail || c.email || "",
         isNewCust: false,
@@ -359,16 +362,28 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
       const q = custSearch.trim();
       try {
         const bizId = _activeBizId || "biz_khvurgshb";
-        // name/name2/phone/phone2/email/cust_num OR 검색 (부분 일치)
         const enc = encodeURIComponent(q);
+        const isNumeric = /^\d+$/.test(q);
+        // cust_num 정확매칭 우선 조회 (숫자일 때)
+        let exactRows = [];
+        if (isNumeric) {
+          const exactFilter = `&business_id=eq.${bizId}&cust_num=eq.${q}&limit=1`;
+          const ex = await sb.get("customers", exactFilter);
+          exactRows = Array.isArray(ex) ? ex : [];
+        }
+        // name/name2/phone/phone2/email/cust_num OR 검색 (부분 일치)
         const filter = `&business_id=eq.${bizId}&or=(name.ilike.*${enc}*,name2.ilike.*${enc}*,phone.ilike.*${q}*,phone2.ilike.*${q}*,email.ilike.*${enc}*,cust_num.ilike.*${enc}*)&limit=20`;
         const rows = await sb.get("customers", filter);
-        setCustResults(Array.isArray(rows) ? fromDb("customers", rows) : []);
+        const allRows = Array.isArray(rows) ? rows : [];
+        // cust_num 정확매칭을 맨 앞에, 중복 제거
+        const exactIds = new Set(exactRows.map(r => r.id));
+        const merged = [...exactRows, ...allRows.filter(r => !exactIds.has(r.id))].slice(0, 20);
+        setCustResults(fromDb("customers", merged));
       } catch(e) { console.error("custSearch err:", e); setCustResults([]); }
     }, 300);
     return () => clearTimeout(timer);
   }, [custSearch]);
-  const selectCust = (c) => { setF(p=>({...p, custId:c.id, custName:c.name, custPhone:c.phone, custGender:c.gender, custEmail:c.email||"", isNewCust:false})); setCustNum(c.custNum||""); setCustSearch(""); setShowCustDropdown(false); };
+  const selectCust = (c) => { setF(p=>({...p, custId:c.id, custName:c.name, custName2:c.name2||"", custPhone:c.phone, custGender:c.gender, custEmail:c.email||"", isNewCust:false})); setCustNum(c.custNum||""); setCustSearch(""); setShowCustDropdown(false); };
 
   // 태그 선택 → 기본 5분 + 태그 소요시간 합산 → 종료시간 자동 계산
   const toggleTag = (tagId) => {
@@ -494,8 +509,8 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
       }
       return f.requestMsg;
     })();
-    const naverText = [reqText, f.ownerComment].filter(Boolean).join("\n");
-    if (!naverText.trim()) { alert("분석할 네이버 예약정보가 없습니다"); return; }
+    const naverText = [reqText, f.ownerComment, f.memo].filter(Boolean).join("\n");
+    if (!naverText.trim()) { alert("분석할 예약정보/메모가 없습니다"); return; }
     if (/^[\s\-\(\)대화없음]+$/.test(naverText.trim())) { alert("대화 내용이 없어 분석할 정보가 없습니다"); return; }
     setAiAnalyzing(true);
     try {
@@ -546,7 +561,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
 ${naverText}
 
 응답 형식:
-{"matchedTagIds":["태그id1","태그id2"],"matchedServiceIds":["시술id1"],"gender":"F 또는 M 또는 빈문자열","reason":"선택 이유 한줄"}`;
+{"matchedTagIds":["태그id1","태그id2"],"matchedServiceIds":["시술id1"],"gender":"F 또는 M 또는 빈문자열","specialNotes":"직원이 알아야 할 특이사항 (영어요청, 알레르기 등) 또는 빈문자열","reason":"선택 이유 한줄"}`;
       const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
         method:"POST", headers:{"Content-Type":"application/json"},
         body:JSON.stringify({contents:[{parts:[{text:prompt}]}], generationConfig:{temperature:0}})
@@ -597,6 +612,7 @@ ${naverText}
         }
       }
       const aiGender = parsed.gender || "";
+      const specialNotes = parsed.specialNotes || "";
       setF(p => {
         const tagSum = newTags.reduce((s,tid)=>{const t=(data?.serviceTags||[]).find(x=>x.id===tid);return s+(t?.dur||0);},0);
         const svcSum = newSvcs.reduce((s,sid)=>s+getSvcDur(sid),0);
@@ -604,9 +620,15 @@ ${naverText}
         const [sh,sm] = p.time.split(":").map(Number);
         const endMin = sh*60+sm+dur;
         const endTime = `${String(Math.min(22,Math.floor(endMin/60))).padStart(2,"0")}:${String(endMin%60).padStart(2,"0")}`;
-        return {...p, selectedTags:newTags, selectedServices:newSvcs, dur, endTime, custGender: aiGender || p.custGender};
+        // 기존 고객(custId 있음)이면 DB 성별 유지, AI 판단 무시
+        const updates = {selectedTags:newTags, selectedServices:newSvcs, dur, endTime, custGender: p.custId ? (p.custGender || aiGender) : (aiGender || p.custGender)};
+        if (specialNotes) {
+          const cur = p.memo || "";
+          if (!cur.includes(specialNotes)) updates.memo = cur ? cur+"\n[AI] "+specialNotes : "[AI] "+specialNotes;
+        }
+        return {...p, ...updates};
       });
-    } catch(e) { console.warn("AI 분석 실패:", e.message); }
+    } catch(e) { alert("AI 분석 실패: " + e.message); }
     setAiAnalyzing(false);
   };
 
@@ -831,6 +853,7 @@ ${naverText}
                       ) : (
                         <>
                           <CopySpan text={f.custName} style={{fontSize:14,fontWeight:700,color:"#1a1a2e"}}>{f.custName}</CopySpan>
+                          {f.custName2 && <span style={{fontSize:12,color:"#888",fontWeight:500}}>({f.custName2})</span>}
                           <span style={{fontSize:11,color:"#888"}}>·</span>
                           <CopySpan text={f.custPhone} style={{fontSize:13,color:T.primary,fontWeight:500}}>{f.custPhone||"연락처 없음"}</CopySpan>
                           {custNum && <CopySpan text={custNum} style={{fontSize:13,color:"#999",fontFamily:"monospace"}}>{custNum}</CopySpan>}
@@ -1230,100 +1253,9 @@ ${naverText}
             </div>}
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
             {!isReadOnly && !isSchedule && <Btn
-              style={{padding:"10px 16px",background:"#ff9800",boxShadow:"0 2px 8px rgba(255,152,0,.3)"}}
-              onClick={async()=>{
-                const apiKey = window.__systemGeminiKey || window.__geminiKey;
-                if(!apiKey){alert("AI 설정에서 Gemini API 키를 등록하세요");return;}
-                const svcList = SVC_LIST.map(s=>`"${s.id}":"${s.name}"`).join(", ");
-                const tagList = tags.filter(t=>t.useYn!==false&&t.scheduleYn!=="Y").map(t=>`"${t.id}":"${t.name}"`).join(", ");
-                // requestMsg가 JSON 배열이면 텍스트로 변환
-                let reqText = f.requestMsg || "";
-                if (reqText.trim().startsWith("[")) {
-                  try { const items = JSON.parse(reqText); reqText = items.map(it=>it.label+": "+it.value).join("\n"); } catch {}
-                }
-                const neverText = [reqText, f.ownerComment].filter(Boolean).join("\n");
-                if(!neverText.trim() && !f.memo?.trim()){alert("분석할 메모/요청사항이 없습니다");return;}
-                // AI 규칙 로드
-                const aiRules = JSON.parse(localStorage.getItem("bliss_ai_rules")||"[]");
-                const rulesBlock = aiRules.length > 0
-                  ? "\n[추가 판단 규칙 - 아래 규칙을 기본 기준보다 우선 적용하세요]\n" + aiRules.map((r,i)=>`${i+1}. ${r}`).join("\n")
-                  : "";
-                const prompt = `당신은 왁싱샵/미용실 예약 정보를 분석하는 AI입니다.
-아래 예약 고객 정보를 분석하여 적합한 태그와 시술상품을 선택하세요.
-반드시 순수 JSON만 출력. 코드블록 절대 금지.
-
-[태그 목록] ${tagList}
-[시술상품 목록] ${svcList}
-
-[기본 판단 기준]
-- 태그 목록에 있는 태그만 선택하세요. 임의로 판단하지 마세요.
-- 고객 요청에 명시적으로 언급된 경우에만 태그를 선택하세요.
-- "신규" 태그는 선택하지 마세요. 시스템이 자동 처리합니다.
-- "주차" 태그는 고객이 명시적으로 주차를 요청한 경우에만 선택하세요.
-
-[시술상품 선택 규칙]
-- 메모에서 실제 시술명을 찾으세요.
-- 동의어: 음모왁싱=브라질리언, 음부왁싱=브라질리언, 브라질리언왁싱=브라질리언
-- '재방문', '신규', '이벤트' 등 단독으로 나오면 시술이 아닙니다.
-- 시술상품 목록에서 가장 유사한 항목을 선택하세요. 없으면 빈 배열로 두세요.
-- "패키지", "PKG", "연간할인권", "이용중" 등이 있어도 실제 시술(브라질리언 등)을 선택하세요. 패키지는 시스템이 자동 처리합니다.
-${rulesBlock}
-
-[예약 정보]
-- 고객명: ${f.custName||"미상"}
-- 성별: ${f.custGender==="M"?"남성":f.custGender==="F"?"여성":"미상"}
-- 메모: ${f.memo||""}
-- 요청사항: ${f.requestMsg||""}
-- 직원메모: ${f.ownerComment||""}
-
-[특이사항 추출]
-- 고객 요청에서 직원이 알아야 할 특이사항을 추출하세요 (영어 요청, 알레르기, 특수 요청 등)
-
-반드시 순수 JSON만 반환. 마크다운/코드블록 절대 금지.
-응답 형식:
-{"matchedTagIds":["태그id"],"matchedServiceIds":["시술id"],"gender":"F/M/빈문자열","specialNotes":"특이사항 텍스트 또는 빈문자열"}`;
-                try {
-                  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,{
-                    method:"POST",headers:{"Content-Type":"application/json"},
-                    body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.1}})
-                  });
-                  const d = await r.json();
-                  if(d.error){alert("AI 분석 실패: API: "+JSON.stringify(d.error).slice(0,200));return;}
-                  const txt = d?.candidates?.[0]?.content?.parts?.[0]?.text||"";
-                  const m = txt.match(/\{[\s\S]*\}/);
-                  if(m){
-                    const result = JSON.parse(m[0]);
-                    let newSvcs = (result.matchedServiceIds||result.services||[]).filter(id=>SVC_LIST.find(s=>s.id===id));
-                    const newTags = (result.matchedTagIds||result.tags||[]).filter(id=>tags.find(t=>t.id===id));
-                    const notes = result.specialNotes||"";
-                    // 패키지 고객 자동 감지: 시술옵션에 패키지 키워드 + 다회권 보유 → pkg__ 자동 추가
-                    const pkgKeywords = /패키지|PKG|연간할인권|이용중|패키지이용/i;
-                    const allText = [reqText, f.ownerComment, f.memo].join(" ");
-                    if (pkgKeywords.test(allText)) {
-                      const multiPkgs = (custPkgsInfo||[]).filter(p=>{const n=(p.service_name||"").toLowerCase();return !n.includes("다담권")&&!n.includes("선불")&&!n.includes("10%추가적립")&&!n.includes("연간")&&!n.includes("할인권")&&!n.includes("회원권")&&(p.total_count||0)-(p.used_count||0)>0;});
-                      if (multiPkgs.length > 0) {
-                        const groups={};multiPkgs.forEach(p=>{const nm=(p.service_name?.split("(")[0]||"").replace(/\s*\d+회$/,"").trim();if(!groups[nm])groups[nm]=true;});
-                        const firstPkgName = Object.keys(groups)[0];
-                        if (firstPkgName) {
-                          newSvcs = newSvcs.filter(id=>!id.startsWith("pkg__"));
-                          newSvcs.unshift("pkg__"+firstPkgName);
-                        }
-                      }
-                    }
-                    const updates = {
-                      selectedServices: newSvcs,
-                      selectedTags: newTags
-                    };
-                    if(result.gender && !f.custGender) updates.custGender = result.gender;
-                    // 특이사항 → 메모에 자동 추가
-                    if(notes) {
-                      const cur = f.memo||"";
-                      if(!cur.includes(notes)) updates.memo = cur ? cur+"\n[AI] "+notes : "[AI] "+notes;
-                    }
-                    setF(p=>({...p,...updates}));
-                  } else { console.warn("AI 분석 결과 파싱 불가"); }
-                } catch(e){ console.warn("AI 분석 실패:", e.message); }
-              }}>AI 분석</Btn>}
+              disabled={aiAnalyzing}
+              style={{padding:"10px 16px",background:"#ff9800",boxShadow:"0 2px 8px rgba(255,152,0,.3)",opacity:aiAnalyzing?.6:1}}
+              onClick={handleAiAnalyze}>{aiAnalyzing?"분석중...":"AI 분석"}</Btn>}
             {!isReadOnly && <><Btn
                 disabled={!isSchedule && f.type==="reservation" && !f.custName?.trim()}
                 style={{padding:"10px 26px",background:isSchedule?T.orange:T.primary,boxShadow:isSchedule?"0 4px 14px rgba(225,112,85,.35)":`0 4px 14px rgba(124,124,200,.35)`}}

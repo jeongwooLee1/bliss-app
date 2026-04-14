@@ -9,7 +9,16 @@ export const STEPS = [
     required: true,
     acceptsImage: true,
     greeting: '안녕하세요! Bliss 설정을 도와드릴게요.\n\n아래 파일을 보내주시면 자동으로 설정해드려요:\n\n📋 메뉴판 / 가격표 사진\n📄 사업자등록증\n📱 네이버플레이스 캡처\n📊 시술목록 엑셀 / 텍스트 파일\n\n여러 개 보내셔도 돼요!\n사진이나 파일이 없으면 "없어요"라고 하시면 직접 입력으로 진행합니다.',
-    systemPrompt: null // Vision API 전용 프롬프트는 별도
+    systemPrompt: `당신은 Bliss 예약관리 앱의 설정 마법사입니다. 사용자가 설정에 대해 질문하거나 요청합니다.
+친절하고 간결하게 답변하세요. 사용자의 요청에 따라 적절히 안내합니다.
+
+- 시술/가격 관련 → 시술 상품 정보를 물어보세요 (이름, 가격, 소요시간 등)
+- 직원 관련 → 직원 이름을 물어보세요
+- 일반 질문 → 친절히 답변
+
+응답 JSON: {"message":"답변 내용","data":{},"done":false}
+설정 관련 데이터가 파악되면 done:true와 함께 data에 포함.
+예: 시술 목록을 알려주면 → {"message":"등록했어요!","data":{"services":[...]},"done":true}`
   },
   {
     id: 'review',
@@ -48,7 +57,10 @@ export const STEPS = [
     label: '완료',
     required: true,
     greeting: '기본 설정이 완료됐어요!\n\n등록된 내용은 관리설정에서 언제든 수정할 수 있어요.\n추가로 궁금한 게 있으면 물어보세요!',
-    systemPrompt: null
+    systemPrompt: `당신은 Bliss 예약관리 앱의 설정 도우미입니다. 설정이 완료된 후 사용자의 추가 질문에 답변합니다.
+Bliss는 뷰티샵 예약관리 앱으로, 타임라인, 예약관리, 매출관리, 고객관리, 직원근무표 등의 기능이 있습니다.
+사용자의 질문에 친절하고 간결하게 답변하세요.
+응답 JSON: {"message":"답변 내용","data":{},"done":false}`
   }
 ];
 

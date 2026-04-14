@@ -391,10 +391,12 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
       const svc = (data.services||[]).find(s=>s.id===r.serviceId);
       const staff = (data.staff||[]).find(s=>s.id===r.staffId);
       // 네이버 예약 전용 필드도 검색 대상: reservation_id, 메모, request_msg(네이버 상품/시술메뉴/요청 등), visitor_name/phone
+      const cust = r.custId ? (data?.customers||[]).find(c=>c.id===r.custId) : null;
       const hay = [
         r.custName, r.custPhone, svc?.name, staff?.dn,
         r.reservationId, r.memo, r.requestMsg, r.ownerComment,
         r.visitorName, r.visitorPhone, r.custEmail,
+        cust?.custNum, cust?.name2,
       ].filter(Boolean).join(" ").toLowerCase();
       return hay.includes(sq);
     }

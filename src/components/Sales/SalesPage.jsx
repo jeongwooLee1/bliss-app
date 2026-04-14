@@ -61,6 +61,8 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role }) {
   const [vb, setVb] = useState("all");
   const [showModal, setShowModal] = useState(false);
   const [editSale, setEditSale] = useState(null);
+  const [editMemoId, setEditMemoId] = useState(null);
+  const [editMemoText, setEditMemoText] = useState("");
   const [q, setQ] = useState("");
   const [expandedId, setExpandedId] = useState(null);
   const [detailMap, setDetailMap] = useState({});  // saleId → [detail rows]
@@ -108,6 +110,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role }) {
   }, {svc:0,svcCash:0,svcTransfer:0,svcCard:0,svcPoint:0,prod:0,prodCash:0,prodTransfer:0,prodCard:0,prodPoint:0,gift:0,total:0});
 
   const handleDelete = (id) => { setData(prev=>({...prev,sales:(prev?.sales||[]).filter(s=>s.id!==id)})); sb.del("sales",id).catch(console.error); };
+  const saveMemo = (id) => { setData(prev=>({...prev,sales:(prev?.sales||[]).map(s=>s.id===id?{...s,memo:editMemoText}:s)})); sb.update("sales",id,{memo:editMemoText}).catch(console.error); setEditMemoId(null); };
   const handleSave   = (item) => { setData(prev=>({...prev,sales:[...prev.sales,item]})); sb.insert("sales",toDb("sales",item)).catch(console.error); setShowModal(false); };
   const handleEditSave = (item) => {
     const fi = {...item, id:editSale.id};
@@ -256,7 +259,20 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role }) {
                   <td style={{fontWeight:T.fw.bold,color:T.primary}}>{sv>0?fmt(sv):<Z/>}</td>
                   <td style={{fontWeight:T.fw.bold,color:T.infoLt2}}>{pr>0?fmt(pr):<Z/>}</td>
                   <td style={{fontWeight:T.fw.black,color:T.info}}>{fmt(total)}</td>
-                  <td style={{...sx.ellipsis,maxWidth:100,fontSize:T.fs.xxs,color:T.textSub}}>{s.memo||""}</td>
+                  <td style={{maxWidth:200,fontSize:T.fs.xxs,color:T.textSub}} onClick={e=>{e.stopPropagation();setEditMemoId(s.id);setEditMemoText(s.memo||"");}}>
+                    {editMemoId===s.id
+                      ? <div style={{display:"flex",gap:3,alignItems:"center"}} onClick={e=>e.stopPropagation()}>
+                          <textarea value={editMemoText} onChange={e=>setEditMemoText(e.target.value)} autoFocus
+                            style={{flex:1,fontSize:11,padding:"4px 6px",borderRadius:4,border:"1px solid "+T.primary,fontFamily:"inherit",minHeight:60,resize:"vertical"}}
+                            onKeyDown={e=>{if(e.key==="Escape")setEditMemoId(null);}}/>
+                          <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                            <Btn size="sm" style={{padding:"2px 6px",fontSize:10}} onClick={()=>saveMemo(s.id)}>저장</Btn>
+                            <Btn variant="secondary" size="sm" style={{padding:"2px 6px",fontSize:10}} onClick={()=>setEditMemoId(null)}>취소</Btn>
+                          </div>
+                        </div>
+                      : <span style={{...sx.ellipsis,display:"block",maxWidth:200,cursor:"pointer"}} title="클릭하여 메모 수정">{s.memo||"..."}</span>
+                    }
+                  </td>
                   <td onClick={e=>e.stopPropagation()}>
                     <div style={{display:"flex",gap:3}}>
                       <Btn variant="secondary" size="sm" style={{padding:"2px 5px"}} onClick={()=>setEditSale(s)}><I name="edit" size={12}/></Btn>
