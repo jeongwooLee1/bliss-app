@@ -31,7 +31,7 @@ class ErrorBoundary extends React.Component {
 try {
   ReactDOM.createRoot(document.getElementById('root')).render(
     <ErrorBoundary>
-      <BrowserRouter basename="/bliss-app">
+      <BrowserRouter>
         <AuthProvider>
           <App />
         </AuthProvider>

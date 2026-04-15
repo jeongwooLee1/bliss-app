@@ -1433,7 +1433,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         const r = (data?.reservations||[]).find(rv => rv.id === block.id);
         const branch = (data?.branches||[]).find(b => b.id === (r?.bid || block.bid));
         const rsvUrlId = (r?.reservationId) || block.id || "";
-        const rsvUrl = rsvUrlId ? "https://blissme.ai/bliss-app/r.html?"+encodeURIComponent(rsvUrlId) : "";
+        const rsvUrl = rsvUrlId ? "https://blissme.ai/r.html?"+encodeURIComponent(rsvUrlId) : "";
         queueAlimtalk(branch?.id, "rsv_change", block.custPhone, {
           "#{사용자명}":branch?.name||"", "#{날짜}":r?.date||block.date||"", "#{시간}":r?.time||block.time||"",
           "#{작업자}":r?.worker||"", "#{작업장소}":branch?.name||"",
@@ -2228,7 +2228,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           try {
             const branch = (data?.branches||[]).find(b=>b.id===item.bid);
             const rsvUrlId = item.reservationId || item.id || "";
-            const rsvUrl = rsvUrlId ? "https://blissme.ai/bliss-app/r.html?"+encodeURIComponent(rsvUrlId) : "";
+            const rsvUrl = rsvUrlId ? "https://blissme.ai/r.html?"+encodeURIComponent(rsvUrlId) : "";
             queueAlimtalk(branch?.id, notiKey, item.custPhone, {
               "#{사용자명}":branch?.name||"", "#{날짜}":item.date||"", "#{시간}":item.time||"",
               "#{작업자}":item.worker||"", "#{작업장소}":branch?.name||"",
@@ -2306,7 +2306,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         </>;
       })()}
 
-      {showModal && <TimelineModal item={modalData} onSave={handleSave} onDelete={handleDelete} onDeleteRequest={handleDeleteRequest} naverColShow={naverColShow} onClose={()=>_mc(()=>{setShowModal(false);setModalData(null)})} selBranch={userBranches[0]} userBranches={userBranches} data={{...data, staff: BASE_EMP_LIST.map(e=>({id:e.id,bid:e.branch_id,dn:e.id,name:e.id,branch_id:e.branch_id})), workingStaffIds: (() => { const ws = getWorkingStaff(modalData?.bid, selDate); return ws ? ws.map(e=>e.id) : null; })() }} setData={setData} setPage={setPage} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust}/>}
+      {showModal && <TimelineModal item={modalData} onSave={handleSave} onDelete={handleDelete} onDeleteRequest={handleDeleteRequest} naverColShow={naverColShow} onClose={()=>_mc(()=>{setShowModal(false);setModalData(null)})} selBranch={userBranches[0]} userBranches={userBranches} data={{...data, staff: BASE_EMP_LIST.map(e=>({id:e.id,bid:e.branch_id,dn:e.id,name:e.id,branch_id:e.branch_id})), workingStaffIds: (() => { const ws = getWorkingStaff(modalData?.bid || userBranches[0], selDate); return ws ? ws.map(e=>e.id) : null; })() }} setData={setData} setPage={setPage} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust}/>}
 
       {showQuickBook && <QuickBookModal
         onClose={()=>setShowQuickBook(false)}

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { T, SYSTEM_TAG_NAME_NEW_CUST, SYSTEM_TAG_NAME_PREPAID, SYSTEM_SRC_NAME_NAVER } from '../lib/constants'
 import { sb, SB_URL, SB_KEY, sbHeaders } from '../lib/sb'
 import { supabase as _supaClient } from '../lib/supabase'
@@ -18,8 +19,9 @@ import SchedulePage from '../components/Schedule/SchedulePage'
 import SetupWizard from '../components/SetupWizard/SetupWizard'
 
 const uid = genId;
-const BLISS_V = "1.4.1"
+const BLISS_V = "1.5.3"
 const BIZ_ID = 'biz_khvurgshb'
+const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", users:"/users", messages:"/messages", admin:"/settings", wizard:"/wizard", schedule:"/schedule" };
 async function loadAllFromDb(bizId) {
   const [branches, services, categories, tags, sources, users, rooms, customers, reservations, sales, products] = await Promise.all([
     sb.getByBiz("branches", bizId).catch(()=>[]),
@@ -262,8 +264,8 @@ function Login({ users, onLogin, onSignup }) {
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           {/* 소셜 로그인 */}
-          <button onClick={()=>{import('../lib/supabase').then(m=>m.supabase.auth.signInWithOAuth({provider:'kakao',options:{redirectTo:window.location.origin+'/bliss-app/'}}))}} style={{width:"100%",height:48,display:"flex",alignItems:"center",justifyContent:"center",gap:10,background:"#FEE500",color:"#3C1E1E",border:"none",borderRadius:T.radius.md,fontSize:T.fs.md,fontWeight:T.fw.bold,cursor:"pointer",fontFamily:"inherit"}}>💬 카카오로 시작하기</button>
-          <button onClick={()=>{import('../lib/supabase').then(m=>m.supabase.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin+'/bliss-app/'}}))}} style={{width:"100%",height:48,display:"flex",alignItems:"center",justifyContent:"center",gap:10,background:"#fff",color:"#333",border:`1px solid ${T.border}`,borderRadius:T.radius.md,fontSize:T.fs.md,fontWeight:T.fw.bold,cursor:"pointer",fontFamily:"inherit"}}>🔍 Google로 시작하기</button>
+          <button onClick={()=>{import('../lib/supabase').then(m=>m.supabase.auth.signInWithOAuth({provider:'kakao',options:{redirectTo:window.location.origin+'/'}}))}} style={{width:"100%",height:48,display:"flex",alignItems:"center",justifyContent:"center",gap:10,background:"#FEE500",color:"#3C1E1E",border:"none",borderRadius:T.radius.md,fontSize:T.fs.md,fontWeight:T.fw.bold,cursor:"pointer",fontFamily:"inherit"}}>💬 카카오로 시작하기</button>
+          <button onClick={()=>{import('../lib/supabase').then(m=>m.supabase.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin+'/'}}))}} style={{width:"100%",height:48,display:"flex",alignItems:"center",justifyContent:"center",gap:10,background:"#fff",color:"#333",border:`1px solid ${T.border}`,borderRadius:T.radius.md,fontSize:T.fs.md,fontWeight:T.fw.bold,cursor:"pointer",fontFamily:"inherit"}}>🔍 Google로 시작하기</button>
           {/* 구분선 */}
           <div style={{display:"flex",alignItems:"center",gap:12,margin:"4px 0"}}><div style={{flex:1,height:1,background:T.border}}/><span style={{fontSize:T.fs.xs,color:T.textMuted}}>또는</span><div style={{flex:1,height:1,background:T.border}}/></div>
           <FLD label="아이디"><input className="inp" placeholder="아이디 입력" value={loginId} onChange={e=>{setLoginId(e.target.value);setErr("")}}/></FLD>
@@ -644,7 +646,8 @@ function SignupWizard({ onComplete, onBack }) {
 function App() {
   const [phase, setPhase] = useState("loading");
  // loading, login, super, app
-  const [pageHistory, setPageHistory] = React.useState([]);
+  const navigate = useNavigate();
+  const location = useLocation();
   const [unreadMsgCount, setUnreadMsgCount] = useState(0);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
@@ -659,9 +662,11 @@ function App() {
   const [userBranches, setUserBranches] = useState([]);
   const isMaster = role === "owner" || role === "super" || role === "manager";
   const [viewBranches, setViewBranches] = useState([]);
-  const [page, setPageRaw] = useState(() => {
-    try { const p = sessionStorage.getItem("bliss_page"); console.log("[SESSION] page restore:", p); return p || "timeline"; } catch(e){ return "timeline"; }
-  });
+  const page = useMemo(() => {
+    const p = location.pathname.replace(/^\//, "").split("/")[0] || "timeline";
+    if (p === "settings") return "admin";
+    return Object.keys(PAGE_ROUTES).includes(p) ? p : "timeline";
+  }, [location.pathname]);
   const [pendingOpenRes, setPendingOpenRes] = useState(null);
   const [pendingOpenCust, setPendingOpenCust] = useState(null); // 고객관리 페이지에서 자동 오픈할 cust_id
   const [pendingChat, setPendingChat] = useState(null); // {user_id, channel, account_id}
@@ -769,41 +774,25 @@ function App() {
     }catch(e){}
   };
   const setPage = useCallback((p) => {
-    console.log("[SESSION] page save:", p);
-    setPageRaw(prev => {
-      if (prev && prev !== p) setPageHistory(h => [...h.slice(-9), prev]);
-      return p;
-    });
-    try { sessionStorage.setItem("bliss_page", p); } catch(e){}
-    try { window.history.pushState({page: p}, ""); } catch(e){}
-  }, []);
-
-  React.useEffect(() => {
-    const onPop = () => {
-      setPageHistory(h => {
-        if (h.length === 0) return h;
-        const prev = h[h.length - 1];
-        setPageRaw(prev);
-        try { sessionStorage.setItem("bliss_page", prev); } catch(e){}
-        return h.slice(0, -1);
-      });
-    };
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, []);
-
-  // Page is persisted directly via setPage → sessionStorage.setItem("bliss_page")
+    const url = PAGE_ROUTES[p] || "/timeline";
+    navigate(url);
+  }, [navigate]);
 
   // Safe version check (runs after React mount, no DOM conflict)
 // Safe version check — 새 버전 감지 시 자동 새로고침
   useEffect(() => {
   let timer;
   const check = () => {
-  fetch("/bliss-app/version.txt?t=" + Date.now())
+  fetch("/version.txt?t=" + Date.now(), {cache: "no-store", headers: {"Cache-Control": "no-cache"}})
     .then(r => r.ok ? r.text() : "")
     .then(remote => {
       remote = remote.trim();
-      if (remote && remote !== BLISS_V) location.reload(true);
+      console.log("[VERSION] local=", BLISS_V, "remote=", remote);
+      if (remote && remote !== BLISS_V) {
+        console.log("[VERSION] new version detected, reloading...");
+        // 강제 새로고침 — cache 무시하고 서버에서 다시 가져옴
+        try { window.location.href = window.location.pathname + "?v=" + remote; } catch(e) { window.location.reload(); }
+      }
     }).catch(() => {});
   timer = setTimeout(check, 30000);
   };
@@ -971,7 +960,7 @@ function App() {
         // 같은 브랜드(사업장) 소속이면 모든 지점 편집 가능
         setUserBranches(db.branches.map(b=>b.id));
         setViewBranches([]);
-        // page is already restored from sessionStorage("bliss_page") via useState initializer
+        // page is derived from URL via useLocation()
         setPhase("app");
         // 새 OAuth 유저 → 설정 마법사 자동 시작
         if (sessionStorage.getItem('bliss_new_oauth_user')) {
@@ -1034,7 +1023,8 @@ function App() {
   };
 
   const handleLogout = () => {
-    try{localStorage.removeItem("bliss_session");sessionStorage.removeItem("bliss_page");sessionStorage.removeItem("bliss_adminTab");}catch(e){}
+    try{localStorage.removeItem("bliss_session");}catch(e){}
+    navigate("/timeline", {replace:true});
     setCurrentUser(null); setCurrentBizId(null); setCurrentBiz(null);
     setData(null); setSuperData(null); setRole("staff");
     setUserBranches([]); setViewBranches([]); setPage("timeline");
@@ -1247,17 +1237,18 @@ function App() {
       <main className="main-c" style={S.main}>
         <div className="mob-hdr" style={{display:"none"}}></div>
         <div className="page-pad" style={{flex:1,padding:(page==="timeline"||page==="messages"||page==="schedule")?"0":"16px 20px 16px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
-          <div className={page==="timeline"?"":"fade-in"} key={page} style={(page==="timeline"||page==="schedule"||page==="wizard")?{flex:1,display:"flex",flexDirection:"column",minHeight:0}:{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}>
-            {page==="timeline" && <Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust}/>}
-            {page==="reservations" && <ReservationList data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} setNaverColShow={setNaverColShow}/>}
-            {page==="sales" && <SalesPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} role={role}/>}
-            {page==="customers" && <CustomersPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} pendingOpenCust={pendingOpenCust} setPendingOpenCust={setPendingOpenCust}/>}
-            {page==="users" && <UsersPage data={data} setData={setData} bizId={currentBizId}/>}
-            {page==="messages" && <AdminInbox sb={sb} branches={data?.branches} data={data} userBranches={userBranches} isMaster={isMaster} onRead={(cnt)=>setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)))} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage}/>}
-            {page==="schedule" && isMaster && <SchedulePage/>}
-            {page==="admin" && <AdminPage data={data} setData={setData} bizId={currentBizId} serverV={serverV} onLogout={handleLogout} currentUser={currentUser} userBranches={userBranches}/>}
-            {page==="wizard" && <SetupWizard bizId={currentBizId} bizName={bizName} geminiKey={(() => { try { return window.__systemGeminiKey || window.__geminiKey || JSON.parse(currentBiz?.settings||'{}').gemini_key || localStorage.getItem('bliss_gemini_key') || ''; } catch { return ''; } })()} sb={sb} data={data} setData={setData} onComplete={()=>setPage("timeline")} onClose={()=>setPage("timeline")} />}
-          </div>
+          <Routes>
+            <Route path="/timeline" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust}/></div>}/>
+            <Route path="/reservations" element={<div className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}><ReservationList data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} setNaverColShow={setNaverColShow}/></div>}/>
+            <Route path="/sales" element={<div className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}><SalesPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} role={role}/></div>}/>
+            <Route path="/customers" element={<div className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}><CustomersPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} pendingOpenCust={pendingOpenCust} setPendingOpenCust={setPendingOpenCust}/></div>}/>
+            <Route path="/users" element={<div className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}><UsersPage data={data} setData={setData} bizId={currentBizId}/></div>}/>
+            <Route path="/messages" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><AdminInbox sb={sb} branches={data?.branches} data={data} userBranches={userBranches} isMaster={isMaster} onRead={(cnt)=>setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)))} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage}/></div>}/>
+            <Route path="/schedule" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}>{isMaster && <SchedulePage/>}</div>}/>
+            <Route path="/settings/*" element={<div className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}><AdminPage data={data} setData={setData} bizId={currentBizId} serverV={serverV} onLogout={handleLogout} currentUser={currentUser} userBranches={userBranches}/></div>}/>
+            <Route path="/wizard" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><SetupWizard bizId={currentBizId} bizName={bizName} geminiKey={(() => { try { return window.__systemGeminiKey || window.__geminiKey || JSON.parse(currentBiz?.settings||'{}').gemini_key || localStorage.getItem('bliss_gemini_key') || ''; } catch { return ''; } })()} sb={sb} data={data} setData={setData} onComplete={()=>setPage("timeline")} onClose={()=>setPage("timeline")}/></div>}/>
+            <Route path="*" element={<Navigate to="/timeline" replace/>}/>
+          </Routes>
         </div>
       </main>
       <MobileBottomNav nav={nav} page={page} setPage={setPage} isChatOpen={isChatOpen}/>

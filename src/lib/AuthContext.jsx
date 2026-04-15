@@ -139,7 +139,7 @@ export function AuthProvider({ children }) {
   const loginWithProvider = async (provider) => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: `${window.location.origin}/bliss-app/` }
+      options: { redirectTo: `${window.location.origin}/` }
     })
     if (error) throw error
   }

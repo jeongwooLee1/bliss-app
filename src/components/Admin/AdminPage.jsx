@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { T } from '../../lib/constants'
 import { sb, SB_URL, sbHeaders } from '../../lib/sb'
 import { genId } from '../../lib/utils'
@@ -350,9 +351,13 @@ function AdminJoinBrand({ currentUser, onBack }) {
 // ADMIN — 메뉴 홈 + 라우터
 // ═══════════════════════════════════════════
 function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userBranches=[] }) {
-  const [tab,setTabRaw]=useState(()=>{try{return sessionStorage.getItem("bliss_adminTab")||null;}catch(e){return null;}});
-  const setTab=t=>{setTabRaw(t);try{sessionStorage.setItem("bliss_adminTab",t||"");}catch(e){}};
-  const back=()=>setTab(null);
+  const navTo = useNavigate();
+  const loc = useLocation();
+  const TAB_SLUGS = {places:"places",saleitems:"services",prodmgmt:"products",svctags:"tags",ressrc:"sources",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",joinbrand:"join-brand"};
+  const SLUG_TO_TAB = Object.fromEntries(Object.entries(TAB_SLUGS).map(([k,v])=>[v,k]));
+  const tab = SLUG_TO_TAB[loc.pathname.replace(/^\/settings\/?/,"").split("/")[0]] || null;
+  const setTab=t=>{ if(t) navTo(`/settings/${TAB_SLUGS[t]||t}`); else navTo("/settings"); };
+  const back=()=>navTo("/settings");
 
   const settings = React.useMemo(()=>{
     try { return JSON.parse(data?.businesses?.[0]?.settings || data?.businessSettings?.[0]?.settings || "{}"); } catch { return {}; }
