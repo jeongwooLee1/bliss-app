@@ -19,7 +19,7 @@ import SchedulePage from '../components/Schedule/SchedulePage'
 import SetupWizard from '../components/SetupWizard/SetupWizard'
 
 const uid = genId;
-const BLISS_V = "1.5.15"
+const BLISS_V = "1.5.16"
 const BIZ_ID = 'biz_khvurgshb'
 const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", users:"/users", messages:"/messages", admin:"/settings", wizard:"/wizard", schedule:"/schedule" };
 async function loadAllFromDb(bizId) {
@@ -778,26 +778,21 @@ function App() {
     navigate(url);
   }, [navigate]);
 
-  // Safe version check (runs after React mount, no DOM conflict)
-// Safe version check — 새 버전 감지 시 자동 새로고침
+  // 새 버전 감지 — 자동 새로고침 대신 배너 표시
+  const [newVer, setNewVer] = useState(null);
   useEffect(() => {
-  let timer;
-  const check = () => {
-  fetch("/version.txt?t=" + Date.now(), {cache: "no-store", headers: {"Cache-Control": "no-cache"}})
-    .then(r => r.ok ? r.text() : "")
-    .then(remote => {
-      remote = remote.trim();
-      console.log("[VERSION] local=", BLISS_V, "remote=", remote);
-      if (remote && remote !== BLISS_V) {
-        console.log("[VERSION] new version detected, reloading...");
-        // 강제 새로고침 — cache 무시하고 서버에서 다시 가져옴
-        try { window.location.href = window.location.pathname + "?v=" + remote; } catch(e) { window.location.reload(); }
-      }
-    }).catch(() => {});
-  timer = setTimeout(check, 30000);
-  };
-  timer = setTimeout(check, 5000);
-  return () => clearTimeout(timer);
+    let timer;
+    const check = () => {
+      fetch("/version.txt?t=" + Date.now(), {cache: "no-store", headers: {"Cache-Control": "no-cache"}})
+        .then(r => r.ok ? r.text() : "")
+        .then(remote => {
+          remote = remote.trim();
+          if (remote && remote !== BLISS_V) setNewVer(remote);
+        }).catch(() => {});
+      timer = setTimeout(check, 30000);
+    };
+    timer = setTimeout(check, 5000);
+    return () => clearTimeout(timer);
   }, []);
 
   // Phase 1: Load all users on mount + auto-login from saved session
@@ -1234,6 +1229,7 @@ function App() {
           <Sidebar nav={nav} page={page} setPage={p=>{setPage(p);setSideOpen(false)}} role={role} branchNames={branchNames} onLogout={handleLogout} bizName={bizName} isSuper={isSuper} onBackToSuper={handleBackToSuper} serverV={serverV} BLISS_V={BLISS_V}/>
         </div>
       </div>}
+      {newVer && <div onClick={()=>{try{window.location.href=window.location.pathname+"?v="+newVer;}catch(e){window.location.reload();}}} style={{position:"fixed",top:10,right:10,zIndex:9999,background:"#3498db",color:"#fff",padding:"8px 14px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.2)"}}>🔄 새 버전 v{newVer} — 클릭하여 업데이트</div>}
       <main className="main-c" style={S.main}>
         <div className="mob-hdr" style={{display:"none"}}></div>
         <div className="page-pad" style={{flex:1,padding:(page==="timeline"||page==="messages"||page==="schedule")?"0":"16px 20px 16px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
