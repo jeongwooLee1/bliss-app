@@ -109,12 +109,13 @@ function SalesHistory({ custId, custNum, onParsed }) {
   const [loading, setLoading] = useState(false);
   const [parsed, setParsed] = useState(null);
   const [custMemo, setCustMemo] = useState("");
+  const [brMap, setBrMap] = useState({});
 
   const load = async () => {
     if (sales !== null) { setSales(null); setParsed(null); return; }
     setLoading(true);
     try {
-      // 고객 메모 로드
+      // 고객 메모 + 지점 매핑 로드
       if (custId) {
         try {
           const cr = await fetch(`${SB_URL}/rest/v1/customers?id=eq.${custId}&select=memo`, {headers: H});
@@ -122,8 +123,17 @@ function SalesHistory({ custId, custNum, onParsed }) {
           setCustMemo(cd?.[0]?.memo || "");
         } catch {}
       }
+      if (Object.keys(brMap).length === 0) {
+        try {
+          const br = await fetch(`${SB_URL}/rest/v1/branches?select=id,name,short&business_id=eq.biz_khvurgshb`, {headers: H});
+          const bd = await br.json();
+          const map = {};
+          (bd||[]).forEach(b => { map[b.id] = b.short || b.name || ""; });
+          setBrMap(map);
+        } catch {}
+      }
       let rows = [];
-      const cols = "id,date,memo,svc_cash,svc_transfer,svc_card,svc_point,prod_cash,prod_transfer,prod_card,cust_name,staff_name";
+      const cols = "id,date,memo,svc_cash,svc_transfer,svc_card,svc_point,prod_cash,prod_transfer,prod_card,cust_name,staff_name,bid";
       if (custId) {
         const r = await fetch(`${SB_URL}/rest/v1/sales?cust_id=eq.${custId}&select=${cols}&order=date.desc&limit=50`, {headers: H});
         const d = await r.json();
@@ -190,6 +200,7 @@ function SalesHistory({ custId, custNum, onParsed }) {
         return <div key={i} style={{padding:"6px 10px",borderRadius:6,border:"1px solid "+(hasPkg?"#ffeeba":T.border),background:hasPkg?"#fffde7":"#fafafa"}}>
           <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:memoText?3:0}}>
             <span style={{color:T.gray400,whiteSpace:"nowrap",fontSize:11}}>{(s.date||"").slice(2,10)}</span>
+            {s.bid && brMap[s.bid] && <span style={{fontSize:10,padding:"1px 6px",borderRadius:3,background:"#eee",color:"#555",fontWeight:600,whiteSpace:"nowrap"}}>{brMap[s.bid]}</span>}
             {s.total>0 && <span style={{fontWeight:700,whiteSpace:"nowrap"}}>{s.total.toLocaleString()}원</span>}
             {s.staff_name && <span style={{fontSize:11,color:"#3498db",fontWeight:600,whiteSpace:"nowrap"}}>👤 {s.staff_name}</span>}
           </div>
