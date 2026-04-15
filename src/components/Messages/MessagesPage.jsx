@@ -199,11 +199,11 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
     }finally{setSending(false);}
   };
 
-  // 시술 가격표 텍스트 생성
+  // 시술 가격표 텍스트 생성 (DB의 services 전체 자동 반영, 카테고리 정렬)
   const svcPriceText = React.useMemo(()=>{
     const svcs=(data?.services||[]).filter(s=>s.name&&(s.priceF||s.priceM));
     if(!svcs.length) return "";
-    const cats=data?.cats||[];
+    const cats=(data?.cats||[]).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
     const catMap={};
     svcs.forEach(s=>{
       const cat=cats.find(c=>c.id===s.cat);
@@ -211,19 +211,25 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       if(!catMap[catName]) catMap[catName]=[];
       catMap[catName].push(s);
     });
-    // 대표 시술만 선별 (고객 문의 빈도 높은 카테고리 우선)
-    const priorityCats=['브라질리언','케어','바디','페이셜','에너지테라피','PKG (패키지)'];
     const lines=[];
     const fmt=s=>{const p=[];if(s.priceF)p.push("여"+Number(s.priceF).toLocaleString());if(s.priceM)p.push("남"+Number(s.priceM).toLocaleString());return `${s.name}: ${p.join("/")}`;};
-    priorityCats.forEach(catName=>{
+    // 카테고리 순서대로 전부 포함
+    const catOrder=[...cats.map(c=>c.name),"기타"];
+    catOrder.forEach(catName=>{
       const items=catMap[catName];
-      if(!items) return;
+      if(!items||!items.length) return;
       lines.push(`[${catName}]`);
-      items.slice(0,4).forEach(s=>lines.push("  "+fmt(s)));
-      if(items.length>4) lines.push(`  ...외 ${items.length-4}개`);
+      items.slice().sort((a,b)=>(a.sort||0)-(b.sort||0)).forEach(s=>lines.push("  "+fmt(s)));
     });
     return lines.join("\n");
   },[data?.services,data?.cats]);
+
+  // 지점 정보 텍스트
+  const branchText = React.useMemo(()=>{
+    const brs=(data?.branches||[]).filter(b=>b.name);
+    if(!brs.length) return "";
+    return brs.map(b=>`- ${b.name}${b.address?` (${b.address})`:""}${b.phone?` ☎${b.phone}`:""}`).join("\n");
+  },[data?.branches]);
 
   // 고객 패키지 잔여 조회 헬퍼
   const findCustPkgInfo = useCallback((userId)=>{
@@ -267,18 +273,15 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       const langName=hasKo?"한국어":"영어";
       const lastMsgs=convo.slice(-6).map(m=>(m.direction==="in"?"고객":"직원")+": "+m.message_text).join("\n");
 
-      // 자동 응대 프롬프트 (AI 설정에서 관리)
+      // 사용자가 AI 설정에 등록한 프롬프트
       const chatPrompt = window.__aiChatPrompt || localStorage.getItem("bliss_ai_chat_prompt") || "";
-      const chatCtx = chatPrompt ? `\n\n[응대 지침]\n${chatPrompt}` : "";
-
-      // 시술 가격표
-      const priceCtx = svcPriceText ? `\n\n[시술 가격표]\n${svcPriceText}` : "";
-
-      // 고객 패키지 잔여 정보
+      // DB 기반 자동 컨텍스트 (가격표/지점/고객 다회권)
+      const priceCtx = svcPriceText ? `\n\n[시술 가격표 — DB 실시간]\n${svcPriceText}` : "";
+      const branchCtx = branchText ? `\n\n[지점 정보]\n${branchText}` : "";
       const pkgInfo = findCustPkgInfo(sel.user_id);
-      const pkgCtx = pkgInfo ? `\n\n[이 고객의 다회권 정보]\n${pkgInfo}` : "";
+      const pkgCtx = pkgInfo ? `\n\n[이 고객의 다회권]\n${pkgInfo}` : "";
 
-      const prompt=`${chatPrompt || "당신은 뷰티샵 예약 접수 및 상담 직원입니다."}${priceCtx}${pkgCtx}\n\n[가격 안내 규칙]\n- 가격표에 "여X/남Y" 둘 다 있으면 반드시 둘 다 안내 (한쪽만 말하지 말 것)\n- 가격표에 한쪽만 있으면 그 한쪽만 안내\n- 가격표에 없는 숫자는 절대 만들어내지 말 것. 모르면 "확인 후 안내드리겠습니다"\n\n대화:\n${lastMsgs}\n\n고객 마지막 메시지에 친절하게 답변하세요. JSON만 출력:\n{"reply":"${langName}로 작성한 답변","ko":"한국어 번역"}`;
+      const prompt=`${chatPrompt}${priceCtx}${branchCtx}${pkgCtx}\n\n[대화]\n${lastMsgs}\n\n고객 마지막 메시지에 답변하세요. JSON만 출력:\n{"reply":"${langName}로 작성한 답변","ko":"한국어 번역"}`;
       const res=await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="+key,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
       if(res.status===429){alert("AI 요청 한도 초과. 잠시 후 시도해주세요.");return;}
       if(!res.ok){const err=await res.text();alert("AI API 오류: "+res.status);console.error("[genAI] API error:",err);return;}
