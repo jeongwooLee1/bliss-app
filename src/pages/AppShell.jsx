@@ -19,7 +19,7 @@ import SchedulePage from '../components/Schedule/SchedulePage'
 import SetupWizard from '../components/SetupWizard/SetupWizard'
 
 const uid = genId;
-const BLISS_V = "1.5.3"
+const BLISS_V = "1.5.4"
 const BIZ_ID = 'biz_khvurgshb'
 const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", users:"/users", messages:"/messages", admin:"/settings", wizard:"/wizard", schedule:"/schedule" };
 async function loadAllFromDb(bizId) {
