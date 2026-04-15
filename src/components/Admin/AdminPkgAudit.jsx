@@ -249,10 +249,9 @@ function AuditCard({ row, onStatusChange, onNoteChange, onBlissSave }) {
       </div>
     </div>
 
-    {/* 3소스 비교 */}
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
+    {/* 매출메모 vs 블리스 비교 */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
       <SourceSection title="매출메모" color="#e74c3c" items={Object.values(memo.reduce((acc,m)=>{const k=(m.name||m.pkg_type||"").replace(/패키지/g,"PKG").replace(/왁패/g,"왁싱").replace(/\s+/g,"").trim().toLowerCase();acc[k]=m;return acc;},{}))} empty="메모 없음"/>
-      <SourceSection title="오라클" color="#2ecc71" items={oracle} empty="오라클 없음"/>
       {/* 블리스: 수정 모드 / 보기 모드 */}
       {blissEdit ? <div style={{marginBottom:6}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
@@ -487,54 +486,43 @@ export default function AdminPkgAudit({ data, setData, userBranches }) {
           !(r.cust_num||"").includes(q) &&
           !(r.cust_phone||"").includes(q)) return false;
     }
-    // 유효한 항목이 하나도 없으면 제외
+    // 매출메모 vs 블리스 비교 — 차이 있는 것만 유효
     const now = new Date();
     const memoPkgs = JSON.parse(r.memo_packages||"[]");
-    const oraclePkgs = JSON.parse(r.oracle_packages||"[]");
     const blissPkgs = JSON.parse(r.bliss_packages||"[]");
-    // 패키지: 잔여>0 + 만료 안 된 것
     const todayStr = now.toISOString().slice(0,10);
-    const isActivePkg = (item) => {
-      const remain = item.remaining ?? item.remain ?? ((item.total||0)-(item.used||0));
-      if (remain <= 0) return false;
-      let exp = item.expiry || parseExpiry(item.note||"");
-      // 만료일 없으면 buy_date/last_buy/date +1년으로 추정
-      if (!exp) {
-        const buy = item.buy_date || item.last_buy || item.date || "";
-        if (buy) { try { const d=new Date(buy); d.setFullYear(d.getFullYear()+1); exp=d.toISOString().slice(0,10); } catch{} }
-      }
-      if (exp && exp < todayStr) return false;
-      return true;
-    };
-    // 선불금: 잔액>0인 것만 유효, 소진(0원)이면 3소스 금액 다를 때만
     const isPrepaidType = (item) => {
       const t = item.type||"";
       const sn = (item.name||item.svc_name||item.pkg_type||"").toLowerCase();
       return t==="prepaid"||t==="dadam"||sn.includes("다담")||sn.includes("선불");
     };
-    // 메모 패키지명 정규화 (오타 통합: 왁패→왁싱, 토탈→토탈 등)
     const normPkgName = (n) => (n||"").replace(/패키지/g,"PKG").replace(/왁패/g,"왁싱").replace(/\s+/g,"").trim().toLowerCase();
-    // 매출메모: 같은 패키지명은 마지막(최신) 잔여만 사용
-    const memoLatest = Object.values(memoPkgs.reduce((acc, m) => {
-      const key = normPkgName(m.name||m.pkg_type||"");
-      acc[key] = m;
-      return acc;
-    }, {}));
-    const memoValid = memoLatest.filter(m => !isPrepaidType(m) && isActivePkg(m));
-    const oracleValid = oraclePkgs.filter(o => !isPrepaidType(o) && isActivePkg(o));
-    const blissValid = blissPkgs.filter(b => !isPrepaidType(b) && isActivePkg(b));
-    // 선불금 잔액 비교: 3소스 중 잔액>0인 게 하나라도 있으면 표시
-    const memoDadamLatest = Object.values(memoPkgs.filter(isPrepaidType).reduce((acc,m)=>{acc[normPkgName(m.name||m.pkg_type||"")]=m;return acc;},{}));
-    const memoDadam = memoDadamLatest.reduce((s,m)=>s+(m.remaining??m.remain??0),0);
-    const oracleDadam = oraclePkgs.filter(isPrepaidType).reduce((s,o)=>s+(o.remain??0),0);
-    const blissDadam = blissPkgs.filter(isPrepaidType).reduce((s,b)=>{
+    // 매출메모 (최신만)
+    const memoLatest = Object.values(memoPkgs.reduce((acc, m) => { acc[normPkgName(m.name||m.pkg_type||"")] = m; return acc; }, {}));
+    const memoPkg = memoLatest.filter(m => !isPrepaidType(m));
+    const memoDadamArr = memoLatest.filter(isPrepaidType);
+    // 블리스
+    const isBlissActive = (b) => {
+      const remain = (b.total||0)-(b.used||0);
+      if (remain <= 0) return false;
+      const exp = parseExpiry(b.note||"");
+      if (exp && exp < todayStr) return false;
+      return true;
+    };
+    const blissPkg = blissPkgs.filter(b => !isPrepaidType(b) && isBlissActive(b));
+    const blissDadamBal = blissPkgs.filter(isPrepaidType).reduce((s,b)=>{
       const m=(b.note||"").match(/잔액:([0-9,]+)/); return s+(m?Number(m[1].replace(/,/g,"")):0);
     },0);
-    const hasDadamIssue = (memoDadam>0||oracleDadam>0||blissDadam>0) && !(memoDadam===0&&oracleDadam===0&&blissDadam===0);
-    const dadamMismatch = hasDadamIssue && (memoDadam!==blissDadam || (oracleDadam>0 && oracleDadam!==blissDadam));
-
-    const hasAnything = memoValid.length>0 || oracleValid.length>0 || blissValid.length>0 || dadamMismatch;
-    if (!hasAnything && r.status !== "done") return false;
+    const memoDadamBal = memoDadamArr.reduce((s,m)=>s+(m.remaining??m.remain??0),0);
+    // 패키지 매칭 비교 (이름+잔여)
+    const memoMap = {}, blissMap = {};
+    memoPkg.forEach(m => { const k=normPkgName(m.name||""); memoMap[k]=(memoMap[k]||0)+(m.remaining??m.remain??0); });
+    blissPkg.forEach(b => { const k=normPkgName(b.svc_name||""); blissMap[k]=(blissMap[k]||0)+((b.total||0)-(b.used||0)); });
+    const allKeys = new Set([...Object.keys(memoMap), ...Object.keys(blissMap)]);
+    let pkgMismatch = false;
+    for (const k of allKeys) { if ((memoMap[k]||0) !== (blissMap[k]||0)) { pkgMismatch = true; break; } }
+    const dadamMismatch = memoDadamBal !== blissDadamBal;
+    if (!pkgMismatch && !dadamMismatch && r.status !== "done") return false;
     return true;
   });
 
