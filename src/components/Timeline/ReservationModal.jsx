@@ -257,9 +257,9 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   useEffect(() => {
     const bizId = _activeBizId || "biz_khvurgshb";
 
-    // Case A: custId 있음 → 고객 레코드에서 빈 필드(성별/이메일) 백필
+    // Case A: custId 있음 → 고객 레코드에서 빈 필드(성별/이메일/이름2) 백필
     if (f.custId) {
-      if (f.custGender && f.custEmail) return; // 이미 다 채워짐
+      if (f.custGender && f.custEmail && f.custName2) return; // 이미 다 채워짐
       const local = (data?.customers||[]).find(c => c.id === f.custId);
       if (local) {
         setF(p => ({
