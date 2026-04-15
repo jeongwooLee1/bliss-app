@@ -12,10 +12,24 @@ const TYPE_COLOR = { package:T.primary, prepaid:"#e67e22", dadam:"#e67e22", annu
 // ── 소스별 섹션 컴포넌트 ──
 function SourceSection({ title, color, items, empty }) {
   if (!items || items.length === 0) return <div style={{padding:"6px 8px",fontSize:11,color:T.gray400,background:"#fafafa",borderRadius:6,marginBottom:4}}>{title}: {empty||"없음"}</div>;
+  // 활성 위, 비활성 아래 정렬
+  const _today = new Date().toISOString().slice(0,10);
+  const _isActive = (it) => {
+    const t = it.type || "";
+    const isPp = t==="prepaid" || t==="dadam" || t==="dadam_purchase";
+    const rem = it.remaining ?? it.remain ?? 0;
+    if (rem <= 0) return false;
+    const expRaw = it.expiry || "";
+    const buyRaw = it.buy_date || it.last_buy || "";
+    const exp = expRaw || (buyRaw ? (() => { try { const d=new Date(buyRaw); d.setFullYear(d.getFullYear()+1); return d.toISOString().slice(0,10); } catch { return ""; } })() : "");
+    if (exp && exp < _today) return false;
+    return true;
+  };
+  const sortedItems = [...items].sort((a,b) => (_isActive(b)?1:0) - (_isActive(a)?1:0));
   return <div style={{marginBottom:6}}>
     <div style={{fontSize:12,fontWeight:700,color,marginBottom:3}}>{title} ({items.length})</div>
     <div style={{display:"flex",flexDirection:"column",gap:2}}>
-      {items.map((item, i) => {
+      {sortedItems.map((item, i) => {
         const name = item.name || item.pkg_type || item.svc_name || "";
         const remain = item.remaining ?? item.remain ?? 0;
         const used = item.used ?? 0;
