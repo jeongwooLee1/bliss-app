@@ -900,69 +900,96 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           {(svcTotal > 0 || prodTotal > 0 || hasPkgChecked()) && <div className="sale-pay-row" style={{display:"flex",flexDirection:"column",gap:8}}>
             {svcTotal > 0 && <div style={{flex:1,minWidth:0,padding:"8px 12px",background:T.bgCard,borderRadius:T.radius.md,border:"1px solid "+T.border}}>
               <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.primary,marginBottom:6}}><I name="scissors" size={12}/> 시술 결제 <span style={{color:T.danger,fontWeight:T.fw.black}}>{fmt(svcPayTotal)}원</span></div>
-              <div style={{display:"flex",gap:T.sp.xs,flexWrap:"wrap"}}>
-                {/* 선불잔액 — 다담권/선불권 (다른 결제수단과 동일 스타일) */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(110px, 1fr))",gap:6,alignItems:"start"}}>
+                {/* 선불잔액 — 다담권/선불권 (카드형) */}
                 {(()=>{
                   const prepaidBal = activePkgs.filter(p=>_pkgType(p)==="prepaid").reduce((s,p)=>s+_pkgBalance(p),0);
-                  const prepaidActive = activePkgs.filter(p=>_pkgType(p)==="prepaid").some(id=>!!pkgUse[id.id]);
                   if (prepaidBal <= 0) return null;
                   const isActive = activePkgs.filter(p=>_pkgType(p)==="prepaid").some(p=>!!pkgUse[p.id]);
+                  const usedAmt = activePkgs.filter(p=>_pkgType(p)==="prepaid").reduce((s,p)=>(pkgUse[p.id]||0)+s,0);
                   const clr = "#E65100", bg = "#FFF3E0";
-                  return <div style={{display:"flex",alignItems:"center",gap:3}}>
-                    <button onClick={()=>{
-                      setPkgUse(prev=>{
-                        const next={...prev};
-                        const anyActive = activePkgs.filter(p=>_pkgType(p)==="prepaid").some(p=>!!prev[p.id]);
-                        activePkgs.filter(p=>_pkgType(p)==="prepaid").forEach(p=>{
-                          next[p.id]=anyActive?0:Math.min(_pkgBalance(p),svcPayTotal);
-                        });
-                        return next;
+                  return <button onClick={()=>{
+                    setPkgUse(prev=>{
+                      const next={...prev};
+                      const anyActive = activePkgs.filter(p=>_pkgType(p)==="prepaid").some(p=>!!prev[p.id]);
+                      activePkgs.filter(p=>_pkgType(p)==="prepaid").forEach(p=>{
+                        next[p.id]=anyActive?0:Math.min(_pkgBalance(p),svcPayTotal);
                       });
-                    }}
-                    style={{padding:"5px 10px",fontSize:T.fs.xxs,fontWeight:T.fw.bolder,borderRadius:T.radius.md,cursor:"pointer",fontFamily:"inherit",transition:"all .15s",
-                      border:isActive?`2px solid ${clr}`:"1px solid #d0d0d0",
-                      background:isActive?bg:T.gray100,color:isActive?clr:T.gray500}}>선불잔액</button>
-                    {isActive && <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:clr}}>
-                      {fmt(activePkgs.filter(p=>_pkgType(p)==="prepaid").reduce((s,p)=>(pkgUse[p.id]||0)+s,0))}원
-                    </span>}
-                  </div>;
+                      return next;
+                    });
+                  }} style={{display:"flex",flexDirection:"column",gap:4,padding:"6px 8px",borderRadius:T.radius.md,cursor:"pointer",fontFamily:"inherit",transition:"all .15s",
+                    border:isActive?`2px solid ${clr}`:"1px solid #d0d0d0",
+                    background:isActive?bg:T.gray100,textAlign:"left"}}>
+                    <span style={{fontSize:T.fs.xxs,fontWeight:T.fw.bolder,color:isActive?clr:T.gray500}}>
+                      {isActive?"☑":"☐"} 선불잔액
+                    </span>
+                    <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:isActive?clr:T.gray400,textAlign:"right"}}>
+                      {fmt(isActive?usedAmt:0)}<span style={{fontSize:11,marginLeft:2,opacity:.7}}>원</span>
+                    </span>
+                  </button>;
                 })()}
-                {/* 일반 결제수단 */}
+                {/* 일반 결제수단 카드 */}
                 {[
                   {k:"svcCard",label:"카드",clr:T.male,bg:T.maleLt},
                   {k:"svcCash",label:"현금",clr:T.orange,bg:T.orangeLt},
                   {k:"svcTransfer",label:"입금",clr:T.successDk,bg:T.successLt},
-                ].map(({k,label,clr,bg})=><div key={k} style={{display:"flex",alignItems:"center",gap:3}}>
-                  <button onClick={()=>togglePayField(k,svcPayTotal,"svc")}
-                    style={{padding:"5px 10px",fontSize:T.fs.xxs,fontWeight:T.fw.bolder,borderRadius:T.radius.md,cursor:"pointer",fontFamily:"inherit",transition:"all .15s",
-                      border:openPay[k]?`2px solid ${clr}`:"1px solid #d0d0d0",
-                      background:openPay[k]?bg:T.gray100,color:openPay[k]?clr:T.gray500}}>{label}</button>
-                  {openPay[k] && <input type="text" inputMode="numeric" value={payMethod[k]?fmtAmt(payMethod[k]):""} placeholder="0"
-                    onChange={e=>editPay(k,e.target.value,svcPayTotal,"svc")}
-                    readOnly={primaryPay.svc===k}
-                    style={{width:85,padding:"4px 6px",fontSize:T.fs.sm,textAlign:"right",border:`1.5px solid ${clr}`,color:clr,fontWeight:T.fw.bolder,borderRadius:T.radius.md,
-                      background:primaryPay.svc===k?T.bg:T.bgCard}}/>}
-                </div>)}
+                ].map(({k,label,clr,bg})=>{
+                  const active = !!openPay[k];
+                  return <div key={k} onClick={!active?()=>togglePayField(k,svcPayTotal,"svc"):undefined}
+                    style={{display:"flex",flexDirection:"column",gap:4,padding:"6px 8px",borderRadius:T.radius.md,
+                      border:active?`2px solid ${clr}`:"1px solid #d0d0d0",
+                      background:active?bg:T.gray100,transition:"all .15s",cursor:active?"default":"pointer"}}>
+                    <button onClick={(e)=>{e.stopPropagation();togglePayField(k,svcPayTotal,"svc");}}
+                      style={{background:"none",border:"none",padding:0,cursor:"pointer",fontFamily:"inherit",
+                        fontSize:T.fs.xxs,fontWeight:T.fw.bolder,color:active?clr:T.gray500,textAlign:"left"}}>
+                      {active?"☑":"☐"} {label}
+                    </button>
+                    <input type="text" inputMode="numeric"
+                      value={active && payMethod[k]?fmtAmt(payMethod[k]):""}
+                      placeholder="0"
+                      onChange={e=>editPay(k,e.target.value,svcPayTotal,"svc")}
+                      onClick={(e)=>e.stopPropagation()}
+                      readOnly={!active || primaryPay.svc===k}
+                      style={{width:"100%",minWidth:0,padding:"3px 6px",fontSize:T.fs.sm,textAlign:"right",
+                        border:`1px solid ${active?clr:"transparent"}`,
+                        color:active?clr:T.gray400,fontWeight:T.fw.bolder,borderRadius:4,
+                        background:active?(primaryPay.svc===k?T.bg:T.bgCard):"transparent",
+                        opacity:active?1:.5}}/>
+                  </div>;
+                })}
               </div>
             </div>}
             {prodTotal > 0 && <div style={{flex:1,minWidth:0,padding:"8px 12px",background:T.bgCard,borderRadius:T.radius.md,border:"1px solid "+T.border}}>
               <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.infoLt2,marginBottom:6}}><I name="pkg" size={12}/> 제품 결제 <span style={{color:T.danger,fontWeight:T.fw.black}}>{fmt(prodPayTotal)}원</span></div>
-              <div style={{display:"flex",gap:T.sp.xs,flexWrap:"wrap"}}>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(110px, 1fr))",gap:6,alignItems:"start"}}>
                 {[
                   {k:"prodCard",label:"카드",clr:T.male,bg:T.maleLt},
                   {k:"prodCash",label:"현금",clr:T.orange,bg:T.orangeLt},
                   {k:"prodTransfer",label:"입금",clr:T.successDk,bg:T.successLt},
-                ].map(({k,label,clr,bg})=><div key={k} style={{display:"flex",alignItems:"center",gap:3}}>
-                  <button onClick={()=>togglePayField(k,prodPayTotal,"prod")}
-                    style={{padding:"5px 10px",fontSize:T.fs.xxs,fontWeight:T.fw.bolder,borderRadius:T.radius.md,cursor:"pointer",fontFamily:"inherit",transition:"all .15s",
-                      border:openPay[k]?`2px solid ${clr}`:"1px solid #d0d0d0",
-                      background:openPay[k]?bg:T.gray100,color:openPay[k]?clr:T.gray500}}>{label}</button>
-                  {openPay[k] && <input type="text" inputMode="numeric" value={payMethod[k]?fmtAmt(payMethod[k]):""} placeholder="0"
-                    onChange={e=>editPay(k,e.target.value,prodPayTotal,"prod")}
-                    readOnly={primaryPay.prod===k}
-                    style={{width:85,padding:"4px 6px",fontSize:T.fs.sm,textAlign:"right",border:`1.5px solid ${clr}`,color:clr,fontWeight:T.fw.bolder,borderRadius:T.radius.md,
-                      background:primaryPay.prod===k?T.bg:T.bgCard}}/>}
-                </div>)}
+                ].map(({k,label,clr,bg})=>{
+                  const active = !!openPay[k];
+                  return <div key={k} onClick={!active?()=>togglePayField(k,prodPayTotal,"prod"):undefined}
+                    style={{display:"flex",flexDirection:"column",gap:4,padding:"6px 8px",borderRadius:T.radius.md,
+                      border:active?`2px solid ${clr}`:"1px solid #d0d0d0",
+                      background:active?bg:T.gray100,transition:"all .15s",cursor:active?"default":"pointer"}}>
+                    <button onClick={(e)=>{e.stopPropagation();togglePayField(k,prodPayTotal,"prod");}}
+                      style={{background:"none",border:"none",padding:0,cursor:"pointer",fontFamily:"inherit",
+                        fontSize:T.fs.xxs,fontWeight:T.fw.bolder,color:active?clr:T.gray500,textAlign:"left"}}>
+                      {active?"☑":"☐"} {label}
+                    </button>
+                    <input type="text" inputMode="numeric"
+                      value={active && payMethod[k]?fmtAmt(payMethod[k]):""}
+                      placeholder="0"
+                      onChange={e=>editPay(k,e.target.value,prodPayTotal,"prod")}
+                      onClick={(e)=>e.stopPropagation()}
+                      readOnly={!active || primaryPay.prod===k}
+                      style={{width:"100%",minWidth:0,padding:"3px 6px",fontSize:T.fs.sm,textAlign:"right",
+                        border:`1px solid ${active?clr:"transparent"}`,
+                        color:active?clr:T.gray400,fontWeight:T.fw.bolder,borderRadius:4,
+                        background:active?(primaryPay.prod===k?T.bg:T.bgCard):"transparent",
+                        opacity:active?1:.5}}/>
+                  </div>;
+                })}
               </div>
             </div>}
           </div>}
