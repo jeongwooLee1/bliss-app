@@ -276,7 +276,36 @@ function AuditCard({ row, onStatusChange, onNoteChange, onBlissSave }) {
             <button onClick={()=>setBlissEdit(false)} style={{padding:"3px 10px",borderRadius:4,border:"1px solid "+T.border,background:"#fff",fontSize:11,cursor:"pointer"}}>취소</button>
           </div>
         </div>
-        {editItems.map((it,idx)=>{
+        {(() => {
+          const _today = new Date().toISOString().slice(0,10);
+          const _isAct = (it) => {
+            const cn = (it.svc_name||"").replace(/\(잔액:[^)]*\)/,"").replace(/\(소진\)/,"").replace(/\(전액:[^)]*\)/,"").trim();
+            const isDd = cn.includes("다담")||cn.includes("선불");
+            if (isDd) {
+              const bal = it._dadamBal ?? (() => { const m=(it.note||it._origNote||"").match(/잔액:([0-9,]+)/); return m?Number(m[1].replace(/,/g,"")):0; })();
+              if (bal <= 0) return false;
+            } else {
+              if ((it.total||0)-(it.used||0) <= 0) return false;
+            }
+            if (it._expiry && it._expiry < _today) return false;
+            return true;
+          };
+          const _cat = (it) => {
+            const cn = (it.svc_name||"").toLowerCase();
+            if (cn.includes("다담")||cn.includes("선불")) return 0;
+            if (cn.includes("연간")||cn.includes("할인권")||cn.includes("회원권")) return 1;
+            if (cn.includes("pkg")||cn.includes("패키지")||cn.includes("팩")) return 2;
+            if (cn.includes("에너지")) return 3;
+            if (cn.includes("쿠폰")||cn.includes("스크럽")) return 4;
+            return 5;
+          };
+          return editItems.map((it,idx)=>({...it,_oidx:idx})).sort((a,b)=>{
+            const da=_isAct(a)?0:1, db=_isAct(b)?0:1;
+            if (da!==db) return da-db;
+            return _cat(a)-_cat(b);
+          });
+        })().map((it)=>{
+          const idx = it._oidx;
           const isExp = it._expiry && new Date(it._expiry)<new Date();
           const cleanName = (it.svc_name||"").replace(/\(잔액:[^)]*\)/,"").replace(/\(소진\)/,"").replace(/\(전액:[^)]*\)/,"").trim();
           const isDadam = cleanName.includes("다담")||cleanName.includes("선불");
@@ -284,8 +313,14 @@ function AuditCard({ row, onStatusChange, onNoteChange, onBlissSave }) {
           const isDadamDone = isDadam && dadamBal <= 0;
           const isInactive = (isExp || isDadamDone) && !it._delete;
           const disabled = it._delete || isInactive;
+          const PKG_OPTIONS = ["토탈PKG 5회","왁싱PKG 5회","힐링PKG 5회","케어PKG 8회","비키니PKG 5회","항문PKG 5회","재생PKG 5회","재생힐링PKG 5회","소급PKG 1회권","커플프리패스 3회","다담권","연간할인권","60에너지 10회권","60에너지 5회권","60에너지 1회권","20에너지 5회권","20에너지 1회권","10%추가적립쿠폰","제품전용8만원쿠폰","제품전용3만원쿠폰","기기스크럽1회"];
+          const hasOption = PKG_OPTIONS.includes(cleanName);
           return <div key={idx} style={{display:"flex",gap:4,alignItems:"center",padding:"4px 0",borderBottom:"1px solid #f5f5f5",opacity:disabled?0.35:1,fontSize:12}}>
-            <span style={{flex:1,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textDecoration:isInactive?"line-through":"none",color:isInactive?T.gray400:T.text}} title={cleanName}>{cleanName}{isDadamDone?" (소진)":isInactive?" (만료)":""}</span>
+            <select value={cleanName} onChange={e=>updateEditItem(idx,"svc_name",e.target.value)} disabled={disabled}
+              style={{flex:1,fontSize:12,padding:"3px 5px",borderRadius:4,border:"1px solid "+T.border,fontFamily:"inherit",textDecoration:isInactive?"line-through":"none",color:isInactive?T.gray400:T.text}}>
+              {!hasOption && <option value={cleanName}>{cleanName}{isDadamDone?" (소진)":isInactive?" (만료)":""}</option>}
+              {PKG_OPTIONS.map(n=><option key={n} value={n}>{n}</option>)}
+            </select>
             {isDadam
               ? <input type="number" value={dadamBal} onChange={e=>{const v=parseInt(e.target.value)||0;updateEditItem(idx,"_dadamBal",v);}} style={{...eipt,width:120}} disabled={disabled} placeholder="잔액(원)"/>
               : <><input type="number" value={it.total} onChange={e=>updateEditItem(idx,"total",parseInt(e.target.value)||0)} style={{...eipt,width:38}} disabled={disabled} title="총"/>
