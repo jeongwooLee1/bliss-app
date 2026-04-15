@@ -25,7 +25,22 @@ function SourceSection({ title, color, items, empty }) {
     if (exp && exp < _today) return false;
     return true;
   };
-  const sortedItems = [...items].sort((a,b) => (_isActive(b)?1:0) - (_isActive(a)?1:0));
+  // 카테고리 정렬 우선순위: 패키지 > 에너지 > 쿠폰 > 기타
+  const _catOrder = (it) => {
+    const t = it.type || "";
+    const sn = (it.name || it.svc_name || it.pkg_type || "").toLowerCase();
+    if (t === "prepaid" || t === "dadam" || t === "dadam_purchase" || sn.includes("다담") || sn.includes("선불")) return 0;
+    if (t === "annual" || t === "annual_discount" || sn.includes("연간") || sn.includes("할인권") || sn.includes("회원권")) return 1;
+    if (t === "package" || sn.includes("pkg") || sn.includes("패키지") || sn.includes("팩")) return 2;
+    if (t === "energy" || sn.includes("에너지")) return 3;
+    if (t === "coupon" || sn.includes("쿠폰") || sn.includes("스크럽")) return 4;
+    return 5;
+  };
+  const sortedItems = [...items].sort((a,b) => {
+    const da = _isActive(a)?0:1, db = _isActive(b)?0:1;
+    if (da !== db) return da - db;  // 활성 우선
+    return _catOrder(a) - _catOrder(b);  // 카테고리 순
+  });
   return <div style={{marginBottom:6}}>
     <div style={{fontSize:12,fontWeight:700,color,marginBottom:3}}>{title} ({items.length})</div>
     <div style={{display:"flex",flexDirection:"column",gap:2}}>
