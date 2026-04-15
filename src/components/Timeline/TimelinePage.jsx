@@ -13,6 +13,9 @@ import useTouchDragSort from '../../hooks/useTouchDragSort'
 
 const _mc = (fn) => { if(fn) fn(); };
 const uid = genId;
+
+// 페이지 이동 후 돌아왔을 때 스크롤 위치 복원용 (모듈 레벨 - 컴포넌트 언마운트 후에도 유지)
+let _savedScroll = null; // { top, left, date }
 const Btn = ({ children, variant="primary", size="md", disabled, onClick, style={}, ...p }) => {
   const bg = variant==="primary"?T.primary:variant==="danger"?T.danger:variant==="ghost"?"transparent":T.gray100;
   const color = variant==="ghost"?T.primary:variant==="secondary"?T.text:"#fff";
@@ -540,6 +543,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const scrollRef = useRef(null);
   const topbarRef = useRef(null);
   const pendingClickIdx = useRef(0);
+  const didRestoreScrollRef = useRef(false);
   // ── 모달 열린 동안 RT 업데이트 보류 ──
   const isModalOpenRef = useRef(false);
   const pendingRTQueueRef = useRef([]);
@@ -1470,20 +1474,47 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
 
   const changeDate = (off) => { const d = new Date(selDate); d.setDate(d.getDate()+off); setSelDate(fmtLocal(d)); };
 
-  // Scroll to current time on mount
+  // Scroll to current time on mount (or restore saved scroll if returning from another page)
   useEffect(() => {
-    if (scrollRef.current) {
-      if (selDate === todayStr()) {
-        // 당일: 현재 시간 위치로 스크롤
-        const now = new Date();
-        const y = timeToY(`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`);
-        const gridTop = (window.innerWidth<=768?42:0) + topbarH + headerH;
-        scrollRef.current.scrollTop = Math.max(0, gridTop + y - 200);
-      } else {
-        // 다른 날: 맨 위
-        scrollRef.current.scrollTop = 0;
+    if (!scrollRef.current) return;
+    // 첫 마운트 시 저장된 스크롤 위치가 있고 같은 날짜면 복원
+    if (!didRestoreScrollRef.current) {
+      didRestoreScrollRef.current = true;
+      if (_savedScroll && _savedScroll.date === selDate) {
+        const top = _savedScroll.top, left = _savedScroll.left;
+        // 레이아웃 계산이 끝난 다음 프레임에 복원 (DOM 측정 안정화 후)
+        requestAnimationFrame(() => {
+          if (scrollRef.current) {
+            scrollRef.current.scrollTop = top;
+            scrollRef.current.scrollLeft = left;
+          }
+        });
+        return;
       }
     }
+    if (selDate === todayStr()) {
+      // 당일: 현재 시간 위치로 스크롤
+      const now = new Date();
+      const y = timeToY(`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`);
+      const gridTop = (window.innerWidth<=768?42:0) + topbarH + headerH;
+      scrollRef.current.scrollTop = Math.max(0, gridTop + y - 200);
+    } else {
+      // 다른 날: 맨 위
+      scrollRef.current.scrollTop = 0;
+    }
+  }, [selDate]);
+
+  // 스크롤 위치 저장 (페이지 이동 후 돌아왔을 때 복원용)
+  // 주의: 리스너에서 동기적으로 저장. 언마운트 시점엔 sr.scrollTop이 0으로 리셋될 수 있어
+  // cleanup에서 저장하면 안 됨.
+  useEffect(() => {
+    const sr = scrollRef.current;
+    if (!sr) return;
+    const onScroll = () => {
+      _savedScroll = { top: sr.scrollTop, left: sr.scrollLeft, date: selDate };
+    };
+    sr.addEventListener('scroll', onScroll, { passive: true });
+    return () => sr.removeEventListener('scroll', onScroll);
   }, [selDate]);
 
   // Prevent iOS viewport bounce
