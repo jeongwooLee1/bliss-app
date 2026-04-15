@@ -464,10 +464,22 @@ export default function AdminPkgAudit({ data, setData, userBranches }) {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      let filter = `&business_id=eq.biz_khvurgshb&order=cust_num.asc`;
-      const r = await fetch(`${SB_URL}/rest/v1/pkg_audit?select=*${filter}&limit=10000`, { headers: H });
-      const d = await r.json();
-      setRows(Array.isArray(d) ? d : []);
+      const filter = `&business_id=eq.biz_khvurgshb&order=cust_num.asc`;
+      // 페이징으로 전체 로드 (Supabase max-rows=1000 우회)
+      const all = [];
+      let offset = 0;
+      const PAGE = 1000;
+      while (true) {
+        const r = await fetch(`${SB_URL}/rest/v1/pkg_audit?select=*${filter}`, {
+          headers: { ...H, "Range-Unit": "items", "Range": `${offset}-${offset+PAGE-1}` }
+        });
+        const d = await r.json();
+        if (!Array.isArray(d) || d.length === 0) break;
+        all.push(...d);
+        offset += PAGE;
+        if (d.length < PAGE) break;
+      }
+      setRows(all);
     } catch(e) { console.error(e); }
     setLoading(false);
   }, []);
@@ -526,8 +538,32 @@ export default function AdminPkgAudit({ data, setData, userBranches }) {
     return true;
   });
 
-  const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  // 활성 보유권 우선 정렬 (블리스에 활성 패키지 또는 다담 잔액>0 있는 카드가 위로)
+  const todayStr2 = new Date().toISOString().slice(0,10);
+  const activityScore = (r) => {
+    try {
+      const bliss = JSON.parse(r.bliss_packages||"[]");
+      let active = 0;
+      for (const b of bliss) {
+        const sn = (b.svc_name||"").toLowerCase();
+        const isPp = sn.includes("다담") || sn.includes("선불");
+        if (isPp) {
+          const m = (b.note||"").match(/잔액:([0-9,]+)/);
+          if (m && Number(m[1].replace(/,/g,"")) > 0) active++;
+        } else {
+          const remain = (b.total||0)-(b.used||0);
+          if (remain <= 0) continue;
+          const em = (b.note||"").match(/유효[:\s]*(\d{4}-\d{2}-\d{2})/);
+          if (em && em[1] < todayStr2) continue;
+          active++;
+        }
+      }
+      return active;
+    } catch { return 0; }
+  };
+  const sorted = [...filtered].sort((a,b) => activityScore(b) - activityScore(a));
+  const paged = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
 
   // 통계
   const stats = {
