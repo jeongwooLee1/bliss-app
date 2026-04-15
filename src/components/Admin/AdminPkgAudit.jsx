@@ -110,6 +110,18 @@ function SalesHistory({ custId, custNum, onParsed }) {
   const [parsed, setParsed] = useState(null);
   const [custMemo, setCustMemo] = useState("");
   const [brMap, setBrMap] = useState({});
+  const [editMemoId, setEditMemoId] = useState(null);
+  const [editMemoText, setEditMemoText] = useState("");
+  const saveMemo = async (id) => {
+    const r = await fetch(`${SB_URL}/rest/v1/sales?id=eq.${id}`, {
+      method: "PATCH", headers: {...H, "Prefer": "return=minimal"},
+      body: JSON.stringify({memo: editMemoText})
+    });
+    if (r.ok) {
+      setSales(prev => (prev||[]).map(s => s.id===id ? {...s, memo: editMemoText} : s));
+      setEditMemoId(null);
+    } else alert("저장 실패: " + r.status);
+  };
 
   const load = async () => {
     if (sales !== null) { setSales(null); setParsed(null); return; }
@@ -204,7 +216,23 @@ function SalesHistory({ custId, custNum, onParsed }) {
             {s.total>0 && <span style={{fontWeight:700,whiteSpace:"nowrap"}}>{s.total.toLocaleString()}원</span>}
             {s.staff_name && <span style={{fontSize:11,color:"#3498db",fontWeight:600,whiteSpace:"nowrap"}}>👤 {s.staff_name}</span>}
           </div>
-          {memoText && <div style={{color:T.gray600,whiteSpace:"pre-wrap",wordBreak:"break-all",lineHeight:1.5}}>{memoText}</div>}
+          {editMemoId === s.id ? (
+            <div style={{display:"flex",flexDirection:"column",gap:4,marginTop:3}}>
+              <textarea value={editMemoText} onChange={e=>setEditMemoText(e.target.value)} autoFocus
+                style={{fontSize:12,padding:"6px 8px",borderRadius:4,border:"1px solid "+T.primary,fontFamily:"inherit",minHeight:80,resize:"vertical",lineHeight:1.5}}
+                onKeyDown={e=>{if(e.key==="Escape")setEditMemoId(null);}}/>
+              <div style={{display:"flex",gap:4,justifyContent:"flex-end"}}>
+                <button onClick={()=>saveMemo(s.id)} style={{padding:"3px 10px",fontSize:11,background:T.primary,color:"#fff",border:"none",borderRadius:4,cursor:"pointer",fontWeight:700}}>저장</button>
+                <button onClick={()=>setEditMemoId(null)} style={{padding:"3px 10px",fontSize:11,background:"#fff",color:T.gray600,border:"1px solid "+T.border,borderRadius:4,cursor:"pointer"}}>취소</button>
+              </div>
+            </div>
+          ) : (
+            <div onClick={()=>{setEditMemoId(s.id);setEditMemoText(memoText);}}
+              style={{color:T.gray600,whiteSpace:"pre-wrap",wordBreak:"break-all",lineHeight:1.5,cursor:"pointer",minHeight:memoText?0:20}}
+              title="클릭하여 메모 수정">
+              {memoText || <span style={{color:T.gray400,fontStyle:"italic"}}>메모 없음 (클릭하여 작성)</span>}
+            </div>
+          )}
         </div>;
       })}
     </div>}
