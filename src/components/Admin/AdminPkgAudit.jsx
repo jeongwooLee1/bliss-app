@@ -338,7 +338,7 @@ function AuditCard({ row, onStatusChange, onNoteChange, onBlissSave }) {
           const isDadamDone = isDadam && dadamBal <= 0;
           const isInactive = (isExp || isDadamDone) && !it._delete;
           const disabled = it._delete || isInactive;
-          const PKG_OPTIONS = ["토탈PKG 5회","왁싱PKG 5회","힐링PKG 5회","케어PKG 8회","비키니PKG 5회","항문PKG 5회","재생PKG 5회","재생힐링PKG 5회","소급PKG 1회권","커플프리패스 3회","다담권","연간할인권","60에너지 10회권","60에너지 5회권","60에너지 1회권","20에너지 5회권","20에너지 1회권","10%추가적립쿠폰","제품전용8만원쿠폰","제품전용3만원쿠폰","기기스크럽1회"];
+          const PKG_OPTIONS = ["토탈PKG 5회","왁싱PKG 5회","힐링PKG 5회","케어PKG 8회","비키니PKG 5회","항문PKG 5회","재생PKG 5회","재생힐링PKG 5회","간단PKG 5회","소급PKG 1회권","커플프리패스 3회","다담권","연간할인권","60에너지 10회권","60에너지 5회권","60에너지 1회권","20에너지 5회권","20에너지 1회권","10%추가적립쿠폰","제품전용8만원쿠폰","제품전용3만원쿠폰","기기스크럽1회"];
           const hasOption = PKG_OPTIONS.includes(cleanName);
           return <div key={idx} style={{display:"flex",gap:4,alignItems:"center",padding:"4px 0",borderBottom:"1px solid #f5f5f5",opacity:disabled?0.35:1,fontSize:12}}>
             <select value={cleanName} onChange={e=>updateEditItem(idx,"svc_name",e.target.value)} disabled={disabled}
@@ -361,7 +361,7 @@ function AuditCard({ row, onStatusChange, onNoteChange, onBlissSave }) {
           {(()=>{const isNewDadam=(newItem.svc_name||"").includes("다담")||(newItem.svc_name||"").includes("선불"); return <>
           <select value={newItem.svc_name} onChange={e=>setNewItem(p=>({...p,svc_name:e.target.value}))} style={{...eipt,flex:1,textAlign:"left"}}>
             <option value="">-- 선택 --</option>
-            {["토탈PKG 5회","왁싱PKG 5회","힐링PKG 5회","케어PKG 8회","비키니PKG 5회","항문PKG 5회","재생PKG 5회","재생힐링PKG 5회","소급PKG 1회권","커플프리패스 3회","다담권","연간할인권","60에너지 10회권","60에너지 5회권","60에너지 1회권","20에너지 5회권","20에너지 1회권","10%추가적립쿠폰","제품전용8만원쿠폰","제품전용3만원쿠폰","기기스크럽1회"].map(n=><option key={n} value={n}>{n}</option>)}
+            {["토탈PKG 5회","왁싱PKG 5회","힐링PKG 5회","케어PKG 8회","비키니PKG 5회","항문PKG 5회","재생PKG 5회","재생힐링PKG 5회","간단PKG 5회","소급PKG 1회권","커플프리패스 3회","다담권","연간할인권","60에너지 10회권","60에너지 5회권","60에너지 1회권","20에너지 5회권","20에너지 1회권","10%추가적립쿠폰","제품전용8만원쿠폰","제품전용3만원쿠폰","기기스크럽1회"].map(n=><option key={n} value={n}>{n}</option>)}
           </select>
           {isNewDadam
             ? <input type="number" value={newItem.total||""} onChange={e=>setNewItem(p=>({...p,total:parseInt(e.target.value)||0,used:0}))} style={{...eipt,width:120}} placeholder="잔액(원)"/>
