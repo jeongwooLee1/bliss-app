@@ -114,7 +114,7 @@ function SalesHistory({ custId, custNum, onParsed }) {
     setLoading(true);
     try {
       let rows = [];
-      const cols = "id,date,memo,svc_cash,svc_transfer,svc_card,svc_point,prod_cash,prod_transfer,prod_card,cust_name";
+      const cols = "id,date,memo,svc_cash,svc_transfer,svc_card,svc_point,prod_cash,prod_transfer,prod_card,cust_name,staff_name";
       if (custId) {
         const r = await fetch(`${SB_URL}/rest/v1/sales?cust_id=eq.${custId}&select=${cols}&order=date.desc&limit=50`, {headers: H});
         const d = await r.json();
@@ -178,6 +178,7 @@ function SalesHistory({ custId, custNum, onParsed }) {
           <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:memoText?3:0}}>
             <span style={{color:T.gray400,whiteSpace:"nowrap",fontSize:11}}>{(s.date||"").slice(2,10)}</span>
             {s.total>0 && <span style={{fontWeight:700,whiteSpace:"nowrap"}}>{s.total.toLocaleString()}원</span>}
+            {s.staff_name && <span style={{fontSize:11,color:"#3498db",fontWeight:600,whiteSpace:"nowrap"}}>👤 {s.staff_name}</span>}
           </div>
           {memoText && <div style={{color:T.gray600,whiteSpace:"pre-wrap",wordBreak:"break-all",lineHeight:1.5}}>{memoText}</div>}
         </div>;
