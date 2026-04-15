@@ -497,9 +497,15 @@ export default function AdminPkgAudit({ data, setData, userBranches }) {
       return t==="prepaid"||t==="dadam"||sn.includes("다담")||sn.includes("선불");
     };
     const normPkgName = (n) => (n||"").replace(/패키지/g,"PKG").replace(/왁패/g,"왁싱").replace(/\s+/g,"").trim().toLowerCase();
-    // 매출메모 (최신만)
+    // 매출메모 (최신만 + 만료/소진 제외)
+    const isMemoActive = (m) => {
+      const remain = m.remaining ?? m.remain ?? 0;
+      if (remain <= 0) return false;
+      if (m.expiry && m.expiry < todayStr) return false;
+      return true;
+    };
     const memoLatest = Object.values(memoPkgs.reduce((acc, m) => { acc[normPkgName(m.name||m.pkg_type||"")] = m; return acc; }, {}));
-    const memoPkg = memoLatest.filter(m => !isPrepaidType(m));
+    const memoPkg = memoLatest.filter(m => !isPrepaidType(m) && isMemoActive(m));
     const memoDadamArr = memoLatest.filter(isPrepaidType);
     // 블리스
     const isBlissActive = (b) => {
@@ -522,6 +528,9 @@ export default function AdminPkgAudit({ data, setData, userBranches }) {
     let pkgMismatch = false;
     for (const k of allKeys) { if ((memoMap[k]||0) !== (blissMap[k]||0)) { pkgMismatch = true; break; } }
     const dadamMismatch = memoDadamBal !== blissDadamBal;
+    // 양쪽 모두 비어있으면(유효 패키지/다담 없음) 카드 자체 제외
+    const hasAnything = memoPkg.length>0 || blissPkg.length>0 || memoDadamBal>0 || blissDadamBal>0;
+    if (!hasAnything && r.status !== "done") return false;
     if (!pkgMismatch && !dadamMismatch && r.status !== "done") return false;
     return true;
   });
