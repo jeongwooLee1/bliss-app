@@ -25,9 +25,11 @@ function SourceSection({ title, color, items, empty }) {
         const expiryRaw = item.expiry || "";
         const buyDateRaw = item.buy_date || item.last_buy || "";
         const expiry = expiryRaw || (buyDateRaw ? (() => { try { const d = new Date(buyDateRaw); d.setFullYear(d.getFullYear()+1); return d.toISOString().slice(0,10); } catch { return ""; } })() : "");
-        const isExpired = expiry && new Date(expiry) < new Date();
+        const todayS = new Date().toISOString().slice(0,10);
+        const isExpired = expiry && expiry < todayS;
         const isDadamDone = isPrepaid && (remain||0) <= 0;
-        const inactive = isExpired || isDadamDone;
+        const isPkgDone = !isPrepaid && (remain||0) <= 0;
+        const inactive = isExpired || isDadamDone || isPkgDone;
         return <div key={i} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 8px",background:inactive?"#f5f5f5":"#f8f9fa",borderRadius:4,fontSize:13,opacity:inactive?0.4:1}}>
           <span style={{fontSize:10,padding:"1px 5px",borderRadius:3,background:inactive?T.gray400:(TYPE_COLOR[type]||T.gray300),color:"#fff",fontWeight:700,flexShrink:0}}>{TYPE_LABEL[type]||type||"기타"}</span>
           <span style={{flex:1,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textDecoration:inactive?"line-through":"none",color:inactive?T.gray400:T.text}}>{name}</span>
