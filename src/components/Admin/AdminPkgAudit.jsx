@@ -108,11 +108,20 @@ function SalesHistory({ custId, custNum, onParsed }) {
   const [sales, setSales] = useState(null);
   const [loading, setLoading] = useState(false);
   const [parsed, setParsed] = useState(null);
+  const [custMemo, setCustMemo] = useState("");
 
   const load = async () => {
     if (sales !== null) { setSales(null); setParsed(null); return; }
     setLoading(true);
     try {
+      // 고객 메모 로드
+      if (custId) {
+        try {
+          const cr = await fetch(`${SB_URL}/rest/v1/customers?id=eq.${custId}&select=memo`, {headers: H});
+          const cd = await cr.json();
+          setCustMemo(cd?.[0]?.memo || "");
+        } catch {}
+      }
       let rows = [];
       const cols = "id,date,memo,svc_cash,svc_transfer,svc_card,svc_point,prod_cash,prod_transfer,prod_card,cust_name,staff_name";
       if (custId) {
@@ -167,7 +176,11 @@ function SalesHistory({ custId, custNum, onParsed }) {
       {loading ? "로딩..." : sales !== null ? "▲ 매출 닫기" : "▼ 매출 이력 보기"}
     </button>
 
-    {/* 옛 파싱 요약 카드 제거 — 위 매출메모/블리스 비교가 정확함 */}
+    {/* 고객 메모 */}
+    {sales !== null && custMemo && <div style={{marginTop:6,padding:"8px 12px",background:"#e8f4fd",borderRadius:6,border:"1px solid #b3d7f0",fontSize:12,color:"#155a8a",whiteSpace:"pre-wrap",wordBreak:"break-all",lineHeight:1.5}}>
+      <div style={{fontWeight:700,marginBottom:3,fontSize:11}}>👤 고객 메모</div>
+      {custMemo}
+    </div>}
 
     {sales !== null && sales.length === 0 && <div style={{fontSize:10,color:T.gray400,padding:"4px 0"}}>매출 이력 없음</div>}
     {sales !== null && sales.length > 0 && <div style={{marginTop:4,maxHeight:300,overflow:"auto",display:"flex",flexDirection:"column",gap:4,fontSize:12}}>

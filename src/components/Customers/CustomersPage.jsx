@@ -604,6 +604,10 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
 
                 {/* 상세 패널 */}
                 {isOpen && <tr><td colSpan={10} style={{padding:0,background:T.gray100,borderTop:"2px solid "+T.primaryLt}}><div>
+                    {/* 고객 메모 */}
+                    {c.memo && <div style={{padding:"10px 14px",background:"#e8f4fd",borderBottom:"1px solid "+T.border,fontSize:T.fs.xs,color:"#155a8a",whiteSpace:"pre-wrap",wordBreak:"break-all",lineHeight:1.5}}>
+                      <span style={{fontWeight:T.fw.bolder,marginRight:6}}>👤 메모</span>{c.memo}
+                    </div>}
                     {/* 예약 통계 */}
                     <div style={{display:"flex",gap:8,padding:"8px 12px",background:T.bgCard,borderBottom:"1px solid "+T.border}}>
                       {[
