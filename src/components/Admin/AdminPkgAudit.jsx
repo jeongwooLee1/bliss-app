@@ -167,23 +167,7 @@ function SalesHistory({ custId, custNum, onParsed }) {
       {loading ? "로딩..." : sales !== null ? "▲ 매출 닫기" : "▼ 매출 이력 보기"}
     </button>
 
-    {/* 파싱 결과 요약 */}
-    {parsed && (parsed.lastPkgRemain || parsed.lastDadamBalance !== null) && <div style={{
-      marginTop:4, padding:"6px 10px", background:"#fffde7", borderRadius:6, border:"1px solid #ffeeba",
-      display:"flex", gap:12, flexWrap:"wrap", fontSize:11
-    }}>
-      {parsed.lastPkgRemain && <div>
-        <span style={{fontWeight:700,color:T.primary}}>패키지 {parsed.lastPkgRemain.remain}회 남음</span>
-        <span style={{color:T.gray400,marginLeft:4}}>({parsed.lastPkgDate})</span>
-        {parsed.lastPurchaseDate && <span style={{color:T.gray400,marginLeft:4}}>
-          만료: {(() => { const d = new Date(parsed.lastPurchaseDate); d.setFullYear(d.getFullYear()+1); return d.toISOString().slice(0,10); })()}
-        </span>}
-      </div>}
-      {parsed.lastDadamBalance !== null && parsed.lastDadamBalance > 0 && <div>
-        <span style={{fontWeight:700,color:"#e67e22"}}>다담 잔액 {parsed.lastDadamBalance.toLocaleString()}원</span>
-        <span style={{color:T.gray400,marginLeft:4}}>({parsed.lastDadamDate})</span>
-      </div>}
-    </div>}
+    {/* 옛 파싱 요약 카드 제거 — 위 매출메모/블리스 비교가 정확함 */}
 
     {sales !== null && sales.length === 0 && <div style={{fontSize:10,color:T.gray400,padding:"4px 0"}}>매출 이력 없음</div>}
     {sales !== null && sales.length > 0 && <div style={{marginTop:4,maxHeight:300,overflow:"auto",display:"flex",flexDirection:"column",gap:4,fontSize:12}}>

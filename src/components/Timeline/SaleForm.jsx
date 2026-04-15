@@ -219,8 +219,13 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   });
 
   // 고객 상태 (예약에서 넘어오면 자동 기입, 매출관리에서 열면 검색)
-  // 방문자(대리예약) 있으면 방문자로 매출 등록
+  // 방문자(대리예약) 있으면 기본은 방문자로 매출 등록 — 유저가 토글로 예약자/방문자 선택 가능
   const _hasVisitor = !!(reservation?.visitorName || reservation?.visitorPhone);
+  const _hasReserver = !!(reservation?.custName || reservation?.custPhone);
+  const _visitorDiffers = _hasVisitor && _hasReserver &&
+    ((reservation?.visitorName || "") !== (reservation?.custName || "") ||
+     (reservation?.visitorPhone || "") !== (reservation?.custPhone || ""));
+  const [saleTargetType, setSaleTargetType] = useState(_hasVisitor ? "visitor" : "reserver");
   const [cust, setCust] = useState(_hasVisitor ? {
     id: null,
     name: reservation?.visitorName || "",
@@ -232,7 +237,31 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     phone: reservation?.custPhone || "",
     gender: reservation?.custGender || ""
   });
-  const hasReservationCust = !!(reservation?.custName);
+  const hasReservationCust = !!(reservation?.custName) || _hasVisitor;
+
+  // 예약자/방문자 토글
+  const switchSaleTarget = (type) => {
+    if (type === saleTargetType) return;
+    setSaleTargetType(type);
+    if (type === "visitor") {
+      setCust({
+        id: null,
+        name: reservation?.visitorName || "",
+        phone: reservation?.visitorPhone || "",
+        gender: reservation?.custGender || ""
+      });
+    } else {
+      setCust({
+        id: reservation?.custId || null,
+        name: reservation?.custName || "",
+        phone: reservation?.custPhone || "",
+        gender: reservation?.custGender || ""
+      });
+    }
+    // 보유권은 cust 변경 감지 useEffect에서 자동 재조회되지 않으므로 여기서 clear
+    setCustPkgs([]);
+    setPkgUse({});
+  };
 
   // 고객 검색 (디바운스)
   const [custSearch, setCustSearch] = useState("");
@@ -262,26 +291,29 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       sb.get("customer_packages", `&customer_id=eq.${c.id}`).then(rows => setCustPkgs(rows||[])).catch(()=>{});
     }
   };
-  // 고객 보유권 (다회권/다담권/연간할인권)
+  // 고객 보유권 (다회권/다담권/연간할인권) — 현재 선택된 cust 기준으로 로드
   const [custPkgs, setCustPkgs] = useState([]);
   const [pkgUse, setPkgUse] = useState({}); // {pkgId: true(다회권체크) 또는 금액(다담권)}
-  // 초기 로드: 예약에서 넘어온 고객
+  // cust가 바뀌면(예약자↔방문자 토글 등) 다시 로드
   useEffect(() => {
-    const cid = reservation?.custId || cust?.id;
-    if (cid) {
-      sb.get("customer_packages", `&customer_id=eq.${cid}`).then(rows => setCustPkgs(rows||[])).catch(()=>{});
-    } else if (reservation?.custPhone) {
-      // custId 없으면 전화번호로 고객 찾아서 보유권 조회
-      const phone = reservation.custPhone;
+    if (cust?.id) {
+      sb.get("customer_packages", `&customer_id=eq.${cust.id}`).then(rows => setCustPkgs(rows||[])).catch(()=>{});
+    } else if (cust?.phone) {
+      // custId 없으면 현재 cust의 전화번호로 고객 찾아서 보유권 조회
+      const phone = cust.phone;
       const bizId = data?.business?.id || _activeBizId;
       sb.get("customers", `&phone=eq.${phone}&business_id=eq.${bizId}&limit=1`).then(rows => {
         if (rows?.length) {
           setCust(prev => ({...prev, id: rows[0].id}));
           sb.get("customer_packages", `&customer_id=eq.${rows[0].id}`).then(pkgs => setCustPkgs(pkgs||[])).catch(()=>{});
+        } else {
+          setCustPkgs([]);
         }
       }).catch(()=>{});
+    } else {
+      setCustPkgs([]);
     }
-  }, []);
+  }, [cust?.id, cust?.phone]);
   const _pkgType = (p) => {
     const n = (p.service_name||"").toLowerCase();
     if (n.includes("다담권") || n.includes("선불") || n.includes("10%추가적립")) return "prepaid";
@@ -618,6 +650,22 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
         <div style={{ padding: "7px 14px", borderBottom: "1px solid #e0e0e0", display: "flex", alignItems: "center", justifyContent: "space-between", background: T.gray100, gap: 8, borderRadius: "12px 12px 0 0" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", flex: 1 }}>
             <h3 style={{ fontSize: 15, fontWeight: 800, color: T.danger, flexShrink: 0 }}><I name="diamond" size={14}/> 매출 입력</h3>
+            {_visitorDiffers && (
+              <div style={{ display: "flex", gap: 0, border: "1px solid " + T.gray400, borderRadius: 6, overflow: "hidden", flexShrink: 0 }}>
+                {[
+                  { t: "reserver", label: "예약자", name: reservation?.custName, phone: reservation?.custPhone },
+                  { t: "visitor", label: "방문자", name: reservation?.visitorName, phone: reservation?.visitorPhone }
+                ].map(o => (
+                  <button key={o.t} onClick={() => switchSaleTarget(o.t)} title={`${o.name||"-"} ${o.phone||""}`}
+                    style={{
+                      padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+                      border: "none", borderRight: o.t === "reserver" ? "1px solid " + T.gray400 : "none",
+                      background: saleTargetType === o.t ? T.primary : T.bgCard,
+                      color: saleTargetType === o.t ? T.bgCard : T.gray700
+                    }}>{o.label}</button>
+                ))}
+              </div>
+            )}
             {cust.name ? (
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span className="badge" style={{ background: cust.gender === "M" ? T.infoLt : cust.gender === "F" ? T.femaleLt : T.gray200, color: cust.gender === "M" ? T.primary : cust.gender === "F" ? T.female : T.gray500, fontSize: 10 }}>{cust.gender === "M" ? "남" : cust.gender === "F" ? "여" : "-"}</span>
