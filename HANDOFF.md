@@ -8,6 +8,16 @@
 
 ---
 
+## 대기: 오라클 전체 백업 → Supabase 이동
+- 오라클 모든 테이블을 Supabase `oracle_*` 테이블로 마이그레이션 (읽기 전용 백업)
+- **다음 행동**: 새 세션에서 진행
+
+## 2026-04-15~16 세션 완료
+- URL 라우팅 도입 (v1.5.0~), 패키지정리 전면 재작성 (v9 파싱)
+- 오라클 JOINDATE+SMSDIV 백필, 잘못 매칭 131건 삭제
+- AI 프롬프트 DB 자동 컨텍스트, 병렬 개발 워크플로우
+- 현재 버전: v1.6.13
+
 ## 완료: pkg_audit bliss_packages 캐시 갱신 (2026-04-14)
 - customer_packages 명칭 변경(13건) DB 완료
 - pkg_audit bliss_packages JSON 캐시 819건 PATCH 완료 (8,344건 전수 갱신)
