@@ -725,12 +725,13 @@ export default function AdminPkgAudit({ data, setData, userBranches }) {
         id: p.id, svc_name: p.service_name, total: p.total_count || 0, used: p.used_count || 0,
         remain: (p.total_count || 0) - (p.used_count || 0), note: (p.note || "").slice(0, 100)
       }));
+      const nowIso = new Date().toISOString();
       const patchR = await fetch(`${SB_URL}/rest/v1/pkg_audit?id=eq.${row.id}`, {
         method: "PATCH", headers: {...H, "Prefer": "return=minimal"},
-        body: JSON.stringify({bliss_packages: JSON.stringify(newBliss), reviewed_at: new Date().toISOString()})
+        body: JSON.stringify({bliss_packages: JSON.stringify(newBliss), reviewed_at: nowIso, status: "done"})
       });
       if (!patchR.ok) console.error("pkg_audit PATCH failed:", patchR.status, await patchR.text());
-      setRows(prev => prev.map(r => r.id === row.id ? {...r, bliss_packages: JSON.stringify(newBliss), reviewed_at: new Date().toISOString()} : r));
+      setRows(prev => prev.map(r => r.id === row.id ? {...r, bliss_packages: JSON.stringify(newBliss), reviewed_at: nowIso, status: "done"} : r));
       // 저장 완료 — alert 없이 조용히
     } catch(e) {
       console.error(e);
