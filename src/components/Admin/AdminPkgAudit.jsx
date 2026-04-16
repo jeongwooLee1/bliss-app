@@ -637,8 +637,10 @@ export default function AdminPkgAudit({ data, setData, userBranches }) {
     let pkgMismatch = false;
     for (const k of allKeys) { if ((memoMap[k]||0) !== (blissMap[k]||0)) { pkgMismatch = true; break; } }
     const dadamMismatch = memoDadamBal !== blissDadamBal;
-    // 불일치 없고 확인완료 아니고 수정도 안 됐으면 제외 (수정됨 reviewed_at은 유지)
-    if (!pkgMismatch && !dadamMismatch && r.status !== "done" && !r.reviewed_at) return false;
+    // 확인완료(done) 카드는 "완료" 필터에서만 보이게
+    if (r.status === "done") return true;
+    // 불일치 있거나 수정됨(reviewed_at)이면 미확인에 표시
+    if (!pkgMismatch && !dadamMismatch && !r.reviewed_at) return false;
     return true;
   });
 
