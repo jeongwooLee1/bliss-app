@@ -17,11 +17,12 @@ import MobileBottomNav from '../components/Navigation/MobileBottomNav'
 import Sidebar from '../components/Navigation/Sidebar'
 import SchedulePage from '../components/Schedule/SchedulePage'
 import SetupWizard from '../components/SetupWizard/SetupWizard'
+import RequestsPage from '../components/Requests/RequestsPage'
 
 const uid = genId;
 const BLISS_V = "1.6.13"
 const BIZ_ID = 'biz_khvurgshb'
-const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", users:"/users", messages:"/messages", admin:"/settings", wizard:"/wizard", schedule:"/schedule" };
+const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", users:"/users", messages:"/messages", admin:"/settings", wizard:"/wizard", requests:"/requests", schedule:"/schedule" };
 async function loadAllFromDb(bizId) {
   const [branches, services, categories, tags, sources, users, rooms, customers, reservations, sales, products] = await Promise.all([
     sb.getByBiz("branches", bizId).catch(()=>[]),
@@ -1211,6 +1212,7 @@ function App() {
     { id:"messages", label:"받은메시지함", icon:<I name="msgSq" size={16}/>, badge:unreadMsgCount },
     { id:"admin", label:"관리설정", icon:<I name="settings" size={16}/> },
     { id:"wizard", label:"설정 마법사", icon:"✨" },
+    { id:"requests", label:"요청사항", icon:"💬" },
   ];
 
   const branchNames = userBranches.map(bid => (data.branches||[]).find(b=>b.id===bid)?.short||bid).filter(Boolean).join(", ");
@@ -1243,6 +1245,7 @@ function App() {
             <Route path="/schedule" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}>{isMaster && <SchedulePage/>}</div>}/>
             <Route path="/settings/*" element={<div className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}><AdminPage data={data} setData={setData} bizId={currentBizId} serverV={serverV} onLogout={handleLogout} currentUser={currentUser} userBranches={userBranches}/></div>}/>
             <Route path="/wizard" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><SetupWizard bizId={currentBizId} bizName={bizName} geminiKey={(() => { try { return window.__systemGeminiKey || window.__geminiKey || JSON.parse(currentBiz?.settings||'{}').gemini_key || localStorage.getItem('bliss_gemini_key') || ''; } catch { return ''; } })()} sb={sb} data={data} setData={setData} onComplete={()=>setPage("timeline")} onClose={()=>setPage("timeline")}/></div>}/>
+            <Route path="/requests" element={<div className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}><RequestsPage data={data} bizId={currentBizId} currentUser={currentUser}/></div>}/>
             <Route path="*" element={<Navigate to="/timeline" replace/>}/>
           </Routes>
         </div>
