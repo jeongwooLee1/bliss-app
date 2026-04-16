@@ -637,7 +637,8 @@ export default function AdminPkgAudit({ data, setData, userBranches }) {
     let pkgMismatch = false;
     for (const k of allKeys) { if ((memoMap[k]||0) !== (blissMap[k]||0)) { pkgMismatch = true; break; } }
     const dadamMismatch = memoDadamBal !== blissDadamBal;
-    if (!pkgMismatch && !dadamMismatch && r.status !== "done") return false;
+    // 불일치 없고 확인완료 아니고 수정도 안 됐으면 제외 (수정됨 reviewed_at은 유지)
+    if (!pkgMismatch && !dadamMismatch && r.status !== "done" && !r.reviewed_at) return false;
     return true;
   });
 
@@ -728,10 +729,10 @@ export default function AdminPkgAudit({ data, setData, userBranches }) {
       const nowIso = new Date().toISOString();
       const patchR = await fetch(`${SB_URL}/rest/v1/pkg_audit?id=eq.${row.id}`, {
         method: "PATCH", headers: {...H, "Prefer": "return=minimal"},
-        body: JSON.stringify({bliss_packages: JSON.stringify(newBliss), reviewed_at: nowIso, status: "done"})
+        body: JSON.stringify({bliss_packages: JSON.stringify(newBliss), reviewed_at: nowIso})
       });
       if (!patchR.ok) console.error("pkg_audit PATCH failed:", patchR.status, await patchR.text());
-      setRows(prev => prev.map(r => r.id === row.id ? {...r, bliss_packages: JSON.stringify(newBliss), reviewed_at: nowIso, status: "done"} : r));
+      setRows(prev => prev.map(r => r.id === row.id ? {...r, bliss_packages: JSON.stringify(newBliss), reviewed_at: nowIso} : r));
       // 저장 완료 — alert 없이 조용히
     } catch(e) {
       console.error(e);
