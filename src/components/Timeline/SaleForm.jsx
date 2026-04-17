@@ -294,6 +294,20 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   // 고객 보유권 (다회권/다담권/연간할인권) — 현재 선택된 cust 기준으로 로드
   const [custPkgs, setCustPkgs] = useState([]);
   const [pkgUse, setPkgUse] = useState({}); // {pkgId: true(다회권체크) 또는 금액(다담권)}
+  // 신규 다담권/패키지 구매 + 오늘 즉시 차감 토글: {svcId: true|false}
+  const [usePkgToday, setUsePkgToday] = useState({});
+  // usePkgToday 변경 시 체크된 시술 가격을 회원가/정상가로 재계산
+  useEffect(() => {
+    setItems(prev => {
+      const next = {...prev};
+      SVC_LIST.forEach(svc => {
+        if (next[svc.id]?.checked && svc.cat !== "1s18w2l46") { // 다담권 자체는 제외
+          next[svc.id] = {...next[svc.id], amount: _defPrice(svc, gender)};
+        }
+      });
+      return next;
+    });
+  }, [JSON.stringify(usePkgToday)]);
   // cust가 바뀌면(예약자↔방문자 토글 등) 다시 로드
   useEffect(() => {
     if (cust?.id) {
@@ -334,11 +348,15 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   const activeMultiPkgs = activePkgs.filter(p => _pkgType(p) === "package");
 
   // 회원가 자격: 다담권/다회권(에너지·제품 제외)/연간회원권/연간할인권 보유 시
+  // OR 이번 매출에서 다담권 구매 + 오늘 차감 활성화 시
   const _isEnergyOrProduct = (p) => {
     const n = (p.service_name||"").toLowerCase();
     return n.includes("에너지") || n.includes("제품") || n.includes("구매권");
   };
-  const isMemberPrice = activePkgs.some(p => !_isEnergyOrProduct(p));
+  const PREPAID_CAT_ID_INNER = "1s18w2l46"; // 선불권 카테고리
+  // 다담권(boolean) 또는 PKG(횟수>0) 둘 다 회원가 자격
+  const isBuyingNewPrepaidWithUseToday = Object.values(usePkgToday).some(v => v === true || (typeof v === "number" && v > 0));
+  const isMemberPrice = activePkgs.some(p => !_isEnergyOrProduct(p)) || isBuyingNewPrepaidWithUseToday;
 
   // 성별+회원가에 따른 기본 가격 계산
   const _defPrice = (svc, g) => {
@@ -479,6 +497,24 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     setNewCustMode(false); setCustSearch(""); setShowCustDrop(false);
   };
 
+  // 신규 다담권/패키지 구매 항목 식별
+  const PREPAID_CAT_ID = "1s18w2l46"; // 선불권 카테고리
+  const PKG_CAT_ID = "c1fbbbff-"; // PKG (패키지) 카테고리
+  const newPrepaidPurchases = SVC_LIST.filter(s => s.cat === PREPAID_CAT_ID && items[s.id]?.checked);
+  // PKG 패키지 (왁싱PKG, 토탈PKG 등 — name에서 회수 파싱)
+  const newPkgPurchases = SVC_LIST.filter(s => (s.cat === PKG_CAT_ID || /PKG|패키지/i.test(s.name||"")) && s.cat !== PREPAID_CAT_ID && items[s.id]?.checked);
+  // 패키지 회수 파싱: "왁싱 PKG 5회" → 5
+  const parsePkgCount = (name) => { const m = (name||"").match(/(\d+)\s*회/); return m ? parseInt(m[1]) : 5; };
+  // "오늘 차감" 활성화된 다담권의 총 액면가
+  const newPrepaidActiveTotal = newPrepaidPurchases.reduce((sum, s) => usePkgToday[s.id] ? sum + (items[s.id]?.amount || 0) : sum, 0);
+  // 다담권으로 차감할 일반 시술/제품 합계 (다담권 본인은 제외)
+  const todayUseSvcTotal = SVC_LIST.reduce((sum, svc) => {
+    if (svc.cat === PREPAID_CAT_ID) return sum; // 다담권 자체는 제외
+    return sum + (items[svc.id]?.checked ? items[svc.id].amount : 0);
+  }, 0) + (items.extra_svc?.checked ? items.extra_svc.amount : 0);
+  // 새 다담권 즉시 차감액 (활성화된 다담권 잔액 한도 내에서만)
+  const newPkgInstantDeduct = newPrepaidActiveTotal > 0 ? Math.min(todayUseSvcTotal, newPrepaidActiveTotal) : 0;
+
   // Totals
   const svcTotal = SVC_LIST.reduce((sum, svc) => sum + (items[svc.id]?.checked ? items[svc.id].amount : 0), 0)
     + (items.extra_svc?.checked ? items.extra_svc.amount : 0);
@@ -495,9 +531,9 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     if (t === "prepaid" && typeof val === "number" && val > 0) return sum + val;
     return sum;
   }, 0);
-  const grandTotal = Math.max(0, svcTotal + prodTotal - discount - naverDeduct - pkgDeduct);
-  // 실제 결제할 금액 (예약금·할인·보유권 차감)
-  const svcPayTotal = Math.max(0, svcTotal - discount - naverDeduct - pkgDeduct);
+  const grandTotal = Math.max(0, svcTotal + prodTotal - discount - naverDeduct - pkgDeduct - newPkgInstantDeduct);
+  // 실제 결제할 금액 (예약금·할인·보유권·신규다담권즉시차감 차감)
+  const svcPayTotal = Math.max(0, svcTotal - discount - naverDeduct - pkgDeduct - newPkgInstantDeduct);
   const prodPayTotal = prodTotal;
 
   // Count checked
@@ -601,6 +637,49 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       }
     });
 
+    // 네이버예약금: 고객이 네이버에 지불 (우리가 받는 돈 아님 → 별도 결제수단으로 gift 컬럼에 저장)
+    const naverPrepaidAmt = (isNaver && naverPrepaid > 0) ? naverPrepaid : 0;
+
+    // ── 신규 다담권 구매 + 오늘 차감 처리 ──
+    // 1. 활성화된 다담권 구매 항목별로 customer_packages 생성
+    //    - 액면가 = price, 즉시 차감액 = 분배된 today svc deduct
+    if (cust.id && newPrepaidPurchases.length > 0) {
+      // 활성화된 다담권만, 액면가 합계
+      const activePkgs = newPrepaidPurchases.filter(s => usePkgToday[s.id]);
+      const activeTotal = activePkgs.reduce((sum, s) => sum + (items[s.id]?.amount || 0), 0);
+      // 모든 다담권 항목 (활성/비활성 모두 customer_packages에 추가)
+      newPrepaidPurchases.forEach(svc => {
+        const faceVal = items[svc.id]?.amount || 0;
+        const isActive = !!usePkgToday[svc.id];
+        // 활성화된 것만 즉시 차감 분배 (균등 비율)
+        const deduct = isActive && activeTotal > 0 ? Math.round(newPkgInstantDeduct * (faceVal / activeTotal)) : 0;
+        const balance = Math.max(0, faceVal - deduct);
+        const newPkg = {
+          id: uid(), business_id: _activeBizId, customer_id: cust.id,
+          service_id: svc.id, service_name: svc.name,
+          total_count: 1, used_count: deduct,
+          purchased_at: new Date().toISOString(),
+          note: `잔액:${balance.toLocaleString()}`,
+        };
+        sb.insert("customer_packages", newPkg).catch(console.error);
+      });
+    }
+
+    // ── 신규 PKG 패키지 구매 + 오늘 N회 사용 처리 ──
+    if (cust.id && newPkgPurchases.length > 0) {
+      newPkgPurchases.forEach(svc => {
+        const total = parsePkgCount(svc.name);
+        const used = Math.max(0, Math.min(total, Number(usePkgToday[svc.id] || 0)));
+        const newPkg = {
+          id: uid(), business_id: _activeBizId, customer_id: cust.id,
+          service_id: svc.id, service_name: svc.name,
+          total_count: total, used_count: used,
+          purchased_at: new Date().toISOString(),
+          note: "",
+        };
+        sb.insert("customer_packages", newPkg).catch(console.error);
+      });
+    }
     const sale = {
       id: uid(), bid: selBranch,
       custId: cust.id || null, custName: custName,
@@ -612,8 +691,8 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       productId: null, productName: null,
       svcCash: payMethod.svcCash, svcTransfer: payMethod.svcTransfer, svcCard: payMethod.svcCard, svcPoint: payMethod.svcPoint,
       prodCash: payMethod.prodCash, prodTransfer: payMethod.prodTransfer, prodCard: payMethod.prodCard, prodPoint: payMethod.prodPoint,
-      gift: 0, orderNum: String(252000 + Math.floor(Math.random() * 200)),
-      memo: (isPkgUseSubmit ? "[패키지 사용] " : "") + (isNaver && naverPrepaid > 0 ? `[네이버예약금 ${naverPrepaid.toLocaleString()}원] ` : "") + (saleMemo || ""),
+      gift: naverPrepaidAmt, orderNum: String(252000 + Math.floor(Math.random() * 200)),
+      memo: (isPkgUseSubmit ? "[패키지 사용] " : "") + (naverPrepaidAmt > 0 ? `[네이버예약금 ${naverPrepaidAmt.toLocaleString()}원] ` : "") + (saleMemo || ""),
       createdAt: new Date().toISOString(),
     };
     onSubmit(sale);
@@ -1042,6 +1121,43 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
             </div>}
           </div>}
           {pkgDeduct > 0 && <div style={{marginTop:6,fontSize:13,fontWeight:T.fw.black,color:"#E65100",background:"#FFF3E0",borderRadius:T.radius.md,padding:"6px 12px"}}>선불잔액 차감: -{pkgDeduct.toLocaleString()}원</div>}
+          {/* 신규 다담권 구매 + 오늘 차감 토글 */}
+          {newPrepaidPurchases.length > 0 && todayUseSvcTotal > 0 && <div style={{marginTop:6,padding:"8px 12px",background:"#FFFBEB",border:"1.5px dashed #F59E0B",borderRadius:T.radius.md}}>
+            <div style={{fontSize:11,fontWeight:T.fw.bolder,color:"#B45309",marginBottom:6}}>💡 다담권 구매 + 오늘 시술 즉시 차감</div>
+            {newPrepaidPurchases.map(svc => {
+              const on = !!usePkgToday[svc.id];
+              const faceVal = items[svc.id]?.amount || 0;
+              return <div key={svc.id} style={{display:"flex",alignItems:"center",gap:6,padding:"3px 0",fontSize:12}}>
+                <input type="checkbox" checked={on} onChange={e=>setUsePkgToday(p=>({...p, [svc.id]: e.target.checked}))} style={{cursor:"pointer"}}/>
+                <span style={{flex:1,fontWeight:on?700:500}}>{svc.name}</span>
+                <span style={{color:"#B45309",fontWeight:700}}>{faceVal.toLocaleString()}원</span>
+              </div>;
+            })}
+            {newPkgInstantDeduct > 0 && <div style={{marginTop:6,paddingTop:6,borderTop:"1px solid #FCD34D",fontSize:12,fontWeight:700,color:"#B45309"}}>
+              오늘 시술 차감: -{newPkgInstantDeduct.toLocaleString()}원 → 다담권 잔액으로 적립됩니다
+            </div>}
+          </div>}
+          {/* 신규 PKG 패키지 구매 + 오늘 N회 사용 (증감) */}
+          {newPkgPurchases.length > 0 && <div style={{marginTop:6,padding:"8px 12px",background:"#EEF2FF",border:"1.5px dashed #6366F1",borderRadius:T.radius.md}}>
+            <div style={{fontSize:11,fontWeight:T.fw.bolder,color:"#4338CA",marginBottom:6}}>📦 패키지 구매 + 오늘 사용 (− / + 로 증감)</div>
+            {newPkgPurchases.map(svc => {
+              const used = Number(usePkgToday[svc.id] || 0);
+              const total = parsePkgCount(svc.name);
+              const remain = total - used;
+              const setUsed = (n) => setUsePkgToday(p => ({...p, [svc.id]: Math.max(0, Math.min(total, n))}));
+              return <div key={svc.id} style={{display:"flex",alignItems:"center",gap:6,padding:"3px 0",fontSize:12}}>
+                <span style={{flex:1,fontWeight:used>0?700:500}}>{svc.name}</span>
+                <div style={{display:"flex",alignItems:"center",gap:4}}>
+                  <button onClick={()=>setUsed(used-1)} disabled={used<=0}
+                    style={{width:22,height:22,border:"1px solid "+T.border,background:used<=0?T.gray100:"#fff",borderRadius:4,fontSize:13,fontWeight:700,cursor:used<=0?"not-allowed":"pointer",fontFamily:"inherit"}}>−</button>
+                  <span style={{minWidth:32,textAlign:"center",fontWeight:700,color:"#4338CA"}}>{used}회</span>
+                  <button onClick={()=>setUsed(used+1)} disabled={used>=total}
+                    style={{width:22,height:22,border:"1px solid "+T.border,background:used>=total?T.gray100:"#fff",borderRadius:4,fontSize:13,fontWeight:700,cursor:used>=total?"not-allowed":"pointer",fontFamily:"inherit"}}>+</button>
+                </div>
+                <span style={{color:"#4338CA",fontWeight:700,minWidth:60,textAlign:"right"}}>잔여 {remain}/{total}회</span>
+              </div>;
+            })}
+          </div>}
           {hasPkgChecked() && <div style={{marginTop:6,fontSize:13,fontWeight:800,color:T.primary,background:T.primaryHover,borderRadius:T.radius.md,padding:"8px 12px",border:"1px solid "+T.border}}>
             📦 패키지 {totalPkgQty()}회 차감
             {(()=>{

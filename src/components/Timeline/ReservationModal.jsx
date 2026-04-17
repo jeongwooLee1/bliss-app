@@ -123,7 +123,18 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   const branchId = item?.bid || selBranch;
   const branchRooms = (data.rooms||[]).filter(r=>r.branch_id===branchId);
   const allBranchStaff = (data.staff||[]).filter(s=>s.bid===branchId);
-  const branchStaff = data.workingStaffIds ? allBranchStaff.filter(s => data.workingStaffIds.includes(s.id)) : allBranchStaff;
+  const branchStaff = (() => {
+    let list = data.workingStaffIds
+      ? allBranchStaff.filter(s => data.workingStaffIds.includes(s.id))
+      : allBranchStaff;
+    // 전달된 item.staffId는 지원/근무외라도 항상 포함
+    if (item?.staffId && !list.some(s => s.id === item.staffId)) {
+      const extra = (data.staff||[]).find(s => s.id === item.staffId)
+        || { id: item.staffId, bid: branchId, dn: item.staffId, name: item.staffId, branch_id: branchId };
+      list = [extra, ...list];
+    }
+    return list;
+  })();
   const fmt = (v) => v==null?"":Number(v).toLocaleString();
 
   const svcAllowQty = (svcId) => {
@@ -158,7 +169,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   const visibleTags = tags.filter(tag => tag.useYn !== false && (isSchedule ? tag.scheduleYn === "Y" : tag.scheduleYn !== "Y"));
 
   const BASE_DUR = 5; // 기본 예약시간 5분
-  const isNaverItem = !!(item?.reservationId) && !String(item.reservationId).startsWith("ai_");
+  const isNaverItem = !!(item?.reservationId) && !String(item.reservationId).startsWith("ai_") && !String(item.reservationId).startsWith("manual_");
   const itemDur = item?.dur || (isNaverItem ? 60 : BASE_DUR);
   const defaultEnd = () => { const t = item?.time||"10:00"; const [h,m] = t.split(":").map(Number); const em = m + itemDur; return `${String(h+Math.floor(em/60)).padStart(2,"0")}:${String(em%60).padStart(2,"0")}`; };
   const addMin = (t, mins) => { const [h,m] = t.split(":").map(Number); const em = m + mins; return `${String(h+Math.floor(em/60)).padStart(2,"0")}:${String(em%60).padStart(2,"0")}`; };
@@ -169,7 +180,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
     custName: item?._prefill?.custName || "",
     custPhone: item?._prefill?.custPhone || "",
     custGender: item?._prefill?.custGender || "",
-    staffId: branchStaff[0]?.id, serviceId: (data.services||[])[0]?.id,
+    staffId: item?.staffId || branchStaff[0]?.id, serviceId: (data.services||[])[0]?.id,
     visitorName: item?.visitorName||"", visitorPhone: item?.visitorPhone||"",
     date: item?._prefill?.date || item?.date||todayStr(),
     time: item?._prefill?.time || item?.time||"10:00",
@@ -222,7 +233,16 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
     const extractedTs = memoLines.filter(isAutoTs);
     const cleanMemo = memoLines.filter(l => !isAutoTs(l)).join("\n").trim();
     const mergedTs = existingTs.length > 0 ? existingTs : extractedTs;
-    return {...item, memo: cleanMemo, custGender: item?.custGender || "", endDate: item?.date||todayStr(), endTime: defaultEnd(),
+    return {...item,
+      // 합성 roomId(st_, nv_, blank_)는 무시, staffId만 있으면 해당 지점 첫 방 할당
+      roomId: (() => {
+        const rid = item?.roomId;
+        const isSynthetic = rid && (rid.startsWith("st_") || rid.startsWith("nv_") || rid.startsWith("blank_"));
+        if (rid && !isSynthetic) return rid;
+        if (item?.staffId) return branchRooms[0]?.id || "";
+        return "";
+      })(),
+      memo: cleanMemo, custGender: item?.custGender || "", endDate: item?.date||todayStr(), endTime: defaultEnd(),
       selectedTags: (() => {
       let baseTags = item?.selectedTags || [];
       // 신규 예약이면 "신규" 태그 자동 포함
@@ -326,22 +346,23 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   // 보유권 요약: 유효권(잔액>0/회차>0) + 소진권 모두 표시 (소진은 흐리게)
   const activePkgSummary = (() => {
     const out = [];
+    const today = new Date().toISOString().slice(0,10);
     (custPkgsInfo||[]).forEach(p => {
       const n = (p.service_name||"");
       const nl = n.toLowerCase();
       const isPrepaid = n.includes("다담권") || n.includes("선불") || nl.includes("10%추가적립");
       const isAnnual  = n.includes("연간") || n.includes("할인권") || n.includes("회원권");
+      // 유효기간 체크 공통
+      const expM = (p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/);
+      const isExp = expM && expM[1] < today;
       if (isPrepaid) {
         const m = (p.note||"").match(/잔액:([0-9,]+)/);
         const bal = m ? Number(m[1].replace(/,/g,"")) : 0;
         const label = bal > 0
           ? `🎫 ${n.split("(")[0]||"다담권"} +${bal.toLocaleString()}원`
           : `🎫 ${n.split("(")[0]||"다담권"} 소진`;
-        out.push({type:"prepaid", active: bal>0, label});
+        out.push({type:"prepaid", active: bal>0 && !isExp, label});
       } else if (isAnnual) {
-        const expM = (p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/);
-        const exp = expM ? expM[1] : null;
-        const isExp = exp && exp < new Date().toISOString().slice(0,10);
         out.push({type:"annual", active:!isExp, label: isExp ? `🏷 ${n.split("(")[0]||"연간권"} 만료` : `🏷 ${n.split("(")[0]||"연간권"}`});
       } else {
         const remain = (p.total_count||0) - (p.used_count||0);
@@ -349,7 +370,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
         const label = remain > 0
           ? `🎟 ${shortName} +${remain}`
           : `🎟 ${shortName} 소진`;
-        out.push({type:"package", active: remain>0, label});
+        out.push({type:"package", active: remain>0 && !isExp, label});
       }
     });
     // 유효권만 표시
@@ -704,14 +725,14 @@ ${naverText}
         flex:_isMob ? undefined : "0 0 auto",
         position:"relative"}}>
         {/* ═══ Chrome-style Tabs ═══ */}
-        {!item?.id && <div style={{display:"flex",alignItems:"stretch",borderBottom:`1.5px solid ${T.gray200}`,background:T.bgCard,borderRadius:`${T.radius.xl}px ${T.radius.xl}px 0 0`,position:"relative"}}>
-          {/* 예약 탭 - scheduleOnly면 숨김 */}
-          {!item?.scheduleOnly && <button className="res-tab-btn" onClick={()=>{setIsSchedule(false);setF(p=>({...p,isSchedule:false,selectedTags:[],type:"reservation"}));if(modalRef.current)modalRef.current.scrollTop=0}}
+        {!item?.id && !item?.scheduleOnly && <div style={{display:"flex",alignItems:"stretch",borderBottom:`1.5px solid ${T.gray200}`,background:T.bgCard,borderRadius:`${T.radius.xl}px ${T.radius.xl}px 0 0`,position:"relative"}}>
+          {/* 예약 탭 */}
+          <button className="res-tab-btn" onClick={()=>{setIsSchedule(false);setF(p=>({...p,isSchedule:false,selectedTags:[],type:"reservation"}));if(modalRef.current)modalRef.current.scrollTop=0}}
             style={{flex:1,padding:"16px 20px",fontSize:T.fs.lg,fontWeight:isSchedule?T.fw.medium:T.fw.bolder,cursor:"pointer",fontFamily:"inherit",
               border:"none",borderBottom:isSchedule?"none":`2.5px solid ${T.primary}`,marginBottom:isSchedule?0:-1.5,
               background:"transparent",color:isSchedule?T.textMuted:T.primary,letterSpacing:"-.01em"}}>
             <I name="calendar" size={13}/> 예약
-          </button>}
+          </button>
           {/* 내부일정 탭 */}
           <button className="res-tab-btn" onClick={()=>{setIsSchedule(true);setF(p=>({...p,isSchedule:true,selectedTags:[],type:"reservation"}));if(modalRef.current)modalRef.current.scrollTop=0}}
             style={{flex:1,padding:"16px 20px",fontSize:T.fs.lg,fontWeight:isSchedule?T.fw.bolder:T.fw.medium,cursor:"pointer",fontFamily:"inherit",
@@ -728,6 +749,15 @@ ${naverText}
             onMouseOver={e=>{e.currentTarget.style.background=T.dangerLt;e.currentTarget.style.color=T.danger}}
             onMouseOut={e=>{e.currentTarget.style.background=T.gray200;e.currentTarget.style.color=T.gray500}}>✕</button>
         </div>}
+
+        {/* scheduleOnly 모드: 닫기 버튼만 */}
+        {!item?.id && item?.scheduleOnly && <button onClick={onClose}
+          style={{position:"absolute",top:10,right:12,width:30,height:30,borderRadius:"50%",
+            background:T.gray200,border:"none",color:T.gray500,cursor:"pointer",zIndex:2,
+            fontSize:T.fs.md,display:"flex",alignItems:"center",justifyContent:"center",
+            transition:"background .15s,color .15s"}}
+          onMouseOver={e=>{e.currentTarget.style.background=T.dangerLt;e.currentTarget.style.color=T.danger}}
+          onMouseOut={e=>{e.currentTarget.style.background=T.gray200;e.currentTarget.style.color=T.gray500}}>✕</button>}
 
         <div style={{padding:"20px 24px 8px"}} className="form-col">
 
@@ -776,7 +806,7 @@ ${naverText}
                   {branchRooms.map(rm => branchStaff.map(st => {
                     const br = (data.branches||[]).find(b=>b.id===branchId);
                     const brName = br?.short||br?.name||"";
-                    const stName = st.dn && st.dn !== rm.name ? st.dn.replace(brName,"").trim() : "";
+                    const stName = st.dn ? st.dn.replace(brName,"").trim() : "";
                     const label = stName ? `${brName}-${stName}` : brName;
                     return <option key={rm.id+st.id} value={`${rm.id}|${st.id}`}>{label}</option>;
                   }))}
@@ -842,7 +872,7 @@ ${naverText}
                   </button>
                   {/* 정보 */}
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                       {editingCust ? (
                         <>
                           <input value={f.custName||""} onChange={e=>{set("custName",e.target.value);if(f.custId)set("custId",null)}} placeholder="이름"
@@ -852,11 +882,11 @@ ${naverText}
                         </>
                       ) : (
                         <>
-                          <CopySpan text={f.custName} style={{fontSize:14,fontWeight:700,color:"#1a1a2e"}}>{f.custName}</CopySpan>
-                          {f.custName2 && <span style={{fontSize:12,color:"#888",fontWeight:500}}>({f.custName2})</span>}
+                          <CopySpan text={f.custName} style={{fontSize:14,fontWeight:700,color:"#1a1a2e",whiteSpace:"nowrap"}}>{f.custName}</CopySpan>
+                          {f.custName2 && <span style={{fontSize:12,color:"#888",fontWeight:500,whiteSpace:"nowrap"}}>({f.custName2})</span>}
                           <span style={{fontSize:11,color:"#888"}}>·</span>
-                          <CopySpan text={f.custPhone} style={{fontSize:13,color:T.primary,fontWeight:500}}>{f.custPhone||"연락처 없음"}</CopySpan>
-                          {custNum && <CopySpan text={custNum} style={{fontSize:13,color:"#999",fontFamily:"monospace"}}>{custNum}</CopySpan>}
+                          <CopySpan text={f.custPhone} style={{fontSize:13,color:T.primary,fontWeight:500,whiteSpace:"nowrap"}}>{f.custPhone||"연락처 없음"}</CopySpan>
+                          {custNum && <CopySpan text={custNum} style={{fontSize:13,color:"#999",fontFamily:"monospace",whiteSpace:"nowrap"}}>{custNum}</CopySpan>}
                         </>
                       )}
                     </div>
@@ -869,6 +899,19 @@ ${naverText}
                         <CopySpan text={f.custEmail} style={{fontSize:12,color:"#777"}}>{f.custEmail||<span style={{color:"#ccc"}}>이메일 없음</span>}</CopySpan>
                       )}
                     </div>
+                    {/* 성별 선택 — 편집 모드 또는 신규 고객 또는 미지정 고객 */}
+                    {(editingCust || f.isNewCust || !f.custGender) && (
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6}}>
+                        <span style={{fontSize:11,color:"#aaa"}}>성별</span>
+                        {[["F","여","#e91e63","#fce4ec"],["M","남","#283593","#e8eaf6"],["","미지정","#999","#f5f5f5"]].map(([v,lv,clr,bg])=>(
+                          <button key={v||"none"} onClick={()=>set("custGender",v)}
+                            style={{padding:"2px 10px",borderRadius:12,border:f.custGender===v?`1px solid ${clr}`:"1px solid #ddd",
+                              background:f.custGender===v?bg:"#fff",
+                              color:f.custGender===v?clr:"#999",
+                              fontSize:11,fontWeight:f.custGender===v?700:500,cursor:"pointer",fontFamily:"inherit"}}>{lv}</button>
+                        ))}
+                      </div>
+                    )}
                     {activePkgSummary.length > 0 && <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:3}}>
                       {activePkgSummary.map((pkg,i) => {
                         const activeBg = pkg.type==="prepaid"?"linear-gradient(135deg,#FFE0B2,#FFCC80)":pkg.type==="annual"?"linear-gradient(135deg,#E1BEE7,#CE93D8)":"linear-gradient(135deg,#FFF3E0,#FFE0B2)";
@@ -952,13 +995,30 @@ ${naverText}
                   {branchRooms.map(rm => branchStaff.map(st => {
                     const br = (data.branches||[]).find(b=>b.id===branchId);
                     const brName = br?.short||br?.name||"";
-                    const stName = st.dn && st.dn!==rm.name ? st.dn.replace(brName,"").trim() : "";
+                    const stName = st.dn ? st.dn.replace(brName,"").trim() : "";
                     const label = stName ? `${brName}-${stName}` : brName;
                     return <option key={rm.id+st.id} value={`${rm.id}|${st.id}`}>{label}</option>;
                   }))}
                 </select>
               </div>
             </div>
+            {/* 반복 설정 (예약 모드) */}
+            {!item?.id && <div style={{marginTop:8}}>
+              <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bold,color:T.textSub,marginRight:4}}>반복</span>
+                {[{v:"none",l:"안함"},{v:"daily",l:"매일"},{v:"weekly",l:"매주"},{v:"monthly",l:"매월"}].map(o => (
+                  <button key={o.v} onClick={()=>set("repeat",o.v)}
+                    style={{padding:"4px 10px",fontSize:T.fs.sm,fontWeight:f.repeat===o.v?700:400,borderRadius:T.radius.md,cursor:"pointer",fontFamily:"inherit",
+                      border:`1px solid ${f.repeat===o.v?T.primary:T.gray400}`,
+                      background:f.repeat===o.v?T.primaryLt||"#e8f0ff":"transparent",
+                      color:f.repeat===o.v?T.primary:T.gray500,transition:"all .15s"}}>{o.l}</button>
+                ))}
+                {f.repeat !== "none" && <>
+                  <span style={{fontSize:T.fs.sm,color:T.textSub,marginLeft:8}}>종료일:</span>
+                  <DatePick value={f.repeatUntil} onChange={v=>set("repeatUntil",v)} min={f.date} style={{flex:"1 1 100px",minWidth:90}}/>
+                </>}
+              </div>
+            </div>}
 
             {/* 시술 상품 선택 */}
             {(() => {
@@ -1287,7 +1347,7 @@ ${naverText}
                     "#{대표전화번호}":branch?.phone||""
                   });
                 }
-                onSave({...f, memo: memoToSave, tsLog: newLog, selectedTags: autoTags, isSchedule});
+                onSave({...f, memo: memoToSave, tsLog: newLog, selectedTags: autoTags, isSchedule, _isColTemplate: item?._isColTemplate, _templateId: item?._templateId});
               }}>{item?.id?"저장":"등록"}</Btn>
               {/* AI 예약 확정 버튼 */}
               {f.status==="request" && <Btn style={{padding:"10px 26px",background:"#9C27B0",boxShadow:"0 4px 14px rgba(156,39,176,.35)"}}
@@ -1346,7 +1406,7 @@ ${naverText}
                 {existingSale ? <><I name="wallet" size={12}/> 매출확인</> : <><I name="wallet" size={12}/> 매출등록</>}
               </Btn>
             )}
-            {item?.id && (!item?.reservationId || String(item.reservationId).startsWith("ai_")) && <button onClick={()=>onDeleteRequest?.(item)} title="삭제" style={{marginLeft:"auto",padding:"8px 10px",borderRadius:T.radius.md,border:"none",background:"transparent",color:T.danger,cursor:"pointer",display:"flex",alignItems:"center",transition:"background .15s"}} onMouseEnter={e=>e.currentTarget.style.background=T.dangerLt} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><I name="trash" size={17}/></button>}</>}
+            {item?.id && (!item?.reservationId || String(item.reservationId).startsWith("ai_") || String(item.reservationId).startsWith("manual_")) && <button onClick={()=>onDeleteRequest?.(item)} title="삭제" style={{marginLeft:"auto",padding:"8px 10px",borderRadius:T.radius.md,border:"none",background:"transparent",color:T.danger,cursor:"pointer",display:"flex",alignItems:"center",transition:"background .15s"}} onMouseEnter={e=>e.currentTarget.style.background=T.dangerLt} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><I name="trash" size={17}/></button>}</>}
             {isReadOnly && <span style={{fontSize:T.fs.sm,color:T.textSub,display:"flex",alignItems:"center",gap:T.sp.xs}}><I name="eye" size={12}/> 열람 전용 (타 지점)</span>}
           </div>
         </div>

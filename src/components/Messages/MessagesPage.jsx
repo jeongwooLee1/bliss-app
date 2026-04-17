@@ -408,7 +408,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
         <button onClick={()=>{ setSel(null); if(onChatOpen) onChatOpen(false); }} style={{background:"none",border:"none",cursor:"pointer",color:T.primary,padding:"4px 8px 4px 0"}}><I name="arrowL" size={20}/></button>
         <span style={{fontSize:18}}>{CH_ICON[sel.channel]}</span>
         <div style={{flex:1}}>
-          <div style={{fontWeight:T.fw.bolder,fontSize:16}}>{getDisplayName(convo[0]||{user_id:sel.user_id})}{branchName(convo[0])?" · "+branchName(convo[0]):""}</div>
+          <div style={{fontWeight:T.fw.bolder,fontSize:16}}>{branchName(convo[0])?branchName(convo[0])+" · ":""}{getDisplayName(convo[0]||{user_id:sel.user_id})}</div>
           <div style={{fontSize:12,color:T.textMuted}}>{CH_NAME[sel.channel]||sel.channel}{(convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone)?" · "+(convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone):""}</div>
         </div>
         {(()=>{const res=chatResMap[sel.channel+"_"+sel.user_id];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"대기":res.status==="completed"?"완료":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":"#9E9E9E";return<button onClick={()=>{if(setPendingOpenRes&&setPage){setPendingOpenRes(res);setPage("timeline");setSel(null);}}} style={{fontSize:11,fontWeight:700,color:clr,background:clr+"15",border:"1px solid "+clr+"40",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📅{st}</button>;})()}
@@ -507,7 +507,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
                   <span style={{fontWeight:uc>0?800:600,fontSize:14,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:160}}>
-                    {name}{branch?" · "+branch:""}
+                    {branch?<span style={{color:T.primary,fontWeight:700}}>{branch}</span>:null}{branch?" · ":""}{name}
                   </span>
                   <span style={{fontSize:11,color:uc>0?T.primary:T.textMuted,fontWeight:uc>0?600:400,flexShrink:0,marginLeft:4}}>{fmtTime(m.created_at)}</span>
                 </div>
@@ -529,7 +529,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
           <div style={{padding:"12px 16px",borderBottom:"1px solid "+T.border,background:T.bgCard,display:"flex",alignItems:"center",gap:10}}>
             <span style={{fontSize:18}}>{CH_ICON[sel.channel]}</span>
             <div style={{flex:1}}>
-              <div style={{fontWeight:T.fw.bolder,fontSize:T.fs.sm}}>{getDisplayName(convo[0]||{user_id:sel.user_id})}{branchName(convo[0])?" · "+branchName(convo[0]):""}</div>
+              <div style={{fontWeight:T.fw.bolder,fontSize:T.fs.sm}}>{branchName(convo[0])?branchName(convo[0])+" · ":""}{getDisplayName(convo[0]||{user_id:sel.user_id})}</div>
               <div style={{fontSize:T.fs.xs,color:T.textMuted}}>{CH_NAME[sel.channel]||sel.channel}</div>
             </div>
             {(()=>{const res=chatResMap[sel.channel+"_"+sel.user_id];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"확정대기":res.status==="completed"?"완료":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":"#9E9E9E";return<button onClick={()=>{if(setPendingOpenRes&&setPage){setPendingOpenRes(res);setPage("timeline");}}} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:clr,background:clr+"15",border:"1px solid "+clr+"40",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit"}}>📅 {st} {res.date?.slice(5)} {res.time} →</button>;})()}

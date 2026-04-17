@@ -88,6 +88,30 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     });
   }, []);
 
+  // ── + 칼럼 템플릿: 매일 반복되는 내부일정 ──
+  const [colTemplates, setColTemplates] = useState({}); // {branchId: [{id, name, tagIds, time, dur}, ...]}
+  const colTplLoaded = useRef(false);
+  useEffect(() => {
+    if (colTplLoaded.current) return;
+    colTplLoaded.current = true;
+    fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.colTemplates_v1&select=value`, {
+      headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
+    }).then(r => r.json()).then(rows => {
+      if (rows?.[0]?.value) {
+        const v = typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value;
+        setColTemplates(v && typeof v === "object" ? v : {});
+      }
+    }).catch(console.error);
+  }, []);
+  const saveColTemplates = useCallback((next) => {
+    setColTemplates(next);
+    const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
+    fetch(`${SB_URL}/rest/v1/schedule_data`, {
+      method: "POST", headers: H,
+      body: JSON.stringify({ id: "colTemplates_v1", key: "colTemplates_v1", value: JSON.stringify(next) })
+    }).catch(console.error);
+  }, []);
+
   // 직원 목록: employees_v1 (schedule_data 테이블)에서 동적 로드 + Realtime + 폴링
   const [empList, setEmpList] = useState([]);
   useEffect(() => {
@@ -405,6 +429,20 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       const dayStatus = schHistory[e.id]?.[date];
       if (dayStatus === "휴무" || dayStatus === "휴무(꼭)") return;
 
+      // empOverride 세그먼트 우선 (여러 지점 시간대별 이동/지원)
+      const ov = getEmpOverride(e.id, date);
+      if (ov && ov.segments?.length) {
+        if (ov.segments.some(s => s.branchId === branchId)) {
+          working.push(e);
+        }
+        // 이동/지원 관계없이 원래 지점도 포함 (이동 시에는 _movedOut 플래그로 비활성화 표시)
+        const emp = BASE_EMP_LIST.find(b => b.id === e.id);
+        if (emp && emp.branch_id === branchId && !working.some(w => w.id === e.id)) {
+          working.push({...e, _movedOut: ov.exclusive === true});
+        }
+        return;
+      }
+
       // "지원(강남)" → 해당 지점에 표시
       const supportBid = parseSupportBranch(dayStatus);
       if (supportBid === branchId) {
@@ -412,8 +450,14 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         return;
       }
 
-      // 지원 중인 직원은 원래 지점에서 제외
-      if (supportBid) return;
+      // 지원 중인 직원은 원래 지점에도 비활성화로 표시 (제거하지 않음)
+      if (supportBid) {
+        const emp = BASE_EMP_LIST.find(b => b.id === e.id);
+        if (emp && emp.branch_id === branchId) {
+          working.push({...e, _movedOut: true});
+        }
+        return;
+      }
 
       // 원래 소속 지점이면 표시
       if (empInBranch(e.id, date, branchId)) {
@@ -606,9 +650,13 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       }).then(r => r.json()).catch(() => [])
     )).then(results => {
       const map = {};
+      const today = new Date().toISOString().slice(0,10);
       results.flat().forEach(p => {
         if (!Array.isArray(map[p.customer_id])) map[p.customer_id] = [];
         const sn = p.service_name||"";
+        // 유효기간 체크 (note "유효:YYYY-MM-DD")
+        const expMatch = (p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/);
+        if (expMatch && expMatch[1] < today) return; // 만료된 것 제외
         const isDadam = sn.includes("다담") || sn.includes("선불");
         if (isDadam) {
           const m = (p.note||"").match(/잔액:([0-9,]+)/);
@@ -713,22 +761,24 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   }, []);
   const moveEmpCol = (branchId, empId, dir) => {
     setEmpColOrder(prev => {
-      let order = [...(prev[branchId]||[])];
-      // order에 empId가 없으면 현재 렌더된 컬럼 전체(지원 직원 포함)로 초기화
-      if (!order.includes(empId)) {
-        // allRooms에서 해당 지점 직원 ID 수집
-        const brRooms = (allRoomsRef.current||[]).filter(r=>r.branch_id===branchId && r.staffId);
-        const ids = brRooms.map(r=>r.staffId);
-        // 기존 order에 없는 직원만 추가
-        for (const id of ids) {
-          if (!order.includes(id)) order.push(id);
-        }
-        if (!order.includes(empId)) return prev;
-      }
+      // 현재 화면에 실제로 보이는 컬럼 순서를 기준으로 작업
+      const visibleIds = (allRoomsRef.current||[])
+        .filter(r => r.branch_id === branchId && r.staffId && r.isStaffCol)
+        .map(r => r.staffId);
+      // 저장된 order에 있는데 현재 보이지 않는 직원도 보존 (다른 날짜에서 필요할 수 있음)
+      const saved = [...(prev[branchId]||[])];
+      // 새 order: visibleIds 순서대로 + 저장된 것 중 미노출 직원은 뒤에 보존
+      let order = [...visibleIds];
+      saved.forEach(id => { if (!order.includes(id)) order.push(id); });
+      if (!order.includes(empId)) return prev;
       const idx = order.indexOf(empId);
-      const newIdx = idx + dir;
-      if (newIdx < 0 || newIdx >= order.length) return prev;
-      [order[idx], order[newIdx]] = [order[newIdx], order[idx]];
+      // 현재 화면에서 보이는 직원들 내에서만 이동 (보존된 직원은 건너뜀)
+      const visIdx = visibleIds.indexOf(empId);
+      const newVisIdx = visIdx + dir;
+      if (visIdx < 0 || newVisIdx < 0 || newVisIdx >= visibleIds.length) return prev;
+      const swapId = visibleIds[newVisIdx];
+      const swapIdx = order.indexOf(swapId);
+      [order[idx], order[swapIdx]] = [order[swapIdx], order[idx]];
       return {...prev, [branchId]: order};
     });
   };
@@ -797,6 +847,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           staffId: e.id, isStaffCol: true,
           activeFrom: range?.from || null,   // null=종일
           activeUntil: range?.until || null, // null=종일
+          isMovedOut: e._movedOut === true,   // 이동/지원으로 다른 지점으로 간 상태 → 비활성화 표시
         };
       });
     } else {
@@ -823,7 +874,9 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     if (!branchesToShow.some(b=>b.id===r.bid)) return false;
     if (r.status === "naver_changed" || r.status === "naver_cancelled" || r.status === "cancelled") return false;
     const isNaver = r.source === "naver" || r.source === "네이버";
-    if (isNaver && !r.isScrapingDone) return false;
+    // 네이버 스크래퍼 예약만 스크래핑 완료 대기 (수동 예약/manual_ 접두사는 즉시 표시)
+    const isManual = !r.reservationId || String(r.reservationId).startsWith("manual_") || String(r.reservationId).startsWith("ai_");
+    if (isNaver && !r.isScrapingDone && !isManual) return false;
     return true;
   }).map(r => {
     // allRooms에 없는 room_id/staff_id → 무시하고 재배치 대상으로
@@ -886,7 +939,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     try { localStorage.setItem("tl_settings", JSON.stringify(allSettings)); } catch(e) {}
   }, []);
   const [startHour, setStartHourRaw] = useState(() => tlDef("sh", 8));
-  const [endHour, setEndHourRaw] = useState(() => tlDef("eh", 22));
+  const [endHour, setEndHourRaw] = useState(() => tlDef("eh", 23));
   const [rowH, setRowHRaw] = useState(() => tlDef("rh", 14));
   const [colW, setColWRaw] = useState(() => tlDef("cw", 160));
   const [timeUnit, setTimeUnitRaw] = useState(() => tlDef("tu", 5));
@@ -1010,12 +1063,36 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   };
 
   const handleSave = (item) => {
-    // 미배정 칼럼 roomId 정리
-    if (item.roomId && item.roomId.startsWith("blank_")) item.roomId = "";
+    // + 칼럼 템플릿 저장: schedule_data.colTemplates_v1에 저장 (예약 테이블 X)
+    if (item._isColTemplate) {
+      const bid = item.bid;
+      if (!bid) return;
+      const tpl = {
+        id: item._templateId || ("tpl_" + uid()),
+        name: (item.selectedTags||[]).map(tid=>(data?.serviceTags||[]).find(t=>t.id===tid)?.name).filter(Boolean).join("+") || "내부일정",
+        tagIds: [...(item.selectedTags||[])],
+        time: item.time,
+        dur: item.dur || 30,
+        memo: item.memo || ""
+      };
+      const next = {...colTemplates};
+      const list = [...(next[bid]||[])];
+      const existIdx = list.findIndex(t => t.id === tpl.id);
+      if (existIdx >= 0) list[existIdx] = tpl;
+      else list.push(tpl);
+      next[bid] = list;
+      saveColTemplates(next);
+      setShowModal(false); setModalData(null);
+      return;
+    }
+    // 미배정 칼럼 roomId 정리 + 직원컬럼 합성 ID(st_) 정리 (DB에는 실제 room id만 저장)
+    if (item.roomId && (item.roomId.startsWith("blank_") || item.roomId.startsWith("st_") || item.roomId.startsWith("nv_"))) item.roomId = "";
     // 필수값 검증
     if (!item.isSchedule && item.type === "reservation" && !item.custName?.trim()) {
       alert("고객 이름을 입력해 주세요."); return;
     }
+    // 수동 예약에 고유 reservation_id 생성 (NULLS NOT DISTINCT unique constraint 회피)
+    if (!item.reservationId) item.reservationId = "manual_" + (item.id || uid());
     // 신규고객이면 DB에 고객 등록 (전화번호 중복 체크)
     if (item.isNewCust && item.custName && !item.custId) {
       const normPhone = (item.custPhone || "").replace(/[^0-9]/g, "");
@@ -1052,21 +1129,23 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     setData(prev => {
       const exists = (prev?.reservations||[]).find(r => r.id === item.id);
       if (exists) {
-        // 담당자 변경 시 room_id도 연동
+        // 담당자 변경 시 bid만 연동 (room_id는 실제 방 id만 저장, staff column 합성 ID 사용 안 함)
         if (item.staffId && item.staffId !== exists.staffId) {
           const targetRoom = allRooms.find(r => r.isStaffCol && r.staffId === item.staffId);
           if (targetRoom) {
-            item.roomId = targetRoom.id;
             item.bid = targetRoom.branch_id;
+            // roomId를 빈 값으로 유지 → staffId로만 위치 결정
+            if (item.roomId && (item.roomId.startsWith("st_") || item.roomId.startsWith("nv_") || item.roomId.startsWith("blank_"))) {
+              item.roomId = "";
+            }
           }
         }
         const updateRow = toDb("reservations", item);
-        if (!updateRow.reservation_id) updateRow.reservation_id = null;
         sb.update("reservations", item.id, updateRow).catch(console.error);
         return { ...prev, reservations: (prev?.reservations||[]).map(r => r.id === item.id ? item : r) };
       }
       const items = [item];
-      if (item.isSchedule && item.repeat && item.repeat !== "none" && item.repeatUntil) {
+      if (item.repeat && item.repeat !== "none" && item.repeatUntil) {
         const fmtD = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
         const start = new Date(item.date + "T12:00:00");
         const end = new Date(item.repeatUntil + "T12:00:00");
@@ -1081,7 +1160,9 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           else if (item.repeat === "monthly") match = cur.getDate() === dayOfMonth;
           if (match) {
             const ds = fmtD(cur);
-            items.push({ ...item, id: uid(), date: ds, endDate: ds, repeat: item.repeat, repeatUntil: item.repeatUntil, repeatSourceId: item.id });
+            const newId = uid();
+            // 반복 항목마다 고유 reservation_id 필수 (NULLS NOT DISTINCT unique 회피)
+            items.push({ ...item, id: newId, reservationId: "manual_" + newId, date: ds, endDate: ds, repeat: item.repeat, repeatUntil: item.repeatUntil, repeatSourceId: item.id });
           }
           cur.setDate(cur.getDate() + 1);
         }
@@ -1091,11 +1172,31 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     });
     // Async sync to Supabase
     setTimeout(()=>{
-      if(allItems.length) sb.upsert("reservations", allItems.map(i=>{
-        const row = toDb("reservations", i);
-        if (!row.reservation_id) row.reservation_id = null;
-        return row;
-      })).catch(console.error);
+      if(allItems.length) sb.upsert("reservations", allItems.map(i=>toDb("reservations", i))).then(() => {
+        // 저장 성공 — 개별 항목 재시도 불필요
+      }).catch(async err => {
+        console.error("예약 저장 실패 (batch):", err, allItems);
+        // batch 실패 시 개별 재시도 (reservation_id 충돌 등 한 건만 실패한 경우 대응)
+        let successCount = 0;
+        const failedItems = [];
+        for (const i of allItems) {
+          try {
+            // reservation_id 재생성 (기존 것과 충돌 회피)
+            const newResId = "manual_" + (i.id || uid()) + "_" + Date.now().toString(36);
+            const retryRow = toDb("reservations", {...i, reservationId: newResId});
+            await sb.upsert("reservations", [retryRow]);
+            // 로컬 state에도 새 reservationId 반영
+            setData(prev => ({...prev, reservations: (prev?.reservations||[]).map(r => r.id === i.id ? {...r, reservationId: newResId} : r)}));
+            successCount++;
+          } catch (e2) {
+            console.error("개별 저장 실패:", e2, i);
+            failedItems.push(i);
+          }
+        }
+        if (failedItems.length > 0) {
+          alert("예약 저장 실패 " + failedItems.length + "건:\n" + (err?.message || "DB 오류").slice(0, 200));
+        }
+      });
     }, 0);
     // AI 시술 분석 (수동예약 + 시술 미선택 시)
     if (isNewItem && !item.isSchedule && (!item.selectedServices || item.selectedServices.length === 0)) {
@@ -1145,12 +1246,113 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const [alimtalkConfirm, setAlimtalkConfirm] = useState(null); // {item} 저장 후 예약안내 발송 여부 팝업
 
   const handleDeleteRequest = (block) => {
+    // + 칼럼 템플릿 삭제
+    if (block._isColTemplate) {
+      if (!confirm(`"${block.custName||"템플릿"}" 반복 일정을 삭제할까요?`)) return;
+      const next = {...colTemplates};
+      Object.keys(next).forEach(bid => { next[bid] = (next[bid]||[]).filter(t => t.id !== block.id); });
+      saveColTemplates(next);
+      return;
+    }
     const sourceId = block.repeatSourceId || block.id;
     const hasRepeat = (data.reservations || []).some(r => r.repeatSourceId === sourceId || (r.id === sourceId && r.repeat && r.repeat !== "none"));
     if (hasRepeat) {
       setDeletePopup(block);
     } else {
       handleDelete(block.id);
+    }
+  };
+
+  // ── 템플릿 드래그 → 직원 컬럼에 일회성 내부일정 생성 ──
+  const handleTplDragStart = (tpl, e) => {
+    e.stopPropagation();
+    const isTouch = e.type === "touchstart";
+    if (!isTouch) e.preventDefault();
+    const startPt = isTouch ? e.touches[0] : e;
+    dragStartRef.current = { x: startPt.clientX, y: startPt.clientY };
+    isDragging.current = false;
+    longPressActive.current = false;
+    const fakeBlock = { id: "__tpl_" + tpl.id, time: tpl.time, dur: tpl.dur||30, isSchedule: true, selectedTags: tpl.selectedTags||[], type: "reservation", custName: tpl.custName };
+
+    const onDragMove = (ev) => {
+      const pt = isTouch ? ev.touches[0] : ev;
+      if (!pt) return;
+      ev.preventDefault();
+      const sr = scrollRef.current; if (!sr) return;
+      const rect = sr.getBoundingClientRect();
+      const x = pt.clientX - rect.left + sr.scrollLeft;
+      const y = pt.clientY - rect.top + sr.scrollTop;
+      setDragPos({ x: pt.clientX - rect.left, y: pt.clientY - rect.top });
+      const colX = x - timeLabelsW;
+      const roomIdx = Math.max(0, Math.min(allRooms.length - 1, Math.floor(colX / colW)));
+      const targetRoom = allRooms[roomIdx];
+      const snappedTime = yToTime(Math.max(0, y));
+      setDragSnap({ roomId: targetRoom?.id, bid: targetRoom?.branch_id, time: snappedTime });
+      dragSnapRef.current = { roomId: targetRoom?.id, bid: targetRoom?.branch_id, time: snappedTime };
+    };
+    const onDragUp = () => {
+      document.removeEventListener(isTouch ? "touchmove" : "mousemove", onDragMove);
+      document.removeEventListener(isTouch ? "touchend" : "mouseup", onDragUp);
+      if (isDragging.current && dragSnapRef.current) {
+        const snap = dragSnapRef.current;
+        const targetRoom = allRooms.find(rm => rm.id === snap.roomId);
+        // 유효한 대상이면 (직원 컬럼 / 일반 룸) 일회성 내부일정 생성
+        if (targetRoom && !targetRoom.isBlank && !targetRoom.isNaver) {
+          const newId = uid();
+          const [sh, sm] = snap.time.split(":").map(Number);
+          const endMin = sh * 60 + sm + (tpl.dur || 30);
+          const endTime = `${String(Math.floor(endMin / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
+          const staffId = targetRoom.isStaffCol ? targetRoom.staffId : "";
+          const item = {
+            id: newId, reservationId: "manual_" + newId,
+            type: "reservation", isSchedule: true,
+            date: selDate, endDate: selDate,
+            time: snap.time, endTime, dur: tpl.dur || 30,
+            roomId: targetRoom.isStaffCol ? "" : snap.roomId,
+            bid: snap.bid || targetRoom.branch_id,
+            staffId, status: "confirmed",
+            selectedTags: tpl.selectedTags || [],
+            custName: "", custPhone: "", memo: tpl.memo || "",
+            repeat: "none", repeatUntil: null
+          };
+          setData(prev => ({ ...prev, reservations: [...(prev?.reservations || []), item] }));
+          const row = toDb("reservations", item);
+          sb.upsert("reservations", [row]).catch(console.error);
+        }
+      }
+      setDragBlock(null); setDragPos(null); setDragSnap(null); dragSnapRef.current = null;
+      setTimeout(() => { isDragging.current = false; longPressActive.current = false; }, 300);
+    };
+
+    if (isTouch) {
+      const cancelMove = ev => { const pt = ev.touches[0]; if (!pt) return; if (Math.abs(pt.clientX - startPt.clientX) + Math.abs(pt.clientY - startPt.clientY) > 8) { clearTimeout(longPressTimer.current); document.removeEventListener("touchmove", cancelMove); document.removeEventListener("touchend", cancelEnd); } };
+      const cancelEnd = () => { clearTimeout(longPressTimer.current); document.removeEventListener("touchmove", cancelMove); document.removeEventListener("touchend", cancelEnd); };
+      document.addEventListener("touchmove", cancelMove);
+      document.addEventListener("touchend", cancelEnd);
+      longPressTimer.current = setTimeout(() => {
+        document.removeEventListener("touchmove", cancelMove);
+        document.removeEventListener("touchend", cancelEnd);
+        longPressActive.current = true; isDragging.current = true;
+        setDragBlock(fakeBlock);
+        try { navigator.vibrate && navigator.vibrate(30); } catch {}
+        document.addEventListener("touchmove", onDragMove, {passive:false});
+        document.addEventListener("touchend", onDragUp);
+      }, 500);
+    } else {
+      const onMouseMove = (ev) => {
+        const dx = ev.clientX - dragStartRef.current.x;
+        const dy = ev.clientY - dragStartRef.current.y;
+        if (!isDragging.current && Math.abs(dx) + Math.abs(dy) < 6) return;
+        if (!isDragging.current) { isDragging.current = true; setDragBlock(fakeBlock); }
+        onDragMove(ev);
+      };
+      const onMouseUp = () => {
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+        onDragUp();
+      };
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
     }
   };
 
@@ -1358,14 +1560,19 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       document.removeEventListener(isTouch ? "touchend" : "mouseup", onResizeUp);
       const finalDur = resizeDurRef.current;
       if (isResizing.current && finalDur !== origDur) {
+        const [sh,sm] = block.time.split(":").map(Number);
+        const endMin = sh*60+sm+finalDur;
+        const endTime = `${String(Math.floor(endMin/60)).padStart(2,"0")}:${String(endMin%60).padStart(2,"0")}`;
         setData(prev => ({...prev, reservations: (prev?.reservations||[]).map(r => {
           if (r.id !== block.id) return r;
-          const [sh,sm] = r.time.split(":").map(Number);
-          const endMin = sh*60+sm+finalDur;
-          const endTime = `${String(Math.floor(endMin/60)).padStart(2,"0")}:${String(endMin%60).padStart(2,"0")}`;
           return {...r, dur: finalDur, endTime};
         })}));
-        setPendingChange({ type: "resize", block, data: { dur: finalDur }, orig: { dur: origDur } });
+        // 내부일정은 팝업 없이 바로 DB 저장
+        if (block.isSchedule) {
+          sb.update("reservations", block.id, { dur: finalDur, end_time: endTime }).catch(console.error);
+        } else {
+          setPendingChange({ type: "resize", block, data: { dur: finalDur }, orig: { dur: origDur } });
+        }
       }
       setResizeBlock(null); setResizeDur(0);
       setTimeout(() => { isResizing.current = false; longPressActive.current = false; }, 300);
@@ -1707,28 +1914,50 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
 
           {/* Room Columns */}
           {allRooms.map((room, ci) => {
-            const roomBlocks = blocks.filter(b => {
-              if (room.isNaver) {
-                // 미배정 칼럼: roomId/staffId 없는 예약
-                if (!isUnassigned(b) || b.bid !== room.branch_id) return false;
-                return naverAssignments[b.id] === room.id;
+            const roomBlocks = (() => {
+              // + 칼럼: 매일 반복 템플릿 (schedule_data.colTemplates_v1)만 표시
+              if (room.isBlank && room.isAddCol) {
+                const tpls = colTemplates[room.branch_id] || [];
+                return tpls.map(t => ({
+                  id: t.id,
+                  _isColTemplate: true,
+                  time: t.time,
+                  dur: t.dur,
+                  bid: room.branch_id,
+                  roomId: room.id,
+                  type: "reservation",
+                  isSchedule: true,
+                  selectedTags: t.tagIds || [],
+                  memo: t.memo || "",
+                  custName: t.name,
+                  status: "confirmed"
+                }));
               }
-              if (room.isStaffCol) {
-                // 직원 컬럼: staffId 일치 또는 roomId가 해당 staff col id
-                if (b.bid !== room.branch_id) return false;
-                // 미배정 예약은 미배정 칼럼에 표시 (미배정 칼럼이 있으면)
-                if (isUnassigned(b) && allRooms.some(r => r.isNaver && r.branch_id === b.bid)) return false;
-                if (b.staffId && b.staffId === room.staffId) return true;
-                if (b.roomId === room.id) return true;
-                return false;
-              }
-              // 일반 룸 칼럼: roomId 기준
-              return b.roomId === room.id;
-            });
+              return blocks.filter(b => {
+                if (room.isNaver) {
+                  // 미배정 칼럼: roomId/staffId 없는 예약
+                  if (!isUnassigned(b) || b.bid !== room.branch_id) return false;
+                  return naverAssignments[b.id] === room.id;
+                }
+                if (room.isStaffCol) {
+                  // 직원 컬럼: staffId 일치 또는 roomId가 해당 staff col id
+                  if (b.bid !== room.branch_id) return false;
+                  // 미배정 예약은 미배정 칼럼에 표시 (미배정 칼럼이 있으면)
+                  if (isUnassigned(b) && allRooms.some(r => r.isNaver && r.branch_id === b.bid)) return false;
+                  if (b.staffId && b.staffId === room.staffId) return true;
+                  if (b.roomId === room.id) return true;
+                  return false;
+                }
+                // 일반 룸 칼럼: roomId 기준
+                return b.roomId === room.id;
+              });
+            })();
             const isNewBranch = ci === 0 || room.branch_id !== allRooms[ci-1]?.branch_id;
             const branchColor = (data.branchSettings || []).find(bs => bs.id === room.branch_id)?.color || "";
             return (
-              <div key={room.id} className="tl-room-col" data-branch-id={room.branch_id} style={{width:colW,flexShrink:0,borderLeft:room.isNaver?"2px solid #A5D6A7":(isNewBranch&&ci>0?"none":"1px solid #f0f0f0"),background:room.isNaver?T.successLt:(branchColor||T.bgCard),marginLeft:isNewBranch&&ci>0?4:0,boxShadow:isNewBranch&&ci>0?"-4px 0 8px rgba(0,0,0,.06)":room.isNaver?"inset 2px 0 4px rgba(76,175,80,.08)":"none"}}>
+              <div key={room.id} className="tl-room-col" data-branch-id={room.branch_id} style={{width:colW,flexShrink:0,borderLeft:room.isNaver?"2px solid #A5D6A7":(isNewBranch&&ci>0?"none":"1px solid #f0f0f0"),background:room.isNaver?T.successLt:(branchColor||T.bgCard),marginLeft:isNewBranch&&ci>0?4:0,boxShadow:isNewBranch&&ci>0?"-4px 0 8px rgba(0,0,0,.06)":room.isNaver?"inset 2px 0 4px rgba(76,175,80,.08)":"none",position:"relative"}}>
+                {/* 이동/지원 직원: 휴무 스타일 오버레이 (배경만, 블록 클릭은 허용) */}
+                {room.isMovedOut && <div style={{position:"absolute",top:headerH,left:0,right:0,bottom:0,background:"rgba(0,0,0,.06)",borderTop:"2px dashed rgba(0,0,0,.12)",zIndex:1,pointerEvents:"none"}}/>}
                 {/* Room Header - sticky */}
                 <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:10,background:room.isBlank?T.gray100:room.isNaver?T.successLt:(branchColor||T.bgCard),display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",lineHeight:1.2}}>
                   <span className="tl-room-name" style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:room.isNaver?T.successDk:T.text}}>{room.branchName}</span>
@@ -1774,6 +2003,9 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                               const schKey = Object.entries(SCH_BRANCH_MAP).find(([k,v])=>v===targetBid)?.[0] || "";
                               const addFreelancer = async () => {
                                 if(!flName.trim()) return;
+                                // 시스템 예약어 보호
+                                const RESERVED = ["메모","미배정","청소","출근","휴무","알람","이동","지원"];
+                                if (RESERVED.includes(flName.trim())) { alert(`"${flName.trim()}"은(는) 시스템 예약어로 사용할 수 없습니다.`); return; }
                                 const newEmp = {id: flName.trim(), branch: schKey, isMale: false, isFreelancer: true};
                                 // customEmployees_v1에 추가
                                 const H = {apikey:SB_KEY, Authorization:"Bearer "+SB_KEY, "Content-Type":"application/json", "Prefer":"resolution=merge-duplicates"};
@@ -1906,6 +2138,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             // 추가할 지점 + 시간 상태
                             const [addBranch,setAddBranch] = [empMovePopup.addBranch||"", v=>setEmpMovePopup(p=>({...p,addBranch:v}))];
                             const [addFrom,setAddFrom] = [empMovePopup.addFrom||"", v=>setEmpMovePopup(p=>({...p,addFrom:v}))];
+                            const [addUntil,setAddUntil] = [empMovePopup.addUntil||"", v=>setEmpMovePopup(p=>({...p,addUntil:v}))];
 
                             const saveSeg = () => {
                               if(!addBranch) return;
@@ -1945,16 +2178,142 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                               setEmpMovePopup(null);
                             };
 
+                            const TIME_OPTS = Array.from({length:48},(_,i)=>{const h=Math.floor(i/2),m=(i%2)*30;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;}).filter(t=>{const hh=parseInt(t);return hh>=startHour&&hh<=endHour;});
+                            // segment 변경 → 시간순 정렬 후 다음 segment의 from을 until로 자동 chain
+                            const updateSeg = (branchId, field, value) => {
+                              const overrideKey2 = room.staffId+"_"+selDate;
+                              const prevOv = empBranchOverride[overrideKey2];
+                              let newSegs = (prevOv?.segments||[]).map(s => s.branchId === branchId ? {...s, [field]: value || null} : s);
+                              // from 변경 시 자동 재정렬 + 연결
+                              if (field === "from") {
+                                newSegs = newSegs.sort((a,b)=>(!a.from?-1:!b.from?1:a.from.localeCompare(b.from))).map((s,i,arr)=>({...s, until: arr[i+1]?.from || s.until || null}));
+                              }
+                              const ovData = {segments: newSegs};
+                              setEmpBranchOverride(p=>({...p,[overrideKey2]:ovData}));
+                              syncOverrideToSch(room.staffId, selDate, ovData);
+                            };
+                            // 직원 총 근무시간
+                            const wh = empWorkHours[room.staffId+"_"+selDate] || empWorkHours[room.staffId] || (()=>{
+                              const bts=(data?.branches||[]).find(b=>b.id===baseBranch)?.timelineSettings;
+                              return bts?.defaultWorkStart?{start:bts.defaultWorkStart,end:bts.defaultWorkEnd||"21:00"}:bts?.openTime?{start:bts.openTime,end:bts.closeTime||"21:00"}:null;
+                            })();
+                            // 시간 → 분 변환
+                            const toMn = (t) => { if(!t) return null; const [h,m]=t.split(":").map(Number); return h*60+m; };
+                            const whStartMn = toMn(wh?.start) || startHour*60;
+                            const whEndMn = toMn(wh?.end) || endHour*60;
+                            const whDur = whEndMn - whStartMn;
+                            // 시각적 타임라인 바 segments 계산 (원래 지점은 gap에만 채움)
+                            const visualSegs = (() => {
+                              const sorted = [...segs].sort((a,b)=>(!a.from?-1:!b.from?1:a.from.localeCompare(b.from)));
+                              const out = [];
+                              sorted.forEach((s, i) => {
+                                const fromMn = toMn(s.from) || whStartMn;
+                                const untilMn = toMn(s.until) || toMn(sorted[i+1]?.from) || whEndMn;
+                                if (untilMn > fromMn) out.push({branchId: s.branchId, fromMn, untilMn});
+                              });
+                              // 출근시간부터 첫 segment까지가 빈 구간이면 출근지로 채움
+                              if (baseBranch && out.length > 0 && out[0].fromMn > whStartMn) {
+                                out.unshift({branchId: baseBranch, fromMn: whStartMn, untilMn: out[0].fromMn, isHome: true});
+                              }
+                              // segments가 전혀 없으면 전체 출근지
+                              if (baseBranch && out.length === 0) {
+                                out.push({branchId: baseBranch, fromMn: whStartMn, untilMn: whEndMn, isHome: true});
+                              }
+                              return out;
+                            })();
+
                             return <>
-                              {/* 현재 구간 목록 */}
+                              {/* 시각적 타임라인 바 — 드래그로 구간 조절 가능 */}
+                              {visualSegs.length>0 && whDur>0 && (() => {
+                                // 각 지점에 구분되는 색상 (branch.color 우선, 없으면 index 기반)
+                                const PALETTE = ["#4A90E2","#F5A623","#7ED321","#BD10E0","#50E3C2","#D0021B","#F8A0C0","#9013FE","#417505","#8B572A"];
+                                // 밝은 색(흰색 계열) 여부
+                                const isLight = (hex) => {
+                                  if (!hex) return true;
+                                  const h = hex.replace("#",""); if (h.length<6) return true;
+                                  const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);
+                                  return (r+g+b)/3 > 220;
+                                };
+                                const colorOf = (bid) => {
+                                  const br = allBranches.find(b=>b.id===bid);
+                                  if (br?.color && !isLight(br.color)) return br.color;
+                                  // 브랜치 색이 없거나 너무 밝으면 해시 팔레트
+                                  const idx = Math.abs([...bid].reduce((a,c)=>a+c.charCodeAt(0),0)) % PALETTE.length;
+                                  return PALETTE[idx];
+                                };
+                                const mnToTime = (mn) => `${String(Math.floor(mn/60)).padStart(2,"0")}:${String(mn%60).padStart(2,"0")}`;
+                                const barRef = React.createRef();
+                                // 경계 드래그 핸들러
+                                const onHandleDown = (boundaryIdx) => (e) => {
+                                  e.preventDefault(); e.stopPropagation();
+                                  const isTouch = e.type === "touchstart";
+                                  const bar = e.currentTarget.parentElement.parentElement;
+                                  const rect = bar.getBoundingClientRect();
+                                  const onMove = (ev) => {
+                                    const pt = isTouch ? ev.touches[0] : ev;
+                                    if (!pt) return;
+                                    const x = Math.max(0, Math.min(rect.width, pt.clientX - rect.left));
+                                    const mn = whStartMn + Math.round((x / rect.width) * whDur / 10) * 10; // 10분 단위 snap
+                                    const newTime = mnToTime(Math.max(whStartMn, Math.min(whEndMn, mn)));
+                                    // 경계 = visualSegs[boundaryIdx].untilMn = visualSegs[boundaryIdx+1].fromMn
+                                    const targetSeg = visualSegs[boundaryIdx+1];
+                                    if (!targetSeg) return;
+                                    // home(자동) 지점이 경계를 움직이면 다음 실제 segment의 from 업데이트
+                                    if (targetSeg.isHome) return;
+                                    // 실제 segments에서 from 업데이트
+                                    updateSeg(targetSeg.branchId, "from", newTime);
+                                  };
+                                  const onUp = () => {
+                                    document.removeEventListener(isTouch?"touchmove":"mousemove", onMove);
+                                    document.removeEventListener(isTouch?"touchend":"mouseup", onUp);
+                                  };
+                                  document.addEventListener(isTouch?"touchmove":"mousemove", onMove, {passive:false});
+                                  document.addEventListener(isTouch?"touchend":"mouseup", onUp);
+                                };
+                                return <div style={{padding:"6px 12px 0"}}>
+                                  <div style={{position:"relative",display:"flex",height:22,borderRadius:4,overflow:"hidden",border:"1px solid "+T.border,userSelect:"none"}}>
+                                    {visualSegs.map((vs,i) => {
+                                      const br = allBranches.find(b=>b.id===vs.branchId);
+                                      const w = Math.max(0, (vs.untilMn - vs.fromMn) / whDur * 100);
+                                      if (w <= 0) return null;
+                                      const bg = colorOf(vs.branchId);
+                                      const name = br?.short || br?.name || "";
+                                      const isLast = i === visualSegs.length - 1;
+                                      return <div key={i} style={{position:"relative",width:w+"%",background:bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"#fff",overflow:"hidden",whiteSpace:"nowrap",opacity:vs.isHome?0.7:1,borderRight:isLast?"none":"1px solid rgba(0,0,0,.2)"}} title={`${name} ${mnToTime(vs.fromMn)}~${mnToTime(vs.untilMn)}`}>
+                                        <span style={{pointerEvents:"none",textShadow:"0 1px 2px rgba(0,0,0,.3)"}}>{w>8?name:""}</span>
+                                        {/* 경계 드래그 핸들 (마지막 제외) */}
+                                        {!isLast && <div onMouseDown={onHandleDown(i)} onTouchStart={onHandleDown(i)}
+                                          style={{position:"absolute",top:0,right:-4,width:8,height:"100%",cursor:"col-resize",zIndex:2,background:"rgba(255,255,255,.0)"}}
+                                          onMouseOver={e=>e.currentTarget.style.background="rgba(255,255,255,.3)"}
+                                          onMouseOut={e=>e.currentTarget.style.background="rgba(255,255,255,0)"}/>}
+                                      </div>;
+                                    })}
+                                  </div>
+                                  <div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:T.textMuted,marginTop:2}}>
+                                    <span>{wh?.start||mnToTime(whStartMn)}</span>
+                                    <span>{wh?.end||mnToTime(whEndMn)}</span>
+                                  </div>
+                                </div>;
+                              })()}
+                              {/* 현재 구간 목록 — 인라인 편집 가능 */}
                               {segs.length>0 && <div style={{padding:"6px 12px"}}>
                                 {segs.map(s=>{
                                   const br = allBranches.find(b=>b.id===s.branchId);
-                                  return <div key={s.branchId} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,fontSize:12}}>
+                                  return <div key={s.branchId} style={{display:"flex",alignItems:"center",gap:3,marginBottom:4,fontSize:11}}>
                                     <span style={{width:6,height:6,borderRadius:"50%",background:br?.color||T.primary,flexShrink:0}}/>
-                                    <span style={{flex:1,fontWeight:600}}>{br?.short||br?.name}</span>
-                                    <span style={{color:T.textMuted,fontSize:11}}>{s.from||"시작"}~{s.until||"종일"}</span>
-                                    <button onClick={()=>removeSeg(s.branchId)} style={{width:18,height:18,border:"none",background:"none",cursor:"pointer",color:T.danger,fontSize:14,padding:0,lineHeight:1}}>×</button>
+                                    <span style={{fontWeight:600,minWidth:50}}>{br?.short||br?.name}</span>
+                                    <select value={s.from||""} onChange={e=>updateSeg(s.branchId,"from",e.target.value)}
+                                      style={{flex:1,fontSize:10,padding:"2px 3px",borderRadius:4,border:"1px solid "+T.border,fontFamily:"inherit"}}>
+                                      <option value="">시작</option>
+                                      {TIME_OPTS.map(t=><option key={t} value={t}>{t}</option>)}
+                                    </select>
+                                    <span style={{color:T.textMuted}}>~</span>
+                                    <select value={s.until||""} onChange={e=>updateSeg(s.branchId,"until",e.target.value)}
+                                      style={{flex:1,fontSize:10,padding:"2px 3px",borderRadius:4,border:"1px solid "+T.border,fontFamily:"inherit"}}>
+                                      <option value="">종일</option>
+                                      {TIME_OPTS.map(t=><option key={t} value={t}>{t}</option>)}
+                                    </select>
+                                    <button onClick={()=>removeSeg(s.branchId)} style={{width:16,height:16,border:"none",background:"none",cursor:"pointer",color:T.danger,fontSize:14,padding:0,lineHeight:1,flexShrink:0}}>×</button>
                                   </div>;
                                 })}
                               </div>}
@@ -1967,46 +2326,137 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                     <option value="">지점 선택</option>
                                     {allBranches.map(b=><option key={b.id} value={b.id}>{b.short||b.name}</option>)}
                                   </select>
+                                </div>
+                                <div style={{display:"flex",gap:4,marginBottom:5,alignItems:"center"}}>
                                   <select value={addFrom} onChange={e=>setAddFrom(e.target.value)}
-                                    style={{width:82,fontSize:11,padding:"4px 5px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"}}>
-                                    <option value="">시간</option>
+                                    style={{flex:1,fontSize:11,padding:"4px 5px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"}}>
+                                    <option value="">시작(선택)</option>
                                     {Array.from({length:48},(_,i)=>{const h=Math.floor(i/2),m=(i%2)*30;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;}).filter(t=>{const hh=parseInt(t);return hh>=startHour&&hh<endHour;}).map(t=><option key={t} value={t}>{t}</option>)}
+                                  </select>
+                                  <span style={{fontSize:11,color:T.textMuted}}>~</span>
+                                  <select value={addUntil} onChange={e=>setAddUntil(e.target.value)}
+                                    style={{flex:1,fontSize:11,padding:"4px 5px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"}}>
+                                    <option value="">종료(선택)</option>
+                                    {Array.from({length:48},(_,i)=>{const h=Math.floor(i/2),m=(i%2)*30;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;}).filter(t=>{const hh=parseInt(t);return hh>=startHour&&hh<=endHour;}).map(t=><option key={t} value={t}>{t}</option>)}
                                   </select>
                                 </div>
                                 <div style={{display:"flex",gap:4}}>
-                                  <button onClick={saveSeg} disabled={!addBranch}
-                                    style={{flex:1,padding:"5px 0",borderRadius:7,border:"none",background:addBranch?"#4CAF50":T.gray300,color:"#fff",fontSize:11,fontWeight:700,cursor:addBranch?"pointer":"not-allowed",fontFamily:"inherit"}}
-                                    title="원래 매장에도 남아있음">
-                                    지원
-                                  </button>
                                   <button onClick={()=>{
                                     if(!addBranch) return;
                                     const overrideKey2 = room.staffId+"_"+selDate;
-                                    // 완전 이동: 원래 매장 제거, 대상 매장만
-                                    const newSeg = {branchId:addBranch, from:addFrom||null, until:null};
-                                    const ovData = {segments:[newSeg], exclusive:true};
+                                    const newSeg = {branchId:addBranch, from:addFrom||null, until:addUntil||null};
+                                    // 기존 segments에 추가 (중복 지점은 교체)
+                                    const prevOv = empBranchOverride[overrideKey2];
+                                    const prevSegs = (prevOv?.segments || []).filter(s => s.branchId !== addBranch);
+                                    const segments = [...prevSegs, newSeg];
+                                    // 전체 이동(시간 없음)인 세그먼트가 하나라도 있으면 exclusive
+                                    const hasAllDay = segments.some(s => !s.from && !s.until);
+                                    const hasTimed = segments.some(s => s.from || s.until);
+                                    const ovData = {segments, exclusive: hasAllDay && !hasTimed};
                                     setEmpBranchOverride(p=>({...p,[overrideKey2]:ovData}));
                                     syncOverrideToSch(room.staffId, selDate, ovData);
                                     setEmpMovePopup(null);
                                   }} disabled={!addBranch}
-                                    style={{flex:1,padding:"5px 0",borderRadius:7,border:"none",background:addBranch?T.primary:T.gray300,color:"#fff",fontSize:11,fontWeight:700,cursor:addBranch?"pointer":"not-allowed",fontFamily:"inherit"}}
-                                    title="원래 매장에서 제거됨">
+                                    style={{flex:1,padding:"7px 0",borderRadius:7,border:"none",background:addBranch?T.primary:T.gray300,color:"#fff",fontSize:11,fontWeight:700,cursor:addBranch?"pointer":"not-allowed",fontFamily:"inherit"}}
+                                    title="시작/종료 시간 미입력 시 전체 이동. 여러 지점 이동 가능.">
                                     이동
                                   </button>
                                 </div>
                               </div>
                             </>;
                           })()}
+                          {/* 오늘 휴무 / 프리랜서 컬럼 삭제 */}
+                          <div style={{borderTop:"1px solid "+T.border,padding:"8px 12px",display:"flex",gap:6}}>
+                            <button onClick={async (e) => {
+                              e.stopPropagation();
+                              if (!confirm(`${room.staffId} 오늘(${selDate}) 휴무 처리할까요?\n(컬럼이 사라집니다)`)) return;
+                              try {
+                                const newSch = {...(schHistory||{})};
+                                if (!newSch[room.staffId]) newSch[room.staffId] = {};
+                                newSch[room.staffId][selDate] = "휴무";
+                                setSchHistory(newSch);
+                                const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
+                                await fetch(`${SB_URL}/rest/v1/schedule_data`, { method:"POST", headers:H, body: JSON.stringify({id:"schHistory_v1", key:"schHistory_v1", value: JSON.stringify(newSch)}) });
+                                setEmpMovePopup(null);
+                              } catch (err) { console.error("휴무 처리 실패:", err); alert("실패: " + err.message); }
+                            }} style={{flex:1,padding:"7px 0",borderRadius:7,border:"1px solid "+T.gray400,background:T.gray100,color:T.text,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+                              오늘 휴무
+                            </button>
+                          </div>
+                          {/* 프리랜서 컬럼 삭제 */}
+                          {(() => {
+                            const emp = empList.find(e => e.id === room.staffId);
+                            if (!emp?.isFreelancer) return null;
+                            return <div style={{borderTop:"1px solid "+T.border,padding:"8px 12px"}}>
+                              <button onClick={async (e) => {
+                                e.stopPropagation();
+                                if (!confirm(`"${room.staffId}" 프리랜서 컬럼을 삭제할까요?\n(모든 지점/날짜에서 제거됩니다)`)) return;
+                                const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
+                                try {
+                                  const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.customEmployees_v1&select=value`, { headers: H });
+                                  const rows = await r.json();
+                                  const existing = typeof rows?.[0]?.value === "string" ? JSON.parse(rows[0].value) : (Array.isArray(rows?.[0]?.value) ? rows[0].value : []);
+                                  const filtered = existing.filter(x => x.id !== room.staffId);
+                                  await fetch(`${SB_URL}/rest/v1/schedule_data`, {
+                                    method: "POST", headers: H,
+                                    body: JSON.stringify({ id: "customEmployees_v1", key: "customEmployees_v1", value: JSON.stringify(filtered) })
+                                  });
+                                  setEmpList(prev => prev.filter(x => x.id !== room.staffId));
+                                  setEmpMovePopup(null);
+                                } catch (err) { console.error("삭제 실패:", err); alert("삭제 실패: " + err.message); }
+                              }} style={{width:"100%",padding:"7px 0",borderRadius:7,border:"1px solid "+T.danger+"44",background:"#fff5f5",color:T.danger,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+                                <I name="trash" size={12} color={T.danger}/> 프리랜서 컬럼 삭제
+                              </button>
+                            </div>;
+                          })()}
                         </div>
                       </>)}
                     </div>
                   ) : (
-                    <span className="tl-room-sub" style={{fontSize:T.fs.nano,color:room.isNaver?T.successDk:T.gray500}}>{room.isNaver?<I name="naver" size={11}/>:""}{room.name}</span>
+                    <span className="tl-room-sub" style={{fontSize:T.fs.nano,color:room.isNaver?T.successDk:T.gray500,display:"inline-flex",alignItems:"center",gap:3}}>
+                      {room.isNaver?<I name="naver" size={11}/>:""}{room.name}
+                      {/* 프리랜서 삭제 버튼 */}
+                      {room.isStaffCol && room.staffId && (() => {
+                        const emp = empList.find(e => e.id === room.staffId);
+                        if (!emp?.isFreelancer) return null;
+                        return <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (!confirm(`"${room.staffId}" 컬럼을 삭제할까요?\n(이 지점의 모든 날짜에서 제거됩니다)`)) return;
+                            const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
+                            try {
+                              const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.customEmployees_v1&select=value`, { headers: H });
+                              const rows = await r.json();
+                              const existing = typeof rows?.[0]?.value === "string" ? JSON.parse(rows[0].value) : (Array.isArray(rows?.[0]?.value) ? rows[0].value : []);
+                              const filtered = existing.filter(x => x.id !== room.staffId);
+                              await fetch(`${SB_URL}/rest/v1/schedule_data`, {
+                                method: "POST", headers: H,
+                                body: JSON.stringify({ id: "customEmployees_v1", key: "customEmployees_v1", value: JSON.stringify(filtered) })
+                              });
+                              setEmpList(prev => prev.filter(x => x.id !== room.staffId));
+                            } catch (err) { console.error("삭제 실패:", err); alert("삭제 실패: " + err.message); }
+                          }}
+                          title="프리랜서 컬럼 삭제"
+                          style={{width:14,height:14,borderRadius:"50%",border:"none",background:T.gray200,color:T.gray500,cursor:"pointer",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",padding:0,lineHeight:1}}
+                          onMouseOver={e=>{e.currentTarget.style.background=T.dangerLt;e.currentTarget.style.color=T.danger;}}
+                          onMouseOut={e=>{e.currentTarget.style.background=T.gray200;e.currentTarget.style.color=T.gray500;}}
+                        >×</button>;
+                      })()}
+                    </span>
                   )}
                 </div>
                 {/* Grid Area */}
-                <div style={{position:"relative",height:totalRows*rowH,cursor:room.isBlank?"default":room.isNaver?"default":(canEdit(room.branch_id)?"pointer":"default"),...(room.isBlank?{background:"repeating-linear-gradient(45deg,#f5f5f5,#f5f5f5 6px,#fafafa 6px,#fafafa 12px)"}:gridBg)}}
+                <div style={{position:"relative",height:totalRows*rowH,cursor:(room.isBlank&&room.isAddCol)?"pointer":room.isBlank?"default":room.isNaver?"default":(canEdit(room.branch_id)?"pointer":"default"),...(room.isBlank?{background:"repeating-linear-gradient(45deg,#f5f5f5,#f5f5f5 6px,#fafafa 6px,#fafafa 12px)"}:gridBg)}}
                   onClick={e=>{
+                    // + 칼럼: 매일 반복 내부일정 템플릿 생성
+                    if(room.isBlank && room.isAddCol) {
+                      if(!canEdit(room.branch_id)) return;
+                      const rect3=e.currentTarget.getBoundingClientRect();
+                      const time=yToTime(e.clientY-rect3.top);
+                      setModalData({bid:room.branch_id, time, date:selDate, isSchedule:true, _isColTemplate:true, dur:30});
+                      setShowModal(true);
+                      return;
+                    }
                     // 비활성 시간대: 내부일정만 허용
                     if(room.isStaffCol && (room.activeFrom||room.activeUntil)) {
                       const rect2=e.currentTarget.getBoundingClientRect();
@@ -2018,7 +2468,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                         if(!canEdit(room.branch_id)) return;
                         const h=Math.floor(clickMin/60), m=clickMin%60;
                         const time=`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
-                        setModalData({roomId:room.id,bid:room.branch_id,time,date:selDate,isSchedule:true,scheduleOnly:true});
+                        setModalData({roomId:"",staffId:room.staffId,bid:room.branch_id,time,date:selDate,isSchedule:true});
                         setShowModal(true);
                         return;
                       }
@@ -2054,7 +2504,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                   }}
                 >
                   {/* Hover/touch highlight */}
-                  {/* 비활성 시간대 오버레이 */}
+                  {/* 비활성 시간대 오버레이 + 드래그 핸들 */}
                   {room.isStaffCol && (room.activeFrom||room.activeUntil) && (()=>{
                     const startMin2 = startHour*60;
                     const fromMin2 = room.activeFrom ? parseInt(room.activeFrom.split(":")[0])*60+parseInt(room.activeFrom.split(":")[1]) : startMin2;
@@ -2062,10 +2512,47 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                     const beforeH2 = Math.max(0,(fromMin2-startMin2)/5*rowH);
                     const afterTop2 = Math.min(totalRows*rowH,(untilMin2-startMin2)/5*rowH);
                     const afterH2 = Math.max(0,totalRows*rowH-afterTop2);
+                    const mnToTime = (mn) => `${String(Math.floor(mn/60)).padStart(2,"0")}:${String(mn%60).padStart(2,"0")}`;
+                    // 드래그 핸들러 (시작/종료 시간 조절)
+                    const onWhDragStart = (boundary) => (ev) => {
+                      ev.stopPropagation(); ev.preventDefault();
+                      const isTouch = ev.type === "touchstart";
+                      const grid = ev.currentTarget.parentElement;
+                      const rect = grid.getBoundingClientRect();
+                      const onMv = (e2) => {
+                        const pt = isTouch ? e2.touches[0] : e2;
+                        if (!pt) return;
+                        const y = Math.max(0, Math.min(grid.clientHeight, pt.clientY - rect.top));
+                        const slot = Math.round(y / rowH);
+                        const newMn = startMin2 + slot * 5;
+                        const t = mnToTime(Math.max(startMin2, Math.min(startMin2+totalRows*5, newMn)));
+                        const whKey = room.staffId+"_"+room.branch_id+"_"+selDate;
+                        const wh = empWorkHours[whKey] || empWorkHours[room.staffId+"_"+room.branch_id] || {start: room.activeFrom||mnToTime(startMin2), end: room.activeUntil||mnToTime(startMin2+totalRows*5)};
+                        const newWh = boundary === "start" ? {...wh, start: t} : {...wh, end: t};
+                        setEmpWorkHours(p=>({...p, [whKey]: newWh}));
+                      };
+                      const onUp = () => {
+                        document.removeEventListener(isTouch?"touchmove":"mousemove", onMv);
+                        document.removeEventListener(isTouch?"touchend":"mouseup", onUp);
+                      };
+                      document.addEventListener(isTouch?"touchmove":"mousemove", onMv, {passive:false});
+                      document.addEventListener(isTouch?"touchend":"mouseup", onUp);
+                    };
                     return <>
                       {beforeH2>0&&<div style={{position:"absolute",top:0,left:0,right:0,height:beforeH2,background:"rgba(0,0,0,.06)",zIndex:2,pointerEvents:"none",borderBottom:"2px dashed rgba(0,0,0,.12)"}}/>}
                       {afterH2>0&&<div style={{position:"absolute",top:afterTop2,left:0,right:0,height:afterH2,background:"rgba(0,0,0,.06)",zIndex:2,pointerEvents:"none",borderTop:"2px dashed rgba(0,0,0,.12)"}}/>}
-                      {/* 출퇴근 시간 텍스트 제거 — 회색 영역만 표시 */}
+                      {/* 출근 시간 드래그 핸들 (start boundary) */}
+                      {beforeH2>0 && <div onMouseDown={onWhDragStart("start")} onTouchStart={onWhDragStart("start")}
+                        style={{position:"absolute",top:beforeH2-6,left:0,right:0,height:12,cursor:"ns-resize",zIndex:4,display:"flex",alignItems:"center",justifyContent:"center"}}
+                        title={`출근 ${room.activeFrom||""} (드래그)`}>
+                        <div style={{height:3,width:30,borderRadius:2,background:T.primary,opacity:0.5}}/>
+                      </div>}
+                      {/* 퇴근 시간 드래그 핸들 (end boundary) */}
+                      {afterH2>0 && <div onMouseDown={onWhDragStart("end")} onTouchStart={onWhDragStart("end")}
+                        style={{position:"absolute",top:afterTop2-6,left:0,right:0,height:12,cursor:"ns-resize",zIndex:4,display:"flex",alignItems:"center",justifyContent:"center"}}
+                        title={`퇴근 ${room.activeUntil||""} (드래그)`}>
+                        <div style={{height:3,width:30,borderRadius:2,background:T.primary,opacity:0.5}}/>
+                      </div>}
                     </>;
                   })()}
                   {hoverCell?.roomId===room.id && hoverCell.rowIdx>=0 && <div style={{position:"absolute",top:hoverCell.rowIdx*rowH,left:0,right:0,height:rowH,background:"rgba(124,124,200,0.12)",borderTop:"1px solid rgba(124,124,200,0.3)",borderBottom:"1px solid rgba(124,124,200,0.3)",zIndex:1,pointerEvents:"none",transition:"top 0.05s ease"}}/>}
@@ -2123,7 +2610,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                     const isNaverCancelled = block.status === "naver_cancelled";
                     const isNaverPending = (block.status === "pending" || block.status === "request") && !(block.memo && block.memo.includes("확정완료"));
                     // 네이버 예약이고 아직 일반 칼럼에 미배정 (roomId 없거나 nv_ 접두)
-                    const isNaverUnassigned = !!block.reservationId && (!block.roomId || block.roomId.startsWith("nv_"));
+                    const isNaverUnassigned = !!block.reservationId && !block.staffId && (!block.roomId || block.roomId.startsWith("nv_"));
                     const stClr = block.type==="reservation" && !block.isSchedule && statusClr[block.status];
                     const color = isNaverCancelled ? T.warning : (stClr || tagColor || BLOCK_COLORS[block.type] || T.primary);
                     const staff = (data.staff||[]).find(s=>s.id===block.staffId);
@@ -2134,9 +2621,34 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                     const bgAlpha = isSch ? opHex(Math.min(blockOp, 80)) : opHex(blockOp);
                     return (
                       <div key={block.id} data-rid={block.reservationId||block.id}
-                        onClick={e=>handleBlockClick(block,e)}
-                        onMouseDown={e=>{if(isEditable && !isResizing.current)handleDragStart(block,e)}}
-                        onTouchStart={e=>{if(isEditable && !isResizing.current)handleDragStart(block,e)}}
+                        onClick={e=>{
+                          e.stopPropagation();
+                          if (block._isColTemplate) {
+                            // 템플릿 편집: 모달 열기
+                            setModalData({
+                              id: block.id, _isColTemplate: true, _templateId: block.id,
+                              bid: block.bid, time: block.time, dur: block.dur, date: selDate,
+                              isSchedule: true, selectedTags: [...(block.selectedTags||[])], memo: block.memo||""
+                            });
+                            setShowModal(true);
+                            return;
+                          }
+                          handleBlockClick(block,e);
+                        }}
+                        onMouseDown={e=>{
+                          if (block._isColTemplate) {
+                            if (isEditable) handleTplDragStart(block, e);
+                            return;
+                          }
+                          if(isEditable && !isResizing.current)handleDragStart(block,e);
+                        }}
+                        onTouchStart={e=>{
+                          if (block._isColTemplate) {
+                            if (isEditable) handleTplDragStart(block, e);
+                            return;
+                          }
+                          if(isEditable && !isResizing.current)handleDragStart(block,e);
+                        }}
                         style={{position:"absolute",top:y,
                           left: block._totalCols > 1 ? 3 + (block._col * ((colW - 6) / block._totalCols)) : 3,
                           width: block._totalCols > 1 ? ((colW - 6) / block._totalCols) - 2 : undefined,
@@ -2177,14 +2689,38 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             {groupSvcNames(block.selectedServices, SVC_LIST).slice(0,2).join(", ")}
                             {block.selectedServices.length>2 && ` +${block.selectedServices.length-2}`}
                           </div>}
-                          {block.custId && custPkgMap[block.custId]?.length > 0 && <div style={{display:"flex",gap:2,flexWrap:"wrap",marginTop:1}}>
-                            {custPkgMap[block.custId].slice(0,3).map((pkg,pi) => <span key={pi} style={{
-                              fontSize:Math.max(6,blockFs-3),padding:"0px 3px",borderRadius:3,lineHeight:"14px",fontWeight:700,
-                              background:pkg.isDadam?"#ffeaa7":"#dfe6e9",
-                              color:pkg.isDadam?"#d35400":"#2d3436"
-                            }}>{pkg.isDadam?`${pkg.name} ${pkg.remain.toLocaleString()}원`:`${pkg.name} ${pkg.remain}회`}</span>)}
-                            {custPkgMap[block.custId].length>3 && <span style={{fontSize:Math.max(6,blockFs-3),color:T.gray400}}>+{custPkgMap[block.custId].length-3}</span>}
-                          </div>}
+                          {block.custId && custPkgMap[block.custId]?.length > 0 && (() => {
+                            // 같은 이름 패키지 그룹화 + 우선순위 정렬
+                            const grouped = {};
+                            (custPkgMap[block.custId] || []).forEach(pkg => {
+                              const key = pkg.name + "_" + (pkg.isDadam ? "dadam" : "pkg");
+                              if (!grouped[key]) grouped[key] = {...pkg, count: 0, totalRemain: 0};
+                              grouped[key].count += 1;
+                              grouped[key].totalRemain += pkg.remain;
+                            });
+                            // 우선순위: 다담권(prepaid) > 재생 > 토탈 > 기타 > 소급
+                            const PRIORITY = ["다담", "선불", "재생", "토탈", "풀페이스", "왁싱", "케어"];
+                            const priOf = (name) => {
+                              if (/소급/.test(name)) return 999;
+                              const idx = PRIORITY.findIndex(k => name.includes(k));
+                              return idx < 0 ? 500 : idx;
+                            };
+                            const sorted = Object.values(grouped).sort((a, b) => {
+                              if (a.isDadam !== b.isDadam) return a.isDadam ? -1 : 1;
+                              return priOf(a.name) - priOf(b.name);
+                            });
+                            return <div style={{display:"flex",gap:2,flexWrap:"wrap",marginTop:1}}>
+                              {sorted.slice(0,4).map((pkg,pi) => <span key={pi} style={{
+                                fontSize:Math.max(6,blockFs-3),padding:"0px 3px",borderRadius:3,lineHeight:"14px",fontWeight:700,
+                                background:pkg.isDadam?"#ffeaa7":"#dfe6e9",
+                                color:pkg.isDadam?"#d35400":"#2d3436"
+                              }}>
+                                {pkg.isDadam ? `${pkg.name} ${pkg.totalRemain.toLocaleString()}원` : `${pkg.name} ${pkg.totalRemain}회`}
+                                {pkg.count > 1 && <span style={{opacity:0.7,marginLeft:2}}>×{pkg.count}</span>}
+                              </span>)}
+                              {sorted.length>4 && <span style={{fontSize:Math.max(6,blockFs-3),color:T.gray400}}>+{sorted.length-4}</span>}
+                            </div>;
+                          })()}
                           {h >= rowH * 3 && (()=>{
                             // 체크된 네이버 필드만 표시
                             const checkedCols = NAVER_COLS.filter(col => effectiveNaverColShow[col.key] !== false);
@@ -2200,18 +2736,19 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             </div>;
                           })()}
                         </>}
-                        {block.type==="reservation" && block.isSchedule && <div style={{fontWeight:T.fw.bolder,color:T.text,fontSize:blockFs+1}}>
-                          {block.selectedTags?.map(tid=>{const tg=tags.find(t=>t.id===tid);return tg?.name}).filter(Boolean).join(", ")||"내부일정"}
-                        </div>}
+                        {block.type==="reservation" && block.isSchedule && (() => {
+                          const tagNames = (block.selectedTags||[]).map(tid=>{const tg=tags.find(t=>t.id===tid);return tg?.name}).filter(Boolean).join(", ");
+                          return tagNames ? <div style={{fontWeight:T.fw.bolder,color:T.text,fontSize:blockFs+1}}>{tagNames}</div> : null;
+                        })()}
                         {block.type==="memo" && <div style={{color:T.danger,fontWeight:T.fw.bold}}><I name="fileText" size={10} color={T.danger}/> 메모</div>}
                         {block.type==="clockin" && <div style={{color:T.gray600,fontWeight:T.fw.bold}}><I name="clock" size={10} color={T.gray600}/> {staff?.dn||"출근"}</div>}
                         {block.type==="cleaning" && <div style={{color:T.info,fontWeight:T.fw.bold}}><I name="sparkles" size={10} color={T.info}/> 청소</div>}
                         {block.memo && (() => { const clean = block.memo.split("\n").filter(l => { const t=l.trim(); return !(/^\[등록:|^\[수정:/.test(t)) && !(/^\d+\.\d+\s+\d+:\d+\s*(예약)?(접수|변경|확정|취소|신청|확정완료)/.test(t)); }).join("\n").trim(); return clean ? <div style={{color:T.gray700,marginTop:1,whiteSpace:"pre-line",wordBreak:"break-word"}}><I name="msgSq" size={10} color={T.gray600}/> {clean}</div> : null; })()}
                         {/* Resize handle */}
                         {isEditable && <div className="resize-handle" onMouseDown={e=>handleResizeStart(block,e)} onTouchStart={e=>handleResizeStart(block,e)}
-                          style={{position:"absolute",bottom:-8,left:0,right:0,height:24,cursor:"ns-resize",
+                          style={{position:"absolute",bottom:-4,left:"25%",right:"25%",height:10,cursor:"ns-resize",
                             display:"flex",alignItems:"flex-start",justifyContent:"center",opacity:0,transition:"opacity .15s",zIndex:3}}>
-                          <div style={{width:24,height:4,borderRadius:T.radius.sm,background:color,marginTop:4}}/>
+                          <div style={{width:24,height:3,borderRadius:T.radius.sm,background:color,marginTop:2}}/>
                         </div>}
                         {isBeingResized && <div style={{position:"absolute",bottom:2,right:4,fontSize:Math.max(6,blockFs-2),fontWeight:T.fw.bolder,color,background:T.bgCard,padding:"0 3px",borderRadius:T.radius.sm}}>
                           {blockDur}분

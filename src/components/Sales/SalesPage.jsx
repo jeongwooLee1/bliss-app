@@ -203,23 +203,44 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role }) {
       <span style={{fontSize:T.fs.sm,color:T.textSub,whiteSpace:"nowrap",flexShrink:0}}>{sales.length}건</span>
     </div>
 
-    {/* 요약 합계 바 */}
-    {sales.length > 0 && (
-      <div style={{display:"flex",gap:T.sp.sm,marginBottom:T.sp.md,flexWrap:"wrap"}}>
-        {[
-          {lbl:"총 매출",  v:totals.total, c:T.info,    bold:true},
-          {lbl:"시술",     v:totals.svc,   c:T.primary},
-          {lbl:"제품",     v:totals.prod,  c:T.infoLt2},
-          {lbl:"상품권",   v:totals.gift,  c:T.orange},
-        ].map(({lbl,v,c,bold})=>(
-          <div key={lbl} style={{background:T.bgCard,border:"1px solid "+T.border,borderRadius:T.radius.md,
-            padding:"6px 14px",display:"flex",alignItems:"baseline",gap:6}}>
-            <span style={{fontSize:T.fs.xxs,color:T.textSub}}>{lbl}</span>
-            <span style={{fontSize:T.fs.sm,fontWeight:bold?T.fw.black:T.fw.bolder,color:c}}>{fmt(v)}</span>
-          </div>
-        ))}
-      </div>
-    )}
+    {/* 요약 합계 바 — 결제수단 분리 표시 (마감 시 편의) */}
+    {sales.length > 0 && (() => {
+      const cash = totals.svcCash + totals.prodCash;
+      const card = totals.svcCard + totals.prodCard;
+      const transfer = totals.svcTransfer + totals.prodTransfer;
+      const point = totals.svcPoint + totals.prodPoint;
+      return <>
+        <div style={{display:"flex",gap:T.sp.sm,marginBottom:6,flexWrap:"wrap"}}>
+          {[
+            {lbl:"총 매출",  v:totals.total, c:T.info,    bold:true},
+            {lbl:"시술",     v:totals.svc,   c:T.primary},
+            {lbl:"제품",     v:totals.prod,  c:T.infoLt2},
+            {lbl:"네이버예약금", v:totals.gift,  c:"#03C75A"},
+          ].map(({lbl,v,c,bold})=>(
+            <div key={lbl} style={{background:T.bgCard,border:"1px solid "+T.border,borderRadius:T.radius.md,
+              padding:"6px 14px",display:"flex",alignItems:"baseline",gap:6}}>
+              <span style={{fontSize:T.fs.xxs,color:T.textSub}}>{lbl}</span>
+              <span style={{fontSize:T.fs.sm,fontWeight:bold?T.fw.black:T.fw.bolder,color:c}}>{fmt(v)}</span>
+            </div>
+          ))}
+        </div>
+        {/* 결제수단별 합계 (마감 정산용) */}
+        <div style={{display:"flex",gap:T.sp.sm,marginBottom:T.sp.md,flexWrap:"wrap"}}>
+          {[
+            {lbl:"현금",  v:cash,     c:"#16a34a"},
+            {lbl:"카드",  v:card,     c:T.primary},
+            {lbl:"입금",  v:transfer, c:T.info},
+            {lbl:"포인트",v:point,    c:T.orange},
+          ].filter(it => it.v > 0).map(({lbl,v,c})=>(
+            <div key={lbl} style={{background:c+"15",border:"1px solid "+c+"55",borderRadius:T.radius.md,
+              padding:"6px 14px",display:"flex",alignItems:"baseline",gap:6}}>
+              <span style={{fontSize:T.fs.xxs,color:c,fontWeight:T.fw.bolder}}>{lbl}</span>
+              <span style={{fontSize:T.fs.sm,fontWeight:T.fw.black,color:c}}>{fmt(v)}</span>
+            </div>
+          ))}
+        </div>
+      </>;
+    })()}
 
     {/* 테이블 */}
     <DataTable card>
@@ -288,7 +309,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role }) {
                       <PaySummary label="카드" val={(s.svcCard||0)+(s.prodCard||0)} color={T.primary}/>
                       <PaySummary label="입금" val={(s.svcTransfer||0)+(s.prodTransfer||0)} color={T.info}/>
                       <PaySummary label="포인트" val={(s.svcPoint||0)+(s.prodPoint||0)} color={T.orange}/>
-                      {(s.gift||0)>0 && <PaySummary label="상품권" val={s.gift} color={T.danger}/>}
+                      {(s.gift||0)>0 && <PaySummary label="네이버예약금" val={s.gift} color="#03C75A"/>}
                       {s.custPhone && <span style={{fontSize:T.fs.xxs,color:T.primary,marginLeft:"auto"}}>{s.custPhone}</span>}
                       {s.createdAt && <span style={{fontSize:T.fs.xxs,color:T.textMuted}}>
                         {new Date(s.createdAt).toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}
