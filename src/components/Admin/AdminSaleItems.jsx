@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { T } from '../../lib/constants'
 import { sb } from '../../lib/sb'
-import { _activeBizId } from '../../lib/db'
+import { _activeBizId, toDb } from '../../lib/db'
 import { genId } from '../../lib/utils'
 import I from '../common/I'
 import { AConfirm, ASheet, AField, AInp, AEmpty, APageHeader, AToggle, ABadge, AIBtn, useTouchDragSort } from './AdminUI'
@@ -58,11 +58,11 @@ function AdminSaleItems({ data, setData }) {
     try{
       const pl={cat:form.cat,name:form.name,dur:+form.dur,priceF:+form.priceF,priceM:+form.priceM,memberPriceF:+form.memberPriceF||null,memberPriceM:+form.memberPriceM||null,note:form.note,isPackage:form.isPackage,pkgCount:+form.pkgCount,pkgPriceF:+form.pkgPriceF,pkgPriceM:+form.pkgPriceM};
       if(edit){
-        await sb.update("services",edit.id,pl);
+        await sb.update("services",edit.id,toDb("services",pl));
         setServices(p=>p.map(s=>s.id===edit.id?{...s,...pl}:s));
       }else{
         const id="sv_"+uid();
-        const res=await sb.insert("services",{id,business_id:_activeBizId,...pl,sort:services.length});
+        const res=await sb.insert("services",toDb("services",{id,business_id:_activeBizId,...pl,sort:services.length}));
         if(!res)return;
         setServices(p=>[...p,{id,...pl,sort:services.length}]);
       }

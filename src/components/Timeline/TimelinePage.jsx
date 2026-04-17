@@ -600,11 +600,30 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const accessibleBids = [...new Set([...userBranches, ...(viewBranches||[])])];
   // 기본: 본인 지점(쓰기권한)만 표시, isMaster는 전지점
   const defaultViewBids = isMaster ? allBranchList.map(b=>b.id) : (userBranches.length > 0 ? userBranches : accessibleBids);
-  const [viewBids, setViewBids] = useState(defaultViewBids);
+  // localStorage에서 저장된 viewBids 복원
+  const VIEW_BIDS_KEY = "bliss_timeline_viewBids_v1";
+  const [viewBids, setViewBidsRaw] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(VIEW_BIDS_KEY) || "null");
+      if (Array.isArray(saved) && saved.length > 0) return saved;
+    } catch {}
+    return defaultViewBids;
+  });
+  const setViewBids = React.useCallback((v) => {
+    setViewBidsRaw(prev => {
+      const next = typeof v === "function" ? v(prev) : v;
+      try { localStorage.setItem(VIEW_BIDS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
   const [expanded, setExpanded] = useState(isMaster);
 
-  // userBranches 변경 시 viewBids 동기화 (로그인 직후 타이밍 이슈 해결)
+  // userBranches 변경 시 viewBids 동기화 — 단, 저장된 값이 유효하면 존중
   useEffect(() => {
+    const savedRaw = (()=>{ try { return JSON.parse(localStorage.getItem(VIEW_BIDS_KEY) || "null"); } catch { return null; } })();
+    const hasValidSaved = Array.isArray(savedRaw) && savedRaw.length > 0
+      && savedRaw.every(id => isMaster || accessibleBids.includes(id));
+    if (hasValidSaved) return; // 저장된 유저 선택 유지
     if (isMaster) {
       setViewBids(allBranchList.map(b=>b.id));
     } else if (userBranches.length > 0) {
@@ -613,13 +632,12 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     }
   }, [userBranches.join(",")]);
 
-  // Sync viewBids when branches change (e.g. added/removed in admin)
+  // Sync viewBids when branches change (e.g. added/removed in admin) — 기존 선택 유지하며 새 지점만 추가
   useEffect(() => {
     const newIds = allBranchList.map(b=>b.id);
     setViewBids(prev => {
-      const added = newIds.filter(id => !prev.includes(id) && (isMaster || accessibleBids.includes(id)));
       const filtered = prev.filter(id => newIds.includes(id));
-      return added.length > 0 ? [...filtered, ...added] : filtered.length !== prev.length ? filtered : prev;
+      return filtered.length !== prev.length ? filtered : prev;
     });
   }, [allBranchList.length]);
 
@@ -1428,20 +1446,43 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       const roomIdx = Math.max(0, Math.min(allRooms.length - 1, Math.floor(colX / colW)));
       const targetRoom = allRooms[roomIdx];
       const gridY = y - clickOffsetY;
-      const snappedTime = yToTime(Math.max(0, gridY));
+      // 시간 변경은 원래 위치에서 일정 임계치 이상 수직 이동 시에만 적용 (컬럼 이동 우선)
+      const dyFromOrigin = Math.abs(gridY - blockTopY);
+      const VERT_THRESHOLD = Math.max(18, rowH * 1.5);
+      const snappedTime = dyFromOrigin < VERT_THRESHOLD
+        ? block.time
+        : yToTime(Math.max(0, gridY));
       setDragSnap({ roomId: targetRoom?.id, bid: targetRoom?.branch_id, time: snappedTime });
       dragSnapRef.current = { roomId: targetRoom?.id, bid: targetRoom?.branch_id, time: snappedTime };
       const edgeZone = 40;
       if (pt.clientY - rect.top < edgeZone) sr.scrollTop -= 8;
       if (rect.bottom - pt.clientY < edgeZone) sr.scrollTop += 8;
+      // 좌우 엣지 자동 스크롤 (오른쪽/왼쪽 컬럼으로 이동 가능)
+      if (pt.clientX - rect.left < edgeZone) sr.scrollLeft -= 12;
+      if (rect.right - pt.clientX < edgeZone) sr.scrollLeft += 12;
     };
 
     const onDragUp = () => {
       document.removeEventListener(isTouch ? "touchmove" : "mousemove", onDragMove);
       document.removeEventListener(isTouch ? "touchend" : "mouseup", onDragUp);
       if (isDragging.current && dragSnapRef.current) {
-        const snap = dragSnapRef.current;
+        let snap = dragSnapRef.current;
         const orig = origBlockPos.current;
+        // + (add) 컬럼에 드롭한 경우 → 같은 지점의 마지막 직원 컬럼으로 스냅 (미배정 방지)
+        const snapRoom = allRooms.find(rm => rm.id === snap.roomId);
+        if (snapRoom?.isBlank || snapRoom?.isAddCol) {
+          const branchStaffCols = allRooms.filter(r => r.branch_id === snap.bid && r.isStaffCol);
+          const lastStaff = branchStaffCols[branchStaffCols.length - 1];
+          if (lastStaff) {
+            snap = { ...snap, roomId: lastStaff.id, bid: lastStaff.branch_id };
+            dragSnapRef.current = snap;
+          } else {
+            // 직원 컬럼이 없으면 이동 취소
+            setDragBlock(null); setDragPos(null); setDragSnap(null); dragSnapRef.current = null;
+            setTimeout(() => { isDragging.current = false; longPressActive.current = false; }, 300);
+            return;
+          }
+        }
         if (snap.time !== orig.time || snap.roomId !== orig.roomId) {
           setData(prev => ({...prev, reservations: (prev?.reservations||[]).map(r => {
             if (r.id !== block.id) return r;
@@ -1549,7 +1590,9 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       if (!pt) return;
       if (isTouch) ev.preventDefault();
       const dy = pt.clientY - startY;
-      const durDelta = Math.round(dy / rowH) * timeUnit;
+      // 5분 단위로 리사이즈 — timeUnit 설정과 무관하게 5분까지 축소 가능
+      const dyMin = dy * timeUnit / rowH;
+      const durDelta = Math.round(dyMin / 5) * 5;
       const newDur = Math.max(5, startDur + durDelta);
       setResizeDur(newDur);
       resizeDurRef.current = newDur;
@@ -2041,10 +2084,19 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                 const overrideKey = empName+"_"+selDate;
                                 let ovData;
                                 if(exclusive) {
-                                  // 이동: 대상 지점에만
-                                  ovData = {segments:[{branchId:targetBid,from:null,until:null}],exclusive:true};
+                                  // 이동: 시간 지정되면 분할 이동 (원래 지점 ~시간 활성, 대상 지점 시간~ 활성)
+                                  if(supportFrom && baseBid) {
+                                    const segs = [
+                                      {branchId:baseBid, from:null, until:supportFrom},
+                                      {branchId:targetBid, from:supportFrom, until:null}
+                                    ];
+                                    ovData = {segments:segs};
+                                  } else {
+                                    // 시간 없으면 종일 이동
+                                    ovData = {segments:[{branchId:targetBid,from:null,until:null}],exclusive:true};
+                                  }
                                 } else {
-                                  // 지원: 원래 지점(~시작시간) + 대상 지점(시작시간~)
+                                  // 지원: 원래 지점(~시작시간) + 대상 지점(시작시간~) 둘 다 유지
                                   const from = supportFrom || "14:00";
                                   const segs = [];
                                   if(baseBid) segs.push({branchId:baseBid, from:null, until:from});
@@ -2084,10 +2136,10 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                   ) : room.isStaffCol ? (
                     <div style={{position:"relative"}}>
                       <span className="tl-room-sub" style={{fontSize:14,fontWeight:800,color:T.text,cursor:"pointer",borderBottom:"1px dashed "+T.gray400}}
-                        onClick={e=>{e.stopPropagation();setEmpMovePopup(p=>p?.empId===room.staffId?null:{empId:room.staffId,date:selDate,x:e.clientX,y:e.clientY});}}>
+                        onClick={e=>{e.stopPropagation();setEmpMovePopup(p=>(p?.empId===room.staffId && p?.branchId===room.branch_id)?null:{empId:room.staffId,branchId:room.branch_id,date:selDate,x:e.clientX,y:e.clientY});}}>
                         {room.name}
                       </span>
-                      {empMovePopup?.empId===room.staffId && empMovePopup?.date===selDate && (<>
+                      {empMovePopup?.empId===room.staffId && empMovePopup?.date===selDate && empMovePopup?.branchId===room.branch_id && (<>
                         <div style={{position:"fixed",inset:0,zIndex:9998}} onClick={e=>{e.stopPropagation();setEmpMovePopup(null);}}/>
                         <div onClick={e=>e.stopPropagation()} style={{position:"fixed",left:Math.min(empMovePopup.x,window.innerWidth-200),top:empMovePopup.y+8,background:T.bgCard,borderRadius:12,boxShadow:"0 4px 24px rgba(0,0,0,.22)",zIndex:9999,padding:"10px 0 6px",minWidth:200}}>
                           {/* 근무시간 설정 */}
@@ -2127,6 +2179,38 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                 style={{width:22,height:22,border:"1px solid "+T.border,borderRadius:4,background:T.bgCard,cursor:"pointer",fontSize:12,padding:0}}>→</button>
                             </div>
                           </div>
+                          {/* 담당자 교체 — 이 컬럼의 예약을 다른 직원에게 넘기기 */}
+                          {(()=>{
+                            const rsvList = (data?.reservations||[]).filter(r=>r.date===selDate && r.staffId===room.staffId && r.bid===room.branch_id);
+                            if (rsvList.length === 0) return null;
+                            // 현재 컬럼의 직원 제외, 이 지점에 오늘 있는(또는 올) 직원만
+                            const currentStaffIds = new Set([room.staffId]);
+                            const candidates = BASE_EMP_LIST.filter(e => !currentStaffIds.has(e.id));
+                            return <div style={{padding:"8px 12px",borderBottom:"1px solid "+T.border,background:"#FFF8E1"}}>
+                              <div style={{fontSize:10,fontWeight:700,color:"#F57F17",marginBottom:4}}>📋 담당자 교체 <span style={{color:T.textMuted,fontWeight:500}}>(예약 {rsvList.length}건)</span></div>
+                              <div style={{display:"flex",gap:4}}>
+                                <select value={empMovePopup.replaceWith||""} onChange={e=>setEmpMovePopup(p=>({...p,replaceWith:e.target.value}))}
+                                  style={{flex:1,fontSize:11,padding:"4px 6px",borderRadius:6,border:"1px solid #ffb74d",fontFamily:"inherit"}}>
+                                  <option value="">새 담당자 선택</option>
+                                  {candidates.map(e=><option key={e.id} value={e.id}>{e.name||e.id}</option>)}
+                                </select>
+                                <button disabled={!empMovePopup.replaceWith}
+                                  onClick={()=>{
+                                    const newStaffId = empMovePopup.replaceWith;
+                                    if(!newStaffId) return;
+                                    if(!confirm(`${rsvList.length}건 예약의 담당자를 "${newStaffId}"로 교체하시겠어요?`)) return;
+                                    rsvList.forEach(r=>{
+                                      sb.update("reservations", r.id, { staff_id: newStaffId }).catch(console.error);
+                                    });
+                                    setData(prev=>({...prev, reservations:(prev?.reservations||[]).map(r =>
+                                      (r.date===selDate && r.staffId===room.staffId && r.bid===room.branch_id) ? {...r, staffId:newStaffId} : r
+                                    )}));
+                                    setEmpMovePopup(null);
+                                  }}
+                                  style={{padding:"4px 10px",fontSize:11,fontWeight:700,border:"none",borderRadius:6,background:empMovePopup.replaceWith?"#ff9800":T.gray300,color:"#fff",cursor:empMovePopup.replaceWith?"pointer":"not-allowed",fontFamily:"inherit"}}>교체</button>
+                              </div>
+                            </div>;
+                          })()}
                           {/* 현재 segments */}
                           {(()=>{
                             const overrideKey = room.staffId+"_"+selDate;
@@ -2369,14 +2453,31 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                           <div style={{borderTop:"1px solid "+T.border,padding:"8px 12px",display:"flex",gap:6}}>
                             <button onClick={async (e) => {
                               e.stopPropagation();
+                              // 예약/일정 보호: 이 컬럼에 블록 있으면 차단
+                              const colBlocks = (data?.reservations||[]).filter(r =>
+                                r.date === selDate && r.staffId === room.staffId && r.bid === room.branch_id &&
+                                !["cancelled","naver_cancelled","naver_changed"].includes(r.status)
+                              );
+                              if (colBlocks.length > 0) {
+                                alert(`이 컬럼에 예약/일정 ${colBlocks.length}건이 있어 휴무 처리할 수 없습니다.\n먼저 "담당자 교체"로 다른 직원에게 이전하거나 개별 이동해주세요.`);
+                                return;
+                              }
                               if (!confirm(`${room.staffId} 오늘(${selDate}) 휴무 처리할까요?\n(컬럼이 사라집니다)`)) return;
                               try {
+                                // 로컬 flat state 업데이트 (UI 반영)
                                 const newSch = {...(schHistory||{})};
                                 if (!newSch[room.staffId]) newSch[room.staffId] = {};
                                 newSch[room.staffId][selDate] = "휴무";
                                 setSchHistory(newSch);
+                                // DB는 월별 구조 유지: raw를 읽어와서 monthKey 하위에 patch
                                 const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
-                                await fetch(`${SB_URL}/rest/v1/schedule_data`, { method:"POST", headers:H, body: JSON.stringify({id:"schHistory_v1", key:"schHistory_v1", value: JSON.stringify(newSch)}) });
+                                const rows = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.schHistory_v1&select=value`, { headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY} }).then(r=>r.json());
+                                const raw = rows?.[0]?.value ? (typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value) : {};
+                                const monthKey = selDate.slice(0,7);
+                                if (!raw[monthKey]) raw[monthKey] = {};
+                                if (!raw[monthKey][room.staffId]) raw[monthKey][room.staffId] = {};
+                                raw[monthKey][room.staffId][selDate] = "휴무";
+                                await fetch(`${SB_URL}/rest/v1/schedule_data`, { method:"POST", headers:H, body: JSON.stringify({id:"schHistory_v1", key:"schHistory_v1", value: JSON.stringify(raw), updated_at: new Date().toISOString()}) });
                                 setEmpMovePopup(null);
                               } catch (err) { console.error("휴무 처리 실패:", err); alert("실패: " + err.message); }
                             }} style={{flex:1,padding:"7px 0",borderRadius:7,border:"1px solid "+T.gray400,background:T.gray100,color:T.text,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
@@ -2390,6 +2491,15 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             return <div style={{borderTop:"1px solid "+T.border,padding:"8px 12px"}}>
                               <button onClick={async (e) => {
                                 e.stopPropagation();
+                                // 예약/일정 보호: 이 직원에 블록 있으면 차단
+                                const anyBlocks = (data?.reservations||[]).filter(r =>
+                                  r.staffId === room.staffId &&
+                                  !["cancelled","naver_cancelled","naver_changed"].includes(r.status)
+                                );
+                                if (anyBlocks.length > 0) {
+                                  alert(`"${room.staffId}" 직원에 예약/일정 ${anyBlocks.length}건이 있어 컬럼을 삭제할 수 없습니다.\n먼저 "담당자 교체"로 다른 직원에게 이전해주세요.`);
+                                  return;
+                                }
                                 if (!confirm(`"${room.staffId}" 프리랜서 컬럼을 삭제할까요?\n(모든 지점/날짜에서 제거됩니다)`)) return;
                                 const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
                                 try {
@@ -2653,7 +2763,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                           left: block._totalCols > 1 ? 3 + (block._col * ((colW - 6) / block._totalCols)) : 3,
                           width: block._totalCols > 1 ? ((colW - 6) / block._totalCols) - 2 : undefined,
                           right: block._totalCols > 1 ? undefined : 3,
-                          height:Math.max(h,rowH*2),
+                          height:Math.max(h,10),
                           background:isNaverCancelled?T.warningLt:isNaverUnassigned?T.warningLt:isNaverPending?`${color}15`:`${color}${bgAlpha}`,
                           border:isNaverCancelled?"1.5px dashed #E6A700":isNaverUnassigned?"1.5px dashed #FF9800":isNaverPending?`1.5px dashed ${color}`:"none",
                           borderLeft:`3.5px solid ${isNaverCancelled?T.warning:isNaverUnassigned?T.orange:color}`,
@@ -2715,7 +2825,9 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                 background:pkg.isDadam?"#ffeaa7":"#dfe6e9",
                                 color:pkg.isDadam?"#d35400":"#2d3436"
                               }}>
-                                {pkg.isDadam ? `${pkg.name} ${pkg.totalRemain.toLocaleString()}원` : `${pkg.name} ${pkg.totalRemain}회`}
+                                {pkg.isDadam
+                                  ? `${pkg.name} ${pkg.totalRemain.toLocaleString()}원`
+                                  : `${pkg.name.replace(/\s*\d+회\s*$/, "").trim()} +${pkg.totalRemain}`}
                                 {pkg.count > 1 && <span style={{opacity:0.7,marginLeft:2}}>×{pkg.count}</span>}
                               </span>)}
                               {sorted.length>4 && <span style={{fontSize:Math.max(6,blockFs-3),color:T.gray400}}>+{sorted.length-4}</span>}
@@ -2744,11 +2856,11 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                         {block.type==="clockin" && <div style={{color:T.gray600,fontWeight:T.fw.bold}}><I name="clock" size={10} color={T.gray600}/> {staff?.dn||"출근"}</div>}
                         {block.type==="cleaning" && <div style={{color:T.info,fontWeight:T.fw.bold}}><I name="sparkles" size={10} color={T.info}/> 청소</div>}
                         {block.memo && (() => { const clean = block.memo.split("\n").filter(l => { const t=l.trim(); return !(/^\[등록:|^\[수정:/.test(t)) && !(/^\d+\.\d+\s+\d+:\d+\s*(예약)?(접수|변경|확정|취소|신청|확정완료)/.test(t)); }).join("\n").trim(); return clean ? <div style={{color:T.gray700,marginTop:1,whiteSpace:"pre-line",wordBreak:"break-word"}}><I name="msgSq" size={10} color={T.gray600}/> {clean}</div> : null; })()}
-                        {/* Resize handle */}
+                        {/* Resize handle — 넓은 히트 영역 */}
                         {isEditable && <div className="resize-handle" onMouseDown={e=>handleResizeStart(block,e)} onTouchStart={e=>handleResizeStart(block,e)}
-                          style={{position:"absolute",bottom:-4,left:"25%",right:"25%",height:10,cursor:"ns-resize",
-                            display:"flex",alignItems:"flex-start",justifyContent:"center",opacity:0,transition:"opacity .15s",zIndex:3}}>
-                          <div style={{width:24,height:3,borderRadius:T.radius.sm,background:color,marginTop:2}}/>
+                          style={{position:"absolute",bottom:-10,left:"10%",right:"10%",height:20,cursor:"ns-resize",
+                            display:"flex",alignItems:"center",justifyContent:"center",opacity:0.5,transition:"opacity .15s",zIndex:3,touchAction:"none"}}>
+                          <div style={{width:32,height:4,borderRadius:T.radius.sm,background:color,opacity:0.8}}/>
                         </div>}
                         {isBeingResized && <div style={{position:"absolute",bottom:2,right:4,fontSize:Math.max(6,blockFs-2),fontWeight:T.fw.bolder,color,background:T.bgCard,padding:"0 3px",borderRadius:T.radius.sm}}>
                           {blockDur}분

@@ -205,18 +205,28 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     reservation?.reservationId ||
     (reservation?.memo && /네이버/.test(reservation.memo))
   );
-  const [naverPrepaid, setNaverPrepaid] = useState(() => {
-    // is_prepaid=true이면 total_price가 예약금
-    if (reservation?.isPrepaid && (reservation?.totalPrice || 0) > 0) {
-      return reservation.totalPrice;
-    }
-    // fallback: memo에 예약금 텍스트가 있는 경우 (레거시)
+  // 외부 플랫폼 선결제 (네이버/서울뷰티/크리에이트립 등) — 네이버는 시스템 기본
+  const externalPlatforms = (()=>{
+    try {
+      const s = typeof (data?.businesses||[])[0]?.settings === 'string' ? JSON.parse((data.businesses||[])[0].settings) : (data?.businesses||[])[0]?.settings || {};
+      const list = s?.external_platforms;
+      const userList = Array.isArray(list) && list.length>0 ? list : ["서울뷰티","크리에이트립"];
+      // "네이버"는 항상 맨 앞 (시스템 기본)
+      return ["네이버", ...userList.filter(p => p !== "네이버")];
+    } catch { return ["네이버","서울뷰티","크리에이트립"]; }
+  })();
+  // 네이버 예약이면 자동 선결제 금액/플랫폼 감지
+  const _naverAutoAmt = (() => {
+    if (!isNaver) return 0;
+    if (reservation?.isPrepaid && (reservation?.totalPrice || 0) > 0) return reservation.totalPrice;
     if (reservation?.memo) {
       const m = reservation.memo.match(/예약금\s*:?\s*([0-9,]+)\s*원?/);
       if (m) return Number(m[1].replace(/,/g, "")) || 0;
     }
     return 0;
-  });
+  })();
+  const [externalPrepaid, setExternalPrepaid] = useState(reservation?.externalPrepaid || _naverAutoAmt || 0);
+  const [externalPlatform, setExternalPlatform] = useState(reservation?.externalPlatform || (isNaver ? "네이버" : ""));
 
   // 고객 상태 (예약에서 넘어오면 자동 기입, 매출관리에서 열면 검색)
   // 방문자(대리예약) 있으면 기본은 방문자로 매출 등록 — 유저가 토글로 예약자/방문자 선택 가능
@@ -308,6 +318,22 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       return next;
     });
   }, [JSON.stringify(usePkgToday)]);
+  // ── 포인트 잔액 + 적립/사용 입력 ──
+  const [pointBalance, setPointBalance] = useState(0);
+  const [pointEarn, setPointEarn] = useState(0);
+  const [pointUse, setPointUse] = useState(0);
+  useEffect(() => {
+    if (!cust?.id) { setPointBalance(0); return; }
+    sb.get("point_transactions", `&customer_id=eq.${cust.id}&limit=500`)
+      .then(rows => {
+        const bal = (rows||[]).reduce((s,t) => {
+          if (t.type==="earn"||t.type==="adjust_add") return s+(t.amount||0);
+          if (t.type==="deduct"||t.type==="adjust_sub") return s-(t.amount||0);
+          return s;
+        }, 0);
+        setPointBalance(bal);
+      }).catch(()=>setPointBalance(0));
+  }, [cust?.id]);
   // cust가 바뀌면(예약자↔방문자 토글 등) 다시 로드
   useEffect(() => {
     if (cust?.id) {
@@ -521,7 +547,8 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   const prodTotal = PROD_LIST.reduce((sum, p) => sum + (items[p.id]?.checked ? items[p.id].amount : 0), 0)
     + (items.extra_prod?.checked ? items.extra_prod.amount : 0);
   const discount = items.discount?.checked ? items.discount.amount : 0;
-  const naverDeduct = isNaver ? naverPrepaid : 0;
+  const naverDeduct = 0; // 통합됨 → externalDeduct에서 처리
+  const externalDeduct = externalPrepaid > 0 ? externalPrepaid : 0;
   // 보유권 차감 합산 (다담권만 금액 차감, 다회권은 횟수만 차감 — 금액 영향 없음)
   const pkgDeduct = Object.entries(pkgUse).reduce((sum, [pkgId, val]) => {
     if (!val) return sum;
@@ -531,9 +558,10 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     if (t === "prepaid" && typeof val === "number" && val > 0) return sum + val;
     return sum;
   }, 0);
-  const grandTotal = Math.max(0, svcTotal + prodTotal - discount - naverDeduct - pkgDeduct - newPkgInstantDeduct);
+  const pointDeduct = Math.min(pointUse||0, pointBalance);
+  const grandTotal = Math.max(0, svcTotal + prodTotal - discount - naverDeduct - externalDeduct - pkgDeduct - newPkgInstantDeduct - pointDeduct);
   // 실제 결제할 금액 (예약금·할인·보유권·신규다담권즉시차감 차감)
-  const svcPayTotal = Math.max(0, svcTotal - discount - naverDeduct - pkgDeduct - newPkgInstantDeduct);
+  const svcPayTotal = Math.max(0, svcTotal - discount - naverDeduct - externalDeduct - pkgDeduct - newPkgInstantDeduct);
   const prodPayTotal = prodTotal;
 
   // Count checked
@@ -587,19 +615,25 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     }
     const staff = (data.staff||[]).find(s => s.id === manager);
     // 고객 정보 저장 (신규 등록 또는 기존 업데이트)
-    const isNewCust = cust.id?.startsWith("new_") || (!cust.id && custName);
+    // cust.id가 있어도 customers 테이블에 실제로 없으면 신규로 취급 (네이버 예약 등에서 발생)
+    const existsInDb = cust.id && (data?.customers||[]).some(c => c.id === cust.id);
+    const isNewCust = cust.id?.startsWith("new_") || (!cust.id && custName) || (cust.id && !existsInDb && custName);
     if (setData) {
       if (isNewCust) {
         const custId = cust.id || ("cust_" + uid());
         const newCustObj = {
           id: custId, bid: selBranch, name: custName, phone: custPhone,
-          gender: gender, visits: 1, lastVisit: todayStr(), memo: "",
-          custNum: String(50000 + Math.floor(Math.random() * 10000))
+          gender: gender, visits: 1, lastVisit: todayStr(), memo: ""
+          // custNum은 DB 트리거(bliss_cust_num_seq)가 자동 할당
         };
         const alreadyExists = (data?.customers||[]).some(c => c.id === custId);
         if (!alreadyExists) {
-          setData(prev => ({ ...prev, customers: [...prev.customers, newCustObj] }));
-          sb.insert("customers", toDb("customers", newCustObj)).catch(console.error);
+          // DB insert 후 서버가 할당한 cust_num을 응답으로 받아 state에 반영
+          sb.insert("customers", toDb("customers", newCustObj)).then(res => {
+            const assigned = Array.isArray(res) ? res[0]?.cust_num : res?.cust_num;
+            const finalObj = {...newCustObj, custNum: assigned || ""};
+            setData(prev => ({ ...prev, customers: [...(prev?.customers||[]), finalObj] }));
+          }).catch(console.error);
         }
         cust.id = custId;
       } else if (cust.id) {
@@ -609,7 +643,8 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
         sb.update("customers", cust.id, toDb("customers", updates)).catch(console.error);
       }
     }
-    // ── 보유권 차감 처리 ──
+    // ── 보유권 차감 처리 + 히스토리 기록 ──
+    const _pkgTxRecords = []; // sale.id를 알아야 하므로 나중에 flush
     Object.entries(pkgUse).forEach(([pkgId, val]) => {
       if (!val) return;
       const pkg = custPkgs.find(p => p.id === pkgId);
@@ -617,16 +652,23 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       const t = _pkgType(pkg);
       if (t === "package" && typeof val === "number" && val > 0) {
         // 다회권: N회 차감
-        const newUsed = (pkg.used_count || 0) + val;
+        const prevUsed = pkg.used_count || 0;
+        const newUsed = prevUsed + val;
+        const totalCnt = pkg.total_count || 0;
         const upd = { used_count: newUsed };
-        // 첫 사용 시 만료일 자동 기록 (사용 시작일 +1년)
-        if ((pkg.used_count || 0) === 0 && !(/유효:\d{4}-\d{2}-\d{2}/.test(pkg.note||""))) {
+        if (prevUsed === 0 && !(/유효:\d{4}-\d{2}-\d{2}/.test(pkg.note||""))) {
           const exp = new Date(); exp.setFullYear(exp.getFullYear()+1);
           const expStr = exp.toISOString().slice(0,10);
           const n = pkg.note||"";
           upd.note = n.includes("유효:") ? n.replace(/유효:\s*(?!\d)/, `유효:${expStr} `) : (n ? `${n} | 유효:${expStr}` : `유효:${expStr}`);
         }
         sb.update("customer_packages", pkgId, upd).catch(console.error);
+        _pkgTxRecords.push({
+          package_id: pkgId, service_name: pkg.service_name || "",
+          type: "deduct", unit: "count", amount: val,
+          balance_before: totalCnt - prevUsed, balance_after: totalCnt - newUsed,
+          note: "매출 사용"
+        });
       } else if (t === "prepaid" && typeof val === "number" && val > 0) {
         // 다담권: 금액 차감
         const bal = _pkgBalance(pkg);
@@ -634,34 +676,52 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
         const newSpent = (pkg.used_count || 0) + val;
         const newNote = (pkg.note || "").replace(/잔액:[0-9,]+/, `잔액:${newBal.toLocaleString()}`);
         sb.update("customer_packages", pkgId, { used_count: newSpent, note: newNote }).catch(console.error);
+        _pkgTxRecords.push({
+          package_id: pkgId, service_name: pkg.service_name || "",
+          type: "deduct", unit: "won", amount: val,
+          balance_before: bal, balance_after: newBal,
+          note: "매출 차감"
+        });
       }
     });
 
-    // 네이버예약금: 고객이 네이버에 지불 (우리가 받는 돈 아님 → 별도 결제수단으로 gift 컬럼에 저장)
-    const naverPrepaidAmt = (isNaver && naverPrepaid > 0) ? naverPrepaid : 0;
+    // 네이버예약금 레거시 호환 (새 매출은 external_prepaid로만 저장)
+    const naverPrepaidAmt = 0;
 
     // ── 신규 다담권 구매 + 오늘 차감 처리 ──
     // 1. 활성화된 다담권 구매 항목별로 customer_packages 생성
     //    - 액면가 = price, 즉시 차감액 = 분배된 today svc deduct
     if (cust.id && newPrepaidPurchases.length > 0) {
-      // 활성화된 다담권만, 액면가 합계
       const activePkgs = newPrepaidPurchases.filter(s => usePkgToday[s.id]);
       const activeTotal = activePkgs.reduce((sum, s) => sum + (items[s.id]?.amount || 0), 0);
-      // 모든 다담권 항목 (활성/비활성 모두 customer_packages에 추가)
       newPrepaidPurchases.forEach(svc => {
         const faceVal = items[svc.id]?.amount || 0;
         const isActive = !!usePkgToday[svc.id];
-        // 활성화된 것만 즉시 차감 분배 (균등 비율)
         const deduct = isActive && activeTotal > 0 ? Math.round(newPkgInstantDeduct * (faceVal / activeTotal)) : 0;
         const balance = Math.max(0, faceVal - deduct);
+        const newPkgId = uid();
         const newPkg = {
-          id: uid(), business_id: _activeBizId, customer_id: cust.id,
+          id: newPkgId, business_id: _activeBizId, customer_id: cust.id,
           service_id: svc.id, service_name: svc.name,
           total_count: 1, used_count: deduct,
           purchased_at: new Date().toISOString(),
           note: `잔액:${balance.toLocaleString()}`,
         };
         sb.insert("customer_packages", newPkg).catch(console.error);
+        // 신규 충전
+        _pkgTxRecords.push({
+          package_id: newPkgId, service_name: svc.name,
+          type: "charge", unit: "won", amount: faceVal,
+          balance_before: 0, balance_after: faceVal, note: "신규 구매"
+        });
+        // 즉시 차감
+        if (deduct > 0) {
+          _pkgTxRecords.push({
+            package_id: newPkgId, service_name: svc.name,
+            type: "deduct", unit: "won", amount: deduct,
+            balance_before: faceVal, balance_after: balance, note: "구매 즉시 차감"
+          });
+        }
       });
     }
 
@@ -670,31 +730,85 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       newPkgPurchases.forEach(svc => {
         const total = parsePkgCount(svc.name);
         const used = Math.max(0, Math.min(total, Number(usePkgToday[svc.id] || 0)));
+        const newPkgId = uid();
         const newPkg = {
-          id: uid(), business_id: _activeBizId, customer_id: cust.id,
+          id: newPkgId, business_id: _activeBizId, customer_id: cust.id,
           service_id: svc.id, service_name: svc.name,
           total_count: total, used_count: used,
           purchased_at: new Date().toISOString(),
           note: "",
         };
         sb.insert("customer_packages", newPkg).catch(console.error);
+        _pkgTxRecords.push({
+          package_id: newPkgId, service_name: svc.name,
+          type: "charge", unit: "count", amount: total,
+          balance_before: 0, balance_after: total, note: "신규 구매"
+        });
+        if (used > 0) {
+          _pkgTxRecords.push({
+            package_id: newPkgId, service_name: svc.name,
+            type: "deduct", unit: "count", amount: used,
+            balance_before: total, balance_after: total - used, note: "구매 즉시 사용"
+          });
+        }
       });
     }
     const sale = {
       id: uid(), bid: selBranch,
       custId: cust.id || null, custName: custName,
       custPhone: custPhone, custGender: gender,
-      custNum: String(50000 + Math.floor(Math.random() * 10000)),
+      custNum: cust.custNum || cust.cust_num || "",
       staffId: manager, staffName: staff?.dn || "",
       date: reservation?.date || todayStr(),
       serviceId: reservation?.serviceId || null, serviceName: SVC_LIST.find(s => s.id === reservation?.serviceId)?.name || "",
       productId: null, productName: null,
       svcCash: payMethod.svcCash, svcTransfer: payMethod.svcTransfer, svcCard: payMethod.svcCard, svcPoint: payMethod.svcPoint,
       prodCash: payMethod.prodCash, prodTransfer: payMethod.prodTransfer, prodCard: payMethod.prodCard, prodPoint: payMethod.prodPoint,
-      gift: naverPrepaidAmt, orderNum: String(252000 + Math.floor(Math.random() * 200)),
-      memo: (isPkgUseSubmit ? "[패키지 사용] " : "") + (naverPrepaidAmt > 0 ? `[네이버예약금 ${naverPrepaidAmt.toLocaleString()}원] ` : "") + (saleMemo || ""),
+      gift: 0, orderNum: String(252000 + Math.floor(Math.random() * 200)),
+      externalPrepaid: externalPrepaid > 0 ? externalPrepaid : 0,
+      externalPlatform: externalPrepaid > 0 ? (externalPlatform || "") : null,
+      memo: (isPkgUseSubmit ? "[패키지 사용] " : "") + (externalPrepaid > 0 && externalPlatform ? `[${externalPlatform} 선결제 ${externalPrepaid.toLocaleString()}원] ` : "") + (saleMemo || ""),
       createdAt: new Date().toISOString(),
     };
+    // 보유권 거래 기록 flush (sale.id 연결)
+    if (cust.id && _pkgTxRecords.length > 0) {
+      _pkgTxRecords.forEach(r => {
+        sb.insert("package_transactions", {
+          id: "pkgtx_"+uid(),
+          business_id: _activeBizId,
+          bid: sale.bid,
+          customer_id: cust.id,
+          sale_id: sale.id,
+          staff_id: sale.staffId,
+          staff_name: sale.staffName,
+          created_at: new Date().toISOString(),
+          ...r
+        }).catch(console.error);
+      });
+    }
+    // 포인트 거래 기록 (매출 id를 sale_id로 연결)
+    if (cust.id) {
+      let balAfter = pointBalance;
+      if (pointUse > 0) {
+        const usedAmt = Math.min(pointUse, pointBalance);
+        balAfter -= usedAmt;
+        sb.insert("point_transactions", {
+          id: "ptx_"+uid(), business_id: _activeBizId, bid: sale.bid,
+          customer_id: cust.id, type: "deduct", amount: usedAmt,
+          balance_after: balAfter, sale_id: sale.id, staff_id: sale.staffId,
+          staff_name: sale.staffName, note: "매출 결제"
+        }).catch(console.error);
+      }
+      if (pointEarn > 0) {
+        balAfter += pointEarn;
+        sb.insert("point_transactions", {
+          id: "ptx_"+uid(), business_id: _activeBizId, bid: sale.bid,
+          customer_id: cust.id, type: "earn", amount: pointEarn,
+          balance_after: balAfter, sale_id: sale.id, staff_id: sale.staffId,
+          staff_name: sale.staffName, note: "매출 적립"
+        }).catch(console.error);
+      }
+    }
     onSubmit(sale);
   };
 
@@ -834,7 +948,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
             <span style={{ fontSize: 11, color:T.textSub }}>시술 <strong style={{ color:T.primary }}>{fmt(svcTotal)}</strong> ({checkedSvc})</span>
             <span style={{ fontSize: 11, color:T.textSub }}>제품 <strong style={{ color: T.infoLt2 }}>{fmt(prodTotal)}</strong> ({checkedProd})</span>
             {discount > 0 && <span style={{ fontSize: 11, color:T.textSub }}>할인 <strong style={{ color: T.female }}>-{fmt(discount)}</strong></span>}
-            {isNaver && naverPrepaid > 0 && <span style={{ fontSize: 11, color:T.textSub }}>예약금 <strong style={{ color: T.orange }}>-{fmt(naverPrepaid)}</strong></span>}
+            {externalPrepaid > 0 && <span style={{ fontSize: 11, color:T.textSub }}>{externalPlatform||"외부"} <strong style={{ color: "#8E24AA" }}>-{fmt(externalPrepaid)}</strong></span>}
             <span style={{ fontSize: 17, fontWeight: 900, color: T.danger }}>{fmt(grandTotal)}원</span>
           </div>
         </div>
@@ -1006,16 +1120,27 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
               <span style={{fontSize:T.fs.sm,color:T.female}}><I name="tag" size={11}/> 할인</span>
               <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.female}}>-{fmt(discount)}원</span>
             </div>}
-            {isNaver && <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",marginTop:2}}>
-              <span style={{fontSize:T.fs.sm,color:T.orange}}><I name="naver" size={11}/> 네이버 예약금</span>
-              <div style={{display:"flex",alignItems:"center",gap:T.sp.xs}}>
-                <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.orange}}>-</span>
-                <input className="inp" type="number" step="5000" value={naverPrepaid||""} placeholder="0"
-                  onChange={e=>setNaverPrepaid(Number(e.target.value)||0)}
-                  style={{width:85,padding:"4px 8px",fontSize:T.fs.sm,textAlign:"right",fontWeight:T.fw.bolder,color:T.orange,
-                    border:"2px solid #ff9800",borderRadius:T.radius.md,background:T.warningLt}} />
-                <span style={{fontSize:T.fs.sm,color:T.orange,fontWeight:T.fw.bold}}>원</span>
-              </div>
+            {/* 외부 선결제 — 한 줄, 컴팩트 */}
+            <div style={{display:"flex",alignItems:"center",gap:5,padding:"7px 10px",marginTop:4,background:"#F3E5F5",borderRadius:8,border:"1px solid #CE93D8",whiteSpace:"nowrap"}}>
+              <span style={{fontSize:11,color:"#6A1B9A",fontWeight:700,flexShrink:0}}>🏷 선결제</span>
+              <select value={externalPlatform} onChange={e=>setExternalPlatform(e.target.value)}
+                style={{flex:"0 0 auto",width:78,padding:"4px 4px",fontSize:11,border:"1px solid #CE93D8",borderRadius:6,background:"#fff",color:"#6A1B9A",fontFamily:"inherit"}}>
+                <option value="">플랫폼</option>
+                {externalPlatforms.map(p=><option key={p} value={p}>{p}</option>)}
+              </select>
+              <input type="number" step="5000" value={externalPrepaid||""} placeholder="0" min="0"
+                onChange={e=>setExternalPrepaid(Number(e.target.value)||0)}
+                style={{flex:1,minWidth:50,padding:"4px 6px",fontSize:11,textAlign:"right",fontWeight:700,color:"#6A1B9A",border:"1px solid #CE93D8",borderRadius:6,background:"#fff",fontFamily:"inherit"}}/>
+              <span style={{fontSize:11,color:"#6A1B9A",fontWeight:700,flexShrink:0}}>원</span>
+            </div>
+            {/* 포인트 사용 — 결제수단 (적립은 별도 영역) */}
+            {cust?.id && <div style={{display:"flex",alignItems:"center",gap:5,padding:"7px 10px",marginTop:4,background:"#FFF3E0",borderRadius:8,border:"1px solid #FFB74D",whiteSpace:"nowrap"}}>
+              <span style={{fontSize:11,color:"#E65100",fontWeight:700,flexShrink:0}}>🪙 포인트 <span style={{color:"#999",fontWeight:500,fontSize:10}}>잔{pointBalance.toLocaleString()}</span></span>
+              <span style={{fontSize:11,color:"#C62828",fontWeight:700,flexShrink:0,marginLeft:"auto"}}>사용−</span>
+              <input type="number" step="100" value={pointUse||""} placeholder="0" min="0" max={pointBalance}
+                onChange={e=>setPointUse(Math.max(0,Math.min(pointBalance,Number(e.target.value)||0)))}
+                style={{flex:"0 0 80px",padding:"4px 6px",fontSize:11,textAlign:"right",fontWeight:700,color:"#C62828",border:"1px solid #EF9A9A",borderRadius:6,background:"#fff",fontFamily:"inherit"}}/>
+              <span style={{fontSize:11,color:"#E65100",fontWeight:700,flexShrink:0}}>P</span>
             </div>}
             <div style={{borderTop:"2px solid #333",marginTop:6,paddingTop:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <span style={{fontSize:T.fs.sm,fontWeight:T.fw.black,color:T.text}}>{isNaver ? "현장 결제금액" : "총 결제금액"}</span>
@@ -1176,6 +1301,14 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
             })()}
           </div>}
           {grandTotal > 0 && <div style={{fontSize:9,color:T.gray400,marginTop:6}}>결제수단 클릭 → 전액 / 추가 클릭 → 분배</div>}
+          {/* 포인트 적립 — 이번 매출로 고객에게 적립할 포인트 (결제와 무관) */}
+          {cust?.id && <div style={{display:"flex",alignItems:"center",gap:5,padding:"7px 10px",marginTop:8,background:"#E8F5E9",borderRadius:8,border:"1px solid #A5D6A7",whiteSpace:"nowrap"}}>
+            <span style={{fontSize:11,color:"#2E7D32",fontWeight:700,flexShrink:0}}>⭐ 포인트 적립</span>
+            <input type="number" step="100" value={pointEarn||""} placeholder="0" min="0"
+              onChange={e=>setPointEarn(Math.max(0,Number(e.target.value)||0))}
+              style={{flex:1,minWidth:60,padding:"4px 6px",fontSize:11,textAlign:"right",fontWeight:700,color:"#2E7D32",border:"1px solid #A5D6A7",borderRadius:6,background:"#fff",fontFamily:"inherit"}}/>
+            <span style={{fontSize:11,color:"#2E7D32",fontWeight:700,flexShrink:0}}>P</span>
+          </div>}
           {/* 매출 메모 */}
           <div style={{marginTop:8}}>
             <span style={{fontSize:11,color:T.textMuted,fontWeight:600}}>매출 메모</span>

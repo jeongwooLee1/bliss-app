@@ -12,8 +12,8 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
   ];
   return <>
     <div style={{padding:`${T.sp.lg}px ${T.sp.lg}px ${T.sp.md}px`,borderBottom:`1px solid ${T.border}`}}>
-      {bizName ? <div style={{fontSize:T.fs.xl,fontWeight:T.fw.black,color:T.primary,letterSpacing:-.5}}>{bizName}</div>
-        : <div style={{fontSize:T.fs.xl,fontWeight:T.fw.black,color:T.primary}}>Bliss</div>}
+      {bizName ? <div onClick={()=>window.location.reload()} title="새로고침" style={{fontSize:T.fs.xl,fontWeight:T.fw.black,color:T.primary,letterSpacing:-.5,cursor:"pointer",userSelect:"none"}}>{bizName}</div>
+        : <div onClick={()=>window.location.reload()} title="새로고침" style={{fontSize:T.fs.xl,fontWeight:T.fw.black,color:T.primary,cursor:"pointer",userSelect:"none"}}>Bliss</div>}
       <div style={{fontSize:T.fs.sm,color:T.textSub,marginTop:4}}>{role==="owner"?"대표 관리자":role==="super"?"슈퍼관리자":role==="manager"?"지점 원장":branchNames||"직원"}</div>
     </div>
     <div style={{flex:1,padding:"8px 0",overflowY:"auto"}}>

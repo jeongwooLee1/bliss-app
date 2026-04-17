@@ -105,9 +105,18 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role }) {
       svcCard:a.svcCard+s.svcCard, svcPoint:a.svcPoint+s.svcPoint,
       prod: a.prod+pr, prodCash:a.prodCash+s.prodCash, prodTransfer:a.prodTransfer+s.prodTransfer,
       prodCard:a.prodCard+s.prodCard, prodPoint:a.prodPoint+s.prodPoint,
-      gift: a.gift+(s.gift||0), total: a.total+sv+pr+(s.gift||0),
+      gift: a.gift+(s.gift||0),
+      extPrepaid: a.extPrepaid+(s.externalPrepaid||0),
+      total: a.total+sv+pr+(s.gift||0)+(s.externalPrepaid||0),
     };
-  }, {svc:0,svcCash:0,svcTransfer:0,svcCard:0,svcPoint:0,prod:0,prodCash:0,prodTransfer:0,prodCard:0,prodPoint:0,gift:0,total:0});
+  }, {svc:0,svcCash:0,svcTransfer:0,svcCard:0,svcPoint:0,prod:0,prodCash:0,prodTransfer:0,prodCard:0,prodPoint:0,gift:0,extPrepaid:0,total:0});
+  // 외부 플랫폼별 선결제 합계
+  const extByPlatform = sales.reduce((m,s)=>{
+    if(!s.externalPrepaid || s.externalPrepaid<=0) return m;
+    const k = s.externalPlatform || "미지정";
+    m[k] = (m[k]||0) + s.externalPrepaid;
+    return m;
+  }, {});
 
   const handleDelete = (id) => { setData(prev=>({...prev,sales:(prev?.sales||[]).filter(s=>s.id!==id)})); sb.del("sales",id).catch(console.error); };
   const saveMemo = (id) => { setData(prev=>({...prev,sales:(prev?.sales||[]).map(s=>s.id===id?{...s,memo:editMemoText}:s)})); sb.update("sales",id,{memo:editMemoText}).catch(console.error); setEditMemoId(null); };
@@ -215,7 +224,6 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role }) {
             {lbl:"총 매출",  v:totals.total, c:T.info,    bold:true},
             {lbl:"시술",     v:totals.svc,   c:T.primary},
             {lbl:"제품",     v:totals.prod,  c:T.infoLt2},
-            {lbl:"네이버예약금", v:totals.gift,  c:"#03C75A"},
           ].map(({lbl,v,c,bold})=>(
             <div key={lbl} style={{background:T.bgCard,border:"1px solid "+T.border,borderRadius:T.radius.md,
               padding:"6px 14px",display:"flex",alignItems:"baseline",gap:6}}>
@@ -223,6 +231,16 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role }) {
               <span style={{fontSize:T.fs.sm,fontWeight:bold?T.fw.black:T.fw.bolder,color:c}}>{fmt(v)}</span>
             </div>
           ))}
+          {/* 외부 플랫폼 선결제 — 플랫폼별 세분화 */}
+          {totals.extPrepaid > 0 && (
+            <div style={{background:"#F3E5F5",border:"1px solid #CE93D8",borderRadius:T.radius.md,padding:"6px 14px",display:"flex",alignItems:"baseline",gap:8,flexWrap:"wrap"}}>
+              <span style={{fontSize:T.fs.xxs,color:"#6A1B9A",fontWeight:T.fw.bolder}}>🏷 외부 선결제</span>
+              <span style={{fontSize:T.fs.sm,fontWeight:T.fw.black,color:"#6A1B9A"}}>{fmt(totals.extPrepaid)}</span>
+              {Object.entries(extByPlatform).map(([k,v])=>(
+                <span key={k} style={{fontSize:T.fs.xxs,color:"#8E24AA"}}>{k} <strong>{fmt(v)}</strong></span>
+              ))}
+            </div>
+          )}
         </div>
         {/* 결제수단별 합계 (마감 정산용) */}
         <div style={{display:"flex",gap:T.sp.sm,marginBottom:T.sp.md,flexWrap:"wrap"}}>
@@ -231,7 +249,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role }) {
             {lbl:"카드",  v:card,     c:T.primary},
             {lbl:"입금",  v:transfer, c:T.info},
             {lbl:"포인트",v:point,    c:T.orange},
-          ].filter(it => it.v > 0).map(({lbl,v,c})=>(
+          ].map(({lbl,v,c})=>(
             <div key={lbl} style={{background:c+"15",border:"1px solid "+c+"55",borderRadius:T.radius.md,
               padding:"6px 14px",display:"flex",alignItems:"baseline",gap:6}}>
               <span style={{fontSize:T.fs.xxs,color:c,fontWeight:T.fw.bolder}}>{lbl}</span>
@@ -252,17 +270,24 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role }) {
         <th>담당자</th>
         <th>시술합계</th>
         <th>제품합계</th>
+        <th style={{color:"#16a34a"}}>현금</th>
+        <th style={{color:T.primary}}>카드</th>
+        <th style={{color:T.info}}>입금</th>
+        <th style={{color:T.orange}}>포인트</th>
         <th>총합계</th>
-        <th>메모</th>
         <th style={{width:60}}></th>
       </tr></thead>
       <tbody>
         {sales.length===0
-          ? <tr><td colSpan={10}><Empty msg="매출 기록 없음" icon="wallet"/></td></tr>
+          ? <tr><td colSpan={13}><Empty msg="매출 기록 없음" icon="wallet"/></td></tr>
           : sales.map((s,i) => {
               const sv = s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint;
               const pr = s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint;
-              const total = sv+pr+(s.gift||0);
+              const rowCash = (s.svcCash||0)+(s.prodCash||0);
+              const rowCard = (s.svcCard||0)+(s.prodCard||0);
+              const rowTransfer = (s.svcTransfer||0)+(s.prodTransfer||0);
+              const rowPoint = (s.svcPoint||0)+(s.prodPoint||0);
+              const total = sv+pr+(s.gift||0)+(s.externalPrepaid||0);
               const isExp = expandedId===s.id;
               const br = (data.branches||[]).find(b=>b.id===s.bid);
               return <React.Fragment key={s.id}>
@@ -279,21 +304,11 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role }) {
                   <td style={{color:T.textSub,fontSize:T.fs.xxs}}>{s.staffName||"-"}</td>
                   <td style={{fontWeight:T.fw.bold,color:T.primary}}>{sv>0?fmt(sv):<Z/>}</td>
                   <td style={{fontWeight:T.fw.bold,color:T.infoLt2}}>{pr>0?fmt(pr):<Z/>}</td>
+                  <td style={{fontWeight:T.fw.bold,color:rowCash>0?"#16a34a":T.gray400,textAlign:"right"}}>{rowCash>0?fmt(rowCash):"-"}</td>
+                  <td style={{fontWeight:T.fw.bold,color:rowCard>0?T.primary:T.gray400,textAlign:"right"}}>{rowCard>0?fmt(rowCard):"-"}</td>
+                  <td style={{fontWeight:T.fw.bold,color:rowTransfer>0?T.info:T.gray400,textAlign:"right"}}>{rowTransfer>0?fmt(rowTransfer):"-"}</td>
+                  <td style={{fontWeight:T.fw.bold,color:rowPoint>0?T.orange:T.gray400,textAlign:"right"}}>{rowPoint>0?fmt(rowPoint):"-"}</td>
                   <td style={{fontWeight:T.fw.black,color:T.info}}>{fmt(total)}</td>
-                  <td style={{maxWidth:200,fontSize:T.fs.xxs,color:T.textSub}} onClick={e=>{e.stopPropagation();setEditMemoId(s.id);setEditMemoText(s.memo||"");}}>
-                    {editMemoId===s.id
-                      ? <div style={{display:"flex",gap:3,alignItems:"center"}} onClick={e=>e.stopPropagation()}>
-                          <textarea value={editMemoText} onChange={e=>setEditMemoText(e.target.value)} autoFocus
-                            style={{flex:1,fontSize:11,padding:"4px 6px",borderRadius:4,border:"1px solid "+T.primary,fontFamily:"inherit",minHeight:60,resize:"vertical"}}
-                            onKeyDown={e=>{if(e.key==="Escape")setEditMemoId(null);}}/>
-                          <div style={{display:"flex",flexDirection:"column",gap:2}}>
-                            <Btn size="sm" style={{padding:"2px 6px",fontSize:10}} onClick={()=>saveMemo(s.id)}>저장</Btn>
-                            <Btn variant="secondary" size="sm" style={{padding:"2px 6px",fontSize:10}} onClick={()=>setEditMemoId(null)}>취소</Btn>
-                          </div>
-                        </div>
-                      : <span style={{...sx.ellipsis,display:"block",maxWidth:200,cursor:"pointer"}} title="클릭하여 메모 수정">{s.memo||"..."}</span>
-                    }
-                  </td>
                   <td onClick={e=>e.stopPropagation()}>
                     <div style={{display:"flex",gap:3}}>
                       <Btn variant="secondary" size="sm" style={{padding:"2px 5px"}} onClick={()=>setEditSale(s)}><I name="edit" size={12}/></Btn>
@@ -301,7 +316,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role }) {
                     </div>
                   </td>
                 </tr>
-                {isExp && <tr><td colSpan={10} style={{padding:0,background:T.gray100}}>
+                {isExp && <tr><td colSpan={13} style={{padding:0,background:T.gray100}}>
                   <div style={{padding:"10px 16px"}}>
                     {/* 결제수단 요약 - 한줄 표시 */}
                     <div style={{display:"flex",gap:16,flexWrap:"wrap",alignItems:"center",marginBottom:8}}>
@@ -309,7 +324,8 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role }) {
                       <PaySummary label="카드" val={(s.svcCard||0)+(s.prodCard||0)} color={T.primary}/>
                       <PaySummary label="입금" val={(s.svcTransfer||0)+(s.prodTransfer||0)} color={T.info}/>
                       <PaySummary label="포인트" val={(s.svcPoint||0)+(s.prodPoint||0)} color={T.orange}/>
-                      {(s.gift||0)>0 && <PaySummary label="네이버예약금" val={s.gift} color="#03C75A"/>}
+                      {(s.externalPrepaid||0)>0 && <PaySummary label={`${s.externalPlatform||"외부"} 선결제`} val={s.externalPrepaid} color={(s.externalPlatform==="네이버")?"#03C75A":"#8E24AA"}/>}
+                      {(s.gift||0)>0 && (s.externalPrepaid||0)===0 && <PaySummary label="네이버예약금(legacy)" val={s.gift} color="#03C75A"/>}
                       {s.custPhone && <span style={{fontSize:T.fs.xxs,color:T.primary,marginLeft:"auto"}}>{s.custPhone}</span>}
                       {s.createdAt && <span style={{fontSize:T.fs.xxs,color:T.textMuted}}>
                         {new Date(s.createdAt).toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}
@@ -349,8 +365,25 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role }) {
                         </table>
                       </div>;
                     })()}
-                    {/* 메모 */}
-                    {s.memo && <div style={{marginTop:6,fontSize:T.fs.xxs,color:T.text,whiteSpace:"pre-wrap",lineHeight:1.4}}>{s.memo}</div>}
+                    {/* 메모 — 상세 페이지 전용, 편집 가능 */}
+                    <div style={{marginTop:10,padding:"8px 12px",background:T.bgCard,border:"1px solid "+T.border,borderRadius:T.radius.md}}>
+                      <div style={{fontSize:T.fs.xxs,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:4}}>📝 메모</div>
+                      {editMemoId===s.id ? (
+                        <div style={{display:"flex",gap:6,alignItems:"flex-start"}}>
+                          <textarea value={editMemoText} onChange={e=>setEditMemoText(e.target.value)} autoFocus
+                            style={{flex:1,fontSize:12,padding:"6px 8px",borderRadius:6,border:"1px solid "+T.primary,fontFamily:"inherit",minHeight:70,resize:"vertical"}}
+                            onKeyDown={e=>{if(e.key==="Escape")setEditMemoId(null);}}/>
+                          <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                            <Btn size="sm" onClick={()=>saveMemo(s.id)}>저장</Btn>
+                            <Btn variant="secondary" size="sm" onClick={()=>setEditMemoId(null)}>취소</Btn>
+                          </div>
+                        </div>
+                      ) : (
+                        <div onClick={()=>{setEditMemoId(s.id);setEditMemoText(s.memo||"");}}
+                          style={{fontSize:T.fs.xs,color:s.memo?T.text:T.gray400,whiteSpace:"pre-wrap",lineHeight:1.5,cursor:"pointer",minHeight:20}}
+                          title="클릭하여 편집">{s.memo||"메모 없음 (클릭하여 작성)"}</div>
+                      )}
+                    </div>
                   </div>
                 </td></tr>}
               </React.Fragment>;
@@ -361,8 +394,12 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role }) {
           <td colSpan={5} style={{textAlign:"right",color:T.textSub,fontSize:T.fs.xxs}}>합 계</td>
           <td style={{color:T.primary}}>{fmt(totals.svc)}</td>
           <td style={{color:T.infoLt2}}>{fmt(totals.prod)}</td>
+          <td style={{color:"#16a34a",textAlign:"right"}}>{fmt(totals.svcCash+totals.prodCash)}</td>
+          <td style={{color:T.primary,textAlign:"right"}}>{fmt(totals.svcCard+totals.prodCard)}</td>
+          <td style={{color:T.info,textAlign:"right"}}>{fmt(totals.svcTransfer+totals.prodTransfer)}</td>
+          <td style={{color:T.orange,textAlign:"right"}}>{fmt(totals.svcPoint+totals.prodPoint)}</td>
           <td style={{color:T.info}}>{fmt(totals.total)}</td>
-          <td colSpan={2}/>
+          <td/>
         </tr>}
       </tbody>
     </DataTable>
@@ -402,11 +439,12 @@ function StatsPage({ data, userBranches, isMaster, role }) {
     svcTotal:a.svcTotal+(s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint),
     prodTotal:a.prodTotal+(s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint),
     gift:a.gift+s.gift,
-    total:a.total+(s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint+s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint+s.gift),
+    extPrepaid:a.extPrepaid+(s.externalPrepaid||0),
+    total:a.total+(s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint+s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint+s.gift+(s.externalPrepaid||0)),
     count:a.count+1,
     svcCash:a.svcCash+s.svcCash,svcTransfer:a.svcTransfer+s.svcTransfer,svcCard:a.svcCard+s.svcCard,svcPoint:a.svcPoint+s.svcPoint,
     prodCash:a.prodCash+s.prodCash,prodTransfer:a.prodTransfer+s.prodTransfer,prodCard:a.prodCard+s.prodCard,prodPoint:a.prodPoint+s.prodPoint,
-  }),{svcTotal:0,prodTotal:0,gift:0,total:0,count:0,svcCash:0,svcTransfer:0,svcCard:0,svcPoint:0,prodCash:0,prodTransfer:0,prodCard:0,prodPoint:0});
+  }),{svcTotal:0,prodTotal:0,gift:0,extPrepaid:0,total:0,count:0,svcCash:0,svcTransfer:0,svcCard:0,svcPoint:0,prodCash:0,prodTransfer:0,prodCard:0,prodPoint:0});
 
   const days = parseInt(period);
 

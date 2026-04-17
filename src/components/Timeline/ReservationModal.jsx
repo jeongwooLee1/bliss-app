@@ -92,9 +92,26 @@ function CopySpan({ text, children, style={} }) {
   const copy = (e) => {
     e.stopPropagation(); e.preventDefault();
     if (!text) return;
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
+    // 1순위: Clipboard API (secure context 필요)
+    const done = () => { setCopied(true); setTimeout(() => setCopied(false), 1200); };
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+      } else {
+        fallbackCopy(text, done);
+      }
+    } catch {
+      fallbackCopy(text, done);
+    }
+  };
+  const fallbackCopy = (val, cb) => {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = val; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      document.execCommand("copy"); document.body.removeChild(ta);
+      cb && cb();
+    } catch {}
   };
   return <span onClick={copy} onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}
     style={{...style, cursor:"pointer", position:"relative", transition:"all .15s", userSelect:"none",
@@ -143,6 +160,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   };
   // pkg__ ID의 dur를 PKG 카테고리 시술에서 매칭
   const getSvcDur = (sid) => {
+    if (typeof sid !== "string") return 0;
     if (sid.startsWith("pkg__")) {
       const pkgName = sid.replace("pkg__","").toLowerCase();
       // PKG 카테고리 시술에서 이름 유사 매칭
@@ -161,6 +179,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   const [showSaleForm, setShowSaleForm] = useState(false);
   const [isSchedule, setIsSchedule] = useState(item?.isSchedule || false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [custPopupOpen, setCustPopupOpen] = useState(false);
   const [salesHistory, setSalesHistory] = useState([]);
   const [custMemo, setCustMemo] = useState("");
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -248,8 +267,9 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
       // 신규 예약이면 "신규" 태그 자동 포함
       if (!item?.id && !isSchedule && NEW_CUST_TAG_ID_GLOBAL && !baseTags.includes(NEW_CUST_TAG_ID_GLOBAL))
         baseTags = [...baseTags, NEW_CUST_TAG_ID_GLOBAL];
-      // isPrepaid면 "예약금완료" 태그 자동 포함
-      if (item?.isPrepaid && PREPAID_TAG_ID && !baseTags.includes(PREPAID_TAG_ID))
+      // 선결제(네이버 예약금 포함)면 "예약금완료" 태그 자동 포함
+      const hasPrepaid = item?.isPrepaid || (item?.externalPrepaid || 0) > 0;
+      if (hasPrepaid && PREPAID_TAG_ID && !baseTags.includes(PREPAID_TAG_ID))
         baseTags = [...baseTags, PREPAID_TAG_ID];
       return baseTags;
     })(), isNewCust: false, tsLog: mergedTs,
@@ -462,7 +482,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
 
   // 시술 선택 패널 열기
   const [showSvcPicker, setShowSvcPicker] = useState(false);
-  const [tagsOpen, setTagsOpen] = useState(!isNaverItem);
+  const [tagsOpen, setTagsOpen] = useState(false);
   const [srcOpen, setSrcOpen] = useState(!isNaverItem);
   // AI 자동분석 상태
   const [aiAnalyzing, setAiAnalyzing] = useState(false);
@@ -610,8 +630,9 @@ ${naverText}
       // AI 결과에서 신규 태그 제거 후 코드가 직접 판단
       let newTags = fuzzyFix(parsed.matchedTagIds || [], validTagSet).filter(id => !SYSTEM_TAG_IDS.includes(id) && validTagSet.has(id));
       if (effectiveIsNew) newTags = [...newTags, NEW_CUST_TAG_ID];
-      // 예약금완료 자동 처리: isPrepaid=true이면 태그 추가 (totalPrice 무관)
-      if (f.isPrepaid && !newTags.includes(PREPAID_TAG_ID)) newTags = [...newTags, PREPAID_TAG_ID];
+      // 예약금완료 자동 처리: 선결제(네이버 또는 외부플랫폼)면 태그 추가
+      const _hasPrepaid = f.isPrepaid || (f.externalPrepaid || 0) > 0;
+      if (_hasPrepaid && !newTags.includes(PREPAID_TAG_ID)) newTags = [...newTags, PREPAID_TAG_ID];
       let newSvcs = fuzzyFix(parsed.matchedServiceIds || [], validSvcSet).filter(id => validSvcSet.has(id));
       // 후처리: 브라질리언왁싱 선택 시 항문왁싱 자동 제거 (브라질리언에 포함됨)
       const svcNames = newSvcs.map(sid => (data?.services||[]).find(s=>s.id===sid)?.name||"");
@@ -627,7 +648,7 @@ ${naverText}
         if (multiPkgs.length > 0) {
           const groups={};multiPkgs.forEach(p=>{const nm=(p.service_name?.split("(")[0]||"").replace(/\s*\d+회$/,"").trim();if(!groups[nm])groups[nm]=true;});
           const firstPkgName = Object.keys(groups)[0];
-          if (firstPkgName && !newSvcs.some(id=>id.startsWith("pkg__"))) {
+          if (firstPkgName && !newSvcs.some(id=>typeof id==="string" && id.startsWith("pkg__"))) {
             newSvcs.unshift("pkg__"+firstPkgName);
           }
         }
@@ -701,19 +722,7 @@ ${naverText}
         animation:"ovFadeIn .25s"
       }}
     >
-      {_isMob && (
-        <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px 8px",
-          borderBottom:`1px solid ${T.border}`,background:T.bgCard,
-          position:"sticky",top:0,zIndex:10}}>
-
-          <button onClick={onClose} style={{display:"flex",alignItems:"center",gap:4,
-            background:"none",border:"none",cursor:"pointer",color:T.primary,
-            fontWeight:700,fontSize:15,padding:"4px 2px",fontFamily:"inherit"}}>
-            <I name="chevronLeft" size={20}/> 뒤로
-          </button>
-        </div>
-      )}
-      {/* 모달 + 확장 패널 래퍼 */}
+{/* 모달 + 확장 패널 래퍼 */}
       <div style={_isMob ? {} : {display:"flex",gap:0,alignItems:"flex-start",justifyContent:"center",width:"95%",maxWidth:historyOpen?1200:680,margin:"0 auto",transition:"max-width .35s cubic-bezier(.22,1,.36,1)"}}>
       <div ref={modalRef} className="modal-res" onClick={e=>e.stopPropagation()} style={{background:T.bgCard,
         borderRadius:_isMob ? 0 : T.radius.xl,
@@ -724,6 +733,12 @@ ${naverText}
         width:_isMob ? "100%" : "100%", maxWidth:680, overflowX:"hidden",
         flex:_isMob ? undefined : "0 0 auto",
         position:"relative"}}>
+        {/* 모바일 닫기 X 버튼 (우측 상단 플로팅) */}
+        {_isMob && <button onClick={onClose} aria-label="닫기"
+          style={{position:"absolute",top:8,right:8,zIndex:20,width:32,height:32,borderRadius:"50%",
+            border:"none",background:"rgba(255,255,255,.92)",boxShadow:"0 2px 8px rgba(0,0,0,.15)",
+            cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
+            color:T.gray600,fontSize:18,fontWeight:700,fontFamily:"inherit",padding:0}}>✕</button>}
         {/* ═══ Chrome-style Tabs ═══ */}
         {!item?.id && !item?.scheduleOnly && <div style={{display:"flex",alignItems:"stretch",borderBottom:`1.5px solid ${T.gray200}`,background:T.bgCard,borderRadius:`${T.radius.xl}px ${T.radius.xl}px 0 0`,position:"relative"}}>
           {/* 예약 탭 */}
@@ -861,13 +876,13 @@ ${naverText}
             <div style={{position:"relative"}}>
               {/* 고객 선택됨: Contact Chip 카드 */}
               {f.custName ? (
-                <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"linear-gradient(135deg,#f8f9fb,#f0f2f5)",borderRadius:10,border:"1px solid #e2e5ea"}}>
+                <div style={{display:"flex",alignItems:"flex-start",gap:8,padding:"8px 12px",background:"linear-gradient(135deg,#f8f9fb,#f0f2f5)",borderRadius:10,border:"1px solid #e2e5ea"}}>
                   {/* 아바타 — 성별 표시 (클릭: 남↔여↔미지정 순환) */}
                   <button onClick={()=>set("custGender",f.custGender==="F"?"M":f.custGender==="M"?"":"F")}
                     title="클릭해서 성별 변경"
-                    style={{width:36,height:36,borderRadius:"50%",border:"2px solid "+(f.custGender==="F"?"#e91e6320":f.custGender==="M"?"#3f51b520":"#0000"),cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:800,flexShrink:0,
+                    style={{width:24,height:24,borderRadius:"50%",border:"1.5px solid "+(f.custGender==="F"?"#e91e6320":f.custGender==="M"?"#3f51b520":"#0000"),cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:800,flexShrink:0,marginTop:2,padding:0,
                       background:f.custGender==="F"?"linear-gradient(135deg,#fce4ec,#f8bbd0)":f.custGender==="M"?"linear-gradient(135deg,#e8eaf6,#c5cae9)":"linear-gradient(135deg,#f5f5f5,#e0e0e0)",
-                      color:f.custGender==="F"?"#c2185b":f.custGender==="M"?"#283593":"#999",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      color:f.custGender==="F"?"#c2185b":f.custGender==="M"?"#283593":"#999",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>
                     {f.custGender==="F"?"여":f.custGender==="M"?"남":"?"}
                   </button>
                   {/* 정보 */}
@@ -890,15 +905,17 @@ ${naverText}
                         </>
                       )}
                     </div>
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginTop:editingCust?6:3}}>
-                      <span style={{fontSize:11,color:"#aaa"}}>✉</span>
-                      {editingCust ? (
-                        <input type="email" value={f.custEmail||""} onChange={e=>set("custEmail",e.target.value)} placeholder="이메일"
-                          style={{flex:1,minWidth:90,fontSize:13,color:"#777",fontWeight:500,border:"1px solid #ccc",borderRadius:6,padding:"4px 8px",background:"#fff",fontFamily:"inherit",outline:"none"}}/>
-                      ) : (
-                        <CopySpan text={f.custEmail} style={{fontSize:12,color:"#777"}}>{f.custEmail||<span style={{color:"#ccc"}}>이메일 없음</span>}</CopySpan>
-                      )}
-                    </div>
+                    {(editingCust || f.custEmail) && (
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginTop:editingCust?6:3}}>
+                        <span style={{fontSize:11,color:"#aaa"}}>✉</span>
+                        {editingCust ? (
+                          <input type="email" value={f.custEmail||""} onChange={e=>set("custEmail",e.target.value)} placeholder="이메일"
+                            style={{flex:1,minWidth:90,fontSize:13,color:"#777",fontWeight:500,border:"1px solid #ccc",borderRadius:6,padding:"4px 8px",background:"#fff",fontFamily:"inherit",outline:"none"}}/>
+                        ) : (
+                          <CopySpan text={f.custEmail} style={{fontSize:12,color:"#777"}}>{f.custEmail}</CopySpan>
+                        )}
+                      </div>
+                    )}
                     {/* 성별 선택 — 편집 모드 또는 신규 고객 또는 미지정 고객 */}
                     {(editingCust || f.isNewCust || !f.custGender) && (
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6}}>
@@ -931,16 +948,16 @@ ${naverText}
                   </div>
                   {/* 변경/완료 + 고객관리 */}
                   {editingCust ? (
-                    <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                    <div style={{display:"flex",flexDirection:"column",gap:3,alignSelf:"flex-start",flexShrink:0}}>
                       <button onClick={()=>setEditingCust(false)}
                         style={{padding:"3px 8px",borderRadius:5,border:"1px solid "+T.primary,background:T.primary,color:"#fff",fontSize:10,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>완료</button>
                     </div>
                   ) : (
-                    <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                    <div style={{display:"flex",flexDirection:"column",gap:3,alignSelf:"flex-start",flexShrink:0}}>
                       <button onClick={()=>setEditingCust(true)}
                         style={{padding:"3px 8px",borderRadius:5,border:"1px solid #ddd",background:"#fff",color:"#999",fontSize:10,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>변경</button>
-                      {f.custId && setPage && <button onClick={()=>{if(setPendingOpenCust)setPendingOpenCust(f.custId);setPage("customers");onClose();}}
-                        title="고객관리에서 상세정보 보기"
+                      {f.custId && <button onClick={()=>setCustPopupOpen(true)}
+                        title="고객정보 빠른 보기"
                         style={{padding:"3px 8px",borderRadius:5,border:"1px solid "+T.primary,background:T.primaryLt||"#fff0ec",color:T.primary,fontSize:10,cursor:"pointer",fontFamily:"inherit",fontWeight:600,whiteSpace:"nowrap"}}>고객정보 ↗</button>}
                     </div>
                   )}
@@ -1002,24 +1019,6 @@ ${naverText}
                 </select>
               </div>
             </div>
-            {/* 반복 설정 (예약 모드) */}
-            {!item?.id && <div style={{marginTop:8}}>
-              <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-                <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bold,color:T.textSub,marginRight:4}}>반복</span>
-                {[{v:"none",l:"안함"},{v:"daily",l:"매일"},{v:"weekly",l:"매주"},{v:"monthly",l:"매월"}].map(o => (
-                  <button key={o.v} onClick={()=>set("repeat",o.v)}
-                    style={{padding:"4px 10px",fontSize:T.fs.sm,fontWeight:f.repeat===o.v?700:400,borderRadius:T.radius.md,cursor:"pointer",fontFamily:"inherit",
-                      border:`1px solid ${f.repeat===o.v?T.primary:T.gray400}`,
-                      background:f.repeat===o.v?T.primaryLt||"#e8f0ff":"transparent",
-                      color:f.repeat===o.v?T.primary:T.gray500,transition:"all .15s"}}>{o.l}</button>
-                ))}
-                {f.repeat !== "none" && <>
-                  <span style={{fontSize:T.fs.sm,color:T.textSub,marginLeft:8}}>종료일:</span>
-                  <DatePick value={f.repeatUntil} onChange={v=>set("repeatUntil",v)} min={f.date} style={{flex:"1 1 100px",minWidth:90}}/>
-                </>}
-              </div>
-            </div>}
-
             {/* 시술 상품 선택 */}
             {(() => {
               const hasGender = !!f.custGender;
@@ -1045,8 +1044,8 @@ ${naverText}
                   시술상품
                   {(f.selectedServices||[]).length > 0
                     ? <span style={{color:T.primary,fontWeight:T.fw.bolder}}>{[
-                        ...(f.selectedServices||[]).filter(id=>id.startsWith("pkg__")).map(id=>"📦"+id.replace("pkg__","")),
-                        ...groupSvcNames((f.selectedServices||[]).filter(id=>!id.startsWith("pkg__")), SVC_LIST)
+                        ...(f.selectedServices||[]).filter(id=>typeof id==="string" && id.startsWith("pkg__")).map(id=>"📦"+id.replace("pkg__","")),
+                        ...groupSvcNames((f.selectedServices||[]).filter(id=>typeof id==="string" && !id.startsWith("pkg__")), SVC_LIST)
                       ].join(", ")} <span style={{background:"rgba(140,80,220,.12)",borderRadius:T.radius.sm,padding:"1px 6px",fontSize:T.fs.sm}}>{svcDurTotal}분{!hasGender&&hasGenderDep?"":" / "+fmt(svcPriceTotal)+"원"}</span></span>
                     : <span style={{color:T.textMuted,fontWeight:T.fw.normal}}>선택하세요</span>}
                 </span>
@@ -1074,11 +1073,15 @@ ${naverText}
                     {Object.values(groups).map(g=>{
                       const pkgId="pkg__"+g.name;
                       const sel=(f.selectedServices||[]).includes(pkgId);
+                      const isEnergy = g.name.includes("에너지");
+                      const catLabel = isEnergy ? "에너지" : "패키지";
+                      const catClr = isEnergy ? "#E65100" : "#7C4DFF";
+                      const catBg = isEnergy ? "#FFF3E0" : "#EDE7F6";
                       return <div key={g.name} onClick={(e)=>{e.stopPropagation();toggleService(pkgId,1);}}
                         style={{padding:"6px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:6,
                           background:sel?"#7c7cc810":"transparent",borderRadius:T.radius.sm,transition:"background .1s"}}>
                         {sel && <span style={{color:T.primary,fontWeight:700,fontSize:T.fs.sm,flexShrink:0}}>✓</span>}
-                        <span style={{fontSize:T.fs.sm,color:"#7C4DFF",background:"#EDE7F6",borderRadius:T.radius.sm,padding:"1px 5px"}}>패키지</span>
+                        <span style={{fontSize:T.fs.sm,color:catClr,background:catBg,borderRadius:T.radius.sm,padding:"1px 5px"}}>{catLabel}</span>
                         <span style={{flex:1,fontSize:T.fs.sm,fontWeight:sel?600:400,color:sel?T.text:T.gray600}}>{g.name}</span>
                         <span style={{fontSize:T.fs.sm,color:"#999"}}>{g.totalRemain}회</span>
                         <span style={{fontSize:T.fs.sm,color:T.gray400,fontWeight:700,minWidth:55,textAlign:"right"}}>0원</span>
@@ -1160,6 +1163,32 @@ ${naverText}
                 </div>
               </div>
             </div>}
+
+            {/* 외부 선결제(예약금/선결제) — 수동 입력 */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",marginTop:4,flexWrap:"wrap",gap:6,background:"#FFF3E0",borderRadius:8,border:"1px solid #FFCC80"}}>
+              <span style={{fontSize:T.fs.sm,color:"#E65100",display:"inline-flex",alignItems:"center",gap:4,whiteSpace:"nowrap",fontWeight:700}}>🏷 선결제</span>
+              <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
+                {(()=>{
+                  const platforms = (()=>{
+                    try {
+                      const s = typeof (data?.businesses||[])[0]?.settings === 'string' ? JSON.parse((data.businesses||[])[0].settings) : (data?.businesses||[])[0]?.settings || {};
+                      const list = s?.external_platforms;
+                      const userList = Array.isArray(list) && list.length>0 ? list : ["서울뷰티","크리에이트립"];
+                      return ["네이버", ...userList.filter(p => p !== "네이버")];
+                    } catch { return ["네이버","서울뷰티","크리에이트립"]; }
+                  })();
+                  return <select value={f.externalPlatform||""} onChange={e=>set("externalPlatform", e.target.value)}
+                    style={{padding:"4px 6px",fontSize:T.fs.sm,border:"1px solid #FFB74D",borderRadius:6,background:"#fff",color:"#E65100",fontFamily:"inherit"}}>
+                    <option value="">플랫폼</option>
+                    {platforms.map(p=><option key={p} value={p}>{p}</option>)}
+                  </select>;
+                })()}
+                <input type="number" step="5000" value={f.externalPrepaid||""} placeholder="0" min="0"
+                  onChange={e=>set("externalPrepaid", Math.max(0, Number(e.target.value)||0))}
+                  style={{width:90,padding:"4px 8px",fontSize:T.fs.sm,textAlign:"right",fontWeight:700,color:"#E65100",border:"1px solid #FFB74D",borderRadius:6,background:"#fff",fontFamily:"inherit"}}/>
+                <span style={{fontSize:T.fs.sm,color:"#E65100",fontWeight:700}}>원</span>
+              </div>
+            </div>
 
             {/* 예약태그 아코디언 */}
             <div className="tags-acc acc-tag">
@@ -1291,7 +1320,17 @@ ${naverText}
 
           {/* 예약메모 - 직원 메모 (네이버 포함 모두 수정 가능) */}
           <div>
-            <span style={{fontSize:11,color:T.textMuted,fontWeight:600}}>직원 메모</span>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:11,color:T.textMuted,fontWeight:600}}>직원 메모</span>
+              {!isReadOnly && !isSchedule && <button type="button" onClick={handleAiAnalyze} disabled={aiAnalyzing}
+                title={aiAnalyzing?"분석중...":"AI 분석"}
+                style={{display:"inline-flex",alignItems:"center",gap:3,padding:"2px 8px",fontSize:11,fontWeight:700,
+                  border:"1px solid #ff9800",borderRadius:10,cursor:aiAnalyzing?"default":"pointer",
+                  background:aiAnalyzing?"#f5f5f5":"#fff3e0",color:"#e65100",
+                  opacity:aiAnalyzing?.6:1,fontFamily:"inherit",lineHeight:1}}>
+                ✨ {aiAnalyzing?"분석중":"AI"}
+              </button>}
+            </div>
             <textarea className="inp inp-memo" ref={el=>{if(el){el.style.height="auto";el.style.height=Math.max(90,el.scrollHeight)+"px";}}}
               value={f.memo} onChange={e=>{set("memo",e.target.value);const t=e.target;t.style.height="auto";t.style.height=Math.max(90,t.scrollHeight)+"px";}}
               style={{resize:"vertical",minHeight:90,lineHeight:1.6,marginTop:4}} placeholder="직원 메모를 입력하세요"/>
@@ -1312,13 +1351,28 @@ ${naverText}
               </div>
             </div>}
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            {!isReadOnly && !isSchedule && <Btn
-              disabled={aiAnalyzing}
-              style={{padding:"10px 16px",background:"#ff9800",boxShadow:"0 2px 8px rgba(255,152,0,.3)",opacity:aiAnalyzing?.6:1}}
-              onClick={handleAiAnalyze}>{aiAnalyzing?"분석중...":"AI 분석"}</Btn>}
-            {!isReadOnly && <><Btn
+            {!isReadOnly && <>
+              {(() => {
+                const baseBtn = {padding:"10px 16px",borderRadius:T.radius.md,fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5,lineHeight:1,transition:"all .15s"};
+                return null;
+              })()}
+              {/* 매출등록 (좌측) — 주황 아웃라인 */}
+              {!isSchedule && f.type === "reservation" && (
+                <button onClick={()=>setShowSaleForm(true)}
+                  style={{padding:"10px 16px",borderRadius:T.radius.md,fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5,lineHeight:1,transition:"all .15s",border:"2px solid "+T.orange,color:T.orange,background:T.warningLt}}>
+                  <I name="wallet" size={12}/> {existingSale ? "매출확인" : "매출등록"}
+                </button>
+              )}
+              {/* 삭제 — 빨강 아웃라인 */}
+              {item?.id && (
+                <button onClick={()=>onDeleteRequest?.(item)}
+                  style={{padding:"10px 16px",borderRadius:T.radius.md,fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5,lineHeight:1,transition:"all .15s",border:"2px solid "+T.danger,color:T.danger,background:T.dangerLt}}>
+                  <I name="trash" size={12}/> 삭제
+                </button>
+              )}
+              <button
                 disabled={!isSchedule && f.type==="reservation" && !f.custName?.trim()}
-                style={{padding:"10px 26px",background:isSchedule?T.orange:T.primary,boxShadow:isSchedule?"0 4px 14px rgba(225,112,85,.35)":`0 4px 14px rgba(124,124,200,.35)`}}
+                style={{marginLeft:"auto",padding:"10px 22px",borderRadius:T.radius.md,fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5,lineHeight:1,transition:"all .15s",border:"2px solid "+(isSchedule?T.orange:T.primary),color:"#fff",background:isSchedule?T.orange:T.primary,boxShadow:isSchedule?"0 4px 14px rgba(225,112,85,.35)":"0 4px 14px rgba(124,124,200,.35)"}}
                 onClick={()=>{
                 const now = new Date();
                 const ts = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
@@ -1329,8 +1383,15 @@ ${naverText}
                     ? [...prevLog, `[수정: ${ts}]`]
                     : prevLog;
                 let autoTags = [...(f.selectedTags || [])];
-                if (f.isPrepaid && !autoTags.includes(PREPAID_TAG_ID)) autoTags = [...autoTags, PREPAID_TAG_ID];
-                if (!f.isPrepaid && autoTags.includes(PREPAID_TAG_ID)) autoTags = autoTags.filter(id => id !== PREPAID_TAG_ID);
+                const _hasPrepaidSave = f.isPrepaid || (f.externalPrepaid || 0) > 0;
+                if (_hasPrepaidSave && !autoTags.includes(PREPAID_TAG_ID)) autoTags = [...autoTags, PREPAID_TAG_ID];
+                if (!_hasPrepaidSave && autoTags.includes(PREPAID_TAG_ID)) autoTags = autoTags.filter(id => id !== PREPAID_TAG_ID);
+                // 플랫폼 선택 시 방문경로 자동 매칭 (empty일 때만)
+                let autoSource = f.source;
+                if (f.externalPlatform && !autoSource) {
+                  const match = (data?.resSources||[]).find(s => s.name === f.externalPlatform);
+                  if (match) autoSource = match.name;
+                }
                 const memoToSave = (f.memo||"").split("\n").filter(l => { const t=l.trim(); return !(/^\[등록:|^\[수정:/.test(t)) && !(/^\d+\.\d+\s+\d+:\d+\s*(예약)?(접수|변경|확정|취소|신청|확정완료)/.test(t)); }).join("\n").trim();
                 // 고객 DB에 이메일/성별 자동 업데이트
                 if(f.custId && !f.custId.startsWith("new_")){
@@ -1348,7 +1409,7 @@ ${naverText}
                   });
                 }
                 onSave({...f, memo: memoToSave, tsLog: newLog, selectedTags: autoTags, isSchedule, _isColTemplate: item?._isColTemplate, _templateId: item?._templateId});
-              }}>{item?.id?"저장":"등록"}</Btn>
+              }}>{item?.id?"저장":"등록"}</button>
               {/* AI 예약 확정 버튼 */}
               {f.status==="request" && <Btn style={{padding:"10px 26px",background:"#9C27B0",boxShadow:"0 4px 14px rgba(156,39,176,.35)"}}
                 onClick={async ()=>{
@@ -1401,12 +1462,7 @@ ${naverText}
                   }catch(e){console.error("확정 메시지 발송 실패",e);}
                   onSave({...f,status:"confirmed"});
                 }}>예약 확정</Btn>}
-            {!isSchedule && f.type === "reservation" && (
-              <Btn variant="secondary" onClick={()=>setShowSaleForm(true)} style={{padding:"10px 18px",whiteSpace:"nowrap",border:"2px solid "+T.orange,color:T.orange,background:T.warningLt,fontWeight:800}}>
-                {existingSale ? <><I name="wallet" size={12}/> 매출확인</> : <><I name="wallet" size={12}/> 매출등록</>}
-              </Btn>
-            )}
-            {item?.id && (!item?.reservationId || String(item.reservationId).startsWith("ai_") || String(item.reservationId).startsWith("manual_")) && <button onClick={()=>onDeleteRequest?.(item)} title="삭제" style={{marginLeft:"auto",padding:"8px 10px",borderRadius:T.radius.md,border:"none",background:"transparent",color:T.danger,cursor:"pointer",display:"flex",alignItems:"center",transition:"background .15s"}} onMouseEnter={e=>e.currentTarget.style.background=T.dangerLt} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><I name="trash" size={17}/></button>}</>}
+            </>}
             {isReadOnly && <span style={{fontSize:T.fs.sm,color:T.textSub,display:"flex",alignItems:"center",gap:T.sp.xs}}><I name="eye" size={12}/> 열람 전용 (타 지점)</span>}
           </div>
         </div>
@@ -1482,8 +1538,96 @@ ${naverText}
         </div>
       )}
       </div>{/* 래퍼 닫기 */}
+
+      {/* 고객정보 빠른 보기 팝업 */}
+      {custPopupOpen && f.custId && (
+        <div onClick={()=>setCustPopupOpen(false)}
+          style={{position:"fixed",inset:0,zIndex:10001,background:"rgba(0,0,0,.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:16,animation:"ovFadeIn .2s"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:T.bgCard,borderRadius:14,boxShadow:"0 10px 40px rgba(0,0,0,.25)",width:"100%",maxWidth:420,maxHeight:"85vh",overflow:"auto",animation:"slideUp .3s cubic-bezier(.22,1,.36,1)"}}>
+            {/* 헤더 */}
+            <div style={{display:"flex",alignItems:"center",gap:10,padding:"14px 18px",borderBottom:"1px solid "+T.border,position:"sticky",top:0,background:T.bgCard,zIndex:1}}>
+              <I name="user" size={16} color={T.primary}/>
+              <span style={{fontSize:T.fs.md,fontWeight:T.fw.bolder,color:T.text}}>고객 정보</span>
+              <button onClick={()=>setCustPopupOpen(false)}
+                style={{marginLeft:"auto",width:28,height:28,borderRadius:"50%",border:"none",background:"transparent",color:T.gray500,cursor:"pointer",fontSize:18,lineHeight:1}}>✕</button>
+            </div>
+            {/* 본문 */}
+            <div style={{padding:16}}>
+              {/* 프로필 카드 */}
+              <div style={{display:"flex",alignItems:"flex-start",gap:10,padding:10,background:"linear-gradient(135deg,#f8f9fb,#f0f2f5)",borderRadius:10,marginBottom:12}}>
+                <div style={{width:32,height:32,borderRadius:"50%",background:f.custGender==="F"?"linear-gradient(135deg,#fce4ec,#f8bbd0)":f.custGender==="M"?"linear-gradient(135deg,#e8eaf6,#c5cae9)":"linear-gradient(135deg,#f5f5f5,#e0e0e0)",color:f.custGender==="F"?"#c2185b":f.custGender==="M"?"#283593":"#999",fontSize:13,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  {f.custGender==="F"?"여":f.custGender==="M"?"남":"?"}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:14,fontWeight:800,color:"#1a1a2e",marginBottom:2}}>{f.custName || "-"}{custNum && <span style={{marginLeft:6,fontSize:11,color:"#999",fontWeight:600,fontFamily:"monospace"}}>#{custNum}</span>}</div>
+                  <div style={{fontSize:12,color:T.primary,marginBottom:1}}>{f.custPhone || "-"}</div>
+                  {f.custEmail && <div style={{fontSize:11,color:"#777"}}>✉ {f.custEmail}</div>}
+                </div>
+              </div>
+
+              {/* 통계 */}
+              {(()=>{
+                const dbCust = (data?.customers||[]).find(c=>c.id===f.custId);
+                if (!dbCust) return null;
+                return <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:12}}>
+                  <StatBox label="방문" val={dbCust.visits||0} color={T.primary}/>
+                  <StatBox label="최근방문" val={dbCust.lastVisit||"-"} color={T.info} small/>
+                  <StatBox label="가입" val={dbCust.joinDate?dbCust.joinDate.slice(0,10):"-"} color={T.textSub} small/>
+                </div>;
+              })()}
+
+              {/* 보유 패키지 */}
+              {(custPkgsInfo||[]).length > 0 && <div style={{marginBottom:12}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.textSub,marginBottom:6}}>🎫 보유권</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                  {activePkgSummary.map((pkg,i) => {
+                    const activeBg = pkg.type==="prepaid"?"linear-gradient(135deg,#FFE0B2,#FFCC80)":pkg.type==="annual"?"linear-gradient(135deg,#E1BEE7,#CE93D8)":"linear-gradient(135deg,#FFF3E0,#FFE0B2)";
+                    const activeClr = pkg.type==="annual"?"#6A1B9A":"#E65100";
+                    return <span key={i} style={{fontSize:11,fontWeight:800,padding:"3px 8px",borderRadius:10,background:pkg.active?activeBg:"#EEEEEE",color:pkg.active?activeClr:"#9E9E9E",border:"1px solid "+(pkg.active?"#FFB74D":"#E0E0E0"),textDecoration:pkg.active?"none":"line-through"}}>{pkg.label}</span>;
+                  })}
+                </div>
+              </div>}
+
+              {/* 고객 메모 */}
+              {custMemo && <div style={{padding:"10px 12px",marginBottom:12,background:"#FFFDE7",borderRadius:8,border:"1px solid #FFF176"}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#F57F17",marginBottom:4}}>📋 고객 메모</div>
+                <div style={{fontSize:12,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{custMemo}</div>
+              </div>}
+
+              {/* 최근 매출 이력 (최대 5건) */}
+              {salesHistory.length > 0 && <div style={{marginBottom:12}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.textSub,marginBottom:6}}>📊 최근 매출 ({salesHistory.length}건)</div>
+                {salesHistory.slice(0,5).map((s,i) => {
+                  const total = (s.svc_card||0)+(s.svc_cash||0)+(s.svc_transfer||0)+(s.svc_point||0);
+                  return <div key={s.id||i} style={{padding:"8px 10px",marginBottom:4,background:i===0?"#f0f0ff":"#fafafa",borderRadius:6,border:"1px solid "+(i===0?T.primary+"30":T.border),fontSize:11}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <span style={{fontWeight:700,color:T.primary}}>{s.date}</span>
+                      {total>0 && <span style={{fontWeight:700,color:T.text}}>{total.toLocaleString()}원</span>}
+                    </div>
+                    {s.service_name && <div style={{color:T.gray600,marginTop:2}}>{s.service_name}</div>}
+                  </div>;
+                })}
+              </div>}
+
+              {/* 전체보기 링크 */}
+              {setPage && <button onClick={()=>{if(setPendingOpenCust)setPendingOpenCust(f.custId);setPage("customers");setCustPopupOpen(false);onClose();}}
+                style={{width:"100%",padding:"10px",borderRadius:8,border:"1px solid "+T.primary,background:"#fff",color:T.primary,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                고객관리에서 전체 보기 ↗
+              </button>}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+// 작은 통계 박스
+function StatBox({ label, val, color, small }) {
+  return <div style={{padding:"6px 8px",background:"#fafafa",borderRadius:8,border:"1px solid #eee",textAlign:"center"}}>
+    <div style={{fontSize:9,color:"#999",marginBottom:2}}>{label}</div>
+    <div style={{fontSize:small?11:14,fontWeight:800,color}}>{val}</div>
+  </div>;
 }
 
 // ═══════════════════════════════════════════

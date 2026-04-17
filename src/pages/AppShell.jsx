@@ -20,7 +20,7 @@ import SetupWizard from '../components/SetupWizard/SetupWizard'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "2.2.6"
+const BLISS_V = "2.7.5"
 const BIZ_ID = 'biz_khvurgshb'
 const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", users:"/users", messages:"/messages", admin:"/settings", wizard:"/wizard", schedule:"/schedule", requests:"/requests" };
 async function loadAllFromDb(bizId) {
@@ -1069,12 +1069,13 @@ function App() {
             const ev = payload.eventType;
             const row = payload.new || {};
             const oldRow = payload.old || {};
+            console.log("[RT] reservation", ev, row?.id||oldRow?.id, row?.time, "bid=", row?.bid);
             setData(prev => {
               if (!prev) return prev;
               try {
                 const parsed = row.id ? fromDb("reservations", [row])[0] : null;
                 if (ev === "INSERT" && parsed) {
-                  // 새 예약 → 즉시 알림 (네이버 예약이면 status 무관)
+                  // 네이버 신규 예약 알림
                   if (parsed.source === "naver" || parsed.source === "네이버") {
                     try {
                       const isPending = parsed.status === "pending";
@@ -1086,82 +1087,49 @@ function App() {
                       div.innerHTML = `<div style="position:fixed;top:20px;right:20px;z-index:99999;background:${bg};color:#fff;padding:16px 24px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.3);font-size:15px;font-weight:800;animation:slideIn .3s;cursor:pointer;max-width:350px;" onclick="this.parentElement.remove()">🔔 ${label}<br><span style="font-size:13px;font-weight:500;">${parsed.custName||"네이버 예약"} ${parsed.date||""} ${parsed.time||""}</span></div>`;
                       document.body.appendChild(div);
                       setTimeout(()=>{ try{div.remove();}catch(e){} }, 20000);
-                      try { new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2Nk4yGfHJ0fIaNkImBd3F2gIqRjYaCeHR4gImQi4R/d3V5goqPi4N+d3Z6g4uPioJ9d3d7hIyOiYF8d3h8hY2NiIF8eHl9hoyMh4B7eXp+h42LhX96ent/iIyKhH56e3yAiYuJg356fH2BiomHgn17fH6Ci4iGgX17fX+Di4eFgH18foGEioSDf3x9f4KFiYOCfn1+gIOGiIKBfn5/gYSHh4GAf39/goWGhYB/f4CBg4aFhIB/gICCg4WEg39/gIGDhISCf3+AgYKDhIOBf4CBgoOEg4F/gIGCg4SDgX+AgYKDg4OBf4CCgoODgoF/gIGCg4OCgX+AgoKDg4KBf4CCgoODgoF/gIGCg4OCgX+AgYKDg4KBf4CBgoKDgoF/gIGCgoOCgX+AgYKCg4KBf4CBgoKDgoF/gIGCgoOCgX+AgYKCg4KBf4CBgoKCgoF/gIGCgoKCgX+AgYKCgoKBf4CBgoKCgoF/gIGCgoKCgX+AgYKCgoKBgICBgoKCgoGAgIGCgoKCgYCAgYKCgoKBgICBgoKCgoGAgIGCgoKCgYCAgYKCgoKBgA==").play().catch(()=>{}); } catch(e){}
                     } catch(e){}
-                  }
-                  if (isModalOpenRef.current) {
-                    if (!pendingRTQueueRef.current.some(q=>q.ev==="INSERT"&&q.data.id===parsed.id)) {
-                      pendingRTQueueRef.current = [...pendingRTQueueRef.current, {ev:"INSERT",data:parsed}];
-                      setRtPendingCount(pendingRTQueueRef.current.length);
-                    }
-                    return prev;
                   }
                   if ((prev?.reservations||[]).some(r => r.id === parsed.id)) return prev;
                   return {...prev, reservations: [...(prev?.reservations||[]), parsed]};
                 }
                 if (ev === "UPDATE" && parsed) {
-                  if (isModalOpenRef.current) {
-                    pendingRTQueueRef.current = [
-                      ...pendingRTQueueRef.current.filter(q=>!(q.ev==="UPDATE"&&q.data.id===parsed.id)),
-                      {ev:"UPDATE",data:parsed}
-                    ];
-                    setRtPendingCount(pendingRTQueueRef.current.length);
-                    return prev;
-                  }
-                  const before = (prev?.reservations||[]).find(r => r.id === parsed.id);
-                  const isNaver = parsed.source === "naver" || parsed.source === "네이버";
                   return {...prev, reservations: (prev?.reservations||[]).map(r => r.id === parsed.id ? {...r, ...parsed} : r)};
                 }
                 if (ev === "DELETE") {
                   const delId = oldRow.id;
                   return delId ? {...prev, reservations: (prev?.reservations||[]).filter(r => r.id !== delId)} : prev;
                 }
-              } catch(e) {}
+              } catch(e) { console.error("[RT] handler error:", e); }
               return prev;
             });
           })
-          .subscribe((status) => {
-            console.log("RT:", status);
+          .subscribe((status, err) => {
+            console.log("[RT reservations]:", status, err||"");
+            if (status === "SUBSCRIBED") console.log("[RT] ✓ 실시간 동기화 시작");
+            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+              console.error("[RT] ✗ 채널 오류:", status, err);
+              // 재연결 시도
+              setTimeout(() => {
+                try { channel?.subscribe(); } catch(e) {}
+              }, 3000);
+            }
           });
-      } catch(e) { console.log("RT setup error:", e); }
+      } catch(e) { console.error("[RT] setup error:", e); }
     }
 
-    // 예약 폴링 (15초) — Realtime 실패 대비
-    const resPoll = setInterval(async () => {
+    // 연결 복귀 시 1회 재동기화 (네트워크 끊김 후 재연결용)
+    const onOnline = async () => {
       try {
         const rows = await sb.get("reservations", `&business_id=eq.${currentBizId}&order=date.desc,time.asc&limit=3000`);
         const parsed = fromDb("reservations", rows);
-        setData(prev => {
-          if (!prev) return prev;
-          const oldRes = prev.reservations || [];
-          const oldIds = new Set(oldRes.map(r=>r.id));
-          const changed = parsed.length !== oldRes.length
-            || parsed.some(r => { const o = oldRes.find(x=>x.id===r.id); return !o || o.status !== r.status || o.memo !== r.memo || o.naverConfirmedDt !== r.naverConfirmedDt; });
-          if (changed) {
-            // 새 예약 or 확정대기 감지 → 알림
-            const newPending = parsed.filter(r => r.status === "pending" && !oldIds.has(r.id));
-            const newConfirmed = parsed.filter(r => r.status === "confirmed" && oldRes.find(x=>x.id===r.id && x.status==="pending"));
-            if (newPending.length > 0) {
-              const names = newPending.map(r=>r.custName||"고객").join(", ");
-              if (window.__blissAlertDiv) window.__blissAlertDiv.remove();
-              const div = document.createElement("div");
-              div.id = "bliss-new-res-alert";
-              window.__blissAlertDiv = div;
-              div.innerHTML = `<div style="position:fixed;top:20px;right:20px;z-index:99999;background:#ff9800;color:#fff;padding:16px 24px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.3);font-size:15px;font-weight:800;animation:slideIn .3s;cursor:pointer;max-width:350px;" onclick="this.parentElement.remove()">🔔 새 예약 ${newPending.length}건 (확정대기)<br><span style="font-size:13px;font-weight:500;">${names}</span></div>`;
-              document.body.appendChild(div);
-              setTimeout(()=>{ try{div.remove();}catch(e){} }, 15000);
-              // 소리
-              try { new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2Nk4yGfHJ0fIaNkImBd3F2gIqRjYaCeHR4gImQi4R/d3V5goqPi4N+d3Z6g4uPioJ9d3d7hIyOiYF8d3h8hY2NiIF8eHl9hoyMh4B7eXp+h42LhX96ent/iIyKhH56e3yAiYuJg356fH2BiomHgn17fH6Ci4iGgX17fX+Di4eFgH18foGEioSDf3x9f4KFiYOCfn1+gIOGiIKBfn5/gYSHh4GAf39/goWGhYB/f4CBg4aFhIB/gICCg4WEg39/gIGDhISCf3+AgYKDhIOBf4CBgoOEg4F/gIGCg4SDgX+AgYKDg4OBf4CCgoODgoF/gIGCg4OCgX+AgoKDg4KBf4CCgoODgoF/gIGCg4OCgX+AgYKDg4KBf4CBgoKDgoF/gIGCgoOCgX+AgYKCg4KBf4CBgoKDgoF/gIGCgoOCgX+AgYKCg4KBf4CBgoKCgoF/gIGCgoKCgX+AgYKCgoKBf4CBgoKCgoF/gIGCgoKCgX+AgYKCgoKBgICBgoKCgoGAgIGCgoKCgYCAgYKCgoKBgICBgoKCgoGAgIGCgoKCgYCAgYKCgoKBgA==").play().catch(()=>{}); } catch(e){}
-            }
-          }
-          return changed ? {...prev, reservations: parsed} : prev;
-        });
+        setData(prev => prev ? {...prev, reservations: parsed} : prev);
       } catch(e) {}
-    }, 15000);
+    };
+    window.addEventListener("online", onOnline);
 
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
-      clearInterval(resPoll);
+      window.removeEventListener("online", onOnline);
       if (channel && supaClient) { try { supaClient.removeChannel(channel); } catch(e){} }
     };
   }, [phase, currentBizId]);

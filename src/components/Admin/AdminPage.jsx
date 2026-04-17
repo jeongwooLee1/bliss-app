@@ -14,6 +14,7 @@ import AdminResSources from './AdminResSources'
 import AdminNoti from './AdminNoti'
 import AdminAISettings from './AdminAISettings'
 import AdminMemoTemplates from './AdminMemoTemplates'
+import AdminExtPlatforms from './AdminExtPlatforms'
 import AdminServiceTags from './AdminServiceTags'
 import SchedulePage from '../Schedule/SchedulePage'
 import AdminPkgAudit from './AdminPkgAudit'
@@ -353,7 +354,7 @@ function AdminJoinBrand({ currentUser, onBack }) {
 function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userBranches=[] }) {
   const navTo = useNavigate();
   const loc = useLocation();
-  const TAB_SLUGS = {places:"places",saleitems:"services",prodmgmt:"products",svctags:"tags",ressrc:"sources",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",joinbrand:"join-brand"};
+  const TAB_SLUGS = {places:"places",saleitems:"services",prodmgmt:"products",svctags:"tags",ressrc:"sources",extplatforms:"ext-platforms",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",joinbrand:"join-brand"};
   const SLUG_TO_TAB = Object.fromEntries(Object.entries(TAB_SLUGS).map(([k,v])=>[v,k]));
   const tab = SLUG_TO_TAB[loc.pathname.replace(/^\/settings\/?/,"").split("/")[0]] || null;
   const setTab=t=>{ if(t) navTo(`/settings/${TAB_SLUGS[t]||t}`); else navTo("/settings"); };
@@ -380,6 +381,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     ...(isMaster ? [{section:"예약 설정",items:[
       {key:"svctags",     icon:"tag",      label:"태그 관리",      desc:"예약 태그 추가·편집"},
       {key:"ressrc",      icon:"zap",      label:"예약경로 관리",  desc:"예약 유입 경로 설정"},
+      {key:"extplatforms",icon:"link",     label:"외부 플랫폼",    desc:"서울뷰티·크리에이트립 등 선결제 플랫폼 관리"},
     ]}] : []),
     ...(isMaster ? [{section:"알림 & AI",items:[
       {key:"notiSettings",icon:"bell",     label:"알림톡 설정",    desc:"카카오 알림톡 자동 발송 설정"},
@@ -429,6 +431,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     {tab==="prodmgmt"     && isMaster &&<AdminProductItems data={data} setData={setData}/>}
     {tab==="svctags"      && isMaster &&<AdminServiceTags  data={data} setData={setData}/>}
     {tab==="ressrc"       && isMaster &&<AdminResSources   data={data} setData={setData}/>}
+    {tab==="extplatforms" && isMaster &&<AdminExtPlatforms data={data} setData={setData} bizId={bizId}/>}
     {tab==="notiSettings" && isMaster &&<AdminNoti         data={data} setData={setData} sb={sb} bizId={bizId} branches={(data?.branches||[]).filter(b=>userBranches.includes(b.id))}/>}
     {tab==="memoTemplates"&&<AdminMemoTemplates bizId={bizId}/>}
     {tab==="aisettings"   && isMaster &&<AdminAISettings   data={data} sb={sb} bizId={bizId}/>}

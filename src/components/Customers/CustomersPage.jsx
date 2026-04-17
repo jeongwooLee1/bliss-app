@@ -232,9 +232,45 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
   const [custPkgsServer, setCustPkgsServer] = useState([]);
   const [pkgEditId, setPkgEditId] = useState(null);
   const [custResStats, setCustResStats] = useState({total:0,noshow:0,sameday:0});
+  const [custPointTx, setCustPointTx] = useState([]);
+  const [pkgHistoryMap, setPkgHistoryMap] = useState({}); // {pkgId: txArray}
+  const [pkgHistoryOpen, setPkgHistoryOpen] = useState(null); // opened pkg id
+  const loadPkgHistory = (pkgId) => {
+    if (pkgHistoryMap[pkgId]) return;
+    sb.get("package_transactions", `&package_id=eq.${pkgId}&order=created_at.desc&limit=200`)
+      .then(rows => setPkgHistoryMap(prev => ({...prev, [pkgId]: rows||[]})))
+      .catch(() => setPkgHistoryMap(prev => ({...prev, [pkgId]: []})));
+  };
+  const recordPkgTx = (pkg, txType, amount, unit, balBefore, balAfter, note) => {
+    const tx = {
+      id: "pkgtx_"+genId(),
+      business_id: _activeBizId,
+      bid: detailCust?.bid,
+      package_id: pkg.id,
+      customer_id: pkg.customer_id,
+      service_name: pkg.service_name || "",
+      type: txType, unit, amount,
+      balance_before: balBefore, balance_after: balAfter,
+      note: note || null,
+      created_at: new Date().toISOString()
+    };
+    sb.insert("package_transactions", tx).catch(console.error);
+    setPkgHistoryMap(prev => ({...prev, [pkg.id]: [tx, ...(prev[pkg.id]||[])]}));
+  };
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const custPointBalance = custPointTx.reduce((sum, t) => {
+    if (t.type === "earn" || t.type === "adjust_add") return sum + (t.amount||0);
+    if (t.type === "deduct" || t.type === "adjust_sub") return sum - (t.amount||0);
+    return sum;
+  }, 0);
+  const loadCustPoints = (cid) => {
+    if (!cid) { setCustPointTx([]); return Promise.resolve(); }
+    return sb.get("point_transactions", `&customer_id=eq.${cid}&order=created_at.desc&limit=200`)
+      .then(rows => setCustPointTx(rows||[]))
+      .catch(() => setCustPointTx([]));
+  };
   useEffect(() => {
-    if (!detailCust) { setCustSales([]); setCustPkgsServer([]); setCustResStats({total:0,noshow:0,sameday:0}); setLoadingDetail(false); return; }
+    if (!detailCust) { setCustSales([]); setCustPkgsServer([]); setCustResStats({total:0,noshow:0,sameday:0}); setCustPointTx([]); setLoadingDetail(false); return; }
     setLoadingDetail(true);
     Promise.all([
       sb.get("sales", `&cust_id=eq.${detailCust.id}&order=date.desc&limit=500`)
@@ -252,7 +288,8 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
             sameday: rows.filter(r=>["cancelled","naver_cancelled"].includes(r.status)&&r.date===today).length
           });
         })
-        .catch(() => setCustResStats({total:0,noshow:0,sameday:0}))
+        .catch(() => setCustResStats({total:0,noshow:0,sameday:0})),
+      loadCustPoints(detailCust.id)
     ]).finally(() => setLoadingDetail(false));
   }, [detailCust?.id]);
 
@@ -467,6 +504,11 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
           }
           sb.update("customer_packages",target.id,dbUpdate).catch(console.error);
           setCustPkgsServer(prev=>prev.map(x=>x.id===target.id?up:x));
+          // 히스토리 기록 — 1회 수동 차감
+          recordPkgTx(target, "deduct", 1, "count",
+            (target.total_count||0) - (target.used_count||0),
+            (target.total_count||0) - up.used_count,
+            "수동 1회 사용");
           if(detailCust?.phone && detailCust?.bid){
             const br=(data.branches||[]).find(b=>b.id===detailCust.bid);
             queueAlimtalk(detailCust.bid,"tkt_charge",detailCust.phone,{"#{고객명}":detailCust.name||"","#{총횟수}":String(p.total_count),"#{사용횟수}":String(up.used_count),"#{잔여횟수}":String(p.total_count-up.used_count),"#{시작일}":"","#{종료일}":"","#{매장명}":br?.name||"","#{대표전화번호}":br?.phone||""});
@@ -484,6 +526,8 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
           const newNote = (p.note||"").replace(/잔액:[0-9,]+/, `잔액:${newBal.toLocaleString()}`);
           sb.update("customer_packages",p.id,{used_count:newSpent, note:newNote}).catch(console.error);
           setCustPkgsServer(prev=>prev.map(x=>x.id===p.id?{...x, used_count:newSpent, note:newNote}:x));
+          // 히스토리 기록 — 수동 금액 차감
+          recordPkgTx(p, "deduct", deduct, "won", balance, newBal, "수동 금액 차감");
           if(detailCust?.phone && detailCust?.bid){
             const br=(data.branches||[]).find(b=>b.id===detailCust.bid);
             queueAlimtalk(detailCust.bid,"pkg_charge",detailCust.phone,{"#{고객명}":detailCust.name||"","#{충전금액}":String(charged),"#{사용금액}":String(newSpent),"#{잔액}":String(newBal),"#{매장명}":br?.name||"","#{대표전화번호}":br?.phone||""});
@@ -493,12 +537,40 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
         <Btn variant="outline" size="sm" style={{padding:"3px 8px",fontSize:T.fs.nano}} onClick={()=>{
           setPkgEditId(prev => prev === p.id ? null : p.id);
         }}>편집</Btn>
+        <Btn variant="outline" size="sm" style={{padding:"3px 8px",fontSize:T.fs.nano}}
+          onClick={()=>{
+            const willOpen = pkgHistoryOpen !== p.id;
+            setPkgHistoryOpen(willOpen ? p.id : null);
+            if (willOpen) loadPkgHistory(p.id);
+          }}>📜</Btn>
         <Btn variant="danger" size="sm" style={{padding:"3px 8px",fontSize:T.fs.nano}} onClick={()=>{
           if(!confirm("삭제하시겠습니까?")) return;
           sb.del("customer_packages",p.id).catch(console.error);
           setCustPkgsServer(prev=>prev.filter(x=>x.id!==p.id));
         }}><I name="trash" size={11}/></Btn>
       </div>
+      {/* 히스토리 뷰 */}
+      {pkgHistoryOpen === p.id && <div style={{marginTop:8,borderTop:"1px dashed "+T.border,paddingTop:6,maxHeight:220,overflowY:"auto"}}>
+        <div style={{fontSize:10,fontWeight:700,color:T.textSub,marginBottom:4}}>📜 이력</div>
+        {!pkgHistoryMap[p.id] ? (
+          <div style={{fontSize:10,color:T.textMuted,padding:"4px 0"}}>로딩중...</div>
+        ) : pkgHistoryMap[p.id].length === 0 ? (
+          <div style={{fontSize:10,color:T.textMuted,padding:"4px 0"}}>내역 없음</div>
+        ) : pkgHistoryMap[p.id].map(tx => {
+          const isPlus = tx.type === "charge" || tx.type === "adjust_add";
+          const lbl = ({charge:"충전",deduct:"차감",adjust_add:"+조정",adjust_sub:"-조정",cancel:"취소"})[tx.type]||tx.type;
+          const unitS = tx.unit === "count" ? "회" : "원";
+          return <div key={tx.id} style={{display:"flex",gap:4,alignItems:"center",padding:"3px 0",borderBottom:"1px dotted "+T.gray200,fontSize:10}}>
+            <span style={{color:T.textMuted,fontSize:9,minWidth:55}}>{new Date(tx.created_at).toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
+            <span style={{padding:"1px 4px",borderRadius:3,background:isPlus?"#E8F5E9":"#FFEBEE",color:isPlus?"#2E7D32":"#C62828",fontWeight:700,fontSize:9}}>{lbl}</span>
+            <span style={{fontWeight:700,color:isPlus?"#2E7D32":"#C62828",minWidth:50,textAlign:"right"}}>{isPlus?"+":"-"}{(tx.amount||0).toLocaleString()}{unitS}</span>
+            {tx.balance_after != null && <span style={{color:"#888"}}>잔 {tx.balance_after.toLocaleString()}{unitS}</span>}
+            {tx.sale_id && <span style={{fontSize:9,color:T.primary}} title={tx.sale_id}>💰</span>}
+            {tx.staff_name && <span style={{color:T.textSub,fontSize:9,flex:1,textAlign:"right"}}>{tx.staff_name}</span>}
+            {tx.note && !tx.staff_name && <span style={{color:T.textSub,fontSize:9,flex:1,textAlign:"right"}}>{tx.note}</span>}
+          </div>;
+        })}
+      </div>}
     </div>;
   };
 
@@ -621,7 +693,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                     </div>
                     {/* 탭 */}
                     <div style={{display:"flex",gap:0,borderBottom:"1px solid "+T.border,background:T.bgCard}}>
-                      {[["sales","매출 내역 ("+custSales.length+")"],["pkg","보유권 ("+custPkgs.filter(p=>{const t=pkgType(p);const ex=(p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/);const isExp=ex&&ex[1]<todayStr();if(isExp)return false;return t==="prepaid"?((p.note||"").match(/잔액:([0-9,]+)/)?.[1]||"0").replace(/,/g,"")>0:(p.total_count-p.used_count)>0;}).length+")"]].map(([tab,lbl])=>(
+                      {[["sales","매출 내역 ("+custSales.length+")"],["pkg","보유권 ("+custPkgs.filter(p=>{const t=pkgType(p);const ex=(p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/);const isExp=ex&&ex[1]<todayStr();if(isExp)return false;return t==="prepaid"?((p.note||"").match(/잔액:([0-9,]+)/)?.[1]||"0").replace(/,/g,"")>0:(p.total_count-p.used_count)>0;}).length+")"],["point","포인트 ("+custPointBalance.toLocaleString()+"P)"]].map(([tab,lbl])=>(
                         <button key={tab} onClick={()=>setDetailTab(tab)}
                           style={{padding:"8px 16px",fontSize:T.fs.xs,fontWeight:detailTab===tab?T.fw.bolder:T.fw.normal,
                             color:detailTab===tab?T.primary:T.textSub,background:"none",border:"none",
@@ -705,6 +777,8 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                             })
                         }
                       </div>}
+                      {/* 포인트 탭 */}
+                      {detailTab==="point" && <PointPanel cust={c} txList={custPointTx} balance={custPointBalance} onReload={()=>loadCustPoints(c.id)}/>}
                     </div>
                 </div></td></tr>}
               </React.Fragment>;
@@ -722,6 +796,93 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       onClose={()=>_mc(()=>{setShowModal(false);setEditItem(null)})}
       defBranch={userBranches[0]} userBranches={userBranches} branches={data.branches||[]}
       memoTemplate={(()=>{try{const s=typeof (data?.businesses||[])[0]?.settings==='string'?JSON.parse((data.businesses||[])[0].settings):(data?.businesses||[])[0]?.settings||{};return s?.memo_templates?.customer||"";}catch{return "";}})()}/>}
+  </div>;
+}
+
+// ═══════════════════════════════════════════
+// 포인트 패널 (고객 상세 탭)
+// ═══════════════════════════════════════════
+function PointPanel({ cust, txList, balance, onReload }) {
+  const [amt, setAmt] = useState("");
+  const [mode, setMode] = useState("earn"); // earn | deduct
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    const n = Number(String(amt).replace(/,/g,""))||0;
+    if (n <= 0) { alert("금액을 입력하세요"); return; }
+    if (mode === "deduct" && n > balance) { alert(`잔액(${balance.toLocaleString()}P) 부족`); return; }
+    setSaving(true);
+    try {
+      const newBalance = mode === "earn" ? balance + n : balance - n;
+      const tx = {
+        id: "ptx_" + Math.random().toString(36).slice(2,11),
+        business_id: _activeBizId,
+        bid: cust.bid,
+        customer_id: cust.id,
+        type: mode,
+        amount: n,
+        balance_after: newBalance,
+        note: note || null,
+      };
+      await sb.insert("point_transactions", tx);
+      setAmt(""); setNote("");
+      onReload();
+    } catch (e) { alert("저장 실패: " + e.message); }
+    finally { setSaving(false); }
+  };
+
+  const remove = async (id) => {
+    if (!confirm("이 포인트 내역을 삭제하시겠어요?")) return;
+    try { await sb.del("point_transactions", id); onReload(); }
+    catch (e) { alert("삭제 실패: " + e.message); }
+  };
+
+  return <div>
+    {/* 현재 잔액 + 입력 */}
+    <div style={{background:"linear-gradient(135deg,#FFF3E0,#FFE0B2)",border:"1px solid #FFB74D",borderRadius:10,padding:"12px 14px",marginBottom:10}}>
+      <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:10}}>
+        <span style={{fontSize:12,fontWeight:700,color:"#E65100"}}>🪙 현재 포인트</span>
+        <span style={{fontSize:20,fontWeight:900,color:"#E65100"}}>{balance.toLocaleString()}<span style={{fontSize:12,marginLeft:3}}>P</span></span>
+      </div>
+      <div style={{display:"flex",gap:4,marginBottom:6}}>
+        {[["earn","+ 적립","#4CAF50"],["deduct","− 차감","#F44336"]].map(([m,l,c])=>(
+          <button key={m} onClick={()=>setMode(m)}
+            style={{flex:1,padding:"6px 0",fontSize:11,fontWeight:700,borderRadius:6,border:"1px solid "+(mode===m?c:"#ddd"),background:mode===m?c:"#fff",color:mode===m?"#fff":"#999",cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:4,alignItems:"center"}}>
+        <input type="text" inputMode="numeric" value={amt} placeholder="금액"
+          onChange={e=>{const v=e.target.value.replace(/[^0-9]/g,""); setAmt(v?Number(v).toLocaleString():"");}}
+          style={{flex:"0 0 100px",padding:"6px 8px",fontSize:12,borderRadius:6,border:"1px solid #ddd",textAlign:"right",fontFamily:"inherit"}}/>
+        <span style={{fontSize:11,color:"#888"}}>P</span>
+        <input type="text" value={note} placeholder="메모 (선택)"
+          onChange={e=>setNote(e.target.value)}
+          style={{flex:1,padding:"6px 8px",fontSize:12,borderRadius:6,border:"1px solid #ddd",fontFamily:"inherit"}}/>
+        <button onClick={submit} disabled={saving||!amt}
+          style={{padding:"6px 12px",fontSize:11,fontWeight:700,borderRadius:6,border:"none",background:saving||!amt?"#ccc":"#E65100",color:"#fff",cursor:saving||!amt?"default":"pointer",fontFamily:"inherit"}}>저장</button>
+      </div>
+    </div>
+    {/* 히스토리 */}
+    <div style={{fontSize:11,fontWeight:700,color:T.textSub,marginBottom:6}}>📜 포인트 내역 ({txList.length}건)</div>
+    <div style={{maxHeight:360,overflowY:"auto"}}>
+      {txList.length === 0
+        ? <div style={{fontSize:11,color:T.textMuted,padding:"8px 0",textAlign:"center"}}>내역 없음</div>
+        : txList.map(tx => {
+            const isPlus = tx.type === "earn" || tx.type === "adjust_add";
+            const label = ({earn:"적립",deduct:"차감",adjust_add:"조정+",adjust_sub:"조정-"})[tx.type]||tx.type;
+            return <div key={tx.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderBottom:"1px solid "+T.border,fontSize:11}}>
+              <span style={{minWidth:64,color:T.textSub,fontSize:10}}>{new Date(tx.created_at).toLocaleDateString("ko-KR",{month:"2-digit",day:"2-digit"})} {new Date(tx.created_at).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"})}</span>
+              <span style={{padding:"2px 6px",borderRadius:4,background:isPlus?"#E8F5E9":"#FFEBEE",color:isPlus?"#2E7D32":"#C62828",fontWeight:700,fontSize:10}}>{label}</span>
+              <span style={{fontWeight:800,color:isPlus?"#2E7D32":"#C62828",minWidth:70,textAlign:"right"}}>{isPlus?"+":"−"}{(tx.amount||0).toLocaleString()}P</span>
+              <span style={{flex:1,color:T.text,fontSize:10}}>{tx.note||(tx.sale_id?"매출 연동":"")}</span>
+              {tx.balance_after != null && <span style={{color:"#888",fontSize:10}}>잔 {tx.balance_after.toLocaleString()}P</span>}
+              <button onClick={()=>remove(tx.id)} title="삭제"
+                style={{padding:"2px 5px",border:"none",background:"transparent",color:T.danger,cursor:"pointer",fontSize:12}}>🗑</button>
+            </div>;
+          })
+      }
+    </div>
   </div>;
 }
 
