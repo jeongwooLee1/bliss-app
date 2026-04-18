@@ -133,10 +133,8 @@ function EmpCard({ emp, branch, empSettings, onSetEmpSetting, onDeleteEmp, onUpd
   const excluded = !!cfg.excludeFromSchedule
   const isOwner = emp.isOwner || emp.rank === '원장'
   const isFL = emp.isFreelancer || cfg.isFreelancer
-  const { maleRotation = {}, onSaveMaleRotation, ownerReqs } = reqCtx || {}
-  // 원장 ownerReqs에 등록된 경우만 자동 활성화 (empReqs는 과거 일회성 요청 데이터이므로 제외)
-  const hasOwnerReqs = isOwner && Object.keys(ownerReqs || {}).some(k => k.startsWith(emp.id + '__'))
-  const fixedOffEnabled = cfg.fixedOffEnabled !== undefined ? !!cfg.fixedOffEnabled : hasOwnerReqs
+  const { maleRotation = {}, onSaveMaleRotation } = reqCtx || {}
+  const fixedOffEnabled = !!cfg.fixedOffEnabled
   const showCalendar = !excluded && fixedOffEnabled && reqCtx?.days?.length > 0
   const rot = maleRotation[emp.id] || null
   const isRotation = !!rot && Array.isArray(rot.branches)
