@@ -38,7 +38,7 @@ function TeamChat({ mock = true, style }) {
       />
       <ChatInput
         onSend={handleSend}
-        disabled={chat.sending || chat.loading}
+        disabled={chat.loading}
       />
     </div>
   )
