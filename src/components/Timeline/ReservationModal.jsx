@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { T, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, SYSTEM_TAG_NAME_NEW_CUST, SYSTEM_TAG_NAME_PREPAID, SYSTEM_SRC_NAME_NAVER } from '../../lib/constants'
-import { sb, SB_URL, SB_KEY, queueAlimtalk } from '../../lib/sb'
+import { sb, SB_URL, SB_KEY, queueAlimtalk, buildTokenSearch } from '../../lib/sb'
 import { fromDb, toDb, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS, _activeBizId } from '../../lib/db'
 import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, getDow, genId, fmtLocal, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone } from '../../lib/utils'
 import I from '../common/I'
@@ -85,14 +85,16 @@ function DatePick({ value, onChange, style, min }) {
 const STATUS_KEYS = ["reserved","confirmed","completed","cancelled","no_show"];
 const DEFAULT_SOURCES = ["네이버","전화","방문","소개","인스타","카카오","기타"];
 
-// 클릭 → 클립보드 복사 + 호버(진하게)/복사(❤️ 토스트) 애니메이션
+// 클릭 → 전화번호면 tel: 링크로 바로 전화걸기, 그 외는 클립보드 복사
 function CopySpan({ text, children, style={} }) {
   const [copied, setCopied] = React.useState(false);
   const [hover, setHover] = React.useState(false);
+  // 전화번호 패턴: 010/0xx 로 시작하는 숫자/하이픈 조합
+  const isPhone = text && /^[\d\-+()\s]{8,}$/.test(text) && /\d{3,}/.test(text);
   const copy = (e) => {
     e.stopPropagation(); e.preventDefault();
     if (!text) return;
-    // 1순위: Clipboard API (secure context 필요)
+    // 전화번호든 일반 텍스트든 클립보드 복사 (tel: 링크는 PC에서 앱 선택창 뜨는 문제로 비활성화)
     const done = () => { setCopied(true); setTimeout(() => setCopied(false), 1200); };
     try {
       if (navigator.clipboard && window.isSecureContext) {
@@ -397,26 +399,22 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
     return out.filter(p => p.active);
   })();
   // 디바운스 검색 (300ms, 2글자 이상) — DB 직접 검색
+  // 다단어 AND: 모든 토큰이 어느 필드에든 포함되면 매칭 (서버 필터)
   useEffect(() => {
-    if (custSearch.length < 2) { setCustResults([]); return; }
+    if (custSearch.trim().length < 2) { setCustResults([]); return; }
     const timer = setTimeout(async () => {
-      const q = custSearch.trim();
+      const raw = custSearch.trim();
       try {
         const bizId = _activeBizId || "biz_khvurgshb";
-        const enc = encodeURIComponent(q);
-        const isNumeric = /^\d+$/.test(q);
-        // cust_num 정확매칭 우선 조회 (숫자일 때)
+        // cust_num 정확매칭 우선 (전체가 숫자일 때만)
         let exactRows = [];
-        if (isNumeric) {
-          const exactFilter = `&business_id=eq.${bizId}&cust_num=eq.${q}&limit=1`;
-          const ex = await sb.get("customers", exactFilter);
+        if (/^\d+$/.test(raw)) {
+          const ex = await sb.get("customers", `&business_id=eq.${bizId}&cust_num=eq.${raw}&limit=1`);
           exactRows = Array.isArray(ex) ? ex : [];
         }
-        // name/name2/phone/phone2/email/cust_num OR 검색 (부분 일치)
-        const filter = `&business_id=eq.${bizId}&or=(name.ilike.*${enc}*,name2.ilike.*${enc}*,phone.ilike.*${q}*,phone2.ilike.*${q}*,email.ilike.*${enc}*,cust_num.ilike.*${enc}*)&limit=20`;
-        const rows = await sb.get("customers", filter);
+        const cond = buildTokenSearch(raw, ["name","name2","phone","phone2","email","cust_num"]);
+        const rows = await sb.get("customers", `&business_id=eq.${bizId}${cond}&limit=20`);
         const allRows = Array.isArray(rows) ? rows : [];
-        // cust_num 정확매칭을 맨 앞에, 중복 제거
         const exactIds = new Set(exactRows.map(r => r.id));
         const merged = [...exactRows, ...allRows.filter(r => !exactIds.has(r.id))].slice(0, 20);
         setCustResults(fromDb("customers", merged));
@@ -676,16 +674,18 @@ ${naverText}
 
   const handleSaleSubmit = (saleData) => {
     const existingSale = (data.sales||[]).find(s => s.reservationId === f.id);
+    // 편집 모드면 SaleForm이 이미 DB 업데이트 완료 (_editOnly). 신규 모드에서 _alreadySaved면 SaleForm이 이미 sales INSERT 완료.
+    const alreadySaved = saleData?._alreadySaved || saleData?._editOnly;
+    // 내부 플래그 제거
+    const clean = {...saleData}; delete clean._alreadySaved; delete clean._editOnly; delete clean._continueAfter; delete clean._updatedSale; delete clean._newDetails;
     if (existingSale) {
-      // 기존 매출 수정
-      const updated = {...saleData, id:existingSale.id, reservationId:f.id};
+      const updated = {...clean, id:existingSale.id, reservationId:f.id};
       setData(prev => ({ ...prev, sales: (prev?.sales||[]).map(s=>s.id===existingSale.id ? updated : s) }));
-      sb.update("sales", existingSale.id, toDb("sales", updated)).catch(console.error);
+      if (!alreadySaved) sb.update("sales", existingSale.id, toDb("sales", updated)).catch(console.error);
     } else {
-      // 신규 매출 등록
-      const newSale = {...saleData, reservationId: f.id};
+      const newSale = {...clean, reservationId: f.id};
       if (setData) setData(prev => ({ ...prev, sales: [...prev.sales, newSale] }));
-      sb.insert("sales", toDb("sales", newSale)).catch(console.error);
+      if (!alreadySaved) sb.insert("sales", toDb("sales", newSale)).catch(console.error);
     }
     // 매출 등록 시 예약 상태를 "완료"로 변경
     if (f.id) {
@@ -857,12 +857,12 @@ ${naverText}
                   const txtClr = (() => { const h=bgClr.replace("#",""); const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16); return (0.299*r+0.587*g+0.114*b)/255>0.55?T.text:T.bgCard; })();
                   return <button key={tag.id} onClick={()=>toggleTag(tag.id)}
                     className="tag-pill"
-                    style={{background:sel?bgClr:bgClr+"22",
-                      color:sel?txtClr:bgClr,
+                    style={{background:sel?bgClr:bgClr+"33",
+                      color:sel?txtClr:T.text,
                       border:"none",
                       fontWeight:sel?700:500}}>
                     {tag.name}
-                    {tag.dur > 0 && <span style={{fontSize:T.fs.sm,opacity:0.6}}>({tag.dur}분)</span>}
+                    {tag.dur > 0 && <span style={{fontSize:T.fs.sm,opacity:0.75}}>({tag.dur}분)</span>}
                   </button>;
                 }) : <span style={{fontSize:T.fs.sm,color:T.gray500,padding:8}}>태그관리에서 내부일정태그를 등록하세요</span>}
               </div>
@@ -1363,13 +1363,16 @@ ${naverText}
                   <I name="wallet" size={12}/> {existingSale ? "매출확인" : "매출등록"}
                 </button>
               )}
-              {/* 삭제 — 빨강 아웃라인 */}
-              {item?.id && (
-                <button onClick={()=>onDeleteRequest?.(item)}
+              {/* 삭제 — 네이버 예약은 버튼 자체를 숨김. 내부일정/수동예약은 확인창 없이 바로 삭제 */}
+              {(() => {
+                if (!item?.id) return null;
+                const isNaverRes = !!item?.reservationId && !String(item.reservationId).startsWith('manual_');
+                if (isNaverRes) return null;
+                return <button onClick={()=>onDeleteRequest?.(item)}
                   style={{padding:"10px 16px",borderRadius:T.radius.md,fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5,lineHeight:1,transition:"all .15s",border:"2px solid "+T.danger,color:T.danger,background:T.dangerLt}}>
                   <I name="trash" size={12}/> 삭제
-                </button>
-              )}
+                </button>;
+              })()}
               <button
                 disabled={!isSchedule && f.type==="reservation" && !f.custName?.trim()}
                 style={{marginLeft:"auto",padding:"10px 22px",borderRadius:T.radius.md,fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5,lineHeight:1,transition:"all .15s",border:"2px solid "+(isSchedule?T.orange:T.primary),color:"#fff",background:isSchedule?T.orange:T.primary,boxShadow:isSchedule?"0 4px 14px rgba(225,112,85,.35)":"0 4px 14px rgba(124,124,200,.35)"}}

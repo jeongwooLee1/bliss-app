@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { T, NAVER_COLS, getNaverVal } from '../../lib/constants'
-import { sb } from '../../lib/sb'
+import { sb, buildTokenSearch, matchAllTokens } from '../../lib/sb'
 import { fromDb } from '../../lib/db'
-import { todayStr, genId, fmtLocal, groupSvcNames } from '../../lib/utils'
+import { todayStr, genId, fmtLocal, groupSvcNames, useSessionState } from '../../lib/utils'
 import I from '../common/I'
 import TimelineModal from '../Timeline/ReservationModal'
 
@@ -336,7 +336,7 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
   const setVb        = v => { setVbRaw(v);        _save({vb:v});        };
   const setStatusFilter = v => { setStatusFilterRaw(v); _save({statusFilter:v}); };
   const [showSheet, setShowSheet] = useState(false);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useSessionState("res_q", "");
   const [resPage, setResPage] = useState(0);
   const [serverSearching, setServerSearching] = useState(false);
   const RES_PER_PAGE = 50;
@@ -349,10 +349,11 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
     const t = setTimeout(async () => {
       setServerSearching(true);
       try {
-        const enc = encodeURIComponent(q);
         const bizId = data?.business?.id || data?.businesses?.[0]?.id;
         if (!bizId) { setServerSearching(false); return; }
-        const filter = `&business_id=eq.${bizId}&or=(cust_name.ilike.*${enc}*,cust_phone.ilike.*${q}*,reservation_id.ilike.*${q}*,memo.ilike.*${enc}*,request_msg.ilike.*${enc}*,visitor_name.ilike.*${enc}*,visitor_phone.ilike.*${q}*,cust_email.ilike.*${enc}*,owner_comment.ilike.*${enc}*)&limit=300`;
+        // 서버에서 다토큰 AND+OR 중첩 (테이블 작음, 즉시 반환)
+        const cond = buildTokenSearch(q, ["cust_name","cust_phone","reservation_id","memo","request_msg","visitor_name","visitor_phone","cust_email","owner_comment"]);
+        const filter = `&business_id=eq.${bizId}${cond}&limit=300`;
         const rows = await sb.get("reservations", filter);
         const parsed = fromDb("reservations", rows||[]);
         // 병합 (기존 있는 id는 덮어쓰지 않음)
@@ -428,7 +429,6 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
       if (!cancelGroup&&r.status!==statusFilter) return false;
     }
     if (q) {
-      const sq = q.toLowerCase();
       const svc = (data.services||[]).find(s=>s.id===r.serviceId);
       const staff = (data.staff||[]).find(s=>s.id===r.staffId);
       // 네이버 예약 전용 필드도 검색 대상: reservation_id, 메모, request_msg(네이버 상품/시술메뉴/요청 등), visitor_name/phone
@@ -438,8 +438,8 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
         r.reservationId, r.memo, r.requestMsg, r.ownerComment,
         r.visitorName, r.visitorPhone, r.custEmail,
         cust?.custNum, cust?.name2,
-      ].filter(Boolean).join(" ").toLowerCase();
-      return hay.includes(sq);
+      ].filter(Boolean).join(" ");
+      return matchAllTokens(hay, q);
     }
     return inRange(r.date);
   }).sort((a,b)=>b.date.localeCompare(a.date)||b.time.localeCompare(a.time));

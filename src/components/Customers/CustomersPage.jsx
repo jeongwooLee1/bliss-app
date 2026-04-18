@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { T } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY, queueAlimtalk } from '../../lib/sb'
 import { toDb, fromDb, _activeBizId } from '../../lib/db'
-import { genId, todayStr } from '../../lib/utils'
+import { genId, todayStr, useScrollRestore, useSessionState } from '../../lib/utils'
 import { Btn, FLD, Empty, fmt, Spinner, DataTable } from '../common'
 import I from '../common/I'
+import { DetailedSaleForm } from '../Timeline/SaleForm'
 
 const uid = genId;
 const _mc = (fn) => { if(fn) fn(); };
@@ -68,15 +69,70 @@ function CustModal({ item, isEdit, onSave, onClose, defBranch, userBranches, bra
 }
 
 function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust, setPendingOpenCust }) {
-  const [q, setQ] = useState("");
-  const [vb, setVb] = useState("all");
+  const [q, setQ] = useSessionState("cust_q", "");
+  const [vb, setVb] = useSessionState("cust_vb", "all");
+  // 가입일 범위 필터 (신규 고객 날짜별 보기)
+  const [joinFrom, setJoinFrom] = useSessionState("cust_joinFrom", "");
+  const [joinTo, setJoinTo] = useSessionState("cust_joinTo", "");
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [detailCust, setDetailCust] = useState(null);
-  const [detailTab, setDetailTab] = useState("pkg"); // "pkg" | "sales"
+  const [detailTab, setDetailTab] = useSessionState("cust_tab", "pkg"); // "pkg" | "sales"
   const [editingMemo, setEditingMemo] = useState(false);
   const [memoDraft, setMemoDraft] = useState("");
   const [memoSaving, setMemoSaving] = useState(false);
+  // 매출 전체 편집 (할인·보유권·포인트·결제수단 금액 재조정)
+  const [editSale, setEditSale] = useState(null);
+  const [saleDetailMap, setSaleDetailMap] = useState({}); // saleId → [sale_details rows]
+
+  // 매출 전체 편집 열기 — sale_details 선로드 후 DetailedSaleForm(editMode) 오픈
+  const openSaleFullEdit = async (s) => {
+    try {
+      let details = saleDetailMap[s.id];
+      if (!details) {
+        const rows = await sb.get("sale_details", `&sale_id=eq.${s.id}&order=id.asc`);
+        details = rows || [];
+        setSaleDetailMap(prev => ({...prev, [s.id]: details}));
+      }
+      const matchedServiceIds = [];
+      details.forEach(d => {
+        const svc = (data?.services||[]).find(x => x.name === d.service_name);
+        if (svc) matchedServiceIds.push(svc.id);
+      });
+      setEditSale({
+        ...s,
+        saleMemo: s.memo || "",
+        _prefill: { matchedServiceIds, matchedTagIds: [], _isNewCust: false, existingSaleId: s.id, existingDetails: details }
+      });
+    } catch (e) { alert("편집 진입 실패: " + (e?.message || e)); }
+  };
+
+  // 편집 저장 콜백
+  const handleSaleEditSave = (item) => {
+    if (item?._editOnly && item?.id) {
+      setSaleDetailMap(prev => ({...prev, [item.id]: item._newDetails || []}));
+      if (item._updatedSale) {
+        const u = item._updatedSale;
+        setData(prev => ({
+          ...prev,
+          sales: (prev?.sales||[]).map(s => s.id === item.id ? {
+            ...s,
+            svcCash: u.svcCash ?? s.svcCash, svcTransfer: u.svcTransfer ?? s.svcTransfer,
+            svcCard: u.svcCard ?? s.svcCard, svcPoint: u.svcPoint ?? s.svcPoint,
+            prodCash: u.prodCash ?? s.prodCash, prodTransfer: u.prodTransfer ?? s.prodTransfer,
+            prodCard: u.prodCard ?? s.prodCard, prodPoint: u.prodPoint ?? s.prodPoint,
+            externalPrepaid: u.externalPrepaid ?? s.externalPrepaid,
+            externalPlatform: u.externalPlatform ?? s.externalPlatform,
+            memo: u.memo ?? s.memo,
+            staffId: u.staffId ?? s.staffId,
+            staffName: u.staffName ?? s.staffName,
+          } : s)
+        }));
+      }
+      alert("매출 편집 저장 완료");
+    }
+    setEditSale(null);
+  };
   // showHidden 제거 — 숨김 기능 미사용
 
   // ── 서버 페이지네이션 (무한 스크롤) ──
@@ -88,6 +144,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
   const [pkgByCust, setPkgByCust] = useState({}); // {cust_id: [pkg,...]} 페이지 단위 lazy 로드
   const totalCountRef = useRef(0);
   const scrollRef = useRef(null);
+  useScrollRestore('cust_list', scrollRef);
   // pendingOpenCust가 있으면 단일 고객 모드 — 리스트 로드 완전 차단
   const lockSingleRef = useRef(!!pendingOpenCust);
   const [singleMode, setSingleMode] = useState(!!pendingOpenCust);
@@ -96,9 +153,12 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
   const buildFilter = (offset, limit) => {
     const bizId = _activeBizId;
     let parts = [`business_id=eq.${bizId}`];
-    // 매장 필터
+    // 매장 필터: 특정 지점 선택 시에만 필터, "전체"는 userBranches 무시하고 전 지점 표시
+    // (고객 DB는 공유 자산 — 어느 지점에서든 고객 조회 가능)
     if (vb !== "all") parts.push(`bid=eq.${vb}`);
-    else if (userBranches.length > 0) parts.push(`bid=in.(${userBranches.join(",")})`);
+    // 가입일 범위 필터 (신규 고객 날짜별 조회)
+    if (joinFrom) parts.push(`join_date=gte.${joinFrom}`);
+    if (joinTo) parts.push(`join_date=lte.${joinTo}`);
     // 숨김 필터 제거 — 전부 표시
     // 검색: 첫 토큰만 서버에서 OR ilike
     const tokens = (q||"").trim().split(/\s+/).filter(Boolean);
@@ -106,9 +166,10 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       const enc = encodeURIComponent(tokens[0]);
       parts.push(`or=(name.ilike.*${enc}*,name2.ilike.*${enc}*,phone.ilike.*${enc}*,phone2.ilike.*${enc}*,email.ilike.*${enc}*,memo.ilike.*${enc}*,cust_num.ilike.*${enc}*)`);
     }
-    // 정렬: 고객번호 내림차순 (숫자 기준 — cust_num_int generated column)
-    // cust_num 없는 고객(예약만 있고 매출 미등록)은 nullslast로 뒤로
-    parts.push(`order=cust_num_int.desc.nullslast,created_at.desc.nullslast`);
+    // 정렬: 생성일 내림차순 우선 → 고객번호 내림차순 (보조)
+    // 예약으로만 등록된 cust_num 없는 신규 고객도 최상단 노출
+    // Oracle bulk import처럼 created_at이 같은 구간은 cust_num_int로 세분 정렬
+    parts.push(`order=created_at.desc.nullslast,cust_num_int.desc.nullslast`);
     parts.push(`offset=${offset}`);
     parts.push(`limit=${limit}`);
     return "&" + parts.join("&");
@@ -163,7 +224,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
     if (lockSingleRef.current) return;
     const timer = setTimeout(() => { fetchPage(0, true); }, q ? 300 : 0);
     return () => clearTimeout(timer);
-  }, [q, vb, pendingOpenCust]);
+  }, [q, vb, joinFrom, joinTo, pendingOpenCust]);
 
   // 스크롤 핸들러: 하단 근접 시 다음 페이지 로드
   const onScroll = (e) => {
@@ -279,10 +340,10 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
   const [pkgHistoryMap, setPkgHistoryMap] = useState({}); // {pkgId: txArray}
   const [pkgHistoryOpen, setPkgHistoryOpen] = useState(null); // opened pkg id
   const loadPkgHistory = (pkgId) => {
-    if (pkgHistoryMap[pkgId]) return;
+    // 캐시 체크 제거 — 펼칠 때마다 최신 이력 재조회 (tx 추가·매출 발생 후 새로고침 없이 최신값 확보)
     sb.get("package_transactions", `&package_id=eq.${pkgId}&order=created_at.desc&limit=200`)
       .then(rows => setPkgHistoryMap(prev => ({...prev, [pkgId]: rows||[]})))
-      .catch(() => setPkgHistoryMap(prev => ({...prev, [pkgId]: []})));
+      .catch(() => setPkgHistoryMap(prev => ({...prev, [pkgId]: prev[pkgId]||[]})));
   };
   // ── 이력 1건만 삭제 + 잔액 복구 (매출은 유지) ──
   const rollbackPkgTxOnly = async (tx, pkg) => {
@@ -472,7 +533,27 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
     setLoadingDetail(true);
     Promise.all([
       sb.get("sales", `&cust_id=eq.${detailCust.id}&order=date.desc&limit=500`)
-        .then(rows => setCustSales(fromDb("sales", rows)))
+        .then(async rows => {
+          const parsed = fromDb("sales", rows);
+          setCustSales(parsed);
+          // sale_details 일괄 로드 (매출 상세 테이블 자동 표시용)
+          if (parsed.length > 0) {
+            try {
+              const ids = parsed.map(s => s.id);
+              const CHUNK = 100;
+              const allDetails = {};
+              for (let i=0; i<ids.length; i+=CHUNK) {
+                const chunk = ids.slice(i, i+CHUNK);
+                const dRows = await sb.get("sale_details", `&sale_id=in.(${chunk.join(",")})&order=service_no.asc`);
+                (dRows||[]).forEach(d => {
+                  if (!allDetails[d.sale_id]) allDetails[d.sale_id] = [];
+                  allDetails[d.sale_id].push(d);
+                });
+              }
+              setSaleDetailMap(prev => ({...prev, ...allDetails}));
+            } catch(e) { console.warn("sale_details batch load fail:", e); }
+          }
+        })
         .catch(() => setCustSales([])),
       sb.get("customer_packages", `&customer_id=eq.${detailCust.id}`)
         .then(rows => setCustPkgsServer(rows))
@@ -800,6 +881,25 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
         <option value="all">전체 매장</option>
         {(data.branches||[]).filter(b=>userBranches.includes(b.id)).map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
       </select>
+      {/* 가입일 범위 */}
+      <div style={{display:"flex",alignItems:"center",gap:4,fontSize:T.fs.xxs,color:T.textSub}}>
+        <span>가입일</span>
+        <input type="date" className="inp" style={{height:38,fontSize:T.fs.xxs,padding:"4px 6px",borderRadius:T.radius.md,width:130}} value={joinFrom} onChange={e=>{unlockSingleAndReload();setJoinFrom(e.target.value);}}/>
+        <span>~</span>
+        <input type="date" className="inp" style={{height:38,fontSize:T.fs.xxs,padding:"4px 6px",borderRadius:T.radius.md,width:130}} value={joinTo} onChange={e=>{unlockSingleAndReload();setJoinTo(e.target.value);}}/>
+        {(joinFrom||joinTo) && <button type="button" onClick={()=>{unlockSingleAndReload();setJoinFrom("");setJoinTo("");}} style={{padding:"4px 8px",fontSize:10,borderRadius:6,border:"1px solid "+T.border,background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>초기화</button>}
+      </div>
+      {/* 빠른 프리셋 */}
+      <div style={{display:"flex",gap:3}}>
+        {[{label:"오늘",days:0},{label:"7일",days:7},{label:"30일",days:30}].map(p=>(
+          <button key={p.label} type="button" onClick={()=>{
+            const today = new Date().toISOString().slice(0,10);
+            const from = new Date(); from.setDate(from.getDate()-p.days);
+            unlockSingleAndReload();
+            setJoinFrom(from.toISOString().slice(0,10)); setJoinTo(today);
+          }} style={{padding:"4px 8px",fontSize:10,borderRadius:6,border:"1px solid "+T.border,background:"#fff",cursor:"pointer",fontFamily:"inherit",color:T.textSub}}>{p.label}</button>
+        ))}
+      </div>
       <span style={{fontSize:T.fs.xxs,color:T.textMuted}}>{custs.length}명{hasMore?"+":""}</span>
       {searching && <span style={{fontSize:T.fs.xxs,color:T.orange}}>검색중...</span>}
     </div>
@@ -831,7 +931,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
               return <React.Fragment key={c.id}>
                 <tr style={{cursor:"pointer",background:isOpen?T.primaryHover:"transparent"}}
                   onClick={()=>{ setDetailCust(isOpen?null:c); setDetailTab("sales"); }}>
-                  <td style={{fontSize:T.fs.xxs,color:T.textMuted,fontFamily:"monospace"}}>{c.custNum||"-"}</td>
+                  <td style={{fontSize:T.fs.xs,color:T.text,fontFamily:"monospace",fontWeight:800}}>{c.custNum||"-"}</td>
                   <td style={{fontSize:T.fs.xxs,color:T.textSub,whiteSpace:"nowrap"}}>{c.joinDate||(c.createdAt||"").slice(0,10)||"-"}</td>
                   <td style={{fontWeight:T.fw.bold}}>
                     {c.gender && <span style={{...sx.genderBadge(c.gender),marginRight:4}}>{c.gender==="F"?"여":"남"}</span>}
@@ -839,9 +939,14 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                     {c.name2 && <span style={{color:T.textSub,fontWeight:T.fw.normal,marginLeft:4,fontSize:T.fs.xxs}}>({c.name2})</span>}
                     {c.smsConsent===false && <span style={{fontSize:9,color:T.danger,fontWeight:T.fw.bold,marginLeft:4}}>수신거부</span>}
                   </td>
-                  <td style={{fontSize:T.fs.xxs,color:T.primary,whiteSpace:"nowrap"}}>
-                    {c.phone||"-"}
-                    {c.phone2 && <div style={{color:T.textSub,fontSize:9}}>{c.phone2}</div>}
+                  <td style={{fontSize:T.fs.xxs,color:T.primary,whiteSpace:"nowrap"}} onClick={e=>e.stopPropagation()}>
+                    {c.phone ? <span style={{cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}
+                      title="클릭하면 번호 복사"
+                      onClick={async ()=>{ try{ await navigator.clipboard.writeText(c.phone); alert(`복사됨: ${c.phone}`);}catch(e){ alert("복사 실패");}}}>{c.phone}</span> : "-"}
+                    {c.phone2 && <div style={{color:T.textSub,fontSize:9}}>
+                      <span style={{cursor:"pointer"}} title="클릭하면 번호 복사"
+                        onClick={async ()=>{ try{ await navigator.clipboard.writeText(c.phone2); alert(`복사됨: ${c.phone2}`);}catch(e){}}}>{c.phone2}</span>
+                    </div>}
                   </td>
                   <td style={{fontSize:T.fs.xxs,color:T.textSub,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:160}}>{c.email||"-"}</td>
                   <td><span style={{fontSize:T.fs.xxs,background:T.gray200,borderRadius:T.radius.sm,padding:"1px 5px"}}>{br?.short||"-"}</span></td>
@@ -980,17 +1085,37 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                               const pr = s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint;
                               const total = sv+pr+(s.gift||0);
                               const brName = (data.branches||[]).find(b=>b.id===s.bid)?.short||"";
+                              const details = saleDetailMap[s.id];
                               return <div key={s.id} style={{borderBottom:"1px solid "+T.border,padding:"10px 0"}}>
                                 <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:6}}>
                                   <span style={{fontSize:T.fs.sm,fontWeight:T.fw.black,color:T.text}}>{s.date}</span>
                                   <span style={{fontSize:T.fs.nano,background:T.gray200,borderRadius:T.radius.sm,padding:"2px 6px"}}>{brName}</span>
                                   <span style={{fontSize:T.fs.xxs,color:T.textSub,fontWeight:T.fw.bold}}>{s.staffName}</span>
+                                  <button onClick={()=>openSaleFullEdit(s)}
+                                    style={{marginLeft:"auto",padding:"3px 10px",fontSize:T.fs.nano,fontWeight:T.fw.bold,borderRadius:6,border:"1px solid "+T.primary,background:T.primaryLt||T.bgCard,color:T.primary,cursor:"pointer",fontFamily:"inherit"}}>
+                                    ✏️ 매출 상세
+                                  </button>
                                 </div>
                                 <div style={{display:"flex",gap:12,marginBottom:6,padding:"6px 10px",background:"linear-gradient(90deg,"+T.primaryHover+",transparent)",borderRadius:T.radius.sm}}>
                                   <span style={{fontSize:T.fs.xs}}>시술 <b style={{color:T.primary}}>{fmt(sv)}</b></span>
                                   <span style={{fontSize:T.fs.xs}}>제품 <b style={{color:T.infoLt2}}>{fmt(pr)}</b></span>
                                   <span style={{fontSize:T.fs.xs,marginLeft:"auto"}}>합계 <b style={{color:T.info,fontSize:T.fs.sm}}>{fmt(total)}</b></span>
                                 </div>
+                                {/* sale_details 테이블 (로드됐을 때만) */}
+                                {details && details.length > 0 && <div style={{marginBottom:6,background:T.bgCard,border:"1px solid "+T.border,borderRadius:T.radius.sm,overflow:"hidden"}}>
+                                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:T.fs.nano}}>
+                                    <thead><tr style={{background:T.gray200}}>
+                                      <th style={{padding:"3px 8px",textAlign:"left",fontWeight:T.fw.bold,color:T.textSub}}>시술/제품명</th>
+                                      <th style={{padding:"3px 8px",textAlign:"right",fontWeight:T.fw.bold,color:T.textSub,width:70}}>금액</th>
+                                    </tr></thead>
+                                    <tbody>{details.map((d,di)=>(
+                                      <tr key={d.id||di} style={{borderTop:"1px solid "+T.border}}>
+                                        <td style={{padding:"3px 8px",color:T.text}}>{d.service_name||"-"}</td>
+                                        <td style={{padding:"3px 8px",textAlign:"right",color:T.text,fontWeight:T.fw.bold}}>{(d.unit_price||0)>0?fmt(d.unit_price):"-"}</td>
+                                      </tr>
+                                    ))}</tbody>
+                                  </table>
+                                </div>}
                                 {s.memo && <div style={{fontSize:T.fs.xxs,color:T.textSub,whiteSpace:"pre-wrap",lineHeight:1.6,background:T.bgCard,borderRadius:T.radius.sm,padding:"6px 8px"}}>{s.memo}</div>}
                               </div>;
                             })
@@ -1015,6 +1140,13 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       onClose={()=>_mc(()=>{setShowModal(false);setEditItem(null)})}
       defBranch={userBranches[0]} userBranches={userBranches} branches={data.branches||[]}
       memoTemplate={(()=>{try{const s=typeof (data?.businesses||[])[0]?.settings==='string'?JSON.parse((data.businesses||[])[0].settings):(data?.businesses||[])[0]?.settings||{};return s?.memo_templates?.customer||"";}catch{return "";}})()}/>}
+    {editSale && <DetailedSaleForm
+      reservation={{...editSale, saleMemo: editSale.memo||""}}
+      branchId={editSale.bid}
+      onSubmit={handleSaleEditSave}
+      onClose={()=>_mc(()=>setEditSale(null))}
+      data={data} setData={setData}
+      editMode={true} existingSaleId={editSale.id}/>}
   </div>;
 }
 

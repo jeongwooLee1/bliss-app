@@ -7,7 +7,7 @@ import { fromDb, resolveSystemIds, setActiveBiz, _activeBizId } from '../lib/db'
 import Timeline from '../components/Timeline/TimelinePage'
 import ReservationList from '../components/Reservations/ReservationsPage'
 import AdminInbox from '../components/Messages/MessagesPage'
-import { todayStr, pad, genId } from '../lib/utils'
+import { todayStr, pad, genId, useScrollRestore } from '../lib/utils'
 import I from '../components/common/I'
 import { AdminPage, UsersPage as UsersPageReal } from '../components/Reservations/ReservationsPage'
 import { Btn, Loading, GridLayout, DataTable, FLD } from '../components/common'
@@ -20,7 +20,13 @@ import SetupWizard from '../components/SetupWizard/SetupWizard'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.1.9"
+const BLISS_V = "3.3.50"
+
+// 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
+function ScrollArea({ storageKey, children }) {
+  const ref = useScrollRestore(storageKey)
+  return <div ref={ref} className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}>{children}</div>
+}
 const BIZ_ID = 'biz_khvurgshb'
 const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", users:"/users", messages:"/messages", admin:"/settings", wizard:"/wizard", schedule:"/schedule", requests:"/requests" };
 async function loadAllFromDb(bizId) {
@@ -971,8 +977,14 @@ function App() {
           users: db.users, customers: db.customers, reservations: db.reservations, sales: db.sales,
           staff, resSources: db.resSources || [],
         });
-        // 같은 브랜드(사업장) 소속이면 모든 지점 편집 가능
-        setUserBranches(db.branches.map(b=>b.id));
+        // 권한: owner/super=전지점, manager=본인 branch_ids만
+        const userBids = (() => {
+          let b = user.branch_ids || user.branches;
+          if (typeof b === "string") { try { b = JSON.parse(b); } catch(e) { b = []; } }
+          return Array.isArray(b) ? b.filter(Boolean) : [];
+        })();
+        const isPrivileged = user.role === "super" || user.role === "owner";
+        setUserBranches(isPrivileged || userBids.length === 0 ? db.branches.map(b=>b.id) : userBids);
         setViewBranches([]);
         // page is derived from URL via useLocation()
         setPhase("app");
@@ -1225,15 +1237,15 @@ function App() {
         <div className="page-pad" style={{flex:1,padding:(page==="timeline"||page==="messages"||page==="schedule")?"0":"16px 20px 16px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
           <Routes>
             <Route path="/timeline" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust}/></div>}/>
-            <Route path="/reservations" element={<div className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}><ReservationList data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} setNaverColShow={setNaverColShow}/></div>}/>
-            <Route path="/sales" element={<div className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}><SalesPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} role={role} setPendingOpenCust={setPendingOpenCust}/></div>}/>
-            <Route path="/customers" element={<div className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}><CustomersPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} pendingOpenCust={pendingOpenCust} setPendingOpenCust={setPendingOpenCust}/></div>}/>
-            <Route path="/users" element={<div className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}><UsersPage data={data} setData={setData} bizId={currentBizId}/></div>}/>
+            <Route path="/reservations" element={<ScrollArea storageKey="page_reservations"><ReservationList data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} setNaverColShow={setNaverColShow}/></ScrollArea>}/>
+            <Route path="/sales" element={<ScrollArea storageKey="page_sales"><SalesPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} role={role} setPendingOpenCust={setPendingOpenCust}/></ScrollArea>}/>
+            <Route path="/customers" element={<ScrollArea storageKey="page_customers"><CustomersPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} pendingOpenCust={pendingOpenCust} setPendingOpenCust={setPendingOpenCust}/></ScrollArea>}/>
+            <Route path="/users" element={<ScrollArea storageKey="page_users"><UsersPage data={data} setData={setData} bizId={currentBizId}/></ScrollArea>}/>
             <Route path="/messages" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><AdminInbox sb={sb} branches={data?.branches} data={data} userBranches={userBranches} isMaster={isMaster} onRead={(cnt)=>setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)))} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage}/></div>}/>
             <Route path="/schedule" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}>{isMaster && <SchedulePage/>}</div>}/>
-            <Route path="/settings/*" element={<div className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}><AdminPage data={data} setData={setData} bizId={currentBizId} serverV={serverV} onLogout={handleLogout} currentUser={currentUser} userBranches={userBranches}/></div>}/>
+            <Route path="/settings/*" element={<ScrollArea storageKey="page_settings"><AdminPage data={data} setData={setData} bizId={currentBizId} serverV={serverV} onLogout={handleLogout} currentUser={currentUser} userBranches={userBranches}/></ScrollArea>}/>
             <Route path="/wizard" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><SetupWizard bizId={currentBizId} bizName={bizName} geminiKey={(() => { try { return window.__systemGeminiKey || window.__geminiKey || JSON.parse(currentBiz?.settings||'{}').gemini_key || localStorage.getItem('bliss_gemini_key') || ''; } catch { return ''; } })()} sb={sb} data={data} setData={setData} onComplete={()=>setPage("timeline")} onClose={()=>setPage("timeline")}/></div>}/>
-            <Route path="/requests" element={<div className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}><BlissRequests data={data} currentUser={currentUser} userBranches={userBranches} isMaster={isMaster}/></div>}/>
+            <Route path="/requests" element={<ScrollArea storageKey="page_requests"><BlissRequests data={data} currentUser={currentUser} userBranches={userBranches} isMaster={isMaster}/></ScrollArea>}/>
             <Route path="*" element={<Navigate to="/timeline" replace/>}/>
           </Routes>
         </div>

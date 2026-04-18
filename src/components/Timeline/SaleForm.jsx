@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { T } from '../../lib/constants'
-import { sb } from '../../lib/sb'
+import { sb, buildTokenSearch, SB_URL, SB_KEY } from '../../lib/sb'
 import { fromDb, toDb, _activeBizId } from '../../lib/db'
 import { todayStr, genId } from '../../lib/utils'
 import I from '../common/I'
@@ -22,7 +22,7 @@ const GridLayout = ({ cols=2, gap=12, children, style={} }) => {
   return <div style={{display:"grid",gridTemplateColumns:tpl,gap,...style}}>{children}</div>;
 };
 
-const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amount, defPrice, regularPrice, toggle, setAmt }) {
+const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amount, defPrice, regularPrice, toggle, setAmt, badgeText, badgeColor, badgeBg }) {
   const disabled = defPrice === 0;
   const isMember = regularPrice && regularPrice > defPrice;
   const [localAmt, setLocalAmt] = useState(fmtAmt(amount));
@@ -37,6 +37,7 @@ const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amou
         className="sale-svc-name" style={{ flex: 1, fontSize: 13, color: checked ? T.text : T.gray700, fontWeight: checked ? 700 : 400, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
         {checked && <span style={{color:T.primary,marginRight:3}}>✓</span>}{name}
         {isMember && <span style={{fontSize:9,color:T.primary,marginLeft:3,fontWeight:700}}>회원</span>}
+        {badgeText && <span style={{fontSize:9,color:badgeColor||"#fff",background:badgeBg||T.primary,marginLeft:4,padding:"1px 5px",borderRadius:8,fontWeight:700}}>{badgeText}</span>}
       </span>
       <span className="sale-dur" style={{ flexShrink: 0, width: 28, textAlign: "right", whiteSpace:"nowrap", fontSize: 10, color: T.gray400 }}>{dur}분</span>
       {isMember && <span style={{flexShrink:0,fontSize:10,color:T.gray400,textDecoration:"line-through"}}>{(regularPrice||0).toLocaleString()}</span>}
@@ -130,11 +131,50 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   const fmt = (v) => v==null?"":Number(v).toLocaleString();
   // 더블클릭/중복 저장 방지 락 (신규 매출 저장 경로에서 사용)
   const _submitLock = useRef(false);
-  const SVC_LIST = (data?.services || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
-  const PROD_LIST = (data?.products || []);
+  // 판매중단(isActive=false) 상품은 숨김, 단 편집모드에서 기존 등록된 항목은 유지
+  const SVC_LIST = (data?.services || []).filter(s => s.isActive !== false).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
+  const PROD_LIST = (data?.products || []).filter(p => p.isActive !== false);
   const CATS = (data?.categories || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
   const branchStaff = (data.staff||[]).filter(s => s.bid === branchId);
   const [manager, setManager] = useState(reservation?.staffId || "");
+  // ── 직원의 매출 날짜 실제 근무지점 (schHistory의 "지원(X)" 상태 반영) ──
+  const saleDate = reservation?.date || todayStr();
+  const [schHistory, setSchHistory] = useState(null);
+  useEffect(() => {
+    // schedule_data는 created_at 컬럼이 없어 sb.get 기본 정렬이 400 에러 → 직접 fetch
+    fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.schHistory_v1&select=value`, {
+      headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
+    }).then(r => r.ok ? r.json() : []).then(rows => {
+      try {
+        const raw = rows?.[0]?.value;
+        const obj = typeof raw === "string" ? JSON.parse(raw) : raw;
+        if (!obj) return;
+        const merged = {};
+        Object.values(obj).forEach(month => {
+          if (typeof month !== "object" || !month) return;
+          Object.entries(month).forEach(([emp, days]) => {
+            if (!merged[emp]) merged[emp] = {};
+            Object.assign(merged[emp], days);
+          });
+        });
+        setSchHistory(merged);
+      } catch(e) {}
+    }).catch(() => {});
+  }, []);
+  // 직원의 해당 날짜 실제 근무지점 (지원갔으면 그 지점 id, 아니면 홈 지점)
+  const getEffectiveBranch = (staff) => {
+    if (!staff?.dn) return staff?.bid;
+    const st = schHistory?.[staff.dn]?.[saleDate];
+    if (typeof st === "string" && st.startsWith("지원(")) {
+      const brName = st.slice(3, -1).trim();
+      const br = (data?.branches||[]).find(b =>
+        (b.short||"").replace("점","") === brName ||
+        (b.name||"").includes(brName)
+      );
+      if (br) return br.id;
+    }
+    return staff.bid;
+  };
   const allStaff = (data.staff||[]).filter(s => s.bid); // 전체 직원
   const [selBranch, setSelBranch] = useState(branchId);
   const [gender, setGender] = useState(reservation?.custGender || "");
@@ -297,15 +337,13 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   const [showCustDrop, setShowCustDrop] = useState(false);
   const [custResults, setCustResults] = useState([]);
   useEffect(() => {
-    if (custSearch.length < 2) { setCustResults([]); return; }
+    if (custSearch.trim().length < 2) { setCustResults([]); return; }
     const timer = setTimeout(async () => {
-      const q = custSearch.trim();
+      const raw = custSearch.trim();
       try {
         const bizId = _activeBizId || "biz_khvurgshb";
-        const enc = encodeURIComponent(q);
-        // name/name2/phone/phone2/email/cust_num OR 검색 (부분 일치)
-        const filter = `&business_id=eq.${bizId}&or=(name.ilike.*${enc}*,name2.ilike.*${enc}*,phone.ilike.*${q}*,phone2.ilike.*${q}*,email.ilike.*${enc}*,cust_num.ilike.*${enc}*)&limit=20`;
-        const rows = await sb.get("customers", filter);
+        const cond = buildTokenSearch(raw, ["name","name2","phone","phone2","email","cust_num"]);
+        const rows = await sb.get("customers", `&business_id=eq.${bizId}${cond}&limit=20`);
         setCustResults(Array.isArray(rows) ? fromDb("customers", rows) : []);
       } catch(e) { console.error("custSearch err:", e); setCustResults([]); }
     }, 300);
@@ -337,6 +375,15 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       return next;
     });
   }, [JSON.stringify(usePkgToday)]);
+  // ── 신규 판정: 매출 이력 0건 여부 (DB 조회) ──
+  const [custHasSale, setCustHasSale] = useState(false);
+  useEffect(() => {
+    if (!cust.id) { setCustHasSale(false); return; }
+    sb.get("sales", `&cust_id=eq.${cust.id}&limit=1`)
+      .then(rows => setCustHasSale((rows||[]).length > 0))
+      .catch(() => setCustHasSale(false));
+  }, [cust.id]);
+
   // ── 포인트 잔액 + 적립/사용 입력 ──
   const [pointBalance, setPointBalance] = useState(0);
   const [pointEarn, setPointEarn] = useState(0);
@@ -375,7 +422,13 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   }, [cust?.id, cust?.phone]);
   const _pkgType = (p) => {
     const n = (p.service_name||"").toLowerCase();
-    if (n.includes("다담권") || n.includes("선불") || n.includes("10%추가적립")) return "prepaid";
+    // 쿠폰 카테고리 서비스와 매칭 → coupon (자동 적용, 수동 체크 UI 제외)
+    const svc = (data?.services||[]).find(s => s.name === p.service_name);
+    if (svc) {
+      const cat = (data?.categories||[]).find(c => c.id === svc.cat);
+      if (cat?.name === '쿠폰') return "coupon";
+    }
+    if (n.includes("다담권") || n.includes("선불")) return "prepaid";
     if (n.includes("연간") || n.includes("할인권") || n.includes("회원권")) return "annual";
     return "package";
   };
@@ -383,25 +436,46 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     const m = (p.note||"").match(/잔액:([0-9,]+)/);
     return m ? Number(m[1].replace(/,/g,"")) : 0;
   };
+  // 유효기간 지난 패키지는 차감 대상에서 제외
+  const _pkgNotExpired = (p) => {
+    const exp = ((p.note||"").match(/유효:\s*(\d{4}-\d{2}-\d{2})/)||[])[1];
+    if (!exp) return true;
+    const today = new Date().toISOString().slice(0,10);
+    return exp >= today;
+  };
   const activePkgs = custPkgs.filter(p => {
     const t = _pkgType(p);
-    if (t === "prepaid") return _pkgBalance(p) > 0;
-    if (t === "annual") return true;
-    return (p.total_count - p.used_count) > 0;
+    if (t === "prepaid") return _pkgBalance(p) > 0 && _pkgNotExpired(p);
+    if (t === "annual") return _pkgNotExpired(p);
+    return (p.total_count - p.used_count) > 0 && _pkgNotExpired(p);
   });
   // 활성 다회권 목록 (패키지 사용 자동 차감용)
   const activeMultiPkgs = activePkgs.filter(p => _pkgType(p) === "package");
 
-  // 회원가 자격: 다담권/다회권(에너지·제품 제외)/연간회원권/연간할인권 보유 시
-  // OR 이번 매출에서 다담권 구매 + 오늘 차감 활성화 시
-  const _isEnergyOrProduct = (p) => {
-    const n = (p.service_name||"").toLowerCase();
-    return n.includes("에너지") || n.includes("제품") || n.includes("구매권");
+  // 회원가 자격: 선불권(다담권) 중 원 충전금액 50만원 이상을 보유한 경우 (잔액 아님)
+  // note 예: "카드:... | 잔액:... | 충전:500,000 | 사용:... | 유효:..."
+  const _pkgOriginalCharge = (p) => {
+    const m = (p.note||"").match(/충전:([0-9,]+)/);
+    if (m) return Number(m[1].replace(/,/g,""));
+    // fallback: total_count(다담권은 원 단위) 또는 사용+잔액
+    if ((p.total_count||0) > 0) return p.total_count;
+    return (p.used_count||0) + _pkgBalance(p);
   };
   const PREPAID_CAT_ID_INNER = "1s18w2l46"; // 선불권 카테고리
-  // 다담권(boolean) 또는 PKG(횟수>0) 둘 다 회원가 자격
-  const isBuyingNewPrepaidWithUseToday = Object.values(usePkgToday).some(v => v === true || (typeof v === "number" && v > 0));
-  const isMemberPrice = activePkgs.some(p => !_isEnergyOrProduct(p)) || isBuyingNewPrepaidWithUseToday;
+  // 회원가 자격: 선불권 충전 ≥ 50만원 OR 연간회원권, 만료된 건 제외
+  // 유효기간 없음 = 아직 사용 전 상태 = 유효 (사용 시점에 유효기간 자동 시작)
+  const _pkgStillValid = (p) => {
+    const exp = ((p.note||"").match(/유효:\s*(\d{4}-\d{2}-\d{2})/)||[])[1];
+    if (!exp) return true; // 유효기간 미설정 = 사용 전 = 유효
+    return exp >= new Date().toISOString().slice(0,10);
+  };
+  const isMemberPrice = activePkgs.some(p => {
+    if (!_pkgStillValid(p)) return false;
+    const t = _pkgType(p);
+    if (t === "annual") return true;
+    if (t === "prepaid") return _pkgOriginalCharge(p) >= 500000;
+    return false;
+  });
 
   // 성별+회원가에 따른 기본 가격 계산
   const _defPrice = (svc, g) => {
@@ -415,7 +489,9 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   // State: { [id]: { checked, amount } }
   const [items, setItems] = useState(() => {
     const init = {};
-    const selSvcs = reservation?.selectedServices || [];
+    // selectedServices(신) 우선, 비었으면 serviceId(레거시) fallback
+    let selSvcs = reservation?.selectedServices || [];
+    if (selSvcs.length === 0 && reservation?.serviceId) selSvcs = [reservation.serviceId];
     SVC_LIST.forEach(svc => {
       const preSelected = selSvcs.includes(svc.id);
       const defPrice = _defPrice(svc, gender);
@@ -448,6 +524,9 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       if (!nm) return;
       // 보유권 사용 기록 행은 items 프리필에서 제외 (pkgUse 별도 관리)
       if (/^\[보유권/.test(nm)) return;
+      // 쿠폰·이벤트 자동적용 행은 items 프리필에서 제외 (쿠폰 엔진 자동 재계산)
+      if (/^\[쿠폰 (할인|적립)\]/.test(nm)) return;
+      if (/^\[이벤트 (할인|적립)\]/.test(nm)) return;
       // 할인
       if (nm === "할인" || nm === "[할인]" || /^\[할인\]/.test(nm)) {
         discountAmt += (d.unit_price || 0);
@@ -639,10 +718,127 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     return sum;
   }, 0);
   const pointDeduct = Math.min(pointUse||0, pointBalance);
-  const grandTotal = Math.max(0, svcTotal + prodTotal - discount - naverDeduct - externalDeduct - pkgDeduct - newPkgInstantDeduct - pointDeduct);
-  // 실제 결제할 금액 (예약금·할인·보유권·신규다담권즉시차감 차감)
-  const svcPayTotal = Math.max(0, svcTotal - discount - naverDeduct - externalDeduct - pkgDeduct - newPkgInstantDeduct);
-  const prodPayTotal = prodTotal;
+
+  // ─── 이벤트·프로모 엔진: 체크된 시술의 promoConfig 기반 자동 할인·포인트 적립 ───
+  const promoResults = (() => {
+    const today = new Date().toISOString().slice(0,10);
+    // 신규고객 판정: 매출 이력 0건 (custHasSale useEffect로 DB에서 확인)
+    // - custId 없음 → 신규 (아직 미등록 고객)
+    // - custId 있어도 매출 한 건도 없으면 → 신규
+    const isNewCustomer = !cust.id || !custHasSale;
+    const results = [];
+    SVC_LIST.forEach(svc => {
+      const it = items[svc.id];
+      if (!it?.checked || !(it.amount > 0)) return;
+      let pc = svc.promoConfig;
+      if (typeof pc === "string") { try { pc = JSON.parse(pc); } catch(e) { return; } }
+      if (!pc || typeof pc !== "object") return;
+      if (pc.validFrom && today < pc.validFrom) return;
+      if (pc.validUntil && today > pc.validUntil) return;
+      if (pc.minAmount && it.amount < pc.minAmount) return;
+      if (Array.isArray(pc.branchIds) && pc.branchIds.length > 0 && !pc.branchIds.includes(selBranch)) return;
+      let discount = 0, earn = 0;
+      const reasons = [];
+      if (isNewCustomer) {
+        if (pc.newCustDiscountPct > 0) { const d = Math.round(it.amount * pc.newCustDiscountPct / 100); discount += d; reasons.push(`신규 ${pc.newCustDiscountPct}%`); }
+        if (pc.newCustDiscountFlat > 0) { discount += pc.newCustDiscountFlat; reasons.push(`신규 -${pc.newCustDiscountFlat.toLocaleString()}원`); }
+      }
+      if (isMemberPrice && pc.memberDiscountPct > 0) { const d = Math.round(it.amount * pc.memberDiscountPct / 100); discount += d; reasons.push(`회원 ${pc.memberDiscountPct}%`); }
+      if (pc.pointAwardFlat > 0) { earn += pc.pointAwardFlat; reasons.push(`${pc.pointAwardFlat.toLocaleString()}P`); }
+      if (pc.pointAwardPct > 0) { const e = Math.round(it.amount * pc.pointAwardPct / 100); earn += e; reasons.push(`${pc.pointAwardPct}%P`); }
+      if (discount > 0 || earn > 0) {
+        results.push({ svcId: svc.id, name: svc.name, discount, earn, reason: reasons.join(" + "), badgeText: svc.badgeText, badgeColor: svc.badgeColor, badgeBg: svc.badgeBg });
+      }
+    });
+    return results;
+  })();
+  const promoDiscountTotal = promoResults.reduce((s, r) => s + (r.discount||0), 0);
+  const promoEarnTotal = promoResults.reduce((s, r) => s + (r.earn||0), 0);
+
+  // ─── 쿠폰 자동 적용 엔진: 고객 보유 쿠폰 중 autoApply 조건 매칭 → 제품/시술/카테고리/특정시술 합계에서 차감 ───
+  const [couponOff, setCouponOff] = useState({}); // {pkgId:true} = 사용자가 체크 해제
+  const couponResults = React.useMemo(() => {
+    const today = new Date().toISOString().slice(0,10);
+    const svcByName = new Map((data?.services||[]).map(s => [s.name, s]));
+    const list = [];
+    const extraSvcAmt = (items.extra_svc?.checked) ? (items.extra_svc.amount||0) : 0;
+    const extraProdAmt = (items.extra_prod?.checked) ? (items.extra_prod.amount||0) : 0;
+    (custPkgs||[]).forEach(pkg => {
+      if (pkg.total_count && pkg.used_count >= pkg.total_count) return;
+      const svc = svcByName.get(pkg.service_name);
+      if (!svc) return;
+      let pc = svc.promoConfig;
+      if (typeof pc === "string") { try { pc = JSON.parse(pc); } catch(e) { return; } }
+      if (!pc || typeof pc !== "object" || !pc.couponType) return;
+      if (pc.autoApply === false) return;
+      if (pc.validFrom && today < pc.validFrom) return;
+      if (pc.validUntil && today > pc.validUntil) return;
+      // 대상 금액
+      let baseAmt = 0;
+      if (!pc.couponTarget || pc.couponTarget === 'all') {
+        SVC_LIST.forEach(s => { const it=items[s.id]; if (it?.checked) baseAmt += it.amount||0; });
+        PROD_LIST.forEach(p => { const it=items[p.id]; if (it?.checked) baseAmt += it.amount||0; });
+        baseAmt += extraSvcAmt + extraProdAmt;
+      } else if (pc.couponTarget === 'products') {
+        PROD_LIST.forEach(p => { const it=items[p.id]; if (it?.checked) baseAmt += it.amount||0; });
+        baseAmt += extraProdAmt;
+      } else if (pc.couponTarget === 'services') {
+        SVC_LIST.forEach(s => { const it=items[s.id]; if (it?.checked) baseAmt += it.amount||0; });
+        baseAmt += extraSvcAmt;
+      } else if (pc.couponTarget === 'category') {
+        const catIds = pc.couponTargetCategoryIds || [];
+        SVC_LIST.forEach(s => { if (catIds.includes(s.cat)) { const it=items[s.id]; if (it?.checked) baseAmt += it.amount||0; } });
+      } else if (pc.couponTarget === 'specific_service') {
+        const sids = pc.couponTargetServiceIds || (pc.couponTargetServiceId ? [pc.couponTargetServiceId] : []);
+        sids.forEach(sid => { const it=items[sid]; if (it?.checked) baseAmt += it.amount||0; });
+      }
+      if (baseAmt <= 0) return;
+      let discount = 0, earn = 0;
+      if (pc.couponType === 'flat') discount = Math.min(pc.couponValue||0, baseAmt);
+      else if (pc.couponType === 'percent') discount = Math.round(baseAmt * (pc.couponValue||0) / 100);
+      else if (pc.couponType === 'point_bonus_pct') earn = Math.round(baseAmt * (pc.couponValue||0) / 100);
+      else if (pc.couponType === 'free_service') {
+        const sids = pc.couponTargetServiceIds || (pc.couponTargetServiceId ? [pc.couponTargetServiceId] : []);
+        let amt = 0;
+        sids.forEach(sid => { const it=items[sid]; if (it?.checked) amt += it.amount||0; });
+        discount = amt;
+      }
+      if (discount <= 0 && earn <= 0) return;
+      list.push({
+        pkgId: pkg.id, svcId: svc.id, name: svc.name,
+        discount, earn, priority: pc.priority ?? 100,
+        consumeOnUse: pc.consumeOnUse !== false,
+        applyTo: pc.couponTarget || 'all', // products|services|all|category|specific_service
+        badgeText: svc.badgeText, badgeColor: svc.badgeColor, badgeBg: svc.badgeBg,
+      });
+    });
+    list.sort((a,b) => (a.priority||100) - (b.priority||100));
+    return list;
+  }, [custPkgs, data?.services, items]);
+  const activeCoupons = couponResults.filter(c => !couponOff[c.pkgId]);
+  // 쿠폰 할인을 대상별로 분리 (제품/시술 결제수단 각각 차감용)
+  const couponDiscountOnProd = activeCoupons
+    .filter(c => c.applyTo === 'products')
+    .reduce((s,c)=>s+(c.discount||0), 0);
+  const couponDiscountOnSvc = activeCoupons
+    .filter(c => c.applyTo === 'services' || c.applyTo === 'category' || c.applyTo === 'specific_service' || c.applyTo === 'all')
+    .reduce((s,c)=>s+(c.discount||0), 0);
+  const couponDiscountTotal = couponDiscountOnProd + couponDiscountOnSvc;
+  const couponEarnTotal = activeCoupons.reduce((s,c)=>s+(c.earn||0), 0);
+  // promo + 쿠폰 포인트 적립을 pointEarn에 자동 반영 (유저가 직접 적은 값이 있으면 건드리지 않음)
+  const _promoAppliedRef = React.useRef({total:0, userOverride:false});
+  useEffect(() => {
+    if (_promoAppliedRef.current.userOverride) return;
+    const totalAuto = (promoEarnTotal||0) + (couponEarnTotal||0);
+    if (_promoAppliedRef.current.total === totalAuto) return;
+    _promoAppliedRef.current.total = totalAuto;
+    setPointEarn(totalAuto);
+  }, [promoEarnTotal, couponEarnTotal]);
+
+  const grandTotal = Math.max(0, svcTotal + prodTotal - discount - promoDiscountTotal - couponDiscountTotal - naverDeduct - externalDeduct - pkgDeduct - newPkgInstantDeduct - pointDeduct);
+  // 실제 결제할 금액 (예약금·할인·이벤트·쿠폰·보유권·신규다담권즉시차감 차감)
+  const svcPayTotal = Math.max(0, svcTotal - discount - promoDiscountTotal - couponDiscountOnSvc - naverDeduct - externalDeduct - pkgDeduct - newPkgInstantDeduct);
+  const prodPayTotal = Math.max(0, prodTotal - couponDiscountOnProd);
 
   // Count checked
   const checkedSvc = SVC_LIST.filter(s => items[s.id]?.checked).length + (items.extra_svc?.checked ? 1 : 0);
@@ -781,8 +977,10 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
         // 2) sales 본체 업데이트 — 편집 모드:
         //    - 결제수단 금액(svc_cash/card/transfer/point, prod_*) 유저 입력대로 갱신 (원래 누락/오류 교정용)
         //    - 외부선결제, 메모 갱신
+        //    - 담당자(staff_id/staff_name) 갱신
         //    - 보유권·포인트 잔액은 건드리지 않음 (기존 거래 유지)
         const newMemo = (externalPrepaid > 0 && externalPlatform ? `[${externalPlatform} 선결제 ${externalPrepaid.toLocaleString()}원] ` : "") + (saleMemo || "");
+        const editStaff = (data.staff||[]).find(s => s.id === manager);
         const salesUpdate = {
           svc_cash: payMethod.svcCash || 0, svc_transfer: payMethod.svcTransfer || 0,
           svc_card: payMethod.svcCard || 0, svc_point: payMethod.svcPoint || 0,
@@ -791,6 +989,8 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           external_prepaid: externalPrepaid > 0 ? externalPrepaid : 0,
           external_platform: externalPrepaid > 0 ? (externalPlatform || "") : null,
           memo: newMemo,
+          staff_id: manager || "",
+          staff_name: editStaff?.dn || manager || "",
         };
         await sb.update("sales", existingSaleId, salesUpdate);
         onSubmit({
@@ -800,7 +1000,8 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
             svcCard: salesUpdate.svc_card, svcPoint: salesUpdate.svc_point,
             prodCash: salesUpdate.prod_cash, prodTransfer: salesUpdate.prod_transfer,
             prodCard: salesUpdate.prod_card, prodPoint: salesUpdate.prod_point,
-            externalPrepaid: salesUpdate.external_prepaid, externalPlatform: salesUpdate.external_platform, memo: salesUpdate.memo
+            externalPrepaid: salesUpdate.external_prepaid, externalPlatform: salesUpdate.external_platform, memo: salesUpdate.memo,
+            staffId: salesUpdate.staff_id, staffName: salesUpdate.staff_name,
           }
         });
         return;
@@ -929,9 +1130,27 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           // 진짜 신규 insert (cust_num 포함)
           const alreadyExists = (data?.customers||[]).some(c => c.id === custId);
           if (!alreadyExists) {
-            sb.insert("customers", toDb("customers", newCustObj)).then(() => {
-              setData(prev => ({ ...prev, customers: [...(prev?.customers||[]), newCustObj] }));
-            }).catch(console.error);
+            // 동일 연락처 중복 체크 → 있으면 사용자에게 confirm
+            let proceed = true;
+            if (custPhone && custPhone.replace(/[^0-9]/g,'').length >= 8) {
+              try {
+                const dup = await sb.get("customers", `&business_id=eq.${_activeBizId}&phone=eq.${encodeURIComponent(custPhone)}&limit=3`);
+                if (Array.isArray(dup) && dup.length > 0) {
+                  const names = dup.map(d => `  ${d.name}${d.cust_num?` (#${d.cust_num})`:""}`).join("\n");
+                  const msg = `⚠️ 이 연락처(${custPhone})를 이미 사용 중인 고객이 있습니다:\n\n${names}\n\n같은 분이면 기존 고객을 선택해서 매출 등록하는 걸 권장합니다.\n그래도 신규로 등록할까요?`;
+                  proceed = confirm(msg);
+                }
+              } catch(e) { console.warn("[dup phone check]", e); }
+            }
+            if (proceed) {
+              sb.insert("customers", toDb("customers", newCustObj)).then(() => {
+                setData(prev => ({ ...prev, customers: [...(prev?.customers||[]), newCustObj] }));
+              }).catch(console.error);
+            } else {
+              // 사용자가 취소 → 매출 저장 중단
+              alert("매출 등록이 취소됐습니다. 기존 고객을 검색해서 다시 시도해주세요.");
+              return;
+            }
           }
         }
         cust.id = custId;
@@ -949,9 +1168,19 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           if (!assignedCustNum) assignedCustNum = await fetchNextCustNum();
         }
 
-        const updates = { name: custName, phone: custPhone, gender: gender, lastVisit: todayStr() };
+        // visits 증가: 로컬값(+Oracle 임포트 값 포함)을 기준으로 +1 → DB에도 반영
+        const newVisits = (localCust?.visits || 0) + 1;
+        const updates = { name: custName, phone: custPhone, gender: gender, lastVisit: todayStr(), visits: newVisits };
         if (assignedCustNum && !localCust?.custNum) updates.custNum = assignedCustNum;
-        setData(prev => ({ ...prev, customers: (prev?.customers||[]).map(c => c.id === cust.id ? {...c, ...updates, custNum: assignedCustNum || c.custNum, visits: (c.visits||0)+1} : c) }));
+        // 소속지점 변경 제안: 매출 지점이 고객 현재 소속과 다르면 유저에게 확인
+        const curBid = localCust?.bid;
+        if (curBid && selBranch && curBid !== selBranch) {
+          const curBr = (data?.branches||[]).find(b => b.id === curBid);
+          const newBr = (data?.branches||[]).find(b => b.id === selBranch);
+          const msg = `📍 ${custName}님 소속 지점이 기존 "${curBr?.short||curBr?.name||curBid}"인데 이번 매출은 "${newBr?.short||newBr?.name||selBranch}"에서 등록됩니다.\n\n소속 지점을 "${newBr?.short||newBr?.name||selBranch}"(으)로 변경하시겠습니까?`;
+          if (confirm(msg)) updates.bid = selBranch;
+        }
+        setData(prev => ({ ...prev, customers: (prev?.customers||[]).map(c => c.id === cust.id ? {...c, ...updates, custNum: assignedCustNum || c.custNum} : c) }));
         sb.update("customers", cust.id, toDb("customers", updates)).catch(console.error);
         cust.custNum = assignedCustNum;
       }
@@ -987,7 +1216,13 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
         const bal = _pkgBalance(pkg);
         const newBal = Math.max(0, bal - val);
         const newSpent = (pkg.used_count || 0) + val;
-        const newNote = (pkg.note || "").replace(/잔액:[0-9,]+/, `잔액:${newBal.toLocaleString()}`);
+        let newNote = (pkg.note || "").replace(/잔액:[0-9,]+/, `잔액:${newBal.toLocaleString()}`);
+        // 유효기간 없으면 첫 사용 시점부터 1년 자동 설정
+        if (!/유효:\s*\d{4}-\d{2}-\d{2}/.test(newNote)) {
+          const d = new Date(); d.setFullYear(d.getFullYear()+1);
+          const expStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+          newNote = newNote ? `${newNote} | 유효:${expStr}` : `유효:${expStr}`;
+        }
         sb.update("customer_packages", pkgId, { used_count: newSpent, note: newNote }).catch(console.error);
         _pkgTxRecords.push({
           package_id: pkgId, service_name: pkg.service_name || "",
@@ -996,6 +1231,23 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           note: "매출 차감"
         });
       }
+    });
+
+    // 쿠폰 자동 소진: activeCoupons 중 consumeOnUse=true 이면 customer_packages.used_count +1
+    activeCoupons.forEach(c => {
+      if (!c.consumeOnUse) return;
+      const pkg = (custPkgs||[]).find(p => p.id === c.pkgId);
+      if (!pkg) return;
+      const totalCnt = pkg.total_count || 1;
+      const prevUsed = pkg.used_count || 0;
+      const newUsed = Math.min(totalCnt, prevUsed + 1);
+      sb.update("customer_packages", c.pkgId, { used_count: newUsed }).catch(console.error);
+      _pkgTxRecords.push({
+        package_id: c.pkgId, service_name: pkg.service_name || "",
+        type: "deduct", unit: "count", amount: 1,
+        balance_before: totalCnt - prevUsed, balance_after: totalCnt - newUsed,
+        note: `쿠폰 자동적용${c.discount>0?` -${c.discount.toLocaleString()}원`:""}${c.earn>0?` +${c.earn.toLocaleString()}P`:""}`
+      });
     });
 
     // 네이버예약금 레거시 호환 (새 매출은 external_prepaid로만 저장)
@@ -1084,91 +1336,84 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       createdAt: new Date().toISOString(),
     };
 
-    // ── sale_details 생성: 각 시술/제품 항목별로 레코드 insert ──
+    // ── sale_details 생성: 수동 등록 툴과 동일한 포맷 (cash/card/bank/point 분배 없음, 결제수단 합계는 sales 테이블에만) ──
     const _saleDetails = [];
     let _detailNo = 0;
     const nowIso = new Date().toISOString();
+    const pushDetail = (name, price) => _saleDetails.push({
+      id: "sd_" + uid(), business_id: _activeBizId, sale_id: sale.id, order_num: sale.orderNum,
+      service_no: ++_detailNo, service_name: name, unit_price: price, qty: 1,
+      cash: 0, card: 0, bank: 0, point: 0,
+      sex_div: gender || "", created_at: nowIso,
+    });
     // 시술
     SVC_LIST.forEach(svc => {
       const it = items[svc.id];
-      if (it?.checked && (it.amount || 0) > 0) {
-        const ratio = svcTotal > 0 ? (it.amount / svcTotal) : 0;
-        _saleDetails.push({
-          id: "sd_" + uid(),
-          business_id: _activeBizId,
-          sale_id: sale.id,
-          order_num: sale.orderNum,
-          service_no: ++_detailNo,
-          service_name: svc.name,
-          unit_price: it.amount,
-          qty: 1,
-          cash: Math.round((payMethod.svcCash || 0) * ratio),
-          card: Math.round((payMethod.svcCard || 0) * ratio),
-          bank: Math.round((payMethod.svcTransfer || 0) * ratio),
-          point: Math.round((payMethod.svcPoint || 0) * ratio),
-          sex_div: gender || "",
-          created_at: nowIso,
-        });
-      }
+      if (it?.checked && (it.amount || 0) > 0) pushDetail(svc.name, it.amount);
     });
     // 추가 시술
     if (items.extra_svc?.checked && (items.extra_svc.amount || 0) > 0) {
-      const ratio = svcTotal > 0 ? (items.extra_svc.amount / svcTotal) : 0;
-      _saleDetails.push({
-        id: "sd_" + uid(), business_id: _activeBizId, sale_id: sale.id, order_num: sale.orderNum,
-        service_no: ++_detailNo, service_name: items.extra_svc.label || items.extra_svc.name || "추가 시술",
-        unit_price: items.extra_svc.amount, qty: 1,
-        cash: Math.round((payMethod.svcCash||0) * ratio), card: Math.round((payMethod.svcCard||0) * ratio),
-        bank: Math.round((payMethod.svcTransfer||0) * ratio), point: Math.round((payMethod.svcPoint||0) * ratio),
-        sex_div: gender || "", created_at: nowIso,
-      });
+      pushDetail(items.extra_svc.label || items.extra_svc.name || "추가 시술", items.extra_svc.amount);
     }
     // 제품
     PROD_LIST.forEach(p => {
       const it = items[p.id];
-      if (it?.checked && (it.amount || 0) > 0) {
-        const ratio = prodTotal > 0 ? (it.amount / prodTotal) : 0;
-        _saleDetails.push({
-          id: "sd_" + uid(),
-          business_id: _activeBizId,
-          sale_id: sale.id,
-          order_num: sale.orderNum,
-          service_no: ++_detailNo,
-          service_name: p.name,
-          unit_price: it.amount,
-          qty: 1,
-          cash: Math.round((payMethod.prodCash || 0) * ratio),
-          card: Math.round((payMethod.prodCard || 0) * ratio),
-          bank: Math.round((payMethod.prodTransfer || 0) * ratio),
-          point: Math.round((payMethod.prodPoint || 0) * ratio),
-          sex_div: gender || "",
-          created_at: nowIso,
-        });
-      }
+      if (it?.checked && (it.amount || 0) > 0) pushDetail(p.name, it.amount);
     });
+    // 추가 제품
     if (items.extra_prod?.checked && (items.extra_prod.amount || 0) > 0) {
-      const ratio = prodTotal > 0 ? (items.extra_prod.amount / prodTotal) : 0;
-      _saleDetails.push({
-        id: "sd_" + uid(), business_id: _activeBizId, sale_id: sale.id, order_num: sale.orderNum,
-        service_no: ++_detailNo, service_name: items.extra_prod.label || items.extra_prod.name || "추가 제품",
-        unit_price: items.extra_prod.amount, qty: 1,
-        cash: Math.round((payMethod.prodCash||0) * ratio), card: Math.round((payMethod.prodCard||0) * ratio),
-        bank: Math.round((payMethod.prodTransfer||0) * ratio), point: Math.round((payMethod.prodPoint||0) * ratio),
-        sex_div: gender || "", created_at: nowIso,
-      });
+      pushDetail(items.extra_prod.label || items.extra_prod.name || "추가 제품", items.extra_prod.amount);
     }
-    // 할인 — 신규 매출에도 sale_details에 기록 (나중에 편집 시 프리필 가능)
+    // 할인
     if (items.discount?.checked && (items.discount.amount || 0) > 0) {
-      _saleDetails.push({
-        id: "sd_" + uid(), business_id: _activeBizId, sale_id: sale.id, order_num: sale.orderNum,
-        service_no: ++_detailNo, service_name: "[할인]",
-        unit_price: items.discount.amount, qty: 1,
-        cash: 0, card: 0, bank: 0, point: 0,
-        sex_div: gender || "", created_at: nowIso,
+      pushDetail("[할인]", items.discount.amount);
+    }
+    // 이벤트 할인·적립 기록 (promoResults 기반)
+    promoResults.forEach(r => {
+      if (r.discount > 0) pushDetail(`[이벤트 할인] ${r.name}${r.reason?` (${r.reason})`:""}`, r.discount);
+      if (r.earn > 0) pushDetail(`[이벤트 적립] ${r.name}${r.reason?` (${r.reason})`:""}`, r.earn);
+    });
+    // 쿠폰 자동적용 기록 (activeCoupons 기반)
+    activeCoupons.forEach(c => {
+      if (c.discount > 0) pushDetail(`[쿠폰 할인] ${c.name}`, c.discount);
+      if (c.earn > 0) pushDetail(`[쿠폰 적립] ${c.name}`, c.earn);
+    });
+    // 보유권 사용 (다회권 차감 횟수 및 다담권 차감 금액) — 수동 등록 툴 포맷과 통일
+    // pkgItems: { "pkg__{pkgId}": {qty} }, pkgUse: {pkgId: number|true}
+    try {
+      // 다회권
+      Object.entries(pkgItems||{}).forEach(([pkgKey, v]) => {
+        if (!(v?.qty > 0)) return;
+        const pkgId = pkgKey.replace(/^pkg__/, "");
+        const pkg = custPkgs.find(p => p.id === pkgId);
+        const baseName = (pkg?.service_name||"").split("(")[0].replace(/\s*\d+회$/,"").trim() || "다회권";
+        pushDetail(`[보유권 사용] ${baseName}`, 0);
       });
+      // 다담권 (잔액 차감)
+      Object.entries(pkgUse||{}).forEach(([pkgId, v]) => {
+        if (typeof v !== "number" || v <= 0) return;
+        const pkg = custPkgs.find(p => p.id === pkgId);
+        if (!pkg) return;
+        const t = _pkgType(pkg);
+        if (t !== "prepaid") return; // 다회권은 위에서 처리됨
+        const baseName = (pkg?.service_name||"").split("(")[0].trim() || "다담권";
+        pushDetail(`[보유권 차감] ${baseName}`, v);
+      });
+    } catch(e) { console.warn("[sale_details pkgUse]", e); }
+    // ── sales → sale_details 순차 insert (FK 의존) ──
+    // 부모(ReservationModal/SalesPage)가 중복 insert 하지 않도록 sale 객체에 _alreadySaved 플래그
+    try {
+      const inserted = await sb.insert("sales", toDb("sales", sale));
+      if (!inserted) {
+        // sb.insert가 이미 alert 띄움
+        return;
+      }
+    } catch (e) {
+      alert("매출 저장 실패: " + (e?.message || e));
+      return;
     }
     if (_saleDetails.length > 0) {
-      sb.upsert("sale_details", _saleDetails).catch(console.error);
+      await sb.upsert("sale_details", _saleDetails);
     }
 
     // 보유권 거래 기록 flush (sale.id 연결)
@@ -1211,7 +1456,8 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       }
     }
     // _continueAfter: true면 저장 후 모달 유지 + 새 매출 입력 가능하도록 부모에서 리셋
-    onSubmit({ ...sale, _continueAfter: !!continueAfter });
+    // _alreadySaved: SaleForm이 이미 sales INSERT 완료 → 부모는 state만 갱신, 중복 insert 금지
+    onSubmit({ ...sale, _continueAfter: !!continueAfter, _alreadySaved: true });
   };
 
   // Split services into 2 columns by flat sort order
@@ -1322,15 +1568,46 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
             <span style={{ color:T.textSub, fontWeight: 700 }}>시술자 <span style={{color:T.danger}}>*</span></span>
             <select className="inp" style={{ flex:1, minWidth:80, maxWidth:130, borderColor: manager ? T.gray400 : T.danger, background: manager ? T.bgCard : T.dangerLt }} value={manager} onChange={e => setManager(e.target.value)}>
               <option value="">시술자 선택</option>
-              {(data.staff||[]).map(s => {
-                const br = (data.branches||[]).find(b=>b.id===s.bid);
-                return <option key={s.id} value={s.id}>{s.dn}{br&&br.id!==selBranch?` (${br.short||br.name||''})`:''}</option>;
-              })}
+              {(() => {
+                // 타임라인 기준 그룹핑: 오늘 해당 지점 근무자 상단, 타지점 직원 아래 지점별로
+                const staffByBranch = {}; // effBid → [staff,...]
+                const offStaff = [];
+                (data.staff||[]).forEach(s => {
+                  if (!s.dn) return;
+                  const st = schHistory?.[s.dn]?.[saleDate];
+                  if (st === "휴무" || st === "휴무(꼭)" || st === "무급") { offStaff.push(s); return; }
+                  const effBid = getEffectiveBranch(s);
+                  if (!staffByBranch[effBid]) staffByBranch[effBid] = [];
+                  staffByBranch[effBid].push(s);
+                });
+                const renderStaff = (s, showBr) => {
+                  const br = showBr ? (data.branches||[]).find(b=>b.id===getEffectiveBranch(s)) : null;
+                  return <option key={s.id} value={s.id}>{s.dn}{br?` (${br.short||br.name||''})`:''}</option>;
+                };
+                const currentGroup = staffByBranch[selBranch] || [];
+                const otherBranches = (data.branches||[]).filter(b => b.id !== selBranch && staffByBranch[b.id]);
+                return <>
+                  {currentGroup.length > 0 && <optgroup label={`현재 지점 근무`}>
+                    {currentGroup.map(s => renderStaff(s, false))}
+                  </optgroup>}
+                  {otherBranches.map(br => (
+                    <optgroup key={br.id} label={`${br.short||br.name} (타지점)`}>
+                      {staffByBranch[br.id].map(s => renderStaff(s, true))}
+                    </optgroup>
+                  ))}
+                  {offStaff.length > 0 && <optgroup label="휴무">
+                    {offStaff.map(s => {
+                      const br = (data.branches||[]).find(b=>b.id===s.bid);
+                      return <option key={s.id} value={s.id}>{s.dn} (휴무{br?`·${br.short||br.name}`:''})</option>;
+                    })}
+                  </optgroup>}
+                </>;
+              })()}
             </select>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12 }}>
             <span style={{ color:T.textSub }}>지점</span>
-            <select className="inp" style={{ flex:1, minWidth:90, maxWidth:140 }} value={selBranch} onChange={e => setSelBranch(e.target.value)}>
+            <select className="inp" style={{ flex:1, minWidth:140, maxWidth:220 }} value={selBranch} onChange={e => setSelBranch(e.target.value)}>
               {(data.branches||[]).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </div>
@@ -1348,7 +1625,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           {/* Totals */}
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 11, color:T.textSub }}>시술 <strong style={{ color:T.primary }}>{fmt(svcTotal)}</strong> ({checkedSvc})</span>
-            <span style={{ fontSize: 11, color:T.textSub }}>제품 <strong style={{ color: T.infoLt2 }}>{fmt(prodTotal)}</strong> ({checkedProd})</span>
+            <span style={{ fontSize: 11, color:T.textSub }}>제품 <strong style={{ color: T.info||"#1976D2" }}>{fmt(prodTotal)}</strong> ({checkedProd})</span>
             {discount > 0 && <span style={{ fontSize: 11, color:T.textSub }}>할인 <strong style={{ color: T.female }}>-{fmt(discount)}</strong></span>}
             {externalPrepaid > 0 && <span style={{ fontSize: 11, color:T.textSub }}>{externalPlatform||"외부"} <strong style={{ color: "#8E24AA" }}>-{fmt(externalPrepaid)}</strong></span>}
             <span style={{ fontSize: 17, fontWeight: 900, color: T.danger }}>{fmt(grandTotal)}원</span>
@@ -1450,14 +1727,14 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                     </div>;
                   }
                   const rp = gender ? (gender==="M" ? svc.priceM : svc.priceF) : 0;
-                  return <SaleSvcRow key={svc.id} id={svc.id} name={svc.name} dur={svc.dur} checked={!!it.checked} amount={it.amount||0} defPrice={dp} regularPrice={rp} toggle={toggle} setAmt={setAmt} />;
+                  return <SaleSvcRow key={svc.id} id={svc.id} name={svc.name} dur={svc.dur} checked={!!it.checked} amount={it.amount||0} defPrice={dp} regularPrice={rp} toggle={toggle} setAmt={setAmt} badgeText={svc.badgeText} badgeColor={svc.badgeColor} badgeBg={svc.badgeBg} />;
                 })}</div>}
               </div>
               );
             })}
             {uncatSvcs.length>0 && <div style={{marginBottom:8}}>
               <div style={{fontSize:T.fs.nano,fontWeight:T.fw.bolder,color:T.textMuted,background:T.bg,borderRadius:T.radius.sm,padding:"2px 6px",marginBottom:2,display:"inline-block"}}>기타</div>
-              {uncatSvcs.map(svc => { const it=items[svc.id]||{}; const dp=_defPrice(svc,gender); const rp=gender?(gender==="M"?svc.priceM:svc.priceF):0; return <SaleSvcRow key={svc.id} id={svc.id} name={svc.name} dur={svc.dur} checked={!!it.checked} amount={it.amount||0} defPrice={dp} regularPrice={rp} toggle={toggle} setAmt={setAmt} />; })}
+              {uncatSvcs.map(svc => { const it=items[svc.id]||{}; const dp=_defPrice(svc,gender); const rp=gender?(gender==="M"?svc.priceM:svc.priceF):0; return <SaleSvcRow key={svc.id} id={svc.id} name={svc.name} dur={svc.dur} checked={!!it.checked} amount={it.amount||0} defPrice={dp} regularPrice={rp} toggle={toggle} setAmt={setAmt} badgeText={svc.badgeText} badgeColor={svc.badgeColor} badgeBg={svc.badgeBg} />; })}
             </div>}
             <SaleExtraRow id="extra_svc" color={T.primary} placeholder="추가 시술명 입력" checked={!!(items.extra_svc||{}).checked} amount={(items.extra_svc||{}).amount||0} label={(items.extra_svc||{}).label||""} toggle={toggle} setAmt={setAmt} setLabel={setLabel} />
             <div style={{ marginTop: 4 }}>
@@ -1508,6 +1785,25 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
               );
             })()}
           </div>}
+          {/* 이벤트·프로모 요약 */}
+          {promoResults.length > 0 && <div style={{marginBottom:8,padding:"8px 10px",background:"#fff7ed",borderRadius:T.radius.md,border:"1px solid #fdba74"}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+              <span style={{fontSize:12,fontWeight:800,color:"#c2410c"}}>🎁 이벤트 자동적용</span>
+              {promoDiscountTotal > 0 && <span style={{fontSize:11,fontWeight:700,color:"#c2410c"}}>할인 -{fmt(promoDiscountTotal)}원</span>}
+              {promoEarnTotal > 0 && <span style={{fontSize:11,fontWeight:700,color:"#c2410c"}}>적립 +{fmt(promoEarnTotal)}P</span>}
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:2}}>
+              {promoResults.map(r => (
+                <div key={r.svcId} style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#7c2d12"}}>
+                  {r.badgeText && <span style={{padding:"1px 6px",borderRadius:8,fontSize:9,fontWeight:700,color:r.badgeColor||"#fff",background:r.badgeBg||T.primary}}>{r.badgeText}</span>}
+                  <span style={{fontWeight:600}}>{r.name}</span>
+                  <span style={{color:"#9a3412"}}>{r.reason}</span>
+                  {r.discount > 0 && <span style={{marginLeft:"auto",fontWeight:700}}>-{fmt(r.discount)}원</span>}
+                  {r.earn > 0 && r.discount === 0 && <span style={{marginLeft:"auto",fontWeight:700}}>+{fmt(r.earn)}P</span>}
+                </div>
+              ))}
+            </div>
+          </div>}
           {/* 금액 브레이크다운 */}
           <div style={{marginBottom:8,padding:"7px 10px",background:T.bgCard,borderRadius:T.radius.md,border:"1px solid #e8e8e8"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
@@ -1522,17 +1818,17 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
               <span style={{fontSize:T.fs.sm,color:T.female}}><I name="tag" size={11}/> 할인</span>
               <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.female}}>-{fmt(discount)}원</span>
             </div>}
-            {/* 외부 선결제 — 한 줄, 컴팩트 */}
-            <div style={{display:"flex",alignItems:"center",gap:5,padding:"7px 10px",marginTop:4,background:"#F3E5F5",borderRadius:8,border:"1px solid #CE93D8",whiteSpace:"nowrap"}}>
+            {/* 외부 선결제 — 좁은 패널에서 자동 줄바꿈 허용 */}
+            <div style={{display:"flex",alignItems:"center",gap:5,padding:"7px 10px",marginTop:4,background:"#F3E5F5",borderRadius:8,border:"1px solid #CE93D8",flexWrap:"wrap",rowGap:6}}>
               <span style={{fontSize:11,color:"#6A1B9A",fontWeight:700,flexShrink:0}}>🏷 선결제</span>
               <select value={externalPlatform} onChange={e=>setExternalPlatform(e.target.value)}
-                style={{flex:"0 0 auto",width:78,padding:"4px 4px",fontSize:11,border:"1px solid #CE93D8",borderRadius:6,background:"#fff",color:"#6A1B9A",fontFamily:"inherit"}}>
+                style={{flex:"1 1 80px",minWidth:70,padding:"4px 4px",fontSize:11,border:"1px solid #CE93D8",borderRadius:6,background:"#fff",color:"#6A1B9A",fontFamily:"inherit"}}>
                 <option value="">플랫폼</option>
                 {externalPlatforms.map(p=><option key={p} value={p}>{p}</option>)}
               </select>
               <input type="number" step="5000" value={externalPrepaid||""} placeholder="0" min="0"
                 onChange={e=>setExternalPrepaid(Number(e.target.value)||0)}
-                style={{flex:1,minWidth:50,padding:"4px 6px",fontSize:11,textAlign:"right",fontWeight:700,color:"#6A1B9A",border:"1px solid #CE93D8",borderRadius:6,background:"#fff",fontFamily:"inherit"}}/>
+                style={{flex:"1 1 90px",minWidth:80,padding:"4px 6px",fontSize:11,textAlign:"right",fontWeight:700,color:"#6A1B9A",border:"1px solid #CE93D8",borderRadius:6,background:"#fff",fontFamily:"inherit"}}/>
               <span style={{fontSize:11,color:"#6A1B9A",fontWeight:700,flexShrink:0}}>원</span>
             </div>
             {/* 포인트 사용 — 결제수단 (적립은 별도 영역) */}
@@ -1554,6 +1850,19 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           {(svcTotal > 0 || prodTotal > 0 || hasPkgChecked()) && <div className="sale-pay-row" style={{display:"flex",flexDirection:"column",gap:8}}>
             {svcTotal > 0 && <div style={{flex:1,minWidth:0,padding:"8px 12px",background:T.bgCard,borderRadius:T.radius.md,border:"1px solid "+T.border}}>
               <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.primary,marginBottom:6}}><I name="scissors" size={12}/> 시술 결제 <span style={{color:T.danger,fontWeight:T.fw.black}}>{fmt(svcPayTotal)}원</span></div>
+              {activeCoupons.filter(c=>(c.applyTo==='services' || c.applyTo==='all' || c.applyTo==='category' || c.applyTo==='specific_service') && c.discount>0).map(c => (
+                <label key={c.pkgId} style={{display:"flex",alignItems:"center",gap:4,padding:"4px 6px",marginBottom:4,background:"#fff8e1",border:"1px solid #f59e0b",borderRadius:6,fontSize:10,color:"#78350f",cursor:"pointer",whiteSpace:"nowrap",overflow:"hidden"}} title={`${c.name}${c.consumeOnUse?" (1회 소진)":""} -${fmt(c.discount)}원`}>
+                  <input type="checkbox" checked={!couponOff[c.pkgId]} onChange={e=>setCouponOff(p=>({...p,[c.pkgId]:!e.target.checked}))} style={{accentColor:"#b45309",flexShrink:0}}/>
+                  <span style={{fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",minWidth:0,flex:"1 1 auto"}}>🎫 {c.name}</span>
+                  <span style={{marginLeft:"auto",fontWeight:800,color:"#b45309",flexShrink:0}}>-{fmt(c.discount)}</span>
+                </label>
+              ))}
+              {activeCoupons.filter(c=>c.earn>0).map(c => (
+                <div key={`earn-${c.pkgId}`} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 8px",marginBottom:5,background:"#fff8e1",border:"1px solid #f59e0b",borderRadius:6,fontSize:11,color:"#78350f"}}>
+                  <span style={{fontWeight:700}}>🎫 {c.name}</span>
+                  <span style={{marginLeft:"auto",fontWeight:800,color:"#b45309"}}>+{fmt(c.earn)}P</span>
+                </div>
+              ))}
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(110px, 1fr))",gap:6,alignItems:"start"}}>
                 {/* 선불잔액 — 다담권/선불권 (카드형, 금액 입력 가능) */}
                 {(()=>{
@@ -1601,7 +1910,8 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                       value={isActive && usedAmt?fmtAmt(usedAmt):""}
                       placeholder="0"
                       onChange={e=>editAmount(e.target.value)}
-                      onClick={(e)=>e.stopPropagation()}
+                      onClick={(e)=>{e.stopPropagation(); if(!isActive) toggle();}}
+                      onFocus={()=>{ if(!isActive) toggle(); }}
                       readOnly={!isActive}
                       style={{width:"100%",minWidth:0,padding:"3px 6px",fontSize:T.fs.sm,textAlign:"right",
                         border:`1px solid ${isActive?clr:"transparent"}`,
@@ -1630,7 +1940,8 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                       value={active && payMethod[k]?fmtAmt(payMethod[k]):""}
                       placeholder="0"
                       onChange={e=>editPay(k,e.target.value,svcPayTotal,"svc")}
-                      onClick={(e)=>e.stopPropagation()}
+                      onClick={(e)=>{e.stopPropagation(); if(!active) togglePayField(k,svcPayTotal,"svc");}}
+                      onFocus={()=>{ if(!active) togglePayField(k,svcPayTotal,"svc"); }}
                       readOnly={!active || primaryPay.svc===k}
                       style={{width:"100%",minWidth:0,padding:"3px 6px",fontSize:T.fs.sm,textAlign:"right",
                         border:`1px solid ${active?clr:"transparent"}`,
@@ -1643,6 +1954,13 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
             </div>}
             {prodTotal > 0 && <div style={{flex:1,minWidth:0,padding:"8px 12px",background:T.bgCard,borderRadius:T.radius.md,border:"1px solid "+T.border}}>
               <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.infoLt2,marginBottom:6}}><I name="pkg" size={12}/> 제품 결제 <span style={{color:T.danger,fontWeight:T.fw.black}}>{fmt(prodPayTotal)}원</span></div>
+              {activeCoupons.filter(c=>c.applyTo==='products' && c.discount>0).map(c => (
+                <label key={c.pkgId} style={{display:"flex",alignItems:"center",gap:4,padding:"4px 6px",marginBottom:4,background:"#fff8e1",border:"1px solid #f59e0b",borderRadius:6,fontSize:10,color:"#78350f",cursor:"pointer",whiteSpace:"nowrap",overflow:"hidden"}} title={`${c.name}${c.consumeOnUse?" (1회 소진)":""} -${fmt(c.discount)}원`}>
+                  <input type="checkbox" checked={!couponOff[c.pkgId]} onChange={e=>setCouponOff(p=>({...p,[c.pkgId]:!e.target.checked}))} style={{accentColor:"#b45309",flexShrink:0}}/>
+                  <span style={{fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",minWidth:0,flex:"1 1 auto"}}>🎫 {c.name}</span>
+                  <span style={{marginLeft:"auto",fontWeight:800,color:"#b45309",flexShrink:0}}>-{fmt(c.discount)}</span>
+                </label>
+              ))}
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(110px, 1fr))",gap:6,alignItems:"start"}}>
                 {[
                   {k:"prodCard",label:"카드",clr:T.male,bg:T.maleLt},
@@ -1663,7 +1981,8 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                       value={active && payMethod[k]?fmtAmt(payMethod[k]):""}
                       placeholder="0"
                       onChange={e=>editPay(k,e.target.value,prodPayTotal,"prod")}
-                      onClick={(e)=>e.stopPropagation()}
+                      onClick={(e)=>{e.stopPropagation(); if(!active) togglePayField(k,prodPayTotal,"prod");}}
+                      onFocus={()=>{ if(!active) togglePayField(k,prodPayTotal,"prod"); }}
                       readOnly={!active || primaryPay.prod===k}
                       style={{width:"100%",minWidth:0,padding:"3px 6px",fontSize:T.fs.sm,textAlign:"right",
                         border:`1px solid ${active?clr:"transparent"}`,

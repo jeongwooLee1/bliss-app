@@ -16,7 +16,7 @@ export const sb = {
       filter = `&id=eq.${filter}&limit=1`;
     }
     const hasSortCol = ["services","products","service_tags","service_categories","reservation_sources","branches"].includes(table);
-    const hasCreatedAt = !["rooms","services","products","service_categories","service_tags"].includes(table);
+    const hasCreatedAt = !["rooms","services","products","service_categories","service_tags","schedule_data"].includes(table);
     const descTables = ["customers"];
     const order = hasSortCol ? "order=sort.asc.nullslast" : (hasCreatedAt ? (descTables.includes(table) ? "order=created_at.desc.nullslast" : "order=created_at.asc.nullslast") : "order=id.asc");
     const r=await fetch(`${SB_URL}/rest/v1/${table}?select=*${filter.includes('order=')?'':('&'+order)}${filter}`,{headers:{...sbHeaders,"Cache-Control":"no-cache"},cache:"no-store"});
@@ -29,6 +29,43 @@ export const sb = {
   async update(table,id,row) { const r=await fetch(`${SB_URL}/rest/v1/${table}?id=eq.${id}`,{method:"PATCH",headers:sbHeaders,body:JSON.stringify(row)}); if(!r.ok){const e=await r.text();console.error(`DB update ${table} FAILED [${r.status}]:`,e);alert(`DB수정 실패(${table}): ${e}`);} },
   async del(table,id) { await fetch(`${SB_URL}/rest/v1/${table}?id=eq.${id}`,{method:"DELETE",headers:sbHeaders}); },
   async delWhere(table,col,val) { await fetch(`${SB_URL}/rest/v1/${table}?${col}=eq.${val}`,{method:"DELETE",headers:sbHeaders}); },
+}
+
+/**
+ * 다토큰 AND + 필드 OR 검색 필터 빌더
+ * "정우 8008" 같은 공백 구분 검색어에서 각 토큰이 어느 필드에든 포함되면 매칭.
+ * @param {string} raw   검색어 전체 문자열
+ * @param {string[]} fields  검색 대상 DB 컬럼명 배열
+ * @returns {string} &or=(...) 또는 &and=(or(...),or(...)) 형태 필터 (빈 검색어면 "")
+ */
+export function buildTokenSearch(raw, fields) {
+  const tokens = (raw||"").trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0 || !fields?.length) return "";
+  const orOf = (tok) => {
+    const e = encodeURIComponent(tok);
+    return fields.map(f => `${f}.ilike.*${e}*`).join(",");
+  };
+  if (tokens.length === 1) return `&or=(${orOf(tokens[0])})`;
+  return `&and=(${tokens.map(t => `or(${orOf(t)})`).join(",")})`;
+}
+
+/** 다토큰 AND 클라이언트 매처 — 로컬 배열 검색용 */
+export function matchAllTokens(haystack, raw) {
+  const tokens = (raw||"").trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return true;
+  const hay = (haystack||"").toLowerCase();
+  return tokens.every(t => hay.includes(t.toLowerCase()));
+}
+
+/**
+ * 대용량 테이블용 하이브리드 검색: 첫 토큰만 서버 OR 필터, 나머지 토큰은 클라이언트 AND에서 처리.
+ * 반환된 결과를 클라이언트에서 matchAllTokens(row_haystack, raw)로 추가 필터링해야 함.
+ */
+export function buildFirstTokenSearch(raw, fields) {
+  const tokens = (raw||"").trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0 || !fields?.length) return "";
+  const e = encodeURIComponent(tokens[0]);
+  return `&or=(${fields.map(f => `${f}.ilike.*${e}*`).join(",")})`;
 }
 
 /** 알림톡 큐에 추가 — 서버(bliss_naver.py alimtalk_thread)가 10초 내 발송 */

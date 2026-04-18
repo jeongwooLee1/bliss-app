@@ -1,8 +1,8 @@
 import React, { useState, useRef, useCallback } from 'react'
 import { T } from '../../lib/constants'
-import { sb } from '../../lib/sb'
+import { sb, buildTokenSearch, matchAllTokens } from '../../lib/sb'
 import { toDb } from '../../lib/db'
-import { todayStr, genId, fmtLocal } from '../../lib/utils'
+import { todayStr, genId, fmtLocal, useSessionState } from '../../lib/utils'
 import { Btn, StatCard, GridLayout, fmt, Empty, DataTable, FLD } from '../common'
 import I from '../common/I'
 import { SmartDatePicker } from '../Reservations/ReservationsPage'
@@ -87,32 +87,37 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
       });
     } catch (e) { alert("편집 진입 실패: " + (e?.message || e)); }
   };
-  const [salesTab, setSalesTab] = useState("sales"); // "sales" | "stats"
+  const [salesTab, setSalesTab] = useSessionState("sales_tab", "sales"); // "sales" | "stats"
   const dateAnchorRef = React.useRef(null);
-  const [startDate, setStartDate] = useState(todayStr());
-  const [endDate, setEndDate] = useState(todayStr());
-  const [periodKey, setPeriodKey] = useState("1day");
+  const [startDate, setStartDate] = useSessionState("sales_startDate", todayStr());
+  const [endDate, setEndDate] = useSessionState("sales_endDate", todayStr());
+  const [periodKey, setPeriodKey] = useSessionState("sales_periodKey", "1day");
   const [showSheet, setShowSheet] = useState(false);
-  const [vb, setVb] = useState("all");
+  const [vb, setVb] = useSessionState("sales_vb", "all");
   const [showModal, setShowModal] = useState(false);
   const [editSale, setEditSale] = useState(null);
   const [editMemoId, setEditMemoId] = useState(null);
   const [editMemoText, setEditMemoText] = useState("");
-  const [q, setQ] = useState("");
-  const [expandedId, setExpandedId] = useState(null);
+  const [q, setQ] = useSessionState("sales_q", "");
+  const [expandedId, setExpandedId] = useSessionState("sales_expandedId", null);
   const [detailMap, setDetailMap] = useState({});  // saleId → [detail rows]
 
   /* ── sale_details lazy 로드 ── */
   const loadDetails = useCallback(async (saleId) => {
-    if (detailMap[saleId] || _detailCache[saleId]) return;
+    // detailMap에 이미 있으면 재조회 안 함 (null/undefined는 재조회 허용)
+    if (detailMap[saleId] !== undefined) return;
+    // _detailCache는 loading 마커로만 사용 — 실패 시 리셋해서 재시도 가능하게
+    if (_detailCache[saleId] === "loading") return;
     _detailCache[saleId] = "loading";
     try {
       const rows = await sb.get("sale_details", `&sale_id=eq.${saleId}&order=id.asc`);
       _detailCache[saleId] = rows || [];
       setDetailMap(prev => ({...prev, [saleId]: rows || []}));
     } catch(e) {
-      _detailCache[saleId] = [];
       console.error("sale_details load fail:", e);
+      // 로딩 실패 → detailMap에 빈 배열 설정해 "로딩중" 해소 + 캐시 리셋으로 재시도 가능
+      setDetailMap(prev => ({...prev, [saleId]: []}));
+      delete _detailCache[saleId];
     }
   }, [detailMap]);
 
@@ -125,11 +130,17 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
   const sales = (data?.sales||[]).filter(s => {
     if (!(vb==="all" ? userBranches.includes(s.bid) : s.bid===vb)) return false;
     if (q) {
-      const sq = q.toLowerCase();
-      const hay = [s.custName, s.custPhone, s.staffName, s.custNum, s.memo, s.custEmail].filter(Boolean).join(" ").toLowerCase();
-      return hay.includes(sq);
+      const hay = [s.custName, s.custPhone, s.staffName, s.custNum, s.memo, s.custEmail].filter(Boolean).join(" ");
+      return matchAllTokens(hay, q);
     }
     return inRange(s.date);
+  }).sort((a,b) => {
+    // 최근 날짜 먼저. 날짜 동일하면 createdAt(있으면) 또는 id 내림차순으로 안정 정렬
+    const da = a.date||"", db = b.date||"";
+    if (da !== db) return db.localeCompare(da);
+    const ca = a.createdAt||"", cb = b.createdAt||"";
+    if (ca !== cb) return cb.localeCompare(ca);
+    return (b.id||"").localeCompare(a.id||"");
   });
 
   // ── 검색어 입력 시 DB 전체 검색 (날짜 범위·숫자 제한 없이) ──
@@ -139,10 +150,11 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
     const t = setTimeout(async () => {
       setServerSalesSearching(true);
       try {
-        const enc = encodeURIComponent(q);
         const bizId = data?.business?.id || data?.businesses?.[0]?.id;
         if (!bizId) { setServerSalesSearching(false); return; }
-        const filter = `&business_id=eq.${bizId}&or=(cust_name.ilike.*${enc}*,cust_phone.ilike.*${q}*,staff_name.ilike.*${enc}*,cust_num.ilike.*${q}*,memo.ilike.*${enc}*,cust_email.ilike.*${enc}*)&limit=500`;
+        // 서버에서 다토큰 AND+OR 중첩 (pgroonga 인덱스로 고속)
+        const cond = buildTokenSearch(q, ["cust_name","cust_phone","staff_name","cust_num","memo"]);
+        const filter = `&business_id=eq.${bizId}${cond}&limit=500`;
         const rows = await sb.get("sales", filter);
         const parsed = (rows||[]).map(r => {
           // sales는 이미 camelCase에 가까운 형태, 간단 변환
@@ -277,39 +289,31 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
   // 모달 리마운트 키 — "저장 후 계속" 시 SaleForm을 새로 그리기 위해 증가
   const [formKey, setFormKey] = useState(0);
 
-  // ── 매출 신규 저장: 실패 시 로컬 state 롤백 ──
+  // ── 매출 신규 저장: SaleForm이 이미 sales INSERT 완료 → 여기선 로컬 state 갱신만 ──
   const handleSave = async (item) => {
     const continueAfter = !!item?._continueAfter;
-    // 내부 플래그 제거 후 DB 저장용 객체로 분리
-    const saleForDb = {...item};
-    delete saleForDb._continueAfter;
+    const alreadySaved = !!item?._alreadySaved;
+    const saleForState = {...item};
+    delete saleForState._continueAfter;
+    delete saleForState._alreadySaved;
 
-    // 저장 전 cust_id 검증 — 비어있으면 사용자에게 경고
-    if (!saleForDb.custId) {
-      if (!confirm("⚠️ 고객 매칭이 안 된 상태입니다.\n고객 정보에 이 매출이 연결되지 않습니다. 그래도 저장하시겠습니까?")) return;
-    }
-    setData(prev => ({...prev, sales: [...(prev?.sales||[]), saleForDb]}));
+    setData(prev => ({...prev, sales: [...(prev?.sales||[]), saleForState]}));
 
-    // 반복 등록: 모달 유지 + 폼 리셋(key 변경으로 DetailedSaleForm 리마운트)
     if (continueAfter) {
       setFormKey(k => k + 1);
     } else {
       setShowModal(false);
     }
 
-    try {
-      const res = await sb.insert("sales", toDb("sales", saleForDb));
-      if (!res) {
-        // sb.insert가 실패 alert 이미 띄움, 로컬 state 롤백
-        setData(prev => ({...prev, sales: (prev?.sales||[]).filter(s => s.id !== saleForDb.id)}));
-      } else if (continueAfter) {
-        // 성공 토스트 대용 — 조용한 피드백
-        console.log("[handleSave] saved, continuing:", saleForDb.id);
+    // SaleForm이 인서트 안했으면 (레거시 경로) 여기서 책임지고 저장
+    if (!alreadySaved) {
+      try {
+        const res = await sb.insert("sales", toDb("sales", saleForState));
+        if (!res) setData(prev => ({...prev, sales: (prev?.sales||[]).filter(s => s.id !== saleForState.id)}));
+      } catch (e) {
+        setData(prev => ({...prev, sales: (prev?.sales||[]).filter(s => s.id !== saleForState.id)}));
+        alert("매출 저장 실패: " + (e?.message || e));
       }
-    } catch (e) {
-      console.error("[handleSave]", e);
-      setData(prev => ({...prev, sales: (prev?.sales||[]).filter(s => s.id !== saleForDb.id)}));
-      alert("매출 저장 실패: " + (e?.message || e));
     }
   };
 
@@ -344,6 +348,8 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
             externalPrepaid: u.externalPrepaid ?? s.externalPrepaid,
             externalPlatform: u.externalPlatform ?? s.externalPlatform,
             memo: u.memo ?? s.memo,
+            staffId: u.staffId ?? s.staffId,
+            staffName: u.staffName ?? s.staffName,
           } : s)
         }));
       }
@@ -527,7 +533,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
                     // customers 테이블의 cust_num 우선 (s.custNum은 구버전 스냅샷이라 불일치 가능)
                     const cust = s.custId ? (data?.customers||[]).find(c=>c.id===s.custId) : null;
                     const num = cust?.custNum || s.custNum;
-                    return <td style={{whiteSpace:"nowrap",fontSize:T.fs.xxs,fontFamily:"monospace",color:num?T.text:"#dc2626",fontWeight:num?500:700}}>
+                    return <td style={{whiteSpace:"nowrap",fontSize:T.fs.sm,fontFamily:"monospace",color:num?T.text:"#dc2626",fontWeight:900,letterSpacing:"0.3px"}}>
                       {num ? `#${num}` : "없음"}
                     </td>;
                   })()}
@@ -569,6 +575,22 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
                         {new Date(s.createdAt).toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}
                       </span>}
                     </div>
+                    {/* 관리내역 — 연결된 예약의 서비스태그 표시 */}
+                    {(()=>{
+                      const rsv = s.reservationId
+                        ? (data?.reservations||[]).find(r => r.reservationId===s.reservationId || r.id===s.reservationId)
+                        : null;
+                      const tagIds = rsv?.selectedTags || [];
+                      if (!tagIds.length) return null;
+                      const tagList = tagIds.map(tid => (data?.serviceTags||[]).find(t=>t.id===tid)).filter(Boolean);
+                      if (!tagList.length) return null;
+                      return <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:8,padding:"6px 10px",background:T.gray100,borderRadius:T.radius.md}}>
+                        <span style={{fontSize:T.fs.xxs,color:T.textSub,fontWeight:T.fw.bold}}>🏷 관리내역</span>
+                        {tagList.map(tg => (
+                          <span key={tg.id} style={{fontSize:T.fs.xxs,fontWeight:700,padding:"2px 8px",borderRadius:10,color:"#fff",background:tg.color||T.primary}}>{tg.name}</span>
+                        ))}
+                      </div>;
+                    })()}
                     {/* 시술 상세 내역 (sale_details) */}
                     {(()=>{
                       const details = detailMap[s.id];
@@ -671,7 +693,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
     {showModal && <DetailedSaleForm
       key={`sale-form-${formKey}`}
       reservation={{id:genId(),bid:userBranches[0],custId:null,custName:"",custPhone:"",custGender:"",
-        staffId:(data.staff||[]).find(s=>s.bid===(userBranches[0]))?.id||"",serviceId:null,date:todayStr()}}
+        staffId:"",serviceId:null,date:todayStr()}}
       branchId={userBranches[0]}
       onSubmit={handleSave}
       onClose={()=>_mc(()=>setShowModal(false))} data={data} setData={setData}/>}

@@ -130,6 +130,24 @@ export default function EditCellModal({
             <div style={{ fontSize:11, color:T.textMuted, marginBottom:6 }}>
               "{cellTagDefs.find(t=>t.id===repeatTagId)?.name}" 반복 적용
             </div>
+            {/* 프리셋: 하루 / 1주 / 1달 */}
+            <div style={{ display:'flex', gap:4, marginBottom:6 }}>
+              {[
+                {label:'하루만', r:'none', days:0},
+                {label:'1주', r:'daily', days:6},
+                {label:'1달', r:'daily', days:29},
+              ].map(p => (
+                <button key={p.label} onClick={()=>{
+                  setRepeat(p.r);
+                  if (p.days > 0) {
+                    const d = new Date(day.ds); d.setDate(d.getDate()+p.days);
+                    setRepeatUntil(d.toISOString().slice(0,10));
+                  } else { setRepeatUntil(''); }
+                }}
+                  style={{ flex:1, padding:'5px 8px', fontSize:11, fontWeight:700, borderRadius:8, cursor:'pointer',
+                    border:`1px solid ${T.primary}`, background:T.primaryLt, color:T.primary, fontFamily:'inherit' }}>{p.label}</button>
+              ))}
+            </div>
             <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginBottom:8 }}>
               {[{v:'none',l:'단발'},{v:'daily',l:'매일'},{v:'weekly',l:'매주 같은요일'},{v:'monthly',l:'매월 같은일'}].map(o => (
                 <button key={o.v} onClick={()=>setRepeat(o.v)}

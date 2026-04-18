@@ -9,6 +9,7 @@ import UsersPage from './UsersPage'
 import AdminPlaces from './AdminPlaces'
 // AdminWorkers 제거 — 담당자는 근무표에서 자동 관리
 import AdminSaleItems from './AdminSaleItems'
+import AdminCoupons from './AdminCoupons'
 import AdminProductItems from './AdminProductItems'
 import AdminResSources from './AdminResSources'
 import AdminNoti from './AdminNoti'
@@ -354,7 +355,7 @@ function AdminJoinBrand({ currentUser, onBack }) {
 function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userBranches=[] }) {
   const navTo = useNavigate();
   const loc = useLocation();
-  const TAB_SLUGS = {places:"places",saleitems:"services",prodmgmt:"products",svctags:"tags",ressrc:"sources",extplatforms:"ext-platforms",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",joinbrand:"join-brand"};
+  const TAB_SLUGS = {places:"places",saleitems:"services",coupons:"coupons",prodmgmt:"products",svctags:"tags",ressrc:"sources",extplatforms:"ext-platforms",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",joinbrand:"join-brand"};
   const SLUG_TO_TAB = Object.fromEntries(Object.entries(TAB_SLUGS).map(([k,v])=>[v,k]));
   const tab = SLUG_TO_TAB[loc.pathname.replace(/^\/settings\/?/,"").split("/")[0]] || null;
   const setTab=t=>{ if(t) navTo(`/settings/${TAB_SLUGS[t]||t}`); else navTo("/settings"); };
@@ -374,6 +375,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     ]},
     ...(isMaster ? [{section:"사업장 관리",items:[
       {key:"saleitems",   icon:"scissors", label:"시술 상품 관리", desc:"시술 항목 및 가격 설정"},
+      {key:"coupons",     icon:"tag",      label:"쿠폰 관리",      desc:"쿠폰 효과·할인율 설정"},
       {key:"prodmgmt",    icon:"clipboard",label:"제품 관리",      desc:"판매 제품 관리"},
       ...(isOwner ? [{key:"brandmembers", icon:"userPlus", label:"브랜드 멤버 관리", desc:"지점 가입 요청 승인/거절", badge:pendingCount}] : []),
       {key:"schedule",     icon:"calendar", label:"직원 근무표",      desc:"직원 월별 근무 자동 배정"},
@@ -428,6 +430,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     <BackBtn/>
     {tab==="places"       && <AdminPlaces data={data} setData={setData} bizId={bizId} userBranches={userBranches} isMaster={isOwner}/>}
     {tab==="saleitems"    && isMaster &&<AdminSaleItems    data={data} setData={setData}/>}
+    {tab==="coupons"      && isMaster &&<AdminCoupons      data={data} setData={setData}/>}
     {tab==="prodmgmt"     && isMaster &&<AdminProductItems data={data} setData={setData}/>}
     {tab==="svctags"      && isMaster &&<AdminServiceTags  data={data} setData={setData}/>}
     {tab==="ressrc"       && isMaster &&<AdminResSources   data={data} setData={setData}/>}

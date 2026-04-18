@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { T } from '../../lib/constants'
-import { sb, SB_URL, SB_KEY, sbHeaders } from '../../lib/sb'
+import { sb, SB_URL, SB_KEY, sbHeaders, matchAllTokens } from '../../lib/sb'
 import { fromDb } from '../../lib/db'
-import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone } from '../../lib/utils'
+import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, useSessionState } from '../../lib/utils'
 import I from '../common/I'
 
 
@@ -18,7 +18,8 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   const getGeminiKey = () => window.__systemGeminiKey || window.__geminiKey || localStorage.getItem("bliss_gemini_key") || "";
 
   const [msgs, setMsgs] = useState([]);
-  const [sel, setSel] = useState(null);
+  // 선택된 대화방 {channel,user_id} — 새로고침 시 유지
+  const [sel, setSel] = useSessionState("msg_sel", null);
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -112,7 +113,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
 
   useEffect(()=>{ convoEndRef.current?.scrollIntoView({behavior:"smooth"}); },[sel, msgs.length]);
 
-  const [msgSearch, setMsgSearch] = useState("");
+  const [msgSearch, setMsgSearch] = useSessionState("msg_search", "");
 
   // 채팅 user_id → 예약 매핑 (active 예약 우선)
   const chatResMap = useMemo(()=>{
@@ -137,11 +138,11 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
     });
     let list = Object.values(map).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
     if(msgSearch.trim()){
-      const q=msgSearch.trim().toLowerCase();
+      // 다토큰 AND: 각 토큰이 이름/메시지/전화 중 어느 필드에든 포함되면 매칭
       const matchUids=new Set();
       msgs.forEach(m=>{
-        if((m.user_name||"").toLowerCase().includes(q)||(m.message_text||"").toLowerCase().includes(q))
-          matchUids.add((m.channel||"naver")+"_"+m.user_id);
+        const hay = [m.user_name, m.message_text, m.cust_phone].filter(Boolean).join(" ");
+        if (matchAllTokens(hay, msgSearch)) matchUids.add((m.channel||"naver")+"_"+m.user_id);
       });
       list=list.filter(m=>matchUids.has((m.channel||"naver")+"_"+m.user_id));
     }

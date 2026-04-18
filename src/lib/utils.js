@@ -1,3 +1,55 @@
+import { useState, useEffect, useRef } from 'react'
+
+// ── sessionStorage 연동 state 훅 (새로고침 시 유지, 탭 닫으면 초기화) ──
+export function useSessionState(key, initial) {
+  const [val, setVal] = useState(() => {
+    try {
+      const raw = sessionStorage.getItem(key)
+      if (raw !== null) return JSON.parse(raw)
+    } catch(e) {}
+    return typeof initial === 'function' ? initial() : initial
+  })
+  useEffect(() => {
+    try { sessionStorage.setItem(key, JSON.stringify(val)) } catch(e) {}
+  }, [key, val])
+  return [val, setVal]
+}
+
+// ── 스크롤 위치 자동 저장/복원 ──
+// key만 주면 새 ref 리턴. externalRef 주면 기존 ref에 훅 부착만 (ref 그대로 리턴)
+export function useScrollRestore(key, externalRef) {
+  const newRef = useRef(null)
+  const ref = externalRef || newRef
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    let tries = 0
+    const restore = () => {
+      const saved = sessionStorage.getItem('scroll_' + key)
+      if (!saved) return
+      const target = parseInt(saved, 10)
+      if (isNaN(target)) return
+      if (el.scrollHeight > target + el.clientHeight / 2 || tries > 20) {
+        el.scrollTop = target
+      } else {
+        tries++
+        setTimeout(restore, 150)
+      }
+    }
+    restore()
+    let tm = null
+    const onScroll = () => {
+      if (tm) clearTimeout(tm)
+      tm = setTimeout(() => {
+        if (el.scrollTop > 0) sessionStorage.setItem('scroll_' + key, String(el.scrollTop))
+      }, 150)
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => { el.removeEventListener('scroll', onScroll); if (tm) clearTimeout(tm) }
+  }, [key, ref])
+  return ref
+}
+
 // ── 날짜/시간 유틸 ──────────────────────────────────────────
 export const todayStr = () => {
   const d = new Date()

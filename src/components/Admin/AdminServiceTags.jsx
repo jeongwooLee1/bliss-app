@@ -111,7 +111,19 @@ function AdminServiceTags({ data, setData }) {
     <ASheet open={sheet} onClose={()=>setSheet(false)} title={editItem?"태그 수정":"태그 추가"} onSave={save} saveDisabled={!form.name.trim()} saveLabel={editItem?"저장":"태그 추가"}>
       <AField label="태그명" required><input style={AInp} value={form.name} onChange={e=>set("name",e.target.value)} placeholder="예: 신규, VIP" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
       <AField label="소요 시간(분)" hint="0이면 기본 시술 시간 사용"><input style={{...AInp,width:120}} type="number" value={form.dur} onChange={e=>set("dur",e.target.value)} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
-      <AField label="색상"><APalette value={form.color} onChange={v=>set("color",v)}/></AField>
+      <AField label="색상">
+        <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <APalette value={form.color} onChange={v=>set("color",v)}/>
+          <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 8px",borderRadius:8,border:"1px dashed "+T.border,background:"#fafafa"}}>
+            <span style={{fontSize:T.fs.xxs,color:T.textMuted,fontWeight:T.fw.bold}}>직접 선택</span>
+            <input type="color" value={form.color||"#7c7cc8"} onChange={e=>set("color",e.target.value)}
+              style={{width:40,height:30,border:"1px solid "+T.border,borderRadius:6,cursor:"pointer",padding:0,background:"#fff"}}/>
+            <input type="text" value={form.color||""} onChange={e=>set("color",e.target.value)}
+              placeholder="#RRGGBB" maxLength={7}
+              style={{width:80,padding:"4px 6px",fontSize:T.fs.xxs,fontFamily:"monospace",border:"1px solid "+T.border,borderRadius:6}}/>
+          </div>
+        </div>
+      </AField>
       {form.color&&<div style={{display:"flex",gap:8,alignItems:"center",padding:"10px 14px",borderRadius:10,background:form.color,marginBottom:14}}>
         <div style={{fontSize:T.fs.sm,fontWeight:700,color:getContrast(form.color)}}>{form.name||"미리보기"}</div>
       </div>}
