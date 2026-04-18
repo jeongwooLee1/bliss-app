@@ -6,13 +6,13 @@ const RANKS = ['원장','마스터','시니어','인턴'];
 const RANK_COLOR = {원장:'#8B4513',마스터:'#2a6099',시니어:'#4CAF50',인턴:'#999'};
 
 export default function EmpSettingsModal({ allEmployees, empSettings, customEmployees, deletedEmpIds, maleRotation, onSetEmpSetting, onAddEmp, onDeleteEmp, onSaveMaleRotation, onUpdateEmp, onClose,
-  ownerReqs, empReqs, ownerRepeat, days, year, month, curMonthStr, nextMonthStr, onSetOwnerReqs, onSetEmpReqs, onSaveOwnerReqs, onSetOwnerRepeat }) {
+  ownerReqs, empReqs, ownerRepeat, days, year, month, curMonthStr, nextMonthStr, onSetOwnerReqs, onSetEmpReqs, onSaveOwnerReqs, onSaveEmpReqs, onSetOwnerRepeat }) {
   const [showAddEmp, setShowAddEmp] = useState(false)
   const todayStr = new Date().toISOString().slice(0, 10)
   const [newEmp, setNewEmp] = useState({ name:'', branch:'gangnam', rank:'시니어', weeklyOff:2, mustStay:false, isFreelancer:false, startDate:todayStr })
   const dragRef = useRef({ active:false, empId:null, mode:null })
 
-  const reqCtx = { ownerReqs, empReqs, ownerRepeat, days, year, month, curMonthStr, nextMonthStr, onSetOwnerReqs, onSetEmpReqs, onSaveOwnerReqs, onSetOwnerRepeat, dragRef }
+  const reqCtx = { ownerReqs, empReqs, ownerRepeat, days, year, month, curMonthStr, nextMonthStr, onSetOwnerReqs, onSetEmpReqs, onSaveOwnerReqs, onSaveEmpReqs, onSetOwnerRepeat, dragRef, maleRotation, onSaveMaleRotation }
 
   return <>
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.45)', zIndex:200 }} onClick={onClose}/>
@@ -21,8 +21,6 @@ export default function EmpSettingsModal({ allEmployees, empSettings, customEmpl
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
         <div style={{ fontWeight:700, fontSize:14, color:'#4a2c14' }}>👤 직원별 근무 설정</div>
         <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-          {onSaveOwnerReqs && <button onClick={()=>onSaveOwnerReqs(ownerReqs)}
-            style={{ fontSize:11, padding:'4px 10px', borderRadius:6, border:'1px solid #c0a07a', background:'#fdf8f0', color:'#7a4a18', cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>💾 휴무 저장</button>}
           <button onClick={() => setShowAddEmp(true)}
             style={{ fontSize:12, padding:'5px 12px', borderRadius:7, border:'1.5px solid #c0a07a', background:'#fdf8f0', color:'#7a4a18', cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
             ＋ 직원 추가
@@ -44,46 +42,6 @@ export default function EmpSettingsModal({ allEmployees, empSettings, customEmpl
         )
       })}
 
-      {/* 로테이션 직원 (maleRotation에 등록된) */}
-      {(() => {
-        const rotEmps = allEmployees.filter(e => maleRotation[e.id]?.branches?.length > 0)
-        if (!rotEmps.length) return null
-        return (
-          <div style={{ marginBottom:16 }}>
-            <div style={{ fontSize:12, fontWeight:700, color:T.primary, marginBottom:8, borderBottom:`1px solid ${T.primary}33`, paddingBottom:4 }}>로테이션 직원</div>
-            <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
-              {rotEmps.map(emp => {
-                const rot = maleRotation[emp.id] || { branches:[], startDate:'' }
-                const allBranches = BRANCHES_SCH.map(b => b.id)
-                return (
-                  <div key={emp.id} style={{ border:'1px solid #b8d0e8', borderRadius:8, padding:'8px 12px', minWidth:180, background:T.gray100 }}>
-                    <div style={{ fontWeight:700, fontSize:12, color:'#2a5080', marginBottom:4 }}>{emp.name} <span style={{fontSize:9,color:RANK_COLOR[emp.rank||'시니어'],fontWeight:600}}>{emp.rank||'시니어'}</span></div>
-                    <div style={{ fontSize:11, color:T.textSub, marginBottom:4 }}>주간 로테이션 지점</div>
-                    <div style={{ display:'flex', flexWrap:'wrap', gap:3, marginBottom:4 }}>
-                      {rot.branches.map((b, i) => (
-                        <span key={i} style={{ background:'#2a6099', color:'#fff', borderRadius:4, padding:'2px 6px', fontSize:10, fontWeight:600, display:'flex', alignItems:'center', gap:3 }}>
-                          {i+1}.{BRANCH_LABEL[b] || b}
-                          <span style={{ cursor:'pointer', fontSize:8 }} onClick={() => onSaveMaleRotation({ ...maleRotation, [emp.id]:{ ...rot, branches:rot.branches.filter((_, j) => j !== i) } })}>✕</span>
-                        </span>
-                      ))}
-                    </div>
-                    <select value="" onChange={e => {
-                      if (!e.target.value) return
-                      onSaveMaleRotation({ ...maleRotation, [emp.id]:{ ...rot, branches:[...rot.branches, e.target.value] } })
-                    }} style={{ width:'100%', padding:'3px 4px', borderRadius:5, border:'1px solid '+T.border, fontSize:10, fontFamily:'inherit', marginBottom:4 }}>
-                      <option value="">지점 추가...</option>
-                      {allBranches.filter(b => !rot.branches.includes(b)).map(b => <option key={b} value={b}>{BRANCH_LABEL[b]}</option>)}
-                    </select>
-                    <div style={{ fontSize:10, color:'#888', marginBottom:2 }}>시작일 (월요일)</div>
-                    <input type="date" value={rot.startDate || ''} onChange={e => onSaveMaleRotation({ ...maleRotation, [emp.id]:{ ...rot, startDate:e.target.value } })}
-                      style={{ width:'100%', padding:'3px 4px', borderRadius:5, border:'1px solid '+T.border, fontSize:10, fontFamily:'inherit' }}/>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )
-      })()}
     </div>
 
     {/* 직원 추가 모달 */}
@@ -176,6 +134,21 @@ function EmpCard({ emp, branch, empSettings, onSetEmpSetting, onDeleteEmp, onUpd
   const isOwner = emp.isOwner || emp.rank === '원장'
   const isFL = emp.isFreelancer || cfg.isFreelancer
   const showCalendar = !excluded && reqCtx?.days?.length > 0
+  const { maleRotation = {}, onSaveMaleRotation } = reqCtx || {}
+  const rot = maleRotation[emp.id] || null
+  const isRotation = !!rot && Array.isArray(rot.branches)
+  const allBranchIds = BRANCHES_SCH.map(b => b.id)
+  const toggleRotation = () => {
+    if (!onSaveMaleRotation) return
+    if (isRotation) {
+      if (!confirm(`${emp.name} 로테이션 설정을 해제할까요?`)) return
+      const next = { ...maleRotation }
+      delete next[emp.id]
+      onSaveMaleRotation(next)
+    } else {
+      onSaveMaleRotation({ ...maleRotation, [emp.id]: { branches:[], startDate:'' } })
+    }
+  }
 
   return (
     <div style={{ border:`1.5px solid ${excluded ? T.gray400 : '#e4ddd0'}`, borderRadius:8, padding:'8px 12px', minWidth:240, background: excluded ? T.gray100 : T.bgCard, opacity:excluded ? 0.85 : 1 }}>
@@ -183,12 +156,43 @@ function EmpCard({ emp, branch, empSettings, onSetEmpSetting, onDeleteEmp, onUpd
         <div style={{ fontWeight:700, fontSize:12, color:'#3a2010' }}>{emp.name}</div>
         <button onClick={() => onDeleteEmp(emp.id)} style={{ fontSize:10, padding:'1px 5px', borderRadius:4, border:'1px solid #f5b3b3', background:T.dangerLt, color:T.danger, cursor:'pointer', fontFamily:'inherit' }}>삭제</button>
       </div>
-      {/* 근무표 제외 토글 */}
-      <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, color: excluded ? T.danger : T.textSub, cursor:'pointer', marginBottom:6, padding:'3px 0' }}>
-        <input type="checkbox" checked={excluded} onChange={e => onSetEmpSetting(emp.id, 'excludeFromSchedule', e.target.checked)} style={{ cursor:'pointer' }}/>
-        <span style={{ fontWeight: excluded ? 700 : 500 }}>근무표 제외</span>
-        <span style={{ fontSize:9, color:T.textMuted }}>(채팅만 참여)</span>
-      </label>
+      {/* 근무표 제외 + 로테이션 토글 */}
+      <div style={{ display:'flex', gap:12, marginBottom:6, padding:'3px 0', flexWrap:'wrap' }}>
+        <label style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color: excluded ? T.danger : T.textSub, cursor:'pointer' }}>
+          <input type="checkbox" checked={excluded} onChange={e => onSetEmpSetting(emp.id, 'excludeFromSchedule', e.target.checked)} style={{ cursor:'pointer' }}/>
+          <span style={{ fontWeight: excluded ? 700 : 500 }}>근무표 제외</span>
+          <span style={{ fontSize:9, color:T.textMuted }}>(채팅만)</span>
+        </label>
+        {!excluded && (
+          <label style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color: isRotation ? '#2a5080' : T.textSub, cursor:'pointer' }}>
+            <input type="checkbox" checked={isRotation} onChange={toggleRotation} style={{ cursor:'pointer' }}/>
+            <span style={{ fontWeight: isRotation ? 700 : 500 }}>🔄 로테이션</span>
+          </label>
+        )}
+      </div>
+      {isRotation && !excluded && (
+        <div style={{ marginBottom:8, padding:8, background:'#eef4fc', border:'1px solid #c4d4e8', borderRadius:6 }}>
+          <div style={{ fontSize:10, color:'#2a5080', fontWeight:700, marginBottom:4 }}>주간 로테이션 지점</div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:3, marginBottom:4 }}>
+            {rot.branches.map((b, i) => (
+              <span key={i} style={{ background:'#2a6099', color:'#fff', borderRadius:4, padding:'2px 6px', fontSize:10, fontWeight:600, display:'inline-flex', alignItems:'center', gap:3 }}>
+                {i+1}.{BRANCH_LABEL[b] || b}
+                <span style={{ cursor:'pointer', fontSize:8, lineHeight:1 }} onClick={() => onSaveMaleRotation({ ...maleRotation, [emp.id]: { ...rot, branches: rot.branches.filter((_, j) => j !== i) } })}>✕</span>
+              </span>
+            ))}
+          </div>
+          <select value="" onChange={e => {
+            if (!e.target.value) return
+            onSaveMaleRotation({ ...maleRotation, [emp.id]: { ...rot, branches: [...rot.branches, e.target.value] } })
+          }} style={{ width:'100%', padding:'3px 4px', borderRadius:5, border:'1px solid '+T.border, fontSize:10, fontFamily:'inherit', marginBottom:4 }}>
+            <option value="">지점 추가...</option>
+            {allBranchIds.filter(b => !rot.branches.includes(b)).map(b => <option key={b} value={b}>{BRANCH_LABEL[b]}</option>)}
+          </select>
+          <div style={{ fontSize:9, color:'#666', marginBottom:2 }}>시작일 (월요일)</div>
+          <input type="date" value={rot.startDate || ''} onChange={e => onSaveMaleRotation({ ...maleRotation, [emp.id]: { ...rot, startDate: e.target.value } })}
+            style={{ width:'100%', padding:'3px 4px', borderRadius:5, border:'1px solid '+T.border, fontSize:10, fontFamily:'inherit' }}/>
+        </div>
+      )}
       {!excluded && <>
         <div style={{ display:'flex', gap:3, marginBottom:6 }}>
           {RANKS.map(r=>(
@@ -258,15 +262,22 @@ function EmpCard({ emp, branch, empSettings, onSetEmpSetting, onDeleteEmp, onUpd
   )
 }
 
-// 카드 내 임베드되는 휴무 달력 (모든 직원용)
+// 카드 내 임베드되는 휴무 달력 (모든 직원용, 변경 시 auto-save)
 function EmbeddedCalendar({ emp, isOwner, isFL, branchColor, reqCtx }) {
-  const { ownerReqs, empReqs, ownerRepeat, days, year, month, curMonthStr, nextMonthStr, onSetOwnerReqs, onSetEmpReqs, onSetOwnerRepeat, dragRef } = reqCtx
+  const { ownerReqs, empReqs, ownerRepeat, days, year, month, curMonthStr, nextMonthStr, onSetOwnerReqs, onSetEmpReqs, onSaveOwnerReqs, onSaveEmpReqs, onSetOwnerRepeat, dragRef } = reqCtx
   // 원장은 ownerReqs에, 나머지(프리랜서·일반직원)는 empReqs에 저장
   const useOwnerBucket = !!isOwner
   const reqs = useOwnerBucket ? (ownerReqs || {}) : (empReqs || {})
+  const saveTimerRef = useRef(null)
+  const scheduleSave = (next) => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    const fn = useOwnerBucket ? onSaveOwnerReqs : onSaveEmpReqs
+    if (!fn) return
+    saveTimerRef.current = setTimeout(() => fn(next), 350)
+  }
   const setReq = (key, val) => {
-    if (useOwnerBucket) onSetOwnerReqs(prev => { const next={...prev}; if(val) next[key]=val; else delete next[key]; return next })
-    else onSetEmpReqs(prev => { const next={...prev}; if(val) next[key]=val; else delete next[key]; return next })
+    if (useOwnerBucket) onSetOwnerReqs(prev => { const next={...prev}; if(val) next[key]=val; else delete next[key]; scheduleSave(next); return next })
+    else onSetEmpReqs(prev => { const next={...prev}; if(val) next[key]=val; else delete next[key]; scheduleSave(next); return next })
   }
   const roleLabel = isOwner ? '👑 원장 지정 휴무' : isFL ? '📌 프리랜서 지정 휴무' : '📅 지정 휴무'
   const bc = branchColor || T.textSub

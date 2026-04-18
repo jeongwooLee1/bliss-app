@@ -665,7 +665,7 @@ export default function SchedulePage({ employees: propEmps }) {
       }}
         ownerReqs={ownerReqs||{}} empReqs={empReqs||{}} ownerRepeat={ownerRepeat||{}} days={days} year={year} month={month}
         curMonthStr={curMonthStr} nextMonthStr={nextMonthStr}
-        onSetOwnerReqs={setOwnerReqs} onSetEmpReqs={setEmpReqs} onSaveOwnerReqs={saveOwnerReqs}
+        onSetOwnerReqs={setOwnerReqs} onSetEmpReqs={setEmpReqs} onSaveOwnerReqs={saveOwnerReqs} onSaveEmpReqs={saveEmpReqs}
         onSetOwnerRepeat={(rep)=>{setOwnerRepeat(rep);saveOwnerRepeat(rep)}}
         onClose={() => setShowEmpSettings(false)}/>}
       {showOwnerSettings && <OwnerSettingsModal allEmployees={ALL_EMPLOYEES} empSettings={empSettings} ownerReqs={ownerReqs||{}} empReqs={empReqs||{}} ownerRepeat={ownerRepeat||{}} days={days} year={year} month={month} curMonthStr={curMonthStr} nextMonthStr={nextMonthStr} onSetOwnerReqs={setOwnerReqs} onSetEmpReqs={setEmpReqs} onSaveOwnerReqs={saveOwnerReqs} onSetOwnerRepeat={(rep) => { setOwnerRepeat(rep); saveOwnerRepeat(rep) }} onClose={() => setShowOwnerSettings(false)}/>}
