@@ -175,7 +175,7 @@ function EmpCard({ emp, branch, empSettings, onSetEmpSetting, onDeleteEmp, onUpd
   const excluded = !!cfg.excludeFromSchedule
   const isOwner = emp.isOwner || emp.rank === '원장'
   const isFL = emp.isFreelancer || cfg.isFreelancer
-  const showCalendar = (isOwner || isFL) && !excluded && reqCtx?.days?.length > 0
+  const showCalendar = !excluded && reqCtx?.days?.length > 0
 
   return (
     <div style={{ border:`1.5px solid ${excluded ? T.gray400 : '#e4ddd0'}`, borderRadius:8, padding:'8px 12px', minWidth:240, background: excluded ? T.gray100 : T.bgCard, opacity:excluded ? 0.85 : 1 }}>
@@ -252,20 +252,23 @@ function EmpCard({ emp, branch, empSettings, onSetEmpSetting, onDeleteEmp, onUpd
           {cfg.startDate && <div style={{ fontSize:8, color:T.textMuted, marginTop:2 }}>이 날짜 이전은 자동배치/편집 불가</div>}
         </div>
         {/* 휴무 설정 (원장·프리랜서) */}
-        {showCalendar && <EmbeddedCalendar emp={emp} isFL={isFL} branchColor={branch.color} reqCtx={reqCtx}/>}
+        {showCalendar && <EmbeddedCalendar emp={emp} isOwner={isOwner} isFL={isFL} branchColor={branch.color} reqCtx={reqCtx}/>}
       </>}
     </div>
   )
 }
 
-// 카드 내 임베드되는 휴무 달력 (원장·프리랜서용)
-function EmbeddedCalendar({ emp, isFL, branchColor, reqCtx }) {
+// 카드 내 임베드되는 휴무 달력 (모든 직원용)
+function EmbeddedCalendar({ emp, isOwner, isFL, branchColor, reqCtx }) {
   const { ownerReqs, empReqs, ownerRepeat, days, year, month, curMonthStr, nextMonthStr, onSetOwnerReqs, onSetEmpReqs, onSetOwnerRepeat, dragRef } = reqCtx
-  const reqs = isFL ? (empReqs || {}) : (ownerReqs || {})
+  // 원장은 ownerReqs에, 나머지(프리랜서·일반직원)는 empReqs에 저장
+  const useOwnerBucket = !!isOwner
+  const reqs = useOwnerBucket ? (ownerReqs || {}) : (empReqs || {})
   const setReq = (key, val) => {
-    if (isFL) onSetEmpReqs(prev => { const next={...prev}; if(val) next[key]=val; else delete next[key]; return next })
-    else onSetOwnerReqs(prev => { const next={...prev}; if(val) next[key]=val; else delete next[key]; return next })
+    if (useOwnerBucket) onSetOwnerReqs(prev => { const next={...prev}; if(val) next[key]=val; else delete next[key]; return next })
+    else onSetEmpReqs(prev => { const next={...prev}; if(val) next[key]=val; else delete next[key]; return next })
   }
+  const roleLabel = isOwner ? '👑 원장 지정 휴무' : isFL ? '📌 프리랜서 지정 휴무' : '📅 지정 휴무'
   const bc = branchColor || T.textSub
   const isDowFull = (dow) => { const md=days.filter(d=>!d.isNext&&d.dow===dow); return md.length>0&&md.every(d=>!!reqs[emp.id+'__'+d.ds]) }
   const rep = (ownerRepeat||{})[emp.id] || {enabled:false,dows:[]}
@@ -280,7 +283,7 @@ function EmbeddedCalendar({ emp, isFL, branchColor, reqCtx }) {
   return (
     <div style={{ marginTop:10, borderTop:'1px dashed '+T.border, paddingTop:8 }}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
-        <div style={{fontSize:10,fontWeight:700,color:bc}}>{isFL?'📌 프리랜서':'👑 원장'} 지정 휴무</div>
+        <div style={{fontSize:10,fontWeight:700,color:bc}}>{roleLabel}</div>
         <button onClick={()=>onSetOwnerRepeat({...ownerRepeat,[emp.id]:{enabled:!rep.enabled,dows:Array.from({length:7},(_,i)=>i).filter(isDowFull)}})}
           style={{padding:'2px 8px',fontSize:10,fontWeight:700,borderRadius:5,border:`1.5px solid ${rep.enabled?'#e0a030':T.border}`,background:rep.enabled?'#fff8e8':T.bgCard,color:rep.enabled?'#c07000':T.textMuted,cursor:'pointer',fontFamily:'inherit'}}>
           {rep.enabled?'🔁 반복중':'🔁 반복'}
