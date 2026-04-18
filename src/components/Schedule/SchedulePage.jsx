@@ -270,7 +270,7 @@ export default function SchedulePage({ employees: propEmps }) {
     return merged
   }, [baseEmployees, customEmployees])
 
-  const ACTIVE_EMPLOYEES = useMemo(() => ALL_EMPLOYEES.filter(e => !deletedEmpIds.has(e.id)), [ALL_EMPLOYEES, deletedEmpIds])
+  const ACTIVE_EMPLOYEES = useMemo(() => ALL_EMPLOYEES.filter(e => !deletedEmpIds.has(e.id) && !empSettings[e.id]?.excludeFromSchedule), [ALL_EMPLOYEES, deletedEmpIds, empSettings])
 
   // Days
   const dim = getDim(year, month)
@@ -421,13 +421,13 @@ export default function SchedulePage({ employees: propEmps }) {
   const renderOrderEmps = useMemo(() => {
     const list = []
     shownBranches.forEach(branch => {
-      ALL_EMPLOYEES.filter(e => e.branch === branch.id).forEach(emp => list.push(emp))
+      ACTIVE_EMPLOYEES.filter(e => e.branch === branch.id).forEach(emp => list.push(emp))
     })
     if (filterBranch === 'all' || filterBranch === 'male') {
-      ALL_EMPLOYEES.filter(e => e.isMale).forEach(emp => list.push(emp))
+      ACTIVE_EMPLOYEES.filter(e => e.isMale).forEach(emp => list.push(emp))
     }
     return list
-  }, [shownBranches, ALL_EMPLOYEES, filterBranch])
+  }, [shownBranches, ACTIVE_EMPLOYEES, filterBranch])
 
   // Drag select mouseup
   useEffect(() => {
@@ -802,7 +802,7 @@ export default function SchedulePage({ employees: propEmps }) {
           </thead>
           <tbody>
             {shownBranches.map(branch => {
-              const emps = ALL_EMPLOYEES.filter(e => e.branch === branch.id)
+              const emps = ACTIVE_EMPLOYEES.filter(e => e.branch === branch.id)
               return [
                 <tr key={'bh-'+branch.id}>
                   <td colSpan={days.length+1} style={{ padding:'6px 10px 3px', border:'none', position:'sticky', left:0, zIndex:10 }}>
@@ -832,7 +832,7 @@ export default function SchedulePage({ employees: propEmps }) {
 
             {/* Male employees */}
             {(() => {
-              const maleEmps = ALL_EMPLOYEES.filter(e => e.isMale)
+              const maleEmps = ACTIVE_EMPLOYEES.filter(e => e.isMale)
               if (!maleEmps.length || (filterBranch !== 'all' && filterBranch !== 'male')) return null
               return [
                 <tr key="bh-male">
@@ -880,7 +880,7 @@ export default function SchedulePage({ employees: propEmps }) {
 
             {/* Branch counts */}
             {shownBranches.map(branch => {
-              const emps = ALL_EMPLOYEES.filter(e => e.branch === branch.id)
+              const emps = ACTIVE_EMPLOYEES.filter(e => e.branch === branch.id)
               return <tr key={branch.id+'-cnt'}>
                 <td style={{ ...stickyCol, padding:'4px 10px', fontSize:11, color:branch.color, fontWeight:700, background:T.bg, borderLeft:`3px solid ${branch.color}`, borderRadius:'6px 0 0 6px', border:'none' }}>{branch.name}</td>
                 {days.map(day => {
