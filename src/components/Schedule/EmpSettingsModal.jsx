@@ -133,8 +133,12 @@ function EmpCard({ emp, branch, empSettings, onSetEmpSetting, onDeleteEmp, onUpd
   const excluded = !!cfg.excludeFromSchedule
   const isOwner = emp.isOwner || emp.rank === '원장'
   const isFL = emp.isFreelancer || cfg.isFreelancer
-  const showCalendar = !excluded && reqCtx?.days?.length > 0
-  const { maleRotation = {}, onSaveMaleRotation } = reqCtx || {}
+  const { maleRotation = {}, onSaveMaleRotation, ownerReqs, empReqs } = reqCtx || {}
+  // 이미 등록된 휴무 고정이 있으면 자동으로 활성화된 것으로 간주 (migration fallback)
+  const bucket = isOwner ? (ownerReqs || {}) : (empReqs || {})
+  const hasExistingReqs = Object.keys(bucket).some(k => k.startsWith(emp.id + '__'))
+  const fixedOffEnabled = cfg.fixedOffEnabled !== undefined ? !!cfg.fixedOffEnabled : hasExistingReqs
+  const showCalendar = !excluded && fixedOffEnabled && reqCtx?.days?.length > 0
   const rot = maleRotation[emp.id] || null
   const isRotation = !!rot && Array.isArray(rot.branches)
   const allBranchIds = BRANCHES_SCH.map(b => b.id)
@@ -167,6 +171,12 @@ function EmpCard({ emp, branch, empSettings, onSetEmpSetting, onDeleteEmp, onUpd
           <label style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color: isRotation ? '#2a5080' : T.textSub, cursor:'pointer' }}>
             <input type="checkbox" checked={isRotation} onChange={toggleRotation} style={{ cursor:'pointer' }}/>
             <span style={{ fontWeight: isRotation ? 700 : 500 }}>🔄 로테이션</span>
+          </label>
+        )}
+        {!excluded && (
+          <label style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color: fixedOffEnabled ? '#7a4a18' : T.textSub, cursor:'pointer' }}>
+            <input type="checkbox" checked={fixedOffEnabled} onChange={e => onSetEmpSetting(emp.id, 'fixedOffEnabled', e.target.checked)} style={{ cursor:'pointer' }}/>
+            <span style={{ fontWeight: fixedOffEnabled ? 700 : 500 }}>🔒 휴무 고정</span>
           </label>
         )}
       </div>
@@ -279,7 +289,7 @@ function EmbeddedCalendar({ emp, isOwner, isFL, branchColor, reqCtx }) {
     if (useOwnerBucket) onSetOwnerReqs(prev => { const next={...prev}; if(val) next[key]=val; else delete next[key]; scheduleSave(next); return next })
     else onSetEmpReqs(prev => { const next={...prev}; if(val) next[key]=val; else delete next[key]; scheduleSave(next); return next })
   }
-  const roleLabel = isOwner ? '👑 원장 지정 휴무' : isFL ? '📌 프리랜서 지정 휴무' : '📅 지정 휴무'
+  const roleLabel = '🔒 휴무 고정'
   const bc = branchColor || T.textSub
   const isDowFull = (dow) => { const md=days.filter(d=>!d.isNext&&d.dow===dow); return md.length>0&&md.every(d=>!!reqs[emp.id+'__'+d.ds]) }
   const rep = (ownerRepeat||{})[emp.id] || {enabled:false,dows:[]}
