@@ -1,9 +1,11 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { T } from '../../lib/constants'
 import I from '../common/I'
 import { Btn } from '../common'
+import { TeamChat } from '../Chat'
 
 function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", isSuper=false, onBackToSuper, serverV, scraperStatus=null, BLISS_V="" }) {
+  const [chatOpen, setChatOpen] = useState(true);
   const cats = [
     { label:"예약 관리", items: nav.filter(n=>["timeline","reservations"].includes(n.id)) },
     { label:"고객 관리", items: nav.filter(n=>["customers"].includes(n.id)) },
@@ -32,6 +34,12 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
           ))}
         </div>
       ))}
+    </div>
+    <div style={{borderTop:`2px solid ${T.primary}`,display:"flex",flexDirection:"column",flexShrink:0,height:chatOpen?320:36,transition:"height .15s"}}>
+      <button onClick={()=>setChatOpen(v=>!v)} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 14px",border:"none",background:T.primaryLt,color:T.primaryDk,fontSize:T.fs.xs,fontWeight:T.fw.bolder,cursor:"pointer",fontFamily:"inherit",textAlign:"left",letterSpacing:.3}}>
+        <I name={chatOpen?"chevD":"chevR"} size={12}/> 팀 채팅
+      </button>
+      {chatOpen && <div style={{flex:1,minHeight:0,display:"flex",flexDirection:"column"}}><TeamChat mock/></div>}
     </div>
     <div style={{padding:T.sp.md,borderTop:`1px solid ${T.border}`,display:"flex",flexDirection:"column",gap:6}}>
       {isSuper && <Btn variant="outline" size="sm" onClick={onBackToSuper} style={{width:"100%"}}><I name="arrowL" size={14}/> 관리자 대시보드</Btn>}
