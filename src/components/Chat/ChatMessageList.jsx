@@ -135,7 +135,6 @@ function ChatMessageList({ messages, userMap, currentUserId, lastReadAt, loading
             user={user}
             isOwn={isOwn}
             showHeader={it.showHeader}
-            showAvatar={it.showHeader}
             pending={it.msg._pending}
           />
         )
