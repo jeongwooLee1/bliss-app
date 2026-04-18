@@ -25,7 +25,7 @@ export default function DailyView({ days, sch, allEmployees, year, month, maleRo
       const maleBranchMap = {}
       allEmployees.filter(e => e.isMale).forEach(emp => {
         const s = sch[emp.id]?.[day.ds] || ''
-        if (s === STATUS.OFF || s === STATUS.MUST_OFF) return
+        if (s === STATUS.OFF || s === STATUS.MUST_OFF || s === STATUS.UNPAID) return
         const rotBranch = getMaleRotBranch(emp.id, day.ds)
         if (rotBranch) {
           if (!maleBranchMap[rotBranch]) maleBranchMap[rotBranch] = 0
@@ -46,7 +46,7 @@ export default function DailyView({ days, sch, allEmployees, year, month, maleRo
         const males = maleBranchMap[branch.id] || 0
         const off = branchEmps.filter(e => {
           const s = sch[e.id]?.[day.ds] || ''
-          return s === STATUS.OFF || s === STATUS.MUST_OFF
+          return s === STATUS.OFF || s === STATUS.MUST_OFF || s === STATUS.UNPAID
         }).length
 
         const present = working + supporters + males
@@ -79,7 +79,7 @@ export default function DailyView({ days, sch, allEmployees, year, month, maleRo
         const maleBranchMap = {}
         allEmployees.filter(e => e.isMale).forEach(emp => {
           const s = sch[emp.id]?.[day.ds] || ''
-          if (s === STATUS.OFF || s === STATUS.MUST_OFF) return
+          if (s === STATUS.OFF || s === STATUS.MUST_OFF || s === STATUS.UNPAID) return
           const rotBranch = getMaleRotBranch(emp.id, day.ds)
           if (rotBranch) {
             if (!maleBranchMap[rotBranch]) maleBranchMap[rotBranch] = []
@@ -111,7 +111,7 @@ export default function DailyView({ days, sch, allEmployees, year, month, maleRo
               })
               const off = branchEmps.filter(e => {
                 const s = sch[e.id]?.[day.ds] || ''
-                return s === STATUS.OFF || s === STATUS.MUST_OFF
+                return s === STATUS.OFF || s === STATUS.MUST_OFF || s === STATUS.UNPAID
               })
               const malesHere = maleBranchMap[branch.id] || []
               const allPresent = [...working, ...supporters, ...malesHere]

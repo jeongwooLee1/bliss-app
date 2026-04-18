@@ -122,7 +122,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
       const d2 = new Date(ds); d2.setDate(d2.getDate() - i);
       const ds2 = fmtDs(d2.getFullYear(), d2.getMonth(), d2.getDate());
       const s = sch[empId]?.[ds2] ?? prevSchData?.[empId]?.[ds2] ?? "";
-      if (!s || s === "휴무" || s === "휴무(꼭)") break;
+      if (!s || s === "휴무" || s === "휴무(꼭)" || s === "무급") break;
       len++;
     }
     return len;
@@ -132,14 +132,14 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
   const canAssignOffHard = (emp, day, branchEmps, branch) => {
     const ds = day.ds;
     const getS = (id, dStr) => sch[id]?.[dStr] ?? prevSchData?.[id]?.[dStr] ?? "";
-    const isOff2 = (id, dStr) => ["휴무","휴무(꼭)"].includes(getS(id, dStr));
+    const isOff2 = (id, dStr) => ["휴무","휴무(꼭)","무급"].includes(getS(id, dStr));
     const p1h = addDays(ds,-1), p2h = addDays(ds,-2), n1h = addDays(ds,1);
     // 3일 연속 휴무 절대 금지
     if (isOff2(emp.id,p1h) && isOff2(emp.id,p2h)) return false;
     if (isOff2(emp.id,p1h) && isOff2(emp.id,n1h)) return false;
     // 전체 하루 최대 휴무 — 강제 배정도 maxDailyOff 엄격 준수
     if (!emp.isMale) {
-      const totalOff = employees.filter(e => !e.isMale && ["휴무","휴무(꼭)"].includes(sch[e.id]?.[ds]||"")).length;
+      const totalOff = employees.filter(e => !e.isMale && ["휴무","휴무(꼭)","무급"].includes(sch[e.id]?.[ds]||"")).length;
       if (totalOff >= rc.maxDailyOff) return false;
     }
     // 대표 지점(branch) 소속 직원 최소 1명 상주 체크
@@ -150,7 +150,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
         const repEmps = employees.filter(e => e.branch === repBranch && e.id !== emp.id && !e.isMale && !e.isOwner);
         const repWorking = repEmps.filter(be => {
           const s = sch[be.id]?.[ds] || "";
-          if (["휴무","휴무(꼭)"].includes(s)) return false;
+          if (["휴무","휴무(꼭)","무급"].includes(s)) return false;
           if (isSupport(s) && !s.includes(repBr.name)) return false;
           return true;
         }).length;
@@ -167,7 +167,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
       const working = brEmps_.filter(be => {
         if (be.id === emp.id) return false;
         const s = sch[be.id]?.[ds] || "";
-        if (["휴무","휴무(꼭)"].includes(s)) return false;
+        if (["휴무","휴무(꼭)","무급"].includes(s)) return false;
         if (isSupport(s) && !s.includes(br_.name)) return false;
         return true;
       }).length;
@@ -245,7 +245,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
     week.filter(day => {
       if (day.isNext) return false; // 다음달 날짜만 제외 (이전달 isPrev는 포함 - 격주패턴 연속성)
       const s = day.isPrev ? (prevSchData?.[empId]?.[day.ds] || "") : (sch[empId]?.[day.ds] || "");
-      return ["휴무","휴무(꼭)"].includes(s);
+      return ["휴무","휴무(꼭)","무급"].includes(s);
     }).length;
 
   // 주의 실제 월~일 인덱스 계산 (주 경계 판별용)
@@ -292,10 +292,10 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
       if (sch[empId]?.[dateStr] !== undefined) return sch[empId][dateStr];
       return prevSchData?.[empId]?.[dateStr] || "";
     };
-    const p1o = ["휴무","휴무(꼭)"].includes(getStatus(emp.id, p1ds));
-    const p2o = ["휴무","휴무(꼭)"].includes(getStatus(emp.id, p2ds));
-    const n1o = ["휴무","휴무(꼭)"].includes(getStatus(emp.id, n1ds));
-    const n2o = ["휴무","휴무(꼭)"].includes(getStatus(emp.id, n2ds));
+    const p1o = ["휴무","휴무(꼭)","무급"].includes(getStatus(emp.id, p1ds));
+    const p2o = ["휴무","휴무(꼭)","무급"].includes(getStatus(emp.id, p2ds));
+    const n1o = ["휴무","휴무(꼭)","무급"].includes(getStatus(emp.id, n1ds));
+    const n2o = ["휴무","휴무(꼭)","무급"].includes(getStatus(emp.id, n2ds));
 
     const R = (r) => { if(debug) console.log(`[canOff BLOCK] ${emp.id} ${ds}: ${r}`); return false; };
     // 3일 연속 방지
@@ -308,8 +308,8 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
       const n2Assigned = getStatus(emp.id, n2ds) !== "";
       const n3ds = fmtDs(...(() => { const d=new Date(ds); d.setDate(d.getDate()+3); return [d.getFullYear(),d.getMonth(),d.getDate()]; })());
       const p3ds = fmtDs(...(() => { const d=new Date(ds); d.setDate(d.getDate()-3); return [d.getFullYear(),d.getMonth(),d.getDate()]; })());
-      const p3o = ["휴무","휴무(꼭)"].includes(getStatus(emp.id, p3ds));
-      const n3o = ["휴무","휴무(꼭)"].includes(getStatus(emp.id, n3ds));
+      const p3o = ["휴무","휴무(꼭)","무급"].includes(getStatus(emp.id, p3ds));
+      const n3o = ["휴무","휴무(꼭)","무급"].includes(getStatus(emp.id, n3ds));
 
       // 휴-근-휴 차단: p2=휴,p1=근 or n1=근,n2=휴
       if (p2o && !p1o) return R(`퐁당퐁당(p2휴,p1근,[ds=휴])`);
@@ -331,7 +331,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
 
     // 전체 하루 최대 휴무 5명 제한 (남자직원 제외 - 별도 집계)
     if (!emp.isMale) {
-      const totalOffToday = employees.filter(e => !e.isMale && !(e.isFreelancer || empSettings[e.id]?.isFreelancer) && ["휴무","휴무(꼭)"].includes(sch[e.id][ds])).length;
+      const totalOffToday = employees.filter(e => !e.isMale && !(e.isFreelancer || empSettings[e.id]?.isFreelancer) && ["휴무","휴무(꼭)","무급"].includes(sch[e.id][ds])).length;
       if (totalOffToday >= rc.maxDailyOff) return R(`전체휴무${totalOffToday}명 초과`);
     }
 
@@ -346,7 +346,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
       const ownWorking = brEmps_.filter(be => {
         if (be.id === emp.id) return false; // 본인 제외
         const s = sch[be.id]?.[ds] || "";
-        if (["휴무","휴무(꼭)"].includes(s)) return false; // 휴무 제외
+        if (["휴무","휴무(꼭)","무급"].includes(s)) return false; // 휴무 제외
         if (isSupport(s) && !s.includes(br_.name)) return false; // 타지점 지원 나간 경우 제외
         return true;
       }).length;
@@ -368,7 +368,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
         const repEmps = employees.filter(e => e.branch === repBranch && e.id !== emp.id && !e.isMale && !e.isOwner);
         const repWorking = repEmps.filter(be => {
           const s = sch[be.id]?.[ds] || "";
-          if (["휴무","휴무(꼭)"].includes(s)) return false;
+          if (["휴무","휴무(꼭)","무급"].includes(s)) return false;
           if (isSupport(s) && !s.includes(repBr.name)) return false; // 타지점 지원 나간 경우 제외
           return true;
         }).length;
@@ -382,7 +382,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
       for (const group of rc.noSimultaneousOff) {
         if (!group.ids.includes(emp.id)) continue;
         const others = group.ids.filter(id => id !== emp.id);
-        const currentOff = others.filter(id => ["휴무","휴무(꼭)"].includes(sch[id]?.[ds])).length;
+        const currentOff = others.filter(id => ["휴무","휴무(꼭)","무급"].includes(sch[id]?.[ds])).length;
         const maxAllowed = group.max ?? 1; // 동시에 max명까지 허용 → max명 이상 쉬면 차단
         if (currentOff >= maxAllowed) return false;
       }
@@ -392,7 +392,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
     if (emp.isMale) {
       const otherMales = employees.filter(e => e.isMale && e.id !== emp.id);
       const allOthersOff = otherMales.length > 0 && otherMales.every(e =>
-        ["휴무","휴무(꼭)"].includes(sch[e.id]?.[ds] || "")
+        ["휴무","휴무(꼭)","무급"].includes(sch[e.id]?.[ds] || "")
       );
       if (allOthersOff) return R("남직원 전원휴무 금지");
     }
@@ -409,7 +409,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
     const n1ds = fmtDs(...[new Date(d)].map(x=>{x.setDate(d.getDate()+1);return[x.getFullYear(),x.getMonth(),x.getDate()]})[0]);
     const isOff = (eId, dateStr) => {
       const s = sch[eId]?.[dateStr] ?? prevSchData?.[eId]?.[dateStr] ?? "";
-      return ["휴무","휴무(꼭)"].includes(s);
+      return ["휴무","휴무(꼭)","무급"].includes(s);
     };
     // 3일 연속 휴무 방지 (평일 기준)
     if (isOff(emp.id, p1ds) && isOff(emp.id, p2ds)) return false;
@@ -426,7 +426,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
       const working = brEmps_.filter(be => {
         if (be.id === emp.id) return false;
         const s = sch[be.id]?.[ds] || "";
-        if (["휴무","휴무(꼭)"].includes(s)) return false;
+        if (["휴무","휴무(꼭)","무급"].includes(s)) return false;
         if (isSupport(s) && !s.includes(br_.name)) return false;
         return true;
       }).length;
@@ -464,7 +464,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
 
     const sundays_A = weeks.flatMap(w => w.filter(d => !d.isPrev && d.dow === 6))
       .filter(d => !maleEmps.some(e =>
-        sch[e.id][d.ds] === STATUS.MUST_OFF ||
+        sch[e.id][d.ds] === STATUS.MUST_OFF || sch[e.id][d.ds] === STATUS.UNPAID ||
         (seededDates.has(d.ds) && sch[e.id][d.ds] && sch[e.id][d.ds] !== "")
       ));
 
@@ -527,7 +527,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
           const s = d.isPrev
             ? (prevSchData?.[emp.id]?.[d.ds] || "")
             : (sch[emp.id]?.[d.ds] || "");
-          if (["휴무","휴무(꼭)"].includes(s)) bridgeOff++;
+          if (["휴무","휴무(꼭)","무급"].includes(s)) bridgeOff++;
         });
         // 2) weeks에 없는 전달 날짜 (브릿징 주 월요일 이전 부분)
         // bridgeMon.ds 이전으로 같은 주의 월요일까지 스캔
@@ -537,7 +537,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
           scanDate.setDate(scanDate.getDate() - back);
           const scanDs = fmtDs(scanDate.getFullYear(), scanDate.getMonth(), scanDate.getDate());
           const s = prevSchData?.[emp.id]?.[scanDs] || "";
-          if (["휴무","휴무(꼭)"].includes(s)) bridgeOff++;
+          if (["휴무","휴무(꼭)","무급"].includes(s)) bridgeOff++;
         }
         prevActualOff = bridgeOff;
         return; // 배정 없이 종료
@@ -627,11 +627,11 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
     for (const ds of allDsOrdered) {
       if (seededDates.has(ds)) {
         const s = sch[emp.id]?.[ds] ?? "";
-        streak = (s === "휴무" || s === "휴무(꼭)") ? 0 : streak + 1;
+        streak = (s === "휴무" || s === "휴무(꼭)" || s === "무급") ? 0 : streak + 1;
         continue;
       }
       const s = sch[emp.id]?.[ds] ?? STATUS.WORK;
-      if (s === "휴무" || s === "휴무(꼭)") { streak = 0; continue; }
+      if (s === "휴무" || s === "휴무(꼭)" || s === "무급") { streak = 0; continue; }
       streak++;
       if (streak >= rc.maxConsecWork) {
         // maxConsecWork 도달 시 ±1일 범위에서 랜덤으로 강제 휴무 날 선택
@@ -653,7 +653,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
         });
         // maxDailyOff 미만인 후보만 허용
         const validCands = candidates.filter(cds => {
-          const alreadyOff = employees.filter(e => !e.isMale && ["휴무","휴무(꼭)"].includes(sch[e.id]?.[cds]||"")).length;
+          const alreadyOff = employees.filter(e => !e.isMale && ["휴무","휴무(꼭)","무급"].includes(sch[e.id]?.[cds]||"")).length;
           const plannedOff = Object.values(forcedOff).filter(s => s.has(cds)).length;
           return alreadyOff + plannedOff < rc.maxDailyOff;
         });
@@ -699,7 +699,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
           if ((dayForcedCount[ds2] || 0) + 1 > maxAllowed) continue;
           // 이동 후 ds2 날 minWork 체크 (기존 off + 예정 forcedOff 모두 반영)
           const alreadyOffOnDs2 = employees.filter(e =>
-            !e.isMale && ["휴무","휴무(꼭)"].includes(sch[e.id]?.[ds2] ?? "")
+            !e.isMale && ["휴무","휴무(꼭)","무급"].includes(sch[e.id]?.[ds2] ?? "")
           ).length;
           const forcedOnDs2 = (dayForcedCount[ds2] || 0) + 1; // +1 = 이 직원도 이동
           const totalFemale = employees.filter(e => !e.isMale).length;
@@ -726,7 +726,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
       const day = allDates.find(d => d.ds === ds);
       if (!day) return;
       // 이미 off인 경우 스킵
-      if (sch[emp.id]?.[ds] === STATUS.OFF || sch[emp.id]?.[ds] === "휴무(꼭)") return;
+      if (sch[emp.id]?.[ds] === STATUS.OFF || sch[emp.id]?.[ds] === "휴무(꼭)" || sch[emp.id]?.[ds] === "무급") return;
       // 실제 배정 가능 여부 (minStaff + maxDailyOff + 3일연속 체크)
       if (canAssignOffHard(emp, day, branchEmps, branch)) {
         sch[emp.id][ds] = STATUS.OFF;
@@ -762,7 +762,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
       if (realDays.length <= 1 && wi < activeWeeks.length - 1) return;
 
       const weekOffNow = thisWeekDays.filter(d =>
-        (emp.isMale || !d.isNext) && ["휴무","휴무(꼭)"].includes(sch[emp.id]?.[d.ds])
+        (emp.isMale || !d.isNext) && ["휴무","휴무(꼭)","무급"].includes(sch[emp.id]?.[d.ds])
       ).length;
       const weekTarget = getWeeklyOff(emp);
       let toAssign = Math.max(0, weekTarget - weekOffNow);
@@ -777,8 +777,8 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
           && !(emp.isMale && d.dow === 6))
         .sort((a, b) => {
           // 1) 동료 휴무 적은 날 우선 (동시휴무 분산)
-          const aOff = branchEmps.filter(be => be.id !== emp.id && ["휴무","휴무(꼭)"].includes(sch[be.id]?.[a.ds]||"")).length;
-          const bOff = branchEmps.filter(be => be.id !== emp.id && ["휴무","휴무(꼭)"].includes(sch[be.id]?.[b.ds]||"")).length;
+          const aOff = branchEmps.filter(be => be.id !== emp.id && ["휴무","휴무(꼭)","무급"].includes(sch[be.id]?.[a.ds]||"")).length;
+          const bOff = branchEmps.filter(be => be.id !== emp.id && ["휴무","휴무(꼭)","무급"].includes(sch[be.id]?.[b.ds]||"")).length;
           if (aOff !== bOff) return aOff - bOff;
 
           // 2) rotBase 요일 로테이션 (직원별 다양성)
@@ -798,14 +798,14 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
         });
 
       const prevPatterns = activeWeeks.slice(0, wi).map(pw =>
-        pw.filter(d => !d.isPrev && ["휴무","휴무(꼭)"].includes(sch[emp.id][d.ds])).map(d => d.dow).sort().join(",")
+        pw.filter(d => !d.isPrev && ["휴무","휴무(꼭)","무급"].includes(sch[emp.id][d.ds])).map(d => d.dow).sort().join(",")
       ).filter(p => p.length > 0);
 
       for (const day of quotaCands) {
         if (toAssign <= 0) break;
         if (emp.isMale ? !canMaleOff(emp, day, branchEmps, branch) : !canAssignOff(emp, day, branchEmps, branch)) continue;
         if (prevPatterns.length >= 2 && toAssign === 1) {
-          const alreadyDows = thisWeekDays.filter(d => d.ds !== day.ds && ["휴무","휴무(꼭)"].includes(sch[emp.id][d.ds])).map(d => d.dow);
+          const alreadyDows = thisWeekDays.filter(d => d.ds !== day.ds && ["휴무","휴무(꼭)","무급"].includes(sch[emp.id][d.ds])).map(d => d.dow);
           const proj = [...alreadyDows, day.dow].sort().join(",");
           const last2 = prevPatterns.slice(-2);
           if (last2[0] === proj && last2[1] === proj) continue;
@@ -870,7 +870,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
       const targetEmps_ = employees.filter(e => (e.branches||[e.branch]).includes(targetBranch.id));
       const baseWorking = targetEmps_.filter(e => {
         const s = sch[e.id][ds];
-        if (["휴무","휴무(꼭)"].includes(s)) return false;
+        if (["휴무","휴무(꼭)","무급"].includes(s)) return false;
         // 대표지점이 targetBranch인 직원만 근무로 카운트
         if (e.branch === targetBranch.id) {
           if (isSupport(s) && !s.includes(targetBranch.name)) return false; // 타지점 지원 나간 경우 제외
@@ -945,7 +945,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
           const senderWorking = senderBrEmps.filter(e => {
             if (e.id === eid) return false; // 본인 빠진 후 계산
             const s = sch[e.id][ds];
-            if (["휴무","휴무(꼭)"].includes(s)) return false;
+            if (["휴무","휴무(꼭)","무급"].includes(s)) return false;
             // 대표지점이 senderBId인 직원만 기본 근무로 카운트
             if (e.branch === senderBId) {
               if (isSupport(s) && !s.includes(senderBrName)) return false;
@@ -992,7 +992,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
         .sort((a, b) => {
           // 같은 주에 더 많이 쉰 직원 우선 (여유분 있음)
           const count = (emp) => Object.entries(sch[emp.id])
-            .filter(([s_ds, s]) => getWeekIdx(s_ds) === wkIdx && (s===STATUS.OFF||s==="휴무(꼭)")).length;
+            .filter(([s_ds, s]) => getWeekIdx(s_ds) === wkIdx && (s===STATUS.OFF||s==="휴무(꼭)"||s==="무급")).length;
           return count(b) - count(a);
         });
 
@@ -1001,7 +1001,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
         if (converted >= needed) break;
         // 이 주에 weeklyOff 보다 많이 쉬고 있을 때만 한 개 빼는 것 허용
         const weekOffNow = Object.entries(sch[emp.id])
-          .filter(([s_ds, s]) => getWeekIdx(s_ds) === wkIdx && (s===STATUS.OFF||s==="휴무(꼭)")).length;
+          .filter(([s_ds, s]) => getWeekIdx(s_ds) === wkIdx && (s===STATUS.OFF||s==="휴무(꼭)"||s==="무급")).length;
         if (weekOffNow <= getWeeklyOff(emp)) continue; // 딱 맞거나 부족하면 절대 건드리지 않음
 
         sch[emp.id][ds] = STATUS.WORK;
@@ -1019,7 +1019,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
 
     // 퐁당퐁당 감지: canAssignOff와 동일 로직 (p2=휴/p1=근 or n1=근/n2=휴)
     const wouldMakeAltPattern = (ds) => {
-      const isOff_ = (s) => ["휴무","휴무(꼭)"].includes(s);
+      const isOff_ = (s) => ["휴무","휴무(꼭)","무급"].includes(s);
       const getS_ = (d) => sch[emp.id]?.[d] ?? prevSchData?.[emp.id]?.[d] ?? "";
       const p1ds = addDays(ds, -1), p2ds_ = addDays(ds, -2);
       const n1ds = addDays(ds, 1), n2ds = addDays(ds, 2);
@@ -1040,7 +1040,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
       const thisMonthDays = week.filter(d => !d.isPrev);
       if (thisMonthDays.length === 0) return;
 
-      const weekOffNow = () => thisMonthDays.filter(d => ["휴무","휴무(꼭)"].includes(sch[emp.id][d.ds])).length;
+      const weekOffNow = () => thisMonthDays.filter(d => ["휴무","휴무(꼭)","무급"].includes(sch[emp.id][d.ds])).length;
       const deficit = () => getWeeklyOff(emp) - weekOffNow();
       if (deficit() <= 0) return;
 
@@ -1049,8 +1049,8 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
           && !(emp.isMale && d.dow === 6))
         .sort((a, b) => {
           if (!!a.isNext !== !!b.isNext) return (a.isNext ? 1 : 0) - (b.isNext ? 1 : 0);
-          const aOff = branchEmps.filter(be=>be.id!==emp.id&&["휴무","휴무(꼭)"].includes(sch[be.id][a.ds])).length;
-          const bOff = branchEmps.filter(be=>be.id!==emp.id&&["휴무","휴무(꼭)"].includes(sch[be.id][b.ds])).length;
+          const aOff = branchEmps.filter(be=>be.id!==emp.id&&["휴무","휴무(꼭)","무급"].includes(sch[be.id][a.ds])).length;
+          const bOff = branchEmps.filter(be=>be.id!==emp.id&&["휴무","휴무(꼭)","무급"].includes(sch[be.id][b.ds])).length;
           return aOff - bOff;
         });
 
@@ -1070,7 +1070,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
           const brW = employees.filter(e=>(e.branches||[e.branch]).includes(bId)&&!e.isMale).filter(be=>{
             if (be.id===emp.id) return false;
             const s=sch[be.id]?.[day.ds]||"";
-            if(["휴무","휴무(꼭)"].includes(s)) return false;
+            if(["휴무","휴무(꼭)","무급"].includes(s)) return false;
             if(isSupport(s)&&!s.includes(br_.name)) return false;
             return true;
           }).length;
@@ -1089,7 +1089,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
     let fixed = false;
     for (const _day7 of allDates) {
       const ds = _day7.ds;
-      const offEmps = employees.filter(e => !e.isMale && ["휴무","휴무(꼭)"].includes(sch[e.id][ds])); // 남자직원 별도
+      const offEmps = employees.filter(e => !e.isMale && ["휴무","휴무(꼭)","무급"].includes(sch[e.id][ds])); // 남자직원 별도
       if (offEmps.length <= rc.maxDailyOff) continue;
 
       // 초과분만 근무 전환 — 휴무(꼭)/seededDates/원장 제외, 주간 weeklyOff 초과분 우선 취소
@@ -1098,8 +1098,8 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
         .sort((a, b) => {
           // 이 주에 weeklyOff 초과로 쉬는 직원 우선 (여유 있음)
           const wkIdx = getWeekIdx(ds);
-          const aWk = Object.entries(sch[a.id]).filter(([s,v])=>getWeekIdx(s)===wkIdx&&["휴무","휴무(꼭)"].includes(v)).length;
-          const bWk = Object.entries(sch[b.id]).filter(([s,v])=>getWeekIdx(s)===wkIdx&&["휴무","휴무(꼭)"].includes(v)).length;
+          const aWk = Object.entries(sch[a.id]).filter(([s,v])=>getWeekIdx(s)===wkIdx&&["휴무","휴무(꼭)","무급"].includes(v)).length;
+          const bWk = Object.entries(sch[b.id]).filter(([s,v])=>getWeekIdx(s)===wkIdx&&["휴무","휴무(꼭)","무급"].includes(v)).length;
           return bWk - aWk;
         });
 
@@ -1109,7 +1109,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
         if (converted >= excess) break;
         // 주간 최소 weeklyOff 보호
         const wkIdx = getWeekIdx(ds);
-        const wkOff = Object.entries(sch[emp.id]).filter(([s,v])=>getWeekIdx(s)===wkIdx&&["휴무","휴무(꼭)"].includes(v)).length;
+        const wkOff = Object.entries(sch[emp.id]).filter(([s,v])=>getWeekIdx(s)===wkIdx&&["휴무","휴무(꼭)","무급"].includes(v)).length;
         if (wkOff <= getWeeklyOff(emp)) continue;
         sch[emp.id][ds] = STATUS.WORK;
         converted++;
@@ -1149,7 +1149,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
 
     // swap 전용 완화 검증: 3일 연속 휴무만 차단 (퐁당퐁당 허용)
     const canSwapOff = (empId, ds) => {
-      const isO = (s) => s === "휴무" || s === "휴무(꼭)";
+      const isO = (s) => s === "휴무" || s === "휴무(꼭)" || s === "무급";
       const p1 = sch[empId]?.[addDays(ds,-1)] || "";
       const p2 = sch[empId]?.[addDays(ds,-2)] || "";
       const n1 = sch[empId]?.[addDays(ds, 1)] || "";
@@ -1220,7 +1220,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
             for (const offDay of sortedOff) {
               if (!isWork_(col.id, offDay.ds)) continue;
               if (seededDates.has(offDay.ds)) continue;
-              if (sch[col.id]?.[offDay.ds] === STATUS.MUST_OFF) continue;
+              if (sch[col.id]?.[offDay.ds] === STATUS.MUST_OFF || sch[col.id]?.[offDay.ds] === STATUS.UNPAID) continue;
 
               // 4개 셀 저장 후 임시 교환
               const sv = [sch[emp.id][ds], sch[emp.id][offDay.ds], sch[col.id][ds], sch[col.id][offDay.ds]];
@@ -1241,13 +1241,13 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
                 // emp가 ds에 OFF 되는 경우
                 if (group.ids.includes(emp.id)) {
                   const othersOff = group.ids.filter(id => id !== emp.id)
-                    .filter(id => ["휴무","휴무(꼭)"].includes(sch[id]?.[ds])).length;
+                    .filter(id => ["휴무","휴무(꼭)","무급"].includes(sch[id]?.[ds])).length;
                   if (othersOff >= group.max) return false;
                 }
                 // col이 offDay에 OFF 되는 경우
                 if (group.ids.includes(col.id)) {
                   const othersOff = group.ids.filter(id => id !== col.id)
-                    .filter(id => ["휴무","휴무(꼭)"].includes(sch[id]?.[offDay.ds])).length;
+                    .filter(id => ["휴무","휴무(꼭)","무급"].includes(sch[id]?.[offDay.ds])).length;
                   if (othersOff >= group.max) return false;
                 }
                 return true;
@@ -1261,7 +1261,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
                   const colWk = weeks.find(w => w.some(d => d.ds === offDay.ds));
                   if (colWk) {
                     const colWkOff = colWk.filter(d => !d.isPrev &&
-                      ["휴무","휴무(꼭)"].includes(sch[col.id]?.[d.ds])
+                      ["휴무","휴무(꼭)","무급"].includes(sch[col.id]?.[d.ds])
                     ).length;
                     if (colWkOff > getWeeklyOff(col)) return false;
                   }
@@ -1271,7 +1271,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
                   const empWk = weeks.find(w => w.some(d => d.ds === ds));
                   if (empWk) {
                     const empWkOff = empWk.filter(d => !d.isPrev &&
-                      ["휴무","휴무(꼭)"].includes(sch[emp.id]?.[d.ds])
+                      ["휴무","휴무(꼭)","무급"].includes(sch[emp.id]?.[d.ds])
                     ).length;
                     if (empWkOff > getWeeklyOff(emp)) return false;
                   }
@@ -1314,7 +1314,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
       activeWeeks.forEach(week => {
         const wkDays = week.filter(d => !d.isPrev);
         const offDaysInWk = wkDays.filter(d =>
-          ["휴무","휴무(꼭)"].includes(sch[emp.id]?.[d.ds])
+          ["휴무","휴무(꼭)","무급"].includes(sch[emp.id]?.[d.ds])
         );
         const excess = offDaysInWk.length - wo;
         if (excess <= 0) return;
@@ -1337,8 +1337,8 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
             // isNext 이월 날짜 우선 취소 (이번달 보호)
             if (!!a.isNext !== !!b.isNext) return (a.isNext ? -1 : 1);
             // 전체 off 많은 날 우선 취소
-            const aOff = employees.filter(e => !e.isMale && ["휴무","휴무(꼭)"].includes(sch[e.id]?.[a.ds])).length;
-            const bOff = employees.filter(e => !e.isMale && ["휴무","휴무(꼭)"].includes(sch[e.id]?.[b.ds])).length;
+            const aOff = employees.filter(e => !e.isMale && ["휴무","휴무(꼭)","무급"].includes(sch[e.id]?.[a.ds])).length;
+            const bOff = employees.filter(e => !e.isMale && ["휴무","휴무(꼭)","무급"].includes(sch[e.id]?.[b.ds])).length;
             return bOff - aOff;
           });
         let removed = 0;
@@ -1362,7 +1362,7 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
       activeWeeks.forEach(week => {
         const wkDays = week.filter(d => !d.isPrev);
         const offNow = wkDays.filter(d =>
-          ["휴무","휴무(꼭)"].includes(sch[emp.id]?.[d.ds])
+          ["휴무","휴무(꼭)","무급"].includes(sch[emp.id]?.[d.ds])
         ).length;
         const needed = wo - offNow;
         if (needed <= 0) return;
@@ -1372,8 +1372,8 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
             && !(emp.isMale && d.dow === 6))
           .sort((a, b) => {
             if (!!a.isNext !== !!b.isNext) return (a.isNext ? 1 : -1);
-            const aOff = employees.filter(e => !e.isMale && ["휴무","휴무(꼭)"].includes(sch[e.id]?.[a.ds])).length;
-            const bOff = employees.filter(e => !e.isMale && ["휴무","휴무(꼭)"].includes(sch[e.id]?.[b.ds])).length;
+            const aOff = employees.filter(e => !e.isMale && ["휴무","휴무(꼭)","무급"].includes(sch[e.id]?.[a.ds])).length;
+            const bOff = employees.filter(e => !e.isMale && ["휴무","휴무(꼭)","무급"].includes(sch[e.id]?.[b.ds])).length;
             return aOff - bOff;
           });
 

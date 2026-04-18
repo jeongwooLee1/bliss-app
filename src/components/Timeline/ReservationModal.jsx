@@ -82,7 +82,7 @@ function DatePick({ value, onChange, style, min }) {
       style={{position:"absolute",inset:0,opacity:0,width:"100%",height:"100%",cursor:"pointer",fontSize:T.fs.lg}}/>
   </label>;
 }
-const STATUS_KEYS = ["confirmed","completed","cancelled","no_show"];
+const STATUS_KEYS = ["reserved","confirmed","completed","cancelled","no_show"];
 const DEFAULT_SOURCES = ["네이버","전화","방문","소개","인스타","카카오","기타"];
 
 // 클릭 → 클립보드 복사 + 호버(진하게)/복사(❤️ 토스트) 애니메이션
@@ -226,7 +226,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
         if (tagDur+svcDur > 0) return tagDur+svcDur;
       }
       return pf?.dur || itemDur;
-    })(), status:"confirmed",
+    })(), status:"reserved",
     memo: "",
     type:"reservation",
     selectedTags: item?._prefill?.matchedTagIds || [],

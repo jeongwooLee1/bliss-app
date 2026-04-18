@@ -74,6 +74,9 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
   const [editItem, setEditItem] = useState(null);
   const [detailCust, setDetailCust] = useState(null);
   const [detailTab, setDetailTab] = useState("pkg"); // "pkg" | "sales"
+  const [editingMemo, setEditingMemo] = useState(false);
+  const [memoDraft, setMemoDraft] = useState("");
+  const [memoSaving, setMemoSaving] = useState(false);
   // showHidden 제거 — 숨김 기능 미사용
 
   // ── 서버 페이지네이션 (무한 스크롤) ──
@@ -103,9 +106,9 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       const enc = encodeURIComponent(tokens[0]);
       parts.push(`or=(name.ilike.*${enc}*,name2.ilike.*${enc}*,phone.ilike.*${enc}*,phone2.ilike.*${enc}*,email.ilike.*${enc}*,memo.ilike.*${enc}*,cust_num.ilike.*${enc}*)`);
     }
-    // 정렬: 오라클 등록일(join_date = 실제 가입 일시) 최신순 → 없으면 createdAt
-    // cust_num은 text라 문자열 정렬되므로 사용 불가. JOINDATE가 오라클 등록 타임스탬프와 동일.
-    parts.push(`order=join_date.desc.nullslast,created_at.desc.nullslast`);
+    // 정렬: 고객번호 내림차순 (숫자 기준 — cust_num_int generated column)
+    // cust_num 없는 고객(예약만 있고 매출 미등록)은 nullslast로 뒤로
+    parts.push(`order=cust_num_int.desc.nullslast,created_at.desc.nullslast`);
     parts.push(`offset=${offset}`);
     parts.push(`limit=${limit}`);
     return "&" + parts.join("&");
@@ -205,28 +208,68 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
     return out;
   };
 
-  const handleSave = (item, isEdit) => {
+  const handleSave = async (item, isEdit) => {
     const normalized = {...item, phone: (item.phone || "").replace(/[^0-9]/g, "")};
-    if (isEdit) {
-      // id 제외한 필드만 PATCH
-      const {id, ...rest} = toDb("customers", normalized);
-      sb.update("customers", normalized.id, rest).catch(console.error);
-    } else {
-      sb.insert("customers", toDb("customers", normalized)).catch(console.error);
+
+    // 연락처 중복 체크 — 다른 고객이 같은 번호 사용 중이면 확인
+    if (normalized.phone) {
+      try {
+        const rows = await sb.get("customers", `&phone=eq.${normalized.phone}&id=neq.${normalized.id}&limit=1`);
+        const other = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+        if (other) {
+          const msg = `⚠️ 이 연락처 (${normalized.phone})를 이미 사용 중인 고객이 있습니다:\n\n  ${other.name}${other.cust_num?` (#${other.cust_num})`:""}\n\n같은 분이시라면 [취소] 후 기존 고객을 선택해서 수정하시는 걸 권장합니다.\n다른 분이라면 연락처 번호 한자리를 다르게 해주세요.\n\n그래도 이대로 저장할까요?`;
+          if (!confirm(msg)) return;
+        }
+      } catch (e) { console.error("phone check err:", e); }
     }
+
+    try {
+      if (isEdit) {
+        const {id, ...rest} = toDb("customers", normalized);
+        await sb.update("customers", normalized.id, rest);
+      } else {
+        const res = await sb.insert("customers", toDb("customers", normalized));
+        if (!res) return; // insert 실패 시 중단 (sb.insert가 이미 alert 띄움)
+      }
+    } catch (e) {
+      console.error("[handleSave]", e);
+      alert("저장 실패: " + (e?.message || e));
+      return;
+    }
+
     setData(prev => {
       const inLocal = (prev?.customers||[]).some(c=>c.id===normalized.id);
       if (inLocal) return {...prev, customers: prev.customers.map(c=>c.id===normalized.id?normalized:c)};
       return {...prev, customers: [...(prev?.customers||[]), normalized]};
     });
-    // pagedCusts(실제 리스트)도 즉시 반영
     setPagedCusts(prev => {
       const inList = prev.some(c=>c.id===normalized.id);
       if (inList) return prev.map(c=>c.id===normalized.id?normalized:c);
       return [normalized, ...prev];
     });
     setShowModal(false); setEditItem(null);
+    if (detailCust?.id === normalized.id) setDetailCust(normalized);
   };
+
+  // 상세 패널 메모 인라인 저장
+  const saveMemoInline = async () => {
+    if (!detailCust) { setEditingMemo(false); return; }
+    const newMemo = memoDraft;
+    if (newMemo === (detailCust.memo || "")) { setEditingMemo(false); return; }
+    setMemoSaving(true);
+    try {
+      await sb.update("customers", detailCust.id, { memo: newMemo });
+      const updated = { ...detailCust, memo: newMemo };
+      setDetailCust(updated);
+      setPagedCusts(prev => prev.map(x => x.id === detailCust.id ? updated : x));
+      setData(prev => ({ ...prev, customers: (prev?.customers || []).map(x => x.id === detailCust.id ? updated : x) }));
+    } catch (e) { console.error(e); alert("메모 저장 실패"); }
+    setMemoSaving(false);
+    setEditingMemo(false);
+  };
+
+  // 상세 패널 바뀌면 편집 모드 해제
+  useEffect(() => { setEditingMemo(false); setMemoDraft(""); }, [detailCust?.id]);
 
   const [custSales, setCustSales] = useState([]);
   const [custPkgsServer, setCustPkgsServer] = useState([]);
@@ -241,6 +284,161 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       .then(rows => setPkgHistoryMap(prev => ({...prev, [pkgId]: rows||[]})))
       .catch(() => setPkgHistoryMap(prev => ({...prev, [pkgId]: []})));
   };
+  // ── 이력 1건만 삭제 + 잔액 복구 (매출은 유지) ──
+  const rollbackPkgTxOnly = async (tx, pkg) => {
+    await sb.del("package_transactions", tx.id);
+    let upd = {};
+    if (tx.type === "deduct") {
+      upd.used_count = Math.max(0, (pkg.used_count||0) - (tx.amount||0));
+      if (tx.unit === "won") {
+        const curBal = Number(((pkg.note||"").match(/잔액:([0-9,]+)/)?.[1] || "0").replace(/,/g,""));
+        const newBal = curBal + (tx.amount||0);
+        upd.note = /잔액:[0-9,]+/.test(pkg.note||"")
+          ? (pkg.note||"").replace(/잔액:[0-9,]+/, `잔액:${newBal.toLocaleString()}`)
+          : (pkg.note ? pkg.note + " | " : "") + `잔액:${newBal.toLocaleString()}`;
+      }
+    } else if (tx.type === "charge") {
+      if (tx.unit === "won") {
+        const curBal = Number(((pkg.note||"").match(/잔액:([0-9,]+)/)?.[1] || "0").replace(/,/g,""));
+        const newBal = Math.max(0, curBal - (tx.amount||0));
+        upd.note = /잔액:[0-9,]+/.test(pkg.note||"")
+          ? (pkg.note||"").replace(/잔액:[0-9,]+/, `잔액:${newBal.toLocaleString()}`)
+          : (pkg.note || "");
+      }
+    } else if (tx.type === "adjust_add") {
+      if (tx.unit === "won") {
+        const curBal = Number(((pkg.note||"").match(/잔액:([0-9,]+)/)?.[1] || "0").replace(/,/g,""));
+        upd.note = (pkg.note||"").replace(/잔액:[0-9,]+/, `잔액:${Math.max(0,curBal-(tx.amount||0)).toLocaleString()}`);
+      } else {
+        upd.used_count = (pkg.used_count||0) + (tx.amount||0);
+      }
+    } else if (tx.type === "adjust_sub") {
+      if (tx.unit === "won") {
+        const curBal = Number(((pkg.note||"").match(/잔액:([0-9,]+)/)?.[1] || "0").replace(/,/g,""));
+        upd.note = (pkg.note||"").replace(/잔액:[0-9,]+/, `잔액:${(curBal+(tx.amount||0)).toLocaleString()}`);
+      } else {
+        upd.used_count = Math.max(0, (pkg.used_count||0) - (tx.amount||0));
+      }
+    }
+    if (Object.keys(upd).length > 0) {
+      await sb.update("customer_packages", pkg.id, upd);
+      setCustPkgsServer(prev => prev.map(p => p.id === pkg.id ? {...p, ...upd} : p));
+    }
+    setPkgHistoryMap(prev => ({...prev, [pkg.id]: (prev[pkg.id]||[]).filter(t => t.id !== tx.id)}));
+  };
+
+  // ── 매출 전체 삭제 + 모든 차감·포인트 롤백 ──
+  const deleteSaleWithFullRollback = async (saleId) => {
+    const pkgTxs = await sb.get("package_transactions", `&sale_id=eq.${saleId}`) || [];
+    const chargedPkgIds = new Set();
+    pkgTxs.forEach(tx => { if (tx.type === "charge") chargedPkgIds.add(tx.package_id); });
+
+    // charge된 패키지 통째 삭제
+    for (const pkgId of chargedPkgIds) {
+      await sb.del("customer_packages", pkgId).catch(console.error);
+      await sb.delWhere("package_transactions", "package_id", pkgId).catch(console.error);
+    }
+    // deduct 롤백
+    for (const tx of pkgTxs) {
+      if (chargedPkgIds.has(tx.package_id)) continue;
+      if (tx.type === "deduct") {
+        const rows = await sb.get("customer_packages", tx.package_id);
+        const p = rows?.[0];
+        if (p) {
+          const newUsed = Math.max(0, (p.used_count||0) - (tx.amount||0));
+          const upd = { used_count: newUsed };
+          if (tx.unit === "won") {
+            const curBal = Number(((p.note||"").match(/잔액:([0-9,]+)/)?.[1] || "0").replace(/,/g,""));
+            const newBal = curBal + (tx.amount||0);
+            upd.note = /잔액:[0-9,]+/.test(p.note||"")
+              ? (p.note||"").replace(/잔액:[0-9,]+/, `잔액:${newBal.toLocaleString()}`)
+              : (p.note ? p.note + " | " : "") + `잔액:${newBal.toLocaleString()}`;
+          }
+          await sb.update("customer_packages", tx.package_id, upd).catch(console.error);
+        }
+      }
+      await sb.del("package_transactions", tx.id).catch(console.error);
+    }
+    // point_transactions 삭제
+    const ptxs = await sb.get("point_transactions", `&sale_id=eq.${saleId}`) || [];
+    for (const tx of ptxs) {
+      await sb.del("point_transactions", tx.id).catch(console.error);
+    }
+    // sale_details 삭제
+    await sb.delWhere("sale_details", "sale_id", saleId).catch(console.error);
+    // customers.visits -1
+    const sale = (data?.sales||[]).find(s => s.id === saleId);
+    if (sale?.custId) {
+      const cust = (data?.customers||[]).find(c => c.id === sale.custId);
+      if (cust) {
+        const newVisits = Math.max(0, (cust.visits||0) - 1);
+        await sb.update("customers", sale.custId, { visits: newVisits }).catch(console.error);
+        setData(prev => ({ ...prev, customers: (prev?.customers||[]).map(c => c.id === sale.custId ? { ...c, visits: newVisits } : c) }));
+      }
+    }
+    // sales 삭제
+    await sb.del("sales", saleId).catch(console.error);
+    setData(prev => ({
+      ...prev,
+      sales: (prev?.sales||[]).filter(s => s.id !== saleId),
+      custPackages: (prev?.custPackages||[]).filter(p => !chargedPkgIds.has(p.id)),
+    }));
+  };
+
+  // ── 이력 🗑 클릭 핸들러: sale_id 분기 ──
+  const deletePkgTx = async (tx, pkg) => {
+    if (!tx || !pkg) return;
+    const label = ({charge:"충전",deduct:"차감",adjust_add:"+조정",adjust_sub:"-조정",cancel:"취소"})[tx.type]||tx.type;
+    const unitS = tx.unit === "count" ? "회" : "원";
+    const txLabel = `${label} ${(tx.amount||0).toLocaleString()}${unitS}`;
+
+    try {
+      // Case 1: sale_id 있음 → 매출 존재 여부 확인 후 3지선다
+      if (tx.sale_id) {
+        const saleRows = await sb.get("sales", tx.sale_id);
+        const sale = saleRows?.[0];
+
+        if (sale) {
+          // 매출 있음 → [확인]매출 전체 삭제 / [취소]이 차감만
+          const br = (data?.branches||[]).find(b=>b.id===sale.bid);
+          const info = `${sale.date||""}${br?.short?" · "+br.short:""}${sale.staff_name?" · "+sale.staff_name:""}`;
+          if (confirm(
+            `🔗 이 이력은 매출에 연결돼 있습니다\n\n📌 매출: ${info}\n📋 이력: ${txLabel}\n\n[확인] 매출 전체 삭제 + 모든 차감·포인트 자동 복구 (권장)\n[취소] 이 차감만 삭제 (매출·다른 차감 유지)`
+          )) {
+            // → 매출 전체 삭제
+            if (!confirm(`정말 매출 전체를 삭제하시겠습니까?\n\n• 이 매출에 연결된 모든 차감/포인트 복구\n• sale_details 삭제\n• 방문 횟수 -1\n\n되돌릴 수 없습니다.`)) return;
+            await deleteSaleWithFullRollback(sale.id);
+            // 이력 + 패키지 state 새로 로드
+            const rows = await sb.get("package_transactions", `&package_id=eq.${pkg.id}&order=created_at.desc&limit=200`);
+            setPkgHistoryMap(prev => ({...prev, [pkg.id]: rows||[]}));
+            const pkgRows = await sb.get("customer_packages", pkg.id);
+            if (pkgRows?.[0]) setCustPkgsServer(prev => prev.map(p => p.id === pkg.id ? pkgRows[0] : p));
+            alert("매출 전체 삭제 + 차감/포인트 자동 복구 완료");
+            return;
+          } else {
+            // → 이 차감만 삭제
+            if (!confirm(`이 차감 이력 1건만 삭제\n\n${txLabel}\n\n매출과 다른 차감은 그대로 유지됩니다.\n계속하시겠습니까?`)) return;
+            await rollbackPkgTxOnly(tx, pkg);
+            return;
+          }
+        } else {
+          // sale_id 있는데 sales에 없음 (유령 이력)
+          if (!confirm(`⚠️ 연결된 매출이 이미 삭제됐거나 저장 실패한 상태입니다.\n\n${txLabel}\n\n이 이력만 삭제하고 잔액을 복구할까요?`)) return;
+          await rollbackPkgTxOnly(tx, pkg);
+          return;
+        }
+      }
+
+      // Case 2: sale_id 없음 (수동 차감·조정 등)
+      if (!confirm(`이력 1건 삭제\n\n${txLabel}\n${tx.note||""}\n\n삭제 시 이 패키지의 잔액이 자동 복구됩니다. 계속하시겠습니까?`)) return;
+      await rollbackPkgTxOnly(tx, pkg);
+
+    } catch (e) {
+      console.error("[deletePkgTx]", e);
+      alert("삭제 실패: " + (e?.message || e));
+    }
+  };
+
   const recordPkgTx = (pkg, txType, amount, unit, balBefore, balAfter, note) => {
     const tx = {
       id: "pkgtx_"+genId(),
@@ -568,6 +766,10 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
             {tx.sale_id && <span style={{fontSize:9,color:T.primary}} title={tx.sale_id}>💰</span>}
             {tx.staff_name && <span style={{color:T.textSub,fontSize:9,flex:1,textAlign:"right"}}>{tx.staff_name}</span>}
             {tx.note && !tx.staff_name && <span style={{color:T.textSub,fontSize:9,flex:1,textAlign:"right"}}>{tx.note}</span>}
+            <button onClick={()=>deletePkgTx(tx, p)} title="이력 삭제 + 잔액 자동 복구"
+              style={{border:"none",background:"none",cursor:"pointer",color:T.gray400,fontSize:12,padding:"0 2px",marginLeft:"auto"}}
+              onMouseOver={e=>e.currentTarget.style.color=T.danger}
+              onMouseOut={e=>e.currentTarget.style.color=T.gray400}>🗑</button>
           </div>;
         })}
       </div>}
@@ -676,10 +878,27 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
 
                 {/* 상세 패널 */}
                 {isOpen && <tr><td colSpan={10} style={{padding:0,background:T.gray100,borderTop:"2px solid "+T.primaryLt}}><div>
-                    {/* 고객 메모 */}
-                    {c.memo && <div style={{padding:"10px 14px",background:"#e8f4fd",borderBottom:"1px solid "+T.border,fontSize:T.fs.xs,color:"#155a8a",whiteSpace:"pre-wrap",wordBreak:"break-all",lineHeight:1.5}}>
-                      <span style={{fontWeight:T.fw.bolder,marginRight:6}}>👤 메모</span>{c.memo}
-                    </div>}
+                    {/* 고객 메모 — 항상 표시, 클릭 시 인라인 편집 */}
+                    <div
+                      style={{padding:"10px 14px",background:"#e8f4fd",borderBottom:"1px solid "+T.border,fontSize:T.fs.xs,color:"#155a8a",whiteSpace:"pre-wrap",wordBreak:"break-all",lineHeight:1.5,cursor:editingMemo?"text":"pointer"}}
+                      onClick={e=>{ e.stopPropagation(); if(!editingMemo){ setMemoDraft(c.memo||""); setEditingMemo(true); } }}>
+                      <span style={{fontWeight:T.fw.bolder,marginRight:6}}>👤 메모</span>
+                      {editingMemo ? (
+                        <textarea
+                          autoFocus
+                          value={memoDraft}
+                          onChange={e=>setMemoDraft(e.target.value)}
+                          onBlur={saveMemoInline}
+                          onKeyDown={e=>{ if(e.key==='Escape'){ setEditingMemo(false); setMemoDraft(""); } }}
+                          onClick={e=>e.stopPropagation()}
+                          ref={el=>{if(el){el.style.height='auto';el.style.height=Math.max(40,el.scrollHeight)+'px';}}}
+                          placeholder="메모 추가..."
+                          style={{width:"calc(100% - 60px)",border:"1px solid "+T.primaryLt,borderRadius:T.radius.sm,padding:"4px 6px",fontSize:T.fs.xs,fontFamily:"inherit",background:T.bgCard,color:"#155a8a",lineHeight:1.5,resize:"vertical",minHeight:40,outline:"none"}} />
+                      ) : (
+                        <span style={{color:c.memo?"#155a8a":T.gray500,fontStyle:c.memo?"normal":"italic"}}>{c.memo || "메모 추가... (클릭)"}</span>
+                      )}
+                      {memoSaving && <span style={{marginLeft:8,fontSize:T.fs.xxs,color:T.textMuted}}>저장중...</span>}
+                    </div>
                     {/* 예약 통계 */}
                     <div style={{display:"flex",gap:8,padding:"8px 12px",background:T.bgCard,borderBottom:"1px solid "+T.border}}>
                       {[

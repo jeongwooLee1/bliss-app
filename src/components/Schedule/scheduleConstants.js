@@ -13,12 +13,17 @@ export const BRANCHES_SCH = [
 
 export const BRANCH_LABEL = Object.fromEntries(BRANCHES_SCH.map(b => [b.id, b.name]))
 
-export const STATUS = { WORK:'근무', OFF:'휴무', MUST_OFF:'휴무(꼭)', SUPPORT:'지원', SHARE:'전체쉐어' }
+export const STATUS = { WORK:'근무', OFF:'휴무', MUST_OFF:'휴무(꼭)', UNPAID:'무급', SUPPORT:'지원', SHARE:'전체쉐어' }
+
+// 휴무 계열 (휴무/휴무(꼭)/무급) — isOffStatus() 헬퍼로 일괄 체크
+export const OFF_STATUSES = ['휴무', '휴무(꼭)', '무급']
+export function isOffStatus(s) { return OFF_STATUSES.includes(s) }
 
 export const S_COLOR = {
   '근무':     { bg:'#ffffff',     text:'#b0b8c1',   border:'#eef0f2' },
   '휴무':     { bg:T.purpleLt,   text:T.purple,    border:'#c4a4e8', bold:true },
   '휴무(꼭)': { bg:T.primaryLt,  text:T.primaryDk, border:T.primary, bold:true },
+  '무급':     { bg:'#f5f5f5',    text:'#757575',   border:'#bdbdbd', bold:true },
   '지원':     { bg:T.orangeLt,   text:T.orange,    border:'#ffb74d' },
   '전체쉐어': { bg:T.tealLt,     text:T.teal,      border:'#80cbc4', bold:true },
 }
@@ -53,7 +58,15 @@ export const DB_KEYS = {
   deletedEmpIds:   'deletedEmpIds_v1',
   customRules:     'customRules_v1',
   schSnapshots:    'schSnapshots_v1',
+  cellTagDefs:     'cellTagDefs_v1',
+  schTagsHistory:  'schTagsHistory_v1',
 }
+
+// 셀 태그 기본 정의 (최초 로드 시)
+export const DEFAULT_CELL_TAGS = [
+  { id:'tag_share',  name:'쉐어', color:'#4CAF50' },
+  { id:'tag_sunrise', name:'일출', color:'#FF9800' },
+]
 
 export const DEFAULT_RULES = [
   ['🌍 전체',['주 시작: 월요일','일 근무인원: 최소 11명 ~ 최대 15명','하루 전체 휴무 최대 5명 (남자직원 제외)','휴무 텀: 최대 6일(7일 초과 금지)','연속 2일 휴무: 월 2회 허용','3일 연속 휴무: 절대 금지']],

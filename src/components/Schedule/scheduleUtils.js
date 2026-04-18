@@ -24,7 +24,7 @@ export function validateSch(schData, empList, days, ruleConfig, empSettings) {
 
     const offC = empList.filter(e =>
       !e.isMale && !(e.isFreelancer || empSettings[e.id]?.isFreelancer) &&
-      ['휴무','휴무(꼭)'].includes(getV(e.id, day.ds))
+      ['휴무','휴무(꼭)','무급'].includes(getV(e.id, day.ds))
     ).length
     if (offC > ruleConfig.maxDailyOff) v.push(`${day.d}일 휴무${offC}명(최대${ruleConfig.maxDailyOff}초과)`)
 
@@ -63,7 +63,7 @@ export function validateSch(schData, empList, days, ruleConfig, empSettings) {
         const hasConsec = blockDays.some((d, idx) => {
           if (idx === 0) return false
           const prev = blockDays[idx-1]
-          const isOff = (ds) => ['휴무','휴무(꼭)'].includes(getV(emp.id, ds))
+          const isOff = (ds) => ['휴무','휴무(꼭)','무급'].includes(getV(emp.id, ds))
           return addDays(prev.ds, 1) === d.ds && isOff(prev.ds) && isOff(d.ds)
         })
         if (!hasConsec) v.push(`${emp.name} ${blockDays[0].d}일~${blockDays[blockDays.length-1].d}일 2주연속휴무없음`)

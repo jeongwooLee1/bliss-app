@@ -167,7 +167,7 @@ function SnapshotTable({ data, month, allEmployees }) {
                 {days.map(day => {
                   const s = data[emp.id]?.[day.ds] || ''
                   const sc = getSColor(s)
-                  const label = s === STATUS.WORK ? '근' : s === STATUS.OFF ? '휴' : s === STATUS.MUST_OFF ? '꼭' : isSupport(s) ? '지원' : s === STATUS.SHARE ? '쉐어' : '—'
+                  const label = s === STATUS.WORK ? '근' : s === STATUS.OFF ? '휴' : s === STATUS.MUST_OFF ? '꼭' : s === STATUS.UNPAID ? '무급' : isSupport(s) ? '지원' : s === STATUS.SHARE ? '쉐어' : '—'
                   return <td key={day.ds} style={{ padding:1, textAlign:'center', borderBottom:'1px solid '+T.border }}>
                     <div style={{ background:s ? sc.bg : 'transparent', color:s ? sc.text : '#ddd', border:s ? `1px solid ${sc.border}` : '1px dashed #eee', borderRadius:3, padding:'2px 0', fontSize:9, fontWeight:s ? 600 : 400 }}>
                       {label}
@@ -188,7 +188,7 @@ function SnapshotTable({ data, month, allEmployees }) {
               {days.map(day => {
                 const s = data[emp.id]?.[day.ds] || ''
                 const sc = getSColor(s)
-                const label = s === STATUS.WORK ? '근' : s === STATUS.OFF ? '휴' : s === STATUS.MUST_OFF ? '꼭' : '—'
+                const label = s === STATUS.WORK ? '근' : s === STATUS.OFF ? '휴' : s === STATUS.MUST_OFF ? '꼭' : s === STATUS.UNPAID ? '무급' : '—'
                 return <td key={day.ds} style={{ padding:1, textAlign:'center', borderBottom:'1px solid '+T.border }}>
                   <div style={{ background:s ? sc.bg : 'transparent', color:s ? sc.text : '#ddd', border:s ? `1px solid ${sc.border}` : '1px dashed #eee', borderRadius:3, padding:'2px 0', fontSize:9, fontWeight:s ? 600 : 400 }}>{label}</div>
                 </td>

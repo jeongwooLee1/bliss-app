@@ -25,7 +25,7 @@ export default function BulkEditModal({ selectedCells, onSet, onClose }) {
             fontFamily:'inherit', fontSize:13, fontWeight:400, cursor:'pointer', textAlign:'left' }}>
           — 삭제 (빈칸)
         </button>
-        {['근무','휴무','휴무(꼭)','전체쉐어'].map(st => {
+        {['근무','휴무','휴무(꼭)','무급'].map(st => {
           const sc = getSColor(st)
           return <button key={st} onClick={() => applyStatus(st)}
             style={{ padding:'9px 14px', borderRadius:8, border:`2px solid ${sc.border}`, background:sc.bg, color:sc.text,

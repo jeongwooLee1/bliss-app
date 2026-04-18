@@ -36,6 +36,7 @@ export const SCH_BRANCH_MAP = {
 export const MALE_EMPLOYEES = []
 
 export const STATUS_LABEL = {
+  reserved:'예약중',
   confirmed:'진행', completed:'완료', cancelled:'취소',
   no_show:'노쇼', pending:'확정대기', request:'AI신청',
   naver_cancelled:'네이버취소', naver_changed:'변경됨',
@@ -85,6 +86,7 @@ export const getNaverVal = (requestMsg, keywords) => {
 }
 
 export const STATUS_CLR = {
+  reserved: T.gray500,
   confirmed: T.male, completed: T.success, cancelled: T.warning,
   no_show: T.danger, naver_cancelled: T.warning, naver_changed: T.gray500,
   pending: T.orange,
@@ -97,10 +99,10 @@ export const BLOCK_COLORS = {
 }
 
 export const DEFAULT_SOURCES = ["네이버","전화","방문","소개","인스타","카카오","기타"]
-export const STATUS_KEYS = ["confirmed","completed","cancelled","no_show"]
+export const STATUS_KEYS = ["reserved","confirmed","completed","cancelled","no_show"]
 
 export const SYSTEM_TAG_NAME_NEW_CUST = "신규"
 export const SYSTEM_TAG_NAME_PREPAID  = "예약금완료"
 export const SYSTEM_SRC_NAME_NAVER    = "네이버"
 
-export const STATUS_CLR_DEFAULT = { confirmed:T.male, completed:T.success, cancelled:T.warning, no_show:T.danger, naver_cancel:T.danger }
+export const STATUS_CLR_DEFAULT = { reserved:T.gray500, confirmed:T.male, completed:T.success, cancelled:T.warning, no_show:T.danger, naver_cancel:T.danger }

@@ -56,6 +56,23 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
     reader.readAsDataURL(file);
   };
 
+  // 클립보드 이미지 붙여넣기 — Ctrl+V / Cmd+V
+  const onPasteImage = (e) => {
+    const items = e.clipboardData?.items || [];
+    for (const it of items) {
+      if (it.kind === "file" && it.type.startsWith("image/")) {
+        e.preventDefault();
+        const file = it.getAsFile();
+        if (!file) continue;
+        if (file.size > 2 * 1024 * 1024) { alert("이미지 크기 2MB 이하만 붙여넣기 가능합니다"); return; }
+        const reader = new FileReader();
+        reader.onload = (ev) => setForm(p => ({ ...p, imageData: ev.target.result }));
+        reader.readAsDataURL(file);
+        return;
+      }
+    }
+  };
+
   const submit = async () => {
     if (!form.name.trim()) { alert("요청자 이름을 입력해주세요"); return; }
     if (!form.description.trim()) { alert("내용을 입력해주세요"); return; }
@@ -110,7 +127,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
     </div>
 
     {/* 작성 폼 */}
-    {showForm && <div style={{background:"#FFFBEB",border:"1.5px solid #FCD34D",borderRadius:12,padding:18,marginBottom:18}}>
+    {showForm && <div onPaste={onPasteImage} style={{background:"#FFFBEB",border:"1.5px solid #FCD34D",borderRadius:12,padding:18,marginBottom:18}}>
       <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#B45309",marginBottom:12}}>새 요청 작성</div>
       <div style={{display:"flex",gap:8,marginBottom:8}}>
         <input value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} placeholder="✏️ 요청자 이름을 입력하세요 *"
@@ -122,7 +139,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
             {(data?.branches||[]).filter(b=>userBranches.includes(b.id)).map(b=><option key={b.id} value={b.id}>{b.short||b.name}</option>)}
           </select>}
       </div>
-      <textarea value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} placeholder="요청 내용 — 어떤 부분이 불편하거나 어떤 기능을 원하시는지 자유롭게 작성해주세요 *"
+      <textarea value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} onPaste={onPasteImage} placeholder="요청 내용 — 어떤 부분이 불편하거나 어떤 기능을 원하시는지 자유롭게 작성해주세요 * (캡쳐 이미지는 Ctrl+V로 바로 붙여넣기 가능)"
         style={{width:"100%",padding:"9px 12px",fontSize:13,border:"1px solid "+T.border,borderRadius:8,fontFamily:"inherit",resize:"vertical",minHeight:120,boxSizing:"border-box",marginBottom:8}}/>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
         <label style={{padding:"7px 14px",borderRadius:8,border:"1px dashed "+T.gray400,background:"#fff",cursor:"pointer",fontSize:12,fontWeight:600,color:T.gray600,display:"inline-flex",alignItems:"center",gap:5}}>

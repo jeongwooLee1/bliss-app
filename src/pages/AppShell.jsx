@@ -20,7 +20,7 @@ import SetupWizard from '../components/SetupWizard/SetupWizard'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "2.7.5"
+const BLISS_V = "3.1.9"
 const BIZ_ID = 'biz_khvurgshb'
 const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", users:"/users", messages:"/messages", admin:"/settings", wizard:"/wizard", schedule:"/schedule", requests:"/requests" };
 async function loadAllFromDb(bizId) {
@@ -781,6 +781,7 @@ function App() {
 
   // 새 버전 감지 — 자동 새로고침 대신 배너 표시
   const [newVer, setNewVer] = useState(null);
+  const [reloadCountdown, setReloadCountdown] = useState(0);
   useEffect(() => {
     let timer;
     const check = () => {
@@ -790,11 +791,28 @@ function App() {
           remote = remote.trim();
           if (remote && remote !== BLISS_V) setNewVer(remote);
         }).catch(() => {});
-      timer = setTimeout(check, 30000);
+      timer = setTimeout(check, 15000); // 15초마다 체크 (강제 업데이트 빠르게)
     };
-    timer = setTimeout(check, 5000);
+    timer = setTimeout(check, 3000);
     return () => clearTimeout(timer);
   }, []);
+  // 새 버전 감지 시 5초 카운트다운 후 강제 새로고침
+  useEffect(() => {
+    if (!newVer) return;
+    setReloadCountdown(5);
+    const tick = setInterval(() => {
+      setReloadCountdown(c => {
+        if (c <= 1) {
+          clearInterval(tick);
+          try { window.location.href = window.location.pathname + "?v=" + newVer; }
+          catch(e) { window.location.reload(); }
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [newVer]);
 
   // Phase 1: Load all users on mount + auto-login from saved session
   const initRef = useRef(false);
@@ -1199,14 +1217,16 @@ function App() {
           <Sidebar nav={nav} page={page} setPage={p=>{setPage(p);setSideOpen(false)}} role={role} branchNames={branchNames} onLogout={handleLogout} bizName={bizName} isSuper={isSuper} onBackToSuper={handleBackToSuper} serverV={serverV} BLISS_V={BLISS_V}/>
         </div>
       </div>}
-      {newVer && <div onClick={()=>{try{window.location.href=window.location.pathname+"?v="+newVer;}catch(e){window.location.reload();}}} style={{position:"fixed",top:10,right:10,zIndex:9999,background:"#3498db",color:"#fff",padding:"8px 14px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.2)"}}>🔄 새 버전 v{newVer} — 클릭하여 업데이트</div>}
+      {newVer && <div onClick={()=>{try{window.location.href=window.location.pathname+"?v="+newVer;}catch(e){window.location.reload();}}} style={{position:"fixed",top:10,right:10,zIndex:9999,background:T.primary,color:"#fff",padding:"10px 16px",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 12px rgba(0,0,0,.25)",animation:"ovFadeIn .3s"}}>
+        🔄 새 버전 v{newVer} {reloadCountdown > 0 ? `(${reloadCountdown}초 후 자동 업데이트)` : "— 즉시 업데이트"}
+      </div>}
       <main className="main-c" style={S.main}>
         <div className="mob-hdr" style={{display:"none"}}></div>
         <div className="page-pad" style={{flex:1,padding:(page==="timeline"||page==="messages"||page==="schedule")?"0":"16px 20px 16px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
           <Routes>
             <Route path="/timeline" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust}/></div>}/>
             <Route path="/reservations" element={<div className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}><ReservationList data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} setNaverColShow={setNaverColShow}/></div>}/>
-            <Route path="/sales" element={<div className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}><SalesPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} role={role}/></div>}/>
+            <Route path="/sales" element={<div className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}><SalesPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} role={role} setPendingOpenCust={setPendingOpenCust}/></div>}/>
             <Route path="/customers" element={<div className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}><CustomersPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} pendingOpenCust={pendingOpenCust} setPendingOpenCust={setPendingOpenCust}/></div>}/>
             <Route path="/users" element={<div className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}><UsersPage data={data} setData={setData} bizId={currentBizId}/></div>}/>
             <Route path="/messages" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><AdminInbox sb={sb} branches={data?.branches} data={data} userBranches={userBranches} isMaster={isMaster} onRead={(cnt)=>setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)))} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage}/></div>}/>

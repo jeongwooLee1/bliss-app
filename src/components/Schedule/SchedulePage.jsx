@@ -5,7 +5,7 @@ import { useScheduleData, useEmployees } from '../../lib/useData'
 import { supabase } from '../../lib/supabase'
 import autoAssign from './autoAssign'
 import { validateSch, exportCSV as doExportCSV } from './scheduleUtils'
-import { BRANCHES_SCH, BRANCH_LABEL, STATUS, S_COLOR, DNAMES, isSupport, getSColor, getDim, fmtDs, getDow0Mon, DB_KEYS } from './scheduleConstants'
+import { BRANCHES_SCH, BRANCH_LABEL, STATUS, S_COLOR, DNAMES, isSupport, getSColor, getDim, fmtDs, getDow0Mon, DB_KEYS, DEFAULT_CELL_TAGS } from './scheduleConstants'
 import EditCellModal from './EditCellModal'
 import BulkEditModal from './BulkEditModal'
 import RuleConfigModal from './RuleConfigModal'
@@ -39,6 +39,68 @@ export default function SchedulePage({ employees: propEmps }) {
   const { data:deletedEmpIdsArr, setData:setDeletedEmpIdsArr, save:saveDeletedEmpIds } = useScheduleData(DB_KEYS.deletedEmpIds, [])
 
   const deletedEmpIds = useMemo(() => new Set(deletedEmpIdsArr || []), [deletedEmpIdsArr])
+
+  // ── 셀 태그 (쉐어/일출 등) ──
+  const { data:cellTagDefsRaw, save:saveCellTagDefs } = useScheduleData(DB_KEYS.cellTagDefs, null)
+  const cellTagDefs = Array.isArray(cellTagDefsRaw) && cellTagDefsRaw.length > 0 ? cellTagDefsRaw : DEFAULT_CELL_TAGS
+  const { data:schTagsHistory, save:saveSchTagsHistory } = useScheduleData(DB_KEYS.schTagsHistory, {})
+
+  // 셀 태그 조회: monthKey → empId → dateStr → [tagId,...]
+  const getCellTags = (empId, ds) => {
+    const mk = ds.slice(0,7)
+    return (schTagsHistory?.[mk]?.[empId]?.[ds.slice(8)]) || []
+  }
+
+  // 셀 태그 추가/제거 (반복 옵션 포함)
+  const setCellTag = async (empId, startDs, tagId, turnOn, repeat='none', repeatUntil='') => {
+    const next = JSON.parse(JSON.stringify(schTagsHistory || {}))
+    const applyOne = (ds) => {
+      const mk = ds.slice(0,7); const dd = ds.slice(8)
+      next[mk] = next[mk] || {}
+      next[mk][empId] = next[mk][empId] || {}
+      const arr = new Set(next[mk][empId][dd] || [])
+      if (turnOn) arr.add(tagId); else arr.delete(tagId)
+      if (arr.size === 0) delete next[mk][empId][dd]
+      else next[mk][empId][dd] = Array.from(arr)
+    }
+    // 기준 날짜
+    applyOne(startDs)
+    // 반복 처리
+    if (repeat !== 'none' && repeatUntil && repeatUntil >= startDs) {
+      const start = new Date(startDs), end = new Date(repeatUntil)
+      const cur = new Date(start)
+      const stepMap = { daily: () => cur.setDate(cur.getDate()+1), weekly: () => cur.setDate(cur.getDate()+7), monthly: () => cur.setMonth(cur.getMonth()+1) }
+      const step = stepMap[repeat]
+      if (step) {
+        while (true) {
+          step()
+          if (cur > end) break
+          applyOne(fmtDs(cur.getFullYear(), cur.getMonth(), cur.getDate()))
+        }
+      }
+    }
+    await saveSchTagsHistory(next)
+  }
+
+  // 태그 정의 저장 (추가/삭제/수정)
+  const saveCellTagDefsWrapped = (defs) => saveCellTagDefs(defs)
+  const deleteCellTagDef = async (tagId) => {
+    const newDefs = cellTagDefs.filter(t => t.id !== tagId)
+    await saveCellTagDefs(newDefs)
+    // 해당 태그가 달린 모든 셀에서도 제거
+    const next = JSON.parse(JSON.stringify(schTagsHistory || {}))
+    let changed = false
+    Object.keys(next).forEach(mk => Object.keys(next[mk] || {}).forEach(emp => Object.keys(next[mk][emp] || {}).forEach(dd => {
+      const filtered = (next[mk][emp][dd] || []).filter(id => id !== tagId)
+      if (filtered.length !== (next[mk][emp][dd] || []).length) { changed = true
+        if (filtered.length === 0) delete next[mk][emp][dd]
+        else next[mk][emp][dd] = filtered
+      }
+    })))
+    if (changed) await saveSchTagsHistory(next)
+  }
+
+  const todayDs = fmtDs(today.getFullYear(), today.getMonth(), today.getDate())
 
   // schHistory: direct supabase load (needs month-based structure preserved)
   const [dataLoaded, setDataLoaded] = useState(false)
@@ -448,7 +510,7 @@ export default function SchedulePage({ employees: propEmps }) {
             const extendedDays = [...lastWkDays]
             for (let nd = 1; nd <= 6-lastDow_; nd++) extendedDays.push({ ds:fmtDs(nextYear_, nextMonth_, nd) })
             let cnt_ = 0
-            extendedDays.forEach(({ ds }) => { const s = best[emp.id]?.[ds]; if (s === '휴무' || s === '휴무(꼭)') cnt_++ })
+            extendedDays.forEach(({ ds }) => { const s = best[emp.id]?.[ds]; if (s === '휴무' || s === '휴무(꼭)' || s === '무급') cnt_++ })
             const lastRealWeekPhase = cnt_ === 0 ? (lastWi_ % 2 === 0 ? 'lo' : 'hi') : (cnt_ <= lo_ ? 'lo' : 'hi')
             biweeklyNextPhase[emp.id] = lastRealWeekPhase === 'lo' ? 'hi' : 'lo'
           }
@@ -588,7 +650,13 @@ export default function SchedulePage({ employees: propEmps }) {
       </>}
 
       {/* Modals */}
-      {editCell && <EditCellModal editCell={editCell} empSettings={empSettings} onSet={setS} onClose={() => setEditCell(null)}/>}
+      {editCell && <EditCellModal editCell={editCell} empSettings={empSettings} onSet={setS} onClose={() => setEditCell(null)}
+        cellTagDefs={cellTagDefs} getCellTags={getCellTags} setCellTag={setCellTag}
+        onAddTagDef={async (name, color) => {
+          const id = 'tag_' + Math.random().toString(36).slice(2,10)
+          await saveCellTagDefs([...(cellTagDefs||[]), { id, name, color: color || '#607D8B' }])
+        }}
+        onDeleteTagDef={deleteCellTagDef}/>}
       {showBulkModal && selectedCells.size > 0 && <BulkEditModal selectedCells={selectedCells} onSet={setS} onClose={(st) => { setShowBulkModal(false); setSelectedCells(new Set()); if (st) toast_(`✅ ${selectedCells.size}개 셀 → ${st}`) }}/>}
       {showRuleConfig && <RuleConfigModal ruleConfig={ruleConfig} allEmployees={ALL_EMPLOYEES} empSettings={empSettings} onSetRule={onSetRule} onClose={() => setShowRuleConfig(false)}/>}
       {showEmpSettings && <EmpSettingsModal allEmployees={ALL_EMPLOYEES} empSettings={empSettings} customEmployees={customEmployees} deletedEmpIds={deletedEmpIds} maleRotation={maleRotation||{}} onSetEmpSetting={onSetEmpSetting} onAddEmp={handleAddEmp} onDeleteEmp={handleDeleteEmp} onSaveMaleRotation={saveMaleRotation} onUpdateEmp={(empId, key, value) => {
@@ -755,7 +823,8 @@ export default function SchedulePage({ employees: propEmps }) {
                       setSelectedCells={setSelectedCells} setEditCell={setEditCell} setShowBulkModal={setShowBulkModal}
                       gridDragRef={gridDragRef} dragJustEndedRef={dragJustEndedRef} renderOrderEmps={renderOrderEmps}
                       days={days} isWeekBoundary={isWeekBoundary} today={today} fmtDs={fmtDs}
-                      empStartDate={empSettings[emp.id]?.startDate}/>
+                      empStartDate={empSettings[emp.id]?.startDate}
+                      cellTagDefs={cellTagDefs} cellTagIds={getCellTags(emp.id, day.ds)}/>
                   })}
                 </tr>
               ))]
@@ -788,6 +857,7 @@ export default function SchedulePage({ employees: propEmps }) {
                       gridDragRef={gridDragRef} dragJustEndedRef={dragJustEndedRef} renderOrderEmps={renderOrderEmps}
                       days={days} isWeekBoundary={isWeekBoundary} today={today} fmtDs={fmtDs}
                       rotBranch={rotBranch} isMale
+                      cellTagDefs={cellTagDefs} cellTagIds={getCellTags(emp.id, day.ds)}
                       empStartDate={empSettings[emp.id]?.startDate}/>
                   })}
                 </tr>
@@ -840,7 +910,7 @@ function EmpLabel({ emp, branch, sch, year, month, curMonthStr }) {
   })
   const entries = Object.entries(supportMap)
   const workDays = Object.entries(sch[emp.id]||{}).filter(([ds,s]) => ds.startsWith(curMonthStr) && (s===STATUS.WORK || isSupport(s) || s===STATUS.SHARE || s==='')).length
-  const offDays = Object.entries(sch[emp.id]||{}).filter(([ds,s]) => ds.startsWith(curMonthStr) && (s===STATUS.OFF || s===STATUS.MUST_OFF)).length
+  const offDays = Object.entries(sch[emp.id]||{}).filter(([ds,s]) => ds.startsWith(curMonthStr) && (s===STATUS.OFF || s===STATUS.MUST_OFF || s===STATUS.UNPAID)).length
   const violations_ = workDays > 0 && (workDays < 11 || workDays > 15)
 
   return (
@@ -862,7 +932,7 @@ function EmpLabel({ emp, branch, sch, year, month, curMonthStr }) {
 
 function MaleEmpLabel({ emp, sch, year, month, curMonthStr }) {
   const workDays = Object.entries(sch[emp.id]||{}).filter(([ds,s]) => ds.startsWith(curMonthStr) && (s===STATUS.WORK || isSupport(s) || s===STATUS.SHARE || s==='')).length
-  const offDays = Object.entries(sch[emp.id]||{}).filter(([ds,s]) => ds.startsWith(curMonthStr) && (s===STATUS.OFF || s===STATUS.MUST_OFF)).length
+  const offDays = Object.entries(sch[emp.id]||{}).filter(([ds,s]) => ds.startsWith(curMonthStr) && (s===STATUS.OFF || s===STATUS.MUST_OFF || s===STATUS.UNPAID)).length
 
   return (
     <div style={{ display:'flex', alignItems:'center', gap:7 }}>
@@ -878,7 +948,8 @@ function MaleEmpLabel({ emp, sch, year, month, curMonthStr }) {
   )
 }
 
-function ScheduleCell({ emp, day, dayIdx, empIdx, getS, isConfirmed, lockedDates, selectedCells, setSelectedCells, setEditCell, setShowBulkModal, gridDragRef, dragJustEndedRef, renderOrderEmps, days, isWeekBoundary, today, fmtDs: fmtDsFn, rotBranch, isMale, empStartDate }) {
+function ScheduleCell({ emp, day, dayIdx, empIdx, getS, isConfirmed, lockedDates, selectedCells, setSelectedCells, setEditCell, setShowBulkModal, gridDragRef, dragJustEndedRef, renderOrderEmps, days, isWeekBoundary, today, fmtDs: fmtDsFn, rotBranch, isMale, empStartDate, cellTagDefs=[], cellTagIds=[] }) {
+  const cellTags = (cellTagIds || []).map(id => cellTagDefs.find(t => t.id === id)).filter(Boolean)
   const s = getS(emp.id, day.ds)
   const sc = getSColor(s)
   const wb = isWeekBoundary(day)
@@ -940,13 +1011,20 @@ function ScheduleCell({ emp, day, dayIdx, empIdx, getS, isConfirmed, lockedDates
       style={{ padding:'2px', textAlign:'center', background:cellBg, border:'none', borderRadius:6, opacity:day.isNext ? 0.5 : beforeStart ? 0.35 : 1, cursor:locked ? 'not-allowed' : 'pointer', userSelect:'none', verticalAlign:'middle' }}>
       <div className="sch-box" style={{
         background:boxBg, color:boxColor, boxShadow,
-        borderRadius:6, padding:'4px 2px', fontSize:11, fontWeight:s==='휴무'||s==='휴무(꼭)' ? 700 : s ? 600 : 400,
+        borderRadius:6, padding:'4px 2px', fontSize:11, fontWeight:s==='휴무'||s==='휴무(꼭)'||s==='무급' ? 700 : s ? 600 : 400,
         minWidth:40, minHeight:28, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column',
         position:'relative', border:'none', transition:'transform .1s, box-shadow .1s'
       }}>
         {s==='휴무(꼭)' && !emp.isOwner && <span style={{ position:'absolute', top:-5, right:1, fontSize:8, color:'#9060d0', fontWeight:900 }}>★</span>}
         {isSupport(s) ? <><span style={{ fontSize:10, fontWeight:700, lineHeight:1 }}>지원</span>{supportLabel && <span style={{ fontSize:9, color:sc.text, fontWeight:600, lineHeight:1 }}>→{supportLabel}</span>}</> : <span>{s || '—'}</span>}
         {rotBranch && <span style={{ fontSize:8, color:'#2a6099', fontWeight:700, lineHeight:1 }}>{BRANCH_LABEL[rotBranch]}</span>}
+        {cellTags.length > 0 && (
+          <div style={{ display:'flex', flexWrap:'wrap', gap:2, justifyContent:'center', marginTop:2 }}>
+            {cellTags.map(t => (
+              <span key={t.id} style={{ fontSize:8, color:t.color, background:t.color+'22', border:`1px solid ${t.color}66`, borderRadius:3, padding:'0 3px', fontWeight:700, lineHeight:1.2, whiteSpace:'nowrap' }}>{t.name}</span>
+            ))}
+          </div>
+        )}
       </div>
     </td>
   )

@@ -338,9 +338,50 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
   const [showSheet, setShowSheet] = useState(false);
   const [q, setQ] = useState("");
   const [resPage, setResPage] = useState(0);
+  const [serverSearching, setServerSearching] = useState(false);
   const RES_PER_PAGE = 50;
-  // 필터 변경 시 페이지 0으로 리셋 (필터 결과가 현재 페이지보다 적을 때 빈 화면 방지)
+  // 필터 변경 시 페이지 0으로 리셋
   React.useEffect(()=>{ setResPage(0); }, [q, vb, statusFilter, startDate, endDate, periodKey]);
+
+  // ── 검색어 입력 시 DB 전체 검색 (날짜 범위·숫자 제한 없이) ──
+  React.useEffect(() => {
+    if (!q || q.length < 2) { setServerSearching(false); return; }
+    const t = setTimeout(async () => {
+      setServerSearching(true);
+      try {
+        const enc = encodeURIComponent(q);
+        const bizId = data?.business?.id || data?.businesses?.[0]?.id;
+        if (!bizId) { setServerSearching(false); return; }
+        const filter = `&business_id=eq.${bizId}&or=(cust_name.ilike.*${enc}*,cust_phone.ilike.*${q}*,reservation_id.ilike.*${q}*,memo.ilike.*${enc}*,request_msg.ilike.*${enc}*,visitor_name.ilike.*${enc}*,visitor_phone.ilike.*${q}*,cust_email.ilike.*${enc}*,owner_comment.ilike.*${enc}*)&limit=300`;
+        const rows = await sb.get("reservations", filter);
+        const parsed = fromDb("reservations", rows||[]);
+        // 병합 (기존 있는 id는 덮어쓰지 않음)
+        setData(prev => {
+          if (!prev) return prev;
+          const existing = new Set((prev.reservations||[]).map(r=>r.id));
+          const newRows = parsed.filter(r => !existing.has(r.id));
+          return newRows.length > 0 ? {...prev, reservations: [...(prev.reservations||[]), ...newRows]} : prev;
+        });
+        // 관련 고객 cust_num 로드 (표시에 필요)
+        const custIds = [...new Set(parsed.map(r=>r.custId).filter(Boolean))];
+        if (custIds.length > 0) {
+          const chunks = []; for (let i=0;i<custIds.length;i+=100) chunks.push(custIds.slice(i,i+100));
+          for (const ch of chunks) {
+            const custRows = await sb.get("customers", `&id=in.(${ch.join(",")})&select=id,cust_num,name,name2,phone,gender,bid`);
+            const newCusts = fromDb("customers", custRows||[]);
+            setData(prev => {
+              if (!prev) return prev;
+              const map = new Map((prev.customers||[]).map(c=>[c.id,c]));
+              newCusts.forEach(c => { if (!map.has(c.id)) map.set(c.id, c); });
+              return {...prev, customers: Array.from(map.values())};
+            });
+          }
+        }
+      } catch(e) { console.error("res-search err:", e); }
+      setServerSearching(false);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [q]);
 
   // ── 밀도 설정 (localStorage 유지) ─────────────────
   const DENSITY = {
@@ -748,6 +789,10 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
           <div style={{display:"flex",alignItems:"center",gap:5,minWidth:0}}>
             {g && <span style={{fontSize:10,fontWeight:700,borderRadius:3,padding:"1px 4px",background:g==="M"?T.maleLt:T.femaleLt,color:g==="M"?T.male:T.female,flexShrink:0}}>{g==="M"?"남":"여"}</span>}
             <span style={{fontSize:14,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.custName||"-"}</span>
+            {(() => {
+              const cust = r.custId ? (data?.customers||[]).find(c=>c.id===r.custId) : null;
+              return cust?.custNum ? <span style={{fontSize:11,color:T.textMuted,fontFamily:"monospace",flexShrink:0}}>#{cust.custNum}</span> : null;
+            })()}
             {isNaver && <I name="naver" size={11} color={T.naver} style={{flexShrink:0}}/>}
           </div>
           {/* 시술 + 네이버정보 (합쳐서) */}
