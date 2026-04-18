@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { MOCK_USERS, MOCK_MESSAGES, CURRENT_USER_ID, MOCK_LAST_READ_AT } from './mockData'
+import { MOCK_MESSAGES, MOCK_LAST_READ_AT } from './mockData'
+import { supabase } from '../../lib/supabase'
 
 // 사내 메신저 데이터 훅
-// 현재는 mock. 향후 Supabase `team_chat_messages` 테이블 + Realtime으로 교체.
-// API는 교체해도 변하지 않도록 설계.
+// 현재: 유저는 employees_v1(근무표 등록 직원)에서 로드, 메시지는 mock.
+// 향후 Supabase `team_chat_messages` 테이블 + Realtime으로 메시지도 교체.
 
 const LS_KEY = 'bliss_team_chat_user_id'
+
+// 근무표 branch key → 한글 지점 short
+const BRANCH_LABEL = {
+  gangnam:'강남', wangsimni:'왕십리', hongdae:'홍대', magok:'마곡',
+  yongsan:'용산', jamsil:'잠실', wirye:'위례', cheonho:'천호',
+}
 
 export function useTeamChat({ mock = true } = {}) {
   const [users, setUsers] = useState([])
@@ -16,20 +23,45 @@ export function useTeamChat({ mock = true } = {}) {
   const [sending, setSending] = useState(false)
   const idCounter = useRef(1000)
 
-  // 초기 로드: localStorage에 저장된 선택 이름 우선
+  // employees_v1 + maleRotation_v1 → chat users
   useEffect(() => {
-    if (mock) {
-      setUsers(MOCK_USERS)
-      setMessages(MOCK_MESSAGES)
-      const saved = typeof window !== 'undefined' ? localStorage.getItem(LS_KEY) : null
-      const validSaved = saved && MOCK_USERS.some(u => u.id === saved) ? saved : CURRENT_USER_ID
-      setCurrentUserIdState(validSaved)
-      setLastReadAt(MOCK_LAST_READ_AT)
-      setLoading(false)
-    } else {
-      // TODO: Supabase 연결 시 구현
-      setLoading(false)
+    let cancelled = false
+    const load = async () => {
+      try {
+        const [empRes, rotRes] = await Promise.all([
+          supabase.from('schedule_data').select('value').eq('key', 'employees_v1').single(),
+          supabase.from('schedule_data').select('value').eq('key', 'maleRotation_v1').single(),
+        ])
+        if (cancelled) return
+        const rawEmp = empRes.data?.value
+        const rawRot = rotRes.data?.value
+        const empList = typeof rawEmp === 'string' ? JSON.parse(rawEmp) : (Array.isArray(rawEmp) ? rawEmp : [])
+        const rotMap = typeof rawRot === 'string' ? JSON.parse(rawRot) : (rawRot || {})
+        const mapped = empList
+          .filter(e => e?.active !== false)
+          .map(e => ({
+            id: e.id,
+            name: (e.name || e.id || '').replace(/\(원장\)/g, '').trim(),
+            branch: BRANCH_LABEL[e.branch] || e.branch || '',
+            gender: rotMap[e.id]?.branches?.length ? 'M' : 'F',
+            online: false,
+          }))
+        setUsers(mapped)
+        const saved = typeof window !== 'undefined' ? localStorage.getItem(LS_KEY) : null
+        const validSaved = saved && mapped.some(u => u.id === saved) ? saved : (mapped[0]?.id || null)
+        setCurrentUserIdState(validSaved)
+        if (mock) {
+          setMessages(MOCK_MESSAGES)
+          setLastReadAt(MOCK_LAST_READ_AT)
+        }
+      } catch (e) {
+        console.error('[useTeamChat] employees load failed', e)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
+    load()
+    return () => { cancelled = true }
   }, [mock])
 
   // 이름 변경 (localStorage 저장)
