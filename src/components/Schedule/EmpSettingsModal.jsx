@@ -1,13 +1,17 @@
 import { useState, useRef } from 'react'
 import { T } from '../../lib/constants'
-import { BRANCHES_SCH, BRANCH_LABEL, STATUS, getDow0Mon, fmtDs } from './scheduleConstants'
+import { useScheduleData } from '../../lib/useData'
+import { BRANCHES_SCH, BRANCH_LABEL, STATUS, DB_KEYS, getDow0Mon, fmtDs } from './scheduleConstants'
 
 export default function EmpSettingsModal({ allEmployees, empSettings, customEmployees, deletedEmpIds, maleRotation, onSetEmpSetting, onAddEmp, onDeleteEmp, onSaveMaleRotation, onUpdateEmp, onClose,
   ownerReqs, empReqs, ownerRepeat, days, year, month, curMonthStr, nextMonthStr, onSetOwnerReqs, onSetEmpReqs, onSaveOwnerReqs, onSetOwnerRepeat }) {
   const [showAddEmp, setShowAddEmp] = useState(false)
   const [tab, setTab] = useState('settings') // 'settings' | 'schedule'
   const todayStr = new Date().toISOString().slice(0, 10)
-  const [newEmp, setNewEmp] = useState({ name:'', branch:'gangnam', rank:'시니어', weeklyOff:2, mustStay:false, isFreelancer:false, startDate:todayStr })
+  const [newEmp, setNewEmp] = useState({ name:'', branch:'gangnam', rank:'시니어', weeklyOff:2, mustStay:false, isFreelancer:false, startDate:todayStr, nonSchedule:false, groupName:'', gender:'F' })
+  const { data:nonSchedEmps, save:saveNonSched } = useScheduleData(DB_KEYS.nonScheduleEmployees, [])
+  const nonSchedList = Array.isArray(nonSchedEmps) ? nonSchedEmps : []
+  const existingGroups = Array.from(new Set(nonSchedList.map(e => e.groupName).filter(Boolean)))
 
   return <>
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.45)', zIndex:200 }} onClick={onClose}/>
@@ -47,6 +51,32 @@ export default function EmpSettingsModal({ allEmployees, empSettings, customEmpl
           </div>
         )
       })}
+
+      {/* 근무표 외 직원 (소속만 등록 · 매장 근무 X) */}
+      {nonSchedList.length > 0 && (
+        <div style={{ marginBottom:16 }}>
+          <div style={{ fontSize:12, fontWeight:700, color:T.textSub, marginBottom:8, borderBottom:`1px solid ${T.border}`, paddingBottom:4 }}>근무표 외 직원 <span style={{fontSize:10,color:T.textMuted,fontWeight:400}}>소속만 등록 · 매장 근무 X · 팀 채팅 참여</span></div>
+          {(() => {
+            const byGroup = {}
+            nonSchedList.forEach(e => { const g = e.groupName || '기타'; (byGroup[g] = byGroup[g] || []).push(e) })
+            return Object.entries(byGroup).map(([g, list]) => (
+              <div key={g} style={{ marginBottom:8 }}>
+                <div style={{ fontSize:11, fontWeight:600, color:T.textMuted, marginBottom:4 }}>📍 {g}</div>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                  {list.map(e => (
+                    <div key={e.id} style={{ display:'flex', alignItems:'center', gap:6, border:'1px solid '+T.border, borderRadius:6, padding:'5px 10px', background:T.bgCard, fontSize:12 }}>
+                      <span style={{ fontSize:9, color: e.gender==='M' ? T.male : T.female, fontWeight:700, padding:'1px 5px', background: e.gender==='M' ? T.maleLt : T.femaleLt, borderRadius:3 }}>{e.gender==='M'?'남':'여'}</span>
+                      <span style={{ fontWeight:600 }}>{e.name}</span>
+                      <button onClick={() => { if(confirm(`${e.name} 삭제?`)) saveNonSched(nonSchedList.filter(x => x.id !== e.id)) }}
+                        style={{ fontSize:10, padding:'1px 6px', borderRadius:4, border:'1px solid #f5b3b3', background:T.dangerLt, color:T.danger, cursor:'pointer', fontFamily:'inherit' }}>×</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          })()}
+        </div>
+      )}
 
       {/* 로테이션 직원 (maleRotation에 등록된) */}
       {(() => {
@@ -105,75 +135,120 @@ export default function EmpSettingsModal({ allEmployees, empSettings, customEmpl
           <div style={{ fontWeight:700, fontSize:14, color:'#4a2c14' }}>＋ 직원 추가</div>
           <button onClick={() => setShowAddEmp(false)} style={{ fontSize:16, padding:'2px 8px', borderRadius:6, border:'1px solid #ddd', background:'#f5f0ea', color:T.textSub, cursor:'pointer', fontFamily:'inherit' }}>✕</button>
         </div>
+        {/* 구분 토글 */}
+        <div style={{ marginBottom:14, display:'flex', gap:6, padding:3, background:T.gray100, borderRadius:8 }}>
+          {[['schedule','지점 근무직원'],['nonSchedule','근무표 외 직원 (소속만 등록)']].map(([k,l]) => {
+            const active = (k==='nonSchedule') === !!newEmp.nonSchedule
+            return <button key={k} onClick={() => setNewEmp(p => ({ ...p, nonSchedule: k==='nonSchedule' }))}
+              style={{ flex:1, padding:'6px 0', borderRadius:6, fontSize:11, fontFamily:'inherit', cursor:'pointer',
+                background:active?T.bgCard:'transparent', color:active?T.primary:T.textMuted, fontWeight:active?700:500, border:'none', boxShadow:active?'0 1px 2px rgba(0,0,0,.05)':'none' }}>{l}</button>
+          })}
+        </div>
         <div style={{ marginBottom:14 }}>
           <div style={{ fontSize:11, color:T.textSub, marginBottom:5, fontWeight:600 }}>이름</div>
           <input value={newEmp.name} onChange={e => setNewEmp(p => ({ ...p, name:e.target.value }))} placeholder="이름 입력"
             style={{ width:'100%', padding:'8px 10px', borderRadius:7, border:'1.5px solid #e4ddd0', fontSize:13, fontFamily:'inherit', outline:'none' }}/>
         </div>
-        <div style={{ marginBottom:14 }}>
-          <div style={{ fontSize:11, color:T.textSub, marginBottom:5, fontWeight:600 }}>지점</div>
-          <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-            {BRANCHES_SCH.map(b => (
-              <button key={b.id} onClick={() => setNewEmp(p => ({ ...p, branch:b.id }))}
-                style={{ padding:'5px 12px', borderRadius:7, fontSize:12, fontFamily:'inherit', cursor:'pointer',
-                  border:`1.5px solid ${newEmp.branch===b.id ? b.color : T.border}`, background:newEmp.branch===b.id ? b.color+'22' : T.bgCard,
-                  color:newEmp.branch===b.id ? b.color : T.textMuted, fontWeight:newEmp.branch===b.id ? 700 : 400 }}>
-                {b.name}
+        {!newEmp.nonSchedule ? (
+          <div style={{ marginBottom:14 }}>
+            <div style={{ fontSize:11, color:T.textSub, marginBottom:5, fontWeight:600 }}>지점</div>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+              {BRANCHES_SCH.map(b => (
+                <button key={b.id} onClick={() => setNewEmp(p => ({ ...p, branch:b.id }))}
+                  style={{ padding:'5px 12px', borderRadius:7, fontSize:12, fontFamily:'inherit', cursor:'pointer',
+                    border:`1.5px solid ${newEmp.branch===b.id ? b.color : T.border}`, background:newEmp.branch===b.id ? b.color+'22' : T.bgCard,
+                    color:newEmp.branch===b.id ? b.color : T.textMuted, fontWeight:newEmp.branch===b.id ? 700 : 400 }}>
+                  {b.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <>
+            <div style={{ marginBottom:14 }}>
+              <div style={{ fontSize:11, color:T.textSub, marginBottom:5, fontWeight:600 }}>소속 (회사/팀명 자유 입력)</div>
+              <input value={newEmp.groupName} onChange={e => setNewEmp(p => ({ ...p, groupName:e.target.value }))} placeholder="예: 테라포트, 마케팅팀, 본사, 외주 등"
+                list="ns-group-suggest"
+                style={{ width:'100%', padding:'8px 10px', borderRadius:7, border:'1.5px solid #e4ddd0', fontSize:13, fontFamily:'inherit', outline:'none' }}/>
+              <datalist id="ns-group-suggest">
+                {existingGroups.map(g => <option key={g} value={g}/>)}
+              </datalist>
+            </div>
+            <div style={{ marginBottom:14 }}>
+              <div style={{ fontSize:11, color:T.textSub, marginBottom:5, fontWeight:600 }}>성별</div>
+              <div style={{ display:'flex', gap:6 }}>
+                {[['F','여성'],['M','남성']].map(([g,l]) => (
+                  <button key={g} onClick={() => setNewEmp(p => ({ ...p, gender:g }))}
+                    style={{ flex:1, padding:'7px 0', borderRadius:7, fontSize:12, fontFamily:'inherit', cursor:'pointer',
+                      border:`1.5px solid ${newEmp.gender===g ? (g==='M'?T.male:T.female) : T.border}`,
+                      background:newEmp.gender===g ? (g==='M'?T.maleLt:T.femaleLt) : T.bgCard,
+                      color:newEmp.gender===g ? (g==='M'?T.male:T.female) : T.textMuted,
+                      fontWeight:newEmp.gender===g ? 700 : 400 }}>{l}</button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+        {!newEmp.nonSchedule && <>
+          <div style={{ marginBottom:14 }}>
+            <div style={{ fontSize:11, color:T.textSub, marginBottom:5, fontWeight:600 }}>주 휴무일수</div>
+            <div style={{ display:'flex', gap:8 }}>
+              {[1,2].map(n => (
+                <button key={n} onClick={() => setNewEmp(p => ({ ...p, weeklyOff:n }))}
+                  style={{ flex:1, padding:'7px 0', borderRadius:7, fontSize:12, fontFamily:'inherit', cursor:'pointer',
+                    border:`1.5px solid ${newEmp.weeklyOff===n ? T.primary : T.border}`, background:newEmp.weeklyOff===n ? '#fdf3e0' : T.bgCard,
+                    color:newEmp.weeklyOff===n ? '#7a4a18' : T.textMuted, fontWeight:newEmp.weeklyOff===n ? 700 : 400 }}>
+                  {n}일 휴무
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{ marginBottom:14 }}>
+            <div style={{ fontSize:11, color:T.textSub, marginBottom:5, fontWeight:600 }}>근무 시작일</div>
+            <input type="date" value={newEmp.startDate || ''} onChange={e => setNewEmp(p => ({ ...p, startDate:e.target.value }))}
+              style={{ width:'100%', padding:'8px 10px', borderRadius:7, border:'1.5px solid #e4ddd0', fontSize:13, fontFamily:'inherit', outline:'none' }}/>
+          </div>
+          <div style={{ marginBottom:14 }}>
+            <div style={{ fontSize:11, color:T.textSub, marginBottom:5, fontWeight:600 }}>직급</div>
+            <div style={{ display:'flex', gap:6 }}>
+              {RANKS.map(r=>(
+                <button key={r} onClick={()=>setNewEmp(p=>({...p,rank:r,isOwner:r==='원장'}))}
+                  style={{ flex:1, padding:'6px 0', borderRadius:7, fontSize:12, fontFamily:'inherit', cursor:'pointer',
+                    border:`1.5px solid ${newEmp.rank===r?RANK_COLOR[r]:T.border}`,
+                    background:newEmp.rank===r?RANK_COLOR[r]+'22':T.bgCard,
+                    color:newEmp.rank===r?RANK_COLOR[r]:T.textMuted, fontWeight:newEmp.rank===r?700:400 }}>
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{ marginBottom:20, display:'flex', gap:10, flexWrap:'wrap' }}>
+            {[{ key:'mustStay', label:'타지점이동불가' }, { key:'isFreelancer', label:'프리랜서' }].map(({ key, label }) => (
+              <button key={key} onClick={() => setNewEmp(p => ({ ...p, [key]:!p[key] }))}
+                style={{ padding:'5px 12px', borderRadius:7, fontSize:11, fontFamily:'inherit', cursor:'pointer',
+                  border:`1.5px solid ${newEmp[key] ? T.textSub : T.border}`, background:newEmp[key] ? '#f5e8d0' : T.bgCard,
+                  color:newEmp[key] ? '#7a4a18' : T.textMuted, fontWeight:newEmp[key] ? 700 : 400 }}>
+                {newEmp[key] ? '✓ ' : ''}{label}
               </button>
             ))}
           </div>
-        </div>
-        <div style={{ marginBottom:14 }}>
-          <div style={{ fontSize:11, color:T.textSub, marginBottom:5, fontWeight:600 }}>주 휴무일수</div>
-          <div style={{ display:'flex', gap:8 }}>
-            {[1,2].map(n => (
-              <button key={n} onClick={() => setNewEmp(p => ({ ...p, weeklyOff:n }))}
-                style={{ flex:1, padding:'7px 0', borderRadius:7, fontSize:12, fontFamily:'inherit', cursor:'pointer',
-                  border:`1.5px solid ${newEmp.weeklyOff===n ? T.primary : T.border}`, background:newEmp.weeklyOff===n ? '#fdf3e0' : T.bgCard,
-                  color:newEmp.weeklyOff===n ? '#7a4a18' : T.textMuted, fontWeight:newEmp.weeklyOff===n ? 700 : 400 }}>
-                {n}일 휴무
-              </button>
-            ))}
-          </div>
-        </div>
-        <div style={{ marginBottom:14 }}>
-          <div style={{ fontSize:11, color:T.textSub, marginBottom:5, fontWeight:600 }}>근무 시작일</div>
-          <input type="date" value={newEmp.startDate || ''} onChange={e => setNewEmp(p => ({ ...p, startDate:e.target.value }))}
-            style={{ width:'100%', padding:'8px 10px', borderRadius:7, border:'1.5px solid #e4ddd0', fontSize:13, fontFamily:'inherit', outline:'none' }}/>
-        </div>
-        <div style={{ marginBottom:14 }}>
-          <div style={{ fontSize:11, color:T.textSub, marginBottom:5, fontWeight:600 }}>직급</div>
-          <div style={{ display:'flex', gap:6 }}>
-            {RANKS.map(r=>(
-              <button key={r} onClick={()=>setNewEmp(p=>({...p,rank:r,isOwner:r==='원장'}))}
-                style={{ flex:1, padding:'6px 0', borderRadius:7, fontSize:12, fontFamily:'inherit', cursor:'pointer',
-                  border:`1.5px solid ${newEmp.rank===r?RANK_COLOR[r]:T.border}`,
-                  background:newEmp.rank===r?RANK_COLOR[r]+'22':T.bgCard,
-                  color:newEmp.rank===r?RANK_COLOR[r]:T.textMuted, fontWeight:newEmp.rank===r?700:400 }}>
-                {r}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div style={{ marginBottom:20, display:'flex', gap:10, flexWrap:'wrap' }}>
-          {[{ key:'mustStay', label:'타지점이동불가' }, { key:'isFreelancer', label:'프리랜서' }].map(({ key, label }) => (
-            <button key={key} onClick={() => setNewEmp(p => ({ ...p, [key]:!p[key] }))}
-              style={{ padding:'5px 12px', borderRadius:7, fontSize:11, fontFamily:'inherit', cursor:'pointer',
-                border:`1.5px solid ${newEmp[key] ? T.textSub : T.border}`, background:newEmp[key] ? '#f5e8d0' : T.bgCard,
-                color:newEmp[key] ? '#7a4a18' : T.textMuted, fontWeight:newEmp[key] ? 700 : 400 }}>
-              {newEmp[key] ? '✓ ' : ''}{label}
-            </button>
-          ))}
-        </div>
-        <button disabled={!newEmp.name.trim()} onClick={() => {
+        </>}
+        <button disabled={!newEmp.name.trim() || (newEmp.nonSchedule && !newEmp.groupName.trim())} onClick={() => {
           const id = newEmp.name.trim()
           if (!id) return
-          if (allEmployees.some(e => e.id === id)) { alert('이미 같은 이름의 직원이 있습니다.'); return }
-          onAddEmp({ ...newEmp, id, name:id })
-          setNewEmp({ name:'', branch:'gangnam', rank:'시니어', weeklyOff:2, mustStay:false, isFreelancer:false, startDate:todayStr })
+          if (newEmp.nonSchedule) {
+            if (!newEmp.groupName.trim()) return
+            if (nonSchedList.some(e => e.id === id)) { alert('이미 같은 이름의 직원이 있습니다.'); return }
+            if (allEmployees.some(e => e.id === id)) { alert('같은 이름의 근무표 직원이 이미 있습니다.'); return }
+            saveNonSched([...nonSchedList, { id, name:id, groupName:newEmp.groupName.trim(), gender:newEmp.gender }])
+          } else {
+            if (allEmployees.some(e => e.id === id)) { alert('이미 같은 이름의 직원이 있습니다.'); return }
+            onAddEmp({ ...newEmp, id, name:id })
+          }
+          setNewEmp({ name:'', branch:'gangnam', rank:'시니어', weeklyOff:2, mustStay:false, isFreelancer:false, startDate:todayStr, nonSchedule:false, groupName:'', gender:'F' })
           setShowAddEmp(false)
         }} style={{ width:'100%', padding:'10px 0', borderRadius:8, fontSize:13, fontFamily:'inherit', cursor:'pointer', fontWeight:700,
-          background:newEmp.name.trim() ? T.primary : T.border, color:newEmp.name.trim() ? '#fff' : T.textMuted, border:'none' }}>
+          background:(newEmp.name.trim() && (!newEmp.nonSchedule || newEmp.groupName.trim())) ? T.primary : T.border, color:(newEmp.name.trim() && (!newEmp.nonSchedule || newEmp.groupName.trim())) ? '#fff' : T.textMuted, border:'none' }}>
           추가하기
         </button>
       </div>

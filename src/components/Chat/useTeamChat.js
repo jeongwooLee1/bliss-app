@@ -23,21 +23,22 @@ export function useTeamChat({ mock = true } = {}) {
   const [sending, setSending] = useState(false)
   const idCounter = useRef(1000)
 
-  // employees_v1 + maleRotation_v1 → chat users
+  // employees_v1 + maleRotation_v1 + nonScheduleEmployees_v1 → chat users
   useEffect(() => {
     let cancelled = false
     const load = async () => {
       try {
-        const [empRes, rotRes] = await Promise.all([
+        const [empRes, rotRes, nsRes] = await Promise.all([
           supabase.from('schedule_data').select('value').eq('key', 'employees_v1').single(),
           supabase.from('schedule_data').select('value').eq('key', 'maleRotation_v1').single(),
+          supabase.from('schedule_data').select('value').eq('key', 'nonScheduleEmployees_v1').single(),
         ])
         if (cancelled) return
-        const rawEmp = empRes.data?.value
-        const rawRot = rotRes.data?.value
-        const empList = typeof rawEmp === 'string' ? JSON.parse(rawEmp) : (Array.isArray(rawEmp) ? rawEmp : [])
-        const rotMap = typeof rawRot === 'string' ? JSON.parse(rawRot) : (rawRot || {})
-        const mapped = empList
+        const parse = (raw) => typeof raw === 'string' ? JSON.parse(raw) : raw
+        const empList = Array.isArray(parse(empRes.data?.value)) ? parse(empRes.data?.value) : []
+        const rotMap = parse(rotRes.data?.value) || {}
+        const nsList = Array.isArray(parse(nsRes.data?.value)) ? parse(nsRes.data?.value) : []
+        const scheduled = empList
           .filter(e => e?.active !== false)
           .map(e => ({
             id: e.id,
@@ -46,6 +47,14 @@ export function useTeamChat({ mock = true } = {}) {
             gender: rotMap[e.id]?.branches?.length ? 'M' : 'F',
             online: false,
           }))
+        const nonSched = nsList.map(e => ({
+          id: e.id,
+          name: e.name,
+          branch: e.groupName || '',
+          gender: e.gender || 'F',
+          online: false,
+        }))
+        const mapped = [...scheduled, ...nonSched]
         setUsers(mapped)
         const saved = typeof window !== 'undefined' ? localStorage.getItem(LS_KEY) : null
         const validSaved = saved && mapped.some(u => u.id === saved) ? saved : (mapped[0]?.id || null)

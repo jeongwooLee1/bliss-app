@@ -60,6 +60,7 @@ export const DB_KEYS = {
   schSnapshots:    'schSnapshots_v1',
   cellTagDefs:     'cellTagDefs_v1',
   schTagsHistory:  'schTagsHistory_v1',
+  nonScheduleEmployees: 'nonScheduleEmployees_v1',
 }
 
 // 셀 태그 기본 정의 (최초 로드 시)
