@@ -1,0 +1,77 @@
+=== Oracle ↔ Bliss 감사 시작 2026-04-19 01:48 ===
+
+[1/4] Oracle MEMBER 로드...
+    Oracle MEMBER: 42,832명
+[2/4] Oracle ORDERS 로드...
+    Oracle ORDERS: 176,468건
+[3/4] Supabase customers 로드...
+    Bliss customers: 40,063명 (cust_num 있음: 40,062)
+[4/4] Supabase sales 로드 (연도 분할)...
+    2011: 2,750건
+    2012: 5,470건
+    2013: 6,821건
+    2014: 9,085건
+    2015: 10,900건
+    2016: 10,453건
+    2017: 9,823건
+    2018: 11,180건
+    2019: 13,823건
+    2020: 11,947건
+    2021: 10,842건
+    2022: 14,668건
+    2023: 19,545건
+    2024: 19,172건
+    2025: 16,367건
+    2026: 3,735건
+    Bliss sales: 176,581건 (오라클 176,483 / 네이티브 0)
+
+▶ 리포트 ① Oracle 있고 Bliss 없음 (매출/메모 존재)
+    → 1,033명
+▶ 리포트 ② 필드 불일치 (필드별 분리)
+    → name 31 / phone 68 / email 1 / join 86 / memo 20,124
+▶ 리포트 ③ Oracle 매출 누락
+    → 3건
+▶ 리포트 ⑥ Bliss 매출인데 Oracle에 없음 (order_num 불일치)
+    → 18건
+▶ 리포트 ④ Bliss 매출 cust_num 오염
+    → 505건
+▶ 리포트 ⑤ Bliss 내 중복 고객
+    → 42건
+
+=== CSV 저장 (C:/Users/TP005/bliss-app/tmp_review/oracle_audit) ===
+  saved: 01_missing_in_bliss.csv (1,033 rows)
+  saved: 02a_diff_name.csv (31 rows)
+  saved: 02b_diff_phone.csv (68 rows)
+  saved: 02c_diff_email.csv (1 rows)
+  saved: 02d_diff_join_date.csv (86 rows)
+  saved: 02e_diff_memo.csv (20,124 rows)
+  saved: 03_missing_sales.csv (3 rows)
+  saved: 04_wrong_cust_num.csv (505 rows)
+  saved: 05_duplicate_custs.csv (42 rows)
+  saved: 06_bliss_extra_sales.csv (18 rows)
+
+Oracle ↔ Bliss 감사 요약 (2026-04-19 01:56)
+
+규모:
+  Oracle MEMBER:  42,832명
+  Oracle ORDERS:  176,468건
+  Bliss customers: 40,063명  (cust_num 있음: 40,062)
+  Bliss sales:    176,581건  (오라클: 176,483 / 네이티브: 0)
+
+발견 사항:
+  ① Oracle 있고 Bliss 없음 + 매출/메모 존재:  1,033명
+  ② 필드 불일치 — cust_num 기준 매칭되지만 값이 다름:
+      - name:       31명
+      - phone:      68명
+      - email:      1명
+      - join_date:  86명
+      - memo:       20,124명   (유저가 직접 수정했을 가능성 큼)
+  ③ Oracle 매출 Bliss에 누락:                  3건
+  ④ Bliss 매출 cust_num 오염:                  505건  ← 최우선 검토
+  ⑤ Bliss 내 중복 고객 (phone or name+phone):  42건
+  ⑥ Bliss에만 있고 Oracle에 없는 매출:         18건  (수동 등록/테스트)
+
+각 CSV 파일은 C:/Users/TP005/bliss-app/tmp_review/oracle_audit 참고.
+다음 단계: 유저가 CSV 검토 → 승인된 건만 수정 작업.
+
+=== 완료 ===

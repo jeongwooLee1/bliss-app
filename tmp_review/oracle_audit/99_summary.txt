@@ -1,0 +1,24 @@
+Oracle ↔ Bliss 감사 요약 (2026-04-19 10:50)
+
+규모:
+  Oracle MEMBER:  42,832명
+  Oracle ORDERS:  176,468건
+  Bliss customers: 40,055명  (cust_num 있음: 40,054)
+  Bliss sales:    176,584건  (오라클: 176,486 / 네이티브: 0)
+
+발견 사항:
+  ① Oracle 있고 Bliss 없음 + 매출/메모 존재:  1,014명
+  ② 필드 불일치 — cust_num 기준 매칭되지만 값이 다름:
+      - name:       8명
+      - phone:      70명
+      - email:      1명
+      - join_date:  59명
+      - memo:       20,130명   (유저가 직접 수정했을 가능성 큼)
+  ③ Oracle 매출 Bliss에 누락:                  0건
+  ④ Bliss 매출 cust_num 오염:                  47건  ← 최우선 검토
+  ⑤ Bliss 내 중복 고객 (phone or name+phone):  25건
+  ⑥ Bliss에만 있고 Oracle에 없는 매출:         18건  (수동 등록/테스트)
+  ⑦ Oracle 누락 + 매출 흡수 쌍:                9건  ← 실제 복구 대상 (박예지 30035 타입)
+
+각 CSV 파일은 C:/Users/TP005/bliss-app/tmp_review/oracle_audit 참고.
+다음 단계: 유저가 CSV 검토 → 승인된 건만 수정 작업.

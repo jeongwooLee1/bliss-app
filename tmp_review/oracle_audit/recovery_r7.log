@@ -1,0 +1,73 @@
+Fetched 32 Bliss cust_ids
+
+Plan: 32 customers to fix
+
+=== Step 1: customers.cust_num UPDATE ===
+  OK customers.cust_num: 32568 -> 1138 (김지우) id=cust_w75wkq3y0
+  OK customers.cust_num: 4902 -> 1485 (이기연) id=cust_lrcp1vyd9
+  OK customers.cust_num: 4563 -> 1294 (윤재현) id=cust_79toj1iy1
+  OK customers.cust_num: 5405 -> 2623 (김예환) id=cust_rxf557hgz
+  OK customers.cust_num: 20698 -> 3078 (박윤혜) id=cust_sgxqnfjtt
+  OK customers.cust_num: 6484 -> 7028 (황윤회) id=cust_0haf3rbzw
+  OK customers.cust_num: 12066 -> 10910 (Dunnie) id=cust_qv8pp0o3a
+  OK customers.cust_num: 10568 -> 10716 (김미화) id=cust_2fzl518ge
+  OK customers.cust_num: 6581 -> 9634 (권신영) id=cust_azgeigqf8
+  OK customers.cust_num: 9520 -> 9539 (곽영창) id=cust_1vji2itny
+  OK customers.cust_num: 20377 -> 15026 (김안나) id=cust_ms4q6ngsv
+  OK customers.cust_num: 13566 -> 13693 (에카타리나) id=cust_mct2ugrkv
+  OK customers.cust_num: 12712 -> 12716 (하지원) id=cust_0jir6np9u
+  OK customers.cust_num: 17055 -> 17066 (Harold) id=cust_8axfalexl
+  OK customers.cust_num: 16828 -> 16857 (정원선) id=cust_rji9mb7a7
+  OK customers.cust_num: 19444 -> 19441 (백다현) id=cust_8xg8eigi7
+  OK customers.cust_num: 22945 -> 22875 (송미나) id=cust_408wi6emp
+  OK customers.cust_num: 20657 -> 20593 (이혜림) id=cust_pafuun62z
+  OK customers.cust_num: 21951 -> 21993 (김지선) id=cust_yn30j87sj
+  OK customers.cust_num: 20871 -> 20873 (최상호) id=cust_uzuf6pa3k
+  OK customers.cust_num: 20949 -> 20933 (김선영) id=cust_6wyq3761n
+  OK customers.cust_num: 34197 -> 28274 (나은영) id=cust_kgmudgyw5
+  OK customers.cust_num: 23645 -> 23635 (정유진) id=cust_8emsfwfpe
+  OK customers.cust_num: 30926 -> 30923 (승은진) id=cust_z0cndrso3
+  OK customers.cust_num: 30828 -> 30035 (박예지) id=cust_eev10maal
+  OK customers.cust_num: 28413 -> 28700 (혜린) id=cust_lcggt6y5o
+  OK customers.cust_num: 34262 -> 33087 (김연주) id=cust_w2hh1pc0i
+  OK customers.cust_num: 32873 -> 32857 (한준이) id=cust_r5kl7murj
+  OK customers.cust_num: 29547 -> 34496 (강유라) id=cust_ufj552w6q
+  OK customers.cust_num: 35592 -> 35591 (김선두) id=cust_0ei3itrnx
+  OK customers.cust_num: 51516 -> 50175 (Hannah) id=cust_90542ymx4
+  OK customers.cust_num: 55787 -> 55518 (Billy) id=cust_frv01tnok
+
+=== Step 2: sales.cust_num UPDATE ===
+  OK sales(cust_id=cust_w75wkq3y0): cust_num=1138 (~26건, 김지우)
+  OK sales(cust_id=cust_lrcp1vyd9): cust_num=1485 (~1건, 이기연)
+  OK sales(cust_id=cust_79toj1iy1): cust_num=1294 (~2건, 윤재현)
+  OK sales(cust_id=cust_rxf557hgz): cust_num=2623 (~1건, 김예환)
+  OK sales(cust_id=cust_sgxqnfjtt): cust_num=3078 (~34건, 박윤혜)
+  OK sales(cust_id=cust_0haf3rbzw): cust_num=7028 (~4건, 황윤회)
+  OK sales(cust_id=cust_qv8pp0o3a): cust_num=10910 (~3건, Dunnie)
+  OK sales(cust_id=cust_2fzl518ge): cust_num=10716 (~3건, 김미화)
+  OK sales(cust_id=cust_azgeigqf8): cust_num=9634 (~5건, 권신영)
+  OK sales(cust_id=cust_1vji2itny): cust_num=9539 (~1건, 곽영창)
+  OK sales(cust_id=cust_ms4q6ngsv): cust_num=15026 (~23건, 김안나)
+  OK sales(cust_id=cust_mct2ugrkv): cust_num=13693 (~2건, 에카타리나)
+  OK sales(cust_id=cust_0jir6np9u): cust_num=12716 (~1건, 하지원)
+  OK sales(cust_id=cust_8axfalexl): cust_num=17066 (~5건, Harold)
+  OK sales(cust_id=cust_rji9mb7a7): cust_num=16857 (~9건, 정원선)
+  OK sales(cust_id=cust_8xg8eigi7): cust_num=19441 (~5건, 백다현)
+  OK sales(cust_id=cust_408wi6emp): cust_num=22875 (~5건, 송미나)
+  OK sales(cust_id=cust_pafuun62z): cust_num=20593 (~3건, 이혜림)
+  OK sales(cust_id=cust_yn30j87sj): cust_num=21993 (~3건, 김지선)
+  OK sales(cust_id=cust_uzuf6pa3k): cust_num=20873 (~2건, 최상호)
+  OK sales(cust_id=cust_6wyq3761n): cust_num=20933 (~1건, 김선영)
+  OK sales(cust_id=cust_kgmudgyw5): cust_num=28274 (~20건, 나은영)
+  OK sales(cust_id=cust_8emsfwfpe): cust_num=23635 (~5건, 정유진)
+  OK sales(cust_id=cust_z0cndrso3): cust_num=30923 (~3건, 승은진)
+  OK sales(cust_id=cust_eev10maal): cust_num=30035 (~23건, 박예지)
+  OK sales(cust_id=cust_lcggt6y5o): cust_num=28700 (~106건, 혜린)
+  OK sales(cust_id=cust_w2hh1pc0i): cust_num=33087 (~11건, 김연주)
+  OK sales(cust_id=cust_r5kl7murj): cust_num=32857 (~1건, 한준이)
+  OK sales(cust_id=cust_ufj552w6q): cust_num=34496 (~169건, 강유라)
+  OK sales(cust_id=cust_0ei3itrnx): cust_num=35591 (~22건, 김선두)
+  OK sales(cust_id=cust_90542ymx4): cust_num=50175 (~1건, Hannah)
+  OK sales(cust_id=cust_frv01tnok): cust_num=55518 (~1건, Billy)
+
+=== 완료: 32명 customers, ~501건 sales 업데이트 ===
