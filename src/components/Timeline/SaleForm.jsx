@@ -392,10 +392,14 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     if (!cust?.id) { setPointBalance(0); return; }
     sb.get("point_transactions", `&customer_id=eq.${cust.id}&limit=500`)
       .then(rows => {
+        const now = Date.now();
         const bal = (rows||[]).reduce((s,t) => {
-          if (t.type==="earn"||t.type==="adjust_add") return s+(t.amount||0);
+          if (t.type==="earn"||t.type==="adjust_add") {
+            if (t.expires_at && new Date(t.expires_at).getTime() <= now) return s; // 만료 제외
+            return s+(t.amount||0);
+          }
           if (t.type==="deduct"||t.type==="adjust_sub") return s-(t.amount||0);
-          return s;
+          return s; // expire 타입은 히스토리용이라 계산 제외
         }, 0);
         setPointBalance(bal);
       }).catch(()=>setPointBalance(0));
@@ -1415,6 +1419,34 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     if (_saleDetails.length > 0) {
       await sb.upsert("sale_details", _saleDetails);
     }
+
+    // ── 예약 시술시간 자동 조정 ──
+    // 매출 등록 시점 = 고객이 가는 시간. 예약 dur를 (매출시각 - 예약시작)으로 변경.
+    // 단 원래 dur 기준 ±1시간(60분) 이내로만 조정.
+    try {
+      if (!editMode && reservation?.id && reservation?.time && reservation?.dur) {
+        const now = new Date();
+        const nowMin = now.getHours()*60 + now.getMinutes();
+        const [rh, rm] = String(reservation.time).split(":").map(Number);
+        const resStartMin = (rh||0)*60 + (rm||0);
+        const newDur = nowMin - resStartMin;
+        const origDur = Number(reservation.dur) || 0;
+        if (newDur > 0 && origDur > 0) {
+          const minDur = Math.max(5, origDur - 60);
+          const maxDur = origDur + 60;
+          const clampedDur = Math.max(minDur, Math.min(maxDur, newDur));
+          if (clampedDur !== origDur) {
+            await sb.update("reservations", reservation.id, { dur: clampedDur });
+            if (setData) {
+              setData(prev => ({
+                ...prev,
+                reservations: (prev?.reservations||[]).map(r => r.id === reservation.id ? {...r, dur: clampedDur} : r)
+              }));
+            }
+          }
+        }
+      }
+    } catch(e) { console.warn("[reservation dur auto-adjust]", e); }
 
     // 보유권 거래 기록 flush (sale.id 연결)
     if (cust.id && _pkgTxRecords.length > 0) {
