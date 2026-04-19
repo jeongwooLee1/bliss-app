@@ -497,6 +497,17 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     }
     schHistoryLoaded.current = true;
 
+    // 근무표 미작성 날짜 fallback: 이 지점 소속 직원 중 아무도 dayStatus 없으면
+    // → 지점 배정 인원 전체를 빈 칼럼으로 표시 (선예약·네이버 자동 예약 대비)
+    const branchBaseEmps = BASE_EMP_LIST.filter(e => e.branch_id === branchId);
+    const scheduleExistsForDate = branchBaseEmps.some(e => {
+      const s = schHistory[e.id]?.[date];
+      return s && s !== "";
+    });
+    if (!scheduleExistsForDate && branchBaseEmps.length > 0) {
+      return branchBaseEmps;
+    }
+
     // 해당 (직원, 지점, 날짜)에 예약/메모/내부일정이 있는지 확인
     const hasContent = (empId) => (data?.reservations||[]).some(r => {
       if (r.date !== date) return false;
