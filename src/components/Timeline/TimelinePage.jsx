@@ -355,12 +355,20 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     const emp = BASE_EMP_LIST.find(e=>e.id===empId);
     const baseBid = emp?.branch_id;
     const baseHours = getEmpBaseHours(empId, date, baseBid);
-    // from 기준 정렬 (빈 값은 baseHours.start로 간주)
-    const sorted = [...segments].sort((a,b) => (a.from||baseHours.start).localeCompare(b.from||baseHours.start));
+    // 각 segment의 지점별 근무시간 (없으면 base)
+    const segHoursOf = (bid) => {
+      const bts = (data?.branches||[]).find(b=>b.id===bid)?.timelineSettings;
+      const branchDefault = bts?.defaultWorkStart ? {start:bts.defaultWorkStart, end:bts.defaultWorkEnd||"21:00"}
+        : bts?.openTime ? {start:bts.openTime, end:bts.closeTime||"21:00"} : baseHours;
+      return empWorkHours[empId+"_"+bid+"_"+date] || empWorkHours[empId+"_"+bid] || branchDefault;
+    };
+    // from 기준 정렬 (빈 값은 해당 지점 근무 시작으로 간주)
+    const sorted = [...segments].sort((a,b) => (a.from||segHoursOf(a.branchId).start).localeCompare(b.from||segHoursOf(b.branchId).start));
     return sorted.map((s, i) => {
-      const from = s.from || (i === 0 ? baseHours.start : sorted[i-1].until || baseHours.start);
+      const wh = segHoursOf(s.branchId);
+      const from = s.from || (i === 0 ? wh.start : sorted[i-1].until || wh.start);
       const nextFrom = sorted[i+1]?.from;
-      const until = s.until || nextFrom || baseHours.end;
+      const until = s.until || nextFrom || wh.end;
       return {...s, from, until};
     });
   };
@@ -502,23 +510,40 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     const working = [];
     BASE_EMP_LIST.forEach(e => {
       const dayStatus = schHistory[e.id]?.[date];
+      // 근무표에 아예 등록 안 된 직원은 타임라인에서 제외 (단, 이동/지원 오버라이드 있으면 포함)
+      const ovPre = getEmpOverride(e.id, date);
+      if (!dayStatus && !(ovPre && ovPre.segments?.length)) return;
       if (dayStatus === "휴무" || dayStatus === "휴무(꼭)" || dayStatus === "무급") return;
 
       // empOverride 세그먼트 우선 (여러 지점 시간대별 이동/지원)
       const ov = getEmpOverride(e.id, date);
       if (ov && ov.segments?.length) {
-        if (ov.segments.some(s => s.branchId === branchId)) {
+        // 세그먼트 정규화 후 실제 근무 구간이 있는지 확인 (0분 세그먼트는 무시)
+        const normalized = normalizeSegments(e.id, date, ov.segments);
+        const mySeg = normalized.find(s => s.branchId === branchId);
+        const hasActiveSeg = mySeg && mySeg.from !== mySeg.until;
+        if (hasActiveSeg) {
           working.push(e);
         }
-        // 원래 지점 처리: exclusive 이동(_movedOut=true)이면 내용 있을 때만 칼럼 유지 + 이름 숨김
+        // 원래 지점 처리: 세그먼트에 원래 지점이 없는 경우
         const emp = BASE_EMP_LIST.find(b => b.id === e.id);
         if (emp && emp.branch_id === branchId && !working.some(w => w.id === e.id)) {
           const exclusive = ov.exclusive === true;
           if (exclusive) {
+            // 이동(전체 이관): 내용 있으면 비활성 칼럼 유지(이름 숨김), 없으면 제거
             if (hasContent(e.id)) working.push({...e, _movedOut: true, _hideName: true});
-            // 내용 없으면 칼럼 완전 제거 (push 안 함)
           } else {
-            working.push({...e, _movedOut: false});
+            // 지원(부분 이동): 원래 지점에 남은 근무 구간 있으면 활성 칼럼으로 표시
+            const range = getEmpActiveRange(e.id, date, branchId);
+            // 실제 근무 구간(0분 세그먼트는 제외)
+            const hasActiveRange = range && (range.from || range.until) && range.from !== range.until;
+            if (hasActiveRange) {
+              working.push({...e, _movedOut: false});
+            } else if (hasContent(e.id)) {
+              // 남은 구간은 없지만 예약 내용 있음 → 비활성 칼럼 유지
+              working.push({...e, _movedOut: true, _hideName: false});
+            }
+            // 둘 다 없으면 칼럼 제거
           }
         }
         return;
@@ -1705,8 +1730,13 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         longPressActive.current = true;
         isDragging.current = true;
         setDragBlock(block);
+        // 즉시 floating preview 표시 — 손가락 움직이기 전부터 "잡혔다" 피드백
+        if (sr) {
+          const rect0 = sr.getBoundingClientRect();
+          setDragPos({ x: startPt.clientX - rect0.left, y: startPt.clientY - rect0.top, clientX: startPt.clientX, clientY: startPt.clientY });
+        }
         document.body.style.cursor="move";
-        try { navigator.vibrate && navigator.vibrate(30); } catch(ex){}
+        try { navigator.vibrate && navigator.vibrate([20, 30, 40]); } catch(ex){}
         // 이제 드래그 리스너 등록 (passive:false → 스크롤 차단)
         document.addEventListener("touchmove", onDragMove, {passive:false});
         document.addEventListener("touchend", onDragUp);
@@ -2258,23 +2288,27 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                 }
                                 const overrideKey = empName+"_"+selDate;
                                 let ovData;
+                                // 원래 지점 근무시간 (base segment 생성 전에 0분 여부 판단용)
+                                const baseWh = baseBid ? (empWorkHours[empName+"_"+baseBid+"_"+selDate] || empWorkHours[empName+"_"+baseBid]) : null;
+                                const baseStartTime = baseWh?.start || ((data?.branches||[]).find(b=>b.id===baseBid)?.timelineSettings?.defaultWorkStart || "11:00");
                                 if(exclusive) {
                                   // 이동: 시간 지정되면 분할 이동 (원래 지점 ~시간 활성, 대상 지점 시간~ 활성)
-                                  if(supportFrom && baseBid) {
+                                  if(supportFrom && baseBid && supportFrom > baseStartTime) {
                                     const segs = [
                                       {branchId:baseBid, from:null, until:supportFrom},
                                       {branchId:targetBid, from:supportFrom, until:null}
                                     ];
                                     ovData = {segments:segs};
                                   } else {
-                                    // 시간 없으면 종일 이동
-                                    ovData = {segments:[{branchId:targetBid,from:null,until:null}],exclusive:true};
+                                    // 시간 없거나 원래 지점 근무 시작 전 이동 = 종일 이동
+                                    ovData = {segments:[{branchId:targetBid,from:supportFrom||null,until:null}],exclusive:true};
                                   }
                                 } else {
                                   // 지원: 원래 지점(~시작시간) + 대상 지점(시작시간~) 둘 다 유지
                                   const from = supportFrom || "14:00";
                                   const segs = [];
-                                  if(baseBid) segs.push({branchId:baseBid, from:null, until:from});
+                                  // 원래 지점 근무 시작 >= 이동 시작이면 base 세그먼트 생략 (0분 세그먼트 방지)
+                                  if(baseBid && from > baseStartTime) segs.push({branchId:baseBid, from:null, until:from});
                                   segs.push({branchId:targetBid, from, until:null});
                                   ovData = {segments:segs};
                                 }
@@ -2466,8 +2500,12 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                               setEmpMovePopup(null);
                             };
                             const cancelDraft = () => setEmpMovePopup(null);
-                            // 직원 총 근무시간
-                            const wh = empWorkHours[room.staffId+"_"+selDate] || empWorkHours[room.staffId] || (()=>{
+                            // 직원 총 근무시간 (저장 키: staffId_branchId_date)
+                            const wh = empWorkHours[room.staffId+"_"+room.branch_id+"_"+selDate]
+                                    || empWorkHours[room.staffId+"_"+room.branch_id]
+                                    || empWorkHours[room.staffId+"_"+selDate]
+                                    || empWorkHours[room.staffId]
+                                    || (()=>{
                               const bts=(data?.branches||[]).find(b=>b.id===baseBranch)?.timelineSettings;
                               return bts?.defaultWorkStart?{start:bts.defaultWorkStart,end:bts.defaultWorkEnd||"21:00"}:bts?.openTime?{start:bts.openTime,end:bts.closeTime||"21:00"}:null;
                             })();
@@ -3062,6 +3100,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                           }
                           if(isEditable && !isResizing.current)handleDragStart(block,e);
                         }}
+                        onContextMenu={e=>e.preventDefault()}
                         style={{position:"absolute",top:y,
                           left: block._totalCols > 1 ? 3 + (block._col * ((colW - 6) / block._totalCols)) : 3,
                           width: block._totalCols > 1 ? ((colW - 6) / block._totalCols) - 2 : undefined,
@@ -3073,7 +3112,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                           borderRadius:T.radius.md,padding:"4px 6px",overflow:"hidden",fontSize:blockFs,lineHeight:1.2,
                           boxShadow:isDrag?"none":"0 1px 4px rgba(0,0,0,.1)",
                           cursor:isEditable?"move":"pointer",zIndex:isDrag?0:3,transition:(isDrag||isBeingResized)?"none":"all .15s, box-shadow .2s",
-                          opacity:isDrag?0.35:1,userSelect:"none",WebkitUserSelect:"none",WebkitTouchCallout:"none"}}
+                          opacity:isDrag?0.35:1,userSelect:"none",WebkitUserSelect:"none",MozUserSelect:"none",msUserSelect:"none",WebkitTouchCallout:"none",touchAction:"none"}}
                         className="tl-block">
                         {block.type==="reservation" && !block.isSchedule && <>
                           <div style={{display:"flex",alignItems:"center",gap:2,flexWrap:"wrap"}}>
@@ -3194,14 +3233,18 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         // clickOffsetRef.y (viewport 기준: startPt.clientY - blockRect.top) 를 사용
         const top2 = dragPos.clientY - (clickOffsetRef.current.y || 14);
         const left2 = dragPos.clientX - (clickOffsetRef.current.x || w*0.3);
-        return <div style={{position:"fixed",top:top2,left:left2,width:w,height:h,
-          background:`${color}${bgAlpha}`,borderLeft:`3.5px solid ${color}`,borderRadius:T.radius.md,
-          padding:"4px 6px",overflow:"hidden",fontSize:blockFs,lineHeight:1.2,fontWeight:T.fw.bold,color:T.text,
-          boxShadow:"0 12px 32px rgba(0,0,0,.3), 0 4px 10px rgba(0,0,0,.15)",
-          transform:"scale(1.03)",transformOrigin:"top left",
-          pointerEvents:"none",zIndex:9999,cursor:"grabbing",opacity:.96}}>
-          {dragBlock.custName || (dragBlock.memo||"").slice(0,30) || ""}
-        </div>;
+        return <>
+          <style>{`@keyframes blissDragGrab { 0%{transform:scale(1);opacity:.85} 50%{transform:scale(1.08);opacity:1} 100%{transform:scale(1.03);opacity:.96} }`}</style>
+          <div style={{position:"fixed",top:top2,left:left2,width:w,height:h,
+            background:`${color}${bgAlpha}`,border:`2px solid ${color}`,borderLeft:`4px solid ${color}`,borderRadius:T.radius.md,
+            padding:"4px 6px",overflow:"hidden",fontSize:blockFs,lineHeight:1.2,fontWeight:T.fw.bold,color:T.text,
+            boxShadow:`0 12px 32px rgba(0,0,0,.35), 0 4px 10px rgba(0,0,0,.2), 0 0 0 3px ${color}55`,
+            transform:"scale(1.03)",transformOrigin:"top left",
+            animation:"blissDragGrab .22s ease-out",
+            pointerEvents:"none",zIndex:9999,cursor:"grabbing",opacity:.96}}>
+            {dragBlock.custName || (dragBlock.memo||"").slice(0,30) || ""}
+          </div>
+        </>;
       })()}
 
       {/* 이동/리사이즈 확인 팝업 */}
