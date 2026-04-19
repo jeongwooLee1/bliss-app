@@ -25,8 +25,14 @@ function TimelineSettings({
   startHour, setStartHour, endHour, setEndHour,
   timeUnit, setTimeUnit,
   statusClr, setStatusClr,
-  tlShared, setTlShared,
+  tlSharedKeys = {}, setTlSharedKey,
 }) {
+  const ShareCheck = ({ k }) => setTlSharedKey ? (
+    <label title="전 지점 공통 적용" style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:9,color:tlSharedKeys[k]?T.primary:T.gray500,cursor:"pointer",marginLeft:6,padding:"1px 5px",borderRadius:4,background:tlSharedKeys[k]?T.primaryLt:"transparent",border:`1px solid ${tlSharedKeys[k]?T.primary:T.border}`,flexShrink:0,fontWeight:tlSharedKeys[k]?700:500}}>
+      <input type="checkbox" checked={!!tlSharedKeys[k]} onChange={e=>setTlSharedKey(k, e.target.checked)} style={{accentColor:T.primary,width:11,height:11,margin:0}}/>
+      🌐
+    </label>
+  ) : null;
   if (!showSettings) return null;
 
   const handleTouchStart = e => {
@@ -79,12 +85,9 @@ function TimelineSettings({
       background:T.bgCard,borderRadius:"16px 16px 0 0",padding:"20px 20px calc(32px + 56px + env(safe-area-inset-bottom))",boxShadow:"0 -8px 32px rgba(0,0,0,.15)",zIndex:100,
       maxHeight:"80vh",overflowY:"auto",overflowX:"hidden",animation:"bottomSheet .4s cubic-bezier(.22,1,.36,1)",willChange:"transform"}}>
       <div style={{width:36,height:4,borderRadius:T.radius.sm,background:T.gray300,margin:"0 auto 16px",cursor:"grab"}}/>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
         <div style={{fontSize:T.fs.md,fontWeight:T.fw.bolder,color:T.text}}><I name="settings" size={14}/> 타임라인 설정</div>
-        {setTlShared && <label style={{display:"flex",alignItems:"center",gap:6,fontSize:T.fs.xs,color:tlShared?T.primary:T.textSub,cursor:"pointer",padding:"6px 10px",border:`1px solid ${tlShared?T.primary:T.border}`,borderRadius:T.radius.md,background:tlShared?T.primaryLt:T.bgCard,fontWeight:tlShared?T.fw.bolder:T.fw.medium}}>
-          <input type="checkbox" checked={!!tlShared} onChange={e=>setTlShared(e.target.checked)} style={{accentColor:T.primary,width:14,height:14}}/>
-          🌐 전 지점 공통 적용
-        </label>}
+        <div style={{fontSize:9,color:T.textMuted}}>🌐 = 전 지점 공통 적용</div>
       </div>
       {/* 지점 보기 토글 - staff만 */}
       {!isMaster && accessibleBids.length > userBranches.length && (
@@ -116,14 +119,14 @@ function TimelineSettings({
       )}
       <GridLayout cols={2} gap={8}>
     {[
-        {label:"줄간격",val:rowH,dec:()=>setRowH(h=>Math.max(6,h-2)),inc:()=>setRowH(h=>Math.min(30,h+2))},
-        {label:"열너비",val:colW,dec:()=>setColW(w=>Math.max(80,w-20)),inc:()=>setColW(w=>Math.min(300,w+20))},
-        {label:"글자크기",val:blockFs,dec:()=>setBlockFs(f=>Math.max(6,f-1)),inc:()=>setBlockFs(f=>Math.min(16,f+1))},
-        {label:"불투명도",val:blockOp,suffix:"%",dec:()=>setBlockOp(o=>Math.max(10,o-10)),inc:()=>setBlockOp(o=>Math.min(100,o+10))},
-        {label:"시작시간",val:startHour,suffix:"시",dec:()=>setStartHour(h=>Math.max(0,h-1)),inc:()=>setStartHour(h=>Math.min(endHour-1,h+1))},
-        {label:"종료시간",val:endHour,suffix:"시",dec:()=>setEndHour(h=>Math.max(startHour+1,h-1)),inc:()=>setEndHour(h=>Math.min(24,h+1))},
+        {label:"줄간격",key:"rh",val:rowH,dec:()=>setRowH(h=>Math.max(6,h-2)),inc:()=>setRowH(h=>Math.min(30,h+2))},
+        {label:"열너비",key:"cw",val:colW,dec:()=>setColW(w=>Math.max(80,w-20)),inc:()=>setColW(w=>Math.min(300,w+20))},
+        {label:"글자크기",key:"fs",val:blockFs,dec:()=>setBlockFs(f=>Math.max(6,f-1)),inc:()=>setBlockFs(f=>Math.min(16,f+1))},
+        {label:"불투명도",key:"op",val:blockOp,suffix:"%",dec:()=>setBlockOp(o=>Math.max(10,o-10)),inc:()=>setBlockOp(o=>Math.min(100,o+10))},
+        {label:"시작시간",key:"sh",val:startHour,suffix:"시",dec:()=>setStartHour(h=>Math.max(0,h-1)),inc:()=>setStartHour(h=>Math.min(endHour-1,h+1))},
+        {label:"종료시간",key:"eh",val:endHour,suffix:"시",dec:()=>setEndHour(h=>Math.max(startHour+1,h-1)),inc:()=>setEndHour(h=>Math.min(24,h+1))},
       ].map(r=><div key={r.label} style={{background:T.gray100,borderRadius:T.radius.lg,padding:"10px 12px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <span style={{fontSize:T.fs.sm,color:T.gray700,fontWeight:T.fw.bold}}>{r.label}</span>
+        <span style={{fontSize:T.fs.sm,color:T.gray700,fontWeight:T.fw.bold,display:"inline-flex",alignItems:"center"}}>{r.label}<ShareCheck k={r.key}/></span>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <button onClick={r.dec} style={{width:32,height:32,border:"1px solid #ddd",borderRadius:T.radius.md,background:T.bgCard,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0}}><I name="minus" size={16} color={T.gray700}/></button>
           <span style={{fontSize:T.fs.sm,color:T.primary,fontWeight:T.fw.bolder,width:36,textAlign:"center"}}>{r.val}{r.suffix||""}</span>
@@ -132,7 +135,7 @@ function TimelineSettings({
       </div>)}
       </GridLayout>
       <div style={{background:T.gray100,borderRadius:T.radius.lg,padding:"10px 12px",marginTop:8,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <span style={{fontSize:T.fs.sm,color:T.gray700,fontWeight:T.fw.bold}}>시간단위</span>
+        <span style={{fontSize:T.fs.sm,color:T.gray700,fontWeight:T.fw.bold,display:"inline-flex",alignItems:"center"}}>시간단위<ShareCheck k="tu"/></span>
         <div style={{display:"flex",gap:T.sp.xs}}>
           {[5,10,15,30,60].map(u=><button key={u} onClick={()=>setTimeUnit(u)}
             style={{padding:"6px 12px",fontSize:T.fs.sm,border:"1px solid #ddd",borderRadius:T.radius.md,background:timeUnit===u?T.primary:T.bgCard,
@@ -141,7 +144,7 @@ function TimelineSettings({
       </div>
 
       <div style={{marginTop:8}}>
-        <span style={{fontSize:T.fs.sm,color:T.gray700,fontWeight:T.fw.bold,display:"block",marginBottom:6}}>예약상태 색상</span>
+        <span style={{fontSize:T.fs.sm,color:T.gray700,fontWeight:T.fw.bold,marginBottom:6,display:"inline-flex",alignItems:"center"}}>예약상태 색상<ShareCheck k="sc"/></span>
         <GridLayout cols={2} gap={6}>
           {STATUS_KEYS.map(k=><div key={k} style={{background:T.gray100,borderRadius:T.radius.lg,padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
             <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bold,color:statusClr[k]}}>{STATUS_LABEL[k]}</span>
