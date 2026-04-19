@@ -421,6 +421,7 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
 
   const res = (data?.reservations||[]).filter(r => {
     if (r.type!=="reservation") return false;
+    if (r.isSchedule) return false; // 내부일정(청소/휴게 등) 제외 — 진짜 고객 예약만
     if (!(vb==="all"?userBranches.includes(r.bid):r.bid===vb)) return false;
     const isNaver = r.source==="naver"||r.source==="네이버";
     if (isNaver&&!r.isScrapingDone) return false;
