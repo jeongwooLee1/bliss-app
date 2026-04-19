@@ -1085,8 +1085,16 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     };
 
     // 고객 정보 저장 (신규 등록 또는 기존 업데이트)
-    // cust.id가 있어도 customers 테이블에 실제로 없으면 신규로 취급 (네이버 예약 등에서 발생)
-    const existsInDb = cust.id && (data?.customers||[]).some(c => c.id === cust.id);
+    // cust.id가 있고 "new_" 접두사가 아니면 기존 고객 ID로 취급 — data.customers 100건 제한으로
+    // 로컬 캐시에 없어도 서버에는 있을 수 있으므로 local check만으로 신규 판정하지 않음
+    const existsInLocal = cust.id && (data?.customers||[]).some(c => c.id === cust.id);
+    let existsInDb = existsInLocal;
+    if (cust.id && !cust.id.startsWith("new_") && !existsInLocal) {
+      try {
+        const rows = await sb.get("customers", cust.id);
+        if (Array.isArray(rows) && rows.length > 0) existsInDb = true;
+      } catch(e) {}
+    }
     const isNewCust = cust.id?.startsWith("new_") || (!cust.id && custName) || (cust.id && !existsInDb && custName);
 
     // ── setData 유무와 상관없이 cust.custNum은 반드시 채워야 함 (매출 저장 시 sale.custNum에 들어감) ──

@@ -1279,7 +1279,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     setShowModal(true);
   };
 
-  const handleSave = (item) => {
+  const handleSave = async (item) => {
     // + 칼럼 템플릿 저장: schedule_data.colTemplates_v1에 저장 (예약 테이블 X)
     if (item._isColTemplate) {
       const bid = item.bid;
@@ -1310,13 +1310,26 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     }
     // 수동 예약에 고유 reservation_id 생성 (NULLS NOT DISTINCT unique constraint 회피)
     if (!item.reservationId) item.reservationId = "manual_" + (item.id || uid());
-    // 신규고객이면 DB에 고객 등록 (전화번호 중복 체크)
+    // 신규고객이면 DB에 고객 등록 (전화번호 중복 체크 — 로컬 + 서버)
     if (item.isNewCust && item.custName && !item.custId) {
       const normPhone = (item.custPhone || "").replace(/[^0-9]/g, "");
-      if (normPhone) {
-        const dup = (data?.customers||[]).find(c => c.phone === normPhone);
-        if (dup) {
-          if (!confirm(`동일 번호(${normPhone})로 등록된 고객이 있습니다: ${dup.name}\n기존 고객으로 연결할까요?`)) return;
+      // 1) 로컬 캐시 검사
+      let dup = normPhone ? (data?.customers||[]).find(c => (c.phone||"").replace(/[^0-9]/g,'') === normPhone) : null;
+      // 2) 로컬 없으면 서버 조회 (data.customers가 100건 제한이라 반드시 필요)
+      if (!dup && normPhone && normPhone.length >= 8) {
+        try {
+          const rows = await sb.get("customers", `&business_id=eq.${_activeBizId}&or=(phone.eq.${encodeURIComponent(normPhone)},phone2.eq.${encodeURIComponent(normPhone)})&limit=3`);
+          if (Array.isArray(rows) && rows.length > 0) {
+            const r0 = rows[0];
+            dup = { id: r0.id, name: r0.name, phone: r0.phone, custNum: r0.cust_num };
+          }
+        } catch(e) { console.warn("[res save] dup phone server check", e); }
+      }
+      if (dup) {
+        const label = `${dup.name}${dup.custNum?` (#${dup.custNum})`:""}`;
+        if (!confirm(`동일 번호(${normPhone})로 등록된 고객이 있습니다:\n\n  ${label}\n\n[확인] 기존 고객에 예약 연결\n[취소] 신규 고객으로 새로 등록`)) {
+          // 취소 → 신규 고객 생성 허용 (현행 UX 유지)
+        } else {
           item.custId = dup.id; item.custName = dup.name; item.isNewCust = false;
         }
       }
