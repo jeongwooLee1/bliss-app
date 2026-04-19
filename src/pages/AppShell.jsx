@@ -20,7 +20,7 @@ import SetupWizard from '../components/SetupWizard/SetupWizard'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.3.50"
+const BLISS_V = "3.3.61"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -656,6 +656,7 @@ function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const [unreadMsgCount, setUnreadMsgCount] = useState(0);
+  const [pendingReqCount, setPendingReqCount] = useState(0);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
@@ -724,6 +725,75 @@ function App() {
       )?.subscribe();
     return ()=>{ try{rt?.unsubscribe();}catch(e){} };
   }, [userBranches, isMaster]);
+  // 수정요청 pending 카운트
+  useEffect(() => {
+    const load = () => {
+      fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.bliss_requests_v1&select=value`, {
+        headers: { apikey: SB_KEY, Authorization: "Bearer "+SB_KEY, "Cache-Control":"no-cache" },
+        cache: "no-store",
+      }).then(r=>r.json()).then(rows=>{
+        const v = rows?.[0]?.value;
+        if (!v) { setPendingReqCount(0); return; }
+        const list = typeof v === "string" ? JSON.parse(v) : (Array.isArray(v) ? v : []);
+        const cnt = Array.isArray(list) ? list.filter(r => r.status === "pending").length : 0;
+        setPendingReqCount(cnt);
+      }).catch(()=>{});
+    };
+    load();
+    const rt = window._sbClient?.channel("requests_badge")
+      ?.on("postgres_changes",{event:"UPDATE",schema:"public",table:"schedule_data",filter:"key=eq.bliss_requests_v1"}, load)
+      ?.on("postgres_changes",{event:"INSERT",schema:"public",table:"schedule_data",filter:"key=eq.bliss_requests_v1"}, load)
+      ?.subscribe();
+    const poll = setInterval(load, 60_000);
+    return () => { try{rt?.unsubscribe();}catch(e){} clearInterval(poll); };
+  }, []);
+  // 팀채팅 공지(📣) Realtime — is_announce=true 신규 메시지 → 전체 화면 배너
+  useEffect(() => {
+    const supaClient = window._sbClient;
+    if (!supaClient) return;
+    const DISMISS_KEY = 'bliss_dismissed_announces';
+    const getDismissed = () => {
+      try { return new Set(JSON.parse(localStorage.getItem(DISMISS_KEY) || '[]')); } catch { return new Set(); }
+    };
+    const addDismissed = (id) => {
+      const s = getDismissed(); s.add(id);
+      const arr = [...s].slice(-200);
+      try { localStorage.setItem(DISMISS_KEY, JSON.stringify(arr)); } catch {}
+    };
+    const showAnnounce = (row) => {
+      if (!row || !row.is_announce) return;
+      if (getDismissed().has(row.id)) return;
+      const existingKey = '__blissAnnounce_' + row.id;
+      if (window[existingKey]) return;
+      const div = document.createElement('div');
+      window[existingKey] = div;
+      const esc = (s) => String(s || '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+      div.innerHTML = `<div style="position:fixed;top:20px;right:20px;z-index:99999;background:linear-gradient(135deg,#ff9800,#f57c00);color:#fff;padding:14px 20px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.3);font-size:14px;font-weight:700;cursor:pointer;max-width:340px;animation:slideIn .3s;border:2px solid #fff8e1;">📣 ${esc(row.user_id)} 공지<div style="font-size:13px;font-weight:500;margin-top:4px;white-space:pre-wrap;word-break:break-word;">${esc(row.body)}</div><div style="font-size:10px;opacity:.75;margin-top:6px;">탭하면 닫힙니다</div></div>`;
+      div.addEventListener('click', () => {
+        addDismissed(row.id);
+        try { div.remove(); } catch {}
+        delete window[existingKey];
+      }, { once: true });
+      document.body.appendChild(div);
+    };
+    // 최근 공지(24시간 이내, dismiss 안 된 것) 복원
+    (async () => {
+      try {
+        const since = new Date(Date.now() - 24*60*60*1000).toISOString();
+        const { data } = await supaClient.from('team_chat_messages')
+          .select('id,user_id,body,created_at,is_announce')
+          .eq('is_announce', true).gte('created_at', since)
+          .order('created_at', { ascending: true }).limit(20);
+        (data || []).forEach(showAnnounce);
+      } catch {}
+    })();
+    const ch = supaClient.channel('rt_announce_' + Date.now())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'team_chat_messages' },
+        (payload) => { if (payload?.new?.is_announce) showAnnounce(payload.new); })
+      .subscribe();
+    return () => { try { supaClient.removeChannel(ch); } catch {} };
+  }, []);
+
   // App Badge API — 홈화면 아이콘 배지 (미읽 메시지 + 확정대기 예약)
   useEffect(() => {
     if (!('setAppBadge' in navigator)) return;
@@ -1210,7 +1280,7 @@ function App() {
     { id:"messages", label:"받은메시지함", icon:<I name="msgSq" size={16}/>, badge:unreadMsgCount },
     { id:"admin", label:"관리설정", icon:<I name="settings" size={16}/> },
     { id:"wizard", label:"설정 마법사", icon:"✨" },
-    { id:"requests", label:"수정 요청", icon:"📝" },
+    { id:"requests", label:"수정 요청", icon:"📝", badge:pendingReqCount },
   ];
 
   const branchNames = userBranches.map(bid => (data.branches||[]).find(b=>b.id===bid)?.short||bid).filter(Boolean).join(", ");
@@ -1226,7 +1296,7 @@ function App() {
       {sideOpen && <div className="sidebar-m" style={{position:"fixed",inset:0,zIndex:300}}>
         <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,.5)"}} onClick={()=>setSideOpen(false)}/>
         <div style={{position:"relative",width:260,height:"100%",background:T.bgCard,display:"flex",flexDirection:"column",animation:"slideIn .5s cubic-bezier(.22,1,.36,1)"}}>
-          <Sidebar nav={nav} page={page} setPage={p=>{setPage(p);setSideOpen(false)}} role={role} branchNames={branchNames} onLogout={handleLogout} bizName={bizName} isSuper={isSuper} onBackToSuper={handleBackToSuper} serverV={serverV} BLISS_V={BLISS_V}/>
+          <Sidebar nav={nav} page={page} setPage={p=>{setPage(p);setSideOpen(false)}} role={role} branchNames={branchNames} onLogout={handleLogout} bizName={bizName} isSuper={isSuper} onBackToSuper={handleBackToSuper} serverV={serverV} BLISS_V={BLISS_V} isMobile/>
         </div>
       </div>}
       {newVer && <div onClick={()=>{try{window.location.href=window.location.pathname+"?v="+newVer;}catch(e){window.location.reload();}}} style={{position:"fixed",top:10,right:10,zIndex:9999,background:T.primary,color:"#fff",padding:"10px 16px",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 12px rgba(0,0,0,.25)",animation:"ovFadeIn .3s"}}>
