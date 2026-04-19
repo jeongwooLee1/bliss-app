@@ -3033,18 +3033,14 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                     return <>
                       {beforeH2>0&&<div style={{position:"absolute",top:0,left:0,right:0,height:beforeH2,background:"rgba(0,0,0,.06)",zIndex:2,pointerEvents:"none",borderBottom:"2px dashed rgba(0,0,0,.12)"}}/>}
                       {afterH2>0&&<div style={{position:"absolute",top:afterTop2,left:0,right:0,height:afterH2,background:"rgba(0,0,0,.06)",zIndex:2,pointerEvents:"none",borderTop:"2px dashed rgba(0,0,0,.12)"}}/>}
-                      {/* 출근 시간 드래그 핸들 (start boundary) */}
+                      {/* 출근 시간 드래그 핸들 (start boundary) — 히트 영역만 유지, 시각 표시 제거 */}
                       {beforeH2>0 && <div onMouseDown={onWhDragStart("start")} onTouchStart={onWhDragStart("start")}
-                        style={{position:"absolute",top:beforeH2-6,left:0,right:0,height:12,cursor:"ns-resize",zIndex:4,display:"flex",alignItems:"center",justifyContent:"center"}}
-                        title={`출근 ${room.activeFrom||""} (드래그)`}>
-                        <div style={{height:3,width:30,borderRadius:2,background:T.primary,opacity:0.5}}/>
-                      </div>}
+                        style={{position:"absolute",top:beforeH2-6,left:0,right:0,height:12,cursor:"ns-resize",zIndex:4}}
+                        title={`출근 ${room.activeFrom||""} (드래그)`}/>}
                       {/* 퇴근 시간 드래그 핸들 (end boundary) */}
                       {afterH2>0 && <div onMouseDown={onWhDragStart("end")} onTouchStart={onWhDragStart("end")}
-                        style={{position:"absolute",top:afterTop2-6,left:0,right:0,height:12,cursor:"ns-resize",zIndex:4,display:"flex",alignItems:"center",justifyContent:"center"}}
-                        title={`퇴근 ${room.activeUntil||""} (드래그)`}>
-                        <div style={{height:3,width:30,borderRadius:2,background:T.primary,opacity:0.5}}/>
-                      </div>}
+                        style={{position:"absolute",top:afterTop2-6,left:0,right:0,height:12,cursor:"ns-resize",zIndex:4}}
+                        title={`퇴근 ${room.activeUntil||""} (드래그)`}/>}
                     </>;
                   })()}
                   {!dragBlock && hoverCell?.roomId===room.id && hoverCell.rowIdx>=0 && <div style={{position:"absolute",top:hoverCell.rowIdx*rowH,left:0,right:0,height:rowH,background:"rgba(124,124,200,0.12)",borderTop:"1px solid rgba(124,124,200,0.3)",borderBottom:"1px solid rgba(124,124,200,0.3)",zIndex:1,pointerEvents:"none",transition:"top 0.05s ease"}}/>}
