@@ -184,22 +184,27 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
     return tokens.slice(1).every(t => haystack.includes(t.toLowerCase()));
   };
 
+  const reqIdRef = useRef(0);
   const fetchPage = async (offset, reset=false) => {
-    if (loading) return;
+    // reset(새 검색)은 무조건 진행 — 이전 in-flight 요청은 reqId로 무효화.
+    // 페이지 추가 로드(reset=false)는 기존 요청 중이면 중복 방지.
+    if (!reset && loading) return;
+    const myReqId = ++reqIdRef.current;
     setLoading(true);
     if (reset) setSearching(true);
     try {
       const filter = buildFilter(offset, PAGE_SIZE);
       const rows = await sb.get("customers", filter);
+      if (myReqId !== reqIdRef.current) return; // 이미 구식 응답 — 무시
       const mapped = fromDb("customers", rows).filter(c => matchesQuery(c, q));
       setPagedCusts(prev => reset ? mapped : [...prev, ...mapped]);
       setHasMore(rows.length === PAGE_SIZE);
       if (reset && scrollRef.current) scrollRef.current.scrollTop = 0;
-      // 이 페이지 고객들의 보유권 batch 로드
       const ids = mapped.map(c => c.id).filter(Boolean);
       if (ids.length > 0) {
         try {
           const pkgRows = await sb.get("customer_packages", `&customer_id=in.(${ids.join(",")})`);
+          if (myReqId !== reqIdRef.current) return;
           const map = {};
           (pkgRows||[]).forEach(p => {
             (map[p.customer_id] = map[p.customer_id] || []).push(p);
@@ -210,12 +215,15 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
         setPkgByCust({});
       }
     } catch(e) {
+      if (myReqId !== reqIdRef.current) return;
       console.error("Customer page fetch failed:", e);
       if (reset) setPagedCusts([]);
       setHasMore(false);
     }
-    setLoading(false);
-    setSearching(false);
+    if (myReqId === reqIdRef.current) {
+      setLoading(false);
+      setSearching(false);
+    }
   };
 
   // q/vb/showHidden 변경 시 디바운스 리로드 — pendingOpenCust 처리 중이거나 단일 고객 락 상태면 스킵
@@ -517,10 +525,14 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
     setPkgHistoryMap(prev => ({...prev, [pkg.id]: [tx, ...(prev[pkg.id]||[])]}));
   };
   const [loadingDetail, setLoadingDetail] = useState(false);
+  // 잔액 계산: 만료된 earn은 제외 (expires_at < now). expire 트랜잭션은 히스토리용이라 계산에서 무시
   const custPointBalance = custPointTx.reduce((sum, t) => {
-    if (t.type === "earn" || t.type === "adjust_add") return sum + (t.amount||0);
+    if (t.type === "earn" || t.type === "adjust_add") {
+      if (t.expires_at && new Date(t.expires_at).getTime() <= Date.now()) return sum; // 만료
+      return sum + (t.amount||0);
+    }
     if (t.type === "deduct" || t.type === "adjust_sub") return sum - (t.amount||0);
-    return sum;
+    return sum; // expire 타입은 계산 제외 (히스토리용)
   }, 0);
   const loadCustPoints = (cid) => {
     if (!cid) { setCustPointTx([]); return Promise.resolve(); }
@@ -1157,7 +1169,15 @@ function PointPanel({ cust, txList, balance, onReload }) {
   const [amt, setAmt] = useState("");
   const [mode, setMode] = useState("earn"); // earn | deduct
   const [note, setNote] = useState("");
+  const [expiryMonths, setExpiryMonths] = useState(0); // 0=없음, 1/3/6/12 개월
   const [saving, setSaving] = useState(false);
+
+  const calcExpiresAt = (months) => {
+    if (!months) return null;
+    const d = new Date();
+    d.setMonth(d.getMonth() + Number(months));
+    return d.toISOString();
+  };
 
   const submit = async () => {
     const n = Number(String(amt).replace(/,/g,""))||0;
@@ -1176,8 +1196,12 @@ function PointPanel({ cust, txList, balance, onReload }) {
         balance_after: newBalance,
         note: note || null,
       };
+      if (mode === "earn" && expiryMonths > 0) {
+        tx.expires_at = calcExpiresAt(expiryMonths);
+        tx.source = "manual_" + expiryMonths + "m";
+      }
       await sb.insert("point_transactions", tx);
-      setAmt(""); setNote("");
+      setAmt(""); setNote(""); setExpiryMonths(0);
       onReload();
     } catch (e) { alert("저장 실패: " + e.message); }
     finally { setSaving(false); }
@@ -1213,6 +1237,14 @@ function PointPanel({ cust, txList, balance, onReload }) {
         <button onClick={submit} disabled={saving||!amt}
           style={{padding:"6px 12px",fontSize:11,fontWeight:700,borderRadius:6,border:"none",background:saving||!amt?"#ccc":"#E65100",color:"#fff",cursor:saving||!amt?"default":"pointer",fontFamily:"inherit"}}>저장</button>
       </div>
+      {mode === "earn" && <div style={{display:"flex",gap:4,alignItems:"center",marginTop:6}}>
+        <span style={{fontSize:10,color:"#8D6E00",fontWeight:700}}>유효기간</span>
+        {[[0,"없음"],[1,"1개월"],[3,"3개월"],[6,"6개월"],[12,"12개월"]].map(([m,l])=>(
+          <button key={m} onClick={()=>setExpiryMonths(m)} type="button"
+            style={{padding:"3px 8px",fontSize:10,fontWeight:600,borderRadius:5,border:"1px solid "+(expiryMonths===m?"#E65100":"#E0B47A"),background:expiryMonths===m?"#E65100":"#fff",color:expiryMonths===m?"#fff":"#8D6E00",cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
+        ))}
+        {expiryMonths > 0 && <span style={{fontSize:10,color:"#8D6E00",marginLeft:4}}>~ {new Date(calcExpiresAt(expiryMonths)).toLocaleDateString("ko-KR",{year:"numeric",month:"2-digit",day:"2-digit"})}</span>}
+      </div>}
     </div>
     {/* 히스토리 */}
     <div style={{fontSize:11,fontWeight:700,color:T.textSub,marginBottom:6}}>📜 포인트 내역 ({txList.length}건)</div>
@@ -1221,13 +1253,22 @@ function PointPanel({ cust, txList, balance, onReload }) {
         ? <div style={{fontSize:11,color:T.textMuted,padding:"8px 0",textAlign:"center"}}>내역 없음</div>
         : txList.map(tx => {
             const isPlus = tx.type === "earn" || tx.type === "adjust_add";
-            const label = ({earn:"적립",deduct:"차감",adjust_add:"조정+",adjust_sub:"조정-"})[tx.type]||tx.type;
-            return <div key={tx.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderBottom:"1px solid "+T.border,fontSize:11}}>
+            const isExpire = tx.type === "expire";
+            const label = ({earn:"적립",deduct:"차감",adjust_add:"조정+",adjust_sub:"조정-",expire:"만료"})[tx.type]||tx.type;
+            const expired = isPlus && tx.expires_at && new Date(tx.expires_at).getTime() <= Date.now();
+            const bg = isExpire ? "#F5F5F5" : expired ? "#FAFAFA" : isPlus ? "#E8F5E9" : "#FFEBEE";
+            const color = isExpire ? "#616161" : expired ? "#9E9E9E" : isPlus ? "#2E7D32" : "#C62828";
+            return <div key={tx.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderBottom:"1px solid "+T.border,fontSize:11,opacity:expired?0.7:1}}>
               <span style={{minWidth:64,color:T.textSub,fontSize:10}}>{new Date(tx.created_at).toLocaleDateString("ko-KR",{month:"2-digit",day:"2-digit"})} {new Date(tx.created_at).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"})}</span>
-              <span style={{padding:"2px 6px",borderRadius:4,background:isPlus?"#E8F5E9":"#FFEBEE",color:isPlus?"#2E7D32":"#C62828",fontWeight:700,fontSize:10}}>{label}</span>
-              <span style={{fontWeight:800,color:isPlus?"#2E7D32":"#C62828",minWidth:70,textAlign:"right"}}>{isPlus?"+":"−"}{(tx.amount||0).toLocaleString()}P</span>
-              <span style={{flex:1,color:T.text,fontSize:10}}>{tx.note||(tx.sale_id?"매출 연동":"")}</span>
-              {tx.balance_after != null && <span style={{color:"#888",fontSize:10}}>잔 {tx.balance_after.toLocaleString()}P</span>}
+              <span style={{padding:"2px 6px",borderRadius:4,background:bg,color,fontWeight:700,fontSize:10}}>{label}</span>
+              <span style={{fontWeight:800,color,minWidth:70,textAlign:"right",textDecoration:isExpire?"line-through":"none"}}>{isPlus?"+":"−"}{(tx.amount||0).toLocaleString()}P</span>
+              <span style={{flex:1,color:T.text,fontSize:10,display:"flex",alignItems:"center",gap:6}}>
+                <span>{tx.note||(tx.sale_id?"매출 연동":"")}</span>
+                {isPlus && tx.expires_at && !isExpire && <span style={{fontSize:9,padding:"1px 5px",borderRadius:3,background:expired?"#EEE":"#FFF3E0",color:expired?"#9E9E9E":"#E65100",fontWeight:700,whiteSpace:"nowrap"}}>
+                  {expired?"만료됨":`만료 ${new Date(tx.expires_at).toLocaleDateString("ko-KR",{month:"2-digit",day:"2-digit"})}`}
+                </span>}
+              </span>
+              {tx.balance_after != null && !isExpire && <span style={{color:"#888",fontSize:10}}>잔 {tx.balance_after.toLocaleString()}P</span>}
               <button onClick={()=>remove(tx.id)} title="삭제"
                 style={{padding:"2px 5px",border:"none",background:"transparent",color:T.danger,cursor:"pointer",fontSize:12}}>🗑</button>
             </div>;
