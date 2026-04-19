@@ -157,11 +157,11 @@ function EmpCard({ emp, branch, empSettings, onSetEmpSetting, onDeleteEmp, onUpd
         <div style={{ fontWeight:700, fontSize:12, color:'#3a2010' }}>{emp.name}</div>
         <button onClick={() => onDeleteEmp(emp.id)} style={{ fontSize:10, padding:'1px 5px', borderRadius:4, border:'1px solid #f5b3b3', background:T.dangerLt, color:T.danger, cursor:'pointer', fontFamily:'inherit' }}>삭제</button>
       </div>
-      {/* 근무표 제외 + 로테이션 토글 */}
+      {/* 근무 제외 + 로테이션 토글 */}
       <div style={{ display:'flex', gap:12, marginBottom:6, padding:'3px 0', flexWrap:'wrap' }}>
         <label style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color: excluded ? T.danger : T.textSub, cursor:'pointer' }}>
           <input type="checkbox" checked={excluded} onChange={e => onSetEmpSetting(emp.id, 'excludeFromSchedule', e.target.checked)} style={{ cursor:'pointer' }}/>
-          <span style={{ fontWeight: excluded ? 700 : 500 }}>근무표 제외</span>
+          <span style={{ fontWeight: excluded ? 700 : 500 }}>근무 제외</span>
           <span style={{ fontSize:9, color:T.textMuted }}>(채팅만)</span>
         </label>
         {!excluded && (
