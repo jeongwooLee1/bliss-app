@@ -3110,7 +3110,6 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                           height:Math.max(h-1,10),
                           background:isNaverCancelled?T.warningLt:isNaverUnassigned?T.warningLt:isNaverPending?`${color}15`:`${color}${bgAlpha}`,
                           border:isNaverCancelled?"1.5px dashed #E6A700":isNaverUnassigned?"1.5px dashed #FF9800":isNaverPending?`1.5px dashed ${color}`:"none",
-                          borderLeft:`3.5px solid ${isNaverCancelled?T.warning:isNaverUnassigned?T.orange:color}`,
                           borderRadius:4,padding:"4px 6px",overflow:"hidden",fontSize:blockFs,lineHeight:1.2,
                           boxShadow:isDrag?"none":"0 1px 4px rgba(0,0,0,.1)",
                           cursor:isEditable?"move":"pointer",zIndex:isDrag?0:3,transition:(isDrag||isBeingResized)?"none":"all .15s, box-shadow .2s",
