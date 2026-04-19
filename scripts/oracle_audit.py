@@ -284,6 +284,41 @@ for on, sb_s in sb_sales_by_order_num.items():
         })
 print(f"    → {len(report4):,}건")
 
+# ─── 리포트 ⑦: Oracle 동명이인 누락 + 매출 흡수 (최우선 복구 대상) ───
+print("▶ 리포트 ⑦ Oracle 누락 + 매출 흡수")
+from collections import Counter
+absorption = defaultdict(lambda: {'absorbed_by': Counter(), 'first_date': '9999', 'last_date': '0000'})
+for r in report4:
+    oc = r['ora_cust_num']
+    bc = r['bliss_cust_num']
+    absorption[oc]['absorbed_by'][bc] += 1
+    dt = r['date'] or ''
+    if dt < absorption[oc]['first_date']: absorption[oc]['first_date'] = dt
+    if dt > absorption[oc]['last_date']: absorption[oc]['last_date'] = dt
+
+report7 = []
+missing_with_absorb = 0
+for ora_cn, info in absorption.items():
+    if ora_cn in sb_cust_by_custnum:
+        continue  # Bliss에 원본 cust_num 존재 → 단순 매출 매핑 오류 (누락 아님)
+    m = ora_members.get(ora_cn)
+    if not m:
+        continue
+    missing_with_absorb += 1
+    for bliss_cn, cnt in info['absorbed_by'].most_common():
+        bliss_cust = sb_cust_by_custnum.get(bliss_cn)
+        report7.append({
+            'ora_cust_num': ora_cn,
+            'ora_name': m['name'],
+            'ora_phone': m['phone'],
+            'ora_join_date': m['join_date'],
+            'absorbed_by_cust_num': bliss_cn,
+            'bliss_id': bliss_cust['id'] if bliss_cust else '',
+            'absorbed_sales_count': cnt,
+            'date_range': f"{info['first_date']} ~ {info['last_date']}",
+        })
+print(f"    → {len(report7):,}쌍 (누락된 원본 고객 {missing_with_absorb:,}명)")
+
 # ─── 리포트 ⑤: Bliss 중복 고객 ───
 print("▶ 리포트 ⑤ Bliss 내 중복 고객")
 report5 = []
@@ -360,6 +395,7 @@ write_csv('03_missing_sales.csv', report3)
 write_csv('04_wrong_cust_num.csv', report4)
 write_csv('05_duplicate_custs.csv', report5)
 write_csv('06_bliss_extra_sales.csv', report6)
+write_csv('07_absorption_pairs.csv', report7)
 
 # 요약
 summary = f"""Oracle ↔ Bliss 감사 요약 ({datetime.now():%Y-%m-%d %H:%M})
@@ -382,6 +418,7 @@ summary = f"""Oracle ↔ Bliss 감사 요약 ({datetime.now():%Y-%m-%d %H:%M})
   ④ Bliss 매출 cust_num 오염:                  {len(report4):,}건  ← 최우선 검토
   ⑤ Bliss 내 중복 고객 (phone or name+phone):  {len(report5):,}건
   ⑥ Bliss에만 있고 Oracle에 없는 매출:         {len(report6):,}건  (수동 등록/테스트)
+  ⑦ Oracle 누락 + 매출 흡수 쌍:                {len(report7):,}건  ← 실제 복구 대상 (박예지 30035 타입)
 
 각 CSV 파일은 {OUT} 참고.
 다음 단계: 유저가 CSV 검토 → 승인된 건만 수정 작업.
