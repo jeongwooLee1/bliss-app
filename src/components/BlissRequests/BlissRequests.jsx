@@ -86,6 +86,15 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
     };
     const next = [newReq, ...requests];
     await saveAll(next);
+    // 텔레그램 알림 (Edge Function 호출, 실패해도 UX 영향 없음)
+    try {
+      const brName = form.branchId ? branchName(form.branchId) : "";
+      fetch(`${SB_URL}/functions/v1/notify-request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: SB_KEY, Authorization: "Bearer " + SB_KEY },
+        body: JSON.stringify({ name: newReq.name, description: newReq.description, branch: brName }),
+      }).catch(() => {});
+    } catch (e) {}
     setForm({ name: "", branchId: userBranches?.[0] || "", description: "", imageData: "" });
     setShowForm(false);
     setSubmitting(false);
