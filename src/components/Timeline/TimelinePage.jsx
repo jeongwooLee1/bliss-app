@@ -3019,12 +3019,14 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                     const layoutBlocks = (blocks) => {
                       if (blocks.length <= 1) return blocks.map(b => ({...b, _col:0, _totalCols:1}));
                       const sorted = [...blocks].sort((a,b) => timeToY(a.time) - timeToY(b.time));
+                      // 실제 duration 기준 종료 시각 — 짧은 블록에 가짜 버퍼 주면 인접 블록과 겹침 오판됨
+                      const blockEnd = (b) => timeToY(b.time) + (b.dur/timeUnit)*rowH;
                       // Group overlapping blocks
                       const groups = []; let cur = [sorted[0]];
                       for (let i=1; i<sorted.length; i++) {
                         const bk = sorted[i];
                         const bkY = timeToY(bk.time);
-                        const grpMaxEnd = Math.max(...cur.map(g => timeToY(g.time) + Math.max((g.dur/timeUnit)*rowH, rowH*2)));
+                        const grpMaxEnd = Math.max(...cur.map(blockEnd));
                         if (bkY < grpMaxEnd - 1) { cur.push(bk); }
                         else { groups.push(cur); cur = [bk]; }
                       }
@@ -3035,7 +3037,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                         const cols = [];
                         for (const bk of grp) {
                           const bkStart = timeToY(bk.time);
-                          const bkEnd = bkStart + Math.max((bk.dur/timeUnit)*rowH, rowH*2);
+                          const bkEnd = blockEnd(bk);
                           let placed = false;
                           for (let c=0; c<cols.length; c++) {
                             if (bkStart >= cols[c]) { cols[c] = bkEnd; result.push({...bk, _col:c, _totalCols:0}); placed=true; break; }
