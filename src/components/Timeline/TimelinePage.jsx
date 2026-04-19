@@ -3150,7 +3150,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                           borderRadius:4,padding:"4px 6px",overflow:"hidden",fontSize:blockFs,lineHeight:1.2,
                           boxShadow:isDrag?"none":"0 1px 4px rgba(0,0,0,.1)",
                           cursor:isEditable?"move":"pointer",zIndex:isDrag?0:3,transition:(isDrag||isBeingResized)?"none":"all .15s, box-shadow .2s",
-                          opacity:isDrag?0.35:1,userSelect:"none",WebkitUserSelect:"none",MozUserSelect:"none",msUserSelect:"none",WebkitTouchCallout:"none",touchAction:"none"}}
+                          opacity:isDrag?0.35:1,userSelect:"none",WebkitUserSelect:"none",MozUserSelect:"none",msUserSelect:"none",WebkitTouchCallout:"none",touchAction:"pan-x pan-y"}}
                         className="tl-block">
                         {block.type==="reservation" && !block.isSchedule && <>
                           <div style={{display:"flex",alignItems:"center",gap:2,flexWrap:"wrap"}}>
