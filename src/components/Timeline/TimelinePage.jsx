@@ -3121,7 +3121,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             {isNaverCancelled && <span style={{fontSize:Math.max(6,blockFs-2),padding:"1px 3px",borderRadius:T.radius.sm,background:T.warning,color:T.bgCard,fontWeight:T.fw.bolder,lineHeight:1,flexShrink:0}}>취소</span>}
                             {isNaverUnassigned && <span style={{fontSize:Math.max(6,blockFs-2),padding:"1px 3px",borderRadius:T.radius.sm,background:T.orange,color:T.bgCard,fontWeight:T.fw.bolder,lineHeight:1,flexShrink:0}}>미배정</span>}
                             {isNaverPending && !isNaverUnassigned && <span style={{fontSize:Math.max(6,blockFs-2),padding:"1px 3px",borderRadius:T.radius.sm,background:T.orange,color:T.bgCard,fontWeight:T.fw.bolder,lineHeight:1,flexShrink:0,animation:"pendingBlink 1.5s infinite"}}>대기</span>}
-                            {block.selectedTags?.slice(0,3).map(tid=>{
+                            {effectiveNaverColShow["태그"] !== false && block.selectedTags?.slice(0,3).map(tid=>{
                               const tg=tags.find(t=>t.id===tid);
                               if(!tg) return null;
                               const bg=tg.color||T.primary;
@@ -3129,7 +3129,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                               const txt=(0.299*r+0.587*g+0.114*b)/255>0.55?T.text:T.bgCard;
                               return <span key={tid} style={{fontSize:Math.max(6,blockFs-2),padding:"1px 4px",borderRadius:T.radius.sm,background:bg,color:txt,fontWeight:T.fw.bolder,lineHeight:1,flexShrink:0}}>{tg.name}</span>;
                             })}
-                            {block.selectedTags?.length>3 && <span style={{fontSize:Math.max(6,blockFs-2),color:T.bgCard,background:T.gray500,borderRadius:T.radius.sm,padding:"1px 2px",flexShrink:0}}>+{block.selectedTags.length-3}</span>}
+                            {effectiveNaverColShow["태그"] !== false && block.selectedTags?.length>3 && <span style={{fontSize:Math.max(6,blockFs-2),color:T.bgCard,background:T.gray500,borderRadius:T.radius.sm,padding:"1px 2px",flexShrink:0}}>+{block.selectedTags.length-3}</span>}
                             {/* 이름 */}
                             <span style={{fontWeight:T.fw.bold,color:isNaverCancelled?T.gray500:T.text,textDecoration:isNaverCancelled?"line-through":"none",flexShrink:1,minWidth:0}}>
                               {(() => {
@@ -3138,11 +3138,11 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                               })()} {block.custName}
                             </span>
                           </div>
-                          {block.selectedServices?.length>0 && <div style={{fontSize:Math.max(6,blockFs-2),color:T.text,fontWeight:T.fw.bold,marginTop:1}}>
+                          {effectiveNaverColShow["시술"] !== false && block.selectedServices?.length>0 && <div style={{fontSize:Math.max(6,blockFs-2),color:T.text,fontWeight:T.fw.bold,marginTop:1}}>
                             {groupSvcNames(block.selectedServices, SVC_LIST).slice(0,2).join(", ")}
                             {block.selectedServices.length>2 && ` +${block.selectedServices.length-2}`}
                           </div>}
-                          {block.custId && custPkgMap[block.custId]?.length > 0 && (() => {
+                          {effectiveNaverColShow["보유권"] !== false && block.custId && custPkgMap[block.custId]?.length > 0 && (() => {
                             // 같은 이름 패키지 그룹화 + 우선순위 정렬
                             const grouped = {};
                             (custPkgMap[block.custId] || []).forEach(pkg => {
@@ -3198,7 +3198,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                         {block.type==="memo" && <div style={{color:T.danger,fontWeight:T.fw.black}}><I name="fileText" size={10} color={T.danger}/> 메모</div>}
                         {block.type==="clockin" && <div style={{color:T.gray600,fontWeight:T.fw.bold}}><I name="clock" size={10} color={T.gray600}/> {staff?.dn||"출근"}</div>}
                         {block.type==="cleaning" && <div style={{color:T.info,fontWeight:T.fw.bold}}><I name="sparkles" size={10} color={T.info}/> 청소</div>}
-                        {block.memo && (() => { const clean = block.memo.split("\n").filter(l => { const t=l.trim(); return !(/^\[등록:|^\[수정:/.test(t)) && !(/^\d+\.\d+\s+\d+:\d+\s*(예약)?(접수|변경|확정|취소|신청|확정완료)/.test(t)); }).join("\n").trim(); return clean ? <div style={{color:block.isSchedule?T.text:T.gray700,fontWeight:T.fw.normal,marginTop:1,whiteSpace:"pre-line",wordBreak:"break-word"}}><I name="msgSq" size={10} color={T.gray600}/> {clean}</div> : null; })()}
+                        {effectiveNaverColShow["블록메모"] !== false && block.memo && (() => { const clean = block.memo.split("\n").filter(l => { const t=l.trim(); return !(/^\[등록:|^\[수정:/.test(t)) && !(/^\d+\.\d+\s+\d+:\d+\s*(예약)?(접수|변경|확정|취소|신청|확정완료)/.test(t)); }).join("\n").trim(); return clean ? <div style={{color:block.isSchedule?T.text:T.gray700,fontWeight:T.fw.normal,marginTop:1,whiteSpace:"pre-line",wordBreak:"break-word"}}><I name="msgSq" size={10} color={T.gray600}/> {clean}</div> : null; })()}
                         {/* Resize handle — 넓은 히트 영역 */}
                         {isEditable && <div className="resize-handle" onMouseDown={e=>handleResizeStart(block,e)} onTouchStart={e=>handleResizeStart(block,e)}
                           style={{position:"absolute",bottom:-10,left:"10%",right:"10%",height:20,cursor:"ns-resize",

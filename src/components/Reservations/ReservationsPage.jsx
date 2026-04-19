@@ -547,8 +547,12 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
               </button>
             </div>
             {[
+              {k:"태그", label:"태그"},
+              {k:"시술", label:"선택 시술"},
+              {k:"보유권", label:"보유권"},
               ...NAVER_COLS.map(c=>({k:c.key,label:c.label})),
               {k:"직원메모", label:"직원메모"},
+              {k:"블록메모", label:"메모"},
             ].map(({k,label})=>(
               <label key={k} style={{display:"flex",alignItems:"center",gap:T.sp.sm,padding:"3px 0",cursor:"pointer",fontSize:T.fs.sm,color:T.text}}>
                 <input type="checkbox" checked={naverColShow[k]!==false} onChange={()=>setNaverColShow({...naverColShow,[k]:naverColShow[k]===false})}
