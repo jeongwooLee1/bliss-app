@@ -1100,11 +1100,52 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     const sc = dbTl.current.sc;
     return sc ? {...STATUS_CLR_DEFAULT,...sc} : {...STATUS_CLR_DEFAULT};
   });
+  // 전 지점 공통 적용 모드 — 체크 시 설정이 DB 공유 키로 저장됨
+  const tlSharedRef = useRef(dbTl.current.shared === true);
+  const [tlShared, setTlSharedRaw] = useState(tlSharedRef.current);
+  const saveSharedToDb = useCallback((cur) => {
+    const {sh, eh, rh, cw, tu, fs, op, sc} = cur;
+    const body = {sh, eh, rh, cw, tu, fs, op, sc};
+    const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
+    fetch(`${SB_URL}/rest/v1/schedule_data`, {
+      method: "POST", headers: H,
+      body: JSON.stringify({ id: "tl_shared_settings_v1", key: "tl_shared_settings_v1", value: JSON.stringify(body) })
+    }).catch(console.error);
+  }, []);
+  // 초기 로드: 공유 모드인 경우 DB에서 최신 공유 설정 가져와 적용
+  useEffect(() => {
+    if (!tlSharedRef.current) return;
+    const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
+    fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.tl_shared_settings_v1&select=value`, { headers: H })
+      .then(r => r.json()).then(rows => {
+        const v = rows?.[0]?.value;
+        if (!v) return;
+        const s = typeof v === "string" ? JSON.parse(v) : v;
+        if (s.sh !== undefined) setStartHourRaw(Number(s.sh));
+        if (s.eh !== undefined) setEndHourRaw(Number(s.eh));
+        if (s.rh !== undefined) setRowHRaw(Number(s.rh));
+        if (s.cw !== undefined) setColWRaw(Number(s.cw));
+        if (s.tu !== undefined) setTimeUnitRaw(Number(s.tu));
+        if (s.fs !== undefined) setBlockFsRaw(Number(s.fs));
+        if (s.op !== undefined) setBlockOpRaw(Number(s.op));
+        if (s.sc) setStatusClrRaw({...STATUS_CLR_DEFAULT, ...s.sc});
+        dbTl.current = {...dbTl.current, ...s};
+        tlSaveLocal(dbTl.current);
+      }).catch(console.error);
+  }, []);
+  const setTlShared = (v) => {
+    tlSharedRef.current = v;
+    setTlSharedRaw(v);
+    dbTl.current = {...dbTl.current, shared: v};
+    tlSaveLocal(dbTl.current);
+    if (v) saveSharedToDb(dbTl.current); // 체크 시 현재 값 즉시 DB에 push
+  };
   const makeTlSave = (k, rawSetter) => v => {
     rawSetter(prev => {
       const resolved = typeof v === "function" ? v(prev) : v;
       dbTl.current = {...dbTl.current, [k]: resolved};
       tlSaveLocal(dbTl.current);
+      if (tlSharedRef.current) saveSharedToDb(dbTl.current);
       return resolved;
     });
   };
@@ -1115,7 +1156,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const setTimeUnit = makeTlSave("tu", setTimeUnitRaw);
   const setBlockFs = makeTlSave("fs", setBlockFsRaw);
   const setBlockOp = makeTlSave("op", setBlockOpRaw);
-  const setStatusClr = (k,v) => { setStatusClrRaw(p => { const n = {...p,[k]:v}; dbTl.current = {...dbTl.current, sc:n}; tlSaveLocal(dbTl.current); try{localStorage.setItem("tl_sc",JSON.stringify(n))}catch(e){} return n; }); };
+  const setStatusClr = (k,v) => { setStatusClrRaw(p => { const n = {...p,[k]:v}; dbTl.current = {...dbTl.current, sc:n}; tlSaveLocal(dbTl.current); try{localStorage.setItem("tl_sc",JSON.stringify(n))}catch(e){} if (tlSharedRef.current) saveSharedToDb(dbTl.current); return n; }); };
   // Sync status colors to localStorage for other components using getStatusClr()
   useEffect(() => { try{localStorage.setItem("tl_sc",JSON.stringify(statusClr))}catch(e){} }, [statusClr]);
   // 예약 endTime이 설정된 종료시간을 초과하면 자동 확장
@@ -3387,6 +3428,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         startHour={startHour} setStartHour={setStartHour} endHour={endHour} setEndHour={setEndHour}
         timeUnit={timeUnit} setTimeUnit={setTimeUnit}
         statusClr={statusClr} setStatusClr={setStatusClr}
+        tlShared={tlShared} setTlShared={setTlShared}
       />
 
       {/* 알람 팝업 */}

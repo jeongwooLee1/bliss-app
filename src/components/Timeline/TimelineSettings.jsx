@@ -25,6 +25,7 @@ function TimelineSettings({
   startHour, setStartHour, endHour, setEndHour,
   timeUnit, setTimeUnit,
   statusClr, setStatusClr,
+  tlShared, setTlShared,
 }) {
   if (!showSettings) return null;
 
@@ -78,7 +79,13 @@ function TimelineSettings({
       background:T.bgCard,borderRadius:"16px 16px 0 0",padding:"20px 20px calc(32px + 56px + env(safe-area-inset-bottom))",boxShadow:"0 -8px 32px rgba(0,0,0,.15)",zIndex:100,
       maxHeight:"80vh",overflowY:"auto",overflowX:"hidden",animation:"bottomSheet .4s cubic-bezier(.22,1,.36,1)",willChange:"transform"}}>
       <div style={{width:36,height:4,borderRadius:T.radius.sm,background:T.gray300,margin:"0 auto 16px",cursor:"grab"}}/>
-      <div style={{fontSize:T.fs.md,fontWeight:T.fw.bolder,color:T.text,marginBottom:12}}><I name="settings" size={14}/> 타임라인 설정</div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+        <div style={{fontSize:T.fs.md,fontWeight:T.fw.bolder,color:T.text}}><I name="settings" size={14}/> 타임라인 설정</div>
+        {setTlShared && <label style={{display:"flex",alignItems:"center",gap:6,fontSize:T.fs.xs,color:tlShared?T.primary:T.textSub,cursor:"pointer",padding:"6px 10px",border:`1px solid ${tlShared?T.primary:T.border}`,borderRadius:T.radius.md,background:tlShared?T.primaryLt:T.bgCard,fontWeight:tlShared?T.fw.bolder:T.fw.medium}}>
+          <input type="checkbox" checked={!!tlShared} onChange={e=>setTlShared(e.target.checked)} style={{accentColor:T.primary,width:14,height:14}}/>
+          🌐 전 지점 공통 적용
+        </label>}
+      </div>
       {/* 지점 보기 토글 - staff만 */}
       {!isMaster && accessibleBids.length > userBranches.length && (
         <div style={{background:T.gray100,borderRadius:T.radius.lg,padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
