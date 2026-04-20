@@ -4,8 +4,8 @@ import I from '../common/I'
 import { Btn } from '../common'
 import { TeamChat } from '../Chat'
 
-function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", isSuper=false, onBackToSuper, serverV, scraperStatus=null, BLISS_V="" }) {
-  const [chatOpen, setChatOpen] = useState(true);
+function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", isSuper=false, onBackToSuper, serverV, scraperStatus=null, BLISS_V="", isMobile=false }) {
+  const [chatExpanded, setChatExpanded] = useState(false);
   const cats = [
     { label:"예약 관리", items: nav.filter(n=>["timeline","reservations"].includes(n.id)) },
     { label:"고객 관리", items: nav.filter(n=>["customers"].includes(n.id)) },
@@ -34,7 +34,7 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
         {isSuper && <button onClick={onBackToSuper} style={{marginLeft:"auto",fontSize:10,padding:"2px 6px",border:`1px solid ${T.border}`,background:"transparent",color:T.textSub,borderRadius:4,cursor:"pointer",fontFamily:"inherit"}}>← 관리자</button>}
       </div>
     </div>
-    <div style={{flex:1,padding:"8px 0",overflowY:"auto"}}>
+    <div style={{flex:1,minHeight:0,padding:"8px 0",overflowY:"auto"}}>
       {cats.map((cat,ci) => (
         <div key={ci}>
           <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.gray500,padding:`12px ${T.sp.lg}px 4px`,letterSpacing:.5}}>{cat.label}</div>
@@ -51,12 +51,16 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
         </div>
       ))}
     </div>
-    <div style={{borderTop:`2px solid ${T.primary}`,display:"flex",flexDirection:"column",flexShrink:0,height:chatOpen?420:36,transition:"height .15s"}}>
-      <button onClick={()=>setChatOpen(v=>!v)} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 14px",border:"none",background:T.primaryLt,color:T.primaryDk,fontSize:T.fs.xs,fontWeight:T.fw.bolder,cursor:"pointer",fontFamily:"inherit",textAlign:"left",letterSpacing:.3}}>
-        <I name={chatOpen?"chevD":"chevR"} size={12}/> 팀 채팅
-      </button>
-      {chatOpen && <div style={{flex:1,minHeight:0,display:"flex",flexDirection:"column"}}><TeamChat mock/></div>}
-    </div>
+    {!isMobile && <div style={{borderTop:`2px solid ${T.primary}`,display:"flex",flexDirection:"column",flexShrink:0,flexGrow:0,flexBasis:(chatExpanded?420:190)+"px",height:(chatExpanded?420:190)+"px",overflow:"hidden",transition:"flex-basis .18s,height .18s"}}>
+      <div style={{flex:1,minHeight:0,display:"flex",flexDirection:"column"}}>
+        <TeamChat extraHeaderRight={
+          <button onClick={()=>setChatExpanded(v=>!v)} title={chatExpanded?"축소":"펼치기"}
+            style={{border:"none",background:"transparent",color:T.primaryDk,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"2px 4px",flexShrink:0,whiteSpace:"nowrap"}}>
+            {chatExpanded?"▾ 접기":"▴ 펼치기"}
+          </button>
+        }/>
+      </div>
+    </div>}
   </>;
 }
 

@@ -533,3 +533,86 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - reservation_id: NULLS NOT DISTINCT unique constraint → AI 예약에 고유값 필수
 - 매출 편집 시 sales 테이블 금액 필드도 업데이트됨 (v3.1.4~). 금액 변동 경고창으로 실수 방지 (v3.1.5)
 - 매출 있는데 cust_num 비어있는 케이스 0건 확인 완료 (v3.1.9 backfill 기준)
+
+### 포인트·이벤트 시스템 개편 (2026-04-19~20, v3.3.51 → v3.3.81)
+
+#### 범용 이벤트 엔진
+- `src/lib/eventEngine.js` 신규 모듈: `evaluateTrigger()` + `applyEvents()`
+- 트리거 3종 (`new_first_sale` / `prepaid_recharge` / `pkg_repurchase`), 보상 6종 (`point_earn` / `discount_pct` / `discount_flat` / `coupon_issue` / `prepaid_bonus` / `free_service`), 기준 5종 (`svc` / `svc_prod` / `prepaid_amount` / `category` / `services`)
+- 매장별 커스텀 하드코딩 절대 금지 — `DEFAULT_EVENTS` 전부 제거, 매장마다 UI로 생성
+- 마스터 스위치 `businesses.settings.events_master_enabled` (현재 전 매장 false)
+- **2중 잠금**: 마스터 ON + 개별 이벤트 ON + 조건 충족 모두 만족해야 반영
+- memory 기록: `feedback_bliss_multitenant.md`
+
+#### 이벤트 관리 UI (관리설정 → 이벤트 관리, `coupons` 라우트)
+- `AdminEvents.jsx` 새 컴포넌트 + `AdminCoupons`는 내부 탭 하나로 재사용
+- "쿠폰 관리" → **"이벤트 관리"** 리네임
+- 2개 탭: 💥 이벤트 등록 / 🎫 쿠폰 등록
+- 스위치 토글 + 카드 내부 ON/OFF + 커스텀 이벤트 추가/삭제/수정
+- CatPicker/SvcPicker (카테고리/시술 복수 선택) — 쿠폰 엔진과 동일 UX
+- 배지: 🟢 반영중 (엔진 지원) / ⚪ 미구현 (지원 외)
+
+#### 포인트 유효기간 + 히스토리
+- DB: `point_transactions.expires_at/source/expired_tx_id` 컬럼 추가
+- pg_cron `record_expired_points()` 매일 00:05 KST 만료 처리
+- `type='expire'` 트랜잭션으로 히스토리만 기록 (잔액 계산에서 제외)
+- 고객관리 PointPanel 적립 시 유효기간 선택 (없음/1/3/6/12개월), 만료 배지 표시
+
+#### 10% 쿠폰 → 포인트 소급 전환 (마이그레이션)
+- 관리설정 → 데이터 관리 → 포인트 설정 (임시, 안정화 후 삭제 예정)
+- 2개 탭: 📝 매출메모 소급 / 🎫 유효 쿠폰 보유자
+- Materialized view `point_migration_candidates` (매출 메모 regex 파싱) + `refresh_point_migration_candidates()` RPC
+- View `point_coupon_holders` (유효 쿠폰 대상자)
+- 처리 결과: 280명 / 2,842,452P (시술만 10%, 제품 제외, 패키지 구매자 제외)
+- 쿠폰 172장 삭제, 유효 0장, 만료 1,092장만 기록 보관
+
+#### SaleForm 매출등록 반영
+- 이벤트 엔진 호출 → pointEarn / 할인 / 쿠폰 자동 발행 자동 적용
+- 외부선결제가 제품 없는 매출에서 시술합계에 포함 (`extToSvc`)
+- 쿠폰·포인트 카테고리는 SVC_LIST에서 제외 (구매 대상 아님)
+- 매출 등록 시 쿠폰 수동 발행 UI (수량 선택) + 고객관리에도 드롭다운
+- 포인트 사용 UI 2줄 레이아웃, 전액 버튼, 콤마 포맷
+- 매출 등록 시 예약 시술시간 자동 조정: 축소만 허용 (수연 수정요청 id_tgvgfsjvoz)
+
+#### 팀채팅 서버 저장 + 공지 배너 (v3.3.55~60)
+- DB: `team_chat_messages` 테이블 + Realtime publication
+- ChatInput에 📣 확성기 토글 → `is_announce=true` 메시지는 전체 배너
+- 배너 클릭 dismiss → localStorage 기록, 재접속해도 복원 안 됨
+- 24시간 내 dismiss 안 된 공지는 재접속 시 복원
+- 모바일에서는 사이드바 대신 **받은메시지함** 페이지에 탭 추가
+- 사이드바 채팅 영역: 2줄 헤더 → 한 줄(팀채팅/이름/펼치기) 컴팩트, #·아바타·온라인카운트 제거
+
+#### 네이버 스크래퍼 신규 고객 자동 생성 (서버 수정)
+- `/home/ubuntu/naver-sync/bliss_naver.py` (bak_cust_autocreate 백업)
+- 전화번호로 기존 고객 매칭 실패 시 → customers 테이블에 INSERT
+- **cust_num은 비움** — 매출 발생 시 앱 SaleForm의 `fetchNextCustNum`이 부여
+- 예약 cust_id에 새 고객 ID 연결
+- 유령 고객 3명 수동 복구 (Elaine 70079, 홍유진, Amy Lin)
+
+#### 타임라인·예약 UX 수정
+- 빈 지원 칼럼 제거 (getWorkingStaff: segments에 원래 지점 없고 내용 없으면 push 안 함, v3.3.51)
+- 막대바 양끝 시간이 직원 근무시간 반영 (empWorkHours 다층 키 lookup, v3.3.51)
+- 근무표 미등록 직원은 타임라인 제외 (dayStatus 없으면 return, v3.3.51)
+- 지원 partial 축소 처리: 수연 왕십리(11~18:30)+강남(18:30~) 케이스 정상 (v3.3.54)
+- 모바일 롱프레스 즉시 floating preview + pop-in 애니 + 진동 패턴 (v3.3.52~53)
+- 예약 모달 데스크탑 X 버튼 추가 (v3.3.64)
+- 예약금완료 태그 저장 버그 수정 (ReservationModal.jsx:1400 자동 제거 로직 삭제)
+
+#### 고객관리 다토큰 검색 (v3.3.74)
+- "이정 8008" 처럼 이름 부분 + 전화 부분 AND 검색
+- 서버에서 전 토큰 AND 필터 (`and=(or(...),or(...))`) — 기존 첫 토큰만 서버 방식은 100건 페이지 벗어나 누락
+
+#### 외부 플랫폼 설정
+- `businesses.settings.external_platforms` — 서울뷰티/크리에이트립/입금 저장
+- 매출 등록 시 "입금(계좌이체)" 드롭다운 옵션 추가
+
+#### 수정요청 처리 (전부 done)
+- id_mj1wxf0q69 서현 · id_ubcyc5lojp 민아 · id_tgvgfsjvoz 수연 · id_c8cj6n04hl 정우 10% 쿠폰 · id_xe85iyyvcj 미진 · id_puhjs8t4lv 소이 · id_821i3dfsdq 미진
+
+### 주의사항 (v3.3.81 이후 참고)
+- **멀티테넌트 원칙**: 매장 특화 하드코딩 금지. 이벤트/쿠폰은 설정 기반 범용 엔진만 (memory 기록)
+- 이벤트 엔진 마스터 스위치 현재 OFF (관리설정 → 이벤트 관리 상단 🔴)
+- 템플릿 이벤트 없음 (유저가 직접 생성)
+- `10%추가적립쿠폰` 만료분 1,092장 DB에 기록용 보관 (삭제 요청 올 때까지 유지)
+- `events` 배열에 `evt_custom_*` ID가 커스텀, 그 외는 템플릿(지금은 없음)
+- `prepaid_bonus` 보상: 현재 엔진이 금액만 계산, 다담권 잔액 실제 가산 로직은 미구현 (다음 단계)

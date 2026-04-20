@@ -19,30 +19,21 @@ function UserPicker({ users, currentUser, onSelect }) {
   const bg    = currentUser?.gender === 'M' ? T.maleLt : currentUser?.gender === 'F' ? T.femaleLt : T.gray100
 
   return (
-    <div ref={wrapRef} style={{position:'relative', minWidth:0, flex:1}}>
+    <div ref={wrapRef} style={{position:'relative', minWidth:0}}>
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
         style={{
-          display:'flex', alignItems:'center', gap:5,
+          display:'flex', alignItems:'center', gap:3,
           background: bg, color,
           border:'none', cursor:'pointer',
-          padding:'3px 7px 3px 4px',
+          padding:'2px 6px',
           borderRadius: 999,
           fontFamily:'inherit', fontSize:T.fs.xs, fontWeight:T.fw.bolder,
           maxWidth:'100%',
           transition:'background .1s',
         }}
       >
-        {/* 아바타 */}
-        <span style={{
-          width:18, height:18, borderRadius:'50%',
-          background: '#fff',
-          display:'flex', alignItems:'center', justifyContent:'center',
-          fontSize:10, color, fontWeight:T.fw.black, flexShrink:0,
-        }}>
-          {(currentUser?.name || '?').slice(0,1)}
-        </span>
         <span style={{
           whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
           maxWidth:'100%',
@@ -122,28 +113,21 @@ function UserPicker({ users, currentUser, onSelect }) {
   )
 }
 
-// 상단 헤더: 채팅방 타이틀 + 이름 선택 + 접속자 수
-function ChatHeader({ users = [], currentUser, onSelectUser, onlineCount = 0 }) {
+// 컴팩트 한 줄 헤더: [타이틀] [이름 선택] ... [extraRight]
+function ChatHeader({ users = [], currentUser, onSelectUser, title = '팀 채팅', extraRight = null }) {
   return (
     <div style={{
-      display:'flex', alignItems:'center', gap:8,
-      padding:`8px ${T.sp.md}px`, borderBottom:`1px solid ${T.border}`,
-      background: T.bgCard, flexShrink:0,
+      display:'flex', alignItems:'center', gap:6,
+      padding:`4px 10px`, borderBottom:`1px solid ${T.border}`,
+      background: T.bgCard, flexShrink:0, minHeight:30,
     }}>
-      <span style={{color:T.textSub, fontSize:T.fs.md, fontWeight:T.fw.bolder, flexShrink:0, lineHeight:1}}>#</span>
+      <span style={{fontSize:T.fs.xs, fontWeight:T.fw.bolder, color:T.primaryDk, flexShrink:0, letterSpacing:.2}}>{title}</span>
       <UserPicker users={users} currentUser={currentUser} onSelect={onSelectUser} />
-      <div style={{display:'flex', alignItems:'center', gap:3, flexShrink:0}}>
-        <span style={{
-          width:6, height:6, borderRadius:'50%',
-          background:'#22c55e',
-          boxShadow:'0 0 0 2px rgba(34,197,94,0.15)',
-        }}/>
-        <span style={{fontSize:T.fs.xxs, color:T.textSub, fontWeight:T.fw.medium, fontVariantNumeric:'tabular-nums'}}>
-          {onlineCount}
-        </span>
-      </div>
+      <div style={{flex:1}}/>
+      {extraRight}
     </div>
   )
 }
 
 export default ChatHeader
+export { UserPicker }

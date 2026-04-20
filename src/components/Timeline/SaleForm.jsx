@@ -3,6 +3,7 @@ import { T } from '../../lib/constants'
 import { sb, buildTokenSearch, SB_URL, SB_KEY } from '../../lib/sb'
 import { fromDb, toDb, _activeBizId } from '../../lib/db'
 import { todayStr, genId } from '../../lib/utils'
+import { applyEvents } from '../../lib/eventEngine'
 import I from '../common/I'
 
 const uid = genId;
@@ -132,7 +133,9 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   // 더블클릭/중복 저장 방지 락 (신규 매출 저장 경로에서 사용)
   const _submitLock = useRef(false);
   // 판매중단(isActive=false) 상품은 숨김, 단 편집모드에서 기존 등록된 항목은 유지
-  const SVC_LIST = (data?.services || []).filter(s => s.isActive !== false).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
+  // 쿠폰·포인트 카테고리 ID 목록 (매출등록 구매대상에서 제외 — 증정/사용 대상이지 구매 대상이 아님)
+  const _excludedCatIds = (data?.categories || []).filter(c => c.name === '쿠폰' || c.name === '포인트').map(c => c.id);
+  const SVC_LIST = (data?.services || []).filter(s => s.isActive !== false && !_excludedCatIds.includes(s.cat)).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
   const PROD_LIST = (data?.products || []).filter(p => p.isActive !== false);
   const CATS = (data?.categories || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
   const branchStaff = (data.staff||[]).filter(s => s.bid === branchId);
@@ -388,6 +391,8 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   const [pointBalance, setPointBalance] = useState(0);
   const [pointEarn, setPointEarn] = useState(0);
   const [pointUse, setPointUse] = useState(0);
+  const [issueCouponIds, setIssueCouponIds] = useState({}); // 매출과 함께 수동 발행할 쿠폰 {svcId: count}
+  const pointEarnManualRef = React.useRef(false); // 사용자가 수동 수정했는지
   useEffect(() => {
     if (!cust?.id) { setPointBalance(0); return; }
     sb.get("point_transactions", `&customer_id=eq.${cust.id}&limit=500`)
@@ -831,15 +836,68 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   const couponEarnTotal = activeCoupons.reduce((s,c)=>s+(c.earn||0), 0);
   // promo + 쿠폰 포인트 적립을 pointEarn에 자동 반영 (유저가 직접 적은 값이 있으면 건드리지 않음)
   const _promoAppliedRef = React.useRef({total:0, userOverride:false});
+  // ─── 범용 이벤트 엔진 평가 (관리설정 > 이벤트 관리 > 이벤트 등록) ───
+  const eventResult = React.useMemo(() => {
+    try {
+      const biz = (data?.businesses||[])[0];
+      const s = typeof biz?.settings === 'string' ? JSON.parse(biz.settings) : (biz?.settings||{});
+      // 마스터 스위치: 이벤트 전체 OFF 상태면 엔진 skip
+      if (s?.events_master_enabled === false) {
+        return { pointEarn:0, pointExpiresAt:null, discountFlat:0, discountPct:0, prepaidBonus:0, issueCoupons:[], virtualCoupons:[], appliedEvents:[] };
+      }
+      let events = Array.isArray(s?.events) ? s.events : [];
+      // 레거시 point_events.newcust_10pct → 이벤트 배열에 합류
+      const legacy = s?.point_events?.newcust_10pct;
+      if (legacy?.enabled && !events.find(e => e.id === 'evt_new_first_point')) {
+        events = [...events, { id:'evt_new_first_point', enabled:true, trigger:'new_first_sale', rewardType:'point_earn',
+          base: legacy.base||'svc', rate: legacy.rate||10, expiryMonths: legacy.expiryMonths||3 }];
+      }
+      const isNew = !cust.id || !custHasSale;
+      // 기존 다담권(선불권) 보유 여부 — customer_packages에서 잔액 > 0인 선불권
+      const hasExistingPrepaid = (custPkgs||[]).some(p => {
+        const n = (p.service_name||'').toLowerCase();
+        const isPrep = n.includes('다담');
+        const remain = (p.total_count||0) - (p.used_count||0);
+        return isPrep && remain > 0;
+      });
+      // 기존 패키지 보유 여부 — customer_packages에서 잔여 > 0인 PKG
+      const hasExistingPkg = (custPkgs||[]).some(p => {
+        const n = (p.service_name||'').toLowerCase();
+        const isPkg = n.includes('pkg') || n.includes('패키지');
+        const remain = (p.total_count||0) - (p.used_count||0);
+        return isPkg && remain > 0;
+      });
+      const prepaidPurchaseAmount = newPrepaidPurchases.reduce((sum, s) => sum + (items[s.id]?.amount||0), 0);
+      const ctx = {
+        isNewCustomer: isNew,
+        hasAnyPrepaidPurchase: newPrepaidPurchases.length > 0,
+        hasAnyPkgPurchase: newPkgPurchases.length > 0,
+        hasPrepaidRecharge: hasExistingPrepaid && newPrepaidPurchases.length > 0,
+        hasPkgRepurchase: hasExistingPkg && newPkgPurchases.length > 0,
+        svcTotal, prodTotal, prepaidPurchaseAmount,
+        items, svcList: SVC_LIST,
+      };
+      return applyEvents(events, ctx);
+    } catch (e) { console.warn('[eventEngine]', e); return { pointEarn:0, pointExpiresAt:null, discountFlat:0, discountPct:0, prepaidBonus:0, issueCoupons:[], virtualCoupons:[], appliedEvents:[] }; }
+  }, [data?.businesses, cust.id, custHasSale, custPkgs, newPrepaidPurchases, newPkgPurchases, svcTotal, prodTotal, items]);
+
+  // 레거시 호환: 기존 UI/로직에서 참조하던 newCustEventEarn 형태 유지
+  const newCustEventEarn = React.useMemo(() => {
+    const evt = (eventResult.appliedEvents||[]).find(e => e.trigger === 'new_first_sale' && e.rewardType === 'point_earn');
+    return { earn: eventResult.pointEarn || 0, evt: evt || null };
+  }, [eventResult]);
+
   useEffect(() => {
     if (_promoAppliedRef.current.userOverride) return;
-    const totalAuto = (promoEarnTotal||0) + (couponEarnTotal||0);
+    const totalAuto = (promoEarnTotal||0) + (couponEarnTotal||0) + (newCustEventEarn.earn||0);
     if (_promoAppliedRef.current.total === totalAuto) return;
     _promoAppliedRef.current.total = totalAuto;
     setPointEarn(totalAuto);
-  }, [promoEarnTotal, couponEarnTotal]);
+  }, [promoEarnTotal, couponEarnTotal, newCustEventEarn.earn]);
 
-  const grandTotal = Math.max(0, svcTotal + prodTotal - discount - promoDiscountTotal - couponDiscountTotal - naverDeduct - externalDeduct - pkgDeduct - newPkgInstantDeduct - pointDeduct);
+  // 이벤트 자동 할인 (정액 + 시술 % → 정액 환산)
+  const eventDiscountTotal = Math.max(0, (eventResult?.discountFlat||0) + Math.round(svcTotal * (eventResult?.discountPct||0) / 100));
+  const grandTotal = Math.max(0, svcTotal + prodTotal - discount - promoDiscountTotal - couponDiscountTotal - eventDiscountTotal - naverDeduct - externalDeduct - pkgDeduct - newPkgInstantDeduct - pointDeduct);
   // 실제 결제할 금액 (예약금·할인·이벤트·쿠폰·보유권·신규다담권즉시차감 차감)
   const svcPayTotal = Math.max(0, svcTotal - discount - promoDiscountTotal - couponDiscountOnSvc - naverDeduct - externalDeduct - pkgDeduct - newPkgInstantDeduct);
   const prodPayTotal = Math.max(0, prodTotal - couponDiscountOnProd);
@@ -1428,9 +1486,9 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       await sb.upsert("sale_details", _saleDetails);
     }
 
-    // ── 예약 시술시간 자동 조정 ──
-    // 매출 등록 시점 = 고객이 가는 시간. 예약 dur를 (매출시각 - 예약시작)으로 변경.
-    // 단 원래 dur 기준 ±1시간(60분) 이내로만 조정.
+    // ── 예약 시술시간 자동 조정 (수연 수정요청 id_tgvgfsjvoz) ──
+    // 원칙: 매출등록 시각이 예약 종료보다 "늦으면" 예약 건들지 않음 (늘이기 금지).
+    //       매출등록 시각이 예약 종료보다 "짧으면(일찍 끝남)" 예약 종료를 매출 등록 시각으로 축소.
     try {
       if (!editMode && reservation?.id && reservation?.time && reservation?.dur) {
         const now = new Date();
@@ -1439,10 +1497,10 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
         const resStartMin = (rh||0)*60 + (rm||0);
         const newDur = nowMin - resStartMin;
         const origDur = Number(reservation.dur) || 0;
-        if (newDur > 0 && origDur > 0) {
-          const minDur = Math.max(5, origDur - 60);
-          const maxDur = origDur + 60;
-          const clampedDur = Math.max(minDur, Math.min(maxDur, newDur));
+        // newDur < origDur: 예약보다 일찍 끝남 → 축소만
+        if (newDur > 0 && origDur > 0 && newDur < origDur) {
+          const minDur = Math.max(5, origDur - 60); // 안전 하한 (원본 기준 -60분)
+          const clampedDur = Math.max(minDur, newDur);
           if (clampedDur !== origDur) {
             await sb.update("reservations", reservation.id, { dur: clampedDur });
             if (setData) {
@@ -1456,6 +1514,47 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       }
     } catch(e) { console.warn("[reservation dur auto-adjust]", e); }
 
+    // 이벤트 자동 쿠폰 발행 (trigger 충족 시)
+    if (cust.id && eventResult?.issueCoupons?.length) {
+      eventResult.issueCoupons.forEach(c => {
+        const svc = (data?.services||[]).find(s => s.name === c.name);
+        if (!svc) return;
+        const expNote = c.expiresAt ? ` | 유효:${c.expiresAt.slice(0,10)}` : '';
+        for (let i = 0; i < (c.qty||1); i++) {
+          sb.insert("customer_packages", {
+            id: "cpn_evt_" + uid(),
+            business_id: _activeBizId, customer_id: cust.id,
+            service_id: svc.id, service_name: svc.name,
+            total_count: 1, used_count: 0,
+            purchased_at: new Date().toISOString(),
+            note: `이벤트 자동 발행(${c.evtName})${expNote} | 매출${sale.id}`,
+          }).catch(console.error);
+        }
+      });
+    }
+    // 쿠폰 수동 발행 (3개월 유효, 이번 매출과 함께, 같은 쿠폰 여러 장 지원)
+    if (cust.id && Object.keys(issueCouponIds).length > 0) {
+      const today = new Date();
+      const exp = new Date(today); exp.setMonth(exp.getMonth()+3);
+      const fmtD = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      const note = `발행:${fmtD(today)} | 유효:${fmtD(exp)} | 매출${sale.id} 동시발행`;
+      Object.entries(issueCouponIds).forEach(([svcId, count]) => {
+        const svc = (data?.services||[]).find(s => s.id === svcId);
+        if (!svc || !count || count <= 0) return;
+        for (let i = 0; i < count; i++) {
+          sb.insert("customer_packages", {
+            id: "cpn_" + uid(),
+            business_id: _activeBizId,
+            customer_id: cust.id,
+            service_id: svc.id,
+            service_name: svc.name,
+            total_count: 1, used_count: 0,
+            purchased_at: today.toISOString(),
+            note,
+          }).catch(console.error);
+        }
+      });
+    }
     // 보유권 거래 기록 flush (sale.id 연결)
     if (cust.id && _pkgTxRecords.length > 0) {
       _pkgTxRecords.forEach(r => {
@@ -1487,11 +1586,24 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       }
       if (pointEarn > 0) {
         balAfter += pointEarn;
+        // 이벤트로 자동 적립된 경우 만료일 부여
+        const _evt = newCustEventEarn.evt;
+        const _evtApplied = _evt && newCustEventEarn.earn > 0 && pointEarn === newCustEventEarn.earn;
+        let _expires = null, _source = null, _note = "매출 적립";
+        if (_evtApplied) {
+          const d = new Date(); d.setMonth(d.getMonth() + (Number(_evt.expiryMonths)||3));
+          _expires = d.toISOString();
+          _source = "event_newcust_10pct";
+          _note = `신규 고객 ${_evt.rate}% 이벤트 적립`;
+        }
         sb.insert("point_transactions", {
           id: "ptx_"+uid(), business_id: _activeBizId, bid: sale.bid,
           customer_id: cust.id, type: "earn", amount: pointEarn,
           balance_after: balAfter, sale_id: sale.id, staff_id: sale.staffId,
-          staff_name: sale.staffName, note: "매출 적립"
+          staff_name: sale.staffName, note: _note,
+          ...(("expires_at" in {})?{}:{}),
+          ...(_expires ? { expires_at: _expires } : {}),
+          ...(_source ? { source: _source } : {}),
         }).catch(console.error);
       }
     }
@@ -1504,12 +1616,13 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   const halfSvc = Math.ceil(SVC_LIST.length / 2);
   const leftSvcs = SVC_LIST.slice(0, halfSvc);
   const rightSvcs = SVC_LIST.slice(halfSvc);
-  // 카테고리별 그룹
-  const catGroups = CATS.map(cat => ({
+  // 카테고리별 그룹 — '쿠폰' 카테고리는 증정/발행 대상이지 구매 대상이 아니므로 제외
+  const catGroups = CATS.filter(cat => cat.name !== '쿠폰').map(cat => ({
     cat,
     svcs: SVC_LIST.filter(s => s.cat === cat.id)
   })).filter(g => g.svcs.length > 0);
-  const uncatSvcs = SVC_LIST.filter(s => !CATS.find(c=>c.id===s.cat));
+  const COUPON_CAT_IDS = CATS.filter(c => c.name === '쿠폰').map(c => c.id);
+  const uncatSvcs = SVC_LIST.filter(s => !CATS.find(c=>c.id===s.cat) && !COUPON_CAT_IDS.includes(s.cat));
   const halfProd = Math.ceil(PROD_LIST.length / 2);
 
   const _m = false; // 항상 데스크탑 모달
@@ -1866,19 +1979,26 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                 <option value="">플랫폼</option>
                 {externalPlatforms.map(p=><option key={p} value={p}>{p}</option>)}
               </select>
-              <input type="number" step="5000" value={externalPrepaid||""} placeholder="0" min="0"
-                onChange={e=>setExternalPrepaid(Number(e.target.value)||0)}
+              <input type="text" inputMode="numeric" value={externalPrepaid ? externalPrepaid.toLocaleString() : ""} placeholder="0"
+                onChange={e=>{const v=Number(String(e.target.value).replace(/[^0-9]/g,""))||0; setExternalPrepaid(Math.max(0,v));}}
                 style={{flex:"1 1 90px",minWidth:80,padding:"4px 6px",fontSize:11,textAlign:"right",fontWeight:700,color:"#6A1B9A",border:"1px solid #CE93D8",borderRadius:6,background:"#fff",fontFamily:"inherit"}}/>
               <span style={{fontSize:11,color:"#6A1B9A",fontWeight:700,flexShrink:0}}>원</span>
             </div>
             {/* 포인트 사용 — 결제수단 (적립은 별도 영역) */}
-            {cust?.id && <div style={{display:"flex",alignItems:"center",gap:5,padding:"7px 10px",marginTop:4,background:"#FFF3E0",borderRadius:8,border:"1px solid #FFB74D",whiteSpace:"nowrap"}}>
-              <span style={{fontSize:11,color:"#E65100",fontWeight:700,flexShrink:0}}>🪙 포인트 <span style={{color:"#999",fontWeight:500,fontSize:10}}>잔{pointBalance.toLocaleString()}</span></span>
-              <span style={{fontSize:11,color:"#C62828",fontWeight:700,flexShrink:0,marginLeft:"auto"}}>사용−</span>
-              <input type="number" step="100" value={pointUse||""} placeholder="0" min="0" max={pointBalance}
-                onChange={e=>setPointUse(Math.max(0,Math.min(pointBalance,Number(e.target.value)||0)))}
-                style={{flex:"0 0 80px",padding:"4px 6px",fontSize:11,textAlign:"right",fontWeight:700,color:"#C62828",border:"1px solid #EF9A9A",borderRadius:6,background:"#fff",fontFamily:"inherit"}}/>
-              <span style={{fontSize:11,color:"#E65100",fontWeight:700,flexShrink:0}}>P</span>
+            {cust?.id && <div style={{padding:"7px 10px",marginTop:4,background:"#FFF3E0",borderRadius:8,border:"1px solid #FFB74D"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+                <span style={{fontSize:11,color:"#E65100",fontWeight:700}}>🪙 포인트</span>
+                <span style={{fontSize:10,color:"#8D6E00",fontWeight:600}}>잔액 {pointBalance.toLocaleString()}P</span>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                <span style={{fontSize:11,color:"#C62828",fontWeight:700,flexShrink:0}}>사용 −</span>
+                <input type="text" inputMode="numeric" value={pointUse ? pointUse.toLocaleString() : ""} placeholder="0"
+                  onChange={e=>{const v=Number(String(e.target.value).replace(/[^0-9]/g,""))||0; setPointUse(Math.max(0,Math.min(pointBalance,v)));}}
+                  style={{flex:1,minWidth:60,padding:"4px 6px",fontSize:11,textAlign:"right",fontWeight:700,color:"#C62828",border:"1px solid #EF9A9A",borderRadius:6,background:"#fff",fontFamily:"inherit"}}/>
+                <span style={{fontSize:11,color:"#E65100",fontWeight:700,flexShrink:0}}>P</span>
+                <button type="button" disabled={!pointBalance} onClick={()=>setPointUse(pointBalance)}
+                  style={{padding:"4px 8px",fontSize:10,fontWeight:800,borderRadius:6,border:"none",background:pointBalance?"#C62828":"#ddd",color:"#fff",cursor:pointBalance?"pointer":"default",fontFamily:"inherit",flexShrink:0}}>전액</button>
+              </div>
             </div>}
             <div style={{borderTop:"2px solid #333",marginTop:6,paddingTop:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <span style={{fontSize:T.fs.sm,fontWeight:T.fw.black,color:T.text}}>{isNaver ? "현장 결제금액" : "총 결제금액"}</span>
@@ -2091,13 +2211,46 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           </div>}
           {grandTotal > 0 && <div style={{fontSize:9,color:T.gray400,marginTop:6}}>결제수단 클릭 → 전액 / 추가 클릭 → 분배</div>}
           {/* 포인트 적립 — 이번 매출로 고객에게 적립할 포인트 (결제와 무관) */}
-          {cust?.id && <div style={{display:"flex",alignItems:"center",gap:5,padding:"7px 10px",marginTop:8,background:"#E8F5E9",borderRadius:8,border:"1px solid #A5D6A7",whiteSpace:"nowrap"}}>
-            <span style={{fontSize:11,color:"#2E7D32",fontWeight:700,flexShrink:0}}>⭐ 포인트 적립</span>
-            <input type="number" step="100" value={pointEarn||""} placeholder="0" min="0"
-              onChange={e=>setPointEarn(Math.max(0,Number(e.target.value)||0))}
-              style={{flex:1,minWidth:60,padding:"4px 6px",fontSize:11,textAlign:"right",fontWeight:700,color:"#2E7D32",border:"1px solid #A5D6A7",borderRadius:6,background:"#fff",fontFamily:"inherit"}}/>
-            <span style={{fontSize:11,color:"#2E7D32",fontWeight:700,flexShrink:0}}>P</span>
+          {cust?.id && <div style={{marginTop:8}}>
+            <div style={{display:"flex",alignItems:"center",gap:5,padding:"7px 10px",background:"#E8F5E9",borderRadius:8,border:"1px solid #A5D6A7",whiteSpace:"nowrap"}}>
+              <span style={{fontSize:11,color:"#2E7D32",fontWeight:700,flexShrink:0}}>⭐ 포인트 적립</span>
+              <input type="text" inputMode="numeric" value={pointEarn ? pointEarn.toLocaleString() : ""} placeholder="0"
+                onChange={e=>{const v=Number(String(e.target.value).replace(/[^0-9]/g,""))||0; setPointEarn(Math.max(0,v)); _promoAppliedRef.current.userOverride=true;}}
+                style={{flex:1,minWidth:60,padding:"4px 6px",fontSize:11,textAlign:"right",fontWeight:700,color:"#2E7D32",border:"1px solid #A5D6A7",borderRadius:6,background:"#fff",fontFamily:"inherit"}}/>
+              <span style={{fontSize:11,color:"#2E7D32",fontWeight:700,flexShrink:0}}>P</span>
+            </div>
+            {newCustEventEarn.earn > 0 && <div style={{fontSize:10,color:"#E65100",marginTop:4,paddingLeft:4,fontWeight:700}}>
+              💡 신규 고객 {newCustEventEarn.evt.rate}% 이벤트 자동 적립 · {newCustEventEarn.evt.expiryMonths}개월 유효
+            </div>}
           </div>}
+          {/* 쿠폰 발행 — 이 매출과 함께 고객에게 발행 (3개월 유효, 수동, 복수 발행 가능) */}
+          {cust?.id && !editMode && (() => {
+            const coupons = (data?.services||[]).filter(s => {
+              const cat = (data?.categories||[]).find(c => c.id === s.cat);
+              // '쿠폰' 카테고리 + 10%추가적립쿠폰 제외 (자동 발행 전용 쿠폰)
+              return cat?.name === '쿠폰' && s.name !== '10%추가적립쿠폰';
+            });
+            if (!coupons.length) return null;
+            return <div style={{padding:"7px 10px",marginTop:6,background:"#FFF3E0",borderRadius:8,border:"1px solid #FFB74D"}}>
+              <div style={{fontSize:11,color:"#E65100",fontWeight:700,marginBottom:6,display:"flex",alignItems:"center",gap:5}}>
+                🎫 쿠폰 발행 <span style={{fontSize:9,fontWeight:500,color:"#8D6E00"}}>(+/− 눌러 장수 지정 · 3개월 유효)</span>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                {coupons.map(c => {
+                  const cnt = issueCouponIds[c.id] || 0;
+                  return <div key={c.id} style={{display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{flex:1,fontSize:11,fontWeight:700,color: cnt>0 ? '#E65100':'#8D6E00'}}>{cnt>0?'✓ ':''}{c.name}</span>
+                    <button type="button" onClick={()=>setIssueCouponIds(p=>{const n={...p};if(n[c.id])n[c.id]--;if(!n[c.id])delete n[c.id];return n;})}
+                      disabled={cnt<=0}
+                      style={{width:24,height:24,borderRadius:6,border:'1px solid '+(cnt>0?'#E65100':'#FFCC80'),background:'#fff',color:cnt>0?'#E65100':'#FFCC80',fontSize:13,fontWeight:800,cursor:cnt>0?'pointer':'default',fontFamily:'inherit',padding:0,lineHeight:1}}>−</button>
+                    <span style={{minWidth:28,textAlign:'center',fontSize:12,fontWeight:800,color:cnt>0?'#E65100':'#BDB8B0'}}>{cnt}장</span>
+                    <button type="button" onClick={()=>setIssueCouponIds(p=>({...p,[c.id]:(p[c.id]||0)+1}))}
+                      style={{width:24,height:24,borderRadius:6,border:'1px solid #E65100',background:cnt>0?'#E65100':'#fff',color:cnt>0?'#fff':'#E65100',fontSize:13,fontWeight:800,cursor:'pointer',fontFamily:'inherit',padding:0,lineHeight:1}}>＋</button>
+                  </div>;
+                })}
+              </div>
+            </div>;
+          })()}
           {/* 매출 메모 */}
           <div style={{marginTop:8}}>
             <span style={{fontSize:11,color:T.textMuted,fontWeight:600}}>매출 메모</span>

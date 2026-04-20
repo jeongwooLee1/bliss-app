@@ -10,6 +10,7 @@ import AdminPlaces from './AdminPlaces'
 // AdminWorkers 제거 — 담당자는 근무표에서 자동 관리
 import AdminSaleItems from './AdminSaleItems'
 import AdminCoupons from './AdminCoupons'
+import AdminEvents from './AdminEvents'
 import AdminProductItems from './AdminProductItems'
 import AdminResSources from './AdminResSources'
 import AdminNoti from './AdminNoti'
@@ -19,6 +20,7 @@ import AdminExtPlatforms from './AdminExtPlatforms'
 import AdminServiceTags from './AdminServiceTags'
 import SchedulePage from '../Schedule/SchedulePage'
 import AdminPkgAudit from './AdminPkgAudit'
+import AdminPointMigration from './AdminPointMigration'
 
 const uid = genId;
 
@@ -355,7 +357,7 @@ function AdminJoinBrand({ currentUser, onBack }) {
 function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userBranches=[] }) {
   const navTo = useNavigate();
   const loc = useLocation();
-  const TAB_SLUGS = {places:"places",saleitems:"services",coupons:"coupons",prodmgmt:"products",svctags:"tags",ressrc:"sources",extplatforms:"ext-platforms",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",joinbrand:"join-brand"};
+  const TAB_SLUGS = {places:"places",saleitems:"services",coupons:"coupons",prodmgmt:"products",svctags:"tags",ressrc:"sources",extplatforms:"ext-platforms",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",pointmig:"point-migration",joinbrand:"join-brand"};
   const SLUG_TO_TAB = Object.fromEntries(Object.entries(TAB_SLUGS).map(([k,v])=>[v,k]));
   const tab = SLUG_TO_TAB[loc.pathname.replace(/^\/settings\/?/,"").split("/")[0]] || null;
   const setTab=t=>{ if(t) navTo(`/settings/${TAB_SLUGS[t]||t}`); else navTo("/settings"); };
@@ -375,7 +377,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     ]},
     ...(isMaster ? [{section:"사업장 관리",items:[
       {key:"saleitems",   icon:"scissors", label:"시술 상품 관리", desc:"시술 항목 및 가격 설정"},
-      {key:"coupons",     icon:"tag",      label:"쿠폰 관리",      desc:"쿠폰 효과·할인율 설정"},
+      {key:"coupons",     icon:"gift",     label:"이벤트 관리",    desc:"쿠폰 등록·적립/할인/쿠폰 발행 이벤트 통합 관리"},
       {key:"prodmgmt",    icon:"clipboard",label:"제품 관리",      desc:"판매 제품 관리"},
       ...(isOwner ? [{key:"brandmembers", icon:"userPlus", label:"브랜드 멤버 관리", desc:"지점 가입 요청 승인/거절", badge:pendingCount}] : []),
       {key:"schedule",     icon:"calendar", label:"직원 근무표",      desc:"직원 월별 근무 자동 배정"},
@@ -392,6 +394,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     ]}] : []),
     ...(isMaster ? [{section:"데이터 관리",items:[
       {key:"pkgaudit",    icon:"clipboard",label:"패키지 정리",    desc:"3소스 비교·수정 (메모/오라클/블리스)"},
+      {key:"pointmig",    icon:"gift",     label:"포인트 설정",    desc:"10% 쿠폰 → 포인트 소급 전환"},
     ]}] : []),
     {section:"내 계정",items:[
       {key:"mypage",      icon:"user",     label:"마이페이지",     desc:"내 계정 정보 및 비밀번호 변경"},
@@ -430,7 +433,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     <BackBtn/>
     {tab==="places"       && <AdminPlaces data={data} setData={setData} bizId={bizId} userBranches={userBranches} isMaster={isOwner}/>}
     {tab==="saleitems"    && isMaster &&<AdminSaleItems    data={data} setData={setData}/>}
-    {tab==="coupons"      && isMaster &&<AdminCoupons      data={data} setData={setData}/>}
+    {tab==="coupons"      && isMaster &&<AdminEvents       data={data} setData={setData} bizId={bizId}/>}
     {tab==="prodmgmt"     && isMaster &&<AdminProductItems data={data} setData={setData}/>}
     {tab==="svctags"      && isMaster &&<AdminServiceTags  data={data} setData={setData}/>}
     {tab==="ressrc"       && isMaster &&<AdminResSources   data={data} setData={setData}/>}
@@ -442,6 +445,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     {tab==="mypage"       &&<AdminMyPage       currentUser={currentUser} onLogout={onLogout}/>}
     {tab==="schedule"    && isMaster &&<AdminSchedule currentUser={currentUser} isMaster={isMaster}/>}
     {tab==="pkgaudit"    && isMaster &&<AdminPkgAudit data={data} setData={setData} userBranches={userBranches}/>}
+    {tab==="pointmig"    && isMaster &&<AdminPointMigration data={data} setData={setData} bizId={bizId}/>}
     {tab==="joinbrand"    && !isMaster &&<AdminJoinBrand   currentUser={currentUser} onBack={back}/>}
     {tab && !["mypage","schedule"].includes(tab) && !isMaster && <div style={{textAlign:"center",padding:"60px 20px",color:T.textMuted}}>
       <div style={{fontSize:32,marginBottom:12}}>&#128274;</div>

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { MOCK_MESSAGES, MOCK_LAST_READ_AT } from './mockData'
 import { supabase } from '../../lib/supabase'
 
 // 사내 메신저 데이터 훅
-// 현재: 유저는 employees_v1(근무표 등록 직원)에서 로드, 메시지는 mock.
-// 향후 Supabase `team_chat_messages` 테이블 + Realtime으로 메시지도 교체.
+// 유저: employees_v1(근무표 등록 직원) + maleRotation_v1
+// 메시지: Supabase `team_chat_messages` 테이블 + Realtime
 
 const LS_KEY = 'bliss_team_chat_user_id'
+const LS_LAST_READ = 'bliss_team_chat_last_read_at'
 
 // 근무표 branch key → 한글 지점 short
 const BRANCH_LABEL = {
@@ -14,16 +14,17 @@ const BRANCH_LABEL = {
   yongsan:'용산', jamsil:'잠실', wirye:'위례', cheonho:'천호',
 }
 
-export function useTeamChat({ mock = true } = {}) {
+export function useTeamChat() {
   const [users, setUsers] = useState([])
   const [messages, setMessages] = useState([])
   const [currentUserId, setCurrentUserIdState] = useState(null)
-  const [lastReadAt, setLastReadAt] = useState(null)
+  const [lastReadAt, setLastReadAtState] = useState(() =>
+    typeof window !== 'undefined' ? localStorage.getItem(LS_LAST_READ) : null
+  )
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
-  const idCounter = useRef(1000)
 
-  // employees_v1 + maleRotation_v1 → chat users (excludeFromSchedule 상관없이 전원 포함)
+  // 직원 목록 로드
   useEffect(() => {
     let cancelled = false
     const load = async () => {
@@ -49,19 +50,77 @@ export function useTeamChat({ mock = true } = {}) {
         const saved = typeof window !== 'undefined' ? localStorage.getItem(LS_KEY) : null
         const validSaved = saved && mapped.some(u => u.id === saved) ? saved : (mapped[0]?.id || null)
         setCurrentUserIdState(validSaved)
-        if (mock) {
-          setMessages(MOCK_MESSAGES)
-          setLastReadAt(MOCK_LAST_READ_AT)
-        }
       } catch (e) {
         console.error('[useTeamChat] employees load failed', e)
-      } finally {
-        if (!cancelled) setLoading(false)
       }
     }
     load()
     return () => { cancelled = true }
-  }, [mock])
+  }, [])
+
+  // 메시지 로드 + Realtime 구독
+  useEffect(() => {
+    let cancelled = false
+    const loadMsgs = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('team_chat_messages')
+          .select('id,user_id,body,created_at,is_announce')
+          .order('created_at', { ascending: true })
+          .limit(500)
+        if (cancelled) return
+        if (error) {
+          console.error('[useTeamChat] messages load failed', error)
+        } else {
+          setMessages(data || [])
+        }
+      } catch (e) {
+        console.error('[useTeamChat] messages load err', e)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    loadMsgs()
+
+    // Realtime: INSERT 이벤트 구독
+    const ch = supabase
+      .channel('team_chat_messages_rt')
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'team_chat_messages' },
+        (payload) => {
+          const row = payload?.new
+          if (!row) return
+          setMessages(prev => {
+            // 중복 방지 (낙관적 업데이트 + Realtime 둘 다 올 때)
+            if (prev.some(m => m.id === row.id)) return prev
+            // 내가 방금 보낸 pending 메시지 교체
+            const idx = prev.findIndex(m => m._pending && m.user_id === row.user_id && m.body === row.body)
+            if (idx >= 0) {
+              const next = [...prev]
+              next[idx] = { ...row, _pending: false }
+              return next
+            }
+            return [...prev, row]
+          })
+        })
+      .on('postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'team_chat_messages' },
+        (payload) => {
+          const oldId = payload?.old?.id
+          if (oldId == null) return
+          setMessages(prev => prev.filter(m => m.id !== oldId))
+        })
+      .subscribe()
+
+    // 폴링 fallback (30초) — Realtime 실패 대비
+    const poll = setInterval(loadMsgs, 30_000)
+
+    return () => {
+      cancelled = true
+      clearInterval(poll)
+      try { supabase.removeChannel(ch) } catch {}
+    }
+  }, [])
 
   // 이름 변경 (localStorage 저장)
   const setCurrentUserId = useCallback((id) => {
@@ -80,31 +139,58 @@ export function useTeamChat({ mock = true } = {}) {
 
   const currentUser = userMap[currentUserId] || null
 
-  // 메시지 전송
-  const send = useCallback((body) => {
+  // 메시지 전송 — 낙관적 업데이트 + DB insert
+  // opts: { announce: boolean } — announce=true면 공지 메시지(전체 배너)
+  const send = useCallback(async (body, opts = {}) => {
     const text = (body || '').trim()
     if (!text || !currentUserId) return
+    const isAnnounce = !!opts.announce
     setSending(true)
-    const newMsg = {
-      id: 'local_' + (idCounter.current++),
+    const tempId = 'local_' + Date.now() + '_' + Math.random().toString(36).slice(2,8)
+    const nowIso = new Date().toISOString()
+    const optimistic = {
+      id: tempId,
       user_id: currentUserId,
       body: text,
-      created_at: new Date().toISOString(),
+      created_at: nowIso,
+      is_announce: isAnnounce,
       _pending: true,
     }
-    setMessages(prev => [...prev, newMsg])
-    // mock 서버 지연 시뮬레이션
-    setTimeout(() => {
+    setMessages(prev => [...prev, optimistic])
+    try {
+      const { data, error } = await supabase
+        .from('team_chat_messages')
+        .insert({ user_id: currentUserId, body: text, is_announce: isAnnounce })
+        .select('id,user_id,body,created_at,is_announce')
+        .single()
+      if (error) throw error
+      // 서버 응답으로 낙관적 메시지 교체
+      setMessages(prev => {
+        const idx = prev.findIndex(m => m.id === tempId)
+        if (idx < 0) {
+          // 이미 Realtime으로 들어왔을 수 있음
+          return prev.some(m => m.id === data.id) ? prev : [...prev, data]
+        }
+        const next = [...prev]
+        next[idx] = { ...data, _pending: false }
+        return next
+      })
+    } catch (e) {
+      console.error('[useTeamChat] send failed', e)
+      // 실패 표시
       setMessages(prev => prev.map(m =>
-        m.id === newMsg.id ? { ...m, _pending: false } : m
+        m.id === tempId ? { ...m, _failed: true, _pending: false } : m
       ))
+    } finally {
       setSending(false)
-    }, 200)
+    }
   }, [currentUserId])
 
-  // 읽음 처리 (현재 시각으로)
+  // 읽음 처리 (localStorage)
   const markAllRead = useCallback(() => {
-    setLastReadAt(new Date().toISOString())
+    const iso = new Date().toISOString()
+    setLastReadAtState(iso)
+    if (typeof window !== 'undefined') localStorage.setItem(LS_LAST_READ, iso)
   }, [])
 
   // 온라인 사용자 수
@@ -115,7 +201,7 @@ export function useTeamChat({ mock = true } = {}) {
 
   // 미읽 수
   const unreadCount = useMemo(() => {
-    if (!lastReadAt) return 0
+    if (!lastReadAt) return messages.filter(m => m.user_id !== currentUserId).length
     return messages.filter(m =>
       m.user_id !== currentUserId && m.created_at > lastReadAt
     ).length

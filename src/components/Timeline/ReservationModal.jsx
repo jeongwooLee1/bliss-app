@@ -774,6 +774,15 @@ ${naverText}
           onMouseOver={e=>{e.currentTarget.style.background=T.dangerLt;e.currentTarget.style.color=T.danger}}
           onMouseOut={e=>{e.currentTarget.style.background=T.gray200;e.currentTarget.style.color=T.gray500}}>✕</button>}
 
+        {/* 기존 예약 편집 모드 (데스크탑): 상단 우측 닫기 버튼 */}
+        {!_isMob && item?.id && <button onClick={onClose} aria-label="닫기"
+          style={{position:"absolute",top:10,right:12,width:30,height:30,borderRadius:"50%",
+            background:T.gray200,border:"none",color:T.gray500,cursor:"pointer",zIndex:20,
+            fontSize:T.fs.md,display:"flex",alignItems:"center",justifyContent:"center",
+            transition:"background .15s,color .15s"}}
+          onMouseOver={e=>{e.currentTarget.style.background=T.dangerLt;e.currentTarget.style.color=T.danger}}
+          onMouseOut={e=>{e.currentTarget.style.background=T.gray200;e.currentTarget.style.color=T.gray500}}>✕</button>}
+
         <div style={{padding:"20px 24px 8px"}} className="form-col">
 
           {/* ═══ 네이버 예약 상태 배너 ═══ */}
@@ -1183,9 +1192,9 @@ ${naverText}
                     {platforms.map(p=><option key={p} value={p}>{p}</option>)}
                   </select>;
                 })()}
-                <input type="number" step="5000" value={f.externalPrepaid||""} placeholder="0" min="0"
-                  onChange={e=>set("externalPrepaid", Math.max(0, Number(e.target.value)||0))}
-                  style={{width:90,padding:"4px 8px",fontSize:T.fs.sm,textAlign:"right",fontWeight:700,color:"#E65100",border:"1px solid #FFB74D",borderRadius:6,background:"#fff",fontFamily:"inherit"}}/>
+                <input type="text" inputMode="numeric" value={f.externalPrepaid ? Number(f.externalPrepaid).toLocaleString() : ""} placeholder="0"
+                  onChange={e=>{const v=Number(String(e.target.value).replace(/[^0-9]/g,""))||0; set("externalPrepaid", Math.max(0, v));}}
+                  style={{width:110,padding:"4px 8px",fontSize:T.fs.sm,textAlign:"right",fontWeight:700,color:"#E65100",border:"1px solid #FFB74D",borderRadius:6,background:"#fff",fontFamily:"inherit"}}/>
                 <span style={{fontSize:T.fs.sm,color:"#E65100",fontWeight:700}}>원</span>
               </div>
             </div>
@@ -1388,7 +1397,7 @@ ${naverText}
                 let autoTags = [...(f.selectedTags || [])];
                 const _hasPrepaidSave = f.isPrepaid || (f.externalPrepaid || 0) > 0;
                 if (_hasPrepaidSave && !autoTags.includes(PREPAID_TAG_ID)) autoTags = [...autoTags, PREPAID_TAG_ID];
-                if (!_hasPrepaidSave && autoTags.includes(PREPAID_TAG_ID)) autoTags = autoTags.filter(id => id !== PREPAID_TAG_ID);
+                // 자동 제거 삭제 — 수동 추가 존중 (서현 요청 건, 수정요청 id_mj1wxf0q69)
                 // 플랫폼 선택 시 방문경로 자동 매칭 (empty일 때만)
                 let autoSource = f.source;
                 if (f.externalPlatform && !autoSource) {

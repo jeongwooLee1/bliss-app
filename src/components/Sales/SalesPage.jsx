@@ -183,8 +183,11 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
   }, [q]);
 
   const totals = sales.reduce((a,s) => {
-    const sv = s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint;
+    const svRaw = s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint;
     const pr = s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint;
+    // 외부선결제는 결제수단이지만 시술에 대한 금액이므로 제품이 없는 매출에서는 시술합계에 포함
+    const extToSvc = pr === 0 ? (s.externalPrepaid||0) : 0;
+    const sv = svRaw + extToSvc;
     return {
       svc:  a.svc+sv,  svcCash:a.svcCash+s.svcCash, svcTransfer:a.svcTransfer+s.svcTransfer,
       svcCard:a.svcCard+s.svcCard, svcPoint:a.svcPoint+s.svcPoint,
@@ -192,7 +195,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
       prodCard:a.prodCard+s.prodCard, prodPoint:a.prodPoint+s.prodPoint,
       gift: a.gift+(s.gift||0),
       extPrepaid: a.extPrepaid+(s.externalPrepaid||0),
-      total: a.total+sv+pr+(s.gift||0)+(s.externalPrepaid||0),
+      total: a.total+svRaw+pr+(s.gift||0)+(s.externalPrepaid||0),
     };
   }, {svc:0,svcCash:0,svcTransfer:0,svcCard:0,svcPoint:0,prod:0,prodCash:0,prodTransfer:0,prodCard:0,prodPoint:0,gift:0,extPrepaid:0,total:0});
   // 외부 플랫폼별 선결제 합계
@@ -514,13 +517,16 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
         {sales.length===0
           ? <tr><td colSpan={15}><Empty msg="매출 기록 없음" icon="wallet"/></td></tr>
           : sales.map((s,i) => {
-              const sv = s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint;
+              const svRaw = s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint;
               const pr = s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint;
+              // 외부선결제는 시술에 대한 결제수단 — 제품이 없으면 시술합계에 포함
+              const extToSvc = pr === 0 ? (s.externalPrepaid||0) : 0;
+              const sv = svRaw + extToSvc;
               const rowCash = (s.svcCash||0)+(s.prodCash||0);
               const rowCard = (s.svcCard||0)+(s.prodCard||0);
               const rowTransfer = (s.svcTransfer||0)+(s.prodTransfer||0);
               const rowPoint = (s.svcPoint||0)+(s.prodPoint||0);
-              const total = sv+pr+(s.gift||0)+(s.externalPrepaid||0);
+              const total = svRaw+pr+(s.gift||0)+(s.externalPrepaid||0);
               const isExp = expandedId===s.id;
               const br = (data.branches||[]).find(b=>b.id===s.bid);
               return <React.Fragment key={s.id}>
@@ -741,7 +747,7 @@ function StatsPage({ data, userBranches, isMaster, role }) {
   filtered.forEach(s => {
     if(!byStaff[s.staffName]) byStaff[s.staffName]={count:0,total:0};
     byStaff[s.staffName].count++;
-    byStaff[s.staffName].total+=(s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint+s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint+s.gift);
+    byStaff[s.staffName].total+=(s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint+s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint+s.gift+(s.externalPrepaid||0));
   });
   const staffRank = Object.entries(byStaff).sort((a,b)=>b[1].total-a[1].total);
 
@@ -752,7 +758,7 @@ function StatsPage({ data, userBranches, isMaster, role }) {
       const bn = (data.branches||[]).find(b=>b.id===s.bid)?.short||"";
       if(!byBranch[bn]) byBranch[bn]={count:0,total:0};
       byBranch[bn].count++;
-      byBranch[bn].total+=(s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint+s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint+s.gift);
+      byBranch[bn].total+=(s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint+s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint+s.gift+(s.externalPrepaid||0));
     });
   }
   const branchRank = Object.entries(byBranch).sort((a,b)=>b[1].total-a[1].total);

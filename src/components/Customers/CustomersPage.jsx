@@ -160,11 +160,18 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
     if (joinFrom) parts.push(`join_date=gte.${joinFrom}`);
     if (joinTo) parts.push(`join_date=lte.${joinTo}`);
     // 숨김 필터 제거 — 전부 표시
-    // 검색: 첫 토큰만 서버에서 OR ilike
+    // 검색: 공백 구분 다토큰 전부 서버에서 AND — 각 토큰이 아무 필드에든 부분매칭되어야 함
     const tokens = (q||"").trim().split(/\s+/).filter(Boolean);
-    if (tokens.length > 0) {
+    const fields = ['name','name2','phone','phone2','email','memo','cust_num'];
+    if (tokens.length === 1) {
       const enc = encodeURIComponent(tokens[0]);
-      parts.push(`or=(name.ilike.*${enc}*,name2.ilike.*${enc}*,phone.ilike.*${enc}*,phone2.ilike.*${enc}*,email.ilike.*${enc}*,memo.ilike.*${enc}*,cust_num.ilike.*${enc}*)`);
+      parts.push(`or=(${fields.map(f=>`${f}.ilike.*${enc}*`).join(',')})`);
+    } else if (tokens.length > 1) {
+      const ands = tokens.map(t => {
+        const enc = encodeURIComponent(t);
+        return `or(${fields.map(f=>`${f}.ilike.*${enc}*`).join(',')})`;
+      });
+      parts.push(`and=(${ands.join(',')})`);
     }
     // 정렬: 생성일 내림차순 우선 → 고객번호 내림차순 (보조)
     // 예약으로만 등록된 cust_num 없는 신규 고객도 최상단 노출
@@ -1044,7 +1051,8 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                       {/* 다회권 탭 */}
                       {detailTab==="pkg" && <div>
                         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                          {<select className="inp" style={{width:"auto",fontSize:T.fs.xs,height:30}}
+                          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                          <select className="inp" style={{width:"auto",fontSize:T.fs.xs,height:30}}
                             value="" onChange={e=>{
                               if(!e.target.value) return;
                               const svc = (data?.services||[]).find(s=>s.id===e.target.value);
@@ -1064,7 +1072,35 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                             {(data?.services||[]).filter(s=>s.name?.includes("PKG")||s.name?.includes("다담")||s.name?.includes("연간")||s.name?.includes("패키지")||s.name?.includes("산모")||s.name?.includes("회원권")).map(s=>
                               <option key={s.id} value={s.id}>{s.name} ({(s.price_f||0).toLocaleString()}원)</option>
                             )}
-                          </select>}
+                          </select>
+                          {/* + 쿠폰 발행 (수동) */}
+                          <select className="inp" style={{width:"auto",fontSize:T.fs.xs,height:30,borderColor:"#ff9800",color:"#E65100"}}
+                            value="" onChange={e=>{
+                              if(!e.target.value) return;
+                              const svc = (data?.services||[]).find(s=>s.id===e.target.value);
+                              if(!svc) return;
+                              const today = new Date();
+                              const exp = new Date(today); exp.setMonth(exp.getMonth()+3);
+                              const fmtD = d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                              const note = `발행:${fmtD(today)} | 유효:${fmtD(exp)} | 수동발행`;
+                              const pkg = {id:'cpn_'+genId(),business_id:_activeBizId,customer_id:c.id,service_id:svc.id,
+                                service_name:svc.name,total_count:1,used_count:0,
+                                purchased_at:today.toISOString(),note};
+                              sb.insert("customer_packages",pkg).catch(console.error);
+                              setCustPkgsServer(prev=>[...prev, pkg]);
+                              setData(prev=>({...prev,custPackages:[...(prev.custPackages||[]),pkg]}));
+                              e.target.value="";
+                            }}>
+                            <option value="">🎫 쿠폰 발행 (3개월)</option>
+                            {(data?.services||[]).filter(s=>{
+                              const cat = (data?.categories||[]).find(cc=>cc.id===s.cat);
+                              // '쿠폰' 카테고리 + 10%추가적립쿠폰 제외
+                              return cat?.name === '쿠폰' && s.name !== '10%추가적립쿠폰';
+                            }).map(s=>
+                              <option key={s.id} value={s.id}>{s.name}</option>
+                            )}
+                          </select>
+                          </div>
                         </div>
                         {custPkgs.length===0
                           ? <div style={{fontSize:T.fs.xs,color:T.textMuted,padding:"8px 0"}}>보유 다회권 없음</div>

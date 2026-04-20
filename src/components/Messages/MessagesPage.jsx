@@ -579,4 +579,46 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   );
 }
 
-export default AdminInbox
+// 모바일 전용 탭 래퍼: 받은메시지 / 팀 채팅
+import { TeamChat, useTeamChat } from '../Chat'
+function MessagesWithTeamTab(props) {
+  const [tab, setTab] = useState('inbox');
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const teamChat = useTeamChat();
+  // 데스크탑은 기존 AdminInbox만
+  if (!isMobile) return <AdminInbox {...props} />;
+  const teamUnread = teamChat.unreadCount || 0;
+  const tabBtn = (key, label, badge) => (
+    <button onClick={()=>{ setTab(key); if (key==='team' && teamUnread>0) teamChat.markAllRead(); }} style={{
+      flex:1, padding:'10px 0', border:'none', background: tab===key ? T.primaryLt : T.bgCard,
+      color: tab===key ? T.primaryDk : T.textSub, fontWeight: tab===key ? 800 : 600,
+      fontFamily:'inherit', fontSize:13, cursor:'pointer',
+      borderBottom: tab===key ? `2px solid ${T.primary}` : '2px solid transparent',
+      display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+    }}>
+      {label}
+      {badge > 0 && <span style={{background:T.danger,color:'#fff',borderRadius:10,fontSize:10,fontWeight:700,padding:'1px 6px',minWidth:16,textAlign:'center'}}>{badge>99?'99+':badge}</span>}
+    </button>
+  );
+  return (
+    <div style={{display:'flex', flexDirection:'column', height:'100%', minHeight:0}}>
+      <div style={{display:'flex', borderBottom:`1px solid ${T.border}`, background: T.bgCard, flexShrink:0}}>
+        {tabBtn('inbox', '📥 받은메시지')}
+        {tabBtn('team', '💬 팀 채팅', teamUnread)}
+      </div>
+      <div style={{flex:1, minHeight:0, display: tab==='inbox' ? 'flex' : 'none', flexDirection:'column'}}>
+        <AdminInbox {...props} />
+      </div>
+      <div style={{flex:1, minHeight:0, display: tab==='team' ? 'flex' : 'none', flexDirection:'column'}}>
+        <TeamChat />
+      </div>
+    </div>
+  );
+}
+
+export default MessagesWithTeamTab
