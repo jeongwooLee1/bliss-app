@@ -1,100 +1,92 @@
 # HANDOFF
 
 ## 현재 버전
-- **v3.3.81** 배포 중
+- **v3.3.105** 배포 중
 
-## 이번 세션 요약 (2026-04-19~20) — 포인트/이벤트 시스템 전면 개편
+## 이번 세션 요약 (2026-04-20) — v3.3.81 → v3.3.105 대규모 개선 + 긴급 대응
 
-### 🎯 핵심 설계 결정
-- **멀티테넌트 원칙** 메모리 저장 — 매장별 커스텀 하드코딩 금지, 설정 기반 범용 엔진만
-- `DEFAULT_EVENTS` 하드코딩 전부 제거 → 매장마다 유저가 UI로 직접 이벤트 생성
-- 이벤트/쿠폰은 `businesses.settings` 기반 범용 엔진으로 통합
+### 🎫 쿠폰/포인트/보유권 UX 개선
+- **다담권 구매 + 오늘 차감 UI 통일** (v3.3.89~90)
+  - 체크박스 수동 조작 제거 → **자동 차감**
+  - 결제수단 그리드에 "다담권(신규)" 타일 추가 (선불잔액·카드·현금·입금과 나란히). 즉시차감액 자동 표시
+  - 유저 설계 의도 반영: 1단계 패키지 구매 결제, 2단계 패키지를 결제수단에 포함한 계산
+- **PKG 오늘 사용 UI 토글로 통일** (v3.3.88)
+  - +/- 스테퍼 → 시술 행과 동일한 클릭 토글 (0 ↔ 1회)
+  - 디폴트 체크 제거. 유저가 명시적으로 클릭해야 사용
+  - `📦 오늘 구매한 패키지 — 1회 사용` 라벨
+- **PKG 오늘 사용 박스 위치 이동** (v3.3.85~86) — 결제 영역 → 시술 영역 최상단. 다담권은 결제수단이라 결제영역 유지
+- **보유 패키지 디폴트 체크 제거** (v3.3.87) — 첫 다회권 자동 선택 로직 삭제. 편집 UI도 시술 행과 동일 토글
+- **회원가 자격 조건 설정 UI** (v3.3.94) — 관리설정 → 시술상품관리 상단 보라색 카드. `businesses.settings.member_price_rules`에 저장 (멀티테넌트 원칙 준수). 하드코딩 제거
 
-### 🧩 신규 이벤트 엔진 (`src/lib/eventEngine.js`)
-범용 모듈, SaleForm에서 호출.
-- **트리거 3종**: `new_first_sale` / `prepaid_recharge` / `pkg_repurchase`
-- **보상 6종**: `point_earn` / `discount_pct` / `discount_flat` / `coupon_issue` / `prepaid_bonus` / `free_service`
-- **기준(base) 5종**: `svc` / `svc_prod` / `prepaid_amount` / `category`(복수) / `services`(복수)
-- **마스터 스위치** `businesses.settings.events_master_enabled` (현재 전 매장 **false** 저장)
-- **2중 잠금**: 마스터 ON + 개별 이벤트 ON + 조건 충족 모두 만족해야 반영
+### 📋 보유권 편집 UI 전면 개선 (v3.3.84)
+- 다담권 잔액 `-214,999` 같은 음수 버그 수정 (`Math.max(0, total-used)`)
+- 패키지 종류 변경 드롭다운 제거 (타입 swap 금지)
+- `p.total_count` 대신 `charged`(실제 충전액) 프리필
+- 편집 중 일반 액션 버튼 숨김 → 취소·저장만
+- 연간회원권 편집: 카운트 입력 대신 "유효기간 내 회원가 자동 적용" 안내만 (v3.3.93)
 
-### 🎨 AdminEvents UI (관리설정 → 이벤트 관리)
-- "쿠폰 관리" → **"이벤트 관리"** 리네임. 탭 2개(💥 이벤트 등록 / 🎫 쿠폰 등록)
-- 스위치 스타일 토글(42×22) 카드 내부 배치
-- 카드 배지: 🟢 반영중 / ⚪ 미구현 / 🟠 커스텀
-- `+ 새 이벤트`: 이름/트리거/보상 + 타입별 필드 + CatPicker/SvcPicker
-- **빈 상태** 안내: "+ 새 이벤트로 이 매장에 맞는 이벤트를 만들어 주세요"
+### 📅 타임라인
+- **🌐 전지점 공통 설정 DB 동기화 버그 수정** (v3.3.83, 102) — `_sk`(sharedKeys)가 localStorage에만 있어 타 PC에 반영 안 되던 문제. DB `tl_shared_settings_v1.value._sk`로 동기화. 권한도 대표/어드민만 변경 가능하게 제한
+- **타임라인 블록 메모 hover 팝업** (v3.3.101~102) — 긴 메모(30자 이상) hover 시 노란 팝업으로 전체 내용 표시. JSON 원본 노출 버그 수정
+- **타임라인 블록 클릭 개선** (v3.3.94) — 커서 `move` → `pointer`, 드래그 임계값 6→12px (예약 수정하려 클릭했을 때 실수로 드래그되던 문제 해결)
+- **예약 수동 등록시간 표시** (v3.3.105) — 수동 예약 모달 상단에 `📅 수동 등록 · 2026-04-20 14:35` 회색 배너
 
-### 💰 포인트 시스템 업그레이드
-- DB: `point_transactions.expires_at/source/expired_tx_id` 컬럼 추가
-- pg_cron `record_expired_points()` 매일 00:05 KST — 만료된 earn을 `type='expire'` row로 히스토리 기록
-- 잔액 계산: 만료 earn 제외
-- 고객관리 PointPanel: 적립 시 유효기간 선택(없음/1/3/6/12개월), 히스토리에 "만료 MM-DD" 배지
-- SaleForm 포인트 사용 UI 2줄 레이아웃, 전액 버튼, 콤마 포맷
+### 💰 매출 관리/통계
+- **매출통계 기간 필터를 매출관리와 통일** (v3.3.103) — 기존 7/14/30일 드롭다운 제거, SmartDatePicker로 교체. 매출관리와 `startDate/endDate/periodKey` 상태 공유
+- **SmartDatePicker 뷰포트 오버플로 버그** (v3.3.104) — 캘린더가 화면 밖으로 나가던 문제. 자동 오른쪽 정렬 (`window.innerWidth - calW - 12`)
+- **방문횟수 +1 정확도 개선** (v3.3.105) — localCust 캐시 대신 **서버 최신 visits 재조회 후 +1**. Oracle 임포트 값도 정확히 증가
 
-### 🎫 쿠폰 소급 전환 (임시 마이그레이션 — 관리설정 → 데이터 관리 → 포인트 설정)
-- 매출메모 소급 + 유효 쿠폰 보유자 2개 탭
-- materialized view `point_migration_candidates` + 함수 `refresh_point_migration_candidates()`
-- view `point_coupon_holders` (유효 쿠폰 대상자)
-- **누적 전환 결과**: 280명 / 2,842,452P (메모 1차 199 + 2차 39 + 유효쿠폰 42)
-  - 시술만 × 10% 기준 (제품 제외)
-  - 첫방문 패키지 구매자 1명(김용현) 제외
-- 기존 1,308장 `10%추가적립쿠폰` 중 유효는 전부 전환·삭제, 만료 1,092장만 기록용 보관
+### 🛒 매출등록 UX
+- **"0" 렌더링 버그** (v3.3.85) — 회원가 없는 시술에 React falsy-zero로 `"0"`이 찍히던 문제 (`"산모관리0"`, `"궁테라피0"`). `isMember = regularPrice > 0 && ...`로 명시적 bool
 
-### 📝 수정요청 처리 완료 (모두 done + reply 등록)
-- `id_mj1wxf0q69` **서현** — 예약금완료 태그 저장 버그 (ReservationModal.jsx:1400 자동 제거 로직 삭제, 정유진 id_muezogjytr DB 수동 태그 추가)
-- `id_ubcyc5lojp` **민아** — 고객 70079 Elaine 검색 불가 (예약엔 cust_id 있고 customers엔 없던 "유령 고객" 복구 + 서버 스크래퍼에 신규 고객 자동 생성 로직 추가)
-- `id_tgvgfsjvoz` **수연** — 매출 등록이 예약시간 늘리는 버그 (SaleForm.jsx 조정 방향 축소만 허용)
-- `id_c8cj6n04hl` **정우** 10% 쿠폰 → 포인트 시스템화 (전체 280명 전환 완료)
-- `id_xe85iyyvcj/puhjs8t4lv/821i3dfsdq` — DB 상태 done 처리
+### 🔍 예약 시스템
+- **예약 누락 해결** (v3.3.93) — PostgREST `max-rows=1000` 서버 캡으로 2300+건 중 1000건만 로드되던 버그. `sb.getAll()` 헬퍼 추가 (Range 페이지네이션). 4/16 명수현 예약 등이 타임라인에 안 보이던 문제 해결
 
-### 🔧 서버 스크래퍼 수정 (`/home/ubuntu/naver-sync/bliss_naver.py`)
-- 신규 고객 자동 생성 로직 추가 (`bak_cust_autocreate` 백업)
-- 전화번호로 기존 고객 조회 실패 시 → customers에 INSERT (cust_num=""), 예약의 cust_id에 연결
-- **원칙**: 네이버 예약 들어오면 고객 레코드 항상 생성, **cust_num은 매출 발생 시 앱에서 부여** (원칙 준수)
+### 🛠 고객 관리
+- **예약모달 고객검색에 회원번호 표시** (v3.3.91) — 드롭다운에 monospace 회색 배지로 `custNum` 렌더링. 수정요청 id_4cxfyg8skz 대응
+- **고객 유효기간 설정 버튼** (v3.3.82) — 보유권 카드 유효기간 섹션을 항상 노출. 없으면 "미설정 + 설정 버튼", 있으면 "유효 ~날짜 + 연장 버튼"
+- **다담권 첫 차감 시 자동 유효기간 1년** (v3.3.82) — 사용 전엔 유효기간 비움 (미사용 원칙), 구매+즉시차감 동시면 구매일+1년
 
-### 🎨 UX 개선 다수
-- **빈 지원 칼럼 제거** (TimelinePage getWorkingStaff 로직 수정, v3.3.51)
-- **타임라인 막대바 직원 근무시간 반영** (v3.3.51, empWorkHours 다층 키 lookup)
-- **근무표 미등록 직원은 타임라인 제외** (v3.3.51)
-- **모바일 롱프레스 잡힘 피드백**: 즉시 floating preview + pop-in 애니 + 진동 패턴 (v3.3.52~53)
-- **지원 구간 partial 축소**: 수연 왕십리(11:00~18:30) + 강남(18:30~)처럼 원래 지점에 남은 근무 있으면 활성 (v3.3.54)
-- **팀채팅 서버 저장**: `team_chat_messages` 테이블 + Realtime + 확성기(📣) 공지 배너 (v3.3.55~57)
-- **예약모달 데스크탑 X 버튼** 추가 (v3.3.64)
-- **고객관리 다토큰 검색**: `이정 8008` 처럼 부분+부분 AND 서버 필터 (v3.3.74)
-- **매출합계 외부선결제 포함** (제품 없는 매출에 한해, v3.3.66)
-- **쿠폰/포인트 카테고리 SVC_LIST 제외** (v3.3.68~69)
-- **포인트 사용 UI 2줄 + 전액 버튼 + 콤마 포맷** (v3.3.69~71)
-- **외부 플랫폼에 "입금" 추가** — biz_khvurgshb.settings.external_platforms=[서울뷰티,크리에이트립,입금]
-- **콤마 포맷 통일**: SaleForm 외부선결제·포인트적립·ReservationModal 예약금 (v3.3.72)
+### ⚠️ 긴급 장애 대응
+- **Supabase Compute 업그레이드 Nano → Small** (memory project_supabase_compute.md) — 단순 쿼리가 15~30초 걸리던 심각한 성능 문제. Small 전환 후 200~300ms 정상화
+- **긴급 크래시 핫픽스** (v3.3.92) — SaleForm `selSvcs.filter(id => id.startsWith("pkg__"))` 에서 비문자열 id 접근 시 `TypeError: ve.startsWith is not a function` → `typeof id === "string"` 가드 추가
+- **송다희 매출 복구** — Supabase 느린 시간대에 customers insert가 `.catch(console.error)`로 조용히 실패하고 sales insert는 성공 → orphan. 수동 복구 + SaleForm.jsx:1200 `await 추가 TODO`
+
+### 💼 bliss-consent 프로젝트 분리 (신규)
+매장 태블릿 동의서 사인앱 — 직원 `housewaxingmarketing-spec` 담당. **블리스 외부 프로젝트**이지만 DB/Storage 공유:
+- 위치: `C:\Users\TP005\bliss-consent\` + GitHub `jeongwooLee1/bliss-consent` (private)
+- Supabase 테이블 3개 생성: `consent_templates`, `consent_tokens`, `customer_consents`
+- Storage 버킷 `consents` + RLS 정책
+- CLAUDE.md + HANDOFF.md + Skills 3개 준비 완료
+- 자세한 건 memory `reference_bliss_consent.md`
+
+### 💾 NAS 백업 세팅 (신규)
+- `Z:\bliss\` 백업 폴더 + `sync.sh` 동기화 스크립트
+- 대상: 문서(CLAUDE.md/HANDOFF.md/memory), 서버 스크립트(naver-sync), 루트 유틸(bliss_*.py, oracle_sync.py)
+- 실행: `bash Z:/bliss/sync.sh`
+- 자세한 건 memory `reference_nas_backup.md`
 
 ## 다음 세션 — 이어받을 내용
 
 ### 🔥 즉시 확인 필요
-- **이벤트 엔진 마스터 스위치 현재 OFF**. 유저가 직접 ON하고 이벤트 생성해서 테스트할 예정
-- 관리설정 → 이벤트 관리 → 💥 이벤트 등록 → `+ 새 이벤트`로 매장 룰 생성
-- 등록된 이벤트 0건 상태 (DB 확인 완료, 전 매장)
+- **bliss-consent 직원 작업 진행 상황** — 직원이 clone하고 세팅 완료했는지. 막히면 도와줌
+- **블리스 메인앱 ↔ bliss-consent 연동** (직원 작업 마무리 후)
+  - 고객 편집 모달에 "📝 동의서 작성" 버튼 → consent_tokens 발급 + QR 모달
+  - 고객 상세 패널에 "서명 이력" 탭 (customer_consents 조회)
 
 ### 📋 남은 수정요청 점검
 - 새 세션 시작 시 `schedule_data.bliss_requests_v1`에서 pending 조회
+- pending 1건: `id_afntr6jcle` 수연 "직원 라인 순서가 계속 바뀌면서 예약 등록해놓은게 사라진다" — 재현 조건 더 확인 필요 (보류 중)
 
 ### ⚠️ 주의사항
-- **하드코딩 절대 금지** — 매장별 특수 로직은 설정으로 해결 (멀티테넌트 원칙, memory 기록됨)
-- 이벤트 엔진 `free_service` 타입: 쿠폰 등록 탭에서 대상 시술 지정한 쿠폰으로 `coupon_issue` 이벤트 구성 권장 (실제 "무료" 처리는 쿠폰 엔진이 담당)
-- `prepaid_bonus` rewardType: 현재 엔진이 `bonus 금액만 계산`. 다담권 실제 잔액에 bonus 가산하려면 SaleForm의 다담권 insert 로직 수정 필요 (다음 단계)
-- 네이버 스크래퍼 수정 후 신규 고객 자동 생성 확인 필요 (실제 새 예약 들어올 때 customers 테이블에 row 생성되는지)
+- **Supabase 장애 재발 주의** — Compute burst credit 소진 / statement_timeout / max_connections 근접 체크 (memory project_supabase_compute.md)
+- **SaleForm customers insert 비동기 이슈** — line ~1200 `sb.insert("customers", ...).then().catch(console.error)` 가 fire-and-forget. 타임아웃 시 orphan 재발 가능. `await` + 실패 시 sales 중단으로 보강 필요 (송다희 복구 이후 TODO)
+- **멀티테넌트 원칙 유지** — 매장 특화 하드코딩 금지. 회원가 규칙처럼 `businesses.settings`로 빼기
 
 ### 📊 수치 참고
 | 항목 | 값 |
 |---|---:|
-| 전환된 포인트 | 2,842,452P (280명) |
-| 남은 유효 10%쿠폰 | 0장 |
-| 만료 10%쿠폰 (기록 보관) | 1,092장 |
-| 삭제된 쿠폰 | 172장 |
-| customers 유령 고객 복구 | 3명 (Elaine, 홍유진, Amy Lin) |
-
-## 참고 — 서비스·엔진 매핑
-- `businesses.settings.events` (array) — 이 매장의 이벤트 정의
-- `businesses.settings.events_master_enabled` (bool) — 엔진 전체 ON/OFF
-- `businesses.settings.point_events.newcust_10pct` — 레거시 호환 (엔진이 events[] 쪽으로 자동 흡수)
-- `businesses.settings.external_platforms` — 외부 선결제 플랫폼 목록
+| 예약 총건 | 2327 |
+| 매출 90일 | 3169 |
+| 고객 | ~7000+ |
+| Supabase Compute | Small (2GB, 2-core ARM) |

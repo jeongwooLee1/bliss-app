@@ -857,6 +857,9 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     return () => clearInterval(timer);
   }, [data.reservations]);
 
+  // 메모 호버 팝업 (블록 hover 시 전체 메모 표시)
+  const [memoPopup, setMemoPopup] = useState(null);
+
   // ── Drag & Drop ──
   const [dragBlock, setDragBlock] = useState(null);
   const [dragPos, setDragPos] = useState(null);
@@ -1113,18 +1116,18 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   });
   // 항목별 전 지점 공통 적용 — 각 설정 키를 개별 토글
   // sharedKeys: {sh: true, eh: false, rh: true, cw:true, tu:true, fs:false, op:false, sc:false}
+  // DB의 tl_shared_settings_v1.value._sk 에 저장되어 전 PC 동기화 (값도 같은 row에 병합 저장)
   const tlSharedKeysRef = useRef(dbTl.current.sharedKeys || {});
   const [tlSharedKeys, setTlSharedKeysRaw] = useState(tlSharedKeysRef.current);
-  // 단일 키 값만 DB에 partial upsert (다른 키 보존)
-  const pushKeyToDb = useCallback((k, value) => {
+  // DB row에 여러 키를 한 번에 merge upsert (race 방지)
+  const pushToDb = useCallback((updates) => {
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json" };
-    // 먼저 현재 DB값 가져와서 merge 후 저장
     fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.tl_shared_settings_v1&select=value`, { headers: H })
       .then(r => r.json()).then(rows => {
         let cur = {};
         const v = rows?.[0]?.value;
         if (v) { try { cur = typeof v === "string" ? JSON.parse(v) : v; } catch(e) {} }
-        const next = {...cur, [k]: value};
+        const next = {...cur, ...updates};
         fetch(`${SB_URL}/rest/v1/schedule_data`, {
           method: "POST",
           headers: {...H, Prefer: "resolution=merge-duplicates"},
@@ -1132,16 +1135,23 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         }).catch(console.error);
       }).catch(console.error);
   }, []);
-  // 초기 로드: 체크된 키만 DB값으로 override
+  // 초기 로드: DB에서 _sk(공유키 목록) + 각 공유값 가져와서 적용
   useEffect(() => {
-    const sharedKeys = tlSharedKeysRef.current;
-    if (!sharedKeys || !Object.values(sharedKeys).some(v => v === true)) return;
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
     fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.tl_shared_settings_v1&select=value`, { headers: H })
       .then(r => r.json()).then(rows => {
         const v = rows?.[0]?.value;
         if (!v) return;
         const s = typeof v === "string" ? JSON.parse(v) : v;
+        // DB에 저장된 sharedKeys 가 진실 — 로컬에 반영 (전 PC 동기화)
+        const dbSk = s._sk && typeof s._sk === "object" ? s._sk : null;
+        const sharedKeys = dbSk || tlSharedKeysRef.current;
+        if (dbSk) {
+          tlSharedKeysRef.current = dbSk;
+          setTlSharedKeysRaw(dbSk);
+          dbTl.current = {...dbTl.current, sharedKeys: dbSk};
+        }
+        // 마킹된 키는 DB값으로 override
         if (sharedKeys.sh && s.sh !== undefined) { setStartHourRaw(Number(s.sh)); dbTl.current.sh = Number(s.sh); }
         if (sharedKeys.eh && s.eh !== undefined) { setEndHourRaw(Number(s.eh)); dbTl.current.eh = Number(s.eh); }
         if (sharedKeys.rh && s.rh !== undefined) { setRowHRaw(Number(s.rh)); dbTl.current.rh = Number(s.rh); }
@@ -1159,18 +1169,17 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     setTlSharedKeysRaw(next);
     dbTl.current = {...dbTl.current, sharedKeys: next};
     tlSaveLocal(dbTl.current);
-    // 체크 ON 시: 현재 값을 즉시 DB에 push (다른 기기가 이 값을 받도록)
-    if (v) {
-      const curVal = k === "sc" ? statusClr : dbTl.current[k];
-      pushKeyToDb(k, curVal);
-    }
+    // sharedKeys 자체 + 체크 ON 시 현재 값까지 한 번에 DB에 push (다른 기기 동기화)
+    const updates = { _sk: next };
+    if (v) updates[k] = k === "sc" ? statusClr : dbTl.current[k];
+    pushToDb(updates);
   };
   const makeTlSave = (k, rawSetter) => v => {
     rawSetter(prev => {
       const resolved = typeof v === "function" ? v(prev) : v;
       dbTl.current = {...dbTl.current, [k]: resolved};
       tlSaveLocal(dbTl.current);
-      if (tlSharedKeysRef.current[k]) pushKeyToDb(k, resolved);
+      if (tlSharedKeysRef.current[k]) pushToDb({[k]: resolved});
       return resolved;
     });
   };
@@ -1181,7 +1190,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const setTimeUnit = makeTlSave("tu", setTimeUnitRaw);
   const setBlockFs = makeTlSave("fs", setBlockFsRaw);
   const setBlockOp = makeTlSave("op", setBlockOpRaw);
-  const setStatusClr = (k,v) => { setStatusClrRaw(p => { const n = {...p,[k]:v}; dbTl.current = {...dbTl.current, sc:n}; tlSaveLocal(dbTl.current); try{localStorage.setItem("tl_sc",JSON.stringify(n))}catch(e){} if (tlSharedKeysRef.current.sc) pushKeyToDb("sc", n); return n; }); };
+  const setStatusClr = (k,v) => { setStatusClrRaw(p => { const n = {...p,[k]:v}; dbTl.current = {...dbTl.current, sc:n}; tlSaveLocal(dbTl.current); try{localStorage.setItem("tl_sc",JSON.stringify(n))}catch(e){} if (tlSharedKeysRef.current.sc) pushToDb({sc: n}); return n; }); };
   // Sync status colors to localStorage for other components using getStatusClr()
   useEffect(() => { try{localStorage.setItem("tl_sc",JSON.stringify(statusClr))}catch(e){} }, [statusClr]);
   // 예약 endTime이 설정된 종료시간을 초과하면 자동 확장
@@ -1586,7 +1595,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       const onMouseMove = (ev) => {
         const dx = ev.clientX - dragStartRef.current.x;
         const dy = ev.clientY - dragStartRef.current.y;
-        if (!isDragging.current && Math.abs(dx) + Math.abs(dy) < 6) return;
+        if (!isDragging.current && Math.abs(dx) + Math.abs(dy) < 12) return;
         if (!isDragging.current) { isDragging.current = true; setDragBlock(fakeBlock); }
         onDragMove(ev);
       };
@@ -1827,7 +1836,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       const onMouseMove = (ev) => {
         const dx = ev.clientX - dragStartRef.current.x;
         const dy = ev.clientY - dragStartRef.current.y;
-        if (!isDragging.current && Math.abs(dx) + Math.abs(dy) < 6) return;
+        if (!isDragging.current && Math.abs(dx) + Math.abs(dy) < 12) return;
         if (!isDragging.current) { isDragging.current = true; setDragBlock(block); document.body.style.cursor="move"; }
         onDragMove(ev);
       };
@@ -3149,6 +3158,14 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                     const bgAlpha = isSch ? opHex(Math.min(blockOp, 80)) : opHex(blockOp);
                     return (
                       <div key={block.id} data-rid={block.reservationId||block.id}
+                        onMouseEnter={e=>{
+                          const memo = (block.memo||"").split("\n").filter(l => { const t=l.trim(); return !(/^\[등록:|^\[수정:/.test(t)) && !(/^\d+\.\d+\s+\d+:\d+\s*(예약)?(접수|변경|확정|취소|신청|확정완료)/.test(t)); }).join("\n").trim();
+                          // 메모가 블록 높이(rowH*3 = 전체 보임) 안에 다 들어가면 팝업 불필요
+                          if (!memo || memo.length < 30) return;
+                          const r = e.currentTarget.getBoundingClientRect();
+                          setMemoPopup({ id: block.id, memo, x: r.right + 8, y: r.top });
+                        }}
+                        onMouseLeave={()=>setMemoPopup(p => p?.id === block.id ? null : p)}
                         onClick={e=>{
                           e.stopPropagation();
                           if (block._isColTemplate) {
@@ -3187,7 +3204,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                           border:isNaverCancelled?"1.5px dashed #E6A700":isNaverUnassigned?"1.5px dashed #FF9800":isNaverPending?`1.5px dashed ${color}`:"none",
                           borderRadius:4,padding:"4px 6px",overflow:"hidden",fontSize:blockFs,lineHeight:1.2,
                           boxShadow:isDrag?"none":"0 1px 4px rgba(0,0,0,.1)",
-                          cursor:isEditable?"move":"pointer",zIndex:isDrag?0:3,transition:(isDrag||isBeingResized)?"none":"all .15s, box-shadow .2s",
+                          cursor:"pointer",zIndex:isDrag?0:3,transition:(isDrag||isBeingResized)?"none":"all .15s, box-shadow .2s",
                           opacity:isDrag?0.35:1,userSelect:"none",WebkitUserSelect:"none",MozUserSelect:"none",msUserSelect:"none",WebkitTouchCallout:"none",touchAction:"pan-x pan-y"}}
                         className="tl-block">
                         {block.type==="reservation" && !block.isSchedule && <>
@@ -3293,6 +3310,17 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         </div>
       </div>
 
+      {/* 메모 호버 팝업 — 긴 블록메모만 전체 표시 */}
+      {memoPopup && (() => {
+        const px = Math.min(memoPopup.x, window.innerWidth - 280);
+        const py = Math.min(memoPopup.y, window.innerHeight - 200);
+        return <div style={{position:"fixed",left:px,top:py,zIndex:9998,pointerEvents:"none",
+          background:"#FFF8E1",border:"1px solid #F59E0B",borderRadius:8,padding:"8px 10px",
+          boxShadow:"0 6px 20px rgba(0,0,0,.15)",fontSize:11,color:"#4B3200",
+          maxWidth:260,whiteSpace:"pre-wrap",wordBreak:"break-word",lineHeight:1.45}}>
+          {memoPopup.memo}
+        </div>;
+      })()}
       {/* 구글 캘린더식 Floating Drag Preview — 커서 따라 이동, scale 1.03, 강한 그림자 */}
       {dragBlock && dragPos && dragPos.clientX != null && (() => {
         const tags = data?.serviceTags || [];

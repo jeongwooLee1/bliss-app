@@ -155,6 +155,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
 
   return <div>
     <APageHeader title={couponMode?"쿠폰 관리":"시술 상품 관리"} count={visibleServices.length} onAdd={openNew}/>
+    {!couponMode && <MemberRulesCard data={data} setData={setData}/>}
     <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16,alignItems:"center"}}>
       <button onClick={()=>setFilterCat("all")}
   style={{padding:"5px 13px",borderRadius:20,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:T.fs.xs,fontWeight:filterCat==="all"?700:500,
@@ -477,6 +478,49 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
       <AIBtn onClick={addCat} disabled={!newCatName.trim()} label="추가"/>
     </ASheet>
     <AConfirm open={!!del} title="시술 삭제" onOk={()=>doDelete(del)} onCancel={()=>setDel(null)}/>
+  </div>;
+}
+
+// 회원가 자격 조건 카드 — businesses.settings.member_price_rules
+function MemberRulesCard({ data, setData }) {
+  const biz = (data?.businesses||[])[0];
+  const rules = biz?.settings?.member_price_rules || { annualEnabled: true, prepaidMin: 500000 };
+  const [annualEnabled, setAnnualEnabled] = useState(!!rules.annualEnabled);
+  const [prepaidMin, setPrepaidMin] = useState(Number(rules.prepaidMin) || 0);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    if (!biz?.id) return;
+    setSaving(true);
+    const nextSettings = { ...(biz.settings||{}), member_price_rules: { annualEnabled, prepaidMin: Number(prepaidMin)||0 } };
+    try {
+      await sb.update("businesses", biz.id, { settings: nextSettings });
+      if (setData) setData(p => p ? { ...p, businesses: (p.businesses||[]).map(b => b.id === biz.id ? { ...b, settings: nextSettings } : b) } : p);
+      setDirty(false);
+    } catch(e) { console.error("member_price_rules save failed", e); alert("저장 실패"); }
+    setSaving(false);
+  };
+  return <div style={{marginBottom:12,padding:"10px 14px",background:"#F3E8FF",border:"1px solid #D8B4FE",borderRadius:8}}>
+    <div style={{fontSize:12,fontWeight:700,color:"#6B21A8",marginBottom:6}}>⭐ 회원가 자동 적용 조건</div>
+    <div style={{fontSize:11,color:"#6B21A8",marginBottom:8}}>아래 조건 중 하나라도 충족하는 고객은 매출등록 시 시술가가 <b>회원가</b>로 자동 표시됩니다.</div>
+    <div style={{display:"flex",flexDirection:"column",gap:6,fontSize:12,color:"#4B5563"}}>
+      <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
+        <input type="checkbox" checked={annualEnabled} onChange={e=>{setAnnualEnabled(e.target.checked);setDirty(true);}}/>
+        연간회원권 보유 (유효기간 내)
+      </label>
+      <label style={{display:"flex",alignItems:"center",gap:6}}>
+        <span>다담권 원 충전액</span>
+        <input type="number" value={prepaidMin} onChange={e=>{setPrepaidMin(e.target.value);setDirty(true);}}
+          style={{width:100,padding:"3px 6px",fontSize:12,borderRadius:6,border:"1px solid "+T.border,textAlign:"right"}}/>
+        <span>원 이상 (0 = 비활성화)</span>
+      </label>
+    </div>
+    {dirty && <div style={{marginTop:8,display:"flex",gap:6}}>
+      <button onClick={save} disabled={saving}
+        style={{padding:"5px 12px",fontSize:11,fontWeight:700,borderRadius:6,border:"none",background:"#7C3AED",color:"#fff",cursor:saving?"default":"pointer",fontFamily:"inherit"}}>
+        {saving?"저장 중...":"저장"}
+      </button>
+    </div>}
   </div>;
 }
 

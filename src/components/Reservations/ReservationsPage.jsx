@@ -86,9 +86,17 @@ export function SmartDatePicker({ open, onClose, anchorEl, startDate, endDate, o
   useEffect(()=>{
     if (!isMobile && anchorEl && open) {
       const r = anchorEl.getBoundingClientRect();
-      setPos({top: r.bottom + 6, left: r.left});
+      setPos({top: r.bottom + 6, left: r.left, btnRight: r.right});
     }
   },[open, isMobile, anchorEl]);
+  // 뷰포트 오버플로우 시 오른쪽 정렬 (render 시점 동적 계산)
+  const calcLeft = (() => {
+    const calW = 560, margin = 12;
+    const raw = pos.left || 0;
+    const vw = typeof window !== "undefined" ? window.innerWidth : 1000;
+    if (raw + calW > vw - margin) return Math.max(margin, vw - calW - margin);
+    return raw;
+  })();
 
   const presets = mode==="res"
     ? [["today","오늘"],["7days","7일"],["month","한달"],["all","전체"],["custom","직접"]]
@@ -189,7 +197,7 @@ export function SmartDatePicker({ open, onClose, anchorEl, startDate, endDate, o
   if (!isMobile) {
     return <div style={{position:"fixed",inset:0,zIndex:3000}} onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
       <div onMouseDown={e=>e.stopPropagation()} style={{
-        position:"fixed",top:pos.top,left:pos.left,
+        position:"fixed",top:pos.top,left:calcLeft,
         background:T.bgCard,borderRadius:T.radius.lg,boxShadow:"0 8px 32px rgba(0,0,0,.18)",
         padding:"16px 20px 14px",zIndex:3001,minWidth:500}}>
         {/* 프리셋 버튼 */}

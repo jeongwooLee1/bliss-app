@@ -27,7 +27,8 @@ function TimelineSettings({
   statusClr, setStatusClr,
   tlSharedKeys = {}, setTlSharedKey,
 }) {
-  const ShareCheck = ({ k }) => setTlSharedKey ? (
+  // 전지점 공통 토글(🌐)은 대표/관리자(isMaster)만 변경 가능. 일반 직원은 아예 안 보임
+  const ShareCheck = ({ k }) => (setTlSharedKey && isMaster) ? (
     <label title="전 지점 공통 적용" style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:9,color:tlSharedKeys[k]?T.primary:T.gray500,cursor:"pointer",marginLeft:6,padding:"1px 5px",borderRadius:4,background:tlSharedKeys[k]?T.primaryLt:"transparent",border:`1px solid ${tlSharedKeys[k]?T.primary:T.border}`,flexShrink:0,fontWeight:tlSharedKeys[k]?700:500}}>
       <input type="checkbox" checked={!!tlSharedKeys[k]} onChange={e=>setTlSharedKey(k, e.target.checked)} style={{accentColor:T.primary,width:11,height:11,margin:0}}/>
       🌐
@@ -87,7 +88,7 @@ function TimelineSettings({
       <div style={{width:36,height:4,borderRadius:T.radius.sm,background:T.gray300,margin:"0 auto 16px",cursor:"grab"}}/>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
         <div style={{fontSize:T.fs.md,fontWeight:T.fw.bolder,color:T.text}}><I name="settings" size={14}/> 타임라인 설정</div>
-        <div style={{fontSize:9,color:T.textMuted}}>🌐 = 전 지점 공통 적용</div>
+        {isMaster && <div style={{fontSize:9,color:T.textMuted}}>🌐 = 전 지점 공통 적용</div>}
       </div>
       {/* 지점 보기 토글 - staff만 */}
       {!isMaster && accessibleBids.length > userBranches.length && (

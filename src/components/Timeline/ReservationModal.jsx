@@ -985,6 +985,7 @@ ${naverText}
                   style={{padding:"7px 12px",cursor:"pointer",borderBottom:"1px solid #e0e0e020",display:"flex",gap:6,alignItems:"center",fontSize:12}}
                   onMouseOver={e=>e.currentTarget.style.background=T.gray200} onMouseOut={e=>e.currentTarget.style.background="transparent"}>
                   <span className="badge" style={{background:c.gender==="M"?T.infoLt:c.gender==="F"?T.femaleLt:T.gray200,color:c.gender==="M"?T.primary:c.gender==="F"?T.female:T.gray500,fontSize:10}}>{c.gender==="M"?"남":c.gender==="F"?"여":"-"}</span>
+                  {c.custNum && <span style={{fontFamily:"monospace",fontSize:11,color:T.textSub,background:T.gray100,padding:"1px 5px",borderRadius:3,fontWeight:600}}>{c.custNum}</span>}
                   <span style={{fontWeight:600}}>{c.name}</span>
                   <span style={{color:T.textSub}}>{c.phone}</span>
                 </div>)}
@@ -1238,6 +1239,17 @@ ${naverText}
 
 
           </>}
+
+          {/* ═══ 수동 예약 등록정보 (기존 예약만) ═══ */}
+          {!isNaverItem && item?.id && item?.createdAt && !isSchedule && (()=>{
+            const c=new Date(item.createdAt); if(isNaN(c)) return null;
+            const fmt=`${c.getFullYear()}-${String(c.getMonth()+1).padStart(2,"0")}-${String(c.getDate()).padStart(2,"0")} ${String(c.getHours()).padStart(2,"0")}:${String(c.getMinutes()).padStart(2,"0")}`;
+            return <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",marginBottom:8,background:T.gray100,borderRadius:T.radius.md,fontSize:11,color:T.textSub}}>
+              <I name="calendar" size={11} color={T.gray500}/>
+              <span style={{fontWeight:600}}>수동 등록</span>
+              <span style={{marginLeft:"auto",fontFamily:"monospace"}}>{fmt}</span>
+            </div>;
+          })()}
 
           {/* ═══ 네이버 예약정보 (읽기전용) ═══ */}
           {isNaverItem && <div style={{background:T.successLt,borderRadius:T.radius.md,padding:"12px 14px",marginBottom:8,boxShadow:"0 2px 8px rgba(0,0,0,.06)"}}>

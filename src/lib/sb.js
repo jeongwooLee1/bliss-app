@@ -24,6 +24,28 @@ export const sb = {
     return r.ok?r.json():[];
   },
   async getByBiz(table, bizId) { return this.get(table, `&business_id=eq.${bizId}`); },
+  // Range 페이지네이션 (count=exact 미사용 — 순차로 짧은 페이지 만나면 종료)
+  async getAll(table, filter="") {
+    const PAGE = 1000;
+    const hasSortCol = ["services","products","service_tags","service_categories","reservation_sources","branches"].includes(table);
+    const hasCreatedAt = !["rooms","services","products","service_categories","service_tags","schedule_data"].includes(table);
+    const descTables = ["customers"];
+    const order = hasSortCol ? "order=sort.asc.nullslast" : (hasCreatedAt ? (descTables.includes(table) ? "order=created_at.desc.nullslast" : "order=created_at.asc.nullslast") : "order=id.asc");
+    const baseUrl = `${SB_URL}/rest/v1/${table}?select=*${filter.includes('order=')?'':('&'+order)}${filter}`;
+    const out = [];
+    for (let offset = 0; offset < 100000; offset += PAGE) {
+      const r = await fetch(baseUrl, {
+        headers: {...sbHeaders, "Cache-Control":"no-cache", "Range-Unit":"items", "Range":`${offset}-${offset+PAGE-1}`},
+        cache:"no-store"
+      });
+      if (!r.ok) { console.error(`DB getAll ${table} failed:`, r.status, await r.text()); break; }
+      const rows = await r.json();
+      if (!Array.isArray(rows) || rows.length === 0) break;
+      out.push(...rows);
+      if (rows.length < PAGE) break;
+    }
+    return out;
+  },
   async upsert(table,rows) { if(!rows?.length)return; const r=await fetch(`${SB_URL}/rest/v1/${table}`,{method:"POST",headers:{...sbHeaders,"Prefer":"resolution=merge-duplicates,return=representation"},body:JSON.stringify(rows)}); if(!r.ok){const e=await r.text();console.error(`DB upsert ${table} FAILED [${r.status}]:`,e);alert(`DB저장 실패(${table}): ${e}`);} },
   async insert(table,row) { const r=await fetch(`${SB_URL}/rest/v1/${table}`,{method:"POST",headers:sbHeaders,body:JSON.stringify(row)}); if(!r.ok){const e=await r.text();console.error(`DB insert ${table} FAILED [${r.status}]:`,e);alert(`DB저장 실패(${table}): ${e}`);return null;} return r.json(); },
   async update(table,id,row) { const r=await fetch(`${SB_URL}/rest/v1/${table}?id=eq.${id}`,{method:"PATCH",headers:sbHeaders,body:JSON.stringify(row)}); if(!r.ok){const e=await r.text();console.error(`DB update ${table} FAILED [${r.status}]:`,e);alert(`DB수정 실패(${table}): ${e}`);} },

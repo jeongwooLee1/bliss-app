@@ -403,7 +403,9 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
           background:"none",border:"none",borderBottom:salesTab===k?`2px solid ${T.primary}`:"2px solid "+T.border,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
       ))}
     </div>
-    <StatsPage data={data} userBranches={userBranches} isMaster={isMaster} role={role}/>
+    <StatsPage data={data} userBranches={userBranches} isMaster={isMaster} role={role}
+      startDate={startDate} endDate={endDate} periodKey={periodKey}
+      setStartDate={setStartDate} setEndDate={setEndDate} setPeriodKey={setPeriodKey}/>
   </div>;
 
   return <div>
@@ -718,15 +720,21 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
 // ═══════════════════════════════════════════
 // STATISTICS
 // ═══════════════════════════════════════════
-function StatsPage({ data, userBranches, isMaster, role }) {
-  const [period, setPeriod] = useState("7");
+function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, periodKey, setStartDate, setEndDate, setPeriodKey }) {
   const [vb, setVb] = useState("all");
-  const end = new Date(), start = new Date();
-  start.setDate(start.getDate() - parseInt(period));
+  const dateAnchorRef = React.useRef(null);
+  const [showSheet, setShowSheet] = useState(false);
+
+  // 기간 범위 계산 (매출관리와 동일한 로직)
+  const inRange = (date) => {
+    if (periodKey==="all" || (!startDate && !endDate)) return true;
+    if (startDate && endDate) return date >= startDate && date <= endDate;
+    return true;
+  };
 
   const filtered = (data?.sales||[]).filter(s => {
-    const d = new Date(s.date);
-    return d >= start && d <= end && ((vb==="all"?userBranches.includes(s.bid):s.bid===vb));
+    if (!((vb==="all"?userBranches.includes(s.bid):s.bid===vb))) return false;
+    return inRange(s.date);
   });
 
   const t = filtered.reduce((a,s)=>({
@@ -740,7 +748,16 @@ function StatsPage({ data, userBranches, isMaster, role }) {
     prodCash:a.prodCash+s.prodCash,prodTransfer:a.prodTransfer+s.prodTransfer,prodCard:a.prodCard+s.prodCard,prodPoint:a.prodPoint+s.prodPoint,
   }),{svcTotal:0,prodTotal:0,gift:0,extPrepaid:0,total:0,count:0,svcCash:0,svcTransfer:0,svcCard:0,svcPoint:0,prodCash:0,prodTransfer:0,prodCard:0,prodPoint:0});
 
-  const days = parseInt(period);
+  // 선택된 기간의 일수 (일평균 계산용)
+  const days = (()=>{
+    if (periodKey==="all" || !startDate || !endDate) {
+      // 전체면 실제 매출이 있는 일수 기준
+      const uniqueDates = new Set(filtered.map(s => s.date));
+      return Math.max(1, uniqueDates.size);
+    }
+    const s = new Date(startDate); const e = new Date(endDate);
+    return Math.max(1, Math.round((e - s) / 86400000) + 1);
+  })();
 
   // By staff
   const byStaff = {};
@@ -763,31 +780,58 @@ function StatsPage({ data, userBranches, isMaster, role }) {
   }
   const branchRank = Object.entries(byBranch).sort((a,b)=>b[1].total-a[1].total);
 
-  // Chart data (7 days)
-  const chartDays = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(); d.setDate(d.getDate()-i);
-    const ds = fmtLocal(d);
-    const dayData = (data?.sales||[]).filter(s=>s.date===ds && ((vb==="all"?userBranches.includes(s.bid):s.bid===vb)));
-    const svc = dayData.reduce((a,s)=>a+s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint,0);
-    const prod = dayData.reduce((a,s)=>a+s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint,0);
-    chartDays.push({label:`${d.getMonth()+1}/${d.getDate()}`,svc,prod,total:svc+prod});
-  }
+  // Chart data — 선택 기간 내 일별 막대 (최대 31일까지만 렌더; 넘으면 최근 31일)
+  const chartDays = (() => {
+    const out = [];
+    let chartStart, chartEnd;
+    if (periodKey==="all" || !startDate || !endDate) {
+      // 전체면 최근 7일
+      chartEnd = new Date();
+      chartStart = new Date(); chartStart.setDate(chartStart.getDate()-6);
+    } else {
+      chartStart = new Date(startDate);
+      chartEnd = new Date(endDate);
+      const totalDays = Math.round((chartEnd - chartStart) / 86400000) + 1;
+      if (totalDays > 31) chartStart = new Date(chartEnd.getTime() - 30*86400000);
+    }
+    const cur = new Date(chartStart);
+    while (cur <= chartEnd) {
+      const ds = fmtLocal(cur);
+      const dayData = (data?.sales||[]).filter(s=>s.date===ds && ((vb==="all"?userBranches.includes(s.bid):s.bid===vb)));
+      const svc = dayData.reduce((a,s)=>a+s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint,0);
+      const prod = dayData.reduce((a,s)=>a+s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint,0);
+      out.push({label:`${cur.getMonth()+1}/${cur.getDate()}`,svc,prod,total:svc+prod});
+      cur.setDate(cur.getDate()+1);
+    }
+    return out;
+  })();
   const maxChart = Math.max(...chartDays.map(d=>d.total),1);
+  const fmtShortDate = (ds) => { if(!ds) return ""; const [,m,d] = ds.split("-"); return `${Number(m)}.${Number(d)}`; };
+  const dateLabel = periodKey==="all" ? "전체"
+    : (periodKey==="1day"||startDate===endDate) ? fmtShortDate(startDate)
+    : `${fmtShortDate(startDate)} ~ ${fmtShortDate(endDate)}`;
 
   return <div>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:10}}>
       <h2 className="page-title" style={{marginBottom:0}}>매출 통계</h2>
-      <div style={{display:"flex",gap:T.sp.sm}}>
+      <div style={{display:"flex",gap:T.sp.sm,alignItems:"center"}}>
         {<select className="inp" style={{maxWidth:150,width:"auto"}} value={vb} onChange={e=>setVb(e.target.value)}>
           <option value="all">전체 매장</option>
           {(data.branches||[]).filter(b=>userBranches.includes(b.id)).map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
         </select>}
-        <select className="inp" style={{maxWidth:110,width:"auto"}} value={period} onChange={e=>setPeriod(e.target.value)}>
-          <option value="7">7일</option><option value="14">14일</option><option value="30">30일</option>
-        </select>
+        <button ref={dateAnchorRef} onClick={()=>setShowSheet(true)}
+          style={{height:36,borderRadius:T.radius.md,border:"1px solid "+T.primary+"44",background:T.primaryHover,
+                  fontSize:T.fs.sm,padding:"0 14px",cursor:"pointer",fontFamily:"inherit",color:T.primaryDk,
+                  fontWeight:T.fw.bold,display:"flex",alignItems:"center",gap:T.sp.xs,outline:"none",flexShrink:0}}>
+          <I name="calendar" size={14} color={T.primary}/>
+          <span>{dateLabel}</span>
+          <I name="chevD" size={12} color={T.primary}/>
+        </button>
       </div>
     </div>
+    <SmartDatePicker open={showSheet} onClose={()=>setShowSheet(false)} anchorEl={dateAnchorRef.current}
+      startDate={startDate} endDate={endDate} mode="sales"
+      onApply={(s,e,p)=>{ setStartDate(s); setEndDate(e); setPeriodKey(p); setShowSheet(false); }}/>
     {/* Summary Cards */}
     <GridLayout className="stat-cards" cols="repeat(auto-fit,minmax(160px,1fr))" gap={12} style={{marginBottom:20}}>
       <SC label="총 매출" val={`${fmt(t.total)}원`} sub={`${t.count}건`} clr={T.info}/>
@@ -799,7 +843,7 @@ function StatsPage({ data, userBranches, isMaster, role }) {
     </GridLayout>
     {/* Chart */}
     <div className="card" style={{padding:20,marginBottom:16}}>
-      <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:16}}>최근 7일 매출 (시술 + 제품)</div>
+      <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:16}}>{chartDays.length}일 매출 (시술 + 제품)</div>
       <div style={{display:"flex",alignItems:"flex-end",gap:6,height:130}}>
         {chartDays.map((d,i)=>(
           <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:T.sp.xs}}>

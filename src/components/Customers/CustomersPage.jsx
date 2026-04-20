@@ -693,12 +693,12 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
         </div>
       </div>}
 
-      {/* 연간할인권: 유효기간 표시 */}
+      {/* 연간할인권: 유효기간 표시 (카운트 없음, 회원가 자동 적용) */}
       {isAnnual && <div>
         <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:isExpired?T.danger:T.info,marginBottom:4}}>
           {isExpired ? "만료" : "이용중"} {expiry ? `(~${expiry})` : ""}
         </div>
-        <div style={{fontSize:T.fs.nano,color:T.textMuted,marginBottom:6}}>연간 할인 적용</div>
+        <div style={{fontSize:T.fs.nano,color:T.textMuted,marginBottom:6}}>유효기간 내 회원가 자동 적용 (시술상품관리에서 회원가 설정)</div>
       </div>}
 
       {/* 일반 다회권: 잔여횟수 + 프로그레스바 */}
@@ -713,69 +713,74 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
         </div>
       </div>}
 
-      {/* 유효기간 (모든 타입 공통) */}
-      {expiry && <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,padding:"4px 8px",borderRadius:T.radius.sm,
+      {/* 유효기간 (모든 타입 공통, 항상 노출) */}
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,padding:"4px 8px",borderRadius:T.radius.sm,
         background:isExpired?T.dangerLt:T.gray100}}>
-        <span style={{fontSize:T.fs.nano,fontWeight:T.fw.bolder,color:isExpired?T.danger:T.textSub}}>
-          유효 ~{expiry} {isExpired?"(만료)":""}
+        <span style={{fontSize:T.fs.nano,fontWeight:T.fw.bolder,color:isExpired?T.danger:expiry?T.textSub:T.textMuted,flex:1}}>
+          {expiry ? `유효 ~${expiry} ${isExpired?"(만료)":""}` : "유효기간 미설정"}
         </span>
         <button onClick={(e)=>{
           e.stopPropagation();
-          const newExp = prompt("새 유효기간 (YYYY-MM-DD):", expiry);
-          if(!newExp || !/^\d{4}-\d{2}-\d{2}$/.test(newExp)) return;
-          const newNote = expiry ? (p.note||"").replace(/유효:\d{4}-\d{2}-\d{2}/, `유효:${newExp}`) : (p.note||"")+` | 유효:${newExp}`;
+          const def = expiry || (()=>{const d=new Date();d.setFullYear(d.getFullYear()+1);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;})();
+          const newExp = prompt(expiry?"새 유효기간 (YYYY-MM-DD):":"유효기간 설정 (YYYY-MM-DD):", def);
+          if(!newExp) return;
+          if(!/^\d{4}-\d{2}-\d{2}$/.test(newExp)){ alert("YYYY-MM-DD 형식으로 입력해주세요"); return; }
+          const curNote = p.note || "";
+          const newNote = expiry
+            ? curNote.replace(/유효:\d{4}-\d{2}-\d{2}/, `유효:${newExp}`)
+            : (curNote ? `${curNote} | 유효:${newExp}` : `유효:${newExp}`);
           sb.update("customer_packages",p.id,{note:newNote}).catch(console.error);
           setCustPkgsServer(prev=>prev.map(x=>x.id===p.id?{...x,note:newNote}:x));
         }} style={{fontSize:9,padding:"1px 6px",borderRadius:T.radius.sm,border:"1px solid "+T.border,
           background:T.bgCard,color:T.primary,cursor:"pointer",fontFamily:"inherit",fontWeight:T.fw.bold,whiteSpace:"nowrap"}}>
-          연장
+          {expiry ? "연장" : "설정"}
         </button>
-      </div>}
+      </div>
 
       {/* 편집 모드 */}
       {pkgEditId === p.id && <div style={{borderTop:"1px solid "+T.border,paddingTop:8,marginBottom:6}}>
-        <div style={{fontSize:10,color:T.textMuted,marginBottom:2}}>패키지 종류</div>
-        <select defaultValue={p.service_name} id={`pkg-edit-name-${p.id}`}
-          style={{width:"100%",fontSize:11,padding:"5px 6px",borderRadius:6,border:"1px solid "+T.border,marginBottom:6,boxSizing:"border-box"}}>
-          {(data?.services||[]).filter(s=>s.name?.includes("PKG")||s.name?.includes("다담")||s.name?.includes("연간")||s.name?.includes("패키지")||s.name?.includes("산모")||s.name?.includes("회원권")).map(s=>
-            <option key={s.id} value={s.name}>{s.name} ({s.price_f?.toLocaleString()}원)</option>
-          )}
-          {!(data?.services||[]).some(s=>s.name===p.service_name) && <option value={p.service_name}>{p.service_name} (현재)</option>}
-        </select>
-        <div style={{display:"flex",gap:8,marginBottom:6}}>
+        {isAnnual ? (
+          <div style={{fontSize:11,color:T.textSub,padding:"4px 0 8px",lineHeight:1.5}}>
+            연간회원권은 카운트 없이 유효기간 내 회원가가 자동 적용됩니다.<br/>
+            유효기간 변경은 위 <b>연장</b> 버튼을, 회원가 설정은 <b>관리설정 → 시술상품관리</b>에서 하세요.
+          </div>
+        ) : (
+        <div style={{display:"flex",gap:8,marginBottom:8}}>
           <div style={{flex:1}}>
-            <div style={{fontSize:10,color:T.textMuted,marginBottom:2}}>{isPrepaid?"충전액":"총 횟수"}</div>
-            <input type="number" defaultValue={p.total_count} id={`pkg-edit-total-${p.id}`}
-              style={{width:"100%",fontSize:12,padding:"5px 6px",borderRadius:6,border:"1px solid "+T.border,boxSizing:"border-box"}}/>
+            <div style={{fontSize:10,color:T.textMuted,marginBottom:3}}>{isPrepaid?"충전액 (원)":"총 횟수"}</div>
+            <input type="number" defaultValue={isPrepaid ? charged : p.total_count} id={`pkg-edit-total-${p.id}`}
+              style={{width:"100%",fontSize:12,padding:"6px 8px",borderRadius:6,border:"1px solid "+T.border,boxSizing:"border-box"}}/>
           </div>
           <div style={{flex:1}}>
-            <div style={{fontSize:10,color:T.textMuted,marginBottom:2}}>{isPrepaid?"사용액":"사용 횟수"}</div>
+            <div style={{fontSize:10,color:T.textMuted,marginBottom:3}}>{isPrepaid?"사용액 (원)":"사용 횟수"}</div>
             <input type="number" defaultValue={p.used_count} id={`pkg-edit-used-${p.id}`}
-              style={{width:"100%",fontSize:12,padding:"5px 6px",borderRadius:6,border:"1px solid "+T.border,boxSizing:"border-box"}}/>
+              style={{width:"100%",fontSize:12,padding:"6px 8px",borderRadius:6,border:"1px solid "+T.border,boxSizing:"border-box"}}/>
           </div>
         </div>
-        <div style={{display:"flex",gap:4}}>
-          <Btn variant="primary" size="sm" style={{flex:1,justifyContent:"center",fontSize:11}} onClick={()=>{
-            const newName = document.getElementById(`pkg-edit-name-${p.id}`)?.value || p.service_name;
+        )}
+        <div style={{display:"flex",gap:6}}>
+          <Btn variant="outline" size="sm" style={{flex:1,justifyContent:"center",fontSize:11}} onClick={()=>setPkgEditId(null)}>취소</Btn>
+          <Btn variant="primary" size="sm" style={{flex:2,justifyContent:"center",fontSize:11}} onClick={()=>{
             const newTotal = Number(document.getElementById(`pkg-edit-total-${p.id}`)?.value || p.total_count);
             const newUsed = Number(document.getElementById(`pkg-edit-used-${p.id}`)?.value || p.used_count);
-            const updates = {service_name: newName, total_count: newTotal, used_count: newUsed};
+            if (isNaN(newTotal) || isNaN(newUsed) || newTotal < 0 || newUsed < 0) return alert("0 이상 숫자만 입력 가능합니다");
+            if (newUsed > newTotal) return alert(isPrepaid ? "사용액이 충전액보다 클 수 없습니다" : "사용횟수가 총횟수보다 클 수 없습니다");
+            const updates = {total_count: newTotal, used_count: newUsed};
             if(isPrepaid) {
-              const newBal = newTotal - newUsed;
+              const newBal = Math.max(0, newTotal - newUsed);
               updates.note = (p.note||"").includes("잔액:")
                 ? (p.note||"").replace(/잔액:[0-9,]+/, `잔액:${newBal.toLocaleString()}`)
-                : `잔액:${newBal.toLocaleString()}`;
+                : ((p.note||"") ? `잔액:${newBal.toLocaleString()} | ${p.note}` : `잔액:${newBal.toLocaleString()}`);
             }
             sb.update("customer_packages",p.id,updates).catch(console.error);
             setCustPkgsServer(prev=>prev.map(x=>x.id===p.id?{...x,...updates}:x));
             setPkgEditId(null);
           }}>저장</Btn>
-          <Btn variant="outline" size="sm" style={{fontSize:11}} onClick={()=>setPkgEditId(null)}>취소</Btn>
         </div>
       </div>}
 
-      {/* 액션 버튼 */}
-      <div style={{display:"flex",gap:T.sp.xs}}>
+      {/* 액션 버튼 (편집 중에는 숨김) */}
+      {pkgEditId !== p.id && <div style={{display:"flex",gap:T.sp.xs}}>
         {/* 다회권: 1회 사용 */}
         {!isPrepaid && !isAnnual && <Btn variant="primary" size="sm" style={{flex:1,justifyContent:"center",fontSize:T.fs.nano}} onClick={()=>{
           // 같은 이름 PKG 중 유효기간 있는 것부터 차감
@@ -846,7 +851,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
           sb.del("customer_packages",p.id).catch(console.error);
           setCustPkgsServer(prev=>prev.filter(x=>x.id!==p.id));
         }}><I name="trash" size={11}/></Btn>
-      </div>
+      </div>}
       {/* 히스토리 뷰 */}
       {pkgHistoryOpen === p.id && <div style={{marginTop:8,borderTop:"1px dashed "+T.border,paddingTop:6,maxHeight:220,overflowY:"auto"}}>
         <div style={{fontSize:10,fontWeight:700,color:T.textSub,marginBottom:4}}>📜 이력</div>

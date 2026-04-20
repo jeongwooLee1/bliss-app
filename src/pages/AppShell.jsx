@@ -20,7 +20,7 @@ import SetupWizard from '../components/SetupWizard/SetupWizard'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.3.81"
+const BLISS_V = "3.3.105"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -29,6 +29,27 @@ function ScrollArea({ storageKey, children }) {
 }
 const BIZ_ID = 'biz_khvurgshb'
 const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", users:"/users", messages:"/messages", admin:"/settings", wizard:"/wizard", schedule:"/schedule", requests:"/requests" };
+// 과거 데이터 백그라운드 로드 (초기 14d/30d 이전 예약/매출) — UI 렌더 후 머지
+async function loadHistoricalInBackground(bizId, setData) {
+  const resBefore = new Date(Date.now()-14*86400000).toISOString().slice(0,10);
+  const salBefore = new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+  const salSince  = new Date(Date.now()-90*86400000).toISOString().slice(0,10);
+  try {
+    const [oldRes, oldSal] = await Promise.all([
+      sb.getAll("reservations", `&business_id=eq.${bizId}&date=lt.${resBefore}&order=date.desc,time.asc`).catch(()=>[]),
+      sb.getAll("sales", `&business_id=eq.${bizId}&date=gte.${salSince}&date=lt.${salBefore}&order=date.desc`).catch(()=>[]),
+    ]);
+    if (!oldRes.length && !oldSal.length) return;
+    const mappedRes = fromDb("reservations", oldRes);
+    const mappedSal = fromDb("sales", oldSal);
+    setData(prev => prev ? {
+      ...prev,
+      reservations: [...(prev.reservations||[]), ...mappedRes.filter(r => !(prev.reservations||[]).some(x => x.id === r.id))],
+      sales: [...(prev.sales||[]), ...mappedSal.filter(s => !(prev.sales||[]).some(x => x.id === s.id))],
+    } : prev);
+  } catch(e) { console.warn("[historical load]", e); }
+}
+
 async function loadAllFromDb(bizId) {
   const [branches, services, categories, tags, sources, users, rooms, customers, reservations, sales, products] = await Promise.all([
     sb.getByBiz("branches", bizId).catch(()=>[]),
@@ -923,8 +944,15 @@ function App() {
               }
             }
           } catch(e){}
-          // OAuth 리다이렉트 체크 (Google/Kakao 로그인 후 돌아온 경우)
-          const { data: { session: authSession } } = await _supaClient.auth.getSession();
+          // OAuth 리다이렉트 체크 (Google/Kakao 로그인 후 돌아온 경우) — 5초 타임아웃
+          let authSession = null;
+          try {
+            const res = await Promise.race([
+              _supaClient.auth.getSession(),
+              new Promise((_, rej) => setTimeout(() => rej(new Error("auth_timeout")), 5000))
+            ]);
+            authSession = res?.data?.session || null;
+          } catch(e) { console.warn("[auth.getSession] timeout/err:", e?.message); }
           if (authSession?.user) {
             const authUser = authSession.user;
             const email = authUser.email || '';
@@ -1153,7 +1181,7 @@ function App() {
     const onVisible = async () => {
       if (!document.hidden) {
         try {
-          const rows = await sb.get("reservations", `&business_id=eq.${currentBizId}&order=date.desc,time.asc&limit=3000`);
+          const rows = await sb.getAll("reservations", `&business_id=eq.${currentBizId}&order=date.desc,time.asc`);
           const parsed = fromDb("reservations", rows);
           setData(prev => prev ? {...prev, reservations: parsed} : prev);
         } catch(e) {}
@@ -1220,7 +1248,7 @@ function App() {
     // 연결 복귀 시 1회 재동기화 (네트워크 끊김 후 재연결용)
     const onOnline = async () => {
       try {
-        const rows = await sb.get("reservations", `&business_id=eq.${currentBizId}&order=date.desc,time.asc&limit=3000`);
+        const rows = await sb.getAll("reservations", `&business_id=eq.${currentBizId}&order=date.desc,time.asc`);
         const parsed = fromDb("reservations", rows);
         setData(prev => prev ? {...prev, reservations: parsed} : prev);
       } catch(e) {}
