@@ -227,6 +227,7 @@ export function buildEventsContext(data) {
     const svcName = (id) => svcs.find(x => x.id === id)?.name || '';
     const lines = [];
     lines.push(`[이벤트 엔진 마스터 스위치: ${master ? 'ON (활성)' : 'OFF (전체 비활성)'}]`);
+    lines.push('[용어 안내] 고객이 "패키지/패키지권"이라 말할 때는 보통 두 종류 모두 포함됩니다: "다회권(pkg)" = 횟수권(왁싱/재생/토탈/힐링 패키지 등), "다담권(prepaid)" = 선불권(30만·50만·100만원권 등 금액권). 각 트리거별 혜택 구분하여 답변하세요.');
     if (!events.length && !coupons.length) {
       lines.push('등록된 이벤트·쿠폰 없음');
       return lines.join('\n');
