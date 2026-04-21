@@ -404,11 +404,14 @@ function ConditionsSection({ data, draft, setDraft }) {
 
       {/* 결제 수단 조건 */}
       <Collapsible title="💳 결제 수단" open={open.pay} setOpen={v=>setOpen(o=>({...o,pay:v}))}>
-        <TriFlag label="다담권으로 결제 (차감 사용)" value={c.paymentUsesPrepaid} onChange={v=>setC({paymentUsesPrepaid:v})}/>
-        <TriFlag label="포인트로 결제 (사용)" value={c.paymentUsesPoint} onChange={v=>setC({paymentUsesPoint:v})}/>
+        <TriFlag label="다담권 사용 (부분+전액)" value={c.paymentUsesPrepaid} onChange={v=>setC({paymentUsesPrepaid:v})}/>
+        <TriFlag label="다담권 전액 결제 (부분 제외)" value={c.paymentFullPrepaid} onChange={v=>setC({paymentFullPrepaid:v})}/>
+        <TriFlag label="포인트 사용" value={c.paymentUsesPoint} onChange={v=>setC({paymentUsesPoint:v})}/>
         <TriFlag label="쿠폰 할인 적용" value={c.paymentUsesCoupon} onChange={v=>setC({paymentUsesCoupon:v})}/>
         <div style={{fontSize:10,color:T.textMuted,marginTop:6,lineHeight:1.5}}>
-          예: "다담권으로 연간회원권 구매 시 3만원 할인" → 트리거 "연간회원권 구매" + 이 조건 "다담권 결제: 보유"
+          • <b>부분+전액</b>: 다담권을 조금이라도 차감했으면 해당<br/>
+          • <b>전액 결제</b>: 다담권만으로 결제 완료(실결제금액 0원) — 부분 결제는 해당 X<br/>
+          예: "다담권으로 연간회원권 구매 시 3만원 할인" → 트리거 "연간회원권 구매" + "다담권 전액 결제: 보유"
         </div>
       </Collapsible>
     </div>

@@ -1010,6 +1010,16 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
         hasPkgRepurchase: hasExistingPkg && newPkgPurchases.length > 0,
         // 결제 수단 플래그 (이번 매출에 다담권·포인트·쿠폰 실제 사용 여부)
         paymentUsesPrepaid: pkgDeduct > 0,
+        // 다담권 "전액 결제" — 실제 카드/현금/입금으로 낼 돈이 0원 (다담권·쿠폰·포인트로 전부 커버)
+        // 주의: eventDiscountTotal/newPkgInstantDeduct는 여기서 계산 후에 생기므로 제외 (순환 방지)
+        // 이벤트 할인이 실제 발동되면 더 넉넉해질 뿐, '전액 결제' 판정엔 유리한 방향이라 안전
+        paymentFullPrepaid: (() => {
+          if (pkgDeduct <= 0) return false;
+          const gross = (svcTotal||0) + (prodTotal||0);
+          const nonPrepaidDeducts = (discount||0) + (promoDiscountTotal||0) + (couponDiscountTotal||0)
+            + (naverDeduct||0) + (externalDeduct||0) + (pointDeduct||0);
+          return (gross - pkgDeduct - nonPrepaidDeducts) <= 0;
+        })(),
         paymentUsesPoint: pointDeduct > 0,
         paymentUsesCoupon: (Array.isArray(activeCoupons) ? activeCoupons.some(c => (c.discount||0) > 0) : false),
         // 금액

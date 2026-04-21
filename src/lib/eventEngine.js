@@ -146,6 +146,9 @@ export function evaluateConditions(evt, ctx) {
   // 결제 수단 플래그 (이번 매출의 결제 수단 사용 여부)
   if (c.paymentUsesPrepaid === true && !ctx.paymentUsesPrepaid) return false
   if (c.paymentUsesPrepaid === false && ctx.paymentUsesPrepaid) return false
+  // 다담권 전액 결제 (부분 제외)
+  if (c.paymentFullPrepaid === true && !ctx.paymentFullPrepaid) return false
+  if (c.paymentFullPrepaid === false && ctx.paymentFullPrepaid) return false
   if (c.paymentUsesPoint === true && !ctx.paymentUsesPoint) return false
   if (c.paymentUsesPoint === false && ctx.paymentUsesPoint) return false
   if (c.paymentUsesCoupon === true && !ctx.paymentUsesCoupon) return false
