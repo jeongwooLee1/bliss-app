@@ -1,5 +1,5 @@
 /**
- * actionSchemas.js — 클로드 AI가 수행 가능한 쓰기 액션 정의
+ * actionSchemas.js — 블리스 AI가 수행 가능한 쓰기 액션 정의
  *
  * 각 액션:
  *   label: 유저에게 보여줄 한글 이름

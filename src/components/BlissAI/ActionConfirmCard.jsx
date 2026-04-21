@@ -1,5 +1,5 @@
 /**
- * ActionConfirmCard — 클로드 AI가 제안하는 쓰기 액션의 확인 UI
+ * ActionConfirmCard — 블리스 AI가 제안하는 쓰기 액션의 확인 UI
  *
  * 표시:
  *   - 아이콘 + 액션 라벨 (예: ✏️ 지점 수정)

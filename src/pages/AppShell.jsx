@@ -21,7 +21,7 @@ import BlissAI from '../components/BlissAI/BlissAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.6.11"
+const BLISS_V = "3.6.12"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1307,7 +1307,7 @@ function App() {
     { id:"customers", label:"고객관리", icon:<I name="users" size={16}/> },
     ...((role==="owner"||role==="super")?[{ id:"users", label:"사용자관리", icon:<I name="user" size={16}/> }]:[]),
     { id:"messages", label:"받은메시지함", icon:<I name="msgSq" size={16}/>, badge:unreadMsgCount },
-    { id:"blissai", label:"클로드 AI", icon:"🤖" },
+    { id:"blissai", label:"블리스 AI", icon:"🤖" },
     { id:"admin", label:"관리설정", icon:<I name="settings" size={16}/> },
     { id:"requests", label:"공지 & 요청", icon:"📢", badge:pendingReqCount },
   ];

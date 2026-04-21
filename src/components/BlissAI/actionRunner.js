@@ -1,5 +1,5 @@
 /**
- * actionRunner.js — 클로드 AI 액션 실행 + 프리뷰 생성
+ * actionRunner.js — 블리스 AI 액션 실행 + 프리뷰 생성
  *
  * 흐름:
  *   1. validateAction(action, params, data) → 에러 메시지 or null

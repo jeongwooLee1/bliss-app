@@ -1,5 +1,5 @@
 /**
- * BlissAI.jsx — 클로드 AI 메인 페이지
+ * BlissAI.jsx — 블리스 AI 메인 페이지
  *
  * 기능:
  *   - 다중 세션 (ChatGPT 스타일 좌측 리스트)
@@ -50,7 +50,7 @@ const saveSessions = (sessions) => {
 }
 const welcomeMessage = (userName) => ({
   role: 'assistant',
-  text: `안녕하세요 ${userName ? userName + '님' : '직원님'} :) 클로드 AI예요.\nFAQ·가격·매장 정보는 물론, 오늘 예약 / 이번 달 매출 / 특정 고객 정보도 알려드려요.\n아래 제안을 클릭하거나 질문을 입력해보세요.`,
+  text: `안녕하세요 ${userName ? userName + '님' : '직원님'} :) 블리스 AI예요.\nFAQ·가격·매장 정보는 물론, 오늘 예약 / 이번 달 매출 / 특정 고객 정보도 알려드려요.\n아래 제안을 클릭하거나 질문을 입력해보세요.`,
   suggestions: true,
   at: Date.now(),
 })
@@ -305,16 +305,30 @@ export default function BlissAI({ data, currentUser, userBranches, isMaster, biz
       }
 
       // 2단계: 조회/FAQ 플로우
-      const intent = await classifyIntentLLM(q, callGemini)
+      const branchList = (data?.branches || []).filter(b => b.useYn !== false)
+      const branchNames = branchList.map(b => b.short || b.name).filter(Boolean)
+      const resolveBid = (name) => {
+        if (!name) return null
+        const norm = String(name).replace(/\s+/g,'').replace(/점$/,'')
+        const found = branchList.find(b => {
+          const s = String(b.short||'').replace(/\s+/g,'').replace(/점$/,'')
+          const n = String(b.name||'').replace(/\s+/g,'').replace(/점$/,'')
+          return s === norm || n === norm || s.includes(norm) || n.includes(norm) || norm.includes(s) || norm.includes(n)
+        })
+        return found?.id || null
+      }
+      const intent = await classifyIntentLLM(q, callGemini, branchNames)
       let extraContext = ''
       if (intent.type === 'customer') {
         const res = await queryCustomer(intent.params.searchTerm, { role, userBranches, bizId })
         extraContext = formatIntentResult(intent, res, data?.branches)
       } else if (intent.type === 'sales') {
-        const res = await querySales({ ...intent.params, role, userBranches, bizId })
+        const bid = resolveBid(intent.params.branchName) || intent.params.bid || null
+        const res = await querySales({ ...intent.params, bid, role, userBranches, bizId })
         extraContext = formatIntentResult(intent, res, data?.branches)
       } else if (intent.type === 'reservation') {
-        const res = await queryReservations({ ...intent.params, role, userBranches, bizId })
+        const bid = resolveBid(intent.params.branchName) || intent.params.bid || null
+        const res = await queryReservations({ ...intent.params, bid, role, userBranches, bizId })
         extraContext = formatIntentResult(intent, res, data?.branches)
       }
 
@@ -466,7 +480,7 @@ export default function BlissAI({ data, currentUser, userBranches, isMaster, biz
             display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20,
           }}>🤖</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: T.fw.black, color: T.text }}>클로드 AI</div>
+            <div style={{ fontSize: 16, fontWeight: T.fw.black, color: T.text }}>블리스 AI</div>
             <div style={{ fontSize: 11, color: T.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               FAQ {faqItems.length}개 · 지점 {(data?.branches || []).length}개 ·{' '}
               <span style={{ color: isMaster ? '#059669' : '#6B7280', fontWeight: 700 }}>

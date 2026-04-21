@@ -88,7 +88,7 @@ export async function queryCustomer(searchTerm, { role = 'master', userBranches 
 
 // ─── 매출 집계 ──────────────────────────────────────────────────────────────
 // period: 'today' | 'yesterday' | 'week' | 'month' | 'custom({start,end})'
-export async function querySales({ start, end, bid = null, bizId }) {
+export async function querySales({ start, end, bid = null, bizId, role = 'master', userBranches = [] }) {
   if (!start || !end) return null;
   const bidFilter = bizId ? `&business_id=eq.${bizId}` : '';
   let branchFilter = '';
@@ -130,7 +130,7 @@ export async function querySales({ start, end, bid = null, bizId }) {
 }
 
 // ─── 예약 조회 ──────────────────────────────────────────────────────────────
-export async function queryReservations({ date, bid = null, bizId }) {
+export async function queryReservations({ date, bid = null, bizId, role = 'master', userBranches = [] }) {
   if (!date) return null;
   const bidFilter = bizId ? `&business_id=eq.${bizId}` : '';
   let branchFilter = '';
@@ -166,11 +166,14 @@ export async function queryReservations({ date, bid = null, bizId }) {
 // ─── Intent 분류: LLM 기반 (정확도 우선) ──────────────────────────────────
 // LLM에게 JSON 형식으로 질문 유형과 파라미터를 묻고 fallback으로 키워드 분류 사용
 // callGemini: (prompt, options) => Promise<string>  — BlissAI가 주입
-export async function classifyIntentLLM(question, callGemini) {
+export async function classifyIntentLLM(question, callGemini, branchNames = []) {
   if (!question || !callGemini) return classifyIntent(question)
   const today = todayStr()
   const tomorrow = addDaysStr(today, 1)
   const yesterday = addDaysStr(today, -1)
+  const branchHint = branchNames.length
+    ? `\n[지점 목록] ${branchNames.join(' · ')}\n질문에 지점명이 있으면 정확히 위 목록 중 하나로 branchName 채우기. 없으면 빈 문자열.`
+    : ''
   const prompt = `아래 질문을 보고 JSON 형식으로 답하세요. 다른 말은 하지 마세요.
 
 [유형 5가지]
@@ -183,17 +186,17 @@ export async function classifyIntentLLM(question, callGemini) {
 [필드]
 - type: 위 5가지 중 하나
 - params: 유형별 파라미터
-  - reservation: { "date": "YYYY-MM-DD" }  (오늘은 "${today}", 내일은 "${tomorrow}", 어제는 "${yesterday}")
-  - sales: { "start": "YYYY-MM-DD", "end": "YYYY-MM-DD" }  (오늘 = start/end 같음)
+  - reservation: { "date": "YYYY-MM-DD", "branchName": "지점명 or 빈문자열" }  (오늘은 "${today}", 내일은 "${tomorrow}", 어제는 "${yesterday}")
+  - sales: { "start": "YYYY-MM-DD", "end": "YYYY-MM-DD", "branchName": "지점명 or 빈문자열" }  (오늘 = start/end 같음)
   - customer: { "searchTerm": "검색어" }  (이름 또는 전화 일부, 질문에서 추출)
-  - faq / general: {}
+  - faq / general: {}${branchHint}
 
 [질문]
 "${question}"
 
 [응답 예시]
-{"type":"reservation","params":{"date":"${today}"}}
-{"type":"sales","params":{"start":"${today}","end":"${today}"}}
+{"type":"reservation","params":{"date":"${today}","branchName":""}}
+{"type":"sales","params":{"start":"${today}","end":"${today}","branchName":""}}
 {"type":"customer","params":{"searchTerm":"홍길동"}}
 {"type":"faq","params":{}}
 {"type":"general","params":{}}
