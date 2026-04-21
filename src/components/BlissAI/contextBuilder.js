@@ -135,9 +135,9 @@ export function buildFullPrompt({ question, data, faqItems, role = 'master', ext
   // FAQ 관련 검색
   const faqCtx = buildFAQContext(question, faqItems);
   if (faqCtx) parts.push(faqCtx);
-  // 권한 안내
+  // 권한 안내 (마스킹은 안 함 — 혼자 사업 전제. 쓰기만 대표 제한)
   if (role !== 'master') {
-    parts.push('[권한] 현재 사용자는 일반 직원입니다. 고객 전화번호·주소 등 민감정보는 마스킹해서 답변해주세요 (예: 010-1234-****).');
+    parts.push('[권한] 현재 사용자는 지점 계정(읽기 전용)입니다. 조회는 자유롭게 가능하지만, 설정 변경·데이터 수정은 불가합니다. 변경 요청을 받으면 "브랜드 대표에게 요청해주세요"라고 안내해주세요.');
   }
   // Tier 3 (실시간 조회) 결과
   if (extraContext) parts.push(extraContext);

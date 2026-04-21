@@ -20,12 +20,8 @@ function addDaysStr(ymd, days) {
   d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
 }
-export function maskPhone(p) {
-  if (!p) return '';
-  const n = String(p).replace(/\D/g, '');
-  if (n.length >= 10) return `${n.slice(0, 3)}-${n.slice(3, 7)}-****`;
-  return p.slice(0, 3) + '****';
-}
+// (마스킹 비활성화 — 혼자 사업하는 사장 전제. 나중에 권한 시스템 추가 시 복원)
+export function maskPhone(p) { return p || ''; }
 
 // ─── 고객 조회 ──────────────────────────────────────────────────────────────
 export async function queryCustomer(searchTerm, { role = 'master', userBranches = [], bizId }) {
@@ -49,11 +45,8 @@ export async function queryCustomer(searchTerm, { role = 'master', userBranches 
   try {
     const rows = await sb.get('customers', `${bidFilter}&is_hidden=eq.false${cond}&limit=10`);
     if (!Array.isArray(rows) || rows.length === 0) return { found: 0, items: [] };
-    // 권한 필터
+    // 권한 필터 비활성 (혼자 사업 전제)
     let filtered = rows;
-    if (role !== 'master' && userBranches?.length) {
-      filtered = rows.filter(c => !c.bid || userBranches.includes(c.bid));
-    }
     // 보유권 조회 (상위 5명)
     const top = filtered.slice(0, 5);
     const ids = top.map(c => c.id);
@@ -70,7 +63,7 @@ export async function queryCustomer(searchTerm, { role = 'master', userBranches 
       id: c.id,
       name: c.name,
       name2: c.name2,
-      phone: role === 'master' ? c.phone : maskPhone(c.phone),
+      phone: c.phone,
       gender: c.gender,
       cust_num: c.cust_num,
       bid: c.bid,
@@ -95,15 +88,11 @@ export async function queryCustomer(searchTerm, { role = 'master', userBranches 
 
 // ─── 매출 집계 ──────────────────────────────────────────────────────────────
 // period: 'today' | 'yesterday' | 'week' | 'month' | 'custom({start,end})'
-export async function querySales({ start, end, bid = null, role = 'master', userBranches = [], bizId }) {
+export async function querySales({ start, end, bid = null, bizId }) {
   if (!start || !end) return null;
   const bidFilter = bizId ? `&business_id=eq.${bizId}` : '';
   let branchFilter = '';
-  if (role !== 'master') {
-    const allowed = (userBranches || []).filter(b => bid == null || b === bid);
-    if (!allowed.length) return { error: '권한 없음' };
-    branchFilter = `&bid=in.(${allowed.join(',')})`;
-  } else if (bid) {
+  if (bid) {
     branchFilter = `&bid=eq.${bid}`;
   }
   try {
@@ -141,15 +130,11 @@ export async function querySales({ start, end, bid = null, role = 'master', user
 }
 
 // ─── 예약 조회 ──────────────────────────────────────────────────────────────
-export async function queryReservations({ date, bid = null, role = 'master', userBranches = [], bizId }) {
+export async function queryReservations({ date, bid = null, bizId }) {
   if (!date) return null;
   const bidFilter = bizId ? `&business_id=eq.${bizId}` : '';
   let branchFilter = '';
-  if (role !== 'master') {
-    const allowed = (userBranches || []).filter(b => bid == null || b === bid);
-    if (!allowed.length) return { error: '권한 없음' };
-    branchFilter = `&bid=in.(${allowed.join(',')})`;
-  } else if (bid) {
+  if (bid) {
     branchFilter = `&bid=eq.${bid}`;
   }
   try {

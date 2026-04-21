@@ -276,6 +276,15 @@ export default function BlissAI({ data, currentUser, userBranches, isMaster, biz
       // 1단계: 쓰기/세팅 요청인지 먼저 판별 (LLM)
       const writeCheck = await tryParseWriteIntent(q, data, callGemini)
       if (writeCheck?.intent === 'write' && writeCheck.action) {
+        // 권한 체크: 쓰기는 브랜드 대표(isMaster)만
+        if (!isMaster) {
+          appendMessage({
+            role: 'assistant',
+            text: '⛔ 설정 변경은 브랜드 대표(마스터) 계정에서만 가능합니다.\n조회 기능(예약/매출/고객/FAQ)은 자유롭게 이용하실 수 있어요.',
+            at: Date.now(),
+          })
+          return
+        }
         // 쓰기 요청 — confirm 카드 메시지로 추가
         const validateErr = validateAction(writeCheck.action, writeCheck.changes)
         const preview = buildPreview(writeCheck, data)
@@ -343,6 +352,12 @@ export default function BlissAI({ data, currentUser, userBranches, isMaster, biz
 
   // ── 액션 실행 핸들러 ────────────────────────────────────────────────────
   const runAction = async (msgIdx, actionPayload) => {
+    // 권한 2중 방어
+    if (!isMaster) {
+      updateActionStatus(msgIdx, 'error', '권한 없음')
+      appendMessage({ role: 'assistant', text: '⛔ 설정 변경은 브랜드 대표만 가능합니다.', error: true, at: Date.now() })
+      return
+    }
     // 메시지 상태 업데이트: running
     updateActionStatus(msgIdx, 'running')
     try {
@@ -454,8 +469,8 @@ export default function BlissAI({ data, currentUser, userBranches, isMaster, biz
             <div style={{ fontSize: 16, fontWeight: T.fw.black, color: T.text }}>클로드 AI</div>
             <div style={{ fontSize: 11, color: T.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               FAQ {faqItems.length}개 · 지점 {(data?.branches || []).length}개 ·{' '}
-              <span style={{ color: role === 'master' ? '#059669' : '#D97706', fontWeight: 700 }}>
-                {role === 'master' ? '관리자 모드' : '직원 모드 (민감정보 마스킹)'}
+              <span style={{ color: isMaster ? '#059669' : '#6B7280', fontWeight: 700 }}>
+                {isMaster ? '🛠 쓰기 권한' : '👁 읽기 전용'}
               </span>
             </div>
           </div>
