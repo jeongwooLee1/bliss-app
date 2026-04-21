@@ -823,7 +823,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     const batches = [];
     for (let i = 0; i < custIds.length; i += batchSize) batches.push(custIds.slice(i, i + batchSize));
     Promise.all(batches.map(batch =>
-      fetch(`${SB_URL}/rest/v1/customer_packages?customer_id=in.(${batch.join(",")})&select=customer_id,service_name,total_count,used_count,note,purchased_at,expires_at`, {
+      fetch(`${SB_URL}/rest/v1/customer_packages?customer_id=in.(${batch.join(",")})&select=customer_id,service_name,total_count,used_count,note,purchased_at`, {
         headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
       }).then(r => r.json()).catch(() => [])
     )).then(results => {
@@ -2571,7 +2571,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             const isDirty = empMovePopup.draftSegs !== undefined && JSON.stringify(empMovePopup.draftSegs) !== JSON.stringify(dbSegs);
                             const setDraft = (newSegs) => setEmpMovePopup(p=>({...p, draftSegs: newSegs}));
                             const empBase = BASE_EMP_LIST.find(e=>e.id===room.staffId);
-                            const baseBranch = empBase ? empBase.branch_id : null;
+                            // 지원 근무 시엔 현재 컬럼 지점이 base (empBase.branch_id는 원소속이라 부정확)
+                            const baseBranch = room.branch_id;
                             const allBranches = (data.branches||[]).filter(b=>b.useYn!==false);
                             // 추가할 지점 + 시간 상태
                             const [addBranch,setAddBranch] = [empMovePopup.addBranch||"", v=>setEmpMovePopup(p=>({...p,addBranch:v}))];
@@ -2587,9 +2588,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                 if(!a.from) return -1; if(!b.from) return 1;
                                 return a.from.localeCompare(b.from);
                               }).map((s,i,arr)=>({...s, until: arr[i+1]?.from||null}));
-                              // 원래 지점이 없으면 자동 추가 (첫 이동 전까지)
-                              const empBase = BASE_EMP_LIST.find(e=>e.id===room.staffId);
-                              const baseBranchId = empBase ? empBase.branch_id : null;
+                              // 원래 지점이 없으면 자동 추가 (첫 이동 전까지) — 지원 근무 대응으로 현재 컬럼 지점 사용
+                              const baseBranchId = room.branch_id;
                               if(baseBranchId && !merged.find(s=>s.branchId===baseBranchId)) {
                                 const firstFrom = merged[0]?.from || null;
                                 merged = [{branchId:baseBranchId, from:null, until:firstFrom}, ...merged];
@@ -2862,7 +2862,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                     <span style={{color:T.textMuted}}>~</span>
                                     <select value={s.until||""} onChange={e=>updateSeg(s.branchId,"until",e.target.value)}
                                       style={{flex:1,fontSize:10,padding:"2px 3px",borderRadius:4,border:"1px solid "+T.border,fontFamily:"inherit"}}>
-                                      <option value="">종일</option>
+                                      <option value="">종일 (~{wh?.end||"21:00"})</option>
                                       {TIME_OPTS.map(t=><option key={t} value={t}>{t}</option>)}
                                     </select>
                                     <button onClick={()=>removeSeg(s.branchId)} style={{width:16,height:16,border:"none",background:"none",cursor:"pointer",color:T.danger,fontSize:14,padding:0,lineHeight:1,flexShrink:0}}>×</button>
@@ -2895,7 +2895,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                 <div style={{display:"flex",gap:4}}>
                                   <button onClick={()=>{
                                     if(!addBranch) return;
-                                    const newSeg = {branchId:addBranch, from:addFrom||null, until:addUntil||null};
+                                    // 종료 미입력 시 근무 끝 시각으로 기본 (지원 근무 가시성 ↑)
+                                    const newSeg = {branchId:addBranch, from:addFrom||null, until:addUntil||wh?.end||null};
                                     // 드래프트에 추가 (중복 지점은 교체)
                                     const prevSegs = segs.filter(s => s.branchId !== addBranch);
                                     const segments = [...prevSegs, newSeg];

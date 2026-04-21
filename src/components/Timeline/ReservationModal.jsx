@@ -373,7 +373,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
     if (!f.custId || f.custId.startsWith("new_")) { setCustPkgBranchInitial(""); return; }
     (async () => {
       try {
-        const pkgs = await sb.get("customer_packages", `&customer_id=eq.${f.custId}&select=service_name,total_count,used_count,note,purchased_at,expires_at`);
+        const pkgs = await sb.get("customer_packages", `&customer_id=eq.${f.custId}&select=service_name,total_count,used_count,note,purchased_at`);
         setCustPkgBranchInitial(getCustPkgBranchInitial(pkgs||[], data?.branches||[]));
       } catch { setCustPkgBranchInitial(""); }
     })();
