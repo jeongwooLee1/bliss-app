@@ -401,6 +401,16 @@ function ConditionsSection({ data, draft, setDraft }) {
         <TriFlag label="유효한 패키지 보유" value={c.customerHasActivePkg} onChange={v=>setC({customerHasActivePkg:v})}/>
         <TriFlag label="유효한 연간회원권 보유" value={c.customerHasActiveAnnual} onChange={v=>setC({customerHasActiveAnnual:v})}/>
       </Collapsible>
+
+      {/* 결제 수단 조건 */}
+      <Collapsible title="💳 결제 수단" open={open.pay} setOpen={v=>setOpen(o=>({...o,pay:v}))}>
+        <TriFlag label="다담권으로 결제 (차감 사용)" value={c.paymentUsesPrepaid} onChange={v=>setC({paymentUsesPrepaid:v})}/>
+        <TriFlag label="포인트로 결제 (사용)" value={c.paymentUsesPoint} onChange={v=>setC({paymentUsesPoint:v})}/>
+        <TriFlag label="쿠폰 할인 적용" value={c.paymentUsesCoupon} onChange={v=>setC({paymentUsesCoupon:v})}/>
+        <div style={{fontSize:10,color:T.textMuted,marginTop:6,lineHeight:1.5}}>
+          예: "다담권으로 연간회원권 구매 시 3만원 할인" → 트리거 "연간회원권 구매" + 이 조건 "다담권 결제: 보유"
+        </div>
+      </Collapsible>
     </div>
   )
 }

@@ -1008,6 +1008,10 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
         // 레거시 호환 (prepaid_recharge/pkg_repurchase 트리거용)
         hasPrepaidRecharge: hasExistingPrepaid && newPrepaidPurchases.length > 0,
         hasPkgRepurchase: hasExistingPkg && newPkgPurchases.length > 0,
+        // 결제 수단 플래그 (이번 매출에 다담권·포인트·쿠폰 실제 사용 여부)
+        paymentUsesPrepaid: pkgDeduct > 0,
+        paymentUsesPoint: pointDeduct > 0,
+        paymentUsesCoupon: (Array.isArray(activeCoupons) ? activeCoupons.some(c => (c.discount||0) > 0) : false),
         // 금액
         svcTotal, prodTotal,
         prepaidPurchaseAmount, pkgPurchaseAmount, annualPurchaseAmount,
@@ -1019,7 +1023,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       };
       return applyEvents(events, ctx);
     } catch (e) { console.warn('[eventEngine]', e); return { pointEarn:0, pointExpiresAt:null, discountFlat:0, discountFlatPkg:0, discountFlatPrepaid:0, discountFlatAnnual:0, discountPct:0, prepaidBonus:0, issueCoupons:[], virtualCoupons:[], appliedEvents:[] }; }
-  }, [data?.businesses, cust.id, custHasSale, custPkgs, newPrepaidPurchases, newPkgPurchases, newAnnualPurchases, svcTotal, prodTotal, items]);
+  }, [data?.businesses, cust.id, custHasSale, custPkgs, newPrepaidPurchases, newPkgPurchases, newAnnualPurchases, svcTotal, prodTotal, items, pkgDeduct, pointDeduct]);
 
   // 레거시 호환: 기존 UI/로직에서 참조하던 newCustEventEarn 형태 유지
   // 신규 스키마(rewards[])와 레거시(rewardType) 모두 지원

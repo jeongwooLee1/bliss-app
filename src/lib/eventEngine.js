@@ -143,6 +143,14 @@ export function evaluateConditions(evt, ctx) {
   if (c.customerHasActiveAnnual === true && !ctx.hasActiveAnnual) return false
   if (c.customerHasActiveAnnual === false && ctx.hasActiveAnnual) return false
 
+  // 결제 수단 플래그 (이번 매출의 결제 수단 사용 여부)
+  if (c.paymentUsesPrepaid === true && !ctx.paymentUsesPrepaid) return false
+  if (c.paymentUsesPrepaid === false && ctx.paymentUsesPrepaid) return false
+  if (c.paymentUsesPoint === true && !ctx.paymentUsesPoint) return false
+  if (c.paymentUsesPoint === false && ctx.paymentUsesPoint) return false
+  if (c.paymentUsesCoupon === true && !ctx.paymentUsesCoupon) return false
+  if (c.paymentUsesCoupon === false && ctx.paymentUsesCoupon) return false
+
   return true
 }
 
