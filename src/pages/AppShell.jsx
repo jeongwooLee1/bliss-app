@@ -17,6 +17,7 @@ import MobileBottomNav from '../components/Navigation/MobileBottomNav'
 import Sidebar from '../components/Navigation/Sidebar'
 import SchedulePage from '../components/Schedule/SchedulePage'
 import SetupWizard from '../components/SetupWizard/SetupWizard'
+import BlissAI from '../components/BlissAI/BlissAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
@@ -28,7 +29,7 @@ function ScrollArea({ storageKey, children }) {
   return <div ref={ref} className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}>{children}</div>
 }
 const BIZ_ID = 'biz_khvurgshb'
-const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", users:"/users", messages:"/messages", admin:"/settings", wizard:"/wizard", schedule:"/schedule", requests:"/requests" };
+const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", users:"/users", messages:"/messages", admin:"/settings", wizard:"/wizard", schedule:"/schedule", requests:"/requests", blissai:"/blissai" };
 // 과거 데이터 백그라운드 로드 (초기 14d/30d 이전 예약/매출) — UI 렌더 후 머지
 async function loadHistoricalInBackground(bizId, setData) {
   const resBefore = new Date(Date.now()-14*86400000).toISOString().slice(0,10);
@@ -1306,8 +1307,8 @@ function App() {
     { id:"customers", label:"고객관리", icon:<I name="users" size={16}/> },
     ...((role==="owner"||role==="super")?[{ id:"users", label:"사용자관리", icon:<I name="user" size={16}/> }]:[]),
     { id:"messages", label:"받은메시지함", icon:<I name="msgSq" size={16}/>, badge:unreadMsgCount },
+    { id:"blissai", label:"클로드 AI", icon:"🤖" },
     { id:"admin", label:"관리설정", icon:<I name="settings" size={16}/> },
-    { id:"wizard", label:"설정 마법사", icon:"✨" },
     { id:"requests", label:"공지 & 요청", icon:"📢", badge:pendingReqCount },
   ];
 
@@ -1344,6 +1345,7 @@ function App() {
             <Route path="/settings/*" element={<ScrollArea storageKey="page_settings"><AdminPage data={data} setData={setData} bizId={currentBizId} serverV={serverV} onLogout={handleLogout} currentUser={currentUser} userBranches={userBranches}/></ScrollArea>}/>
             <Route path="/wizard" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><SetupWizard bizId={currentBizId} bizName={bizName} geminiKey={(() => { try { return window.__systemGeminiKey || window.__geminiKey || JSON.parse(currentBiz?.settings||'{}').gemini_key || localStorage.getItem('bliss_gemini_key') || ''; } catch { return ''; } })()} sb={sb} data={data} setData={setData} onComplete={()=>setPage("timeline")} onClose={()=>setPage("timeline")}/></div>}/>
             <Route path="/requests" element={<ScrollArea storageKey="page_requests"><BlissRequests data={data} currentUser={currentUser} userBranches={userBranches} isMaster={isMaster}/></ScrollArea>}/>
+            <Route path="/blissai" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}><BlissAI data={data} currentUser={currentUser} userBranches={userBranches} isMaster={isMaster} bizId={currentBizId}/></div>}/>
             <Route path="*" element={<Navigate to="/timeline" replace/>}/>
           </Routes>
         </div>
