@@ -1,92 +1,134 @@
 # HANDOFF
 
 ## 현재 버전
-- **v3.3.105** 배포 중
+- **v3.5.37** 배포 중 (라이브 확인: https://blissme.ai/version.txt)
+- 커밋: `38cb25a feat: v3.4.0~v3.5.37 — 이벤트 엔진 v2, 쉐어, 공지, 마킹, 복구 시스템`
 
-## 이번 세션 요약 (2026-04-20) — v3.3.81 → v3.3.105 대규모 개선 + 긴급 대응
+## 이번 세션 요약 (2026-04-21) — v3.3.105 → v3.5.37
 
-### 🎫 쿠폰/포인트/보유권 UX 개선
-- **다담권 구매 + 오늘 차감 UI 통일** (v3.3.89~90)
-  - 체크박스 수동 조작 제거 → **자동 차감**
-  - 결제수단 그리드에 "다담권(신규)" 타일 추가 (선불잔액·카드·현금·입금과 나란히). 즉시차감액 자동 표시
-  - 유저 설계 의도 반영: 1단계 패키지 구매 결제, 2단계 패키지를 결제수단에 포함한 계산
-- **PKG 오늘 사용 UI 토글로 통일** (v3.3.88)
-  - +/- 스테퍼 → 시술 행과 동일한 클릭 토글 (0 ↔ 1회)
-  - 디폴트 체크 제거. 유저가 명시적으로 클릭해야 사용
-  - `📦 오늘 구매한 패키지 — 1회 사용` 라벨
-- **PKG 오늘 사용 박스 위치 이동** (v3.3.85~86) — 결제 영역 → 시술 영역 최상단. 다담권은 결제수단이라 결제영역 유지
-- **보유 패키지 디폴트 체크 제거** (v3.3.87) — 첫 다회권 자동 선택 로직 삭제. 편집 UI도 시술 행과 동일 토글
-- **회원가 자격 조건 설정 UI** (v3.3.94) — 관리설정 → 시술상품관리 상단 보라색 카드. `businesses.settings.member_price_rules`에 저장 (멀티테넌트 원칙 준수). 하드코딩 제거
+### 🎯 이벤트 엔진 v2 (v3.4.x)
+- 트리거 5종: `new_first_sale` / `prepaid_purchase` / `pkg_purchase` / `annual_purchase` / `any_sale`
+- 조건 빌더: 시술 any/all/none · 카테고리 · 금액 범위 · 고객 상태 플래그
+- 보상 최대 3개: `point_earn` / `discount_pct` / `discount_flat` / `coupon_issue` / `prepaid_bonus` / `free_service`
+- 2-pass 평가 (할인 → 포인트, net_pay 반영)
+- 할인 풀별 cap: svc/pkg/prepaid/annual 각각 독립
+- 레거시 호환: `rewardType` 단일 보상 + `prepaid_recharge`/`pkg_repurchase` 트리거 자동 변환
+- UI: 매출등록 우측에 **"🎉 적용된 이벤트"** 보라 박스 표시 (이벤트명 + 보상 요약)
 
-### 📋 보유권 편집 UI 전면 개선 (v3.3.84)
-- 다담권 잔액 `-214,999` 같은 음수 버그 수정 (`Math.max(0, total-used)`)
-- 패키지 종류 변경 드롭다운 제거 (타입 swap 금지)
-- `p.total_count` 대신 `charged`(실제 충전액) 프리필
-- 편집 중 일반 액션 버튼 숨김 → 취소·저장만
-- 연간회원권 편집: 카운트 입력 대신 "유효기간 내 회원가 자동 적용" 안내만 (v3.3.93)
+### 🤝 쉐어 기능
+- **고객관리 쉐어 탭** (ShareCustModal) — 쉐어 고객 검색/추가, 다토큰 검색 (이름+번호)
+- **보유권별 `🤝 쉐어 공유` 토글** — `customer_packages.note`에 `| 쉐어:Y` 플래그. 기본 OFF
+- **매출등록 시 본인 vs 쉐어 분리 표시** (v3.5.37) — 동명 패키지라도 소유자별로 별도 행 (성별 가격차 구분). 본인 🔵 / 쉐어 🟣 배지
+- **쉐어 남녀 보정금** — 여자 소유 다회권을 남자 사용 시 회당 **+33,000원** 자동 가산. 시술합계 반영 + sale_details 기록
 
-### 📅 타임라인
-- **🌐 전지점 공통 설정 DB 동기화 버그 수정** (v3.3.83, 102) — `_sk`(sharedKeys)가 localStorage에만 있어 타 PC에 반영 안 되던 문제. DB `tl_shared_settings_v1.value._sk`로 동기화. 권한도 대표/어드민만 변경 가능하게 제한
-- **타임라인 블록 메모 hover 팝업** (v3.3.101~102) — 긴 메모(30자 이상) hover 시 노란 팝업으로 전체 내용 표시. JSON 원본 노출 버그 수정
-- **타임라인 블록 클릭 개선** (v3.3.94) — 커서 `move` → `pointer`, 드래그 임계값 6→12px (예약 수정하려 클릭했을 때 실수로 드래그되던 문제 해결)
-- **예약 수동 등록시간 표시** (v3.3.105) — 수동 예약 모달 상단에 `📅 수동 등록 · 2026-04-20 14:35` 회색 배너
+### 📢 공지 & 요청 (기존 "수정 요청" 페이지 재편)
+- 사이드바 `수정 요청` → `📢 공지 & 요청`
+- **공지사항 탭** (마스터만 쓰기) — 제목·버전·내용·이미지 다중 첨부 (Ctrl+V 지원)
+- **등록 후에도 이미지 편집/삭제 가능** — 각 이미지 우상단에 `✏️ 편집` / `🗑 삭제`
+- 과거 `imageData`(단일) → `images`(배열) 자동 마이그레이션 호환
 
-### 💰 매출 관리/통계
-- **매출통계 기간 필터를 매출관리와 통일** (v3.3.103) — 기존 7/14/30일 드롭다운 제거, SmartDatePicker로 교체. 매출관리와 `startDate/endDate/periodKey` 상태 공유
-- **SmartDatePicker 뷰포트 오버플로 버그** (v3.3.104) — 캘린더가 화면 밖으로 나가던 문제. 자동 오른쪽 정렬 (`window.innerWidth - calW - 12`)
-- **방문횟수 +1 정확도 개선** (v3.3.105) — localCust 캐시 대신 **서버 최신 visits 재조회 후 +1**. Oracle 임포트 값도 정확히 증가
+### ✏️ MarkupEditor (이미지 마킹 툴)
+- `src/components/common/MarkupEditor.jsx` 신규
+- 도구: 펜 / 사각형 / 화살표 / 텍스트
+- 색상 6종 + 굵기 4단계 + Undo / Clear / Save
+- 원본 해상도 PNG 저장, 터치/마우스 모두 지원
+- 공지·수정요청 양쪽에서 사용
 
-### 🛒 매출등록 UX
-- **"0" 렌더링 버그** (v3.3.85) — 회원가 없는 시술에 React falsy-zero로 `"0"`이 찍히던 문제 (`"산모관리0"`, `"궁테라피0"`). `isMember = regularPrice > 0 && ...`로 명시적 bool
+### 🎨 UX 개선
+- **모든 모달 ESC 키로 닫기** — ReservationModal, DetailedSaleForm, ASheet, QuickBookModal, Reservations Modal, SmartDatePicker
+- **AI 자동답변 메시지 시각화** — 🤖 보라 아바타 + "🤖 AI 자동응답" 배지 (MessagesPage 2곳)
+- **유효 패키지 최초 구매지점 이니셜** (N/W/H/M/J/R/Y/C) — 고객명 앞 배지. 타임라인·예약모달·고객리스트 3곳
+- **고객 당일취소/당일변경 카운트** — 고객관리 상세 통계에 분리 표시 (`updated_at.date === reservation.date` 기준)
+- **케어 카테고리 행 클릭 토글** + **+/- 수량 버튼** 분리 (`stopPropagation` 적용)
+- **매출 확인 모드 (viewOnly)** — 예약모달에서 기존 매출 확인 시 읽기전용. 수정 시 alert "매출관리에서만 가능"
 
-### 🔍 예약 시스템
-- **예약 누락 해결** (v3.3.93) — PostgREST `max-rows=1000` 서버 캡으로 2300+건 중 1000건만 로드되던 버그. `sb.getAll()` 헬퍼 추가 (Range 페이지네이션). 4/16 명수현 예약 등이 타임라인에 안 보이던 문제 해결
+### 🏢 구매지점 제한 (v3.5.31 → v3.5.32 롤백)
+- **시도:** 다담권·다회권·연간권을 구매지점에서만 사용 가능하게
+- **롤백 이유:** `매장:XX` 데이터가 불완전 (`매장:마곡/홍대` 같은 복수 값, 잘못 등록된 지점)
+- **현재:** 제한 해제, 전 지점 사용 가능. `canUsePkgAtBranch()` 항상 `true` 반환
+- **보류:** 전수조사 필요 (id_ebgbebctt3). 규칙은 명확: "구매지점만 사용 / 회원가는 전 지점"
 
-### 🛠 고객 관리
-- **예약모달 고객검색에 회원번호 표시** (v3.3.91) — 드롭다운에 monospace 회색 배지로 `custNum` 렌더링. 수정요청 id_4cxfyg8skz 대응
-- **고객 유효기간 설정 버튼** (v3.3.82) — 보유권 카드 유효기간 섹션을 항상 노출. 없으면 "미설정 + 설정 버튼", 있으면 "유효 ~날짜 + 연장 버튼"
-- **다담권 첫 차감 시 자동 유효기간 1년** (v3.3.82) — 사용 전엔 유효기간 비움 (미사용 원칙), 구매+즉시차감 동시면 구매일+1년
+### 🔧 서버 통합
+- **세션 복구 시스템 Phase 1 완료** (Phase 2-4 보류)
+  - `/home/ubuntu/naver-sync/session_recovery.py` 신규 모듈
+  - Supabase `schedule_data` 기반: `session_status_v1`, `captcha_request_v1`, `captcha_answer_v1`
+  - 텔레그램 알림 스케줄러: 주간(09:00~23:55) 5분마다 / 야간(00:00~08:59) 1회만
+  - Flask 엔드포인트: `GET/POST /session-status`, `POST /captcha-request`, `GET /captcha-answer`, `POST /captcha-clear`
+  - 기존 TG bot에 캡차 답변 인터셉트
+- **env.conf 포맷 수정** — systemd `Environment=` 프리픽스 추가 → 텔레그램 봇 정상 동작
+- **Keepalive 주기 24h → 2h** (bliss_naver.py 세션 유지 스레드)
+- **204 응답도 auto_relogin 트리거** (기존 401/403만 → 204 추가)
+- **로컬 watchdog.py 생성** (`C:\Users\TP005\naver-sync\watchdog.py`) — 미실행 상태. Phase 2 구현 중단
 
-### ⚠️ 긴급 장애 대응
-- **Supabase Compute 업그레이드 Nano → Small** (memory project_supabase_compute.md) — 단순 쿼리가 15~30초 걸리던 심각한 성능 문제. Small 전환 후 200~300ms 정상화
-- **긴급 크래시 핫픽스** (v3.3.92) — SaleForm `selSvcs.filter(id => id.startsWith("pkg__"))` 에서 비문자열 id 접근 시 `TypeError: ve.startsWith is not a function` → `typeof id === "string"` 가드 추가
-- **송다희 매출 복구** — Supabase 느린 시간대에 customers insert가 `.catch(console.error)`로 조용히 실패하고 sales insert는 성공 → orphan. 수동 복구 + SaleForm.jsx:1200 `await 추가 TODO`
+### 🎯 AI FAQ 250개 등록
+- `businesses.settings.ai_faq` 배열
+- 카테고리별: 사후관리&트러블 40 / 남성고객 41 / 매장편의 40 / 위생안전 40 / 임산부 40 / 주기효과 40 / 기타 9
+- 구조: `[{q, a, active, category}]`
+- 관리설정 → AI 설정 → FAQ 탭에서 관리
 
-### 💼 bliss-consent 프로젝트 분리 (신규)
-매장 태블릿 동의서 사인앱 — 직원 `housewaxingmarketing-spec` 담당. **블리스 외부 프로젝트**이지만 DB/Storage 공유:
-- 위치: `C:\Users\TP005\bliss-consent\` + GitHub `jeongwooLee1/bliss-consent` (private)
-- Supabase 테이블 3개 생성: `consent_templates`, `consent_tokens`, `customer_consents`
-- Storage 버킷 `consents` + RLS 정책
-- CLAUDE.md + HANDOFF.md + Skills 3개 준비 완료
-- 자세한 건 memory `reference_bliss_consent.md`
+### 🐛 주요 버그 수정
+- **React #300 Rules of Hooks** — `ReservationModal._overlayDownRef`가 early return 뒤에 있어 `showSaleForm` 토글 시 훅 개수 변동. 앞으로 이동 (v3.5.27)
+- **SaleForm prepaid 잔액 파싱 fallback** — `잔액:` 없으면 `total_count - used_count` 사용 (구버전 데이터)
+- **다회권 `setPkgQty` 본인+쉐어 분리** (v3.5.37) — 동명 패키지가 소유자 섞이는 문제 해결. groupKey = `이름∷self` 또는 `이름∷shared_{ownerId}`
 
-### 💾 NAS 백업 세팅 (신규)
-- `Z:\bliss\` 백업 폴더 + `sync.sh` 동기화 스크립트
-- 대상: 문서(CLAUDE.md/HANDOFF.md/memory), 서버 스크립트(naver-sync), 루트 유틸(bliss_*.py, oracle_sync.py)
-- 실행: `bash Z:/bliss/sync.sh`
-- 자세한 건 memory `reference_nas_backup.md`
+### 📋 수정요청 처리 (8건)
+**완료 (3):**
+- `id_l2b9zgaeol` (민정) 쉐어 고객 개인권 숨김 → v3.5.33 쉐어 토글
+- `id_dh0tp9v5ue` (지은) ESC 팝업 닫기 → v3.5.30
+- `id_nfv71exl14` (정우) 쉐어 여→남 +33,000원 → v3.5.30
+
+**부분완료 (1):**
+- `id_imgr471swt` (유라) 6건 중 3건 완료 — AI 라벨 / 지점 이니셜 / 당일카운트 ✅ / AI 배너 + 구매지점 제한 + 당일차감 로직 ⏸
+
+**대기 (4):**
+- `id_ebgbebctt3` (정우) 구매지점 전수조사 후 재활성화
+- `id_7um1c7bp3o` (정우) 네이버 자동예약 상태 디폴트 수정 + AI 취소 시 타임라인 표시
+- `id_825fnuel64` (권신영) 직원 지점 전환 시 기존 예약 자동 미배정 이동
+- `id_triao6fesy` (정우) AI 설정 UI 개선 (구체화 대기)
 
 ## 다음 세션 — 이어받을 내용
 
-### 🔥 즉시 확인 필요
-- **bliss-consent 직원 작업 진행 상황** — 직원이 clone하고 세팅 완료했는지. 막히면 도와줌
-- **블리스 메인앱 ↔ bliss-consent 연동** (직원 작업 마무리 후)
-  - 고객 편집 모달에 "📝 동의서 작성" 버튼 → consent_tokens 발급 + QR 모달
-  - 고객 상세 패널에 "서명 이력" 탭 (customer_consents 조회)
+### 🔥 우선순위 높음 (백로그)
+1. **🤖 블리스 AI 프로젝트** (Phase 1 시작 예정 — worktree `feature/bliss-ai`)
+   - 설정 마법사 → "블리스 AI" 페이지로 개편
+   - FAQ 250개 기반 챗봇 + DB 데이터 조회 + 자연어 설정 (단계적)
+   - Tier 1-2 먼저 (읽기 전용) → Tier 3-4 (고객/매출 조회) → Tier 5-6 (쓰기)
+2. **네이버 자동예약 상태 디폴트 수정** — id_7um1c7bp3o
+3. **직원 지점 전환 시 예약 미배정 이동** — id_825fnuel64
 
-### 📋 남은 수정요청 점검
-- 새 세션 시작 시 `schedule_data.bliss_requests_v1`에서 pending 조회
-- pending 1건: `id_afntr6jcle` 수연 "직원 라인 순서가 계속 바뀌면서 예약 등록해놓은게 사라진다" — 재현 조건 더 확인 필요 (보류 중)
+### 📐 정책 확정 필요
+- **당일취소 예약금/패키지 차감** (id_imgr471swt-6)
+- **구매지점 제한 재활성화** — 데이터 전수조사 선행 (id_ebgbebctt3)
+  - 규칙 확정: "구매지점에서만 사용 / 회원가는 전 지점"
+- **AI 설정 UI 구체 요청** (id_triao6fesy)
+
+### ⏸ 보류
+- **세션 복구 Phase 2-4** — 로컬 watchdog.py + login_local.py 캡차 자동화 + Task Scheduler 설정. Phase 1 서버는 완료
+- **bliss-consent 연동** — 직원 작업 진행 상황 확인
 
 ### ⚠️ 주의사항
-- **Supabase 장애 재발 주의** — Compute burst credit 소진 / statement_timeout / max_connections 근접 체크 (memory project_supabase_compute.md)
-- **SaleForm customers insert 비동기 이슈** — line ~1200 `sb.insert("customers", ...).then().catch(console.error)` 가 fire-and-forget. 타임아웃 시 orphan 재발 가능. `await` + 실패 시 sales 중단으로 보강 필요 (송다희 복구 이후 TODO)
-- **멀티테넌트 원칙 유지** — 매장 특화 하드코딩 금지. 회원가 규칙처럼 `businesses.settings`로 빼기
+- **배포 모드: 모아서 한 번에** — 유저 요청 (2026-04-21). 수정만 누적 → "배포" 신호 시 한 번에 빌드·서버·퍼지
+- **배포 전 반드시 확인** — "지금 배포할까요?" 물어보기
+- **멀티테넌트 원칙 유지** — `businesses.settings`로 빼기
+- **Supabase 장애 주의** — Compute Small 상태 (memory project_supabase_compute.md)
 
 ### 📊 수치 참고
 | 항목 | 값 |
 |---|---:|
-| 예약 총건 | 2327 |
-| 매출 90일 | 3169 |
-| 고객 | ~7000+ |
+| 버전 | v3.5.37 |
+| 예약 총건 | 2300+ |
+| 매출 90일 | 3100+ |
+| 고객 | ~7000 |
+| AI FAQ | 250개 |
+| 수정요청 | 75건 (done 65 / in_progress 1 / pending 4) |
 | Supabase Compute | Small (2GB, 2-core ARM) |
+
+### 🗂 워크트리 구조
+- `C:/Users/TP005/bliss-app` (main, 38cb25a) — 메인 개발
+- `.claude/worktrees/bliss-ai/` — **블리스 AI 신규** (이 세션에서 생성 예정)
+- `.claude/worktrees/ai-faq-settings/` — AI FAQ 관련 (사용 중)
+- `.claude/worktrees/chat-sidebar/`, `pkg-audit-rewrite/`, `saleform-mobile-fix/`, `timeline-scroll-memory/`, `user-requests-only/`, `visitor-sale-target/` (기타)
+
+### 📝 타 세션 병렬 작업 안내
+이 세션에서는 **블리스 AI Phase 1**을 worktree `feature/bliss-ai`에서 진행 중.
+타 세션은 main 브랜치에서 급한 작업 가능. 머지 시점에 정리.

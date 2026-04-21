@@ -616,3 +616,84 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - `10%추가적립쿠폰` 만료분 1,092장 DB에 기록용 보관 (삭제 요청 올 때까지 유지)
 - `events` 배열에 `evt_custom_*` ID가 커스텀, 그 외는 템플릿(지금은 없음)
 - `prepaid_bonus` 보상: 현재 엔진이 금액만 계산, 다담권 잔액 실제 가산 로직은 미구현 (다음 단계)
+
+### 이벤트 엔진 v2 — 스키마 확장 (2026-04-21, v3.4.0 → v3.5.37)
+- 트리거 5종: `new_first_sale` / `prepaid_purchase` / `pkg_purchase` / `annual_purchase` / `any_sale`
+- 조건 빌더: `servicesAny/All/None` · `categoriesAny` · `prepaid/pkg/annualServiceIds` · `amountMin/Max` · `customerHasActive{Prepaid/Pkg/Annual}`
+- 보상 최대 3개/이벤트: `point_earn` (base: svc/svc_prod/prepaid_amount/pkg_amount/category/services/fixed/net_pay) / `discount_pct` / `discount_flat` / `coupon_issue` / `prepaid_bonus` / `free_service`
+- 2-pass 평가: 1pass 할인/쿠폰/보너스 → netAmount 계산 → 2pass point_earn (net_pay 반영)
+- 할인 풀별 cap: `discountFlat` / `discountFlatPkg` / `discountFlatPrepaid` / `discountFlatAnnual` 독립
+- 레거시 정규화: `rewardType` 단일 → `rewards[]` 래핑. `prepaid_recharge`/`pkg_repurchase` → `*_purchase` + `customerHasActive*` 조건 자동 추가
+- UI: 매출등록에 "🎉 적용된 이벤트" 보라 박스 (이벤트명 + 보상 요약)
+
+### 쉐어 기능 (2026-04-21, v3.5.0 → v3.5.37)
+- `customer_shares` 테이블: `{id, business_id, cust_id_a, cust_id_b}`
+- **보유권별 쉐어 공유 토글** — `customer_packages.note`에 `| 쉐어:Y` 플래그
+- 기본값 OFF: 명시적으로 켜야 쉐어 대상 됨. 개인권 노출 방지
+- 매출등록 시 본인 vs 쉐어 **소유자별 분리** (v3.5.37 groupKey = `이름∷self|shared_{cust_id}`)
+- **쉐어 남녀 보정금** — 여자 소유 다회권을 남자 사용 시 회당 +33,000원 자동 추가
+- 고객관리 쉐어 탭 + ShareCustModal (다토큰 검색 + 신규 고객 즉석 생성)
+
+### 공지 & 요청 (2026-04-21, v3.5.0)
+- 사이드바 `수정 요청` → `📢 공지 & 요청`
+- `bliss_notices_v1` (공지) + `bliss_requests_v1` (요청) schedule_data 분리 저장
+- 공지 이미지 **다중 첨부** (images 배열, Ctrl+V 지원)
+- 등록 후에도 마스터가 이미지별 편집/삭제 가능
+- `imageData`(단일) → `images`(배열) 자동 호환
+
+### MarkupEditor (2026-04-21, v3.5.35)
+- `src/components/common/MarkupEditor.jsx`
+- 도구: 펜(자유선) / 사각형 / 화살표 / 텍스트
+- 색상 6종 (빨강/노랑/초록/파랑/검정/흰색) + 굵기 4단계 (2/4/8/12)
+- Undo / Clear / Save (원본 해상도 PNG)
+- 마우스/터치 모두 지원, ESC 닫기
+- 공지·수정요청 양쪽에서 사용 (신규 + 등록된 이미지 모두 편집 가능)
+
+### UX 개선 (v3.5.0 → v3.5.37)
+- **모든 모달 ESC 닫기**: ReservationModal · DetailedSaleForm · ASheet · QuickBookModal · Reservations Modal · SmartDatePicker
+- **AI 자동답변 시각화**: 🤖 보라 아바타 + "🤖 AI 자동응답" 배지 (MessagesPage 2곳)
+- **유효 패키지 최초 구매지점 이니셜** (N/W/H/M/J/R/Y/C): 타임라인 블록·예약모달·고객리스트 고객명 앞 배지
+- **당일취소/당일변경 카운트 분리**: 고객관리 상세 통계 (`updated_at.date === reservation.date`)
+- **케어 카테고리 행 클릭 토글**: 브라질리언과 동일한 UX + +/- 버튼 분리
+- **매출 확인 모드 (viewOnly)**: 예약모달에서 기존 매출 확인 시 읽기전용 + "매출관리에서만 수정" 안내
+
+### 구매지점 제한 시도 → 롤백 (v3.5.31 → v3.5.32)
+- 다담권/다회권/연간권 구매지점에서만 사용하도록 제한
+- `customer_packages.note` `매장:XX` 플래그 기반 + `canUsePkgAtBranch()` 헬퍼
+- **롤백 이유**: 데이터 불완전 (`매장:마곡/홍대` 복수값, 잘못된 지점명)
+- 현재: 제한 해제, `canUsePkgAtBranch()` 항상 `true`
+- **규칙 확정**: "구매지점에서만 사용 / 회원가는 전 지점" — 전수조사 후 재활성화 예정 (id_ebgbebctt3)
+
+### 세션 복구 시스템 — 서버 Phase 1 (2026-04-21)
+- `/home/ubuntu/naver-sync/session_recovery.py` 신규 모듈
+- Supabase `schedule_data` 기반:
+  - `session_status_v1`: `{status, since, reason, last_alert_at, alert_count}`
+  - `captcha_request_v1`: `{req_id, image_b64, created_at}`
+  - `captcha_answer_v1`: `{req_id, answer, created_at}`
+- 텔레그램 알림 스케줄러: 주간(09:00~23:55) 5분마다 / 야간(00:00~08:59) 1회만 / 야간→주간 전환 시 즉시 재알림
+- Flask 엔드포인트 4개 (port 5055):
+  - `GET /session-status`, `POST /session-status` (복구 알림)
+  - `POST /captcha-request` (로컬이 스크린샷 제출 → 텔레그램 전송)
+  - `GET /captcha-answer?req_id=XXX` (로컬이 답변 폴링)
+  - `POST /captcha-clear` (정리)
+- 기존 TG bot에 캡차 답변 인터셉트 (pending 상태일 때 non-/ 메시지를 답변으로 저장)
+- **env.conf 포맷 수정**: systemd `Environment=` 프리픽스 추가 (기존 TG 봇 동작 불능이었음)
+- **Keepalive 주기 24h → 2h**
+- **API 204 응답도 auto_relogin 트리거** (기존 401/403만)
+- **Phase 2-4 보류**: 로컬 watchdog.py + login_local.py 캡차 자동화 + Task Scheduler
+
+### AI FAQ 250개 등록 (2026-04-21)
+- `businesses.settings.ai_faq` 배열
+- 카테고리별: 사후관리&트러블 40 / 남성고객 41 / 매장편의 40 / 위생안전 40 / 임산부 40 / 주기효과 40 / 기타 9
+- 구조: `[{q, a, active, category}]`
+
+### 버그 수정 (v3.5.x)
+- **React #300 Rules of Hooks** (v3.5.27): `ReservationModal._overlayDownRef`가 early return 뒤 → hook count 변동. 앞으로 이동
+- **SaleForm prepaid 잔액 파싱 fallback**: `잔액:` 없으면 `total_count - used_count` 사용 (구버전 데이터)
+- **다회권 setPkgQty 본인+쉐어 분리** (v3.5.37): 동명 패키지에 소유자 다른 것 섞이는 문제 해결
+
+### 주의사항 (v3.5.37 이후 참고)
+- **배포 모드: 모아서 한 번에** — 수정 누적 → "배포" 신호 시 한 번에. 배포 전 반드시 확인
+- **구매지점 제한은 현재 OFF** — 데이터 전수조사 선행 필요
+- **세션 복구 Phase 2-4 보류** — 로컬 watchdog + captcha 자동화 미완
+- **`login_local.py`는 수동 실행** — 세션 만료 시 텔레그램 알림만 나옴 (자동 복구 미완)
