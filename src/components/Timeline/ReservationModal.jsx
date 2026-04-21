@@ -1291,14 +1291,27 @@ ${naverText}
 
           </>}
 
-          {/* ═══ 수동 예약 등록정보 (기존 예약만) ═══ */}
-          {!isNaverItem && item?.id && item?.createdAt && !isSchedule && (()=>{
-            const c=new Date(item.createdAt); if(isNaN(c)) return null;
-            const fmt=`${c.getFullYear()}-${String(c.getMonth()+1).padStart(2,"0")}-${String(c.getDate()).padStart(2,"0")} ${String(c.getHours()).padStart(2,"0")}:${String(c.getMinutes()).padStart(2,"0")}`;
-            return <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",marginBottom:8,background:T.gray100,borderRadius:T.radius.md,fontSize:11,color:T.textSub}}>
-              <I name="calendar" size={11} color={T.gray500}/>
-              <span style={{fontWeight:600}}>수동 등록</span>
-              <span style={{marginLeft:"auto",fontFamily:"monospace"}}>{fmt}</span>
+          {/* ═══ 수동 예약 등록정보 + 일정변경 로그 (기존 예약만) ═══ */}
+          {!isNaverItem && item?.id && !isSchedule && (()=>{
+            const c = item?.createdAt ? new Date(item.createdAt) : null;
+            const regFmt = c && !isNaN(c)
+              ? `${String(c.getMonth()+1).padStart(2,"0")}-${String(c.getDate()).padStart(2,"0")} ${String(c.getHours()).padStart(2,"0")}:${String(c.getMinutes()).padStart(2,"0")}`
+              : "";
+            const schLog = (item?.scheduleLog || "").trim();
+            if (!regFmt && !schLog) return null;
+            const schLines = schLog ? schLog.split("\n").filter(Boolean) : [];
+            return <div style={{padding:"6px 10px",marginBottom:8,background:T.gray100,borderRadius:T.radius.md,fontSize:11,color:T.textSub}}>
+              {regFmt && <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <I name="calendar" size={11} color={T.gray500}/>
+                <span style={{fontWeight:600}}>등록</span>
+                <span style={{marginLeft:"auto",fontFamily:"monospace"}}>{regFmt}</span>
+              </div>}
+              {schLines.length > 0 && <div style={{marginTop:regFmt?6:0,paddingTop:regFmt?6:0,borderTop:regFmt?"1px dashed "+T.border:"none",display:"flex",flexDirection:"column",gap:3}}>
+                {schLines.slice(0, 10).map((l, i) => (
+                  <div key={i} style={{fontSize:10.5,color:T.textMuted,fontFamily:"monospace",lineHeight:1.4}}>{l}</div>
+                ))}
+                {schLines.length > 10 && <div style={{fontSize:10,color:T.gray400}}>... 외 {schLines.length - 10}건</div>}
+              </div>}
             </div>;
           })()}
 
@@ -1480,26 +1493,41 @@ ${naverText}
                   _prevSvc.some(id => !_newSvc.includes(id)) ||
                   _newSvc.some(id => !_prevSvc.includes(id))
                 );
-                // 날짜·시작시간 로그
+                // 날짜·시작시간 로그 (한 줄 포맷)
                 let _dtLog = "";
                 if (_dateChanged && _startTimeChanged) {
-                  _dtLog = `[📅 일정변경 ${_tsShort}]\n${_fmtDate(item.date)} ${item.time||""} → ${_fmtDate(f.date)} ${f.time||""}`;
+                  _dtLog = `[📅 ${_tsShort}] ${_fmtDate(item.date)} ${item.time||""} → ${_fmtDate(f.date)} ${f.time||""}`;
                 } else if (_dateChanged) {
-                  _dtLog = `[📅 일정변경 ${_tsShort}]\n${_fmtDate(item.date)} → ${_fmtDate(f.date)}`;
+                  _dtLog = `[📅 ${_tsShort}] ${_fmtDate(item.date)} → ${_fmtDate(f.date)}`;
                 } else if (_startTimeChanged) {
-                  _dtLog = `[📅 일정변경 ${_tsShort}]\n${item.time||""} → ${f.time||""}`;
+                  _dtLog = `[📅 ${_tsShort}] ${item.time||""} → ${f.time||""}`;
                 }
-                // 시술 메뉴 변경 로그
+                // 시술 메뉴 변경 로그 (한 줄)
                 let _svcLog = "";
                 if (_svcChanged) {
                   const _svcName = (id) => (data?.services||[]).find(s => s.id === id)?.name || id;
                   const _prevNames = _prevSvc.map(_svcName).join(", ") || "-";
                   const _newNames = _newSvc.map(_svcName).join(", ") || "-";
-                  _svcLog = `[🧴 시술변경 ${_tsShort}]\n${_prevNames} → ${_newNames}`;
+                  _svcLog = `[🧴 ${_tsShort}] ${_prevNames} → ${_newNames}`;
                 }
-                const _changeLog = [_dtLog, _svcLog].filter(Boolean).join("\n");
-                const _existingMemo = (f.memo||"").split("\n").filter(l => { const t=l.trim(); return !(/^\[등록:|^\[수정:/.test(t)) && !(/^\d+\.\d+\s+\d+:\d+\s*(예약)?(접수|변경|확정|취소|신청|확정완료)/.test(t)); }).join("\n").trim();
-                const memoToSave = _changeLog ? (_changeLog + (_existingMemo ? "\n" + _existingMemo : "")) : _existingMemo;
+                // 새 일정변경 로그를 schedule_log 컬럼에 누적 (memo는 건드리지 않음)
+                const _newSchLines = [_dtLog, _svcLog].filter(Boolean).join("\n");
+                const _prevSchLog = item?.scheduleLog || "";
+                const scheduleLogToSave = _newSchLines
+                  ? (_prevSchLog ? `${_newSchLines}\n${_prevSchLog}` : _newSchLines)
+                  : _prevSchLog;
+                // memo: 기존 memo 유지 (일정변경/시술변경 로그 블록은 이미 예전에 섞여있으면 청소)
+                const memoToSave = (f.memo||"")
+                  .split("\n")
+                  .filter(l => {
+                    const t = l.trim();
+                    if (/^\[등록:|^\[수정:/.test(t)) return false;
+                    if (/^\d+\.\d+\s+\d+:\d+\s*(예약)?(접수|변경|확정|취소|신청|확정완료)/.test(t)) return false;
+                    if (/^\[📅\s*일정변경/.test(t) || /^\[📅\s*\d{2}-\d{2}/.test(t)) return false;
+                    if (/^\[🧴\s*시술변경/.test(t) || /^\[🧴\s*\d{2}-\d{2}/.test(t)) return false;
+                    return true;
+                  })
+                  .join("\n").trim();
                 // 고객 DB에 이메일/성별 자동 업데이트
                 if(f.custId && !f.custId.startsWith("new_")){
                   const custUpdate={};
@@ -1515,7 +1543,7 @@ ${naverText}
                     "#{대표전화번호}":branch?.phone||""
                   });
                 }
-                onSave({...f, memo: memoToSave, tsLog: newLog, selectedTags: autoTags, isSchedule, _isColTemplate: item?._isColTemplate, _templateId: item?._templateId});
+                onSave({...f, memo: memoToSave, scheduleLog: scheduleLogToSave, tsLog: newLog, selectedTags: autoTags, isSchedule, _isColTemplate: item?._isColTemplate, _templateId: item?._templateId});
               }}>{item?.id?"저장":"등록"}</button>
               {/* AI 예약 확정 버튼 */}
               {f.status==="request" && <Btn style={{padding:"10px 26px",background:"#9C27B0",boxShadow:"0 4px 14px rgba(156,39,176,.35)"}}

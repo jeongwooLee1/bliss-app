@@ -33,6 +33,7 @@ const Btn = ({ children, variant="primary", size="md", disabled, onClick, style=
 };
 
 // 일정변경 로그 생성 헬퍼 — 날짜/시작시간 변경만 기록 (종료시간만은 제외)
+// 반환: 한 줄 string (ex: "[📅 04-21 10:56] 04.20 11:00 → 04.20 11:30") 또는 null
 function buildScheduleChangeLog(origDate, origTime, newDate, newTime) {
   if (origDate === newDate && origTime === newTime) return null;
   const now = new Date();
@@ -49,11 +50,12 @@ function buildScheduleChangeLog(origDate, origTime, newDate, newTime) {
   } else {
     from = origTime||""; to = newTime||"";
   }
-  return `[📅 일정변경 ${ts}]\n${from} → ${to}`;
+  return `[📅 ${ts}] ${from} → ${to}`;
 }
-function prependLogToMemo(log, memo) {
-  if (!log) return memo;
-  return memo ? `${log}\n${memo}` : log;
+// schedule_log 컬럼에 새 로그 누적 (최근 것을 위에). memo는 건드리지 않음
+function prependScheduleLog(log, existing) {
+  if (!log) return existing || "";
+  return existing ? `${log}\n${existing}` : log;
 }
 
 function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, currentUser, setPage, bizId, onMenuClick, bizName, pendingOpenRes, setPendingOpenRes, naverColShow={}, scraperStatus=null, setPendingChat, setPendingOpenCust }) {
@@ -1975,9 +1977,10 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           room_id: r.roomId || d?.roomId || "", time: _newTime,
           bid: r.bid || d?.bid, staff_id: r.staffId || fallbackStaff || null
         };
-        if (_log) _upd.memo = prependLogToMemo(_log, r.memo||block.memo||"");
+        // 일정변경 로그는 schedule_log 컬럼에 누적 (memo는 건드리지 않음)
+        if (_log) _upd.schedule_log = prependScheduleLog(_log, r.scheduleLog || "");
         sb.update("reservations", block.id, _upd).catch(console.error);
-        if (_log) setData(prev => ({...prev, reservations: (prev?.reservations||[]).map(x => x.id===block.id ? {...x, memo: _upd.memo} : x)}));
+        if (_log) setData(prev => ({...prev, reservations: (prev?.reservations||[]).map(x => x.id===block.id ? {...x, scheduleLog: _upd.schedule_log} : x)}));
       }
     }
     if (type === "resize") {
