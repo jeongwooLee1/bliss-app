@@ -21,6 +21,8 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   // 선택된 대화방 {channel,user_id} — 새로고침 시 유지
   const [sel, setSel] = useSessionState("msg_sel", null);
   const [reply, setReply] = useState("");
+  // AI로 생성된 답변인지 추적 (is_ai 플래그용)
+  const [replyIsAi, setReplyIsAi] = useState(false);
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [aiLoading, setAiLoading] = useState(false);
@@ -189,13 +191,16 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
     setSending(true);
     try{
       const accId = sel.account_id && sel.account_id!=="unknown" ? sel.account_id : (allowedIds[0]||Object.keys(_ACC_AUTH)[0]);
+      // AI 생성 답변이면 서버 큐와 로컬 echo 모두에 is_ai=true 표시
+      const body = {account_id:accId,user_id:sel.user_id,message_text:text,status:"pending",channel:sel.channel||"naver"};
+      if (replyIsAi) body.is_ai = true;
       const r = await fetch(SB_URL+"/rest/v1/send_queue",{
         method:"POST",headers:{...sbHeaders,Prefer:"return=representation"},
-        body:JSON.stringify({account_id:accId,user_id:sel.user_id,message_text:text,status:"pending",channel:sel.channel||"naver"})
+        body:JSON.stringify(body)
       });
       if(r.ok){
-        setMsgs(prev=>[...prev,{user_id:sel.user_id,channel:sel.channel,direction:"out",account_id:accId,message_text:text,is_read:true,created_at:new Date().toISOString()}]);
-        setReply("");
+        setMsgs(prev=>[...prev,{user_id:sel.user_id,channel:sel.channel,direction:"out",account_id:accId,message_text:text,is_read:true,is_ai:!!replyIsAi,created_at:new Date().toISOString()}]);
+        setReply(""); setReplyIsAi(false);
       }
     }finally{setSending(false);}
   };
@@ -289,8 +294,8 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       const dd=await res.json();
       let raw=(dd.candidates?.[0]?.content?.parts?.[0]?.text||"").replace(/```json|```/g,"").trim();
       if(!raw){alert("AI 응답이 비어있습니다.");return;}
-      try{const p=JSON.parse(raw);if(p.reply){setReply(p.reply);setAiKoDraft(p.ko||"");}else{setReply(raw);}}
-      catch{setReply(raw);}
+      try{const p=JSON.parse(raw);if(p.reply){setReply(p.reply);setReplyIsAi(true);setAiKoDraft(p.ko||"");}else{setReply(raw);setReplyIsAi(true);}}
+      catch{setReply(raw);setReplyIsAi(true);}
     }catch(e){console.error("[genAI]",e);alert("AI 오류: "+e.message);}finally{setAiLoading(false);}
   };
 
@@ -422,12 +427,18 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
           const isOut=m.direction==="out";
           return <div key={i} style={{display:"flex",flexDirection:isOut?"row-reverse":"row",alignItems:"flex-end",gap:8}}>
             {!isOut&&<div style={{width:28,height:28,borderRadius:14,background:T.primaryHover,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>{CH_ICON[m.channel||"naver"]}</div>}
+            {/* AI 발송 메시지는 보라색 아바타 🤖 (id_imgr471swt-2 요청) */}
+            {isOut&&m.is_ai&&<div style={{width:28,height:28,borderRadius:14,background:"#7C3AED",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0,color:"#fff"}}>🤖</div>}
             <div style={{maxWidth:"75%"}}>
-              <div style={{padding:"10px 14px",borderRadius:isOut?"16px 16px 4px 16px":"16px 16px 16px 4px",background:isOut?T.primary:"#fff",color:isOut?"#fff":T.text,fontSize:16,lineHeight:1.5,boxShadow:"0 1px 2px rgba(0,0,0,.08)",border:isOut?"none":"1px solid "+T.border,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
+              {/* AI 발송 메시지에 선명한 AI 배지 */}
+              {m.is_ai&&<div style={{display:"flex",justifyContent:isOut?"flex-end":"flex-start",marginBottom:3}}>
+                <span style={{background:"#7C3AED",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:800,letterSpacing:0.3}}>🤖 AI 자동응답</span>
+              </div>}
+              <div style={{padding:"10px 14px",borderRadius:isOut?"16px 16px 4px 16px":"16px 16px 16px 4px",background:isOut?(m.is_ai?"#7C3AED":T.primary):"#fff",color:isOut?"#fff":T.text,fontSize:16,lineHeight:1.5,boxShadow:"0 1px 2px rgba(0,0,0,.08)",border:isOut?"none":"1px solid "+T.border,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
                 {m.message_text}
                 {m.translated_text&&<div style={{marginTop:5,paddingTop:5,borderTop:isOut?"1px solid rgba(255,255,255,0.3)":"1px solid rgba(0,0,0,0.1)",fontSize:12,color:isOut?"rgba(255,255,255,0.7)":"rgba(0,0,0,0.5)"}}>🔤 {m.translated_text}</div>}
               </div>
-              <div style={{fontSize:10,color:T.textMuted,marginTop:3,textAlign:isOut?"right":"left"}}>{m.is_ai&&<span style={{background:"#7C3AED",color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,marginRight:4}}>AI</span>}{fmtTime(m.created_at)}</div>
+              <div style={{fontSize:10,color:T.textMuted,marginTop:3,textAlign:isOut?"right":"left"}}>{fmtTime(m.created_at)}</div>
             </div>
           </div>;
         })}

@@ -4,7 +4,7 @@ import { sb, SB_URL, SB_KEY, sbHeaders, queueAlimtalk } from '../../lib/sb'
 import { useMaleRotation, useScheduleData } from '../../lib/useData'
 import { DEFAULT_CELL_TAGS } from '../Schedule/scheduleConstants'
 import { fromDb, toDb, resolveSystemIds, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS } from '../../lib/db'
-import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, useSessionState } from '../../lib/utils'
+import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, useSessionState, getCustPkgBranchInitial } from '../../lib/utils'
 import I from '../common/I'
 import TimelineModal from './ReservationModal'
 import QuickBookModal from './QuickBookModal'
@@ -31,6 +31,30 @@ const Btn = ({ children, variant="primary", size="md", disabled, onClick, style=
   const pd = size==="sm"?"4px 10px":size==="lg"?"10px 20px":"7px 14px";
   return <button onClick={disabled?undefined:onClick} disabled={disabled} style={{background:bg,color,border,borderRadius:T.radius.md,padding:pd,fontSize:T.fs.sm,fontWeight:T.fw.bold,cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.6:1,fontFamily:"inherit",...style}} {...p}>{children}</button>;
 };
+
+// 일정변경 로그 생성 헬퍼 — 날짜/시작시간 변경만 기록 (종료시간만은 제외)
+function buildScheduleChangeLog(origDate, origTime, newDate, newTime) {
+  if (origDate === newDate && origTime === newTime) return null;
+  const now = new Date();
+  const ts = `${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+  const fmtDate = (d) => { if(!d) return ""; const p=d.split("-"); return `${p[1]}.${p[2]}`; };
+  const dateChanged = origDate !== newDate;
+  const timeChanged = origTime !== newTime;
+  let from = "", to = "";
+  if (dateChanged && timeChanged) {
+    from = `${fmtDate(origDate)} ${origTime||""}`.trim();
+    to = `${fmtDate(newDate)} ${newTime||""}`.trim();
+  } else if (dateChanged) {
+    from = fmtDate(origDate); to = fmtDate(newDate);
+  } else {
+    from = origTime||""; to = newTime||"";
+  }
+  return `[📅 일정변경 ${ts}]\n${from} → ${to}`;
+}
+function prependLogToMemo(log, memo) {
+  if (!log) return memo;
+  return memo ? `${log}\n${memo}` : log;
+}
 
 function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, currentUser, setPage, bizId, onMenuClick, bizName, pendingOpenRes, setPendingOpenRes, naverColShow={}, scraperStatus=null, setPendingChat, setPendingOpenCust }) {
   // 타임라인 블록 표시 항목 — App에서 prop으로 받음
@@ -790,20 +814,25 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
 
   // ── 고객 보유 패키지 로드 (현재 날짜 예약 기준) ──
   const [custPkgMap, setCustPkgMap] = useState({});  // {custId: [{svc_name, remain}]}
+  // 고객별 최초 구매지점 이니셜 (id_imgr471swt-3 수정요청)
+  const [custBranchInitialMap, setCustBranchInitialMap] = useState({}); // {custId: 'N'}
   useEffect(() => {
     const custIds = [...new Set((data?.reservations||[]).filter(r => r.date === selDate && r.custId && !r.isSchedule).map(r => r.custId))];
-    if (custIds.length === 0) { setCustPkgMap({}); return; }
+    if (custIds.length === 0) { setCustPkgMap({}); setCustBranchInitialMap({}); return; }
     const batchSize = 30;
     const batches = [];
     for (let i = 0; i < custIds.length; i += batchSize) batches.push(custIds.slice(i, i + batchSize));
     Promise.all(batches.map(batch =>
-      fetch(`${SB_URL}/rest/v1/customer_packages?customer_id=in.(${batch.join(",")})&select=customer_id,service_name,total_count,used_count,note`, {
+      fetch(`${SB_URL}/rest/v1/customer_packages?customer_id=in.(${batch.join(",")})&select=customer_id,service_name,total_count,used_count,note,purchased_at,expires_at`, {
         headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
       }).then(r => r.json()).catch(() => [])
     )).then(results => {
       const map = {};
+      const rawByCust = {};
       const today = new Date().toISOString().slice(0,10);
       results.flat().forEach(p => {
+        if (!Array.isArray(rawByCust[p.customer_id])) rawByCust[p.customer_id] = [];
+        rawByCust[p.customer_id].push(p);
         if (!Array.isArray(map[p.customer_id])) map[p.customer_id] = [];
         const sn = p.service_name||"";
         // 유효기간 체크 (note "유효:YYYY-MM-DD")
@@ -822,9 +851,16 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           });
         }
       });
+      // 고객별 최초 구매지점 이니셜 계산
+      const initMap = {};
+      Object.entries(rawByCust).forEach(([cid, pkgs]) => {
+        const init = getCustPkgBranchInitial(pkgs, data?.branches);
+        if (init) initMap[cid] = init;
+      });
       setCustPkgMap(map);
+      setCustBranchInitialMap(initMap);
     });
-  }, [selDate, data?.reservations?.length]);
+  }, [selDate, data?.reservations?.length, data?.branches]);
 
   const branchesToShow = allBranchList.filter(b => viewBids.includes(b.id) && (isMaster || accessibleBids.includes(b.id)));
 
@@ -1781,7 +1817,6 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           if (needsPopup) {
             setPendingChange({ type: "move", block, data: snap, orig, branchChanged });
           } else {
-            // 바로 DB 저장 — snap 기준 계산값 사용
             sb.update("reservations", block.id, {
               room_id: movedRoomId, time: snap.time, end_time: movedEndTime,
               bid: movedBid, staff_id: movedStaffId || null
@@ -1946,10 +1981,17 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       // d(=snap)에서 직접 계산한 값도 fallback으로 사용
       const targetRoom = allRooms.find(rm => rm.id === d?.roomId);
       const fallbackStaff = targetRoom?.isStaffCol ? targetRoom.staffId : "";
-      if (r) sb.update("reservations", block.id, {
-        room_id: r.roomId || d?.roomId || "", time: r.time || d?.time,
-        bid: r.bid || d?.bid, staff_id: r.staffId || fallbackStaff || null
-      }).catch(console.error);
+      if (r) {
+        const _newTime = r.time || d?.time;
+        const _log = block.isSchedule ? null : buildScheduleChangeLog(block.date, block.time, block.date, _newTime);
+        const _upd = {
+          room_id: r.roomId || d?.roomId || "", time: _newTime,
+          bid: r.bid || d?.bid, staff_id: r.staffId || fallbackStaff || null
+        };
+        if (_log) _upd.memo = prependLogToMemo(_log, r.memo||block.memo||"");
+        sb.update("reservations", block.id, _upd).catch(console.error);
+        if (_log) setData(prev => ({...prev, reservations: (prev?.reservations||[]).map(x => x.id===block.id ? {...x, memo: _upd.memo} : x)}));
+      }
     }
     if (type === "resize") {
       const r = (data?.reservations||[]).find(r => r.id === block.id);
@@ -3224,6 +3266,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             {effectiveNaverColShow["태그"] !== false && block.selectedTags?.length>3 && <span style={{fontSize:Math.max(6,blockFs-2),color:T.bgCard,background:T.gray500,borderRadius:T.radius.sm,padding:"1px 2px",flexShrink:0}}>+{block.selectedTags.length-3}</span>}
                             {/* 이름 */}
                             <span style={{fontWeight:T.fw.bold,color:isNaverCancelled?T.gray500:T.text,textDecoration:isNaverCancelled?"line-through":"none",flexShrink:1,minWidth:0}}>
+                              {/* 최초 구매지점 이니셜 (id_imgr471swt-3 수정요청) */}
+                              {block.custId && custBranchInitialMap[block.custId] && <span title="유효 패키지 최초 구매지점" style={{display:"inline-block",fontSize:Math.max(6,blockFs-1),padding:"0 3px",borderRadius:3,background:"#6366F1",color:"#fff",fontWeight:T.fw.black,marginRight:2,lineHeight:1.3,verticalAlign:"middle"}}>{custBranchInitialMap[block.custId]}</span>}
                               {(() => {
                                 const g = block.custGender || (block.custId && (data?.customers||[]).find(c=>c.id===block.custId)?.gender) || "";
                                 return g ? <span style={{color:g==="M"?T.male:T.female}}>{g==="M"?"남":"여"}</span> : null;

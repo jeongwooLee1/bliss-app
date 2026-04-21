@@ -18,6 +18,14 @@ function AdminAISettings({ data, sb: sbProp, bizId }) {
   const [chatSaved,setChatSaved]=useState(false);
   const [analyzePrompt,setAnalyzePrompt]=useState(()=>localStorage.getItem("bliss_ai_analyze_prompt")||"");
   const [analyzeSaved,setAnalyzeSaved]=useState(false);
+  // FAQ state — businesses.settings.ai_faq = [{q, a, active}]
+  const [faqItems,setFaqItems]=useState([]);
+  const [faqNewQ,setFaqNewQ]=useState("");
+  const [faqNewA,setFaqNewA]=useState("");
+  const [faqEditIdx,setFaqEditIdx]=useState(null);
+  const [faqEditQ,setFaqEditQ]=useState("");
+  const [faqEditA,setFaqEditA]=useState("");
+  const [faqSaved,setFaqSaved]=useState(false);
 
   useEffect(()=>{
     if(!bizId)return;
@@ -29,6 +37,7 @@ function AdminAISettings({ data, sb: sbProp, bizId }) {
         if(memo.ai_rules?.length){setRules(memo.ai_rules);localStorage.setItem(AI_RULES_KEY,JSON.stringify(memo.ai_rules));}
         if(memo.ai_chat_prompt!=null){setChatPrompt(memo.ai_chat_prompt);localStorage.setItem("bliss_ai_chat_prompt",memo.ai_chat_prompt);window.__aiChatPrompt=memo.ai_chat_prompt;}
         if(memo.ai_analyze_prompt!=null){setAnalyzePrompt(memo.ai_analyze_prompt);localStorage.setItem("bliss_ai_analyze_prompt",memo.ai_analyze_prompt);}
+        if(Array.isArray(memo.ai_faq))setFaqItems(memo.ai_faq);
       }catch(e){}
     }).catch(()=>{});
   },[bizId]);
@@ -97,6 +106,36 @@ function AdminAISettings({ data, sb: sbProp, bizId }) {
     setAnalyzeSaved(true); setTimeout(()=>setAnalyzeSaved(false),2000);
   };
 
+  // FAQ — businesses.settings.ai_faq에 [{q,a,active}] 저장
+  const saveFAQ=async updated=>{
+    setFaqItems(updated);
+    if(bizId){
+      try{
+        const r=await fetch(`${SB_URL}/rest/v1/businesses?id=eq.${bizId}&select=settings`,{headers:sbHeaders});
+        const rows=await r.json();
+        let memo={};try{memo=JSON.parse(rows[0]?.settings||"{}");}catch{}
+        memo.ai_faq=updated;
+        await fetch(`${SB_URL}/rest/v1/businesses?id=eq.${bizId}`,{method:"PATCH",headers:{...sbHeaders,"Prefer":"return=minimal"},body:JSON.stringify({settings:JSON.stringify(memo)})});
+        setFaqSaved(true); setTimeout(()=>setFaqSaved(false),1800);
+      }catch(e){}
+    }
+  };
+  const addFAQ=()=>{
+    const q=faqNewQ.trim(), a=faqNewA.trim();
+    if(!q||!a) return;
+    saveFAQ([...faqItems,{q,a,active:true}]);
+    setFaqNewQ(""); setFaqNewA("");
+  };
+  const delFAQ=i=>saveFAQ(faqItems.filter((_,idx)=>idx!==i));
+  const toggleFAQ=i=>saveFAQ(faqItems.map((f,idx)=>idx===i?{...f,active:!f.active}:f));
+  const startEditFAQ=i=>{setFaqEditIdx(i);setFaqEditQ(faqItems[i].q);setFaqEditA(faqItems[i].a);};
+  const saveEditFAQ=()=>{
+    const q=faqEditQ.trim(), a=faqEditA.trim();
+    if(!q||!a) return;
+    saveFAQ(faqItems.map((f,i)=>i===faqEditIdx?{...f,q,a}:f));
+    setFaqEditIdx(null);
+  };
+
   const saveChatPrompt=async()=>{
     const t=chatPrompt;
     localStorage.setItem("bliss_ai_chat_prompt",t);
@@ -131,6 +170,7 @@ function AdminAISettings({ data, sb: sbProp, bizId }) {
     ...(!hasSystemKey ? [{id:"api",label:"API 키"}] : []),
     {id:"rules",label:"분석 규칙"},
     {id:"chat",label:"자동 응대"},
+    {id:"faq",label:"FAQ"},
   ];
 
   return <div>
@@ -241,6 +281,82 @@ function AdminAISettings({ data, sb: sbProp, bizId }) {
         <pre style={{fontSize:T.fs.xxs,color:T.gray600,background:T.gray100,padding:12,borderRadius:8,whiteSpace:"pre-wrap",lineHeight:1.6,marginBottom:16,maxHeight:200,overflowY:"auto"}}>{svcPriceText}</pre>
         <div style={{fontSize:T.fs.xxs,color:T.textMuted,lineHeight:1.5}}>
           시술 상품 관리에서 등록한 시술 항목과 가격이 자동 반영됩니다.
+        </div>
+      </div>
+    </div>}
+
+    {/* FAQ 탭 */}
+    {activeAiTab==="faq" && <div>
+      <div className="card" style={{padding:20,marginBottom:16}}>
+        <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.text,marginBottom:4,display:"flex",alignItems:"center",gap:7}}>
+          <I name="msgSq" size={14} style={{color:T.primary}}/> 자주 묻는 질문 (FAQ)
+          <ABadge color={T.primary}>{faqItems.filter(f=>f.active!==false).length}개 활성</ABadge>
+          {faqSaved && <span style={{fontSize:T.fs.xxs,color:T.success,fontWeight:700}}>✓ 저장됨</span>}
+        </div>
+        <div style={{fontSize:T.fs.xs,color:T.textMuted,marginBottom:14,lineHeight:1.6}}>
+          고객이 자주 묻는 질문과 답변을 등록하면 AI가 <strong>이 답변을 최우선으로 참고</strong>해서 응답해요.<br/>
+          의료/위생/정책 같이 AI가 지어내면 안 되는 답변은 여기에 미리 넣어두는 게 안전합니다.<br/>
+          비활성 FAQ는 프롬프트에서 제외되지만 기록은 유지됩니다.
+        </div>
+        {faqItems.length===0
+          ? <AEmpty icon="msgSq" message="등록된 FAQ가 없어요. 아래에서 추가해보세요"/>
+          : <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
+              {faqItems.map((f,i)=><div key={i} style={{
+                border:"1.5px solid "+(f.active===false?T.gray300:T.border),
+                borderRadius:10,padding:"14px 16px",
+                background:f.active===false?"#fafafa":"#fff",
+                opacity:f.active===false?0.55:1
+              }}>
+                {faqEditIdx===i
+                  ? <div>
+                      <div style={{fontSize:T.fs.xxs,color:T.textMuted,marginBottom:4,fontWeight:700}}>질문</div>
+                      <input style={{...AInp,marginBottom:10}} value={faqEditQ} onChange={e=>setFaqEditQ(e.target.value)} placeholder="고객 질문"/>
+                      <div style={{fontSize:T.fs.xxs,color:T.textMuted,marginBottom:4,fontWeight:700}}>답변</div>
+                      <textarea style={{...AInp,minHeight:80,resize:"vertical",marginBottom:10,lineHeight:1.6}} value={faqEditA} onChange={e=>setFaqEditA(e.target.value)} placeholder="답변 내용"/>
+                      <div style={{display:"flex",gap:8}}>
+                        <AIBtn onClick={saveEditFAQ} disabled={!faqEditQ.trim()||!faqEditA.trim()} label="저장" style={{flex:1}}/>
+                        <button onClick={()=>setFaqEditIdx(null)} style={{flex:1,padding:"10px",borderRadius:10,border:"1.5px solid "+T.border,background:"none",fontSize:T.fs.sm,fontWeight:600,color:T.textSub,cursor:"pointer",fontFamily:"inherit"}}>취소</button>
+                      </div>
+                    </div>
+                  : <div>
+                      <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:8}}>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:T.fs.sm,color:T.text,fontWeight:700,lineHeight:1.5,marginBottom:6}}>
+                            <span style={{color:T.primary,marginRight:6}}>Q.</span>{f.q}
+                          </div>
+                          <div style={{fontSize:T.fs.xs,color:T.gray700,lineHeight:1.65,whiteSpace:"pre-wrap"}}>
+                            <span style={{color:T.success,marginRight:6,fontWeight:700}}>A.</span>{f.a}
+                          </div>
+                        </div>
+                        <div style={{display:"flex",gap:6,flexShrink:0}}>
+                          <button onClick={()=>toggleFAQ(i)} title={f.active===false?"활성화":"비활성화"} style={{width:28,height:28,borderRadius:7,border:"1px solid "+T.border,background:f.active===false?"#fff":"#f0faf4",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:f.active===false?T.gray500:T.success}}>{f.active===false?"OFF":"ON"}</button>
+                          <button onClick={()=>startEditFAQ(i)} style={{width:28,height:28,borderRadius:7,border:"1px solid "+T.border,background:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><I name="edit" size={12} style={{color:T.gray500}}/></button>
+                          <button onClick={()=>{if(confirm("이 FAQ를 삭제하시겠어요?"))delFAQ(i);}} style={{width:28,height:28,borderRadius:7,border:"1px solid #fecaca",background:"#fff5f5",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><I name="trash" size={12} style={{color:T.danger}}/></button>
+                        </div>
+                      </div>
+                    </div>}
+              </div>)}
+            </div>
+        }
+        <div style={{borderTop:"1px solid "+T.border,paddingTop:16}}>
+          <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.text,marginBottom:10}}>+ 새 FAQ 추가</div>
+          <div style={{fontSize:T.fs.xxs,color:T.textMuted,marginBottom:4,fontWeight:700}}>질문</div>
+          <input style={{...AInp,marginBottom:10}} value={faqNewQ} onChange={e=>setFaqNewQ(e.target.value)} placeholder="예: 처음인데 많이 아픈가요?"/>
+          <div style={{fontSize:T.fs.xxs,color:T.textMuted,marginBottom:4,fontWeight:700}}>답변</div>
+          <textarea style={{...AInp,minHeight:90,resize:"vertical",marginBottom:10,lineHeight:1.6}} value={faqNewA} onChange={e=>setFaqNewA(e.target.value)} placeholder={"예: 처음엔 살짝 따끔하실 수 있는데, 경험 많은 담당자가 최대한 편하게 진행해드려요! 2회째부터는 훨씬 편해지세요 😊"}/>
+          <AIBtn onClick={addFAQ} disabled={!faqNewQ.trim()||!faqNewA.trim()} label="FAQ 추가"/>
+        </div>
+      </div>
+
+      <div className="card" style={{padding:16,background:"#f8f9ff",border:"1px solid #e0e7ff"}}>
+        <div style={{fontSize:T.fs.xs,color:T.gray700,lineHeight:1.7}}>
+          💡 <strong>FAQ 활용 팁</strong><br/>
+          <span style={{color:T.textMuted}}>
+            • 사장님이 답변한 내용을 AI가 <strong>그대로 또는 자연스럽게 가공</strong>해서 답해요<br/>
+            • 의미가 비슷한 질문("아픈가?" / "통증 심해요?")도 AI가 매칭해줍니다<br/>
+            • FAQ가 없는 주제에 대해서는 AI가 "담당자 확인 후 안내"로 안전하게 이관해요<br/>
+            • 영어 질문에도 한국어 FAQ 답변을 영어로 번역해서 응답합니다
+          </span>
         </div>
       </div>
     </div>}

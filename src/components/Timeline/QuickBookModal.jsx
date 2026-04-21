@@ -9,6 +9,12 @@ function QuickBookModal({ onClose, onParsed, data }) {
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, [onClose]);
+  // ESC 키로 닫기 (id_dh0tp9v5ue 수정요청)
+  useEffect(() => {
+    const h = (e) => { if (e.key === 'Escape' && !e.isComposing) onClose?.(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
 
   const [input, setInput] = useState("");
   const [imgData, setImgData] = useState(null);

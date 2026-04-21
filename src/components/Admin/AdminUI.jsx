@@ -18,8 +18,19 @@ function AConfirm({ open, title, desc, onOk, onCancel, okLabel="삭제", danger=
 }
 
 function ASheet({ open, onClose, title, children, onSave, saveLabel, saving, saveDisabled }) {
+  // 오버레이에서 mousedown과 click 모두 발생한 경우에만 닫기 (input 드래그 아웃 시 닫힘 방지)
+  const downOnOverlayRef = React.useRef(false);
+  // ESC 키로 닫기 (id_dh0tp9v5ue 수정요청)
+  React.useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (e.key === 'Escape' && !e.isComposing) onClose?.(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [open, onClose]);
   if (!open) return null;
-  return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",zIndex:500,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+  return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",zIndex:500,display:"flex",alignItems:"flex-end",justifyContent:"center"}}
+    onMouseDown={e=>{downOnOverlayRef.current=(e.target===e.currentTarget);}}
+    onClick={e=>{if(downOnOverlayRef.current && e.target===e.currentTarget)onClose(); downOnOverlayRef.current=false;}}>
     <div style={{background:"#fff",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:540,maxHeight:"88vh",display:"flex",flexDirection:"column",WebkitOverflowScrolling:"touch"}}>
       <div style={{padding:"20px 20px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,borderBottom:"1px solid "+T.gray100}}>
         <div style={{fontSize:T.fs.md,fontWeight:T.fw.black,color:T.text}}>{title}</div>

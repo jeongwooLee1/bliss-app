@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { T, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, SYSTEM_TAG_NAME_NEW_CUST, SYSTEM_TAG_NAME_PREPAID, SYSTEM_SRC_NAME_NAVER } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY, queueAlimtalk, buildTokenSearch } from '../../lib/sb'
 import { fromDb, toDb, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS, _activeBizId } from '../../lib/db'
-import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, getDow, genId, fmtLocal, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone } from '../../lib/utils'
+import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, getDow, genId, fmtLocal, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, getCustPkgBranchInitial } from '../../lib/utils'
 import I from '../common/I'
 import { DetailedSaleForm } from './SaleForm'
 
@@ -66,6 +66,7 @@ function TimeSelect({ value, onChange, times }) {
 }
 function DatePick({ value, onChange, style, min }) {
   const DAYS = ["일","월","화","수","목","금","토"];
+  const inputRef = React.useRef(null);
 
   const fmt = (v) => {
     if (!v) return "--";
@@ -75,11 +76,21 @@ function DatePick({ value, onChange, style, min }) {
     const clr = dow===0?T.danger:dow===6?T.male:T.gray600;
     return <>{p[1]}.{p[2]}<span style={{color:clr,fontWeight:T.fw.medium,marginLeft:2}}>({DAYS[dow]})</span></>;
   };
-  return <label style={{position:"relative",display:"inline-flex",alignItems:"center",gap:T.sp.xs,cursor:"pointer",...style}}>
+  const openPicker = (e) => {
+    e.preventDefault();
+    const inp = inputRef.current;
+    if (!inp) return;
+    if (typeof inp.showPicker === 'function') {
+      try { inp.showPicker(); return; } catch (err) { /* fallback */ }
+    }
+    inp.focus();
+    inp.click();
+  };
+  return <label onClick={openPicker} style={{position:"relative",display:"inline-flex",alignItems:"center",gap:T.sp.xs,cursor:"pointer",...style}}>
     <I name="calPick" size={12} color={T.gray500}/>
-    <span style={{fontSize:T.fs.sm,fontWeight:T.fw.normal,whiteSpace:"nowrap",pointerEvents:"none",color:T.gray700,fontFamily:"inherit"}}>{fmt(value)}</span>
-    <input type="date" value={value} onChange={e=>onChange(e.target.value)} min={min}
-      style={{position:"absolute",inset:0,opacity:0,width:"100%",height:"100%",cursor:"pointer",fontSize:T.fs.lg}}/>
+    <span style={{fontSize:T.fs.sm,fontWeight:T.fw.normal,whiteSpace:"nowrap",color:T.gray700,fontFamily:"inherit"}}>{fmt(value)}</span>
+    <input ref={inputRef} type="date" value={value} onChange={e=>onChange(e.target.value)} min={min}
+      style={{position:"absolute",inset:0,opacity:0,width:"100%",height:"100%",pointerEvents:"none",fontSize:T.fs.lg}}/>
   </label>;
 }
 const STATUS_KEYS = ["reserved","confirmed","completed","cancelled","no_show"];
@@ -354,6 +365,47 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   // 고객 검색
   const [custSearch, setCustSearch] = useState("");
   const [custNum, setCustNum] = useState("");
+  // 쉐어 고객 로드 — 고객 정보에 🤝 배지 표시
+  const [shareCusts, setShareCusts] = useState([]);
+  // 유효 패키지 최초 구매지점 이니셜 (id_imgr471swt-3 수정요청)
+  const [custPkgBranchInitial, setCustPkgBranchInitial] = useState("");
+  React.useEffect(() => {
+    if (!f.custId || f.custId.startsWith("new_")) { setCustPkgBranchInitial(""); return; }
+    (async () => {
+      try {
+        const pkgs = await sb.get("customer_packages", `&customer_id=eq.${f.custId}&select=service_name,total_count,used_count,note,purchased_at,expires_at`);
+        setCustPkgBranchInitial(getCustPkgBranchInitial(pkgs||[], data?.branches||[]));
+      } catch { setCustPkgBranchInitial(""); }
+    })();
+  }, [f.custId, data?.branches]);
+  React.useEffect(() => {
+    if (!f.custId || f.custId.startsWith("new_")) { setShareCusts([]); return; }
+    (async () => {
+      try {
+        const [asA, asB] = await Promise.all([
+          sb.get("customer_shares", `&cust_id_a=eq.${f.custId}`).catch(()=>[]),
+          sb.get("customer_shares", `&cust_id_b=eq.${f.custId}`).catch(()=>[]),
+        ]);
+        const ids = [...(asA||[]).map(r=>r.cust_id_b), ...(asB||[]).map(r=>r.cust_id_a)];
+        if (!ids.length) { setShareCusts([]); return; }
+        const rows = await sb.get("customers", `&id=in.(${ids.join(",")})&select=id,name,phone`);
+        setShareCusts(rows||[]);
+      } catch { setShareCusts([]); }
+    })();
+  }, [f.custId]);
+  // ESC 키로 닫기 (id_dh0tp9v5ue 수정요청)
+  React.useEffect(() => {
+    const handler = (e) => {
+      if (e.key !== 'Escape') return;
+      // input/textarea에서 IME 조합 중이면 무시
+      if (e.isComposing) return;
+      // 하위 모달(showSaleForm, 고객정보 뷰어 등)이 열려있으면 해당 모달이 처리하게 양보
+      if (showSaleForm) return;
+      onClose?.();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose, showSaleForm]);
   const [showCustDropdown, setShowCustDropdown] = useState(false);
   const [custResults, setCustResults] = useState([]);
   const [editingCust, setEditingCust] = useState(false);
@@ -699,17 +751,23 @@ ${naverText}
   // 기존 매출 확인
   const existingSale = (data.sales||[]).find(s => s.reservationId === f.id);
 
+  // ⚠️ 모든 hook은 조건부 early return 이전에 호출되어야 함 (React Rules of Hooks)
+  const _overlayDownRef = React.useRef(false);
+
   if (showSaleForm) {
     const saleReservation = existingSale
-      ? {...f, saleMemo:existingSale.memo||"", _existingSale:existingSale}
+      ? {...f, ...existingSale, saleMemo:existingSale.memo||"", _existingSale:existingSale}
       : f;
-    return <DetailedSaleForm reservation={saleReservation} branchId={branchId} onSubmit={handleSaleSubmit} onClose={() => setShowSaleForm(false)} data={data} setData={setData} />;
+    // 기존 매출 있으면 읽기전용 모드 — 중복 INSERT 방지 + 수정 차단 (수정은 매출관리에서만)
+    return <DetailedSaleForm reservation={saleReservation} branchId={branchId} onSubmit={handleSaleSubmit} onClose={() => setShowSaleForm(false)} data={data} setData={setData}
+      viewOnly={!!existingSale} existingSaleId={existingSale?.id}/>;
   }
 
   const _isMob = window.innerWidth <= 768;
   return (
     <div
-      onClick={_isMob ? undefined : onClose}
+      onMouseDown={_isMob ? undefined : e=>{_overlayDownRef.current=(e.target===e.currentTarget);}}
+      onClick={_isMob ? undefined : e=>{if(_overlayDownRef.current && e.target===e.currentTarget)onClose(); _overlayDownRef.current=false;}}
       style={_isMob ? {
         position:"fixed",inset:0,zIndex:500,background:T.bgCard,
         overflowY:"auto",WebkitOverflowScrolling:"touch",
@@ -906,11 +964,17 @@ ${naverText}
                         </>
                       ) : (
                         <>
+                          {/* 최초 구매지점 이니셜 (id_imgr471swt-3 수정요청) */}
+                          {custPkgBranchInitial && <span title="유효 패키지 최초 구매지점" style={{fontSize:10,padding:"2px 6px",borderRadius:5,background:"#6366F1",color:"#fff",fontWeight:900,whiteSpace:"nowrap"}}>{custPkgBranchInitial}</span>}
                           <CopySpan text={f.custName} style={{fontSize:14,fontWeight:700,color:"#1a1a2e",whiteSpace:"nowrap"}}>{f.custName}</CopySpan>
                           {f.custName2 && <span style={{fontSize:12,color:"#888",fontWeight:500,whiteSpace:"nowrap"}}>({f.custName2})</span>}
                           <span style={{fontSize:11,color:"#888"}}>·</span>
                           <CopySpan text={f.custPhone} style={{fontSize:13,color:T.primary,fontWeight:500,whiteSpace:"nowrap"}}>{f.custPhone||"연락처 없음"}</CopySpan>
                           {custNum && <CopySpan text={custNum} style={{fontSize:13,color:"#999",fontFamily:"monospace",whiteSpace:"nowrap"}}>{custNum}</CopySpan>}
+                          {shareCusts.length > 0 && <span title={`쉐어: ${shareCusts.map(s=>s.name).join(", ")}`}
+                            style={{fontSize:10,padding:"2px 7px",borderRadius:10,background:"#F5F3FF",color:"#5B21B6",border:"1px solid #C4B5FD",fontWeight:700,whiteSpace:"nowrap"}}>
+                            🤝 쉐어 {shareCusts.length}명 · {shareCusts.map(s=>s.name).join(", ")}
+                          </span>}
                         </>
                       )}
                     </div>
@@ -1416,7 +1480,39 @@ ${naverText}
                   const match = (data?.resSources||[]).find(s => s.name === f.externalPlatform);
                   if (match) autoSource = match.name;
                 }
-                const memoToSave = (f.memo||"").split("\n").filter(l => { const t=l.trim(); return !(/^\[등록:|^\[수정:/.test(t)) && !(/^\d+\.\d+\s+\d+:\d+\s*(예약)?(접수|변경|확정|취소|신청|확정완료)/.test(t)); }).join("\n").trim();
+                // 날짜·시작시간 변경 로그 (기존 예약만, 내부일정 제외). 종료시간만 변경은 로그 생략
+                const _tsShort = `${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+                const _fmtDate = (d) => { if(!d) return ""; const p=d.split("-"); return `${p[1]}.${p[2]}`; };
+                const _dateChanged = item?.id && !isSchedule && item?.date !== f.date;
+                const _startTimeChanged = item?.id && !isSchedule && item?.time !== f.time;
+                // 시술 메뉴 변경 감지 (내부일정 제외)
+                const _prevSvc = Array.isArray(item?.selectedServices) ? item.selectedServices : [];
+                const _newSvc = Array.isArray(f.selectedServices) ? f.selectedServices : [];
+                const _svcChanged = item?.id && !isSchedule && (
+                  _prevSvc.length !== _newSvc.length ||
+                  _prevSvc.some(id => !_newSvc.includes(id)) ||
+                  _newSvc.some(id => !_prevSvc.includes(id))
+                );
+                // 날짜·시작시간 로그
+                let _dtLog = "";
+                if (_dateChanged && _startTimeChanged) {
+                  _dtLog = `[📅 일정변경 ${_tsShort}]\n${_fmtDate(item.date)} ${item.time||""} → ${_fmtDate(f.date)} ${f.time||""}`;
+                } else if (_dateChanged) {
+                  _dtLog = `[📅 일정변경 ${_tsShort}]\n${_fmtDate(item.date)} → ${_fmtDate(f.date)}`;
+                } else if (_startTimeChanged) {
+                  _dtLog = `[📅 일정변경 ${_tsShort}]\n${item.time||""} → ${f.time||""}`;
+                }
+                // 시술 메뉴 변경 로그
+                let _svcLog = "";
+                if (_svcChanged) {
+                  const _svcName = (id) => (data?.services||[]).find(s => s.id === id)?.name || id;
+                  const _prevNames = _prevSvc.map(_svcName).join(", ") || "-";
+                  const _newNames = _newSvc.map(_svcName).join(", ") || "-";
+                  _svcLog = `[🧴 시술변경 ${_tsShort}]\n${_prevNames} → ${_newNames}`;
+                }
+                const _changeLog = [_dtLog, _svcLog].filter(Boolean).join("\n");
+                const _existingMemo = (f.memo||"").split("\n").filter(l => { const t=l.trim(); return !(/^\[등록:|^\[수정:/.test(t)) && !(/^\d+\.\d+\s+\d+:\d+\s*(예약)?(접수|변경|확정|취소|신청|확정완료)/.test(t)); }).join("\n").trim();
+                const memoToSave = _changeLog ? (_changeLog + (_existingMemo ? "\n" + _existingMemo : "")) : _existingMemo;
                 // 고객 DB에 이메일/성별 자동 업데이트
                 if(f.custId && !f.custId.startsWith("new_")){
                   const custUpdate={};

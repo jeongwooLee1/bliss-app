@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { T } from '../../lib/constants'
 import { sb } from '../../lib/sb'
 import { _activeBizId, toDb } from '../../lib/db'
@@ -31,7 +31,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
     const updated = [...reordered, ...others].map((s,j)=>({...s,sort:j}));
     setServices(updated); setData(p=>({...p,services:updated}));
     updated.forEach((s,j)=>sb.update("services",s.id,{sort:j}).catch(console.error));
-  });
+  }, 'svc');
   const moveSvc=(idx2,dir)=>{
     const cur=filterCat==="all"?[...services]:services.filter(s=>s.cat===filterCat);
     const ni=idx2+dir;if(ni<0||ni>=cur.length)return;
@@ -43,11 +43,13 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
   };
   useEffect(()=>{setData(p=>({...p,services}));},[services]);
 
-  const {mouseHandlers:catMH, touchHandlers:catTH, overIdx:catOver} = useTouchDragSort(cats, (reordered) => {
-    const updated = reordered.map((c,i)=>({...c,sort:i}));
-    syncCats(updated);
-    updated.forEach((c,i)=>sb.update("service_categories",c.id,{sort:i}).catch(console.error));
-  });
+  // 훅엔 visibleCats를 전달 (JSX의 ci와 일치시킴) — 숨은 카테고리(쿠폰)는 뒤에 붙여 sort 재할당
+  const {mouseHandlers:catMH, touchHandlers:catTH, overIdx:catOver} = useTouchDragSort(visibleCats, (reorderedVisible) => {
+    const hiddenCats = cats.filter(c => !visibleCats.some(v => v.id === c.id));
+    const merged = [...reorderedVisible, ...hiddenCats].map((c,i)=>({...c, sort:i}));
+    syncCats(merged);
+    merged.forEach((c,i)=>sb.update("service_categories", c.id, {sort:i}).catch(console.error));
+  }, 'cat');
 
   const [sheet,setSheet]=useState(false);
   const [edit,setEdit]=useState(null);
@@ -146,7 +148,30 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
     const nc={id,name:newCatName.trim(),sort:cats.length};
     await sb.insert("service_categories",{...nc,business_id:_activeBizId}).catch(console.error);
     syncCats([...cats,nc]);
-    setNewCatName(""); setCatSheet(false);
+    setNewCatName("");
+  };
+  const renameCat = async (id, newName) => {
+    const trimmed = (newName||"").trim();
+    if (!trimmed) return;
+    const cur = cats.find(c => c.id === id);
+    if (!cur || cur.name === trimmed) return;
+    const updated = cats.map(c => c.id === id ? {...c, name: trimmed} : c);
+    syncCats(updated);
+    await sb.update("service_categories", id, {name: trimmed}).catch(console.error);
+  };
+  const deleteCat = async (id) => {
+    const cur = cats.find(c => c.id === id);
+    if (!cur) return;
+    const n = services.filter(s => s.cat === id).length;
+    if (n > 0) {
+      alert(`이 카테고리에 시술 ${n}개가 있어 삭제할 수 없습니다.\n먼저 다른 카테고리로 이동하세요.`);
+      return;
+    }
+    if (!confirm(`"${cur.name}" 카테고리를 삭제할까요?`)) return;
+    const updated = cats.filter(c => c.id !== id);
+    syncCats(updated);
+    await sb.del("service_categories", id).catch(console.error);
+    if (filterCat === id) setFilterCat("all");
   };
 
   const catName=id=>cats.find(c=>c.id===id)?.name||"미분류";
@@ -160,17 +185,19 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
       <button onClick={()=>setFilterCat("all")}
   style={{padding:"5px 13px",borderRadius:20,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:T.fs.xs,fontWeight:filterCat==="all"?700:500,
   background:filterCat==="all"?T.primary:T.gray100,color:filterCat==="all"?"#fff":T.gray600}}>전체</button>
-{visibleCats.map((c,ci)=><button key={c.id}
-  data-drag-idx={ci}
-  onClick={()=>setFilterCat(c.id)}
-  {...catMH(ci)}
-  {...catTH(ci)}
-  style={{padding:"5px 13px",borderRadius:20,border:"none",cursor:"grab",fontFamily:"inherit",fontSize:T.fs.xs,fontWeight:filterCat===c.id?700:500,
-  background:catOver===ci?"#c5c5f0":filterCat===c.id?T.primary:T.gray100,
-  color:catOver===ci?"#fff":filterCat===c.id?"#fff":T.gray600,
-  transform:catOver===ci?"scale(1.05)":"none",transition:"all .15s"}}>{c.name}</button>)}
-      <button onClick={()=>setCatSheet(true)} style={{padding:"5px 11px",borderRadius:20,border:"1px dashed #ccc",background:"none",color:T.textMuted,fontSize:T.fs.xs,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
-        <I name="plus" size={11}/> 카테고리
+{visibleCats.map((c,ci)=>(
+  <div key={c.id} data-drag-idx={ci} {...catMH(ci)} {...catTH(ci)}
+    onClick={()=>setFilterCat(c.id)}
+    title="드래그해서 순서 변경"
+    style={{padding:"5px 13px",borderRadius:20,cursor:"grab",fontSize:T.fs.xs,fontWeight:filterCat===c.id?700:500,
+    background:catOver===ci?"#c5c5f0":filterCat===c.id?T.primary:T.gray100,
+    color:catOver===ci?"#fff":filterCat===c.id?"#fff":T.gray600,
+    transform:catOver===ci?"scale(1.05)":"none",transition:"all .15s",
+    userSelect:"none",display:"inline-block",lineHeight:"1.4"}}>{c.name}</div>
+))}
+      <button onClick={()=>setCatSheet(true)} title="카테고리 추가·이름 편집·삭제"
+        style={{padding:"5px 12px",borderRadius:20,border:"1px solid "+T.primary,background:T.primaryLt||"#EDE9FE",color:T.primary,fontSize:T.fs.xs,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
+        <I name="edit" size={11}/> 카테고리 편집
       </button>
       <button onClick={()=>setBulkSheet(true)} style={{marginLeft:"auto",padding:"5px 13px",borderRadius:20,border:"1px solid "+T.primary,background:T.primaryLt||T.bgCard,color:T.primary,fontSize:T.fs.xs,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
         🎁 이벤트 일괄 적용
@@ -473,9 +500,30 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
         </div>
       </div>
     </ASheet>
-    <ASheet open={catSheet} onClose={()=>setCatSheet(false)} title="카테고리 추가">
-      <AField label="카테고리명" required><input style={AInp} value={newCatName} onChange={e=>setNewCatName(e.target.value)} placeholder="예: 왁싱, 스킨케어" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
-      <AIBtn onClick={addCat} disabled={!newCatName.trim()} label="추가"/>
+    <ASheet open={catSheet} onClose={()=>setCatSheet(false)} title="카테고리 관리">
+      <AField label="새 카테고리 추가">
+        <div style={{display:"flex",gap:6}}>
+          <input style={{...AInp,flex:1}} value={newCatName} onChange={e=>setNewCatName(e.target.value)} placeholder="예: 왁싱, 스킨케어"
+            onKeyDown={e=>{if(e.key==='Enter' && newCatName.trim()) addCat();}}
+            onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/>
+          <button onClick={addCat} disabled={!newCatName.trim()}
+            style={{padding:"6px 16px",borderRadius:8,border:"none",background:newCatName.trim()?T.primary:T.gray300,color:"#fff",fontSize:12,fontWeight:700,cursor:newCatName.trim()?"pointer":"default",fontFamily:"inherit",whiteSpace:"nowrap"}}>
+            추가
+          </button>
+        </div>
+      </AField>
+      <div style={{marginTop:14}}>
+        <div style={{fontSize:11,fontWeight:700,color:T.textSub,marginBottom:6}}>기존 카테고리 ({visibleCats.length})</div>
+        <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:360,overflowY:"auto",padding:"4px 2px"}}>
+          {visibleCats.map(c => {
+            const svcCount = services.filter(s => s.cat === c.id).length;
+            const canDelete = svcCount === 0;
+            return <CatRow key={c.id} cat={c} svcCount={svcCount} canDelete={canDelete}
+              onRename={(name)=>renameCat(c.id, name)} onDelete={()=>deleteCat(c.id)}/>;
+          })}
+          {visibleCats.length === 0 && <div style={{fontSize:11,color:T.textMuted,padding:"20px 0",textAlign:"center"}}>카테고리 없음</div>}
+        </div>
+      </div>
     </ASheet>
     <AConfirm open={!!del} title="시술 삭제" onOk={()=>doDelete(del)} onCancel={()=>setDel(null)}/>
   </div>;
@@ -521,6 +569,49 @@ function MemberRulesCard({ data, setData }) {
         {saving?"저장 중...":"저장"}
       </button>
     </div>}
+  </div>;
+}
+
+// 카테고리 관리 모달 내 개별 행 — 이름 인라인 편집 + 삭제
+function CatRow({ cat, svcCount, canDelete, onRename, onDelete }) {
+  const [name, setName] = useState(cat.name || "");
+  const [editing, setEditing] = useState(false);
+  useEffect(() => { setName(cat.name || ""); }, [cat.name]);
+  const commit = () => {
+    setEditing(false);
+    if (name.trim() && name.trim() !== cat.name) onRename(name.trim());
+    else setName(cat.name || "");
+  };
+  return <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",border:"1px solid "+T.border,borderRadius:8,background:"#fff"}}>
+    {editing ? (
+      <>
+        <input autoFocus value={name} onChange={e=>setName(e.target.value)}
+          onKeyDown={e=>{if(e.key==='Enter')commit(); if(e.key==='Escape'){setName(cat.name||"");setEditing(false);}}}
+          style={{flex:1,padding:"4px 8px",fontSize:12,border:"1px solid "+T.primary,borderRadius:6,fontFamily:"inherit"}}/>
+        <button onClick={commit} title="저장"
+          style={{padding:"4px 10px",fontSize:11,fontWeight:700,borderRadius:6,border:"none",background:T.primary,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>저장</button>
+        <button onClick={()=>{setName(cat.name||"");setEditing(false);}} title="취소"
+          style={{padding:"4px 10px",fontSize:11,fontWeight:700,borderRadius:6,border:"1px solid "+T.border,background:"#fff",color:T.textSub,cursor:"pointer",fontFamily:"inherit"}}>취소</button>
+      </>
+    ) : (
+      <>
+        <span style={{flex:1,fontSize:12,fontWeight:600,color:T.text,padding:"4px 0"}}>{cat.name}</span>
+        <span style={{fontSize:10,color:svcCount>0?T.textSub:T.textMuted,minWidth:48,textAlign:"right"}}>
+          시술 {svcCount}개
+        </span>
+        <button onClick={()=>setEditing(true)} title="이름 수정"
+          style={{padding:"4px 10px",fontSize:11,fontWeight:700,borderRadius:6,border:"1px solid "+T.primary,background:"#fff",color:T.primary,cursor:"pointer",fontFamily:"inherit"}}>수정</button>
+        <button onClick={onDelete} disabled={!canDelete}
+          title={canDelete?"삭제":"시술이 있어 삭제 불가 (먼저 이동)"}
+          style={{padding:"4px 10px",fontSize:11,fontWeight:700,borderRadius:6,
+            border:"1px solid "+(canDelete?T.danger:T.border),
+            background:canDelete?"#fff":T.gray100,
+            color:canDelete?T.danger:T.textMuted,
+            cursor:canDelete?"pointer":"not-allowed",fontFamily:"inherit"}}>
+          삭제
+        </button>
+      </>
+    )}
   </div>;
 }
 

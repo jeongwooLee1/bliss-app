@@ -164,3 +164,82 @@ export const groupSvcNames = (ids, svcs) => {
     return qty>1 ? s.name+' x'+qty : s.name;
   }).filter(Boolean);
 }
+
+// ── 지점명 → 이니셜 매핑 (id_imgr471swt-3 수정요청) ──────────────────
+// 강남 N / 왕십리 W / 홍대 H / 마곡 M / 잠실 J / 위례 R / 용산 Y / 천호 C
+export const BRANCH_INITIAL_MAP = {
+  '강남': 'N', '왕십리': 'W', '홍대': 'H', '마곡': 'M',
+  '잠실': 'J', '위례': 'R', '용산': 'Y', '천호': 'C',
+}
+
+// branch 이름에서 이니셜 추출 ("강남본점", "하우스왁싱 마곡점" 등 유연 처리)
+export const branchNameToInitial = (branchName) => {
+  if (!branchName) return ''
+  const clean = String(branchName).replace(/하우스왁싱\s*/g, '').replace(/본점|점$/g, '').trim()
+  for (const key in BRANCH_INITIAL_MAP) {
+    if (clean.includes(key)) return BRANCH_INITIAL_MAP[key]
+  }
+  return ''
+}
+
+// 단일 패키지의 구매지점 short 이름 추출 (id_imgr471swt-4 수정요청용)
+// 우선순위: bid/branch_id → note "매장:XX" 첫 토큰
+export const getPkgPurchaseBranchShort = (pkg, branches) => {
+  if (!pkg) return ''
+  const bid = pkg.bid || pkg.branch_id
+  if (bid && Array.isArray(branches)) {
+    const b = branches.find(x => x.id === bid)
+    if (b) return (b.short || b.name || '').replace(/하우스왁싱\s*/g, '').replace(/본점$|점$/g, '').trim()
+  }
+  const m = (pkg.note||'').match(/매장:([^|\n]+)/)
+  if (m) {
+    const firstBranch = m[1].split('/')[0].trim()
+    return firstBranch.replace(/하우스왁싱\s*/g, '').replace(/본점$|점$/g, '').trim()
+  }
+  return ''
+}
+// 현재 지점에서 이 패키지 사용이 허용되는가 — 롤백됨 (데이터 불량으로 제한 해제, 전체 허용)
+// TODO: customer_packages.bid 컬럼 + 올바른 매장 데이터 보강 후 재활성화
+export const canUsePkgAtBranch = (pkg, currentBid, branches) => {
+  return true;
+}
+
+// customer_packages 배열에서 유효한 패키지(잔여/잔액 > 0, 미만료) 중 최초 구매지점 이니셜
+// pkgs: [{purchased_at, note, bid, branch_id, expires_at, total_count, used_count, ...}]
+// branches: data.branches 배열
+export const getCustPkgBranchInitial = (pkgs, branches) => {
+  if (!Array.isArray(pkgs) || pkgs.length === 0) return ''
+  const today = todayStr()
+  const validPkgs = pkgs.filter(p => {
+    // 유효기간 체크
+    const expNote = (p.note||'').match(/유효:(\d{4}-\d{2}-\d{2})/)
+    const exp = p.expires_at || (expNote ? expNote[1] : null)
+    if (exp && String(exp).slice(0,10) < today) return false
+    // 잔액/잔여 체크
+    const balMatch = (p.note||'').match(/잔액:([0-9,]+)/)
+    if (balMatch) {
+      if (Number(balMatch[1].replace(/,/g,'')) <= 0) return false
+    } else {
+      const remain = (p.total_count||0) - (p.used_count||0)
+      if (remain <= 0) return false
+    }
+    return true
+  })
+  if (validPkgs.length === 0) return ''
+  // 구매일 오름차순 — 최초
+  validPkgs.sort((a,b) => (a.purchased_at||'').localeCompare(b.purchased_at||''))
+  const first = validPkgs[0]
+  // 1) bid/branch_id 우선
+  const bid = first.bid || first.branch_id
+  if (bid && Array.isArray(branches)) {
+    const b = branches.find(x => x.id === bid)
+    if (b) return branchNameToInitial(b.short || b.name)
+  }
+  // 2) note의 "매장:XX" 첫 토큰
+  const m = (first.note||'').match(/매장:([^|\s]+)/)
+  if (m) {
+    const firstBranch = m[1].split('/')[0].trim()
+    return branchNameToInitial(firstBranch)
+  }
+  return ''
+}

@@ -20,7 +20,7 @@ import SetupWizard from '../components/SetupWizard/SetupWizard'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.3.105"
+const BLISS_V = "3.5.37"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -893,10 +893,10 @@ function App() {
     timer = setTimeout(check, 3000);
     return () => clearTimeout(timer);
   }, []);
-  // 새 버전 감지 시 5초 카운트다운 후 강제 새로고침
+  // 새 버전 감지 시 1분 카운트다운 후 강제 새로고침
   useEffect(() => {
     if (!newVer) return;
-    setReloadCountdown(5);
+    setReloadCountdown(60);
     const tick = setInterval(() => {
       setReloadCountdown(c => {
         if (c <= 1) {
@@ -1308,7 +1308,7 @@ function App() {
     { id:"messages", label:"받은메시지함", icon:<I name="msgSq" size={16}/>, badge:unreadMsgCount },
     { id:"admin", label:"관리설정", icon:<I name="settings" size={16}/> },
     { id:"wizard", label:"설정 마법사", icon:"✨" },
-    { id:"requests", label:"수정 요청", icon:"📝", badge:pendingReqCount },
+    { id:"requests", label:"공지 & 요청", icon:"📢", badge:pendingReqCount },
   ];
 
   const branchNames = userBranches.map(bid => (data.branches||[]).find(b=>b.id===bid)?.short||bid).filter(Boolean).join(", ");

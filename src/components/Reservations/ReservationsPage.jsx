@@ -53,6 +53,13 @@ const Chip = ({ label, color, bg, onRemove, style={} }) => (
   </span>
 );
 const Modal = ({ open, onClose, children, title, width=480 }) => {
+  // ESC 키로 닫기 (id_dh0tp9v5ue 수정요청)
+  useEffect(() => {
+    if (!open) return;
+    const h = (e) => { if (e.key === 'Escape' && !e.isComposing) onClose?.(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [open, onClose]);
   if (!open) return null;
   return (
     <div style={{position:"fixed",inset:0,zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,.4)"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
@@ -66,6 +73,13 @@ const Modal = ({ open, onClose, children, title, width=480 }) => {
 const Spinner = ({size=20}) => <div style={{width:size,height:size,border:"2px solid #eee",borderTop:"2px solid "+T.primary,borderRadius:"50%",animation:"spin 1s linear infinite"}}></div>;
 
 export function SmartDatePicker({ open, onClose, anchorEl, startDate, endDate, onApply, mode }) {
+  // ESC 키로 닫기 (id_dh0tp9v5ue 수정요청)
+  useEffect(() => {
+    if (!open) return;
+    const h = (e) => { if (e.key === 'Escape' && !e.isComposing) onClose?.(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [open, onClose]);
   const [selStart, setSelStart] = useState(startDate || todayStr());
   const [selEnd,   setSelEnd]   = useState(endDate   || todayStr());
   const [period,   setPeriod]   = useState("today");

@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { T } from '../../lib/constants'
 
 export default function Modal({ open, onClose, title, children, width=480 }) {
+  const downOnOverlayRef = useRef(false)
   useEffect(() => {
     if (!open) return
     const handler = (e) => { if (e.key === 'Escape') onClose() }
@@ -16,7 +17,9 @@ export default function Modal({ open, onClose, title, children, width=480 }) {
       position:'fixed', inset:0, zIndex:1000,
       background:'rgba(0,0,0,.45)', display:'flex',
       alignItems:'flex-end', justifyContent:'center',
-    }} onClick={onClose}>
+    }}
+    onMouseDown={e => { downOnOverlayRef.current = (e.target === e.currentTarget) }}
+    onClick={e => { if (downOnOverlayRef.current && e.target === e.currentTarget) onClose(); downOnOverlayRef.current = false; }}>
       <div style={{
         width:'100%', maxWidth:width,
         background:T.bgCard, borderRadius:`${T.radius.xl}px ${T.radius.xl}px 0 0`,

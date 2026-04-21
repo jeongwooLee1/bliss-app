@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { T } from '../../lib/constants'
-import { sb, SB_URL, SB_KEY, queueAlimtalk } from '../../lib/sb'
+import { sb, SB_URL, SB_KEY, queueAlimtalk, buildTokenSearch } from '../../lib/sb'
 import { toDb, fromDb, _activeBizId } from '../../lib/db'
-import { genId, todayStr, useScrollRestore, useSessionState } from '../../lib/utils'
+import { genId, todayStr, useScrollRestore, useSessionState, getCustPkgBranchInitial } from '../../lib/utils'
 import { Btn, FLD, Empty, fmt, Spinner, DataTable } from '../common'
 import I from '../common/I'
 import { DetailedSaleForm } from '../Timeline/SaleForm'
@@ -78,6 +78,9 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
   const [editItem, setEditItem] = useState(null);
   const [detailCust, setDetailCust] = useState(null);
   const [detailTab, setDetailTab] = useSessionState("cust_tab", "pkg"); // "pkg" | "sales"
+  // 쉐어 — 보유권/패키지를 공유하는 고객 페어
+  const [shareCusts, setShareCusts] = useState([]); // [{id, name, phone, cust_num, shareRowId}]
+  const [showShareModal, setShowShareModal] = useState(false);
   const [editingMemo, setEditingMemo] = useState(false);
   const [memoDraft, setMemoDraft] = useState("");
   const [memoSaving, setMemoSaving] = useState(false);
@@ -350,7 +353,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
   const [custSales, setCustSales] = useState([]);
   const [custPkgsServer, setCustPkgsServer] = useState([]);
   const [pkgEditId, setPkgEditId] = useState(null);
-  const [custResStats, setCustResStats] = useState({total:0,noshow:0,sameday:0});
+  const [custResStats, setCustResStats] = useState({total:0,noshow:0,samedayCancel:0,samedayChange:0});
   const [custPointTx, setCustPointTx] = useState([]);
   const [pkgHistoryMap, setPkgHistoryMap] = useState({}); // {pkgId: txArray}
   const [pkgHistoryOpen, setPkgHistoryOpen] = useState(null); // opened pkg id
@@ -547,8 +550,56 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       .then(rows => setCustPointTx(rows||[]))
       .catch(() => setCustPointTx([]));
   };
+  // 쉐어 고객 로드
+  const loadShares = async (custId) => {
+    if (!custId) { setShareCusts([]); return; }
+    try {
+      const [asA, asB] = await Promise.all([
+        sb.get("customer_shares", `&cust_id_a=eq.${custId}`),
+        sb.get("customer_shares", `&cust_id_b=eq.${custId}`),
+      ]);
+      const pairs = [
+        ...(asA||[]).map(r => ({ otherId: r.cust_id_b, shareRowId: r.id })),
+        ...(asB||[]).map(r => ({ otherId: r.cust_id_a, shareRowId: r.id })),
+      ];
+      if (pairs.length === 0) { setShareCusts([]); return; }
+      const ids = pairs.map(p => p.otherId);
+      const rows = await sb.get("customers", `&id=in.(${ids.join(",")})`);
+      const parsed = fromDb("customers", rows||[]);
+      const byId = new Map(parsed.map(c => [c.id, c]));
+      setShareCusts(pairs.map(p => {
+        const c = byId.get(p.otherId);
+        return c ? { ...c, shareRowId: p.shareRowId } : null;
+      }).filter(Boolean));
+    } catch(e) { console.warn("loadShares failed", e); setShareCusts([]); }
+  };
+  const addShare = async (otherCust) => {
+    if (!detailCust?.id || !otherCust?.id || otherCust.id === detailCust.id) return;
+    // 중복 체크
+    if (shareCusts.some(s => s.id === otherCust.id)) { alert("이미 쉐어된 고객입니다."); return; }
+    try {
+      const row = {
+        id: "share_" + Math.random().toString(36).slice(2,10),
+        business_id: _activeBizId,
+        cust_id_a: detailCust.id,
+        cust_id_b: otherCust.id,
+      };
+      await sb.insert("customer_shares", row);
+      setShareCusts(prev => [...prev, { ...otherCust, shareRowId: row.id }]);
+      setShowShareModal(false);
+    } catch(e) { alert("쉐어 등록 실패: "+e.message); }
+  };
+  const removeShare = async (shareRowId, name) => {
+    if (!confirm(`${name||'이 고객'}과의 쉐어를 해제할까요?`)) return;
+    try {
+      await sb.del("customer_shares", shareRowId);
+      setShareCusts(prev => prev.filter(s => s.shareRowId !== shareRowId));
+    } catch(e) { alert("해제 실패: "+e.message); }
+  };
+
   useEffect(() => {
-    if (!detailCust) { setCustSales([]); setCustPkgsServer([]); setCustResStats({total:0,noshow:0,sameday:0}); setCustPointTx([]); setLoadingDetail(false); return; }
+    if (!detailCust) { setCustSales([]); setCustPkgsServer([]); setCustResStats({total:0,noshow:0,samedayCancel:0,samedayChange:0}); setCustPointTx([]); setShareCusts([]); setLoadingDetail(false); return; }
+    loadShares(detailCust.id);
     setLoadingDetail(true);
     Promise.all([
       sb.get("sales", `&cust_id=eq.${detailCust.id}&order=date.desc&limit=500`)
@@ -577,16 +628,22 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       sb.get("customer_packages", `&customer_id=eq.${detailCust.id}`)
         .then(rows => setCustPkgsServer(rows))
         .catch(() => setCustPkgsServer([])),
-      sb.get("reservations", `&cust_id=eq.${detailCust.id}&select=status,date&limit=2000`)
+      sb.get("reservations", `&cust_id=eq.${detailCust.id}&select=status,date,updated_at,prev_reservation_id&limit=2000`)
         .then(rows => {
-          const today = new Date().toISOString().slice(0,10);
+          // 당일취소: 취소 상태 + updated_at 날짜 == 예약일 (id_imgr471swt-5 수정요청)
+          // 당일변경: naver_changed 상태 또는 prev_reservation_id 있는 것 중 updated_at 날짜 == 예약일
+          const dateOf = (ts) => ts ? String(ts).slice(0,10) : "";
           setCustResStats({
             total: rows.filter(r=>["confirmed","completed","no_show"].includes(r.status)).length,
             noshow: rows.filter(r=>r.status==="no_show").length,
-            sameday: rows.filter(r=>["cancelled","naver_cancelled"].includes(r.status)&&r.date===today).length
+            samedayCancel: rows.filter(r=>["cancelled","naver_cancelled"].includes(r.status) && r.updated_at && dateOf(r.updated_at) === r.date).length,
+            samedayChange: rows.filter(r=>{
+              const isChange = r.status === "naver_changed" || (r.prev_reservation_id && r.prev_reservation_id !== "");
+              return isChange && r.updated_at && dateOf(r.updated_at) === r.date;
+            }).length,
           });
         })
-        .catch(() => setCustResStats({total:0,noshow:0,sameday:0})),
+        .catch(() => setCustResStats({total:0,noshow:0,samedayCancel:0,samedayChange:0})),
       loadCustPoints(detailCust.id)
     ]).finally(() => setLoadingDetail(false));
   }, [detailCust?.id]);
@@ -671,7 +728,9 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
     // 일반 다회권
     const remain = p.total_count - p.used_count;
     const pct = p.total_count > 0 ? (remain/p.total_count)*100 : 0;
-    const isDone = isPrepaid ? (balance <= 0 || isExpired) : isAnnual ? isExpired : (remain <= 0 || isExpired);
+    // 유효기간 미설정 = 아직 사용 시작 전 (첫 사용 시 자동 1년 설정됨) → 활성 상태로 간주
+    const notStarted = !expiry;
+    const isDone = notStarted ? false : (isPrepaid ? (balance <= 0 || isExpired) : isAnnual ? isExpired : (remain <= 0 || isExpired));
 
     return <div style={{border:"1px solid "+(isDone?T.gray300:isExpired?T.danger+"44":T.border),borderRadius:T.radius.md,padding:"10px 12px",background:isDone?T.gray100:T.bgCard,minWidth:180,flex:"0 0 auto",opacity:isDone?0.6:1}}>
       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
@@ -736,6 +795,37 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
           {expiry ? "연장" : "설정"}
         </button>
       </div>
+
+      {/* 🤝 쉐어 공유 토글 — 쉐어 관계 고객이 이 보유권을 사용 가능하게 */}
+      {(() => {
+        const isShared = /\|\s*쉐어:Y/.test(p.note||"");
+        const toggleShare = (e) => {
+          e.stopPropagation();
+          const curNote = p.note || "";
+          const newNote = isShared
+            ? curNote.replace(/\s*\|\s*쉐어:Y/g, "")
+            : (curNote ? `${curNote} | 쉐어:Y` : `쉐어:Y`);
+          sb.update("customer_packages", p.id, {note: newNote}).catch(console.error);
+          setCustPkgsServer(prev => prev.map(x => x.id === p.id ? {...x, note: newNote} : x));
+        };
+        return <div onClick={toggleShare}
+          title={isShared ? "쉐어 공유 중 — 클릭하면 해제" : "클릭하면 쉐어 고객도 이 보유권 사용 가능"}
+          style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,padding:"4px 8px",borderRadius:T.radius.sm,
+            background: isShared ? "#F5F3FF" : T.gray100,
+            border: isShared ? "1px solid #C4B5FD" : "1px solid "+T.border,
+            cursor:"pointer",userSelect:"none"}}>
+          <span style={{fontSize:T.fs.nano,fontWeight:T.fw.bolder,color: isShared ? "#5B21B6" : T.textMuted,flex:1}}>
+            {isShared ? "🤝 쉐어 공유 중" : "🤝 쉐어 공유"}
+          </span>
+          <span style={{fontSize:9,padding:"1px 6px",borderRadius:T.radius.sm,
+            background: isShared ? "#7C3AED" : T.bgCard,
+            color: isShared ? "#fff" : T.gray500,
+            border: isShared ? "none" : "1px solid "+T.border,
+            fontWeight:T.fw.bolder}}>
+            {isShared ? "ON" : "OFF"}
+          </span>
+        </div>;
+      })()}
 
       {/* 편집 모드 */}
       {pkgEditId === p.id && <div style={{borderTop:"1px solid "+T.border,paddingTop:8,marginBottom:6}}>
@@ -958,6 +1048,11 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                   <td style={{fontSize:T.fs.xs,color:T.text,fontFamily:"monospace",fontWeight:800}}>{c.custNum||"-"}</td>
                   <td style={{fontSize:T.fs.xxs,color:T.textSub,whiteSpace:"nowrap"}}>{c.joinDate||(c.createdAt||"").slice(0,10)||"-"}</td>
                   <td style={{fontWeight:T.fw.bold}}>
+                    {/* 최초 구매지점 이니셜 (id_imgr471swt-3 수정요청) */}
+                    {(() => {
+                      const init = getCustPkgBranchInitial(pkgByCust[c.id]||[], data?.branches||[]);
+                      return init ? <span title="유효 패키지 최초 구매지점" style={{fontSize:10,padding:"1px 5px",borderRadius:4,background:"#6366F1",color:"#fff",fontWeight:900,marginRight:4}}>{init}</span> : null;
+                    })()}
                     {c.gender && <span style={{...sx.genderBadge(c.gender),marginRight:4}}>{c.gender==="F"?"여":"남"}</span>}
                     {c.name}
                     {c.name2 && <span style={{color:T.textSub,fontWeight:T.fw.normal,marginLeft:4,fontSize:T.fs.xxs}}>({c.name2})</span>}
@@ -1028,12 +1123,13 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                       )}
                       {memoSaving && <span style={{marginLeft:8,fontSize:T.fs.xxs,color:T.textMuted}}>저장중...</span>}
                     </div>
-                    {/* 예약 통계 */}
+                    {/* 예약 통계 (id_imgr471swt-5 수정요청: 당일취소/당일변경 분리) */}
                     <div style={{display:"flex",gap:8,padding:"8px 12px",background:T.bgCard,borderBottom:"1px solid "+T.border}}>
                       {[
                         {label:"예약",val:custResStats.total,color:T.primary},
                         {label:"노쇼",val:custResStats.noshow,color:custResStats.noshow>0?"#e53e3e":T.gray500},
-                        {label:"당일취소",val:custResStats.sameday,color:custResStats.sameday>0?"#dd6b20":T.gray500}
+                        {label:"당일취소",val:custResStats.samedayCancel,color:custResStats.samedayCancel>0?"#dd6b20":T.gray500},
+                        {label:"당일변경",val:custResStats.samedayChange,color:custResStats.samedayChange>0?"#d97706":T.gray500}
                       ].map(s=><div key={s.label} style={{display:"flex",alignItems:"center",gap:4}}>
                         <span style={{fontSize:T.fs.xs,color:T.textMuted}}>{s.label}</span>
                         <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:s.color}}>{s.val}</span>
@@ -1041,7 +1137,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                     </div>
                     {/* 탭 */}
                     <div style={{display:"flex",gap:0,borderBottom:"1px solid "+T.border,background:T.bgCard}}>
-                      {[["sales","매출 내역 ("+custSales.length+")"],["pkg","보유권 ("+custPkgs.filter(p=>{const t=pkgType(p);const ex=(p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/);const isExp=ex&&ex[1]<todayStr();if(isExp)return false;return t==="prepaid"?((p.note||"").match(/잔액:([0-9,]+)/)?.[1]||"0").replace(/,/g,"")>0:(p.total_count-p.used_count)>0;}).length+")"],["point","포인트 ("+custPointBalance.toLocaleString()+"P)"]].map(([tab,lbl])=>(
+                      {[["sales","매출 내역 ("+custSales.length+")"],["pkg","보유권 ("+custPkgs.filter(p=>{const t=pkgType(p);const ex=(p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/);const isExp=ex&&ex[1]<todayStr();if(isExp)return false;return t==="prepaid"?((p.note||"").match(/잔액:([0-9,]+)/)?.[1]||"0").replace(/,/g,"")>0:(p.total_count-p.used_count)>0;}).length+")"],["point","포인트 ("+custPointBalance.toLocaleString()+"P)"],["share","🤝 쉐어 ("+shareCusts.length+")"]].map(([tab,lbl])=>(
                         <button key={tab} onClick={()=>setDetailTab(tab)}
                           style={{padding:"8px 16px",fontSize:T.fs.xs,fontWeight:detailTab===tab?T.fw.bolder:T.fw.normal,
                             color:detailTab===tab?T.primary:T.textSub,background:"none",border:"none",
@@ -1063,20 +1159,25 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                               const svc = (data?.services||[]).find(s=>s.id===e.target.value);
                               if(!svc) return;
                               const isAnn = svc.name?.includes("연간")||svc.name?.includes("회원권");
-                              const isPre = svc.name?.includes("다담");
-                              const tc = isAnn ? 99 : isPre ? 1 : 5;
+                              const isPre = svc.name?.includes("다담")||svc.name?.includes("선불")||svc.name?.includes("바프");
+                              // 다담권/선불권: total_count=액면가(원), note에 "잔액:X" 기록
+                              // 연간권: 99, 패키지: 5회
+                              const price = Math.max(0, Number(svc.priceF)||0, Number(svc.priceM)||0, Number(svc.price_f)||0, Number(svc.price_m)||0);
+                              const tc = isAnn ? 99 : isPre ? price : 5;
+                              const note = isPre && price > 0 ? `잔액:${price.toLocaleString()} | 충전:${price.toLocaleString()} | 사용:0` : "";
                               const pkg = {id:genId(),business_id:_activeBizId,customer_id:c.id,service_id:svc.id,
                                 service_name:svc.name,total_count:tc,used_count:0,
-                                purchased_at:new Date().toISOString(),note:""};
+                                purchased_at:new Date().toISOString(),note};
                               sb.insert("customer_packages",pkg).catch(console.error);
                               setCustPkgsServer(prev=>[...prev, pkg]);
                               setData(prev=>({...prev,custPackages:[...(prev.custPackages||[]),pkg]}));
                               e.target.value="";
                             }}>
                             <option value="">+ 패키지 추가</option>
-                            {(data?.services||[]).filter(s=>s.name?.includes("PKG")||s.name?.includes("다담")||s.name?.includes("연간")||s.name?.includes("패키지")||s.name?.includes("산모")||s.name?.includes("회원권")).map(s=>
-                              <option key={s.id} value={s.id}>{s.name} ({(s.price_f||0).toLocaleString()}원)</option>
-                            )}
+                            {(data?.services||[]).filter(s=>(s.isActive!==false && s.is_active!==false) && (s.name?.includes("PKG")||s.name?.includes("다담")||s.name?.includes("연간")||s.name?.includes("패키지")||s.name?.includes("산모")||s.name?.includes("회원권")||s.name?.includes("바프")||s.name?.includes("선불"))).map(s=>{
+                              const p = Math.max(Number(s.priceF)||0, Number(s.priceM)||0, Number(s.price_f)||0, Number(s.price_m)||0);
+                              return <option key={s.id} value={s.id}>{s.name} ({p.toLocaleString()}원)</option>;
+                            })}
                           </select>
                           {/* + 쿠폰 발행 (수동) */}
                           <select className="inp" style={{width:"auto",fontSize:T.fs.xs,height:30,borderColor:"#ff9800",color:"#E65100"}}
@@ -1176,6 +1277,28 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                       </div>}
                       {/* 포인트 탭 */}
                       {detailTab==="point" && <PointPanel cust={c} txList={custPointTx} balance={custPointBalance} onReload={()=>loadCustPoints(c.id)}/>}
+                      {/* 쉐어 탭 — 보유권·패키지 공유 고객 */}
+                      {detailTab==="share" && <div>
+                        <div style={{fontSize:11,color:"#5B21B6",marginBottom:10,padding:"8px 10px",background:"#F5F3FF",borderRadius:8,border:"1px solid #DDD6FE"}}>
+                          🤝 <b>쉐어</b> 고객으로 등록하면 <b>보유권·패키지·다담권</b>을 서로 공유해서 쓸 수 있습니다. 예약·매출등록 시 쉐어 보유권이 "🤝 쉐어" 배지와 함께 표시됩니다.
+                        </div>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+                          {shareCusts.length === 0 && <div style={{fontSize:12,color:T.textMuted,padding:"20px",flex:1,textAlign:"center"}}>등록된 쉐어 고객 없음</div>}
+                          {shareCusts.map(sc => (
+                            <span key={sc.id} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:14,background:"#fff",border:"1px solid #C4B5FD",fontSize:12,color:"#5B21B6",fontWeight:600}}>
+                              👤 {sc.name}{sc.name2?` (${sc.name2})`:""}
+                              {sc.phone && !sc.phone.startsWith("no_phone") && <span style={{color:T.textMuted,fontWeight:400}}>· {sc.phone}</span>}
+                              {sc.cust_num && <span style={{fontFamily:"monospace",fontSize:10,color:T.textMuted}}>#{sc.cust_num}</span>}
+                              <button onClick={()=>removeShare(sc.shareRowId, sc.name)} title="쉐어 해제"
+                                style={{border:"none",background:"none",color:T.danger,fontSize:14,cursor:"pointer",padding:0,lineHeight:1,fontFamily:"inherit",marginLeft:2}}>×</button>
+                            </span>
+                          ))}
+                        </div>
+                        <button onClick={()=>setShowShareModal(true)}
+                          style={{padding:"8px 14px",fontSize:12,fontWeight:700,borderRadius:8,border:"1.5px dashed #8B5CF6",background:"#F5F3FF",color:"#5B21B6",cursor:"pointer",fontFamily:"inherit"}}>
+                          + 쉐어 고객 추가
+                        </button>
+                      </div>}
                     </div>
                 </div></td></tr>}
               </React.Fragment>;
@@ -1200,6 +1323,117 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       onClose={()=>_mc(()=>setEditSale(null))}
       data={data} setData={setData}
       editMode={true} existingSaleId={editSale.id}/>}
+    {showShareModal && detailCust && <ShareCustModal
+      baseCust={detailCust}
+      existingShareIds={shareCusts.map(s=>s.id)}
+      onPick={addShare}
+      onClose={()=>setShowShareModal(false)}
+      setData={setData}/>}
+  </div>;
+}
+
+// ═══════════════════════════════════════════
+// 쉐어 고객 검색·추가 모달
+// ═══════════════════════════════════════════
+function ShareCustModal({ baseCust, existingShareIds, onPick, onClose, setData }) {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState([]);
+  const [newName, setNewName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newGender, setNewGender] = useState("");
+  const [creating, setCreating] = useState(false);
+  const downOnOverlayRef = React.useRef(false);
+
+  useEffect(() => {
+    if (q.trim().length < 2) { setResults([]); return; }
+    const t = setTimeout(async () => {
+      try {
+        const cond = buildTokenSearch(q.trim(), ["name","name2","phone","phone2","email","cust_num"]);
+        const rows = await sb.get("customers", `&business_id=eq.${_activeBizId}${cond}&limit=20`);
+        setResults(fromDb("customers", rows||[]));
+      } catch(e) { console.warn("share search fail", e); setResults([]); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  const filteredResults = results.filter(c => c.id !== baseCust.id && !existingShareIds.includes(c.id));
+  const showNewForm = q.trim().length >= 2 && filteredResults.length === 0;
+
+  // 검색어에서 이름(한글)/전화(숫자) 자동 파싱 → 신규등록 폼 프리필
+  useEffect(() => {
+    if (!showNewForm) return;
+    const tokens = q.trim().split(/\s+/);
+    const nameTok = tokens.find(t => /[가-힣]/.test(t));
+    const phoneTok = tokens.find(t => /^[\d-]{3,}$/.test(t));
+    if (nameTok && !newName) setNewName(nameTok);
+    if (phoneTok && !newPhone) setNewPhone(phoneTok);
+  }, [showNewForm, q]);
+
+  const createNew = async () => {
+    if (!newName.trim()) { alert("이름을 입력하세요"); return; }
+    setCreating(true);
+    try {
+      const id = "cust_" + genId();
+      const phoneVal = newPhone.trim() || ("no_phone_"+id.slice(-6));
+      const row = {
+        id, business_id: _activeBizId,
+        name: newName.trim(), phone: phoneVal, gender: newGender||null,
+        sms_consent: true, is_hidden: false,
+      };
+      await sb.insert("customers", row);
+      const parsed = fromDb("customers", [row])[0];
+      if (setData) setData(p => p ? {...p, customers: [parsed, ...(p.customers||[])]} : p);
+      onPick(parsed);
+    } catch(e) { alert("신규 등록 실패: "+e.message); }
+    setCreating(false);
+  };
+
+  return <div
+    onMouseDown={e=>{downOnOverlayRef.current=(e.target===e.currentTarget);}}
+    onClick={e=>{if(downOnOverlayRef.current && e.target===e.currentTarget)onClose(); downOnOverlayRef.current=false;}}
+    style={{position:"fixed",inset:0,background:"rgba(0,0,0,.35)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+    <div onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,width:"100%",maxWidth:460,boxShadow:"0 12px 40px rgba(0,0,0,.25)",overflow:"hidden"}}>
+      <div style={{padding:"14px 16px",borderBottom:"1px solid "+T.border,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <strong style={{fontSize:14,color:"#5B21B6"}}>🤝 쉐어 추가 — {baseCust?.name}</strong>
+        <button onClick={onClose} style={{border:"none",background:"none",fontSize:20,cursor:"pointer",color:T.textMuted}}>×</button>
+      </div>
+      <div style={{padding:14}}>
+        <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="이름·전화·고객번호 (공백으로 여러 조건)"
+          style={{width:"100%",padding:"8px 10px",fontSize:13,border:"1px solid "+T.border,borderRadius:8,fontFamily:"inherit",boxSizing:"border-box"}}/>
+        <div style={{marginTop:10,maxHeight:240,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
+          {q.trim().length < 2 && <div style={{fontSize:11,color:T.textMuted,textAlign:"center",padding:20}}>검색어 2자 이상 입력 (예: "권신영 8008")</div>}
+          {filteredResults.map(c => (
+            <button key={c.id} onClick={()=>onPick(c)}
+              style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",border:"1px solid "+T.border,borderRadius:8,background:"#fff",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+              <span style={{fontSize:12,fontWeight:700,color:T.text,flex:1}}>{c.name}{c.name2?` (${c.name2})`:""}</span>
+              {c.cust_num && <span style={{fontSize:10,color:T.textMuted,fontFamily:"monospace"}}>#{c.cust_num}</span>}
+              {c.phone && !c.phone.startsWith("no_phone") && <span style={{fontSize:11,color:T.textSub}}>{c.phone}</span>}
+            </button>
+          ))}
+        </div>
+        {showNewForm && (
+          <div style={{marginTop:14,paddingTop:12,borderTop:"1px dashed "+T.border}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#5B21B6",marginBottom:8}}>🔎 검색 결과 없음 — 바로 신규 등록</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="이름 *"
+                style={{width:"100%",padding:"8px 10px",fontSize:13,border:"1px solid "+T.border,borderRadius:8,fontFamily:"inherit",boxSizing:"border-box"}}/>
+              <input value={newPhone} onChange={e=>setNewPhone(e.target.value)} placeholder="연락처 (선택)"
+                style={{width:"100%",padding:"8px 10px",fontSize:13,border:"1px solid "+T.border,borderRadius:8,fontFamily:"inherit",boxSizing:"border-box"}}/>
+              <div style={{display:"flex",gap:6}}>
+                {[["","?"],["F","여"],["M","남"]].map(([v,l])=>(
+                  <button key={v} type="button" onClick={()=>setNewGender(v)}
+                    style={{flex:1,padding:"6px",fontSize:12,fontWeight:700,borderRadius:6,border:"1px solid "+(newGender===v?"#8B5CF6":T.border),background:newGender===v?"#F5F3FF":"#fff",color:newGender===v?"#5B21B6":T.textSub,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
+                ))}
+              </div>
+              <button onClick={createNew} disabled={creating||!newName.trim()}
+                style={{padding:"10px",fontSize:13,fontWeight:700,borderRadius:8,border:"none",background:(creating||!newName.trim())?T.gray300:"#8B5CF6",color:"#fff",cursor:(creating||!newName.trim())?"default":"pointer",fontFamily:"inherit",marginTop:4}}>
+                {creating?"등록 중...":"신규 등록 후 쉐어"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   </div>;
 }
 
