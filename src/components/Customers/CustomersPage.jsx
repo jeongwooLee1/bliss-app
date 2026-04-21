@@ -74,6 +74,8 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
   // 가입일 범위 필터 (신규 고객 날짜별 보기)
   const [joinFrom, setJoinFrom] = useSessionState("cust_joinFrom", "");
   const [joinTo, setJoinTo] = useSessionState("cust_joinTo", "");
+  // 고객번호 없는 고객 (매출 미발생) 숨김 여부 — 기본 숨김
+  const [includeNoNum, setIncludeNoNum] = useSessionState("cust_include_no_num", false);
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [detailCust, setDetailCust] = useState(null);
@@ -162,7 +164,8 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
     // 가입일 범위 필터 (신규 고객 날짜별 조회)
     if (joinFrom) parts.push(`join_date=gte.${joinFrom}`);
     if (joinTo) parts.push(`join_date=lte.${joinTo}`);
-    // 숨김 필터 제거 — 전부 표시
+    // 고객번호 없는 고객(=매출 미발생) 필터 — 기본 숨김. includeNoNum=true면 전체 노출
+    if (!includeNoNum) parts.push(`cust_num_int=not.is.null`);
     // 검색: 공백 구분 다토큰 전부 서버에서 AND — 각 토큰이 아무 필드에든 부분매칭되어야 함
     const tokens = (q||"").trim().split(/\s+/).filter(Boolean);
     const fields = ['name','name2','phone','phone2','email','memo','cust_num'];
@@ -176,10 +179,9 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       });
       parts.push(`and=(${ands.join(',')})`);
     }
-    // 정렬: 생성일 내림차순 우선 → 고객번호 내림차순 (보조)
-    // 예약으로만 등록된 cust_num 없는 신규 고객도 최상단 노출
-    // Oracle bulk import처럼 created_at이 같은 구간은 cust_num_int로 세분 정렬
-    parts.push(`order=created_at.desc.nullslast,cust_num_int.desc.nullslast`);
+    // 정렬: 고객번호 내림차순 우선 → 생성일 내림차순 (보조)
+    // cust_num_int (generated column)로 숫자 정확 정렬 — text 정렬의 "9999 > 999" 문제 해결
+    parts.push(`order=cust_num_int.desc.nullslast,created_at.desc.nullslast`);
     parts.push(`offset=${offset}`);
     parts.push(`limit=${limit}`);
     return "&" + parts.join("&");
@@ -242,7 +244,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
     if (lockSingleRef.current) return;
     const timer = setTimeout(() => { fetchPage(0, true); }, q ? 300 : 0);
     return () => clearTimeout(timer);
-  }, [q, vb, joinFrom, joinTo, pendingOpenCust]);
+  }, [q, vb, joinFrom, joinTo, includeNoNum, pendingOpenCust]);
 
   // 스크롤 핸들러: 하단 근접 시 다음 페이지 로드
   const onScroll = (e) => {
@@ -1014,6 +1016,12 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
           }} style={{padding:"4px 8px",fontSize:10,borderRadius:6,border:"1px solid "+T.border,background:"#fff",cursor:"pointer",fontFamily:"inherit",color:T.textSub}}>{p.label}</button>
         ))}
       </div>
+      {/* 고객번호 없는 고객 (매출 미발생) 포함 토글 */}
+      <button type="button" onClick={()=>{unlockSingleAndReload(); setIncludeNoNum(v=>!v);}}
+        title={includeNoNum ? "고객번호 없는 고객(매출 미발생) 포함 중 — 클릭해서 숨기기" : "고객번호 없는 고객(매출 미발생) 숨김 중 — 클릭해서 포함"}
+        style={{padding:"4px 10px",fontSize:10,fontWeight:700,borderRadius:6,border:"1px solid "+(includeNoNum?T.primary:T.border),background:includeNoNum?T.primaryLt:"#fff",color:includeNoNum?T.primary:T.textSub,cursor:"pointer",fontFamily:"inherit"}}>
+        {includeNoNum ? "☑ 번호없는 고객 포함" : "☐ 번호없는 고객 숨김"}
+      </button>
       <span style={{fontSize:T.fs.xxs,color:T.textMuted}}>{custs.length}명{hasMore?"+":""}</span>
       {searching && <span style={{fontSize:T.fs.xxs,color:T.orange}}>검색중...</span>}
     </div>
