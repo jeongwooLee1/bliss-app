@@ -241,32 +241,30 @@ function EventList({ data, setData, bizId }) {
       </div>
       {msg && <div style={{padding:'6px 10px', background:'#E8F5E9', color:'#2E7D32', borderRadius:6, fontSize:12, fontWeight:700, marginBottom:10}}>{msg}</div>}
 
-      {/* 편집/생성 폼 */}
-      {(creating || editing) && (
-        <div style={{border:`2px dashed ${T.primary}`, background:T.primaryLt, borderRadius:10, padding:14, marginBottom:12}}>
-          <div style={{fontSize:13, fontWeight:800, color:T.primaryDk, marginBottom:10}}>
-            {creating ? '💥 새 이벤트 생성' : '✏️ 이벤트 수정'}
+      {/* 편집/생성 폼 — 공통 렌더 (creating은 상단, editing은 해당 이벤트 카드 바로 아래에 렌더) */}
+      {(() => {
+        const EditFormInner = () => (
+          <div style={{border:`2px dashed ${T.primary}`, background:T.primaryLt, borderRadius:10, padding:14, marginBottom:12}}>
+            <div style={{fontSize:13, fontWeight:800, color:T.primaryDk, marginBottom:10}}>
+              {creating ? '💥 새 이벤트 생성' : '✏️ 이벤트 수정'}
+            </div>
+            <div style={{display:'grid', gridTemplateColumns:'2fr 1.2fr', gap:10, marginBottom:10}}>
+              <Field label="이벤트 이름" value={draft.name} onChange={v=>setDraft(p=>({...p,name:v}))}/>
+              <Field label="트리거" value={draft.trigger} onChange={v=>setDraft(p=>({...p,trigger:v}))} type="select" options={TRIGGER_OPTIONS}/>
+            </div>
+            <Field label="설명 (선택)" value={draft.desc} onChange={v=>setDraft(p=>({...p,desc:v}))}/>
+            <ConditionsSection data={data} draft={draft} setDraft={setDraft}/>
+            <RewardsSection data={data} draft={draft} setDraft={setDraft}/>
+            <div style={{marginTop:12, display:'flex', gap:8, justifyContent:'flex-end'}}>
+              <button onClick={cancelEdit} style={{padding:'6px 14px', fontSize:12, fontWeight:700, borderRadius:6, border:`1px solid ${T.border}`, background:T.bgCard, color:T.textSub, cursor:'pointer', fontFamily:'inherit'}}>취소</button>
+              <button onClick={saveEdit} disabled={saving} style={{padding:'6px 16px', fontSize:12, fontWeight:800, borderRadius:6, border:'none', background:saving?T.gray300:T.primary, color:'#fff', cursor:saving?'default':'pointer', fontFamily:'inherit'}}>{creating?'생성':'저장'}</button>
+            </div>
           </div>
-
-          {/* 기본 정보 */}
-          <div style={{display:'grid', gridTemplateColumns:'2fr 1.2fr', gap:10, marginBottom:10}}>
-            <Field label="이벤트 이름" value={draft.name} onChange={v=>setDraft(p=>({...p,name:v}))}/>
-            <Field label="트리거" value={draft.trigger} onChange={v=>setDraft(p=>({...p,trigger:v}))} type="select" options={TRIGGER_OPTIONS}/>
-          </div>
-          <Field label="설명 (선택)" value={draft.desc} onChange={v=>setDraft(p=>({...p,desc:v}))}/>
-
-          {/* 조건 빌더 */}
-          <ConditionsSection data={data} draft={draft} setDraft={setDraft}/>
-
-          {/* 보상 섹션 */}
-          <RewardsSection data={data} draft={draft} setDraft={setDraft}/>
-
-          <div style={{marginTop:12, display:'flex', gap:8, justifyContent:'flex-end'}}>
-            <button onClick={cancelEdit} style={{padding:'6px 14px', fontSize:12, fontWeight:700, borderRadius:6, border:`1px solid ${T.border}`, background:T.bgCard, color:T.textSub, cursor:'pointer', fontFamily:'inherit'}}>취소</button>
-            <button onClick={saveEdit} disabled={saving} style={{padding:'6px 16px', fontSize:12, fontWeight:800, borderRadius:6, border:'none', background:saving?T.gray300:T.primary, color:'#fff', cursor:saving?'default':'pointer', fontFamily:'inherit'}}>{creating?'생성':'저장'}</button>
-          </div>
-        </div>
-      )}
+        )
+        // 신규 생성만 상단에 렌더. 편집은 목록 안에서 렌더
+        if (creating) return <EditFormInner/>
+        return null
+      })()}
 
       {events.length === 0 && !creating && (
         <div style={{padding:'40px 20px', textAlign:'center', background:T.gray100, borderRadius:10, color:T.textMuted}}>
@@ -285,7 +283,27 @@ function EventList({ data, setData, bizId }) {
                 couponName: evt.couponName, qty: evt.qty, expiryMonths: evt.expiryMonths }] : [])
           const borderColor = evt.enabled ? T.primary : T.border
           const isEdit = editing === evt.id
-          if (isEdit) return null // 편집 중인 이벤트는 상단 폼에서 렌더
+          // 편집 중인 이벤트는 편집 폼으로 교체 (카드 자리 바로 이 자리에 렌더)
+          if (isEdit) {
+            return (
+              <div key={evt.id} style={{border:`2px dashed ${T.primary}`, background:T.primaryLt, borderRadius:10, padding:14}}>
+                <div style={{fontSize:13, fontWeight:800, color:T.primaryDk, marginBottom:10}}>
+                  ✏️ 이벤트 수정 — <span style={{color:T.textSub, fontWeight:600}}>{evt.name}</span>
+                </div>
+                <div style={{display:'grid', gridTemplateColumns:'2fr 1.2fr', gap:10, marginBottom:10}}>
+                  <Field label="이벤트 이름" value={draft.name} onChange={v=>setDraft(p=>({...p,name:v}))}/>
+                  <Field label="트리거" value={draft.trigger} onChange={v=>setDraft(p=>({...p,trigger:v}))} type="select" options={TRIGGER_OPTIONS}/>
+                </div>
+                <Field label="설명 (선택)" value={draft.desc} onChange={v=>setDraft(p=>({...p,desc:v}))}/>
+                <ConditionsSection data={data} draft={draft} setDraft={setDraft}/>
+                <RewardsSection data={data} draft={draft} setDraft={setDraft}/>
+                <div style={{marginTop:12, display:'flex', gap:8, justifyContent:'flex-end'}}>
+                  <button onClick={cancelEdit} style={{padding:'6px 14px', fontSize:12, fontWeight:700, borderRadius:6, border:`1px solid ${T.border}`, background:T.bgCard, color:T.textSub, cursor:'pointer', fontFamily:'inherit'}}>취소</button>
+                  <button onClick={saveEdit} disabled={saving} style={{padding:'6px 16px', fontSize:12, fontWeight:800, borderRadius:6, border:'none', background:saving?T.gray300:T.primary, color:'#fff', cursor:saving?'default':'pointer', fontFamily:'inherit'}}>저장</button>
+                </div>
+              </div>
+            )
+          }
           return (
             <div key={evt.id} style={{border:`1.5px solid ${borderColor}`, background:evt.enabled?'#FFF8F5':'#fff', borderRadius:10, padding:14}}>
               <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:6, flexWrap:'wrap'}}>
@@ -404,14 +422,14 @@ function ConditionsSection({ data, draft, setDraft }) {
 
       {/* 결제 수단 조건 */}
       <Collapsible title="💳 결제 수단" open={open.pay} setOpen={v=>setOpen(o=>({...o,pay:v}))}>
-        <TriFlag label="다담권 사용 (부분+전액)" value={c.paymentUsesPrepaid} onChange={v=>setC({paymentUsesPrepaid:v})}/>
-        <TriFlag label="다담권 전액 결제 (부분 제외)" value={c.paymentFullPrepaid} onChange={v=>setC({paymentFullPrepaid:v})}/>
+        <TriFlag label="다담권 일부라도 차감" value={c.paymentUsesPrepaid} onChange={v=>setC({paymentUsesPrepaid:v})}/>
+        <TriFlag label="다담권으로 전액 결제" value={c.paymentFullPrepaid} onChange={v=>setC({paymentFullPrepaid:v})}/>
         <TriFlag label="포인트 사용" value={c.paymentUsesPoint} onChange={v=>setC({paymentUsesPoint:v})}/>
         <TriFlag label="쿠폰 할인 적용" value={c.paymentUsesCoupon} onChange={v=>setC({paymentUsesCoupon:v})}/>
         <div style={{fontSize:10,color:T.textMuted,marginTop:6,lineHeight:1.5}}>
-          • <b>부분+전액</b>: 다담권을 조금이라도 차감했으면 해당<br/>
-          • <b>전액 결제</b>: 다담권만으로 결제 완료(실결제금액 0원) — 부분 결제는 해당 X<br/>
-          예: "다담권으로 연간회원권 구매 시 3만원 할인" → 트리거 "연간회원권 구매" + "다담권 전액 결제: 보유"
+          • <b>다담권 일부라도 차감</b>: 다담권을 조금이라도 쓰면 해당 (부분·전액 모두)<br/>
+          • <b>다담권으로 전액 결제</b>: 카드/현금 0원이어야 (다담권만으로 완결)<br/>
+          • 각 버튼 <b>다시 클릭하면 해제</b> (→ 무관)
         </div>
       </Collapsible>
     </div>
@@ -560,7 +578,9 @@ function TriFlag({ label, value, onChange }) {
     <div style={{display:'flex', alignItems:'center', gap:6, fontSize:11, marginBottom:4}}>
       <span style={{flex:1, color:T.textSub}}>{label}</span>
       {[['무관',null],['보유',true],['미보유',false]].map(([l,v])=>(
-        <button key={l} onClick={()=>onChange(v)}
+        <button key={l}
+          // 같은 버튼 재클릭 시 null(무관)으로 토글 — 해제 UX
+          onClick={()=>onChange(value===v ? null : v)}
           style={{padding:'3px 10px', fontSize:10, fontWeight:700, borderRadius:10, border:`1px solid ${value===v?T.primary:T.border}`, background:value===v?T.primaryLt:'#fff', color:value===v?T.primary:T.textSub, cursor:'pointer', fontFamily:'inherit'}}>
           {l}
         </button>
