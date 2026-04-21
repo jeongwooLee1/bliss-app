@@ -367,17 +367,6 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   const [custNum, setCustNum] = useState("");
   // 쉐어 고객 로드 — 고객 정보에 🤝 배지 표시
   const [shareCusts, setShareCusts] = useState([]);
-  // 유효 패키지 최초 구매지점 이니셜 (id_imgr471swt-3 수정요청)
-  const [custPkgBranchInitial, setCustPkgBranchInitial] = useState("");
-  React.useEffect(() => {
-    if (!f.custId || f.custId.startsWith("new_")) { setCustPkgBranchInitial(""); return; }
-    (async () => {
-      try {
-        const pkgs = await sb.get("customer_packages", `&customer_id=eq.${f.custId}&select=service_name,total_count,used_count,note,purchased_at`);
-        setCustPkgBranchInitial(getCustPkgBranchInitial(pkgs||[], data?.branches||[]));
-      } catch { setCustPkgBranchInitial(""); }
-    })();
-  }, [f.custId, data?.branches]);
   React.useEffect(() => {
     if (!f.custId || f.custId.startsWith("new_")) { setShareCusts([]); return; }
     (async () => {
@@ -964,8 +953,6 @@ ${naverText}
                         </>
                       ) : (
                         <>
-                          {/* 최초 구매지점 이니셜 (id_imgr471swt-3 수정요청) */}
-                          {custPkgBranchInitial && <span title="유효 패키지 최초 구매지점" style={{fontSize:10,padding:"2px 6px",borderRadius:5,background:"#6366F1",color:"#fff",fontWeight:900,whiteSpace:"nowrap"}}>{custPkgBranchInitial}</span>}
                           <CopySpan text={f.custName} style={{fontSize:14,fontWeight:700,color:"#1a1a2e",whiteSpace:"nowrap"}}>{f.custName}</CopySpan>
                           {f.custName2 && <span style={{fontSize:12,color:"#888",fontWeight:500,whiteSpace:"nowrap"}}>({f.custName2})</span>}
                           <span style={{fontSize:11,color:"#888"}}>·</span>

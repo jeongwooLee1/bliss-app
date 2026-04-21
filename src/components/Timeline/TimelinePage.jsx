@@ -814,30 +814,24 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
 
   // ── 고객 보유 패키지 로드 (현재 날짜 예약 기준) ──
   const [custPkgMap, setCustPkgMap] = useState({});  // {custId: [{svc_name, remain}]}
-  // 고객별 최초 구매지점 이니셜 (id_imgr471swt-3 수정요청)
-  const [custBranchInitialMap, setCustBranchInitialMap] = useState({}); // {custId: 'N'}
   useEffect(() => {
     const custIds = [...new Set((data?.reservations||[]).filter(r => r.date === selDate && r.custId && !r.isSchedule).map(r => r.custId))];
-    if (custIds.length === 0) { setCustPkgMap({}); setCustBranchInitialMap({}); return; }
+    if (custIds.length === 0) { setCustPkgMap({}); return; }
     const batchSize = 30;
     const batches = [];
     for (let i = 0; i < custIds.length; i += batchSize) batches.push(custIds.slice(i, i + batchSize));
     Promise.all(batches.map(batch =>
-      fetch(`${SB_URL}/rest/v1/customer_packages?customer_id=in.(${batch.join(",")})&select=customer_id,service_name,total_count,used_count,note,purchased_at`, {
+      fetch(`${SB_URL}/rest/v1/customer_packages?customer_id=in.(${batch.join(",")})&select=customer_id,service_name,total_count,used_count,note`, {
         headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
       }).then(r => r.json()).catch(() => [])
     )).then(results => {
       const map = {};
-      const rawByCust = {};
       const today = new Date().toISOString().slice(0,10);
       results.flat().forEach(p => {
-        if (!Array.isArray(rawByCust[p.customer_id])) rawByCust[p.customer_id] = [];
-        rawByCust[p.customer_id].push(p);
         if (!Array.isArray(map[p.customer_id])) map[p.customer_id] = [];
         const sn = p.service_name||"";
-        // 유효기간 체크 (note "유효:YYYY-MM-DD")
         const expMatch = (p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/);
-        if (expMatch && expMatch[1] < today) return; // 만료된 것 제외
+        if (expMatch && expMatch[1] < today) return;
         const isDadam = sn.includes("다담") || sn.includes("선불");
         if (isDadam) {
           const m = (p.note||"").match(/잔액:([0-9,]+)/);
@@ -851,16 +845,9 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           });
         }
       });
-      // 고객별 최초 구매지점 이니셜 계산
-      const initMap = {};
-      Object.entries(rawByCust).forEach(([cid, pkgs]) => {
-        const init = getCustPkgBranchInitial(pkgs, data?.branches);
-        if (init) initMap[cid] = init;
-      });
       setCustPkgMap(map);
-      setCustBranchInitialMap(initMap);
     });
-  }, [selDate, data?.reservations?.length, data?.branches]);
+  }, [selDate, data?.reservations?.length]);
 
   const branchesToShow = allBranchList.filter(b => viewBids.includes(b.id) && (isMaster || accessibleBids.includes(b.id)));
 
@@ -3267,8 +3254,6 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             {effectiveNaverColShow["태그"] !== false && block.selectedTags?.length>3 && <span style={{fontSize:Math.max(6,blockFs-2),color:T.bgCard,background:T.gray500,borderRadius:T.radius.sm,padding:"1px 2px",flexShrink:0}}>+{block.selectedTags.length-3}</span>}
                             {/* 이름 */}
                             <span style={{fontWeight:T.fw.bold,color:isNaverCancelled?T.gray500:T.text,textDecoration:isNaverCancelled?"line-through":"none",flexShrink:1,minWidth:0}}>
-                              {/* 최초 구매지점 이니셜 (id_imgr471swt-3 수정요청) */}
-                              {block.custId && custBranchInitialMap[block.custId] && <span title="유효 패키지 최초 구매지점" style={{display:"inline-block",fontSize:Math.max(6,blockFs-1),padding:"0 3px",borderRadius:3,background:"#6366F1",color:"#fff",fontWeight:T.fw.black,marginRight:2,lineHeight:1.3,verticalAlign:"middle"}}>{custBranchInitialMap[block.custId]}</span>}
                               {(() => {
                                 const g = block.custGender || (block.custId && (data?.customers||[]).find(c=>c.id===block.custId)?.gender) || "";
                                 return g ? <span style={{color:g==="M"?T.male:T.female}}>{g==="M"?"남":"여"}</span> : null;

@@ -1048,11 +1048,6 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                   <td style={{fontSize:T.fs.xs,color:T.text,fontFamily:"monospace",fontWeight:800}}>{c.custNum||"-"}</td>
                   <td style={{fontSize:T.fs.xxs,color:T.textSub,whiteSpace:"nowrap"}}>{c.joinDate||(c.createdAt||"").slice(0,10)||"-"}</td>
                   <td style={{fontWeight:T.fw.bold}}>
-                    {/* 최초 구매지점 이니셜 (id_imgr471swt-3 수정요청) */}
-                    {(() => {
-                      const init = getCustPkgBranchInitial(pkgByCust[c.id]||[], data?.branches||[]);
-                      return init ? <span title="유효 패키지 최초 구매지점" style={{fontSize:10,padding:"1px 5px",borderRadius:4,background:"#6366F1",color:"#fff",fontWeight:900,marginRight:4}}>{init}</span> : null;
-                    })()}
                     {c.gender && <span style={{...sx.genderBadge(c.gender),marginRight:4}}>{c.gender==="F"?"여":"남"}</span>}
                     {c.name}
                     {c.name2 && <span style={{color:T.textSub,fontWeight:T.fw.normal,marginLeft:4,fontSize:T.fs.xxs}}>({c.name2})</span>}
