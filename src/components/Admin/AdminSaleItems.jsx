@@ -530,9 +530,17 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
 }
 
 // 회원가 자격 조건 카드 — businesses.settings.member_price_rules
+// ⚠️ settings는 JSON 문자열이라 {...settings} 같은 spread를 직접 하면 문자 배열로 파괴됨 (2026-04-21 버그)
 function MemberRulesCard({ data, setData }) {
   const biz = (data?.businesses||[])[0];
-  const rules = biz?.settings?.member_price_rules || { annualEnabled: true, prepaidMin: 500000 };
+  // settings 파싱 (문자열이면 parse, 객체면 그대로)
+  const parsedSettings = (() => {
+    try {
+      const raw = biz?.settings;
+      return typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
+    } catch { return {}; }
+  })();
+  const rules = parsedSettings.member_price_rules || { annualEnabled: true, prepaidMin: 300000 };
   const [annualEnabled, setAnnualEnabled] = useState(!!rules.annualEnabled);
   const [prepaidMin, setPrepaidMin] = useState(Number(rules.prepaidMin) || 0);
   const [dirty, setDirty] = useState(false);
@@ -540,10 +548,13 @@ function MemberRulesCard({ data, setData }) {
   const save = async () => {
     if (!biz?.id) return;
     setSaving(true);
-    const nextSettings = { ...(biz.settings||{}), member_price_rules: { annualEnabled, prepaidMin: Number(prepaidMin)||0 } };
+    // 파싱된 객체에서 시작 (문자열 파괴 방지)
+    const nextSettings = { ...parsedSettings, member_price_rules: { annualEnabled, prepaidMin: Number(prepaidMin)||0 } };
     try {
-      await sb.update("businesses", biz.id, { settings: nextSettings });
-      if (setData) setData(p => p ? { ...p, businesses: (p.businesses||[]).map(b => b.id === biz.id ? { ...b, settings: nextSettings } : b) } : p);
+      // DB는 JSON 문자열로 저장
+      await sb.update("businesses", biz.id, { settings: JSON.stringify(nextSettings) });
+      // 로컬 state도 문자열로 동기화 (앱 전체 일관성)
+      if (setData) setData(p => p ? { ...p, businesses: (p.businesses||[]).map(b => b.id === biz.id ? { ...b, settings: JSON.stringify(nextSettings) } : b) } : p);
       setDirty(false);
     } catch(e) { console.error("member_price_rules save failed", e); alert("저장 실패"); }
     setSaving(false);

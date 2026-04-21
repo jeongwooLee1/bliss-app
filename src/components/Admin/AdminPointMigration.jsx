@@ -58,8 +58,9 @@ function EventsSection({ data, setData, bizId }) {
           newcust_10pct: form,
         }
       }
-      await sb.update('businesses', bizId, { settings: next })
-      setData(prev => ({...prev, businesses: (prev.businesses||[]).map(b=>b.id===bizId?{...b, settings: next}:b)}))
+      const nextStr = JSON.stringify(next)
+      await sb.update('businesses', bizId, { settings: nextStr })
+      setData(prev => ({...prev, businesses: (prev.businesses||[]).map(b=>b.id===bizId?{...b, settings: nextStr}:b)}))
       setMsg('✓ 저장됨')
       setTimeout(()=>setMsg(''), 2000)
     } catch (e) { setMsg('저장 실패: '+e.message) }

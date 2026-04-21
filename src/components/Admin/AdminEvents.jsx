@@ -108,8 +108,9 @@ function EventList({ data, setData, bizId }) {
     try {
       const cur = typeof biz?.settings==='string' ? JSON.parse(biz.settings) : (biz?.settings||{})
       const next = { ...cur, events: nextEvents }
-      await sb.update('businesses', bizId, { settings: next })
-      setData(prev => ({...prev, businesses: (prev.businesses||[]).map(b=>b.id===bizId?{...b, settings:next}:b)}))
+      const nextStr = JSON.stringify(next)
+      await sb.update('businesses', bizId, { settings: nextStr })
+      setData(prev => ({...prev, businesses: (prev.businesses||[]).map(b=>b.id===bizId?{...b, settings:nextStr}:b)}))
       setMsg('✓ 저장됨'); setTimeout(()=>setMsg(''), 2000)
     } catch(e) { setMsg('저장 실패: '+e.message) }
     finally { setSaving(false) }
@@ -196,8 +197,9 @@ function EventList({ data, setData, bizId }) {
     try {
       const cur = typeof biz?.settings==='string' ? JSON.parse(biz.settings) : (biz?.settings||{})
       const next = { ...cur, events_master_enabled: !masterEnabled }
-      await sb.update('businesses', bizId, { settings: next })
-      setData(prev => ({...prev, businesses: (prev.businesses||[]).map(b=>b.id===bizId?{...b, settings:next}:b)}))
+      const nextStr = JSON.stringify(next)
+      await sb.update('businesses', bizId, { settings: nextStr })
+      setData(prev => ({...prev, businesses: (prev.businesses||[]).map(b=>b.id===bizId?{...b, settings:nextStr}:b)}))
       setMsg(next.events_master_enabled ? '✓ 이벤트 엔진 전체 ON' : '✓ 이벤트 엔진 전체 OFF — 매출등록 반영 중단됨')
       setTimeout(()=>setMsg(''), 3000)
     } catch(e) { setMsg('저장 실패: '+e.message) }

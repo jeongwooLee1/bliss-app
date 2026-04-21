@@ -524,8 +524,16 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     if (!exp) return true; // 유효기간 미설정 = 사용 전 = 유효
     return exp >= new Date().toISOString().slice(0,10);
   };
-  // 회원가 자격 규칙 — businesses.settings.member_price_rules (기본: 연간회원권 ON, 다담권 50만원 이상)
-  const _memberRules = (data?.businesses||[])[0]?.settings?.member_price_rules || { annualEnabled: true, prepaidMin: 500000 };
+  // 회원가 자격 규칙 — businesses.settings.member_price_rules (settings는 JSON 문자열이므로 파싱 필요)
+  const _memberRules = React.useMemo(() => {
+    try {
+      const raw = (data?.businesses||[])[0]?.settings;
+      const s = typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
+      return s.member_price_rules || { annualEnabled: true, prepaidMin: 300000 };
+    } catch {
+      return { annualEnabled: true, prepaidMin: 300000 };
+    }
+  }, [data?.businesses]);
   const isMemberPrice = activePkgs.some(p => {
     if (!_pkgStillValid(p)) return false;
     const t = _pkgType(p);

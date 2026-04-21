@@ -25,8 +25,9 @@ export default function AdminExtPlatforms({ data, setData, bizId }) {
       const biz = (data?.businesses||[]).find(b=>b.id===bizId) || (data?.businesses||[])[0]
       const cur = typeof biz?.settings === 'string' ? JSON.parse(biz.settings) : biz?.settings || {}
       const newSettings = { ...cur, external_platforms: next }
-      await sb.update("businesses", bizId, { settings: newSettings })
-      setData(prev => ({...prev, businesses: (prev.businesses||[]).map(b=>b.id===bizId?{...b, settings:newSettings}:b)}))
+      const newSettingsStr = JSON.stringify(newSettings)
+      await sb.update("businesses", bizId, { settings: newSettingsStr })
+      setData(prev => ({...prev, businesses: (prev.businesses||[]).map(b=>b.id===bizId?{...b, settings:newSettingsStr}:b)}))
       setPlatforms(next)
       setMsg("✓ 저장됨")
       setTimeout(()=>setMsg(""), 2000)
