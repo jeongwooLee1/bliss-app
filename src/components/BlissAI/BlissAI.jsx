@@ -15,6 +15,9 @@ import { T } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY } from '../../lib/sb'
 import { buildFullPrompt, searchFAQ } from './contextBuilder'
 import { classifyIntentLLM, queryCustomer, querySales, queryReservations, formatIntentResult } from './dataQuery'
+import { buildWriteIntentPrompt, ACTION_SCHEMAS } from './actionSchemas'
+import { validateAction, buildPreview, executeAction } from './actionRunner'
+import ActionConfirmCard from './ActionConfirmCard'
 
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
 const SESSIONS_KEY = 'bliss_claude_sessions_v1'
@@ -270,11 +273,31 @@ export default function BlissAI({ data, currentUser, userBranches, isMaster, biz
     setSending(true)
 
     try {
-      // Intent 분류 (LLM 기반)
+      // 1단계: 쓰기/세팅 요청인지 먼저 판별 (LLM)
+      const writeCheck = await tryParseWriteIntent(q, data, callGemini)
+      if (writeCheck?.intent === 'write' && writeCheck.action) {
+        // 쓰기 요청 — confirm 카드 메시지로 추가
+        const validateErr = validateAction(writeCheck.action, writeCheck.changes)
+        const preview = buildPreview(writeCheck, data)
+        if (validateErr) {
+          preview.error = validateErr
+        }
+        appendMessage({
+          role: 'assistant',
+          text: '요청을 확인해주세요:',
+          action: { ...writeCheck, preview, schema: ACTION_SCHEMAS[writeCheck.action] },
+          at: Date.now(),
+        })
+        return
+      }
+      if (writeCheck?.intent === 'ambiguous') {
+        appendMessage({ role: 'assistant', text: writeCheck.need_info || '요청이 모호합니다. 조금 더 자세히 말씀해주세요.', at: Date.now() })
+        return
+      }
+
+      // 2단계: 조회/FAQ 플로우
       const intent = await classifyIntentLLM(q, callGemini)
       let extraContext = ''
-
-      // Tier 3: 필요 시 실시간 조회
       if (intent.type === 'customer') {
         const res = await queryCustomer(intent.params.searchTerm, { role, userBranches, bizId })
         extraContext = formatIntentResult(intent, res, data?.branches)
@@ -286,10 +309,8 @@ export default function BlissAI({ data, currentUser, userBranches, isMaster, biz
         extraContext = formatIntentResult(intent, res, data?.branches)
       }
 
-      // 프롬프트 조립 + 히스토리 포함 호출
       const prompt = buildFullPrompt({ question: q, data, faqItems, role, extraContext })
       const answer = await callGemini(prompt, { useHistory: true })
-
       appendMessage({ role: 'assistant', text: answer, intent: intent.type, at: Date.now() })
       logQuery(q, intent, answer)
     } catch (e) {
@@ -298,6 +319,63 @@ export default function BlissAI({ data, currentUser, userBranches, isMaster, biz
     } finally {
       setSending(false)
     }
+  }
+
+  // ── 쓰기 intent 판별: LLM으로 action JSON 추출 시도 ─────────────────────
+  const tryParseWriteIntent = async (question, data, callLLM) => {
+    try {
+      // 간략한 state snapshot 주입 (LLM이 target 매칭에 참고)
+      const snap = [
+        `지점: ${(data?.branches||[]).map(b=>b.short||b.name).filter(Boolean).join(', ')}`,
+        `카테고리: ${(data?.categories||data?.serviceCategories||[]).map(c=>c.name).filter(Boolean).slice(0,20).join(', ')}`,
+      ].join('\n')
+      const prompt = buildWriteIntentPrompt(question, snap)
+      const raw = await callLLM(prompt, { useHistory: false })
+      const m = raw.match(/\{[\s\S]*\}/)
+      if (!m) return null
+      const obj = JSON.parse(m[0])
+      return obj
+    } catch (e) {
+      console.warn('[ClaudeAI] write intent parse failed:', e?.message)
+      return null
+    }
+  }
+
+  // ── 액션 실행 핸들러 ────────────────────────────────────────────────────
+  const runAction = async (msgIdx, actionPayload) => {
+    // 메시지 상태 업데이트: running
+    updateActionStatus(msgIdx, 'running')
+    try {
+      const res = await executeAction(actionPayload, data, { bizId, currentUser })
+      updateActionStatus(msgIdx, 'done')
+      appendMessage({
+        role: 'assistant',
+        text: `✅ "${actionPayload.preview?.label || actionPayload.action}" 실행 완료.${res.result ? `\n${typeof res.result === 'object' ? JSON.stringify(res.result).slice(0,200) : res.result}` : ''}`,
+        at: Date.now(),
+      })
+    } catch (e) {
+      updateActionStatus(msgIdx, 'error', e.message)
+      appendMessage({
+        role: 'assistant',
+        text: '❌ 실행 실패: ' + (e?.message || e),
+        error: true,
+        at: Date.now(),
+      })
+    }
+  }
+  const cancelAction = (msgIdx) => {
+    updateActionStatus(msgIdx, 'cancelled')
+    appendMessage({ role: 'assistant', text: '취소됐어요. 다시 말씀해주세요.', at: Date.now() })
+  }
+  const updateActionStatus = (msgIdx, status, errMsg) => {
+    setSessions(prev => prev.map(s => {
+      if (s.id !== activeId) return s
+      const msgs = [...s.messages]
+      if (msgs[msgIdx]?.action) {
+        msgs[msgIdx] = { ...msgs[msgIdx], action: { ...msgs[msgIdx].action, status, errMsg } }
+      }
+      return { ...s, messages: msgs, updatedAt: Date.now() }
+    }))
   }
 
   // ── 렌더 ──────────────────────────────────────────────────────────────────
@@ -391,7 +469,10 @@ export default function BlissAI({ data, currentUser, userBranches, isMaster, biz
         {/* 메시지 리스트 */}
         <div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: '16px 4px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           {messages.map((m, i) => (
-            <ChatBubble key={i} msg={m} onSuggestion={handleSend} />
+            <ChatBubble key={i} msg={m} onSuggestion={handleSend}
+              onConfirmAction={() => runAction(i, m.action)}
+              onCancelAction={() => cancelAction(i)}
+            />
           ))}
           {sending && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: T.textMuted, fontSize: 13, paddingLeft: 12 }}>
@@ -452,7 +533,7 @@ export default function BlissAI({ data, currentUser, userBranches, isMaster, biz
 }
 
 // ─── 메시지 버블 ──────────────────────────────────────────────────────────────
-function ChatBubble({ msg, onSuggestion }) {
+function ChatBubble({ msg, onSuggestion, onConfirmAction, onCancelAction }) {
   const isUser = msg.role === 'user'
   return (
     <div style={{ display: 'flex', gap: 8, flexDirection: isUser ? 'row-reverse' : 'row' }}>
@@ -479,6 +560,16 @@ function ChatBubble({ msg, onSuggestion }) {
         }}>
           {msg.text}
         </div>
+        {/* 액션 confirm 카드 */}
+        {msg.action && (
+          <ActionConfirmCard
+            preview={msg.action.preview}
+            schema={msg.action.schema}
+            status={msg.action.status}
+            onConfirm={onConfirmAction}
+            onCancel={onCancelAction}
+          />
+        )}
         {msg.suggestions && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 4 }}>
             <div style={{ fontSize: 10, color: T.textMuted, fontWeight: 600 }}>💡 제안</div>
