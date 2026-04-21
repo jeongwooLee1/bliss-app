@@ -578,6 +578,34 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     return init;
   });
 
+  // 회원가 자격 비동기 로드 반영 — isMemberPrice가 나중에 true로 바뀌면
+  // 초기 정상가로 세팅된 체크된 시술들을 회원가로 재계산
+  // 사용자가 수동으로 금액 수정한 경우는 건드리지 않음 (amount가 regular/member 중 하나와 정확히 일치할 때만 교체)
+  const _prevMemberRef = React.useRef(isMemberPrice);
+  useEffect(() => {
+    if (_prevMemberRef.current === isMemberPrice) return;
+    _prevMemberRef.current = isMemberPrice;
+    setItems(prev => {
+      const next = { ...prev };
+      let changed = false;
+      SVC_LIST.forEach(svc => {
+        const cur = next[svc.id];
+        if (!cur?.checked) return;
+        const newAmt = _defPrice(svc, gender);
+        if (newAmt === cur.amount) return;
+        // 현 amount가 '정상가' 또는 '회원가' 중 하나와 일치할 때만 교체 (수동 수정은 보존)
+        const regF = svc.priceF || 0, regM = svc.priceM || 0;
+        const memF = svc.memberPriceF || 0, memM = svc.memberPriceM || 0;
+        const known = [regF, regM, memF, memM].filter(Boolean);
+        if (known.includes(cur.amount)) {
+          next[svc.id] = { ...cur, amount: newAmt };
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [isMemberPrice, gender]);
+
   // 편집 모드: existingDetails에서 items 프리필 (시술/제품/추가/할인)
   const _prefilledFromDetails = useRef(false);
   useEffect(() => {
