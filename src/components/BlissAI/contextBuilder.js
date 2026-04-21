@@ -150,25 +150,35 @@ const BASE_LABEL = {
 };
 
 function formatReward(r, catName, svcName) {
-  const type = REWARD_LABEL[r.type] || r.type;
   const base = BASE_LABEL[r.base] || r.base || '';
-  const rate = r.rate != null ? `${r.rate}%` : '';
-  const amt = r.amount != null ? `${Number(r.amount).toLocaleString()}원` : '';
+  // 필드 호환: rate(%)과 value(원/고정포인트)를 유연하게 해석
+  const rateNum = r.rate != null ? r.rate : null;
+  const amtNum = r.amount != null ? r.amount : (r.value != null ? r.value : null);
+  const rate = rateNum != null ? `${rateNum}%` : '';
+  const amt = amtNum != null ? `${Number(amtNum).toLocaleString()}원` : '';
+  const pt = amtNum != null ? `${Number(amtNum).toLocaleString()}P` : '';
   const expiry = r.expiryMonths ? ` (${r.expiryMonths}개월 만료)` : '';
   const catIds = r.baseCategoryIds || [];
   const svcIds = r.baseServiceIds || [];
   const catPart = catIds.length ? ` · 대상 카테고리: ${catIds.map(catName).filter(Boolean).join(',')}` : '';
   const svcPart = svcIds.length ? ` · 대상 시술: ${svcIds.map(svcName).filter(Boolean).join(',')}` : '';
   const couponName = r.type === 'coupon_issue' && r.couponName ? ` "${r.couponName}"` : '';
-  const qty = r.type === 'coupon_issue' && r.qty ? ` ×${r.qty}장` : '';
+  const qty = r.type === 'coupon_issue' ? ` ×${r.qty || 1}장` : '';
   let main;
-  if (r.type === 'point_earn') main = `${base} × ${rate} 적립${expiry}`;
+  if (r.type === 'point_earn') {
+    // base:"fixed"면 value가 고정 포인트 금액, 그 외엔 base × rate% 비율 적립
+    if (r.base === 'fixed') main = `${pt} 적립${expiry}`;
+    else main = `${base} × ${rate} 적립${expiry}`;
+  }
   else if (r.type === 'discount_pct') main = `${base} × ${rate} 할인`;
   else if (r.type === 'discount_flat') main = `${amt} 할인`;
-  else if (r.type === 'coupon_issue') main = `쿠폰${couponName}${qty} 발행`;
-  else if (r.type === 'prepaid_bonus') main = `다담권 ${amt || rate} 추가 충전`;
+  else if (r.type === 'coupon_issue') main = `쿠폰${couponName}${qty} 발행${expiry}`;
+  else if (r.type === 'prepaid_bonus') {
+    if (r.base === 'fixed') main = `다담권 ${amt} 추가 충전`;
+    else main = `다담권 ${base} × ${rate} 추가 충전`;
+  }
   else if (r.type === 'free_service') main = `무료 시술`;
-  else main = `${type} ${rate || amt}`;
+  else main = `${REWARD_LABEL[r.type] || r.type} ${rate || amt}`;
   return `${main}${catPart}${svcPart}`;
 }
 
