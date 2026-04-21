@@ -956,27 +956,40 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           base: legacy.base||'svc', rate: legacy.rate||10, expiryMonths: legacy.expiryMonths||3 }];
       }
       const isNew = !cust.id || !custHasSale;
-      // 기존 다담권(선불권) 보유 여부 — customer_packages에서 잔액 > 0인 선불권
+      // 유효기간 파싱: customer_packages.note의 "유효:YYYY-MM-DD" 패턴
+      // (expires_at 컬럼은 존재하지 않으므로 note에서 추출 필요)
+      const todayStr = new Date().toISOString().slice(0,10);
+      const _pkgExpired = (p) => {
+        const m = (p.note||'').match(/유효:\s*(\d{4}-\d{2}-\d{2})/);
+        if (!m) return false; // 유효기간 미설정 = 아직 유효 (미사용 원칙)
+        return m[1] < todayStr;
+      };
+      // 기존 다담권(선불권) 보유 여부 — 잔액 > 0 + 미만료
       const hasExistingPrepaid = (custPkgs||[]).some(p => {
         const n = (p.service_name||'').toLowerCase();
         const isPrep = n.includes('다담');
-        const remain = (p.total_count||0) - (p.used_count||0);
-        return isPrep && remain > 0;
+        if (!isPrep) return false;
+        if (_pkgExpired(p)) return false;
+        // 다담권: note "잔액:N" 우선, fallback 은 total-used
+        const balM = (p.note||'').match(/잔액:([0-9,]+)/);
+        const bal = balM ? Number(balM[1].replace(/,/g,'')) : ((p.total_count||0) - (p.used_count||0));
+        return bal > 0;
       });
-      // 기존 패키지 보유 여부 — customer_packages에서 잔여 > 0인 PKG
+      // 기존 패키지 보유 여부 — 잔여 > 0 + 미만료
       const hasExistingPkg = (custPkgs||[]).some(p => {
         const n = (p.service_name||'').toLowerCase();
         const isPkg = n.includes('pkg') || n.includes('패키지');
+        if (!isPkg) return false;
+        if (_pkgExpired(p)) return false;
         const remain = (p.total_count||0) - (p.used_count||0);
-        return isPkg && remain > 0;
+        return remain > 0;
       });
-      // 기존 연간회원권 보유 여부 — 유효기간 내 + 이름에 연간/회원권/할인권
-      const todayStr = new Date().toISOString().slice(0,10);
+      // 기존 연간회원권 보유 여부 — 미만료 + 이름에 연간/회원권/할인권
       const hasExistingAnnual = (custPkgs||[]).some(p => {
         const n = (p.service_name||'').toLowerCase();
         const isAnn = n.includes('연간') || n.includes('회원권') || n.includes('할인권');
         if (!isAnn) return false;
-        if (p.expires_at && String(p.expires_at).slice(0,10) < todayStr) return false;
+        if (_pkgExpired(p)) return false;
         return true;
       });
       const prepaidPurchaseAmount = newPrepaidPurchases.reduce((sum, s) => sum + (items[s.id]?.amount||0), 0);
