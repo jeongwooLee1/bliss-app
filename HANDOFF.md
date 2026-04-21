@@ -1,10 +1,10 @@
 # HANDOFF
 
 ## 현재 버전
-- **v3.6.12** 배포 중 (라이브: https://blissme.ai/version.txt)
+- **v3.6.13** 배포 중 (라이브: https://blissme.ai/version.txt)
 
 ## 진행 중 작업
-없음 — 블리스 AI 사이드바 노출/DB 조회 버그 수정/리네임 완료 + FAQ 답변 56건 DB 업데이트 + 서버 [:20] 제한 해제.
+없음 — 타임라인 직원 순서 고정 + 공지 배너 1시간/60vh + 블리스AI 이벤트 컨텍스트 완료. 민정 요청 id_rehjfjxysq done 처리.
 
 ## 다음 세션 진입 시
 1. `/pull` 로 main 최신 확인
