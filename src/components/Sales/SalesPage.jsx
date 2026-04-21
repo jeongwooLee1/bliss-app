@@ -163,8 +163,8 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
             custGender: r.cust_gender, custNum: r.cust_num, staffId: r.staff_id, staffName: r.staff_name,
             date: r.date, serviceId: r.service_id, serviceName: r.service_name,
             productId: r.product_id, productName: r.product_name,
-            svcCash: r.svc_cash||0, svcTransfer: r.svc_transfer||0, svcCard: r.svc_card||0, svcPoint: r.svc_point||0,
-            prodCash: r.prod_cash||0, prodTransfer: r.prod_transfer||0, prodCard: r.prod_card||0, prodPoint: r.prod_point||0,
+            svcCash: r.svc_cash||0, svcTransfer: r.svc_transfer||0, svcCard: r.svc_card||0, svcPoint: r.svc_point||0, svcComped: r.svc_comped||0,
+            prodCash: r.prod_cash||0, prodTransfer: r.prod_transfer||0, prodCard: r.prod_card||0, prodPoint: r.prod_point||0, prodComped: r.prod_comped||0,
             gift: r.gift||0, orderNum: r.order_num, memo: r.memo,
             externalPrepaid: r.external_prepaid||0, externalPlatform: r.external_platform,
             reservationId: r.reservation_id, createdAt: r.created_at,
@@ -576,6 +576,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
                       <PaySummary label="카드" val={(s.svcCard||0)+(s.prodCard||0)} color={T.primary}/>
                       <PaySummary label="입금" val={(s.svcTransfer||0)+(s.prodTransfer||0)} color={T.info}/>
                       <PaySummary label="포인트" val={(s.svcPoint||0)+(s.prodPoint||0)} color={T.orange}/>
+                      {((s.svcComped||0)+(s.prodComped||0))>0 && <PaySummary label="🎁 체험단" val={(s.svcComped||0)+(s.prodComped||0)} color="#E65100"/>}
                       {(s.externalPrepaid||0)>0 && <PaySummary label={`${s.externalPlatform||"외부"} 선결제`} val={s.externalPrepaid} color={(s.externalPlatform==="네이버")?"#03C75A":"#8E24AA"}/>}
                       {(s.gift||0)>0 && (s.externalPrepaid||0)===0 && <PaySummary label="네이버예약금(legacy)" val={s.gift} color="#03C75A"/>}
                       {s.custPhone && <span style={{fontSize:T.fs.xxs,color:T.primary,marginLeft:"auto"}}>{s.custPhone}</span>}

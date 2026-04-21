@@ -23,7 +23,7 @@ const GridLayout = ({ cols=2, gap=12, children, style={} }) => {
   return <div style={{display:"grid",gridTemplateColumns:tpl,gap,...style}}>{children}</div>;
 };
 
-const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amount, defPrice, regularPrice, toggle, setAmt, badgeText, badgeColor, badgeBg }) {
+const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amount, defPrice, regularPrice, toggle, setAmt, badgeText, badgeColor, badgeBg, comped, toggleComped }) {
   const disabled = defPrice === 0;
   const isMember = regularPrice > 0 && regularPrice > defPrice;
   const [localAmt, setLocalAmt] = useState(fmtAmt(amount));
@@ -32,7 +32,7 @@ const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amou
   return (
     <div className="sale-svc-row" onClick={() => !disabled && !checked && toggle(id, defPrice)}
       style={{ display: "flex", alignItems: "center", gap: 4, padding: "1px 8px", borderRadius: 4,
-        background: checked ? "#7c7cc810" : "transparent", cursor: disabled ? "not-allowed" : "pointer",
+        background: comped ? "#FFF3E010" : (checked ? "#7c7cc810" : "transparent"), cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.45 : 1, transition: "background .15s", lineHeight: 1.4 }}>
       <span onClick={e => { e.stopPropagation(); if(!disabled) toggle(id, defPrice); }}
         className="sale-svc-name" style={{ flex: 1, fontSize: 13, color: checked ? T.text : T.gray700, fontWeight: checked ? 700 : 400, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
@@ -42,36 +42,56 @@ const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amou
       </span>
       <span className="sale-dur" style={{ flexShrink: 0, width: 28, textAlign: "right", whiteSpace:"nowrap", fontSize: 10, color: T.gray400 }}>{dur}분</span>
       {isMember && <span style={{flexShrink:0,fontSize:10,color:T.gray400,textDecoration:"line-through"}}>{(regularPrice||0).toLocaleString()}</span>}
+      {checked && toggleComped && (
+        <button type="button" onClick={e => { e.stopPropagation(); toggleComped(id); }}
+          title={comped ? "체험단 제공 (클릭 해제)" : "체험단으로 제공 (무료)"}
+          style={{ flexShrink: 0, padding: "2px 5px", fontSize: 11, border: `1px solid ${comped ? "#E65100" : T.border}`,
+            background: comped ? "#FFF3E0" : "transparent", color: comped ? "#E65100" : T.gray400,
+            borderRadius: 4, cursor: "pointer", fontFamily: "inherit", fontWeight: comped ? 700 : 400, lineHeight: 1, minHeight: 22 }}>
+          🎁{comped ? " 체험" : ""}
+        </button>
+      )}
       <input type="text" inputMode="numeric" value={checked ? localAmt : ""} placeholder={disabled ? "—" : (defPrice||0).toLocaleString()}
         onClick={e => e.stopPropagation()} onFocus={()=>setEditing(true)}
         onChange={e => { const raw=e.target.value.replace(/[^0-9]/g,""); setLocalAmt(raw?Number(raw).toLocaleString():""); }}
         onBlur={e => { setEditing(false); setAmt(id, parseAmt(e.target.value)); }} disabled={!checked}
         style={{ width: 95, padding: "2px 5px", fontSize: 13, textAlign: "right", borderRadius: 5, flexShrink: 0, minHeight: 0, height: 24, boxSizing: "border-box", fontFamily: "inherit", outline: "none",
-          background: checked ? T.bgCard : "transparent", border: `1px solid ${checked ? T.gray400 : T.border}`,
-          color: checked ? T.danger : T.gray400, fontWeight: checked ? 700 : 400 }} />
+          background: checked ? T.bgCard : "transparent", border: `1px solid ${checked ? (comped ? "#E65100" : T.gray400) : T.border}`,
+          color: comped ? "#E65100" : (checked ? T.danger : T.gray400), fontWeight: checked ? 700 : 400,
+          textDecoration: comped ? "line-through" : "none" }} />
     </div>
   );
 });
 
-const SaleProdRow = React.memo(function SaleProdRow({ id, name, price, checked, amount, toggle, setAmt }) {
+const SaleProdRow = React.memo(function SaleProdRow({ id, name, price, checked, amount, toggle, setAmt, comped, toggleComped }) {
   const [localAmt, setLocalAmt] = useState(fmtAmt(amount));
   const [editing, setEditing] = useState(false);
   useEffect(() => { if(!editing) setLocalAmt(fmtAmt(amount)); }, [amount, checked]);
   return (
     <div className="sale-svc-row" onClick={() => !checked && toggle(id, price)}
       style={{ display: "flex", alignItems: "center", gap: 4, padding: "1px 8px", borderRadius: 4,
-        background: checked ? "#7c7cc810" : "transparent", cursor: "pointer", transition: "background .15s", lineHeight: 1.4 }}>
+        background: comped ? "#FFF3E010" : (checked ? "#7c7cc810" : "transparent"), cursor: "pointer", transition: "background .15s", lineHeight: 1.4 }}>
       <span onClick={e => { e.stopPropagation(); toggle(id, price); }}
         style={{ flex: 1, fontSize: 13, color: checked ? T.text : T.gray700, fontWeight: checked ? 700 : 400, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
         {checked && <span style={{color:T.primary,marginRight:3}}>✓</span>}{name}
       </span>
+      {checked && toggleComped && (
+        <button type="button" onClick={e => { e.stopPropagation(); toggleComped(id); }}
+          title={comped ? "체험단 제공 (클릭 해제)" : "체험단으로 제공 (무료)"}
+          style={{ flexShrink: 0, padding: "2px 5px", fontSize: 11, border: `1px solid ${comped ? "#E65100" : T.border}`,
+            background: comped ? "#FFF3E0" : "transparent", color: comped ? "#E65100" : T.gray400,
+            borderRadius: 4, cursor: "pointer", fontFamily: "inherit", fontWeight: comped ? 700 : 400, lineHeight: 1, minHeight: 22 }}>
+          🎁{comped ? " 체험" : ""}
+        </button>
+      )}
       <input type="text" inputMode="numeric" value={checked ? localAmt : ""} placeholder={price ? price.toLocaleString() : "0"}
         onClick={e => e.stopPropagation()} onFocus={()=>setEditing(true)}
         onChange={e => { const raw=e.target.value.replace(/[^0-9]/g,""); setLocalAmt(raw?Number(raw).toLocaleString():""); }}
         onBlur={e => { setEditing(false); setAmt(id, parseAmt(e.target.value)); }} disabled={!checked}
         style={{ width: 95, padding: "2px 5px", fontSize: 13, textAlign: "right", borderRadius: 5, flexShrink: 0, minHeight: 0, height: 24, boxSizing: "border-box", fontFamily: "inherit", outline: "none",
-          background: checked ? T.bgCard : "transparent", border: `1px solid ${checked ? T.gray400 : T.border}`,
-          color: checked ? T.danger : T.gray400, fontWeight: checked ? 700 : 400 }} />
+          background: checked ? T.bgCard : "transparent", border: `1px solid ${checked ? (comped ? "#E65100" : T.gray400) : T.border}`,
+          color: comped ? "#E65100" : (checked ? T.danger : T.gray400), fontWeight: checked ? 700 : 400,
+          textDecoration: comped ? "line-through" : "none" }} />
     </div>
   );
 });
@@ -273,6 +293,13 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     }) ||
     reservation?.reservationId ||
     (reservation?.memo && /네이버/.test(reservation.memo))
+  );
+  // 체험단 태그 감지 — 예약태그에 "체험" 또는 "체험단" 포함 시 🎁 체험 토글 노출
+  const hasCompedTag = !!(
+    (reservation?.selectedTags||[]).some(tid => {
+      const tag = (data?.serviceTags||[]).find(t=>t.id===tid);
+      return tag && /체험/.test(tag.name);
+    })
   );
   // 외부 플랫폼 선결제 (네이버/서울뷰티/크리에이트립 등) — 네이버는 시스템 기본
   const externalPlatforms = (()=>{
@@ -569,9 +596,9 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     SVC_LIST.forEach(svc => {
       const preSelected = selSvcs.includes(svc.id);
       const defPrice = _defPrice(svc, gender);
-      init[svc.id] = { checked: preSelected, amount: preSelected ? defPrice : 0 };
+      init[svc.id] = { checked: preSelected, amount: preSelected ? defPrice : 0, comped: false };
     });
-    PROD_LIST.forEach(p => { init[p.id] = { checked: false, amount: 0 }; });
+    PROD_LIST.forEach(p => { init[p.id] = { checked: false, amount: 0, comped: false }; });
     init["discount"] = { checked: false, amount: 0 };
     init["extra_svc"] = { checked: false, amount: 0, label: "" };
     init["extra_prod"] = { checked: false, amount: 0, label: "" };
@@ -621,14 +648,19 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     const matchedSvcIds = {};  // id → amount
     const matchedProdIds = {};
 
+    const compedSvcIds = new Set();
+    const compedProdIds = new Set();
     existingDetails.forEach(d => {
-      const nm = (d.service_name||"").trim();
-      if (!nm) return;
+      const nmRaw = (d.service_name||"").trim();
+      if (!nmRaw) return;
       // 보유권 사용 기록 행은 items 프리필에서 제외 (pkgUse 별도 관리)
-      if (/^\[보유권/.test(nm)) return;
+      if (/^\[보유권/.test(nmRaw)) return;
       // 쿠폰·이벤트 자동적용 행은 items 프리필에서 제외 (쿠폰 엔진 자동 재계산)
-      if (/^\[쿠폰 (할인|적립)\]/.test(nm)) return;
-      if (/^\[이벤트 (할인|적립)\]/.test(nm)) return;
+      if (/^\[쿠폰 (할인|적립)\]/.test(nmRaw)) return;
+      if (/^\[이벤트 (할인|적립)\]/.test(nmRaw)) return;
+      // 체험단 프리픽스 제거 후 매칭
+      const isComped = /^\[체험단\]\s*/.test(nmRaw);
+      const nm = isComped ? nmRaw.replace(/^\[체험단\]\s*/, "") : nmRaw;
       // 할인
       if (nm === "할인" || nm === "[할인]" || /^\[할인\]/.test(nm)) {
         discountAmt += (d.unit_price || 0);
@@ -636,10 +668,10 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       }
       // 정규 시술 매칭
       const svc = SVC_LIST.find(x => x.name === nm);
-      if (svc) { matchedSvcIds[svc.id] = (d.unit_price || 0); return; }
+      if (svc) { matchedSvcIds[svc.id] = (d.unit_price || 0); if (isComped) compedSvcIds.add(svc.id); return; }
       // 정규 제품 매칭
       const prod = PROD_LIST.find(x => x.name === nm);
-      if (prod) { matchedProdIds[prod.id] = (d.unit_price || 0); return; }
+      if (prod) { matchedProdIds[prod.id] = (d.unit_price || 0); if (isComped) compedProdIds.add(prod.id); return; }
       // 추가 시술 (이름에 "시술" 들어가거나 기타)
       if (nm === "추가 시술" || /시술/.test(nm)) { extraSvcRows.push({name:nm, amount: d.unit_price||0}); return; }
       if (nm === "추가 제품" || /제품/.test(nm)) { extraProdRows.push({name:nm, amount: d.unit_price||0}); return; }
@@ -650,10 +682,10 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     setItems(prev => {
       const next = {...prev};
       Object.entries(matchedSvcIds).forEach(([id, amt]) => {
-        next[id] = { ...next[id], checked: true, amount: amt };
+        next[id] = { ...next[id], checked: true, amount: amt, comped: compedSvcIds.has(id) };
       });
       Object.entries(matchedProdIds).forEach(([id, amt]) => {
-        next[id] = { ...next[id], checked: true, amount: amt };
+        next[id] = { ...next[id], checked: true, amount: amt, comped: compedProdIds.has(id) };
       });
       if (extraSvcRows.length > 0) {
         const joined = extraSvcRows.map(r=>r.name).join(" + ");
@@ -754,6 +786,11 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   }, []);
   const setAmt = useCallback((id, v) => setItems(prev => ({ ...prev, [id]: { ...prev[id], amount: Number(v) || 0 } })), []);
   const setLabel = useCallback((id, v) => setItems(prev => ({ ...prev, [id]: { ...prev[id], label: v } })), []);
+  // 🎁 체험단 토글 — 체크된 항목에만 적용. 체험이면 결제대상에서 제외하고 svcComped/prodComped로 집계
+  const toggleComped = useCallback((id) => setItems(prev => {
+    const cur = prev[id]; if (!cur?.checked) return prev;
+    return { ...prev, [id]: { ...cur, comped: !cur.comped } };
+  }), []);
 
   // 신규고객 등록 모드
   const [newCustMode, setNewCustMode] = useState(false);
@@ -817,6 +854,13 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     + shareSurchargeTotal;
   const prodTotal = PROD_LIST.reduce((sum, p) => sum + (items[p.id]?.checked ? items[p.id].amount : 0), 0)
     + (items.extra_prod?.checked ? items.extra_prod.amount : 0);
+  // 🎁 체험단 제공분 — 결제대상에서 제외
+  const svcCompedTotal = SVC_LIST.reduce((sum, svc) => {
+    const it = items[svc.id]; return sum + (it?.checked && it.comped ? (it.amount||0) : 0);
+  }, 0);
+  const prodCompedTotal = PROD_LIST.reduce((sum, p) => {
+    const it = items[p.id]; return sum + (it?.checked && it.comped ? (it.amount||0) : 0);
+  }, 0);
   const discount = items.discount?.checked ? items.discount.amount : 0;
   const naverDeduct = 0; // 통합됨 → externalDeduct에서 처리
   const externalDeduct = externalPrepaid > 0 ? externalPrepaid : 0;
@@ -1082,10 +1126,10 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   const svcAfterAllDiscounts = Math.max(0, pureSvcTotal + prodTotal - discount - promoDiscountTotal - couponDiscountTotal - eventDiscountSvc - naverDeduct - externalDeduct - pkgDeduct);
   // 새 다담권 즉시차감: 할인 후 시술잔액과 할인 제외한 다담권 잔액 중 작은 값
   newPkgInstantDeduct = newPrepaidActiveTotal > 0 ? Math.min(svcAfterAllDiscounts, newPrepaidActiveTotal - eventDiscountPrepaid) : 0;
-  const grandTotal = Math.max(0, svcTotal + prodTotal - discount - promoDiscountTotal - couponDiscountTotal - eventDiscountTotal - naverDeduct - externalDeduct - pkgDeduct - newPkgInstantDeduct - pointDeduct);
-  // 실제 결제할 금액 (예약금·할인·이벤트·쿠폰·보유권·신규다담권즉시차감 차감)
-  const svcPayTotal = Math.max(0, svcTotal - discount - promoDiscountTotal - couponDiscountOnSvc - eventDiscountTotal - naverDeduct - externalDeduct - pkgDeduct - newPkgInstantDeduct - pointDeduct);
-  const prodPayTotal = Math.max(0, prodTotal - couponDiscountOnProd);
+  const grandTotal = Math.max(0, svcTotal + prodTotal - discount - promoDiscountTotal - couponDiscountTotal - eventDiscountTotal - naverDeduct - externalDeduct - pkgDeduct - newPkgInstantDeduct - pointDeduct - svcCompedTotal - prodCompedTotal);
+  // 실제 결제할 금액 (예약금·할인·이벤트·쿠폰·보유권·신규다담권즉시차감·체험단제공 차감)
+  const svcPayTotal = Math.max(0, svcTotal - discount - promoDiscountTotal - couponDiscountOnSvc - eventDiscountTotal - naverDeduct - externalDeduct - pkgDeduct - newPkgInstantDeduct - pointDeduct - svcCompedTotal);
+  const prodPayTotal = Math.max(0, prodTotal - couponDiscountOnProd - prodCompedTotal);
 
   // Count checked
   const checkedSvc = SVC_LIST.filter(s => items[s.id]?.checked).length + (items.extra_svc?.checked ? 1 : 0);
@@ -1185,21 +1229,21 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       // ─ 금액 변동 경고: 원래 값과 편집 값이 다르면 확인 받음 ─
       const origPay = {
         svcCash: reservation?.svcCash||0, svcTransfer: reservation?.svcTransfer||0,
-        svcCard: reservation?.svcCard||0, svcPoint: reservation?.svcPoint||0,
+        svcCard: reservation?.svcCard||0, svcPoint: reservation?.svcPoint||0, svcComped: reservation?.svcComped||0,
         prodCash: reservation?.prodCash||0, prodTransfer: reservation?.prodTransfer||0,
-        prodCard: reservation?.prodCard||0, prodPoint: reservation?.prodPoint||0,
+        prodCard: reservation?.prodCard||0, prodPoint: reservation?.prodPoint||0, prodComped: reservation?.prodComped||0,
         externalPrepaid: reservation?.externalPrepaid||0,
       };
       const newPay = {
         svcCash: payMethod.svcCash||0, svcTransfer: payMethod.svcTransfer||0,
-        svcCard: payMethod.svcCard||0, svcPoint: payMethod.svcPoint||0,
+        svcCard: payMethod.svcCard||0, svcPoint: payMethod.svcPoint||0, svcComped: svcCompedTotal||0,
         prodCash: payMethod.prodCash||0, prodTransfer: payMethod.prodTransfer||0,
-        prodCard: payMethod.prodCard||0, prodPoint: payMethod.prodPoint||0,
+        prodCard: payMethod.prodCard||0, prodPoint: payMethod.prodPoint||0, prodComped: prodCompedTotal||0,
         externalPrepaid: externalPrepaid||0,
       };
       const labelMap = {
-        svcCash:"시술현금", svcTransfer:"시술입금", svcCard:"시술카드", svcPoint:"시술포인트",
-        prodCash:"제품현금", prodTransfer:"제품입금", prodCard:"제품카드", prodPoint:"제품포인트",
+        svcCash:"시술현금", svcTransfer:"시술입금", svcCard:"시술카드", svcPoint:"시술포인트", svcComped:"시술체험단",
+        prodCash:"제품현금", prodTransfer:"제품입금", prodCard:"제품카드", prodPoint:"제품포인트", prodComped:"제품체험단",
         externalPrepaid:"외부선결제",
       };
       const diffs = [];
@@ -1236,8 +1280,10 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
         const salesUpdate = {
           svc_cash: payMethod.svcCash || 0, svc_transfer: payMethod.svcTransfer || 0,
           svc_card: payMethod.svcCard || 0, svc_point: payMethod.svcPoint || 0,
+          svc_comped: svcCompedTotal || 0,
           prod_cash: payMethod.prodCash || 0, prod_transfer: payMethod.prodTransfer || 0,
           prod_card: payMethod.prodCard || 0, prod_point: payMethod.prodPoint || 0,
+          prod_comped: prodCompedTotal || 0,
           external_prepaid: externalPrepaid > 0 ? externalPrepaid : 0,
           external_platform: externalPrepaid > 0 ? (externalPlatform || "") : null,
           memo: newMemo,
@@ -1249,9 +1295,9 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           id: existingSaleId, _editOnly: true, _newDetails: newDetails,
           _updatedSale: {
             svcCash: salesUpdate.svc_cash, svcTransfer: salesUpdate.svc_transfer,
-            svcCard: salesUpdate.svc_card, svcPoint: salesUpdate.svc_point,
+            svcCard: salesUpdate.svc_card, svcPoint: salesUpdate.svc_point, svcComped: salesUpdate.svc_comped,
             prodCash: salesUpdate.prod_cash, prodTransfer: salesUpdate.prod_transfer,
-            prodCard: salesUpdate.prod_card, prodPoint: salesUpdate.prod_point,
+            prodCard: salesUpdate.prod_card, prodPoint: salesUpdate.prod_point, prodComped: salesUpdate.prod_comped,
             externalPrepaid: salesUpdate.external_prepaid, externalPlatform: salesUpdate.external_platform, memo: salesUpdate.memo,
             staffId: salesUpdate.staff_id, staffName: salesUpdate.staff_name,
           }
@@ -1621,8 +1667,8 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       date: reservation?.date || todayStr(),
       serviceId: reservation?.serviceId || null, serviceName: SVC_LIST.find(s => s.id === reservation?.serviceId)?.name || "",
       productId: null, productName: null,
-      svcCash: payMethod.svcCash, svcTransfer: payMethod.svcTransfer, svcCard: payMethod.svcCard, svcPoint: payMethod.svcPoint,
-      prodCash: payMethod.prodCash, prodTransfer: payMethod.prodTransfer, prodCard: payMethod.prodCard, prodPoint: payMethod.prodPoint,
+      svcCash: payMethod.svcCash, svcTransfer: payMethod.svcTransfer, svcCard: payMethod.svcCard, svcPoint: payMethod.svcPoint, svcComped: svcCompedTotal || 0,
+      prodCash: payMethod.prodCash, prodTransfer: payMethod.prodTransfer, prodCard: payMethod.prodCard, prodPoint: payMethod.prodPoint, prodComped: prodCompedTotal || 0,
       gift: 0, orderNum: String(252000 + Math.floor(Math.random() * 200)),
       externalPrepaid: externalPrepaid > 0 ? externalPrepaid : 0,
       externalPlatform: externalPrepaid > 0 ? (externalPlatform || "") : null,
@@ -1643,7 +1689,10 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     // 시술
     SVC_LIST.forEach(svc => {
       const it = items[svc.id];
-      if (it?.checked && (it.amount || 0) > 0) pushDetail(svc.name, it.amount);
+      if (it?.checked && (it.amount || 0) > 0) {
+        // 체험단으로 제공된 시술은 [체험단] 프리픽스로 기록 (매출 상세에서 구분)
+        pushDetail(it.comped ? `[체험단] ${svc.name}` : svc.name, it.amount);
+      }
     });
     // 추가 시술
     if (items.extra_svc?.checked && (items.extra_svc.amount || 0) > 0) {
@@ -1652,7 +1701,9 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     // 제품
     PROD_LIST.forEach(p => {
       const it = items[p.id];
-      if (it?.checked && (it.amount || 0) > 0) pushDetail(p.name, it.amount);
+      if (it?.checked && (it.amount || 0) > 0) {
+        pushDetail(it.comped ? `[체험단] ${p.name}` : p.name, it.amount);
+      }
     });
     // 추가 제품
     if (items.extra_prod?.checked && (items.extra_prod.amount || 0) > 0) {
@@ -2096,6 +2147,9 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
               })}
             </div>}
             <div style={{ color:T.primary, padding: "6px 0 4px", marginBottom: 6, fontSize:14, fontWeight:800 }}>시술 ({SVC_LIST.length})</div>
+            {hasCompedTag && <div style={{marginBottom:8,padding:"7px 10px",background:"#FFF3E0",border:"1.5px solid #E65100",borderRadius:8,fontSize:11,color:"#E65100",fontWeight:700,lineHeight:1.5}}>
+              🎁 체험단 예약 — 체크한 시술·제품 행 오른쪽 <span style={{background:"#fff",padding:"1px 6px",borderRadius:4,border:"1px solid #E65100",fontWeight:800}}>🎁</span> 버튼을 눌러 무료 제공으로 전환하세요
+            </div>}
             {catGroups.map(({cat, svcs}) => {
               const isOpen = isCatOpen(cat.id);
               const hasChecked = svcs.some(s=>items[s.id]?.checked);
@@ -2143,14 +2197,14 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                     </div>;
                   }
                   const rp = gender ? (gender==="M" ? svc.priceM : svc.priceF) : 0;
-                  return <SaleSvcRow key={svc.id} id={svc.id} name={svc.name} dur={svc.dur} checked={!!it.checked} amount={it.amount||0} defPrice={dp} regularPrice={rp} toggle={toggle} setAmt={setAmt} badgeText={svc.badgeText} badgeColor={svc.badgeColor} badgeBg={svc.badgeBg} />;
+                  return <SaleSvcRow key={svc.id} id={svc.id} name={svc.name} dur={svc.dur} checked={!!it.checked} amount={it.amount||0} defPrice={dp} regularPrice={rp} toggle={toggle} setAmt={setAmt} badgeText={svc.badgeText} badgeColor={svc.badgeColor} badgeBg={svc.badgeBg} comped={!!it.comped} toggleComped={hasCompedTag ? toggleComped : undefined} />;
                 })}</div>}
               </div>
               );
             })}
             {uncatSvcs.length>0 && <div style={{marginBottom:8}}>
               <div style={{fontSize:T.fs.nano,fontWeight:T.fw.bolder,color:T.textMuted,background:T.bg,borderRadius:T.radius.sm,padding:"2px 6px",marginBottom:2,display:"inline-block"}}>기타</div>
-              {uncatSvcs.map(svc => { const it=items[svc.id]||{}; const dp=_defPrice(svc,gender); const rp=gender?(gender==="M"?svc.priceM:svc.priceF):0; return <SaleSvcRow key={svc.id} id={svc.id} name={svc.name} dur={svc.dur} checked={!!it.checked} amount={it.amount||0} defPrice={dp} regularPrice={rp} toggle={toggle} setAmt={setAmt} badgeText={svc.badgeText} badgeColor={svc.badgeColor} badgeBg={svc.badgeBg} />; })}
+              {uncatSvcs.map(svc => { const it=items[svc.id]||{}; const dp=_defPrice(svc,gender); const rp=gender?(gender==="M"?svc.priceM:svc.priceF):0; return <SaleSvcRow key={svc.id} id={svc.id} name={svc.name} dur={svc.dur} checked={!!it.checked} amount={it.amount||0} defPrice={dp} regularPrice={rp} toggle={toggle} setAmt={setAmt} badgeText={svc.badgeText} badgeColor={svc.badgeColor} badgeBg={svc.badgeBg} comped={!!it.comped} toggleComped={hasCompedTag ? toggleComped : undefined} />; })}
             </div>}
             <SaleExtraRow id="extra_svc" color={T.primary} placeholder="추가 시술명 입력" checked={!!(items.extra_svc||{}).checked} amount={(items.extra_svc||{}).amount||0} label={(items.extra_svc||{}).label||""} toggle={toggle} setAmt={setAmt} setLabel={setLabel} />
             <div style={{ marginTop: 4 }}>
@@ -2170,7 +2224,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
               </div>
               {(openCats.__prod===true||(openCats.__prod===undefined&&PROD_LIST.some(p=>items[p.id]?.checked)))&&
                 <div style={{padding:"4px 0",display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 4px"}}>
-                  {PROD_LIST.map(p => { const it=items[p.id]||{}; return <SaleProdRow key={p.id} id={p.id} name={p.name} price={p.price||0} checked={!!it.checked} amount={it.amount||0} toggle={toggle} setAmt={setAmt} />; })}
+                  {PROD_LIST.map(p => { const it=items[p.id]||{}; return <SaleProdRow key={p.id} id={p.id} name={p.name} price={p.price||0} checked={!!it.checked} amount={it.amount||0} toggle={toggle} setAmt={setAmt} comped={!!it.comped} toggleComped={hasCompedTag ? toggleComped : undefined} />; })}
                 </div>
               }
             </div>
@@ -2235,6 +2289,10 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
               <span style={{fontSize:T.fs.sm,color:T.text,fontWeight:600}}><I name="pkg" size={12}/> 제품 합계</span>
               <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.infoLt2}}>{fmt(prodTotal)}원</span>
             </div>}
+            {(svcCompedTotal + prodCompedTotal) > 0 && <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
+              <span style={{fontSize:T.fs.sm,color:"#E65100",fontWeight:600}}>🎁 체험단 제공</span>
+              <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#E65100"}}>-{fmt(svcCompedTotal + prodCompedTotal)}원</span>
+            </div>}
             {discount > 0 && <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
               <span style={{fontSize:T.fs.sm,color:T.female}}><I name="tag" size={11}/> 할인</span>
               <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.female}}>-{fmt(discount)}원</span>
@@ -2275,6 +2333,12 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           {(svcTotal > 0 || prodTotal > 0 || hasPkgChecked()) && <div className="sale-pay-row" style={{display:"flex",flexDirection:"column",gap:8}}>
             {svcTotal > 0 && <div style={{flex:1,minWidth:0,padding:"8px 12px",background:T.bgCard,borderRadius:T.radius.md,border:"1px solid "+T.border}}>
               <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.primary,marginBottom:6}}><I name="scissors" size={12}/> 시술 결제 <span style={{color:T.danger,fontWeight:T.fw.black}}>{fmt(svcPayTotal)}원</span></div>
+              {svcCompedTotal > 0 && (
+                <div style={{display:"flex",alignItems:"center",gap:6,padding:"5px 8px",marginBottom:5,background:"#FFF3E0",border:"1px solid #E65100",borderRadius:6,fontSize:11,color:"#E65100"}}>
+                  <span style={{fontWeight:700}}>🎁 체험단 제공 (무료)</span>
+                  <span style={{marginLeft:"auto",fontWeight:800}}>-{fmt(svcCompedTotal)}원</span>
+                </div>
+              )}
               {activeCoupons.filter(c=>(c.applyTo==='services' || c.applyTo==='all' || c.applyTo==='category' || c.applyTo==='specific_service') && c.discount>0).map(c => (
                 <label key={c.pkgId} style={{display:"flex",alignItems:"center",gap:4,padding:"4px 6px",marginBottom:4,background:"#fff8e1",border:"1px solid #f59e0b",borderRadius:6,fontSize:10,color:"#78350f",cursor:"pointer",whiteSpace:"nowrap",overflow:"hidden"}} title={`${c.name}${c.consumeOnUse?" (1회 소진)":""} -${fmt(c.discount)}원`}>
                   <input type="checkbox" checked={!couponOff[c.pkgId]} onChange={e=>setCouponOff(p=>({...p,[c.pkgId]:!e.target.checked}))} style={{accentColor:"#b45309",flexShrink:0}}/>
@@ -2431,6 +2495,12 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
             </div>}
             {prodTotal > 0 && <div style={{flex:1,minWidth:0,padding:"8px 12px",background:T.bgCard,borderRadius:T.radius.md,border:"1px solid "+T.border}}>
               <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.infoLt2,marginBottom:6}}><I name="pkg" size={12}/> 제품 결제 <span style={{color:T.danger,fontWeight:T.fw.black}}>{fmt(prodPayTotal)}원</span></div>
+              {prodCompedTotal > 0 && (
+                <div style={{display:"flex",alignItems:"center",gap:6,padding:"5px 8px",marginBottom:5,background:"#FFF3E0",border:"1px solid #E65100",borderRadius:6,fontSize:11,color:"#E65100"}}>
+                  <span style={{fontWeight:700}}>🎁 체험단 제공 (무료)</span>
+                  <span style={{marginLeft:"auto",fontWeight:800}}>-{fmt(prodCompedTotal)}원</span>
+                </div>
+              )}
               {activeCoupons.filter(c=>c.applyTo==='products' && c.discount>0).map(c => (
                 <label key={c.pkgId} style={{display:"flex",alignItems:"center",gap:4,padding:"4px 6px",marginBottom:4,background:"#fff8e1",border:"1px solid #f59e0b",borderRadius:6,fontSize:10,color:"#78350f",cursor:"pointer",whiteSpace:"nowrap",overflow:"hidden"}} title={`${c.name}${c.consumeOnUse?" (1회 소진)":""} -${fmt(c.discount)}원`}>
                   <input type="checkbox" checked={!couponOff[c.pkgId]} onChange={e=>setCouponOff(p=>({...p,[c.pkgId]:!e.target.checked}))} style={{accentColor:"#b45309",flexShrink:0}}/>

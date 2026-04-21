@@ -692,8 +692,51 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - **SaleForm prepaid 잔액 파싱 fallback**: `잔액:` 없으면 `total_count - used_count` 사용 (구버전 데이터)
 - **다회권 setPkgQty 본인+쉐어 분리** (v3.5.37): 동명 패키지에 소유자 다른 것 섞이는 문제 해결
 
-### 주의사항 (v3.5.37 이후 참고)
-- **배포 모드: 모아서 한 번에** — 수정 누적 → "배포" 신호 시 한 번에. 배포 전 반드시 확인
+### v3.6.0 → v3.6.11 (2026-04-21)
+
+#### 클로드 AI (v3.6.0)
+- `src/components/BlissAI/` 신규 디렉토리
+  - `BlissAI.jsx` 메인 멀티세션 채팅
+  - `contextBuilder.js` FAQ + 정적 컨텍스트
+  - `dataQuery.js` 고객/매출/예약 조회 + LLM intent 분류
+  - `actionSchemas.js` 21개 쓰기 액션 스키마
+  - `actionRunner.js` 쓰기 실행 + 감사 로그
+  - `ActionConfirmCard.jsx` diff 확인 UI
+- 설정마법사 흡수 → 대화형 모드
+- 권한: 브랜드 대표만 쓰기, 지점은 읽기
+- Gemini 2.5 Flash, FAQ 250개 (`businesses.settings.ai_faq`)
+
+#### 긴급 수정 (v3.6.1 ~ v3.6.5)
+- 구매지점 이니셜 배지 제거 (v3.6.1)
+- **settings JSON 문자열 스프레드로 이벤트 15개/FAQ 250개 소멸 사고 + 복구** (v3.6.2)
+- 회원가 초기값 계산 누락 수정 (v3.6.2~3): useMemo 파싱 + custPkgs 로드 후 재계산
+- 일정변경 로그를 memo → `schedule_log` 컬럼 분리 + 기존 17건 마이그레이션 (v3.6.4)
+- 이벤트 "유효한 연간/패키지/다담권 보유" 만료 체크 버그 — `expires_at` 미존재, `note` "유효:YYYY-MM-DD" 파싱으로 대체 (v3.6.5)
+
+#### 이벤트 엔진 확장 (v3.6.6 ~ v3.6.8)
+- 결제수단 섹션 추가: `paymentUsesPrepaid/paymentFullPrepaid/paymentUsesPoint/paymentUsesCoupon` TriFlag 조건 (v3.6.6~7)
+- TriFlag 재클릭 해제, 편집폼 인라인 배치, 라벨 간결화 (v3.6.8)
+
+#### 고객관리 정렬 (v3.6.9)
+- `cust_num_int` generated column 추가 → PostgREST 숫자 정렬
+- `includeNoNum` 토글 (디폴트 OFF) — 매출 없는 고객 숨김
+
+#### 🎁 체험단 무료 제공 (v3.6.10 → v3.6.11)
+- **DB**: `sales.svc_comped` / `sales.prod_comped` integer 컬럼
+- **db.js**: DBMAP/DB_COLS에 매핑 추가
+- **SaleForm**:
+  - 예약태그에 "체험" 포함 시(`hasCompedTag`) 활성화
+  - 체크된 시술·제품 행에 🎁 토글 버튼 → `items[id].comped`
+  - `svcCompedTotal/prodCompedTotal` 집계 → `svcPayTotal/prodPayTotal/grandTotal` 차감
+  - `sale_details.service_name`에 `[체험단] ` 프리픽스 → editMode 재진입 시 복원
+  - 금액 변경 경고창 labelMap에 체험단 포함
+  - **v3.6.11: 시술 헤더 위 주황 안내 배너** (hasCompedTag=true일 때 상시 노출)
+- **SalesPage**: 매출 확장 행에 `🎁 체험단` 배지
+
+### 주의사항 (v3.6.11 이후 참고)
+- **배포 모드: 모아서 한 번에** — 수정 누적 → "배포" 신호 시 한 번에
+- **배포 시 BLISS_V + version.txt 반드시 함께 bump** (불일치 시 무한 reload 루프)
+- **settings 수정 시 반드시 JSON.stringify 후 저장** — 문자열 스프레드 금지 (v3.6.2 사고)
 - **구매지점 제한은 현재 OFF** — 데이터 전수조사 선행 필요
 - **세션 복구 Phase 2-4 보류** — 로컬 watchdog + captcha 자동화 미완
 - **`login_local.py`는 수동 실행** — 세션 만료 시 텔레그램 알림만 나옴 (자동 복구 미완)
