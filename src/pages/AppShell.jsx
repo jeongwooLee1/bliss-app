@@ -21,7 +21,7 @@ import BlissAI from '../components/BlissAI/BlissAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.6.12"
+const BLISS_V = "3.6.13"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -782,6 +782,7 @@ function App() {
       const arr = [...s].slice(-200);
       try { localStorage.setItem(DISMISS_KEY, JSON.stringify(arr)); } catch {}
     };
+    const AUTO_DISMISS_MS = 60 * 60 * 1000; // 1시간 후 자동 닫힘
     const showAnnounce = (row) => {
       if (!row || !row.is_announce) return;
       if (getDismissed().has(row.id)) return;
@@ -790,18 +791,22 @@ function App() {
       const div = document.createElement('div');
       window[existingKey] = div;
       const esc = (s) => String(s || '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
-      div.innerHTML = `<div style="position:fixed;top:20px;right:20px;z-index:99999;background:linear-gradient(135deg,#ff9800,#f57c00);color:#fff;padding:14px 20px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.3);font-size:14px;font-weight:700;cursor:pointer;max-width:340px;animation:slideIn .3s;border:2px solid #fff8e1;">📣 ${esc(row.user_id)} 공지<div style="font-size:13px;font-weight:500;margin-top:4px;white-space:pre-wrap;word-break:break-word;">${esc(row.body)}</div><div style="font-size:10px;opacity:.75;margin-top:6px;">탭하면 닫힙니다</div></div>`;
-      div.addEventListener('click', () => {
+      div.innerHTML = `<div style="position:fixed;top:20px;right:20px;z-index:99999;background:linear-gradient(135deg,#ff9800,#f57c00);color:#fff;padding:14px 20px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.3);font-size:14px;font-weight:700;cursor:pointer;max-width:340px;max-height:60vh;overflow-y:auto;animation:slideIn .3s;border:2px solid #fff8e1;">📣 ${esc(row.user_id)} 공지<div style="font-size:13px;font-weight:500;margin-top:4px;white-space:pre-wrap;word-break:break-word;">${esc(row.body)}</div><div style="font-size:10px;opacity:.75;margin-top:6px;">탭하면 닫힘 · 1시간 후 자동 종료</div></div>`;
+      const dismiss = () => {
         addDismissed(row.id);
         try { div.remove(); } catch {}
+        try { clearTimeout(window[existingKey + '_to']); } catch {}
         delete window[existingKey];
-      }, { once: true });
+        delete window[existingKey + '_to'];
+      };
+      div.addEventListener('click', dismiss, { once: true });
+      window[existingKey + '_to'] = setTimeout(dismiss, AUTO_DISMISS_MS);
       document.body.appendChild(div);
     };
-    // 최근 공지(24시간 이내, dismiss 안 된 것) 복원
+    // 최근 공지(5분 이내, dismiss 안 된 것)만 복원 — Realtime 붙기 전 갭 보정용
     (async () => {
       try {
-        const since = new Date(Date.now() - 24*60*60*1000).toISOString();
+        const since = new Date(Date.now() - AUTO_DISMISS_MS).toISOString();
         const { data } = await supaClient.from('team_chat_messages')
           .select('id,user_id,body,created_at,is_announce')
           .eq('is_announce', true).gte('created_at', since)

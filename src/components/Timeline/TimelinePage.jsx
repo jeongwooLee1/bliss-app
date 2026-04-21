@@ -965,18 +965,22 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     });
   };
   const allRoomsRef = React.useRef([]);
+  // render 중 setState 금지 → 미시딩 대상은 모아뒀다가 effect에서 일괄 반영
+  const pendingSeedRef = React.useRef({});
   const sortStaffByOrder = (staffList, branchId) => {
-    const order = empColOrder[branchId];
-    if (!order || order.length === 0) {
-      if (staffList.length > 0) {
-        const ids = staffList.map(e => e.id);
-        setEmpColOrder(prev => {
-          if (prev[branchId]?.length >= staffList.length) return prev;
-          return {...prev, [branchId]: ids};
-        });
+    // 새 직원 id를 모아둔다 (기존 order 뒤에 append 예정)
+    if (staffList.length > 0) {
+      const existing = empColOrder[branchId] || [];
+      const existingSet = new Set(existing);
+      const newIds = staffList.map(e => e.id).filter(id => !existingSet.has(id));
+      if (newIds.length > 0) {
+        const bucket = pendingSeedRef.current[branchId] || new Set();
+        newIds.forEach(id => bucket.add(id));
+        pendingSeedRef.current[branchId] = bucket;
       }
-      return staffList;
     }
+    const order = empColOrder[branchId];
+    if (!order || order.length === 0) return staffList;
     const sorted = [];
     for (const id of order) {
       const e = staffList.find(s => s.id === id);
@@ -987,6 +991,27 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     }
     return sorted;
   };
+  // 렌더 완료 후 pending seed를 empColOrder에 반영
+  React.useEffect(() => {
+    const pending = pendingSeedRef.current;
+    const branches = Object.keys(pending);
+    if (!branches.length) return;
+    setEmpColOrder(prev => {
+      let changed = false;
+      const next = { ...prev };
+      branches.forEach(bid => {
+        const existing = next[bid] || [];
+        const existingSet = new Set(existing);
+        const toAdd = [...pending[bid]].filter(id => !existingSet.has(id));
+        if (toAdd.length) {
+          next[bid] = [...existing, ...toAdd];
+          changed = true;
+        }
+      });
+      pendingSeedRef.current = {};
+      return changed ? next : prev;
+    });
+  });
 
   const allRooms = branchesToShow.flatMap(br => {
     const naverCount = br.naverEmail ? (br.naverColCount || 1) : 0;
