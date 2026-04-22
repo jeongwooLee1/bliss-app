@@ -20,6 +20,7 @@ import AdminExtPlatforms from './AdminExtPlatforms'
 import AdminServiceTags from './AdminServiceTags'
 import SchedulePage from '../Schedule/SchedulePage'
 import AdminPkgAudit from './AdminPkgAudit'
+import AdminBranchAudit from './AdminBranchAudit'
 import AdminPointMigration from './AdminPointMigration'
 
 const uid = genId;
@@ -357,7 +358,7 @@ function AdminJoinBrand({ currentUser, onBack }) {
 function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userBranches=[] }) {
   const navTo = useNavigate();
   const loc = useLocation();
-  const TAB_SLUGS = {places:"places",saleitems:"services",coupons:"coupons",prodmgmt:"products",svctags:"tags",ressrc:"sources",extplatforms:"ext-platforms",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",pointmig:"point-migration",joinbrand:"join-brand"};
+  const TAB_SLUGS = {places:"places",saleitems:"services",coupons:"coupons",prodmgmt:"products",svctags:"tags",ressrc:"sources",extplatforms:"ext-platforms",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",branchaudit:"branch-audit",pointmig:"point-migration",joinbrand:"join-brand"};
   const SLUG_TO_TAB = Object.fromEntries(Object.entries(TAB_SLUGS).map(([k,v])=>[v,k]));
   const tab = SLUG_TO_TAB[loc.pathname.replace(/^\/settings\/?/,"").split("/")[0]] || null;
   const setTab=t=>{ if(t) navTo(`/settings/${TAB_SLUGS[t]||t}`); else navTo("/settings"); };
@@ -394,6 +395,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     ]}] : []),
     ...(isMaster ? [{section:"데이터 관리",items:[
       {key:"pkgaudit",    icon:"clipboard",label:"패키지 정리",    desc:"3소스 비교·수정 (메모/오라클/블리스)"},
+      {key:"branchaudit", icon:"building", label:"구매지점 조사",  desc:"보유권 구매지점 판정 (id_ebgbebctt3 Phase 2)"},
       {key:"pointmig",    icon:"gift",     label:"포인트 설정",    desc:"10% 쿠폰 → 포인트 소급 전환"},
     ]}] : []),
     {section:"내 계정",items:[
@@ -445,6 +447,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     {tab==="mypage"       &&<AdminMyPage       currentUser={currentUser} onLogout={onLogout}/>}
     {tab==="schedule"    && isMaster &&<AdminSchedule currentUser={currentUser} isMaster={isMaster}/>}
     {tab==="pkgaudit"    && isMaster &&<AdminPkgAudit data={data} setData={setData} userBranches={userBranches}/>}
+    {tab==="branchaudit" && isMaster &&<AdminBranchAudit data={data}/>}
     {tab==="pointmig"    && isMaster &&<AdminPointMigration data={data} setData={setData} bizId={bizId}/>}
     {tab==="joinbrand"    && !isMaster &&<AdminJoinBrand   currentUser={currentUser} onBack={back}/>}
     {tab && !["mypage","schedule"].includes(tab) && !isMaster && <div style={{textAlign:"center",padding:"60px 20px",color:T.textMuted}}>
