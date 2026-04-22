@@ -47,11 +47,13 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   const branchList = data?.branches || [];
   const _BR_ACC = {};          // branchId → naver account id
   const _BR_IG  = {};          // branchId → instagram account id
+  const _BR_WA  = {};          // branchId → whatsapp phone_number_id
   const _ACC_NAME = {};
   const _ACC_BID = {};         // account id → branchId (필터 역추적용)
   branchList.forEach(b => {
-    if (b.naverAccountId) { _BR_ACC[b.id] = b.naverAccountId; _ACC_NAME[b.naverAccountId] = b.short || b.name; _ACC_BID[b.naverAccountId] = b.id; }
-    if (b.instagramAccountId) { _BR_IG[b.id] = b.instagramAccountId; _ACC_NAME[b.instagramAccountId] = b.short || b.name; _ACC_BID[b.instagramAccountId] = b.id; }
+    if (b.naverAccountId)     { _BR_ACC[b.id] = b.naverAccountId;     _ACC_NAME[b.naverAccountId]     = b.short || b.name; _ACC_BID[b.naverAccountId]     = b.id; }
+    if (b.instagramAccountId) { _BR_IG[b.id]  = b.instagramAccountId; _ACC_NAME[b.instagramAccountId] = b.short || b.name; _ACC_BID[b.instagramAccountId] = b.id; }
+    if (b.whatsappAccountId)  { _BR_WA[b.id]  = b.whatsappAccountId;  _ACC_NAME[b.whatsappAccountId]  = b.short || b.name; _ACC_BID[b.whatsappAccountId]  = b.id; }
   });
 
   // userBranches + 연계된 지점들까지 확장 (id_ebgbebctt3 Phase 2)
@@ -75,7 +77,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   }, [branchFilter, linkedBranchIds, branchList]);
 
   const allowedIds = activeBids
-    .flatMap(bid => [_BR_ACC[bid], _BR_IG[bid]])
+    .flatMap(bid => [_BR_ACC[bid], _BR_IG[bid], _BR_WA[bid]])
     .filter(Boolean)
     .map(String);
 
