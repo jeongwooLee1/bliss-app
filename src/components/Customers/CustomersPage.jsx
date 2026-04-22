@@ -798,6 +798,35 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
         </button>
       </div>
 
+      {/* 🏪 구매지점 (id_ebgbebctt3) — 같은 그룹 지점에서만 사용 가능 */}
+      {(() => {
+        const isAnnualPkg = /연간(회원|할인)?권/.test(p.service_name || "");
+        if (isAnnualPkg) {
+          return <div style={{marginBottom:6,padding:"4px 8px",borderRadius:T.radius.sm,background:"#EFF6FF",border:"1px solid #BFDBFE",fontSize:T.fs.nano,color:"#1E40AF",fontWeight:T.fw.bolder}}>
+            🌐 연간권 — 전 지점 공통
+          </div>;
+        }
+        const curBid = p.branch_id || "";
+        const curBr = (data?.branches || []).find(b => b.id === curBid);
+        const label = curBr ? (curBr.short || curBr.name) : "미판정";
+        return <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,padding:"4px 8px",borderRadius:T.radius.sm,
+          background: curBid ? T.gray100 : "#FEF2F2",
+          border: "1px solid " + (curBid ? T.border : "#FECACA")}}>
+          <span style={{fontSize:T.fs.nano,fontWeight:T.fw.bolder,color: curBid ? T.text : T.danger,flex:"0 0 auto"}}>🏪 구매지점</span>
+          <select value={curBid} onChange={async e => {
+            const newBid = e.target.value || null;
+            await sb.update("customer_packages", p.id, { branch_id: newBid });
+            setCustPkgsServer(prev => prev.map(x => x.id === p.id ? {...x, branch_id: newBid} : x));
+          }} style={{flex:1,fontSize:11,padding:"2px 6px",border:"1px solid "+T.border,borderRadius:4,background:T.bgCard,color:curBid?T.text:T.danger,fontFamily:"inherit"}}>
+            <option value="">미판정</option>
+            {(data?.branches || []).filter(b => b.useYn !== false).map(b => (
+              <option key={b.id} value={b.id}>{b.short || b.name}</option>
+            ))}
+          </select>
+          {!curBid && <span style={{fontSize:9,color:T.danger,fontWeight:700}}>설정 필요</span>}
+        </div>;
+      })()}
+
       {/* 🤝 쉐어 공유 토글 — 쉐어 관계 고객이 이 보유권을 사용 가능하게 */}
       {(() => {
         const isShared = /\|\s*쉐어:Y/.test(p.note||"");
