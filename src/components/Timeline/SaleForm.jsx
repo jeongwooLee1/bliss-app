@@ -410,10 +410,12 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
         } catch {}
       }
       // 쉐어 패키지: 본인 소유 패키지는 전부 포함, 타인 소유는 note에 "쉐어:Y" 플래그 있는 것만
+      // + 구매지점 그룹 체크 (id_ebgbebctt3): 같은 그룹 지점에서만 사용 가능. 연간권·NULL은 canUsePkgAtBranch 내부 처리.
       const marked = (pkgs||[])
         .filter(p => {
-          if (p.customer_id === custId) return true; // 본인 것은 항상
-          return /\|\s*쉐어:Y|^쉐어:Y/.test(p.note||""); // 쉐어 플래그 있어야 함
+          if (!canUsePkgAtBranch(p, branchId)) return false; // 구매지점 그룹 외 → 제외
+          if (p.customer_id === custId) return true; // 본인 것은 지점만 맞으면 통과
+          return /\|\s*쉐어:Y|^쉐어:Y/.test(p.note||""); // 타인 소유는 쉐어 플래그 필수
         })
         .map(p => ({
           ...p,
@@ -422,8 +424,10 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
         }));
       setCustPkgs(marked);
     } catch(e) {
-      // fallback: 본인만
-      sb.get("customer_packages", `&customer_id=eq.${custId}`).then(rows => setCustPkgs(rows||[])).catch(()=>setCustPkgs([]));
+      // fallback: 본인만 + 지점 필터
+      sb.get("customer_packages", `&customer_id=eq.${custId}`)
+        .then(rows => setCustPkgs((rows||[]).filter(p => canUsePkgAtBranch(p, branchId))))
+        .catch(()=>setCustPkgs([]));
     }
   };
 
@@ -1608,6 +1612,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           total_count: faceVal + bonus, used_count: deduct,
           purchased_at: new Date().toISOString(),
           note: _note,
+          branch_id: branchId || null,
         };
         sb.insert("customer_packages", newPkg).catch(console.error);
         // 신규 충전 (보너스 포함)
@@ -1642,6 +1647,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           total_count: total, used_count: used,
           purchased_at: new Date().toISOString(),
           note: _pkgBranchShort ? `매장:${_pkgBranchShort.replace(/점$|본점$/,'')}` : "",
+          branch_id: branchId || null,
         };
         sb.insert("customer_packages", newPkg).catch(console.error);
         _pkgTxRecords.push({
@@ -1807,6 +1813,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
             total_count: 1, used_count: 0,
             purchased_at: new Date().toISOString(),
             note: `이벤트 자동 발행(${c.evtName})${expNote} | 매출${sale.id}`,
+            branch_id: branchId || null,
           }).catch(console.error);
         }
       });
@@ -1830,6 +1837,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
             total_count: 1, used_count: 0,
             purchased_at: today.toISOString(),
             note,
+            branch_id: branchId || null,
           }).catch(console.error);
         }
       });

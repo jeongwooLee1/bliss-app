@@ -1170,7 +1170,8 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                               const note = isPre && price > 0 ? `잔액:${price.toLocaleString()} | 충전:${price.toLocaleString()} | 사용:0` : "";
                               const pkg = {id:genId(),business_id:_activeBizId,customer_id:c.id,service_id:svc.id,
                                 service_name:svc.name,total_count:tc,used_count:0,
-                                purchased_at:new Date().toISOString(),note};
+                                purchased_at:new Date().toISOString(),note,
+                                branch_id: c.bid || null};
                               sb.insert("customer_packages",pkg).catch(console.error);
                               setCustPkgsServer(prev=>[...prev, pkg]);
                               setData(prev=>({...prev,custPackages:[...(prev.custPackages||[]),pkg]}));
@@ -1194,7 +1195,8 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                               const note = `발행:${fmtD(today)} | 유효:${fmtD(exp)} | 수동발행`;
                               const pkg = {id:'cpn_'+genId(),business_id:_activeBizId,customer_id:c.id,service_id:svc.id,
                                 service_name:svc.name,total_count:1,used_count:0,
-                                purchased_at:today.toISOString(),note};
+                                purchased_at:today.toISOString(),note,
+                                branch_id: c.bid || null};
                               sb.insert("customer_packages",pkg).catch(console.error);
                               setCustPkgsServer(prev=>[...prev, pkg]);
                               setData(prev=>({...prev,custPackages:[...(prev.custPackages||[]),pkg]}));

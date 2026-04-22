@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { inSameBranchGroup } from './constants'
 
 // ── sessionStorage 연동 state 훅 (새로고침 시 유지, 탭 닫으면 초기화) ──
 export function useSessionState(key, initial) {
@@ -198,10 +199,20 @@ export const getPkgPurchaseBranchShort = (pkg, branches) => {
   }
   return ''
 }
-// 현재 지점에서 이 패키지 사용이 허용되는가 — 롤백됨 (데이터 불량으로 제한 해제, 전체 허용)
-// TODO: customer_packages.bid 컬럼 + 올바른 매장 데이터 보강 후 재활성화
+// 현재 지점에서 이 보유권 사용이 허용되는가
+// 정책(id_ebgbebctt3):
+//   1) 연간회원권 → 전 지점 허용 (회원가 자격도 전 브랜드 공통)
+//   2) branch_id 미판정 → 허용 (Phase 2 조사 대기)
+//   3) branch_id 판정됨 → 같은 그룹 지점에서만 사용 가능
+//      (그룹: 강남+왕십리 / 위례+잠실 / 마곡+홍대 / 용산 / 천호)
 export const canUsePkgAtBranch = (pkg, currentBid, branches) => {
-  return true;
+  if (!pkg) return true
+  const svcName = pkg.service_name || pkg.serviceName || ''
+  // 연간회원권은 전 지점 공통
+  if (/연간(회원|할인)?권/.test(svcName)) return true
+  // 구매지점 미판정(NULL) — Phase 2 조사 완료 전까지는 허용
+  if (!pkg.branch_id) return true
+  return inSameBranchGroup(pkg.branch_id, currentBid)
 }
 
 // customer_packages 배열에서 유효한 패키지(잔여/잔액 > 0, 미만료) 중 최초 구매지점 이니셜

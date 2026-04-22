@@ -740,6 +740,81 @@ ${naverText}
   // 기존 매출 확인
   const existingSale = (data.sales||[]).find(s => s.reservationId === f.id);
 
+  // 매출 등록이 "오늘" 되었는지 판정 (created_at 기반)
+  const saleIsTodayReg = useMemo(() => {
+    if (!existingSale) return false;
+    const ca = existingSale.created_at || existingSale.createdAt;
+    if (!ca) return false;
+    try {
+      const d = new Date(ca);
+      const kst = new Date(d.getTime() + (9 * 60 + d.getTimezoneOffset()) * 60 * 1000);
+      return kst.toISOString().slice(0, 10) === todayStr();
+    } catch { return false; }
+  }, [existingSale]);
+
+  // 매출 취소 — 당일 등록분만 가능. 연관 트랜잭션 전부 롤백.
+  const handleCancelSale = async () => {
+    if (!existingSale?.id) return;
+    if (!saleIsTodayReg) { alert("매출 등록 후 하루가 지나 취소할 수 없습니다. 매출관리에서 수정하세요."); return; }
+    const ok = confirm(
+      "매출을 취소하시겠습니까?\n\n" +
+      "⚠️ 다음 항목이 자동 롤백됩니다:\n" +
+      "• 패키지/다담권 차감 복구\n" +
+      "• 포인트 적립/사용 해제\n" +
+      "• 발행된 쿠폰 삭제\n" +
+      "• 예약 상태: 완료 → 확정"
+    );
+    if (!ok) return;
+    const saleId = existingSale.id;
+    try {
+      // 1. package_transactions 롤백: customer_packages.used_count 복구 + tx 삭제
+      const pkgTxs = await sb.get("package_transactions", `&sale_id=eq.${saleId}`);
+      for (const tx of (pkgTxs || [])) {
+        if (tx.package_id && tx.type === 'deduct' && tx.amount > 0) {
+          // customer_packages 현재 값 읽어서 정확히 복구
+          const pkgRows = await sb.get("customer_packages", tx.package_id);
+          const pkg = Array.isArray(pkgRows) ? pkgRows[0] : pkgRows;
+          if (pkg && pkg.id) {
+            const newUsed = Math.max(0, (pkg.used_count || 0) - tx.amount);
+            const upd = { used_count: newUsed };
+            // 다담권 잔액 note 업데이트
+            if (tx.unit === 'won' && pkg.note) {
+              const totalFace = pkg.total_count || 0;
+              const newBal = totalFace - newUsed;
+              upd.note = pkg.note.replace(/잔액:[0-9,]+/, `잔액:${Math.max(0, newBal).toLocaleString()}`);
+            }
+            await sb.update("customer_packages", pkg.id, upd);
+          }
+        }
+        await sb.del("package_transactions", tx.id);
+      }
+      // 2. point_transactions 삭제
+      await sb.delWhere("point_transactions", "sale_id", saleId);
+      // 3. 발행된 쿠폰(customer_packages note에 '매출{saleId}' 포함) 삭제
+      const coupons = await sb.get("customer_packages", `&note=ilike.*${encodeURIComponent('매출'+saleId)}*`);
+      for (const c of (coupons || [])) { await sb.del("customer_packages", c.id); }
+      // 4. sale_details 삭제
+      await sb.delWhere("sale_details", "sale_id", saleId);
+      // 5. sales 삭제
+      await sb.del("sales", saleId);
+      // 6. 예약 status 복구
+      if (f.id) {
+        await sb.update("reservations", f.id, { status: "confirmed" });
+      }
+      // local state 업데이트
+      setData(prev => ({
+        ...prev,
+        sales: (prev?.sales || []).filter(s => s.id !== saleId),
+        reservations: (prev?.reservations || []).map(r => r.id === f.id ? { ...r, status: "confirmed" } : r),
+      }));
+      alert("매출 취소 완료");
+      onClose();
+    } catch (e) {
+      console.error("[cancelSale]", e);
+      alert("매출 취소 실패: " + (e?.message || e));
+    }
+  };
+
   // ⚠️ 모든 hook은 조건부 early return 이전에 호출되어야 함 (React Rules of Hooks)
   const _overlayDownRef = React.useRef(false);
 
@@ -1441,12 +1516,31 @@ ${naverText}
                 const baseBtn = {padding:"10px 16px",borderRadius:T.radius.md,fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5,lineHeight:1,transition:"all .15s"};
                 return null;
               })()}
-              {/* 매출등록 (좌측) — 주황 아웃라인 */}
+              {/* 매출등록 / 확인 / 취소 */}
               {!isSchedule && f.type === "reservation" && (
-                <button onClick={()=>setShowSaleForm(true)}
-                  style={{padding:"10px 16px",borderRadius:T.radius.md,fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5,lineHeight:1,transition:"all .15s",border:"2px solid "+T.orange,color:T.orange,background:T.warningLt}}>
-                  <I name="wallet" size={12}/> {existingSale ? "매출확인" : "매출등록"}
-                </button>
+                existingSale ? (
+                  <>
+                    <button onClick={()=>setShowSaleForm(true)}
+                      style={{padding:"10px 14px",borderRadius:T.radius.md,fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5,lineHeight:1,transition:"all .15s",border:"2px solid "+T.success,color:"#fff",background:T.success}}
+                      title={saleIsTodayReg ? "매출 확인" : "매출 확인 (수정은 매출관리)"}>
+                      <I name="check" size={12}/> 매출완료
+                    </button>
+                    {saleIsTodayReg ? (
+                      <button onClick={handleCancelSale}
+                        style={{padding:"10px 14px",borderRadius:T.radius.md,fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5,lineHeight:1,transition:"all .15s",border:"2px solid "+T.danger,color:T.danger,background:T.dangerLt}}
+                        title="당일 등록분만 취소 가능">
+                        <I name="x" size={12}/> 매출취소
+                      </button>
+                    ) : (
+                      <span style={{padding:"10px 10px",fontSize:11,color:T.textMuted,fontWeight:600,whiteSpace:"nowrap"}}>수정은 매출관리에서</span>
+                    )}
+                  </>
+                ) : (
+                  <button onClick={()=>setShowSaleForm(true)}
+                    style={{padding:"10px 16px",borderRadius:T.radius.md,fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5,lineHeight:1,transition:"all .15s",border:"2px solid "+T.orange,color:T.orange,background:T.warningLt}}>
+                    <I name="wallet" size={12}/> 매출등록
+                  </button>
+                )
               )}
               {/* 삭제 — 네이버 예약은 버튼 자체를 숨김. 내부일정/수동예약은 확인창 없이 바로 삭제 */}
               {(() => {
