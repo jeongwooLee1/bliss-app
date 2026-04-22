@@ -1200,7 +1200,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                               const pkg = {id:genId(),business_id:_activeBizId,customer_id:c.id,service_id:svc.id,
                                 service_name:svc.name,total_count:tc,used_count:0,
                                 purchased_at:new Date().toISOString(),note,
-                                branch_id: c.bid || null};
+                                branch_id: (userBranches?.length === 1 ? userBranches[0] : (c.bid || null))};
                               sb.insert("customer_packages",pkg).catch(console.error);
                               setCustPkgsServer(prev=>[...prev, pkg]);
                               setData(prev=>({...prev,custPackages:[...(prev.custPackages||[]),pkg]}));
@@ -1225,7 +1225,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                               const pkg = {id:'cpn_'+genId(),business_id:_activeBizId,customer_id:c.id,service_id:svc.id,
                                 service_name:svc.name,total_count:1,used_count:0,
                                 purchased_at:today.toISOString(),note,
-                                branch_id: c.bid || null};
+                                branch_id: (userBranches?.length === 1 ? userBranches[0] : (c.bid || null))};
                               sb.insert("customer_packages",pkg).catch(console.error);
                               setCustPkgsServer(prev=>[...prev, pkg]);
                               setData(prev=>({...prev,custPackages:[...(prev.custPackages||[]),pkg]}));

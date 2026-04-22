@@ -17,7 +17,12 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
         <div style={{flex:1,minWidth:0,cursor:"pointer",userSelect:"none"}} onClick={()=>window.location.reload()} title="새로고침">
           <div style={{fontSize:T.fs.lg,fontWeight:T.fw.black,color:T.primary,letterSpacing:-.5,lineHeight:1.15,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{bizName||"Bliss"}</div>
-          <div style={{fontSize:T.fs.xs,color:T.textSub,marginTop:2}}>{role==="owner"?"대표 관리자":role==="super"?"슈퍼관리자":role==="manager"?"지점 원장":branchNames||"직원"}</div>
+          <div style={{fontSize:T.fs.xs,color:T.textSub,marginTop:2}}>{
+            role==="owner" ? "대표 관리자"
+            : role==="super" ? "슈퍼관리자"
+            : role==="manager" ? ("지점 원장" + (branchNames ? ` · ${branchNames}` : ""))
+            : (branchNames || "직원")
+          }</div>
         </div>
         <button onClick={onLogout} title="로그아웃" style={{flexShrink:0,padding:"4px 8px",fontSize:10,fontWeight:T.fw.bolder,border:`1px solid ${T.border}`,background:"transparent",color:T.textSub,borderRadius:6,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>로그아웃</button>
       </div>
