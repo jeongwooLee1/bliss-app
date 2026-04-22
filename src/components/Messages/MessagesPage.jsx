@@ -161,8 +161,9 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   const threads = useMemo(()=>{
     const map = {};
     msgs.forEach(m=>{
-      const _socialCh=["whatsapp","telegram","instagram","kakao"];
-      if(allowedIds.length>0 && m.account_id && m.account_id!=="unknown" && !allowedIds.includes(String(m.account_id)) && !_socialCh.includes(m.channel)) return;
+      // 지점 필터: account_id가 있고 허용 목록에 없으면 제외 (네이버·인스타·왓츠앱 모두 동일 기준)
+      // 예외: account_id 없음/'unknown' → 지점 미지정 메시지라 그대로 노출
+      if(allowedIds.length>0 && m.account_id && m.account_id!=="unknown" && !allowedIds.includes(String(m.account_id))) return;
       const key=(m.channel||"naver")+"_"+m.user_id;
       if(!map[key]||new Date(m.created_at)>new Date(map[key].created_at)) map[key]=m;
     });
