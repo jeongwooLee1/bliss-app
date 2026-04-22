@@ -1,14 +1,26 @@
 # HANDOFF
 
 ## 현재 버전
-- **v3.6.17** 배포 중 (라이브: https://blissme.ai/version.txt)
+- **v3.6.24** 배포 중 (라이브: https://blissme.ai/version.txt)
 
-## 진행 중 작업
-없음 — 이번 세션 pending 4건 전부 처리 (id_jre7s0tma6 매출취소·id_ebgbebctt3 구매지점 Phase 1-2·id_825fnuel64·id_triao6fesy AI 설정)
+## 이번 세션 누적 완료
+- 매출취소(id_jre7s0tma6) / AI 설정 재설계(id_triao6fesy)
+- 구매지점 Phase 1-2 + 조사 페이지 + 단일지점·패키지 사용지점 RPC (361→27건 판정)
+- AI Book 이메일/외부선결제 추출
+- Supabase legacy JWT → 서버 TG 봇 복구
+- 지점원장 로그인 지점 표시 + 패키지 추가 시 로그인지점 우선
+- **지점 묶음(branch_groups) 테이블 + 관리 UI + canUsePkgAtBranch 그룹 기반 전환**
+- **customer_packages.allowed_branch_ids 컬럼 + 고객관리 카드 "추가 허용 지점" UI**
 
-## 구매지점 Phase 2-3 남은 부분
-- **Phase 2**: NULL 361건 조사 페이지 (고객관리 내장 카드 편집만 구현됨. 전용 bulk 페이지는 후속)
-- **Phase 3**: 제한 최종 활성화는 canUsePkgAtBranch가 이미 적용 중 (NULL은 허용으로 점진적 이관)
+## 대기 중 pending (Phase 2-3 지점묶음 확장)
+### Phase 2 — 메시지함 지점 필터
+- 현재 전지점 공통 표시 → 유저 userBranches + 묶음 그룹 기준으로 필터링
+- MessagesPage.jsx 한 파일 수정
+
+### Phase 3 — 브랜드 멤버 권한 세분화
+- `users.permissions` jsonb 컬럼 추가
+- 기능별 허용 지점: `{timeline, reservations, customers, sales, messages}`
+- 브랜드 멤버 관리 UI에 권한 매트릭스 편집
 
 ## 다음 세션 진입 시
 1. `/pull` 로 main 최신 확인

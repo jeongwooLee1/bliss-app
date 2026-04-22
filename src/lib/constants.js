@@ -35,25 +35,8 @@ export const SCH_BRANCH_MAP = {
 // MALE_EMPLOYEES 삭제됨 — 전 직원이 employees_v1에 통합
 export const MALE_EMPLOYEES = []
 
-// 지점 그룹 — 같은 그룹 내에선 보유권/쿠폰 자유롭게 공유 사용
-// 용산·천호는 단독 운영
-export const BRANCH_GROUPS = {
-  'br_4bcauqvrb': 'ga_wang',  // 강남
-  'br_wkqsxj6k1': 'ga_wang',  // 왕십리
-  'br_g768xdu4w': 'we_jam',   // 위례
-  'br_lfv2wgdf1': 'we_jam',   // 잠실
-  'br_k57zpkbx1': 'ma_hong',  // 마곡
-  'br_l6yzs2pkq': 'ma_hong',  // 홍대
-  'br_ybo3rmulv': 'yong',     // 용산 (단독)
-  'br_xu60omgdf': 'chun',     // 천호 (단독)
-}
-// 두 지점이 같은 그룹이면 보유권 공유 가능
-export const inSameBranchGroup = (bidA, bidB) => {
-  if (!bidA || !bidB) return false
-  if (bidA === bidB) return true
-  const gA = BRANCH_GROUPS[bidA], gB = BRANCH_GROUPS[bidB]
-  return !!gA && gA === gB
-}
+// 지점 묶음 — branch_groups 테이블로 이관됨 (관리설정에서 편집)
+// 호환을 위해 유지하되 사용처는 없음. 향후 삭제 예정.
 
 export const STATUS_LABEL = {
   reserved:'예약중',

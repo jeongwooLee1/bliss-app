@@ -21,7 +21,7 @@ import BlissAI from '../components/BlissAI/BlissAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.6.23"
+const BLISS_V = "3.6.24"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -52,7 +52,7 @@ async function loadHistoricalInBackground(bizId, setData) {
 }
 
 async function loadAllFromDb(bizId) {
-  const [branches, services, categories, tags, sources, users, rooms, customers, reservations, sales, products] = await Promise.all([
+  const [branches, services, categories, tags, sources, users, rooms, customers, reservations, sales, products, branchGroups] = await Promise.all([
     sb.getByBiz("branches", bizId).catch(()=>[]),
     sb.getByBiz("services", bizId).catch(()=>[]),
     sb.getByBiz("service_categories", bizId).catch(()=>[]),
@@ -64,6 +64,7 @@ async function loadAllFromDb(bizId) {
     sb.get("reservations", `&business_id=eq.${bizId}&order=date.desc,time.asc&limit=3000`).catch(()=>[]),
     sb.get("sales", `&business_id=eq.${bizId}&date=gte.${new Date(Date.now()-90*86400000).toISOString().slice(0,10)}&order=date.desc&limit=5000`).catch(()=>[]),
     sb.getByBiz("products", bizId).catch(()=>[]),
+    sb.getByBiz("branch_groups", bizId).catch(()=>[]),
   ]);
   return {
     branches: fromDb("branches", branches),
@@ -77,6 +78,7 @@ async function loadAllFromDb(bizId) {
     reservations: fromDb("reservations", reservations),
     sales: fromDb("sales", sales),
     products: fromDb("services", products),
+    branchGroups: Array.isArray(branchGroups) ? branchGroups : [],
   };
 }
 function SuperDashboard({ superData, setSuperData, currentUser, onLogout, onEnterBiz }) {
@@ -1080,6 +1082,7 @@ function App() {
           branchSettings: db.branches.map(b => ({...b, useYn: b.use_yn !== false})),
           users: db.users, customers: db.customers, reservations: db.reservations, sales: db.sales,
           staff, resSources: db.resSources || [],
+          branchGroups: db.branchGroups || [],
         });
         // 권한: owner/super=전지점, manager=본인 branch_ids만
         const userBids = (() => {

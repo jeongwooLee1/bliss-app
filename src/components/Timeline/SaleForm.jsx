@@ -413,7 +413,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       // + 구매지점 그룹 체크 (id_ebgbebctt3): 같은 그룹 지점에서만 사용 가능. 연간권·NULL은 canUsePkgAtBranch 내부 처리.
       const marked = (pkgs||[])
         .filter(p => {
-          if (!canUsePkgAtBranch(p, branchId)) return false; // 구매지점 그룹 외 → 제외
+          if (!canUsePkgAtBranch(p, branchId, data?.branches, data?.branchGroups)) return false; // 구매지점 그룹 외 → 제외
           if (p.customer_id === custId) return true; // 본인 것은 지점만 맞으면 통과
           return /\|\s*쉐어:Y|^쉐어:Y/.test(p.note||""); // 타인 소유는 쉐어 플래그 필수
         })
@@ -426,7 +426,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     } catch(e) {
       // fallback: 본인만 + 지점 필터
       sb.get("customer_packages", `&customer_id=eq.${custId}`)
-        .then(rows => setCustPkgs((rows||[]).filter(p => canUsePkgAtBranch(p, branchId))))
+        .then(rows => setCustPkgs((rows||[]).filter(p => canUsePkgAtBranch(p, branchId, data?.branches, data?.branchGroups))))
         .catch(()=>setCustPkgs([]));
     }
   };

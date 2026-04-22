@@ -21,6 +21,7 @@ import AdminServiceTags from './AdminServiceTags'
 import SchedulePage from '../Schedule/SchedulePage'
 import AdminPkgAudit from './AdminPkgAudit'
 import AdminBranchAudit from './AdminBranchAudit'
+import AdminBranchGroups from './AdminBranchGroups'
 import AdminPointMigration from './AdminPointMigration'
 
 const uid = genId;
@@ -358,7 +359,7 @@ function AdminJoinBrand({ currentUser, onBack }) {
 function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userBranches=[] }) {
   const navTo = useNavigate();
   const loc = useLocation();
-  const TAB_SLUGS = {places:"places",saleitems:"services",coupons:"coupons",prodmgmt:"products",svctags:"tags",ressrc:"sources",extplatforms:"ext-platforms",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",branchaudit:"branch-audit",pointmig:"point-migration",joinbrand:"join-brand"};
+  const TAB_SLUGS = {places:"places",saleitems:"services",coupons:"coupons",prodmgmt:"products",svctags:"tags",ressrc:"sources",extplatforms:"ext-platforms",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",branchgroups:"branch-groups",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",branchaudit:"branch-audit",pointmig:"point-migration",joinbrand:"join-brand"};
   const SLUG_TO_TAB = Object.fromEntries(Object.entries(TAB_SLUGS).map(([k,v])=>[v,k]));
   const tab = SLUG_TO_TAB[loc.pathname.replace(/^\/settings\/?/,"").split("/")[0]] || null;
   const setTab=t=>{ if(t) navTo(`/settings/${TAB_SLUGS[t]||t}`); else navTo("/settings"); };
@@ -375,6 +376,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
   const MENU=[
     {section:"지점 관리",items:[
       {key:"places", icon:"building", label:"예약장소 관리", desc:isOwner?"지점 추가·수정·삭제":"내 지점 설정"},
+      ...(isMaster ? [{key:"branchgroups", icon:"link", label:"지점 묶음 관리", desc:"같은 원장 지점 묶음 — 보유권 공유 등"}] : []),
     ]},
     ...(isMaster ? [{section:"사업장 관리",items:[
       {key:"saleitems",   icon:"scissors", label:"시술 상품 관리", desc:"시술 항목 및 가격 설정"},
@@ -448,6 +450,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     {tab==="schedule"    && isMaster &&<AdminSchedule currentUser={currentUser} isMaster={isMaster}/>}
     {tab==="pkgaudit"    && isMaster &&<AdminPkgAudit data={data} setData={setData} userBranches={userBranches}/>}
     {tab==="branchaudit" && isMaster &&<AdminBranchAudit data={data}/>}
+    {tab==="branchgroups"&& isMaster &&<AdminBranchGroups data={data} setData={setData} bizId={bizId}/>}
     {tab==="pointmig"    && isMaster &&<AdminPointMigration data={data} setData={setData} bizId={bizId}/>}
     {tab==="joinbrand"    && !isMaster &&<AdminJoinBrand   currentUser={currentUser} onBack={back}/>}
     {tab && !["mypage","schedule"].includes(tab) && !isMaster && <div style={{textAlign:"center",padding:"60px 20px",color:T.textMuted}}>

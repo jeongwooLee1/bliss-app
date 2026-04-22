@@ -827,6 +827,53 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
         </div>;
       })()}
 
+      {/* ➕ 추가 허용 지점 (id_ebgbebctt3 개별 예외) */}
+      {(() => {
+        const isAnnualPkg = /연간(회원|할인)?권/.test(p.service_name || "");
+        if (isAnnualPkg) return null;
+        const curBid = p.branch_id || null;
+        const allowed = Array.isArray(p.allowed_branch_ids) ? p.allowed_branch_ids : [];
+        // 같은 묶음 멤버는 이미 허용이라 체크 제외
+        const sameGroupBids = (() => {
+          const ids = new Set();
+          (data?.branchGroups || []).forEach(g => {
+            const gb = g.branch_ids || [];
+            if (curBid && gb.includes(curBid)) gb.forEach(b => ids.add(b));
+          });
+          return ids;
+        })();
+        const candidateBranches = (data?.branches || []).filter(b => b.useYn !== false && b.id !== curBid && !sameGroupBids.has(b.id));
+        const saveAllowed = async next => {
+          await sb.update("customer_packages", p.id, { allowed_branch_ids: next });
+          setCustPkgsServer(prev => prev.map(x => x.id === p.id ? {...x, allowed_branch_ids: next} : x));
+        };
+        const toggleBid = async bid => {
+          const next = allowed.includes(bid) ? allowed.filter(x => x !== bid) : [...allowed, bid];
+          await saveAllowed(next);
+        };
+        const branchById = (bid) => (data?.branches||[]).find(b => b.id === bid);
+        return <div style={{marginBottom:6,padding:"6px 8px",borderRadius:T.radius.sm,background:"#FFFBEB",border:"1px solid #FDE68A"}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:allowed.length?5:0}}>
+            <span style={{fontSize:T.fs.nano,fontWeight:T.fw.bolder,color:"#92400E",flex:1}}>➕ 추가 허용 지점</span>
+            {candidateBranches.length > 0 && <select value="" onChange={e => { if (e.target.value) toggleBid(e.target.value); }}
+              style={{fontSize:10,padding:"2px 6px",border:"1px solid #FDE68A",borderRadius:4,background:"#fff",fontFamily:"inherit"}}>
+              <option value="">+ 추가</option>
+              {candidateBranches.filter(b => !allowed.includes(b.id)).map(b => <option key={b.id} value={b.id}>{b.short || b.name}</option>)}
+            </select>}
+          </div>
+          {allowed.length > 0 && <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+            {allowed.map(bid => {
+              const b = branchById(bid);
+              if (!b) return null;
+              return <span key={bid} style={{fontSize:10,padding:"2px 7px",borderRadius:10,background:"#FEF3C7",color:"#92400E",fontWeight:700,display:"inline-flex",alignItems:"center",gap:3}}>
+                {b.short || b.name}
+                <button onClick={() => toggleBid(bid)} style={{border:"none",background:"none",color:"#92400E",cursor:"pointer",padding:0,fontSize:11,lineHeight:1}}>×</button>
+              </span>;
+            })}
+          </div>}
+        </div>;
+      })()}
+
       {/* 🤝 쉐어 공유 토글 — 쉐어 관계 고객이 이 보유권을 사용 가능하게 */}
       {(() => {
         const isShared = /\|\s*쉐어:Y/.test(p.note||"");
