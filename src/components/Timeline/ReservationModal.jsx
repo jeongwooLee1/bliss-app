@@ -191,6 +191,15 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
 
   const [showSaleForm, setShowSaleForm] = useState(false);
   const [isSchedule, setIsSchedule] = useState(item?.isSchedule || false);
+  // 🔒 race-condition 방어: 모달 오픈 시점의 네이버 관리 필드 스냅샷.
+  //   네이버 확정 이메일 처리로 서버가 status='reserved' 저장한 뒤,
+  //   모달의 stale form state가 저장으로 덮어쓰는 race 방어.
+  const [initialServerSnap] = useState({
+    status: item?.status || "",
+    naverConfirmedDt: item?.naverConfirmedDt || "",
+    naverCancelledDt: item?.naverCancelledDt || "",
+    naverRegDt: item?.naverRegDt || "",
+  });
   const [historyOpen, setHistoryOpen] = useState(false);
   const [custPopupOpen, setCustPopupOpen] = useState(false);
   const [salesHistory, setSalesHistory] = useState([]);
@@ -1653,7 +1662,7 @@ ${naverText}
                     "#{대표전화번호}":branch?.phone||""
                   });
                 }
-                onSave({...f, memo: memoToSave, scheduleLog: scheduleLogToSave, tsLog: newLog, selectedTags: autoTags, isSchedule, _isColTemplate: item?._isColTemplate, _templateId: item?._templateId});
+                onSave({...f, memo: memoToSave, scheduleLog: scheduleLogToSave, tsLog: newLog, selectedTags: autoTags, isSchedule, _isColTemplate: item?._isColTemplate, _templateId: item?._templateId, _initialServerSnap: initialServerSnap});
               }}>{item?.id?"저장":"등록"}</button>
               {/* AI 예약 확정 버튼 */}
               {f.status==="request" && <Btn style={{padding:"10px 26px",background:"#9C27B0",boxShadow:"0 4px 14px rgba(156,39,176,.35)"}}
