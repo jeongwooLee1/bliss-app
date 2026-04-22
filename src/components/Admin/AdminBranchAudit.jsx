@@ -106,6 +106,22 @@ function AdminBranchAudit({ data }) {
       <button onClick={load} disabled={loading} style={{ marginLeft: 'auto', padding: '8px 14px', fontSize: T.fs.xs, border: '1.5px solid ' + T.border, borderRadius: 8, background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
         🔄 새로고침
       </button>
+      <button onClick={async () => {
+        if (!confirm('단일 지점만 이용한 고객의 보유권을 그 지점으로 자동 판정합니다. 계속할까요?')) return
+        setProcessing('auto')
+        try {
+          const r = await fetch(`${SB_URL}/rest/v1/rpc/auto_assign_single_branch_pkgs`, {
+            method: 'POST', headers: { ...sbHeaders, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ p_biz_id: 'biz_khvurgshb' }),
+          })
+          const cnt = await r.json()
+          await load()
+          alert(`단일지점 자동 판정 완료: ${cnt}건`)
+        } catch (e) { alert('실패: ' + (e?.message || e)) }
+        setProcessing(null)
+      }} disabled={processing === 'auto'} style={{ padding: '8px 14px', fontSize: T.fs.xs, fontWeight: 700, border: '1.5px solid ' + T.primary, borderRadius: 8, background: '#fff', color: T.primary, cursor: 'pointer', fontFamily: 'inherit' }}>
+        {processing === 'auto' ? '처리 중…' : '⚡ 단일지점 자동 정리'}
+      </button>
       <AIBtn onClick={applyAllSuggestions} disabled={processing === 'bulk' || stats.withSug === 0} label={processing === 'bulk' ? '처리 중…' : `✓ 추천 ${stats.withSug}건 일괄 적용`} style={{ background: T.success }} />
     </div>
 
@@ -132,9 +148,13 @@ function AdminBranchAudit({ data }) {
         {byCustomer.map(group => (
           <div key={group.customer_id || group.pkgs[0].pkg_id} className="card" style={{ padding: 14 }}>
             <div style={{ fontSize: T.fs.sm, fontWeight: T.fw.bolder, color: T.text, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span>{group.cust_name || '(고객명 없음)'}</span>
+              {group.cust_name
+                ? <span>{group.cust_name}</span>
+                : <span style={{ color: T.danger, fontSize: T.fs.xs }}>⚠️ 고객 매칭 실패 (삭제된 고객)</span>
+              }
               {group.cust_num && <span style={{ fontSize: 10, color: T.gray500, fontFamily: 'monospace' }}>#{group.cust_num}</span>}
               {group.phone && <span style={{ fontSize: 11, color: T.textMuted }}>{group.phone}</span>}
+              {!group.cust_name && group.customer_id && <span style={{ fontSize: 10, color: T.gray500, fontFamily: 'monospace' }}>cid:{group.customer_id.slice(0, 10)}…</span>}
               <ABadge color={T.primary}>{group.pkgs.length}건</ABadge>
             </div>
 
