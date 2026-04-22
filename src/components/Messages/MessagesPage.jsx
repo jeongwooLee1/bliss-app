@@ -535,6 +535,26 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
             ))}
           </div>
         </div>}
+        {/* 지점 필터 (id_ebgbebctt3 Phase 2) — 데스크탑 */}
+        <div style={{padding:"5px 8px",borderBottom:"1px solid "+T.border,display:"flex",gap:3,flexWrap:"wrap",alignItems:"center",background:"#fafafa"}}>
+          <span style={{fontSize:10,color:T.textMuted,fontWeight:700,marginRight:2}}>🏪</span>
+          {(() => {
+            const chips = [];
+            if (isMaster) chips.push({ id:'all', label:'전체' });
+            chips.push({ id:'linked', label: linkedBranchIds.length > (userBranches?.length||0) ? '연계' : '내 지점' });
+            if (linkedBranchIds.length > (userBranches?.length||0)) chips.push({ id:'mine', label:'내 지점' });
+            linkedBranchIds.forEach(bid => {
+              const b = branchList.find(x => x.id === bid);
+              if (b) chips.push({ id: bid, label: b.short || b.name });
+            });
+            return chips.map(c => (
+              <button key={c.id} onClick={()=>setBranchFilter(c.id)}
+                style={{padding:"2px 8px",fontSize:10,fontWeight:branchFilter===c.id?700:500,border:"1px solid "+(branchFilter===c.id?T.primary:T.border),borderRadius:10,background:branchFilter===c.id?T.primaryLt:"#fff",color:branchFilter===c.id?T.primaryDk:T.gray600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
+                {c.label}
+              </button>
+            ));
+          })()}
+        </div>
         <div style={{padding:"8px 10px",borderBottom:"1px solid "+T.border}}>
           <input value={msgSearch} onChange={e=>setMsgSearch(e.target.value)} placeholder="이름, 메시지 검색..." style={{width:"100%",padding:"6px 10px",borderRadius:6,border:"1px solid "+T.border,fontSize:12,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
         </div>
