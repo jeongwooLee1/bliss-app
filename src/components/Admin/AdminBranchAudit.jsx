@@ -110,17 +110,32 @@ function AdminBranchAudit({ data }) {
         if (!confirm('단일 지점만 이용한 고객의 보유권을 그 지점으로 자동 판정합니다. 계속할까요?')) return
         setProcessing('auto')
         try {
+          const before = rows.length
           const r = await fetch(`${SB_URL}/rest/v1/rpc/auto_assign_single_branch_pkgs`, {
             method: 'POST', headers: { ...sbHeaders, 'Content-Type': 'application/json' },
             body: JSON.stringify({ p_biz_id: 'biz_khvurgshb' }),
           })
-          const cnt = await r.json()
+          await r.json()
           await load()
-          alert(`단일지점 자동 판정 완료: ${cnt}건`)
         } catch (e) { alert('실패: ' + (e?.message || e)) }
         setProcessing(null)
       }} disabled={processing === 'auto'} style={{ padding: '8px 14px', fontSize: T.fs.xs, fontWeight: 700, border: '1.5px solid ' + T.primary, borderRadius: 8, background: '#fff', color: T.primary, cursor: 'pointer', fontFamily: 'inherit' }}>
         {processing === 'auto' ? '처리 중…' : '⚡ 단일지점 자동 정리'}
+      </button>
+      <button onClick={async () => {
+        if (!confirm('패키지의 최종 사용 지점을 구매처로 판정하고, 그 패키지의 유효기간 내 쿠폰도 같은 지점으로 자동 판정합니다. 계속할까요?')) return
+        setProcessing('pkg_use')
+        try {
+          const r = await fetch(`${SB_URL}/rest/v1/rpc/auto_assign_pkg_use_branch`, {
+            method: 'POST', headers: { ...sbHeaders, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ p_biz_id: 'biz_khvurgshb' }),
+          })
+          await r.json()
+          await load()
+        } catch (e) { alert('실패: ' + (e?.message || e)) }
+        setProcessing(null)
+      }} disabled={processing === 'pkg_use'} style={{ padding: '8px 14px', fontSize: T.fs.xs, fontWeight: 700, border: '1.5px solid ' + T.primary, borderRadius: 8, background: '#fff', color: T.primary, cursor: 'pointer', fontFamily: 'inherit' }}>
+        {processing === 'pkg_use' ? '처리 중…' : '📦 패키지 사용지점 + 쿠폰 연동 정리'}
       </button>
       <AIBtn onClick={applyAllSuggestions} disabled={processing === 'bulk' || stats.withSug === 0} label={processing === 'bulk' ? '처리 중…' : `✓ 추천 ${stats.withSug}건 일괄 적용`} style={{ background: T.success }} />
     </div>
