@@ -536,29 +536,29 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
         </div>
         <button onClick={()=>setShowAiSettings(v=>!v)} style={{background:Object.values(aiAutoChannels).some(v=>v)?"#7C3AED":"none",color:Object.values(aiAutoChannels).some(v=>v)?"#fff":T.textMuted,border:"1px solid "+(Object.values(aiAutoChannels).some(v=>v)?"#7C3AED":T.border),borderRadius:6,cursor:"pointer",padding:"3px 8px",fontSize:11,fontWeight:600}}>🤖 AI</button>
       </div>
-      {showAiSettings&&<div style={{padding:"10px 14px",borderBottom:"1px solid "+T.border,background:"#faf5ff"}}>
-        <div style={{fontSize:11,fontWeight:600,color:"#7C3AED",marginBottom:8}}>AI 자동대답 채널 설정</div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+      {showAiSettings&&(()=>{ const stLabel=aiSchedule.enabled?(scheduleInWindow?"응대 시간":"OFF 시간"):"항상 응대"; const stColor=aiSchedule.enabled?(scheduleInWindow?"#059669":"#9ca3af"):"#7C3AED"; return <div style={{padding:"12px 14px",borderBottom:"1px solid "+T.border,background:"#faf5ff"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+          <span style={{fontSize:12,fontWeight:700,color:"#7C3AED"}}>🤖 AI 자동대답</span>
+          <span style={{fontSize:10,fontWeight:700,color:"#fff",background:stColor,padding:"2px 8px",borderRadius:10,whiteSpace:"nowrap"}}>● {stLabel}</span>
+        </div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:10}}>
           {_chMeta.map(([ch,label,clr])=>(
-            <button key={ch} onClick={()=>toggleAiChannel(ch)} style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer",border:"1.5px solid",borderColor:aiAutoChannels[ch]?clr:T.border,background:aiAutoChannels[ch]?clr+"18":"#fff",color:aiAutoChannels[ch]?clr:T.gray500}}>{label} {aiAutoChannels[ch]?"ON":"OFF"}</button>
+            <button key={ch} onClick={()=>toggleAiChannel(ch)} style={{padding:"5px 10px",borderRadius:14,fontSize:11,fontWeight:700,cursor:"pointer",border:"1.5px solid",borderColor:aiAutoChannels[ch]?clr:T.border,background:aiAutoChannels[ch]?clr:"#fff",color:aiAutoChannels[ch]?"#fff":T.gray500,whiteSpace:"nowrap",fontFamily:"inherit"}}>{label}</button>
           ))}
         </div>
-        <div style={{fontSize:10,fontWeight:600,color:"#7C3AED",marginBottom:4}}>⏰ 응대 시간 스케줄 (전채널 공통)</div>
-        <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,padding:"6px 8px",background:(aiSchedule.enabled&&!scheduleInWindow)?"#f3f4f6":"#ecfdf5",borderRadius:5}}>
-          <label style={{display:"inline-flex",alignItems:"center",gap:3,cursor:"pointer"}}>
-            <input type="checkbox" checked={!!aiSchedule.enabled} onChange={e=>saveAiSchedule({enabled:e.target.checked})} style={{cursor:"pointer"}}/>
-            <span style={{color:T.gray600,fontWeight:700}}>스케줄 사용</span>
+        <div style={{fontSize:10,fontWeight:700,color:"#6B21A8",marginBottom:5,whiteSpace:"nowrap"}}>⏰ 응대 시간 (전채널 공통)</div>
+        <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"#fff",border:"1px solid "+T.border,borderRadius:8}}>
+          <label style={{display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
+            <input type="checkbox" checked={!!aiSchedule.enabled} onChange={e=>saveAiSchedule({enabled:e.target.checked})} style={{cursor:"pointer",width:14,height:14,accentColor:"#7C3AED"}}/>
+            <span style={{fontSize:11,fontWeight:700,color:aiSchedule.enabled?"#7C3AED":T.gray500}}>스케줄</span>
           </label>
           <input type="time" value={aiSchedule.start||"10:00"} onChange={e=>saveAiSchedule({start:e.target.value})} disabled={!aiSchedule.enabled}
-            style={{fontSize:11,padding:"2px 4px",border:"1px solid "+T.border,borderRadius:4,fontFamily:"inherit",width:90,opacity:aiSchedule.enabled?1:0.5}}/>
-          <span style={{color:T.gray500}}>~</span>
+            style={{fontSize:12,padding:"4px 6px",border:"1px solid "+T.border,borderRadius:5,fontFamily:"inherit",minWidth:0,flex:1,opacity:aiSchedule.enabled?1:0.45,background:aiSchedule.enabled?"#fff":"#f9fafb"}}/>
+          <span style={{color:T.gray400,fontSize:11,flexShrink:0}}>~</span>
           <input type="time" value={aiSchedule.end||"22:00"} onChange={e=>saveAiSchedule({end:e.target.value})} disabled={!aiSchedule.enabled}
-            style={{fontSize:11,padding:"2px 4px",border:"1px solid "+T.border,borderRadius:4,fontFamily:"inherit",width:90,opacity:aiSchedule.enabled?1:0.5}}/>
-          <span style={{marginLeft:"auto",fontSize:10,fontWeight:700,color:aiSchedule.enabled?(scheduleInWindow?"#059669":"#9ca3af"):"#059669"}}>
-            {aiSchedule.enabled ? (scheduleInWindow?"🟢 응대 시간":"⏸ 스케줄 OFF") : "🟢 항상 응대"}
-          </span>
+            style={{fontSize:12,padding:"4px 6px",border:"1px solid "+T.border,borderRadius:5,fontFamily:"inherit",minWidth:0,flex:1,opacity:aiSchedule.enabled?1:0.45,background:aiSchedule.enabled?"#fff":"#f9fafb"}}/>
         </div>
-      </div>}
+      </div>})()}
       {/* 지점 필터 (id_ebgbebctt3 Phase 2): 내 지점(연계 포함) 디폴트 / 전체 */}
       <div style={{padding:"6px 10px",borderBottom:"1px solid "+T.border,display:"flex",gap:6,alignItems:"center",background:"#fafafa"}}>
         <span style={{fontSize:10,color:T.textMuted,fontWeight:700,marginRight:2}}>🏪</span>
@@ -698,29 +698,29 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
           </div>
           <button onClick={()=>setShowAiSettings(v=>!v)} style={{background:Object.values(aiAutoChannels).some(v=>v)?"#7C3AED":"none",color:Object.values(aiAutoChannels).some(v=>v)?"#fff":T.textMuted,border:"1px solid "+(Object.values(aiAutoChannels).some(v=>v)?"#7C3AED":T.border),borderRadius:6,cursor:"pointer",padding:"3px 8px",fontSize:11,fontWeight:600}}>🤖 AI</button>
         </div>
-        {showAiSettings&&<div style={{padding:"10px 14px",borderBottom:"1px solid "+T.border,background:"#faf5ff"}}>
-          <div style={{fontSize:11,fontWeight:600,color:"#7C3AED",marginBottom:8}}>AI 자동대답 채널 설정</div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+        {showAiSettings&&(()=>{ const stLabel=aiSchedule.enabled?(scheduleInWindow?"응대 시간":"OFF 시간"):"항상 응대"; const stColor=aiSchedule.enabled?(scheduleInWindow?"#059669":"#9ca3af"):"#7C3AED"; return <div style={{padding:"12px 14px",borderBottom:"1px solid "+T.border,background:"#faf5ff"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+            <span style={{fontSize:12,fontWeight:700,color:"#7C3AED"}}>🤖 AI 자동대답</span>
+            <span style={{fontSize:10,fontWeight:700,color:"#fff",background:stColor,padding:"2px 8px",borderRadius:10,whiteSpace:"nowrap"}}>● {stLabel}</span>
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:10}}>
             {_chMeta.map(([ch,label,clr])=>(
-              <button key={ch} onClick={()=>toggleAiChannel(ch)} style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer",border:"1.5px solid",borderColor:aiAutoChannels[ch]?clr:T.border,background:aiAutoChannels[ch]?clr+"18":"#fff",color:aiAutoChannels[ch]?clr:T.gray500}}>{label} {aiAutoChannels[ch]?"ON":"OFF"}</button>
+              <button key={ch} onClick={()=>toggleAiChannel(ch)} style={{padding:"5px 10px",borderRadius:14,fontSize:11,fontWeight:700,cursor:"pointer",border:"1.5px solid",borderColor:aiAutoChannels[ch]?clr:T.border,background:aiAutoChannels[ch]?clr:"#fff",color:aiAutoChannels[ch]?"#fff":T.gray500,whiteSpace:"nowrap",fontFamily:"inherit"}}>{label}</button>
             ))}
           </div>
-          <div style={{fontSize:10,fontWeight:600,color:"#7C3AED",marginBottom:4}}>⏰ 응대 시간 스케줄 (전채널 공통)</div>
-          <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,padding:"6px 8px",background:(aiSchedule.enabled&&!scheduleInWindow)?"#f3f4f6":"#ecfdf5",borderRadius:5}}>
-            <label style={{display:"inline-flex",alignItems:"center",gap:3,cursor:"pointer"}}>
-              <input type="checkbox" checked={!!aiSchedule.enabled} onChange={e=>saveAiSchedule({enabled:e.target.checked})} style={{cursor:"pointer"}}/>
-              <span style={{color:T.gray600,fontWeight:700}}>스케줄 사용</span>
+          <div style={{fontSize:10,fontWeight:700,color:"#6B21A8",marginBottom:5,whiteSpace:"nowrap"}}>⏰ 응대 시간 (전채널 공통)</div>
+          <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"#fff",border:"1px solid "+T.border,borderRadius:8}}>
+            <label style={{display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
+              <input type="checkbox" checked={!!aiSchedule.enabled} onChange={e=>saveAiSchedule({enabled:e.target.checked})} style={{cursor:"pointer",width:14,height:14,accentColor:"#7C3AED"}}/>
+              <span style={{fontSize:11,fontWeight:700,color:aiSchedule.enabled?"#7C3AED":T.gray500}}>스케줄</span>
             </label>
             <input type="time" value={aiSchedule.start||"10:00"} onChange={e=>saveAiSchedule({start:e.target.value})} disabled={!aiSchedule.enabled}
-              style={{fontSize:11,padding:"2px 4px",border:"1px solid "+T.border,borderRadius:4,fontFamily:"inherit",width:90,opacity:aiSchedule.enabled?1:0.5}}/>
-            <span style={{color:T.gray500}}>~</span>
+              style={{fontSize:12,padding:"4px 6px",border:"1px solid "+T.border,borderRadius:5,fontFamily:"inherit",minWidth:0,flex:1,opacity:aiSchedule.enabled?1:0.45,background:aiSchedule.enabled?"#fff":"#f9fafb"}}/>
+            <span style={{color:T.gray400,fontSize:11,flexShrink:0}}>~</span>
             <input type="time" value={aiSchedule.end||"22:00"} onChange={e=>saveAiSchedule({end:e.target.value})} disabled={!aiSchedule.enabled}
-              style={{fontSize:11,padding:"2px 4px",border:"1px solid "+T.border,borderRadius:4,fontFamily:"inherit",width:90,opacity:aiSchedule.enabled?1:0.5}}/>
-            <span style={{marginLeft:"auto",fontSize:10,fontWeight:700,color:aiSchedule.enabled?(scheduleInWindow?"#059669":"#9ca3af"):"#059669"}}>
-              {aiSchedule.enabled ? (scheduleInWindow?"🟢 응대 시간":"⏸ 스케줄 OFF") : "🟢 항상 응대"}
-            </span>
+              style={{fontSize:12,padding:"4px 6px",border:"1px solid "+T.border,borderRadius:5,fontFamily:"inherit",minWidth:0,flex:1,opacity:aiSchedule.enabled?1:0.45,background:aiSchedule.enabled?"#fff":"#f9fafb"}}/>
           </div>
-        </div>}
+        </div>})()}
         {/* 지점 필터 (id_ebgbebctt3 Phase 2) — 데스크탑 */}
         <div style={{padding:"5px 10px",borderBottom:"1px solid "+T.border,display:"flex",gap:6,alignItems:"center",background:"#fafafa"}}>
           <span style={{fontSize:10,color:T.textMuted,fontWeight:700,marginRight:2}}>🏪</span>
