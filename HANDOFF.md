@@ -1,10 +1,14 @@
 # HANDOFF
 
 ## 현재 버전
-- **v3.6.13** 배포 중 (라이브: https://blissme.ai/version.txt)
+- **v3.6.17** 배포 중 (라이브: https://blissme.ai/version.txt)
 
 ## 진행 중 작업
-없음 — 타임라인 직원 순서 고정 + 공지 배너 1시간/60vh + 블리스AI 이벤트 컨텍스트 완료. 민정 요청 id_rehjfjxysq done 처리.
+없음 — 이번 세션 pending 4건 전부 처리 (id_jre7s0tma6 매출취소·id_ebgbebctt3 구매지점 Phase 1-2·id_825fnuel64·id_triao6fesy AI 설정)
+
+## 구매지점 Phase 2-3 남은 부분
+- **Phase 2**: NULL 361건 조사 페이지 (고객관리 내장 카드 편집만 구현됨. 전용 bulk 페이지는 후속)
+- **Phase 3**: 제한 최종 활성화는 canUsePkgAtBranch가 이미 적용 중 (NULL은 허용으로 점진적 이관)
 
 ## 다음 세션 진입 시
 1. `/pull` 로 main 최신 확인
