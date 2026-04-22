@@ -1,7 +1,17 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.5** (https://blissme.ai/version.txt) — 2026-04-23 배포 완료
+- **라이브: v3.7.6** (https://blissme.ai/version.txt) — 2026-04-23 배포 완료
+
+### v3.7.6 (2026-04-23)
+- **AI 자동답변 시간 스케줄** — 메시지함 🤖 AI 토글 패널에 채널별 시간대 설정
+  - `businesses.settings.ai_auto_reply_schedule = { naver:{enabled,start,end}, instagram:{...}, whatsapp:{...}, kakao:{...} }`
+  - 스케줄 ON + 지정 시간대 내에만 자동 응답, 이외 시간은 응답 안 함
+  - 자정 넘김 지원 (22:00~02:00 등)
+  - 서버 `ai_booking.py:ai_booking_agent`의 채널 체크에 스케줄 평가 추가 (force=True 시 무시)
+  - 상태 배지: 🟢 응대중 / 🟢 항상 / ⏸ 스케줄 OFF / ⚫ 수동 OFF
+- **AI 예약 취소 규칙** — 당일이면 status="cancelled" 유지, 미래면 DB 삭제
+- **AI 보유권·회원권 응답** — 고객 식별 시 `customer_packages` 조회해 프롬프트 주입, "담당자 확인" 우회
 
 ### v3.7.5 (2026-04-23)
 - **메시지함 AI 예약생성 버튼** (🤖 AI 예약생성 / 모바일 🤖 예약)

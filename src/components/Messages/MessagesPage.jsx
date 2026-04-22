@@ -37,6 +37,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   }, [pendingChat, msgs.length]);
   const [aiKoDraft, setAiKoDraft] = useState("");
   const [aiAutoChannels, setAiAutoChannels] = useState({});
+  const [aiSchedule, setAiSchedule] = useState({}); // {naver:{enabled,start,end},...}
   // IG 계정이 brancheas 테이블에 등록 안 된 경우를 위한 override 매핑: {igAccountId: branchId}
   // 예: 공용 "하우스왁싱 서울" IG 계정을 강남본점에 매핑
   const [igBranchOverride, setIgBranchOverride] = useState({});
@@ -159,6 +160,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       .then(r=>r.json()).then(rows=>{
         const s = _parseSettings(rows?.[0]?.settings);
         setAiAutoChannels(s.ai_auto_reply_channels || {});
+        setAiSchedule(s.ai_auto_reply_schedule || {});
         // IG account_id → branch_id 오버라이드 매핑 (branches 미등록 IG 계정용)
         setIgBranchOverride(s.ig_branch_override || {});
       }).catch(()=>{});
@@ -175,6 +177,51 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       settings.ai_auto_reply_enabled = Object.values(updated).some(v=>v);
       await fetch(SB_URL+"/rest/v1/businesses?id=eq.biz_khvurgshb",{method:"PATCH",headers:{...sbHeaders,"Prefer":"return=minimal"},body:JSON.stringify({settings:JSON.stringify(settings)})});
     } catch(e){ setAiAutoChannels(prev); }
+  };
+
+  // AI 스케줄 저장 (channel별 enabled/start/end)
+  const saveAiSchedule = async (ch, patch) => {
+    const prev = {...aiSchedule};
+    const merged = {...(prev[ch]||{enabled:false,start:"10:00",end:"22:00"}), ...patch};
+    const updated = {...prev, [ch]: merged};
+    setAiSchedule(updated);
+    try {
+      const r = await fetch(SB_URL+"/rest/v1/businesses?id=eq.biz_khvurgshb&select=settings",{headers:sbHeaders});
+      const rows = await r.json();
+      const settings = _parseSettings(rows?.[0]?.settings);
+      settings.ai_auto_reply_schedule = updated;
+      await fetch(SB_URL+"/rest/v1/businesses?id=eq.biz_khvurgshb",{method:"PATCH",headers:{...sbHeaders,"Prefer":"return=minimal"},body:JSON.stringify({settings:JSON.stringify(settings)})});
+    } catch(e){ setAiSchedule(prev); }
+  };
+
+  // 채널별 스케줄 UI (공통 컴포넌트)
+  const _chMeta = [["naver","N 네이버","#03C75A"],["instagram","I 인스타","#E1306C"],["whatsapp","W 왓츠앱","#128C7E"],["kakao","K 카카오","#F9E000"]];
+  const _nowInWindow = (sc) => {
+    if (!sc?.enabled) return true;
+    const now=new Date(); const cur=now.getHours()*60+now.getMinutes();
+    const toMin=s=>{const [h,m]=(s||"0:0").split(":").map(Number);return h*60+(m||0);};
+    const st=toMin(sc.start||"00:00"), en=toMin(sc.end||"23:59");
+    return st<=en ? (cur>=st&&cur<=en) : (cur>=st||cur<=en);
+  };
+  const AiScheduleRow = ({ch}) => {
+    const sc = aiSchedule[ch]||{enabled:false,start:"10:00",end:"22:00"};
+    const inWin = _nowInWindow(sc);
+    const effective = aiAutoChannels[ch] && inWin;
+    return <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,padding:"4px 8px",background:effective?"#ecfdf5":"#f3f4f6",borderRadius:5}}>
+      <span style={{fontWeight:700,minWidth:64}}>{_chMeta.find(m=>m[0]===ch)?.[1]||ch}</span>
+      <label style={{display:"inline-flex",alignItems:"center",gap:3,cursor:"pointer"}}>
+        <input type="checkbox" checked={!!sc.enabled} onChange={e=>saveAiSchedule(ch,{enabled:e.target.checked})} style={{cursor:"pointer"}}/>
+        <span style={{color:T.gray600}}>스케줄</span>
+      </label>
+      <input type="time" value={sc.start||"10:00"} onChange={e=>saveAiSchedule(ch,{start:e.target.value})} disabled={!sc.enabled}
+        style={{fontSize:11,padding:"2px 4px",border:"1px solid "+T.border,borderRadius:4,fontFamily:"inherit",width:80,opacity:sc.enabled?1:0.5}}/>
+      <span style={{color:T.gray500}}>~</span>
+      <input type="time" value={sc.end||"22:00"} onChange={e=>saveAiSchedule(ch,{end:e.target.value})} disabled={!sc.enabled}
+        style={{fontSize:11,padding:"2px 4px",border:"1px solid "+T.border,borderRadius:4,fontFamily:"inherit",width:80,opacity:sc.enabled?1:0.5}}/>
+      <span style={{marginLeft:"auto",fontSize:10,fontWeight:700,color:effective?"#059669":"#9ca3af"}}>
+        {aiAutoChannels[ch] ? (sc.enabled ? (inWin?"🟢 응대중":"⏸ 스케줄 OFF") : "🟢 항상") : "⚫ 수동 OFF"}
+      </span>
+    </div>;
   };
 
   useEffect(()=>{ convoEndRef.current?.scrollIntoView({behavior:"smooth"}); },[sel, msgs.length]);
@@ -504,10 +551,14 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       </div>
       {showAiSettings&&<div style={{padding:"10px 14px",borderBottom:"1px solid "+T.border,background:"#faf5ff"}}>
         <div style={{fontSize:11,fontWeight:600,color:"#7C3AED",marginBottom:8}}>AI 자동대답 채널 설정</div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-          {[["naver","N 네이버","#03C75A"],["instagram","I 인스타","#E1306C"],["whatsapp","W 왓츠앱","#128C7E"],["kakao","K 카카오","#F9E000"]].map(([ch,label,clr])=>(
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+          {_chMeta.map(([ch,label,clr])=>(
             <button key={ch} onClick={()=>toggleAiChannel(ch)} style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer",border:"1.5px solid",borderColor:aiAutoChannels[ch]?clr:T.border,background:aiAutoChannels[ch]?clr+"18":"#fff",color:aiAutoChannels[ch]?clr:T.gray500}}>{label} {aiAutoChannels[ch]?"ON":"OFF"}</button>
           ))}
+        </div>
+        <div style={{fontSize:10,fontWeight:600,color:"#7C3AED",marginBottom:4}}>⏰ 시간 스케줄 (체크 ON일 때만 지정 시간대 응대)</div>
+        <div style={{display:"flex",flexDirection:"column",gap:4}}>
+          {_chMeta.map(([ch])=><AiScheduleRow key={ch} ch={ch}/>)}
         </div>
       </div>}
       {/* 지점 필터 (id_ebgbebctt3 Phase 2): 내 지점(연계 포함) 디폴트 / 전체 */}
@@ -651,10 +702,14 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
         </div>
         {showAiSettings&&<div style={{padding:"10px 14px",borderBottom:"1px solid "+T.border,background:"#faf5ff"}}>
           <div style={{fontSize:11,fontWeight:600,color:"#7C3AED",marginBottom:8}}>AI 자동대답 채널 설정</div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-            {[["naver","N 네이버","#03C75A"],["instagram","I 인스타","#E1306C"],["whatsapp","W 왓츠앱","#128C7E"],["kakao","K 카카오","#F9E000"]].map(([ch,label,clr])=>(
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+            {_chMeta.map(([ch,label,clr])=>(
               <button key={ch} onClick={()=>toggleAiChannel(ch)} style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer",border:"1.5px solid",borderColor:aiAutoChannels[ch]?clr:T.border,background:aiAutoChannels[ch]?clr+"18":"#fff",color:aiAutoChannels[ch]?clr:T.gray500}}>{label} {aiAutoChannels[ch]?"ON":"OFF"}</button>
             ))}
+          </div>
+          <div style={{fontSize:10,fontWeight:600,color:"#7C3AED",marginBottom:4}}>⏰ 시간 스케줄 (체크 ON일 때만 지정 시간대 응대)</div>
+          <div style={{display:"flex",flexDirection:"column",gap:4}}>
+            {_chMeta.map(([ch])=><AiScheduleRow key={ch} ch={ch}/>)}
           </div>
         </div>}
         {/* 지점 필터 (id_ebgbebctt3 Phase 2) — 데스크탑 */}
