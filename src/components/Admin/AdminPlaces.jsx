@@ -5,6 +5,7 @@ import { _activeBizId } from '../../lib/db'
 import { genId } from '../../lib/utils'
 import I from '../common/I'
 import { AConfirm, ASheet, AField, AInp, AEmpty, APageHeader, AListItem, AToggle, AColorDot, ABadge, APalette, AIBtn } from './AdminUI'
+import AdminBranchGroups from './AdminBranchGroups'
 
 const uid = genId;
 
@@ -57,6 +58,11 @@ function AdminPlaces({ data, setData, bizId, userBranches=[], isMaster=false }) 
           <button onClick={e=>{e.stopPropagation();openEdit(b);}} style={{width:28,height:28,borderRadius:7,border:"1px solid "+T.border,background:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><I name="edit" size={13} style={{color:T.gray500}}/></button>
           {isMaster && <button onClick={e=>{e.stopPropagation();setDel(b.id);}} style={{width:28,height:28,borderRadius:7,border:"1px solid #fecaca",background:"#fff5f5",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><I name="trash" size={13} style={{color:T.danger}}/></button>}
         </div>}/>)}
+    </div>}
+
+    {/* 지점 연계 — 같은 원장 관리 지점을 연결해 보유권·쿠폰 공유 사용 */}
+    {isMaster && <div style={{marginTop:32,paddingTop:20,borderTop:"1px solid "+T.border}}>
+      <AdminBranchGroups data={data} setData={setData} bizId={bizId}/>
     </div>}
     <ASheet open={sheet} onClose={()=>setSheet(false)} title={edit?"지점 수정":"지점 추가"} onSave={save} saving={saving} saveDisabled={saving||!form.name.trim()} saveLabel={edit?"저장":"지점 추가"}>
       <AField label="지점명" required><input style={AInp} value={form.name} onChange={e=>set("name",e.target.value)} placeholder="예: 강남점" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>

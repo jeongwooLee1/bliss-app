@@ -4,8 +4,8 @@ import { sb, SB_URL, sbHeaders } from '../../lib/sb'
 import I from '../common/I'
 import { APageHeader, AIBtn, AEmpty, ABadge } from './AdminUI'
 
-// 지점 묶음 관리 — 마스터/오너 전용
-// 같은 원장이 관리하는 지점들을 묶어서 보유권 공유 등 정책 공용 적용
+// 지점 연계 — 마스터/오너 전용
+// 같은 원장이 관리하는 지점들을 연계해 보유권 공유 등 정책 공용 적용
 // 향후 확장: 메시지함 필터, 매출 공유, 직원 권한 세분화
 function AdminBranchGroups({ data, setData, bizId }) {
   const branches = data?.branches || []
@@ -48,7 +48,7 @@ function AdminBranchGroups({ data, setData, bizId }) {
 
   const saveEdit = async () => {
     const name = editName.trim()
-    if (!name) { alert('묶음 이름을 입력하세요'); return }
+    if (!name) { alert('연계 이름을 입력하세요'); return }
     if (editBids.length < 2) { alert('최소 2개 지점을 선택하세요'); return }
     try {
       if (editing === 'new') {
@@ -63,7 +63,7 @@ function AdminBranchGroups({ data, setData, bizId }) {
   }
 
   const delGroup = async g => {
-    if (!confirm(`"${g.name}" 묶음을 삭제할까요?\n(이 묶음으로 공유되던 보유권은 개별 예외 등록이 없으면 구매지점에서만 사용 가능해집니다)`)) return
+    if (!confirm(`"${g.name}" 연계를 삭제할까요?\n(이 연계로 공유되던 보유권은 개별 예외 등록이 없으면 구매지점에서만 사용 가능해집니다)`)) return
     try {
       await sb.del('branch_groups', g.id)
       await load()
@@ -82,12 +82,19 @@ function AdminBranchGroups({ data, setData, bizId }) {
   }, [groups])
 
   return <div>
-    <APageHeader title="지점 묶음 관리" desc="같은 원장이 관리하는 지점들을 묶습니다. 묶인 지점끼리는 보유권·쿠폰을 자유롭게 공유 사용합니다." />
+    <div style={{marginBottom:14}}>
+      <div style={{fontSize:T.fs.md,fontWeight:T.fw.bolder,color:T.text,marginBottom:4,display:"flex",alignItems:"center",gap:8}}>
+        <I name="link" size={15} style={{color:T.primary}}/> 지점 연계
+      </div>
+      <div style={{fontSize:T.fs.xs,color:T.textMuted,lineHeight:1.5}}>
+        같은 원장이 관리하는 지점들을 연계합니다. 연계된 지점끼리는 보유권·쿠폰을 자유롭게 공유 사용합니다.
+      </div>
+    </div>
 
     {loading ? <div style={{ padding: 30, textAlign: 'center', color: T.textMuted }}>로딩 중…</div>
       : <>
         {/* 목록 */}
-        {groups.length === 0 ? <AEmpty icon="building" message="등록된 묶음이 없어요" />
+        {groups.length === 0 ? <AEmpty icon="building" message="등록된 연계가 없어요" />
           : <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
             {groups.map(g => (
               <div key={g.id} className="card" style={{ padding: 14 }}>
@@ -115,18 +122,18 @@ function AdminBranchGroups({ data, setData, bizId }) {
             <EditForm name={editName} setName={setEditName} bids={editBids} toggleBid={toggleBid} branches={branches} bidGroupMap={bidGroupMap} editingId={null} onSave={saveEdit} onCancel={cancelEdit} />
           </div>
           : <button onClick={startNew} style={{ width: '100%', padding: '14px', fontSize: T.fs.sm, fontWeight: 700, border: '1.5px dashed ' + T.border, borderRadius: 10, background: '#fafafa', color: T.gray600, cursor: 'pointer', fontFamily: 'inherit' }}>
-            + 새 묶음 추가
+            + 새 연계 추가
           </button>}
 
         {/* 안내 */}
         <div className="card" style={{ padding: 14, marginTop: 16, background: '#f8f9ff', border: '1px solid #e0e7ff' }}>
           <div style={{ fontSize: T.fs.xs, color: T.gray700, lineHeight: 1.7 }}>
-            💡 <strong>지점 묶음 규칙</strong><br />
+            💡 <strong>지점 연계 규칙</strong><br />
             <span style={{ color: T.textMuted }}>
-              • 한 지점이 두 묶음에 속하면 양쪽 모두에서 공유됩니다<br />
-              • 연간회원권은 묶음과 무관하게 전 지점 공통<br />
+              • 한 지점이 두 연계에 속하면 양쪽 모두에서 공유됩니다<br />
+              • 연간회원권은 연계과 무관하게 전 지점 공통<br />
               • 개별 권/쿠폰만 추가 지점 허용은 고객관리 → 보유권 카드의 "추가 허용 지점"에서 설정<br />
-              • Phase 2 예정: 묶음 권한이 메시지함·타임라인·매출 등에도 확장 적용
+              • Phase 2 예정: 연계 권한이 메시지함·타임라인·매출 등에도 확장 적용
             </span>
           </div>
         </div>
@@ -136,10 +143,10 @@ function AdminBranchGroups({ data, setData, bizId }) {
 
 function EditForm({ name, setName, bids, toggleBid, branches, bidGroupMap, editingId, onSave, onCancel }) {
   return <div>
-    <div style={{ fontSize: T.fs.xxs, color: T.textMuted, marginBottom: 4, fontWeight: 700 }}>묶음 이름</div>
+    <div style={{ fontSize: T.fs.xxs, color: T.textMuted, marginBottom: 4, fontWeight: 700 }}>연계 이름</div>
     <input value={name} onChange={e => setName(e.target.value)} placeholder="예: 강남·왕십리"
       style={{ width: '100%', padding: '10px 12px', fontSize: T.fs.sm, border: '1.5px solid ' + T.border, borderRadius: 8, fontFamily: 'inherit', marginBottom: 12, boxSizing: 'border-box' }} />
-    <div style={{ fontSize: T.fs.xxs, color: T.textMuted, marginBottom: 6, fontWeight: 700 }}>묶을 지점 (2개 이상)</div>
+    <div style={{ fontSize: T.fs.xxs, color: T.textMuted, marginBottom: 6, fontWeight: 700 }}>연계할 지점 (2개 이상)</div>
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
       {branches.filter(b => b.useYn !== false).map(b => {
         const checked = bids.includes(b.id)
