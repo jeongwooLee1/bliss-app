@@ -240,7 +240,10 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
       }
       return pf?.dur || itemDur;
     })(), status:"reserved",
-    memo: "",
+    memo: item?._prefill?.memo || "",
+    custEmail: item?._prefill?.custEmail || "",
+    externalPlatform: item?._prefill?.externalPlatform || "",
+    externalPrepaid: Math.max(0, Number(item?._prefill?.externalPrepaid) || 0),
     type:"reservation",
     selectedTags: item?._prefill?.matchedTagIds || [],
     isNewCust: item?._prefill?._isNewCust !== false, tsLog: [],
