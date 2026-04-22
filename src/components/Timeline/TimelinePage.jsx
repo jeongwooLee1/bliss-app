@@ -1339,6 +1339,18 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   };
 
   const handleSave = async (item) => {
+    // 🔒 race-condition 방어: 네이버 서버가 비동기로 갱신하는 필드(status, naver_*_dt)는
+    // 모달이 열린 동안 stale 값으로 덮어쓰기 방지.
+    const _snap = item._initialServerSnap;
+    const stripStaleNaverFields = (row) => {
+      if (!_snap || !row) return row;
+      const out = {...row};
+      if ((item.status || "") === (_snap.status || "")) delete out.status;
+      delete out.naver_confirmed_dt;
+      delete out.naver_cancelled_dt;
+      delete out.naver_reg_dt;
+      return out;
+    };
     // + 칼럼 템플릿 저장: schedule_data.colTemplates_v1에 저장 (예약 테이블 X)
     if (item._isColTemplate) {
       const bid = item.bid;
@@ -1429,7 +1441,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
             }
           }
         }
-        const updateRow = toDb("reservations", item);
+        const updateRow = stripStaleNaverFields(toDb("reservations", item));
         sb.update("reservations", item.id, updateRow).catch(console.error);
         return { ...prev, reservations: (prev?.reservations||[]).map(r => r.id === item.id ? item : r) };
       }
