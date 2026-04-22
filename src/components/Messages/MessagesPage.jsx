@@ -103,7 +103,26 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
     const chName = "inbox_rt_"+Date.now();
     const ch = window._sbClient?.channel(chName)
       ?.on("postgres_changes",{event:"INSERT",schema:"public",table:"messages"},
-        p=>{ if(p?.new) { lastMsgRt = Date.now(); setMsgs(prev=>prev.some(m=>m.id===p.new.id)?prev:[...prev,p.new]); if(p.new.user_name) setNames(prev=>({...prev,[p.new.user_id]:p.new.user_name})); }}
+        p=>{ if(p?.new) {
+          lastMsgRt = Date.now();
+          setMsgs(prev=>{
+            // 1) 같은 id 이미 있으면 skip (id로 dedup)
+            if (prev.some(m=>m.id===p.new.id)) return prev;
+            // 2) 로컬 optimistic echo (id 없음)와 매칭되면 실제 row로 교체 — 중복 말풍선 방지
+            //    (sendMsg 함수가 id 없이 direction='out' 메시지를 prev에 즉시 추가함)
+            if (p.new.direction === 'out') {
+              const idx = prev.findIndex(m => !m.id && m.direction==='out'
+                && m.user_id===p.new.user_id
+                && m.channel===p.new.channel
+                && (m.message_text||'').slice(0,40) === (p.new.message_text||'').slice(0,40));
+              if (idx >= 0) {
+                const next = [...prev]; next[idx] = p.new; return next;
+              }
+            }
+            return [...prev, p.new];
+          });
+          if(p.new.user_name) setNames(prev=>({...prev,[p.new.user_id]:p.new.user_name}));
+        }}
       )
       ?.on("postgres_changes",{event:"UPDATE",schema:"public",table:"messages"},
         p=>{ if(p?.new?.id) { lastMsgRt = Date.now(); setMsgs(prev=>prev.map(m=>m.id===p.new.id?{...m,...p.new}:m)); }}
@@ -316,6 +335,13 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       // 매출 유도 + 왁서 성별 응대 정책 (고정 주입)
       const salesPolicyCtx = `
 
+[출력 형식 — 매우 중요]
+★ 네이버톡톡·인스타 DM·카톡·왓츠앱 등 채팅 플랫폼은 마크다운을 지원하지 않음.
+★ ⛔ 볼드 표기 금지: 별표 두 개로 감싸는 표기(예: 별 별 단어 별 별) 사용하지 마. 일반 텍스트로만 출력.
+★ ⛔ 이탤릭 표기 금지(별 1개 또는 _ 1개로 감싸는 것).
+★ ⛔ 코드블록(백틱 3개) 금지. 링크 표기 [text](url) 금지.
+★ 강조가 필요하면 따옴표("…"), 물결(~), 이모지만 사용.
+
 [정체성 — 당신은 하우스왁싱 AI 상담사입니다]
 ★ 첫 대화이거나 고객이 "누구세요?" / "사람인가요?" / "AI인가요?" 같은 질문 시 반드시 밝히기:
   • 한국어: "안녕하세요! 하우스왁싱 AI 상담사예요 😊 궁금하신 점 편하게 물어봐주세요~"
@@ -323,19 +349,19 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
 ★ 매번 반복하진 말고, 첫 접촉/신원 질문 시에만. 사람 상담원인 척 금지.
 
 [가격 안내 정책 — 매우 중요]
-★ 고객이 가격을 물으면 **반드시 "신규 첫방문 할인가"를 메인으로 강조**. 대부분 고객이 처음이라 이 가격을 낸다.
-★ ⛔ 정상가(154,000/176,000원 등)만 단독 안내 금지! 첫방문가를 앞에 내세워서 예약 유도할 것.
+★ 고객이 가격을 물으면 반드시 "신규 첫방문 할인가"를 메인으로 강조. 대부분 고객이 처음이라 이 가격을 낸다.
+★ 정상가(154,000/176,000원 등)만 단독 안내 금지! 첫방문가를 앞에 내세워서 예약 유도할 것.
 ★ 브라질리언 예시:
   • 한국어: "브라질리언 왁싱 신규 첫방문 이벤트 진행 중이에요! 여성 104,000원 / 남성 126,000원에 받아보실 수 있어요 💕 (정상가 154,000/176,000에서 5만원 할인!) 예약 도와드릴까요? 😊"
   • English: "We have a first-visit special! Brazilian wax is 104,000 KRW (women) / 126,000 KRW (men) for first-time customers — normally 154,000/176,000. Would you like to book? 💕"
-★ 반드시 마지막에 **"예약 도와드릴까요? / Would you like to book?"** 로 예약 유도
+★ 반드시 마지막에 "예약 도와드릴까요? / Would you like to book?" 로 예약 유도
 ★ 연간회원권 보유 고객(이 고객의 다회권 블록 참고)이면 회원가로 안내
 
 [왁서 성별 안내 정책]
 ★ "남자 왁서 계세요?" / "남자 직원 있나요?" 같은 질문엔:
   • 한국어: "네! 남성 왁서도 있어요 😊 예약 시 '남자 왁서 요청'이라고 말씀해주시면 해당 지점·시간에 가능한지 확인해서 배정해드릴게요~"
   • English: "Yes, we have male waxers! Please request a male waxer when booking and we'll arrange one based on availability at your branch/time."
-★ ⛔ "지점마다 다르다 / 상황에 따라 달라진다" 같은 애매한 표현 금지. **남성 왁서 있음을 명확히 알리고 예약 유도**
+★ "지점마다 다르다 / 상황에 따라 달라진다" 같은 애매한 표현 금지. 남성 왁서 있음을 명확히 알리고 예약 유도.
 ★ 여자 왁서 선호 고객도 동일 — 예약 요청사항 기재 시 배정 도와드린다고 안내
 ★ 특정 관리사 이름은 언급 금지`;
 
