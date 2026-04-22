@@ -1580,7 +1580,7 @@ ${naverText}
               <button
                 disabled={!isSchedule && f.type==="reservation" && !f.custName?.trim()}
                 style={{marginLeft:"auto",padding:"10px 22px",borderRadius:T.radius.md,fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5,lineHeight:1,transition:"all .15s",border:"2px solid "+(isSchedule?T.orange:T.primary),color:"#fff",background:isSchedule?T.orange:T.primary,boxShadow:isSchedule?"0 4px 14px rgba(225,112,85,.35)":"0 4px 14px rgba(124,124,200,.35)"}}
-                onClick={()=>{
+                onClick={async ()=>{
                 const now = new Date();
                 const ts = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
                 const prevLog = f.tsLog || [];
@@ -1662,6 +1662,144 @@ ${naverText}
                     "#{대표전화번호}":branch?.phone||""
                   });
                 }
+                // 당일 취소 페널티 (id_imgr471swt-6): 예약일 = 오늘 + 신규 cancelled 전환 시
+                // 포인트 → 선불권 순으로 33,000원 차감. 합계 부족 시 다회권 1회 차감.
+                if(f.status==="cancelled" && item?.status!=="cancelled"
+                   && f.date === todayStr() && f.custId && !isSchedule){
+                  try {
+                    const PENALTY = 33000;
+                    const today = todayStr();
+                    // 포인트 잔액
+                    const ptxs = await sb.get("point_transactions", `&customer_id=eq.${f.custId}&select=type,amount`) || [];
+                    let pointBal = 0;
+                    for (const t of ptxs) {
+                      if (t.type === 'earn') pointBal += Number(t.amount)||0;
+                      else if (t.type === 'deduct' || t.type === 'expire') pointBal -= Number(t.amount)||0;
+                    }
+                    // 본인 보유권 (활성)
+                    const myPkgs = await sb.get("customer_packages", `&customer_id=eq.${f.custId}`) || [];
+                    const isExpired = (p) => {
+                      const exp = ((p.note||'').match(/유효:\s*(\d{4}-\d{2}-\d{2})/)||[])[1];
+                      return exp && exp < today;
+                    };
+                    const prepaidPkgs = myPkgs.filter(p => {
+                      const n = (p.service_name||'').toLowerCase();
+                      if (!(n.includes('다담') || n.includes('선불'))) return false;
+                      if (isExpired(p)) return false;
+                      const m = (p.note||'').match(/잔액:([0-9,]+)/);
+                      return m ? Number(m[1].replace(/,/g,'')) > 0 : false;
+                    });
+                    const prepaidBal = prepaidPkgs.reduce((s,p) => {
+                      const m = (p.note||'').match(/잔액:([0-9,]+)/);
+                      return s + (m ? Number(m[1].replace(/,/g,'')) : 0);
+                    }, 0);
+                    const total = pointBal + prepaidBal;
+                    const doDeduct = confirm(
+                      `당일 취소입니다. 페널티 ${PENALTY.toLocaleString()}원 차감 진행할까요?\n\n` +
+                      `• 포인트 잔액: ${pointBal.toLocaleString()}P\n` +
+                      `• 선불권 잔액 합계: ${prepaidBal.toLocaleString()}원\n` +
+                      `${total >= PENALTY ? `→ 포인트 → 선불권 순으로 ${PENALTY.toLocaleString()}원 차감` : `→ 부족 (${total.toLocaleString()}원). 다회권 1회 차감`}`
+                    );
+                    if (doDeduct) {
+                      let pointDed = 0, prepaidDed = 0, pkgUsedName = '';
+                      if (total >= PENALTY) {
+                        let remain = PENALTY;
+                        if (pointBal > 0) {
+                          const ded = Math.min(pointBal, remain);
+                          await sb.insert("point_transactions", {
+                            id: 'ptx_'+genId(), business_id: (data?.businesses||[])[0]?.id,
+                            bid: f.bid, customer_id: f.custId,
+                            type: 'deduct', amount: ded,
+                            balance_after: pointBal - ded,
+                            note: `당일취소 페널티 (예약 ${f.id})`,
+                          }).catch(()=>{});
+                          remain -= ded;
+                          pointDed = ded;
+                        }
+                        if (remain > 0) {
+                          prepaidPkgs.sort((a,b) => {
+                            const ba = Number(((a.note||'').match(/잔액:([0-9,]+)/)||[0,'0'])[1].replace(/,/g,''));
+                            const bb = Number(((b.note||'').match(/잔액:([0-9,]+)/)||[0,'0'])[1].replace(/,/g,''));
+                            return bb - ba;
+                          });
+                          for (const p of prepaidPkgs) {
+                            if (remain <= 0) break;
+                            const m = (p.note||'').match(/잔액:([0-9,]+)/);
+                            const bal = m ? Number(m[1].replace(/,/g,'')) : 0;
+                            const ded = Math.min(bal, remain);
+                            const newBal = bal - ded;
+                            const newUsed = (p.used_count||0) + ded;
+                            const newNote = (p.note||'').replace(/잔액:[0-9,]+/, `잔액:${newBal.toLocaleString()}`);
+                            await sb.update("customer_packages", p.id, { used_count: newUsed, note: newNote }).catch(()=>{});
+                            remain -= ded;
+                            prepaidDed += ded;
+                          }
+                        }
+                        alert(`페널티 ${PENALTY.toLocaleString()}원 차감 완료`);
+                      } else {
+                        // 다회권 1회 차감 — 유효기간 빠른 것 우선
+                        const multi = myPkgs.filter(p => {
+                          const n = (p.service_name||'').toLowerCase();
+                          if (n.includes('다담') || n.includes('선불') || n.includes('연간') || n.includes('할인권') || n.includes('회원권')) return false;
+                          if (isExpired(p)) return false;
+                          return (p.total_count||0) - (p.used_count||0) > 0;
+                        }).sort((a,b) => {
+                          const ea = ((a.note||'').match(/유효:\s*(\d{4}-\d{2}-\d{2})/)||[0,''])[1] || '9999-12-31';
+                          const eb = ((b.note||'').match(/유효:\s*(\d{4}-\d{2}-\d{2})/)||[0,''])[1] || '9999-12-31';
+                          return ea.localeCompare(eb);
+                        });
+                        if (multi.length) {
+                          const p = multi[0];
+                          await sb.update("customer_packages", p.id, { used_count: (p.used_count||0) + 1 }).catch(()=>{});
+                          pkgUsedName = p.service_name || '';
+                          alert(`다회권 "${p.service_name}" 1회 차감 완료`);
+                        } else {
+                          alert("차감할 포인트·선불권·다회권이 없어 페널티 미적용");
+                        }
+                      }
+                      // 페널티 매출 자동 기록 (유저 피드백): 차감이 실제로 이루어진 경우에만
+                      if (pointDed > 0 || prepaidDed > 0 || pkgUsedName) {
+                        try {
+                          const penaltySaleId = 'sale_' + genId();
+                          const _bizId = (data?.businesses||[])[0]?.id;
+                          const svcName = pkgUsedName
+                            ? `당일취소 페널티 (다회권: ${pkgUsedName} 1회)`
+                            : '당일취소 페널티';
+                          const amt = pkgUsedName ? 0 : PENALTY;
+                          const memoParts = [];
+                          if (pointDed > 0) memoParts.push(`포인트 ${pointDed.toLocaleString()}P`);
+                          if (prepaidDed > 0) memoParts.push(`선불권 ${prepaidDed.toLocaleString()}원`);
+                          if (pkgUsedName) memoParts.push(`다회권 ${pkgUsedName} 1회`);
+                          await sb.insert("sales", {
+                            id: penaltySaleId,
+                            business_id: _bizId,
+                            bid: f.bid,
+                            cust_id: f.custId,
+                            cust_name: f.custName,
+                            cust_phone: f.custPhone || '',
+                            cust_num: f.custNum || '',
+                            cust_gender: f.custGender || '',
+                            date: todayStr(),
+                            service_name: svcName,
+                            svc_cash: 0, svc_card: 0, svc_transfer: 0,
+                            svc_point: pointDed,
+                            external_prepaid: prepaidDed,
+                            memo: `당일취소 페널티 — ${memoParts.join(' + ')} (예약 ${f.id})`,
+                          }).catch(e => console.error('[penalty sales insert]', e));
+                          await sb.insert("sale_details", {
+                            id: 'sd_' + genId(),
+                            business_id: _bizId,
+                            sale_id: penaltySaleId,
+                            service_name: svcName,
+                            unit_price: amt,
+                            qty: 1,
+                            cash: 0, card: 0, bank: 0, point: pointDed,
+                          }).catch(e => console.error('[penalty sd insert]', e));
+                        } catch(e) { console.error('[penaltySale]', e); }
+                      }
+                    }
+                  } catch (e) { console.error('[cancelPenalty]', e); }
+                }
                 onSave({...f, memo: memoToSave, scheduleLog: scheduleLogToSave, tsLog: newLog, selectedTags: autoTags, isSchedule, _isColTemplate: item?._isColTemplate, _templateId: item?._templateId, _initialServerSnap: initialServerSnap});
               }}>{item?.id?"저장":"등록"}</button>
               {/* AI 예약 확정 버튼 */}
@@ -1714,7 +1852,7 @@ ${naverText}
                       }
                     }
                   }catch(e){console.error("확정 메시지 발송 실패",e);}
-                  onSave({...f,status:"confirmed"});
+                  onSave({...f,status:"reserved"});
                 }}>예약 확정</Btn>}
             </>}
             {isReadOnly && <span style={{fontSize:T.fs.sm,color:T.textSub,display:"flex",alignItems:"center",gap:T.sp.xs}}><I name="eye" size={12}/> 열람 전용 (타 지점)</span>}

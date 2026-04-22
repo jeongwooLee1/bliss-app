@@ -7,12 +7,18 @@ import { APageHeader, ABadge, AIBtn, AEmpty } from './AdminUI'
 // AdminBranchAudit — customer_packages.branch_id NULL인 권을 매출 이력으로 조사·판정
 // 원본 요청: id_ebgbebctt3 Phase 2 후속
 // DB view: customer_pkgs_branch_audit
-function AdminBranchAudit({ data }) {
+function AdminBranchAudit({ data, setPage, setPendingOpenCust }) {
+  const goToCustomer = (custId) => {
+    if (!custId || !setPendingOpenCust || !setPage) return;
+    setPendingOpenCust(custId);
+    setPage("customers");
+  };
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState(null) // pkg_id 처리 중
   const [hideDone, setHideDone] = useState(true)
   const [filter, setFilter] = useState('all') // all | withSuggestion | withoutSuggestion
+  const [reasonTab, setReasonTab] = useState('all') // all | null | mismatch | no_sales
 
   const branchById = useMemo(() => {
     const m = {}
@@ -60,11 +66,12 @@ function AdminBranchAudit({ data }) {
 
   const filtered = useMemo(() => {
     return rows.filter(r => {
+      if (reasonTab !== 'all' && (r.reason || 'null') !== reasonTab) return false
       if (filter === 'withSuggestion' && !r.suggested_bid) return false
       if (filter === 'withoutSuggestion' && r.suggested_bid) return false
       return true
     })
-  }, [rows, filter])
+  }, [rows, filter, reasonTab])
 
   // 고객별 그룹
   const byCustomer = useMemo(() => {
@@ -80,7 +87,12 @@ function AdminBranchAudit({ data }) {
   const stats = useMemo(() => {
     const total = rows.length
     const withSug = rows.filter(r => r.suggested_bid).length
-    return { total, withSug, withoutSug: total - withSug }
+    const byReason = {
+      null: rows.filter(r => (r.reason || 'null') === 'null').length,
+      mismatch: rows.filter(r => r.reason === 'mismatch').length,
+      no_sales: rows.filter(r => r.reason === 'no_sales').length,
+    }
+    return { total, withSug, withoutSug: total - withSug, byReason }
   }, [rows])
 
   const fmtBal = (r) => {
@@ -92,7 +104,7 @@ function AdminBranchAudit({ data }) {
   }
 
   return <div>
-    <APageHeader title="구매지점 조사" desc="branch_id가 비어있는 보유권을 고객 매출 이력 기반으로 판정합니다 (id_ebgbebctt3 Phase 2)" />
+    <APageHeader title="구매지점 조사" desc="미지정·매출기록과 불일치·매출없는 보유권을 검토합니다. 매출 기록(sales.bid) 기준으로 판정." />
 
     {/* 통계 + 일괄 버튼 */}
     <div className="card" style={{ padding: 16, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
@@ -140,18 +152,36 @@ function AdminBranchAudit({ data }) {
       <AIBtn onClick={applyAllSuggestions} disabled={processing === 'bulk' || stats.withSug === 0} label={processing === 'bulk' ? '처리 중…' : `✓ 추천 ${stats.withSug}건 일괄 적용`} style={{ background: T.success }} />
     </div>
 
-    {/* 필터 */}
+    {/* 사유(reason) 탭 */}
+    <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+      {[
+        { id: 'all', label: `전체 (${stats.total})` },
+        { id: 'null', label: `미지정 (${stats.byReason.null})`, color: T.gray500 },
+        { id: 'mismatch', label: `매출 불일치 (${stats.byReason.mismatch})`, color: T.warning },
+        { id: 'no_sales', label: `매출 없음 (${stats.byReason.no_sales})`, color: T.textMuted },
+      ].map(t => (
+        <button key={t.id} onClick={() => setReasonTab(t.id)}
+          style={{
+            padding: '7px 14px', borderRadius: 18, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+            fontSize: T.fs.xs, fontWeight: reasonTab === t.id ? 700 : 500,
+            background: reasonTab === t.id ? (t.color || T.primary) : T.gray100,
+            color: reasonTab === t.id ? '#fff' : T.gray600,
+          }}>{t.label}</button>
+      ))}
+    </div>
+
+    {/* 추천 유무 필터 */}
     <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
       {[
-        { id: 'all', label: '전체' },
+        { id: 'all', label: '추천 상관없음' },
         { id: 'withSuggestion', label: '추천 있음' },
-        { id: 'withoutSuggestion', label: '추천 없음 (수동 지정 필요)' },
+        { id: 'withoutSuggestion', label: '추천 없음 (수동 지정)' },
       ].map(t => (
         <button key={t.id} onClick={() => setFilter(t.id)}
           style={{
-            padding: '7px 14px', borderRadius: 18, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-            fontSize: T.fs.xs, fontWeight: filter === t.id ? 700 : 500,
-            background: filter === t.id ? T.primary : T.gray100,
+            padding: '6px 12px', borderRadius: 14, border: '1px solid ' + T.border, cursor: 'pointer', fontFamily: 'inherit',
+            fontSize: T.fs.xxs, fontWeight: filter === t.id ? 700 : 500,
+            background: filter === t.id ? T.primary : '#fff',
             color: filter === t.id ? '#fff' : T.gray600,
           }}>{t.label}</button>
       ))}
@@ -171,6 +201,13 @@ function AdminBranchAudit({ data }) {
               {group.phone && <span style={{ fontSize: 11, color: T.textMuted }}>{group.phone}</span>}
               {!group.cust_name && group.customer_id && <span style={{ fontSize: 10, color: T.gray500, fontFamily: 'monospace' }}>cid:{group.customer_id.slice(0, 10)}…</span>}
               <ABadge color={T.primary}>{group.pkgs.length}건</ABadge>
+              {group.customer_id && setPage && setPendingOpenCust && (
+                <button onClick={() => goToCustomer(group.customer_id)}
+                  title="고객관리로 이동 (매출상세 포함)"
+                  style={{ marginLeft: 'auto', padding: '4px 10px', fontSize: T.fs.xxs, fontWeight: 700, border: '1.5px solid ' + T.primary, borderRadius: 14, background: '#fff', color: T.primary, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  고객정보 ↗
+                </button>
+              )}
             </div>
 
             {/* 매출 분포 */}
@@ -202,15 +239,29 @@ function AdminBranchAudit({ data }) {
 function PkgRow({ r, branches, branchById, fmtBal, onApply, processing }) {
   const [selected, setSelected] = useState(r.suggested_bid || '')
   const isAnnual = /연간(회원|할인)?권/.test(r.service_name || '')
+  const reasonBadge = {
+    null: { label: '미지정', color: T.gray500 },
+    mismatch: { label: '매출 불일치', color: T.warning },
+    no_sales: { label: '매출 없음', color: T.textMuted },
+  }[r.reason]
+  const currentBranchName = r.current_bid ? (branchById[r.current_bid] || r.current_bid.slice(0, 8)) : null
   return (
     <div style={{ border: '1px solid ' + T.border, borderRadius: 8, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
       <div style={{ flex: '1 1 240px', minWidth: 0 }}>
         <div style={{ fontSize: T.fs.xs, fontWeight: T.fw.bolder, color: T.text, marginBottom: 2 }}>
           {r.service_name || '(이름없음)'}
           {isAnnual && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: '#EFF6FF', color: '#1E40AF', marginLeft: 6 }}>🌐 연간권</span>}
+          {reasonBadge && (
+            <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 10, background: reasonBadge.color + '22', color: reasonBadge.color, marginLeft: 6 }}>
+              {reasonBadge.label}
+            </span>
+          )}
         </div>
         <div style={{ fontSize: T.fs.xxs, color: T.textMuted }}>
           {r.purchased_at?.slice(0, 10) || '-'} · {fmtBal(r)}
+          {currentBranchName && (
+            <> · 현재: <b style={{ color: T.warning }}>{currentBranchName}</b></>
+          )}
         </div>
       </div>
       {r.suggested_bid && (

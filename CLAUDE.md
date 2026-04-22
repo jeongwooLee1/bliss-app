@@ -740,3 +740,70 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - **구매지점 제한은 현재 OFF** — 데이터 전수조사 선행 필요
 - **세션 복구 Phase 2-4 보류** — 로컬 watchdog + captcha 자동화 미완
 - **`login_local.py`는 수동 실행** — 세션 만료 시 텔레그램 알림만 나옴 (자동 복구 미완)
+
+### v3.7.0 → v3.7.2 — 예약/매출/구매지점/회원가 리팩토링 (2026-04-22)
+
+#### 예약 상태 기본값 변경: `confirmed` → `reserved`
+- 서버 `bliss_naver.py` STATUS_MAP 전체 `confirmed → reserved` (AB00, RC02/03/04/RC08 + default). 보호 로직은 reserved/confirmed 둘 다 허용 (기존 데이터 호환)
+- 앱: TimelinePage Auto-fix `pending → reserved`, ReservationModal AI 예약 확정 버튼도 `reserved`로 저장
+- 유저 정책: "예약중(reserved)이 디폴트, 진행(confirmed)은 수동"
+
+#### 타임라인 UX
+- `selDate` sessionStorage 제거, `useState(todayStr())` — 새로고침·재진입 시 항상 오늘
+- 새로고침 시 스크롤도 현재시각으로 (`performance.navigation.type === 'reload'` 감지 → `tl_scroll` sessionStorage 초기화)
+- 사이드바 좌상단 이름 클릭 → `/timeline` 이동 + 새로고침
+- 근무시간 편집 드롭다운 30분 → 10분 단위 (6:00~23:50)
+- 근무외 시간 빈 슬롯 onClick에 `isDragging.current` 체크 추가 (블록 드래그 후 새 모달 뜨던 버그)
+
+#### 데이터 로드
+- AppShell reservations 초기 로드 `limit=3000` → 과거 180일 + `limit=20000` (단기 해결)
+- 장기 Lazy-load 리팩토링은 HANDOFF에 PENDING
+
+#### 회원가 적용 규칙 관리 페이지 (신규) — `AdminMemberPriceRules.jsx`
+- 관리설정 → 사업장 관리 → "회원가 적용 규칙"
+- `businesses.settings.member_price_rules` = `{ annualEnabled, prepaidMin, excludeServiceIds[] }`
+- 연간회원권/선불권 자격 토글 + 선불권별 제외 체크박스 (바프권 30만 같은 상품)
+- SaleForm에서 `_excludedSvcNames` Set으로 판정 시 제외
+
+#### 타지점 이용 시 회원가 인정 (id_ebgbebctt3)
+- SaleForm에서 보유권 로드를 2갈래로 분리:
+  - `validPkgs` — 전 지점 유효 보유권 → `isMemberPrice` 판정용
+  - `activePkgs` — `canUsePkgAtBranch` 통과 필터 → 차감/사용용
+- 타지점 구매 보유권: 사용 불가, 회원가만 인정
+
+#### 보유권 구매지점 교정 2,178건
+- 단일지점 방문 고객 교정 2,058건 (sales.bid 기반 UPDATE)
+- 강남점 디폴트 fallback 교정 118건 — 매출 있는 고객 중 강남점 매출 없는데 `branch_id=강남점`인 케이스 → 최다 방문 지점으로
+- 김도윤(48996) 2건 왕십리 개별 교정
+- 남은 12건은 매출 기록 없는 직원/테스트 계정 (보류)
+
+#### 구매지점 조사 view 확장 (`customer_pkgs_branch_audit`)
+- `reason` 컬럼 추가: `null` / `mismatch` / `no_sales`
+- 유효기간 만료 제외 (`note`의 `유효:YYYY-MM-DD` 문자열 비교, 잘못된 날짜 방어)
+- `current_bid` 컬럼 추가
+- `AdminBranchAudit`에 reason 탭 3개 + reason 배지
+
+#### RPC 생성 `auto_assign_pkg_by_sale_event(p_biz_id, p_dry_run)` (PENDING 실제 적용)
+- 유효기간에서 -12개월로 예상 구매일 추정
+- `sale_details.service_name ILIKE '%첫단어%'` + 날짜 ±60일 내 매출 찾기
+- 가장 가까운 sale의 `bid`로 업데이트
+- Dry-run 11건 매칭 / 58건 no_match
+
+#### 당일 취소 페널티 로직 (id_imgr471swt-6)
+- ReservationModal에서 `status === "cancelled"` 신규 전환 + `f.date === todayStr()` + custId 있을 때
+- confirm 팝업 후:
+  - 포인트 + 선불권 ≥ 33,000: 포인트 → 선불권 순 차감
+  - 부족 시: 다회권 1회 차감 (유효기간 빠른 것 우선)
+- **매출 자동 기록**: sales + sale_details INSERT, memo에 차감 상세
+  - `service_name`: "당일취소 페널티" / "당일취소 페널티 (다회권: XXX 1회)"
+  - `svc_point`: 포인트 차감액, `external_prepaid`: 선불권 차감액
+
+#### 수정요청 6건 status=done 일괄 처리 (DB)
+- id_uqokfx24ki, id_o3vgbpcf7l, id_2t1n4mbjbe, id_jre7s0tma6, id_ebgbebctt3, id_imgr471swt
+
+### 주의사항 (v3.7.2 이후 참고)
+- **구매지점 제한(`canUsePkgAtBranch`) 이미 작동 중** — NULL 허용, 동일지점/그룹/예외만 통과. 이전 HANDOFF "제한 해제" 기록은 폐기
+- **서버 네이버 예약 저장: `reserved`** — `confirmed`(진행)은 유저 수동 변경만. 기존 `confirmed` 데이터도 보호 로직에서 호환
+- **회원가 규칙 수정 시 `businesses.settings` 전체 parse → 수정 → stringify** (JSON 문자열 내부)
+- **v3.7.0이 서버에 덮어써지는 경쟁 케이스 발생** — v3.7.1 재배포로 복구. 배포 후 `curl live version.txt` 반드시 검증
+- **WhatsApp rate limit**: 24h 단위로 걸림. 1회라도 여러번 재요청하면 같은 번호 OTP 전부 차단 (SMS + 음성 통화 둘 다)

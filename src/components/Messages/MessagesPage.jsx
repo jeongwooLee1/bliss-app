@@ -36,6 +36,9 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   }, [pendingChat, msgs.length]);
   const [aiKoDraft, setAiKoDraft] = useState("");
   const [aiAutoChannels, setAiAutoChannels] = useState({});
+  // IG 계정이 brancheas 테이블에 등록 안 된 경우를 위한 override 매핑: {igAccountId: branchId}
+  // 예: 공용 "하우스왁싱 서울" IG 계정을 강남본점에 매핑
+  const [igBranchOverride, setIgBranchOverride] = useState({});
   const [showAiSettings, setShowAiSettings] = useState(false);
   const [names, setNames] = useState({});
   const convoEndRef = useRef(null);
@@ -54,6 +57,17 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
     if (b.naverAccountId)     { _BR_ACC[b.id] = b.naverAccountId;     _ACC_NAME[b.naverAccountId]     = b.short || b.name; _ACC_BID[b.naverAccountId]     = b.id; }
     if (b.instagramAccountId) { _BR_IG[b.id]  = b.instagramAccountId; _ACC_NAME[b.instagramAccountId] = b.short || b.name; _ACC_BID[b.instagramAccountId] = b.id; }
     if (b.whatsappAccountId)  { _BR_WA[b.id]  = b.whatsappAccountId;  _ACC_NAME[b.whatsappAccountId]  = b.short || b.name; _ACC_BID[b.whatsappAccountId]  = b.id; }
+  });
+  // IG branch override: branches.instagram_account_id 로 못 잡는 추가 IG 계정을 특정 지점에 매핑
+  // (예: 공용 "하우스왁싱 서울" IG 계정을 강남본점에 매핑)
+  const _IG_EXTRA_BY_BID = {};  // bid → [extra ig account_id, ...]
+  Object.entries(igBranchOverride || {}).forEach(([igId, bid]) => {
+    if (!igId || !bid) return;
+    const br = branchList.find(b => b.id === bid);
+    const brName = br ? (br.short || br.name) : "";
+    if (!_ACC_NAME[igId]) _ACC_NAME[igId] = brName || _ACC_NAME[igId] || "";
+    if (!_ACC_BID[igId]) _ACC_BID[igId] = bid;
+    (_IG_EXTRA_BY_BID[bid] ||= []).push(String(igId));
   });
 
   // userBranches + 연계된 지점들까지 확장 (id_ebgbebctt3 Phase 2)
@@ -77,7 +91,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   }, [branchFilter, linkedBranchIds, branchList]);
 
   const allowedIds = activeBids
-    .flatMap(bid => [_BR_ACC[bid], _BR_IG[bid], _BR_WA[bid]])
+    .flatMap(bid => [_BR_ACC[bid], _BR_IG[bid], _BR_WA[bid], ...(_IG_EXTRA_BY_BID[bid] || [])])
     .filter(Boolean)
     .map(String);
 
@@ -144,6 +158,8 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       .then(r=>r.json()).then(rows=>{
         const s = _parseSettings(rows?.[0]?.settings);
         setAiAutoChannels(s.ai_auto_reply_channels || {});
+        // IG account_id → branch_id 오버라이드 매핑 (branches 미등록 IG 계정용)
+        setIgBranchOverride(s.ig_branch_override || {});
       }).catch(()=>{});
   },[]);
   const toggleAiChannel = async (ch) => {
@@ -207,6 +223,42 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
 
   const unread = (uid,ch)=>msgs.filter(m=>m.user_id===uid&&(m.channel||"naver")===ch&&!m.is_read&&m.direction==="in").length;
   const totalUnread = threads.reduce((acc,m)=>acc+unread(m.user_id,m.channel||"naver"),0);
+
+  // 🔗 채널별 "원본 플랫폼 바로가기" URL 계산
+  //   네이버톡톡은 특정 대화 딥링크가 공개되지 않아 파트너센터 홈으로
+  //   인스타는 비즈니스 DM 인박스, 왓츠앱은 메타 비즈니스 관리페이지
+  const getChannelExternalLink = (selObj, convoMsgs) => {
+    if (!selObj) return null;
+    const ch = selObj.channel;
+    if (ch === "naver") {
+      // 네이버 파트너센터는 account_id(naver biz 계정) 기반 딥링크 지원
+      const accId = selObj.account_id;
+      const url = accId
+        ? `https://partner.talk.naver.com/web/accounts/${accId}/chat`
+        : "https://partner.talk.naver.com/";
+      return { url, label: "네이버톡 열기", short: "네이버톡", color: "#03C75A" };
+    }
+    if (ch === "instagram") {
+      // user_name이 IG 핸들이면 해당 프로필, 아니면 Meta 비즈니스 인박스
+      const nm = (convoMsgs || []).map(m=>m.user_name).find(Boolean) || "";
+      const handle = nm.startsWith("@") ? nm.slice(1) : (nm && !nm.includes(" ") ? nm : "");
+      const url = handle ? `https://www.instagram.com/${handle}/` : "https://business.facebook.com/latest/inbox";
+      return { url, label: "인스타 DM", short: "인스타", color: "#E1306C" };
+    }
+    if (ch === "whatsapp") {
+      // user_id가 국제번호(예: 821079076106). wa.me 는 +없이 국제번호 그대로 받음
+      const uid = (selObj.user_id || "").replace(/[^0-9]/g, "");
+      if (uid && uid.length >= 10) {
+        return { url: `https://wa.me/${uid}`, label: "왓츠앱 열기", short: "왓츠앱", color: "#25D366" };
+      }
+      return { url: "https://business.facebook.com/wa/manage/", label: "왓츠앱 비즈니스", short: "왓츠앱", color: "#25D366" };
+    }
+    if (ch === "kakao") {
+      return { url: "https://center-pf.kakao.com/", label: "카톡채널 관리", short: "카톡", color: "#FAE100" };
+    }
+    return null;
+  };
+  const _extLink = getChannelExternalLink(sel, convo);
 
   const getDisplayName = (m) => {
     if(!m) return "고객";
@@ -508,6 +560,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
           <div style={{fontSize:12,color:T.textMuted}}>{CH_NAME[sel.channel]||sel.channel}{(convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone)?" · "+(convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone):""}</div>
         </div>
         {(()=>{const res=chatResMap[sel.channel+"_"+sel.user_id];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"대기":res.status==="completed"?"완료":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":"#9E9E9E";return<button onClick={()=>{if(setPendingOpenRes&&setPage){setPendingOpenRes(res);setPage("timeline");setSel(null);}}} style={{fontSize:11,fontWeight:700,color:clr,background:clr+"15",border:"1px solid "+clr+"40",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📅{st}</button>;})()}
+        {_extLink && <a href={_extLink.url} target="_blank" rel="noopener noreferrer" title={_extLink.label} style={{fontSize:11,fontWeight:700,color:_extLink.color,background:_extLink.color+"18",border:"1px solid "+_extLink.color+"44",borderRadius:6,padding:"4px 8px",textDecoration:"none",flexShrink:0,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}>{_extLink.short} ↗</a>}
         <button onClick={genAI} disabled={aiLoading} style={{padding:"5px 12px",background:T.primary,color:"#fff",border:"none",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>{aiLoading?"...":"✨ AI"}</button>
       </div>
       {/* 메시지 */}
@@ -526,7 +579,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
               </div>}
               <div style={{padding:"10px 14px",borderRadius:isOut?"16px 16px 4px 16px":"16px 16px 16px 4px",background:isOut?(m.is_ai?"#7C3AED":T.primary):"#fff",color:isOut?"#fff":T.text,fontSize:16,lineHeight:1.5,boxShadow:"0 1px 2px rgba(0,0,0,.08)",border:isOut?"none":"1px solid "+T.border,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
                 {m.message_text}
-                {m.translated_text&&<div style={{marginTop:5,paddingTop:5,borderTop:isOut?"1px solid rgba(255,255,255,0.3)":"1px solid rgba(0,0,0,0.1)",fontSize:12,color:isOut?"rgba(255,255,255,0.7)":"rgba(0,0,0,0.5)"}}>🔤 {m.translated_text}</div>}
+                {m.translated_text&&<div style={{marginTop:6,paddingTop:6,borderTop:isOut?"1px solid rgba(255,255,255,0.45)":"1px solid rgba(0,0,0,0.18)",fontSize:12,color:isOut?"rgba(255,255,255,0.95)":"rgba(0,0,0,0.78)",fontWeight:500}}>🔤 {m.translated_text}</div>}
               </div>
               <div style={{fontSize:10,color:T.textMuted,marginTop:3,textAlign:isOut?"right":"left"}}>{fmtTime(m.created_at)}</div>
             </div>
@@ -645,6 +698,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
               <div style={{fontSize:T.fs.xs,color:T.textMuted}}>{CH_NAME[sel.channel]||sel.channel}</div>
             </div>
             {(()=>{const res=chatResMap[sel.channel+"_"+sel.user_id];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"확정대기":res.status==="completed"?"완료":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":"#9E9E9E";return<button onClick={()=>{if(setPendingOpenRes&&setPage){setPendingOpenRes(res);setPage("timeline");}}} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:clr,background:clr+"15",border:"1px solid "+clr+"40",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit"}}>📅 {st} {res.date?.slice(5)} {res.time} →</button>;})()}
+            {_extLink && <a href={_extLink.url} target="_blank" rel="noopener noreferrer" title={_extLink.label} style={{fontSize:11,fontWeight:700,color:_extLink.color,background:_extLink.color+"18",border:"1px solid "+_extLink.color+"44",borderRadius:6,padding:"4px 10px",textDecoration:"none",whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:4,flexShrink:0}}>{_extLink.label} ↗</a>}
           </div>
           <div style={{flex:1,overflowY:"auto",padding:"16px 20px",display:"flex",flexDirection:"column",gap:10}}>
             {convo.map((m,i)=>{
@@ -655,7 +709,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
                 <div style={{maxWidth:"70%"}}>
                   <div style={{padding:"10px 14px",borderRadius:isOut?"16px 16px 4px 16px":"16px 16px 16px 4px",background:isOut?T.primary:"#fff",color:isOut?"#fff":T.text,fontSize:16,lineHeight:1.5,boxShadow:"0 1px 2px rgba(0,0,0,.08)",border:isOut?"none":"1px solid "+T.border,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
                     {m.message_text}
-                    {m.translated_text&&<div style={{marginTop:5,paddingTop:5,borderTop:isOut?"1px solid rgba(255,255,255,0.3)":"1px solid rgba(0,0,0,0.1)",fontSize:11,color:isOut?"rgba(255,255,255,0.7)":"rgba(0,0,0,0.55)"}}>🔤 {m.translated_text}</div>}
+                    {m.translated_text&&<div style={{marginTop:6,paddingTop:6,borderTop:isOut?"1px solid rgba(255,255,255,0.45)":"1px solid rgba(0,0,0,0.18)",fontSize:12,color:isOut?"rgba(255,255,255,0.95)":"rgba(0,0,0,0.78)",fontWeight:500}}>🔤 {m.translated_text}</div>}
                   </div>
                   <div style={{fontSize:10,color:T.textMuted,marginTop:3,textAlign:isOut?"right":"left"}}>{m.is_ai&&<span style={{background:"#7C3AED",color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,marginRight:4}}>AI</span>}{fmtTime(m.created_at)}</div>
                 </div>

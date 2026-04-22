@@ -15,7 +15,7 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
   return <>
     <div style={{padding:`${T.sp.md}px ${T.sp.lg}px`,borderBottom:`1px solid ${T.border}`,display:"flex",flexDirection:"column",gap:4}}>
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
-        <div style={{flex:1,minWidth:0,cursor:"pointer",userSelect:"none"}} onClick={()=>window.location.reload()} title="새로고침">
+        <div style={{flex:1,minWidth:0,cursor:"pointer",userSelect:"none"}} onClick={()=>{ window.location.href = '/timeline'; }} title="타임라인 오늘 날짜로 이동">
           <div style={{fontSize:T.fs.lg,fontWeight:T.fw.black,color:T.primary,letterSpacing:-.5,lineHeight:1.15,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{bizName||"Bliss"}</div>
           <div style={{fontSize:T.fs.xs,color:T.textSub,marginTop:2}}>{
             role==="owner" ? "대표 관리자"

@@ -410,11 +410,11 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
         } catch {}
       }
       // 쉐어 패키지: 본인 소유 패키지는 전부 포함, 타인 소유는 note에 "쉐어:Y" 플래그 있는 것만
-      // + 구매지점 그룹 체크 (id_ebgbebctt3): 같은 그룹 지점에서만 사용 가능. 연간권·NULL은 canUsePkgAtBranch 내부 처리.
+      // ⚠️ 구매지점 필터는 여기서 하지 않음 — 타지점에서도 회원가 자격 판정용으로 보유권은 전부 로드.
+      //    사용/차감 시점(activePkgs)에서 canUsePkgAtBranch로 필터링.
       const marked = (pkgs||[])
         .filter(p => {
-          if (!canUsePkgAtBranch(p, branchId, data?.branches, data?.branchGroups)) return false; // 구매지점 그룹 외 → 제외
-          if (p.customer_id === custId) return true; // 본인 것은 지점만 맞으면 통과
+          if (p.customer_id === custId) return true; // 본인 것은 전부 포함
           return /\|\s*쉐어:Y|^쉐어:Y/.test(p.note||""); // 타인 소유는 쉐어 플래그 필수
         })
         .map(p => ({
@@ -424,9 +424,9 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
         }));
       setCustPkgs(marked);
     } catch(e) {
-      // fallback: 본인만 + 지점 필터
+      // fallback: 본인만
       sb.get("customer_packages", `&customer_id=eq.${custId}`)
-        .then(rows => setCustPkgs((rows||[]).filter(p => canUsePkgAtBranch(p, branchId, data?.branches, data?.branchGroups))))
+        .then(rows => setCustPkgs(rows||[]))
         .catch(()=>setCustPkgs([]));
     }
   };
@@ -529,12 +529,16 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     const today = new Date().toISOString().slice(0,10);
     return exp >= today;
   };
-  const activePkgs = custPkgs.filter(p => {
+  // 유효한 보유권 (잔여/잔액 + 유효기간 체크). 지점 필터는 없음 — 회원가 자격 판정용.
+  // id_ebgbebctt3: 타지점에서도 회원가는 적용받을 수 있어야 함.
+  const validPkgs = custPkgs.filter(p => {
     const t = _pkgType(p);
     if (t === "prepaid") return _pkgBalance(p) > 0 && _pkgNotExpired(p);
     if (t === "annual") return _pkgNotExpired(p);
     return (p.total_count - p.used_count) > 0 && _pkgNotExpired(p);
   });
+  // 현재 지점에서 사용 가능한 보유권 (차감/사용용). 구매지점 외에선 차단됨.
+  const activePkgs = validPkgs.filter(p => canUsePkgAtBranch(p, branchId, data?.branches, data?.branchGroups));
   // 활성 다회권 목록 (패키지 사용 자동 차감용)
   const activeMultiPkgs = activePkgs.filter(p => _pkgType(p) === "package");
 
@@ -560,13 +564,23 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     try {
       const raw = (data?.businesses||[])[0]?.settings;
       const s = typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
-      return s.member_price_rules || { annualEnabled: true, prepaidMin: 300000 };
+      return s.member_price_rules || { annualEnabled: true, prepaidMin: 300000, excludeServiceIds: [] };
     } catch {
-      return { annualEnabled: true, prepaidMin: 300000 };
+      return { annualEnabled: true, prepaidMin: 300000, excludeServiceIds: [] };
     }
   }, [data?.businesses]);
-  const isMemberPrice = activePkgs.some(p => {
+  // 회원가 제외 상품 이름 매핑 (customer_packages.service_name 매칭용)
+  const _excludedSvcNames = React.useMemo(() => {
+    const ids = Array.isArray(_memberRules.excludeServiceIds) ? _memberRules.excludeServiceIds : [];
+    const names = new Set();
+    (data?.services || []).forEach(s => { if (ids.includes(s.id) && s.name) names.add(s.name); });
+    return names;
+  }, [_memberRules.excludeServiceIds, data?.services]);
+  // 회원가 자격: 전 지점 보유권 기준 (타지점 구매 보유권도 회원가 자격은 인정 — id_ebgbebctt3)
+  const isMemberPrice = validPkgs.some(p => {
     if (!_pkgStillValid(p)) return false;
+    // 회원가 자격 제외 상품 (예: 바프권 30만) — 해당 보유권은 자격 불인정
+    if (_excludedSvcNames.has(p.service_name)) return false;
     const t = _pkgType(p);
     if (t === "annual") return !!_memberRules.annualEnabled;
     if (t === "prepaid") {

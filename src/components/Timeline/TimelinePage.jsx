@@ -18,7 +18,12 @@ const uid = genId;
 // 페이지 이동 후 돌아왔을 때 스크롤 위치 복원용 (모듈 레벨 - 컴포넌트 언마운트 후에도 유지)
 // 스크롤 위치 저장/복원 — sessionStorage 연동 (새로고침 시에도 유지)
 const _scrollLoad = () => {
-  try { const v = sessionStorage.getItem('tl_scroll'); return v ? JSON.parse(v) : null; } catch(e) { return null; }
+  try {
+    // 새로고침(F5 등)이면 저장된 스크롤 무시 → 현재시각으로 초기화되도록 (유저 피드백)
+    const navType = performance.getEntriesByType?.('navigation')?.[0]?.type;
+    if (navType === 'reload') { sessionStorage.removeItem('tl_scroll'); return null; }
+    const v = sessionStorage.getItem('tl_scroll'); return v ? JSON.parse(v) : null;
+  } catch(e) { return null; }
 };
 const _scrollSave = (obj) => {
   try { sessionStorage.setItem('tl_scroll', JSON.stringify(obj)); } catch(e) {}
@@ -63,7 +68,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const effectiveNaverColShow = naverColShow;
   const SVC_LIST = (data?.services || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
   const PROD_LIST = (data?.products || []);
-  const [selDate, setSelDate] = useSessionState('tl_selDate', todayStr());
+  // 새로고침·재진입 시 항상 오늘 날짜로 복귀 (유저 요청: 타임라인 refresh → today)
+  const [selDate, setSelDate] = useState(todayStr());
   const [schHistory, setSchHistory] = useState(null);
   // ── 셀 태그 (쉐어/일출 등) — 직원 컬럼 헤더에 날짜별 배지 표시용 ──
   const { data:cellTagDefsRaw } = useScheduleData('cellTagDefs_v1', null);
@@ -2136,15 +2142,16 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   // Current time line (updates every minute)
   const [nowTick, setNowTick] = useState(Date.now());
   useEffect(() => { const t = setInterval(() => setNowTick(Date.now()), 60000); return () => clearInterval(t); }, []);
-  // Auto-fix: memo에 "확정완료"가 있는데 status가 pending인 예약 자동 confirmed 처리
+  // Auto-fix: memo에 "확정완료"가 있는데 status가 pending인 예약 자동 reserved 처리
+  // (confirmed=진행은 유저가 수동 변경, 여기선 예약중 상태까지만 승급)
   useEffect(() => {
     if (!data?.reservations) return;
     const mismatched = (data?.reservations||[]).filter(r => r.status === "pending" && r.memo && r.memo.includes("확정완료"));
     if (mismatched.length === 0) return;
     mismatched.forEach(r => {
-      sb.update("reservations", r.id, {status: "confirmed"}).then(() => console.log(`Auto-confirmed: ${r.id} (memo has 확정완료)`));
+      sb.update("reservations", r.id, {status: "reserved"}).then(() => console.log(`Auto-reserved: ${r.id} (memo has 확정완료)`));
     });
-    setData(prev => ({...prev, reservations: (prev?.reservations||[]).map(r => mismatched.some(m => m.id === r.id) ? {...r, status: "confirmed"} : r)}));
+    setData(prev => ({...prev, reservations: (prev?.reservations||[]).map(r => mismatched.some(m => m.id === r.id) ? {...r, status: "reserved"} : r)}));
   }, [data?.reservations?.filter(r => r.status === "pending").length]);
   const now = new Date(nowTick);
   const nowY = (selDate === todayStr() && now.getHours() >= startHour && now.getHours() < effectiveEndHour) ? timeToY(`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`) : -1;
@@ -2517,13 +2524,14 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             {(()=>{
                               const whKey = room.staffId+"_"+room.branch_id+"_"+selDate;
                               const wh = empWorkHours[whKey] || empWorkHours[room.staffId+"_"+room.branch_id] || (()=>{const bts=(data?.branches||[]).find(b=>b.id===room.branch_id)?.timelineSettings;return bts?.defaultWorkStart?{start:bts.defaultWorkStart,end:bts.defaultWorkEnd||"21:00"}:bts?.openTime?{start:bts.openTime,end:bts.closeTime||"21:00"}:null;})() || {start:"10:00",end:"21:00"};
-                              const hours = Array.from({length:36},(_,i)=>{const h=Math.floor(i/2)+6,m=(i%2)*30;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;});
+                              // 10분 단위 (6:00 ~ 23:50, 108슬롯) — 일퇴/당일 근무시간 변경을 더 세밀하게 (id_2t1n4mbjbe)
+                              const hours = Array.from({length:18*6},(_,i)=>{const h=Math.floor(i/6)+6,m=(i%6)*10;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;});
                               const selSt = {flex:1,fontSize:11,padding:"4px 3px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"};
                               const startRef = React.createRef();
                               const endRef = React.createRef();
                               return <div style={{display:"flex",gap:4,alignItems:"center"}}>
                                 <select ref={startRef} defaultValue={wh.start} style={selSt}
-                                  onChange={e=>{const v=e.target.value; const [hh,mm]=v.split(":").map(Number); const totalMin=Math.min(23*60+30,(hh+10)*60+mm); const eh=Math.floor(totalMin/60),em=totalMin%60; if(endRef.current) endRef.current.value=`${String(eh).padStart(2,"0")}:${String(em).padStart(2,"0")}`;}}>
+                                  onChange={e=>{const v=e.target.value; const [hh,mm]=v.split(":").map(Number); const totalMin=Math.min(23*60+50,(hh+10)*60+mm); const eh=Math.floor(totalMin/60),em=totalMin%60; if(endRef.current) endRef.current.value=`${String(eh).padStart(2,"0")}:${String(em).padStart(2,"0")}`;}}>
                                   {hours.map(h=><option key={h} value={h}>{h}</option>)}
                                 </select>
                                 <span style={{fontSize:11}}>~</span>
@@ -3074,6 +3082,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                       const untilMin = room.activeUntil ? parseInt(room.activeUntil.split(":")[0])*60+parseInt(room.activeUntil.split(":")[1]) : 24*60;
                       if(clickMin < fromMin || clickMin >= untilMin) {
                         // 근무 외 시간 → 내부일정 모드로 모달 열기
+                        // ⚠️ 드래그 직후 mouseup이 onClick으로 올라오는 케이스 차단 (유저 피드백: 블록 위로 드래그 시 새 모달 뜸)
+                        if (isDragging.current || isResizing.current) return;
                         if(!canEdit(room.branch_id)) return;
                         const h=Math.floor(clickMin/60), m=clickMin%60;
                         const time=`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
