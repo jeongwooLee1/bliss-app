@@ -306,6 +306,19 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   })());
   const set = (k,v) => setF(p=>({...p,[k]:v}));
 
+  // 외부(네이버 스크래퍼 등)가 DB status를 바꾸면 모달에도 반영
+  // 사용자가 "네이버 확정" 후 네이버에서 확정 처리 → 서버가 status=confirmed로 업데이트 → 여기서 감지
+  const extStatusRef = React.useRef(item?.status);
+  useEffect(() => {
+    if (!item?.id) return;
+    const latest = (data?.reservations || []).find(r => r.id === item.id);
+    if (!latest) return;
+    if (latest.status !== extStatusRef.current) {
+      extStatusRef.current = latest.status;
+      setF(prev => prev.status === latest.status ? prev : { ...prev, status: latest.status });
+    }
+  }, [data?.reservations, item?.id]);
+
   // 모달 초기화 시 고객 DB 자동 매칭/백필 (성별·이메일이 예약 row에 없을 때 고객 레코드에서 가져옴)
   useEffect(() => {
     const bizId = _activeBizId || "biz_khvurgshb";
