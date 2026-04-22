@@ -1,10 +1,24 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.4** (https://blissme.ai/version.txt) — 2026-04-22 배포 완료
-- v3.7.4 변경:
-  - 구매지점 조사(AdminBranchAudit) 각 고객 카드에 "고객정보 ↗" 버튼 추가 → CustomersPage 단일 모드로 이동 (매출상세 포함)
-  - AdminPage → AdminBranchAudit로 `setPage` + `setPendingOpenCust` prop drilling
+- **라이브: v3.7.5** (https://blissme.ai/version.txt) — 2026-04-23 배포 완료
+
+### v3.7.5 (2026-04-23)
+- **메시지함 AI 예약생성 버튼** (🤖 AI 예약생성 / 모바일 🤖 예약)
+  - 대화 헤더 우측에 신규 버튼. 클릭 시 `https://blissme.ai/ai-book` POST
+  - 서버가 해당 대화방의 최근 `messages.direction=in` 마지막 1건 로드 → `ai_booking_agent(force=True)` 호출 → `create_booking_from_ai()`로 미배정(`room_id=""`, `staff_id=""`, `status="request"`) 예약 저장
+  - `chat_channel/chat_account_id/chat_user_id` 필드 자동 채움 → 예약모달 ↔ 대화창 양방향 링크 자동 작동
+  - 서버 `ai_booking.py:ai_booking_agent`에 `force` 파라미터 추가 (자동응답 채널 활성화 체크 우회)
+  - 서버 `bliss_naver.py`에 `/ai-book` Flask endpoint 추가 + nginx 프록시 설정 업데이트
+  - 백업: `ai_booking.py.bak_preAIbook`, `bliss_naver.py.bak_preAIbook`
+
+### v3.7.4 (2026-04-22)
+- 구매지점 조사(AdminBranchAudit) 각 고객 카드에 "고객정보 ↗" 버튼 → CustomersPage 단일 모드로 이동 (매출상세 포함)
+- AdminPage → AdminBranchAudit로 `setPage` + `setPendingOpenCust` prop drilling
+
+### Instagram webhook mid 중복 방지 (서버, v3.7.4 시점)
+- `bliss_naver.py`에 메모리 기반 `_ig_mid_seen()` 추가 — Meta 재전송으로 인한 echo/IN 중복 저장·발송 차단 (10분 TTL)
+- 백업: `bliss_naver.py.bak_preIGmidDedup`
 
 ## 오늘 세션 누적 완료 (2026-04-22)
 

@@ -26,6 +26,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiBookLoading, setAiBookLoading] = useState(false);
   const [autoTranslate, setAutoTranslate] = useState(true);
   // pendingChat: 예약 모달에서 넘어온 대화방 자동 선택
   useEffect(() => {
@@ -431,6 +432,32 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
     }catch(e){console.error("[genAI]",e);alert("AI 오류: "+e.message);}finally{setAiLoading(false);}
   };
 
+  // 🤖 대화 맥락 분석 → AI 자동 예약 생성 (서버 /ai-book 호출)
+  const aiBook = async()=>{
+    if(!sel||aiBookLoading) return;
+    const custName=(convo.find(m=>m.cust_name)?.cust_name)||getDisplayName(convo[0]||{user_id:sel.user_id})||"";
+    if(!confirm(`${custName||"고객"}님의 대화를 분석해서 AI가 예약을 생성합니다.\n(미배정으로 저장되며, 타임라인에서 배정하세요)\n\n계속할까요?`)) return;
+    setAiBookLoading(true);
+    try{
+      const res=await fetch("https://blissme.ai/ai-book",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({channel:sel.channel,account_id:sel.account_id,user_id:sel.user_id}),
+      });
+      const dd=await res.json().catch(()=>({}));
+      if(!res.ok||!dd?.ok){
+        alert("AI 예약 실패: "+(dd?.error||res.status));
+        return;
+      }
+      if(dd.booked){
+        alert("✅ 예약이 미배정으로 생성됐습니다.\n\n대화 헤더의 📅 버튼으로 확인/배정하세요.");
+      }else{
+        alert("ℹ️ 정보 부족으로 예약을 생성하지 못했습니다.\n\nAI 판단: "+(dd.reply||"(응답 없음)").slice(0,200));
+      }
+    }catch(e){console.error("[aiBook]",e);alert("AI 예약 오류: "+e.message);}
+    finally{setAiBookLoading(false);}
+  };
+
   const sendTranslated = async()=>{
     if(!reply.trim()||!sel) return;
     setSending(true);
@@ -561,6 +588,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
         </div>
         {(()=>{const res=chatResMap[sel.channel+"_"+sel.user_id];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"대기":res.status==="completed"?"완료":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":"#9E9E9E";return<button onClick={()=>{if(setPendingOpenRes&&setPage){setPendingOpenRes(res);setPage("timeline");setSel(null);}}} style={{fontSize:11,fontWeight:700,color:clr,background:clr+"15",border:"1px solid "+clr+"40",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📅{st}</button>;})()}
         {_extLink && <a href={_extLink.url} target="_blank" rel="noopener noreferrer" title={_extLink.label} style={{fontSize:11,fontWeight:700,color:_extLink.color,background:_extLink.color+"18",border:"1px solid "+_extLink.color+"44",borderRadius:6,padding:"4px 8px",textDecoration:"none",flexShrink:0,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}>{_extLink.short} ↗</a>}
+        <button onClick={aiBook} disabled={aiBookLoading} title="AI 예약생성" style={{padding:"5px 10px",background:aiBookLoading?"#9CA3AF":"#7C3AED",color:"#fff",border:"none",borderRadius:6,fontSize:12,cursor:aiBookLoading?"wait":"pointer",fontWeight:700,flexShrink:0,whiteSpace:"nowrap"}}>{aiBookLoading?"⏳":"🤖 예약"}</button>
         <button onClick={genAI} disabled={aiLoading} style={{padding:"5px 12px",background:T.primary,color:"#fff",border:"none",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>{aiLoading?"...":"✨ AI"}</button>
       </div>
       {/* 메시지 */}
@@ -699,6 +727,10 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
             </div>
             {(()=>{const res=chatResMap[sel.channel+"_"+sel.user_id];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"확정대기":res.status==="completed"?"완료":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":"#9E9E9E";return<button onClick={()=>{if(setPendingOpenRes&&setPage){setPendingOpenRes(res);setPage("timeline");}}} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:clr,background:clr+"15",border:"1px solid "+clr+"40",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit"}}>📅 {st} {res.date?.slice(5)} {res.time} →</button>;})()}
             {_extLink && <a href={_extLink.url} target="_blank" rel="noopener noreferrer" title={_extLink.label} style={{fontSize:11,fontWeight:700,color:_extLink.color,background:_extLink.color+"18",border:"1px solid "+_extLink.color+"44",borderRadius:6,padding:"4px 10px",textDecoration:"none",whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:4,flexShrink:0}}>{_extLink.label} ↗</a>}
+            <button onClick={aiBook} disabled={aiBookLoading} title="대화 맥락 분석하여 AI가 미배정으로 예약 생성"
+              style={{fontSize:11,fontWeight:700,color:"#fff",background:aiBookLoading?"#9CA3AF":"#7C3AED",border:"1px solid "+(aiBookLoading?"#9CA3AF":"#6D28D9"),borderRadius:6,padding:"4px 10px",cursor:aiBookLoading?"wait":"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>
+              {aiBookLoading?"⏳ 분석 중…":"🤖 AI 예약생성"}
+            </button>
           </div>
           <div style={{flex:1,overflowY:"auto",padding:"16px 20px",display:"flex",flexDirection:"column",gap:10}}>
             {convo.map((m,i)=>{
