@@ -19,11 +19,8 @@ import AdminMemoTemplates from './AdminMemoTemplates'
 import AdminExtPlatforms from './AdminExtPlatforms'
 import AdminServiceTags from './AdminServiceTags'
 import SchedulePage from '../Schedule/SchedulePage'
-import AdminPkgAudit from './AdminPkgAudit'
-import AdminBranchAudit from './AdminBranchAudit'
 import AdminMemberPriceRules from './AdminMemberPriceRules'
 import AdminBranchGroups from './AdminBranchGroups'
-import AdminPointMigration from './AdminPointMigration'
 
 const uid = genId;
 
@@ -357,7 +354,7 @@ function AdminJoinBrand({ currentUser, onBack }) {
 // ═══════════════════════════════════════════
 // ADMIN — 메뉴 홈 + 라우터
 // ═══════════════════════════════════════════
-function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userBranches=[], setPage, setPendingOpenCust }) {
+function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userBranches=[], setPage }) {
   const navTo = useNavigate();
   const loc = useLocation();
   const TAB_SLUGS = {places:"places",saleitems:"services",coupons:"coupons",prodmgmt:"products",svctags:"tags",ressrc:"sources",extplatforms:"ext-platforms",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",branchgroups:"branch-groups",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",branchaudit:"branch-audit",pointmig:"point-migration",memberrules:"member-rules",joinbrand:"join-brand"};
@@ -395,11 +392,6 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
       {key:"notiSettings",icon:"bell",     label:"알림톡 설정",    desc:"카카오 알림톡 자동 발송 설정"},
       {key:"memoTemplates",icon:"file",      label:"메모 템플릿",    desc:"매출·예약·고객 메모 양식 설정"},
       ...(isOwner ? [{key:"aisettings",  icon:"sparkles", label:"AI 설정",        desc:"AI 분석 규칙 관리"}] : []),
-    ]}] : []),
-    ...(isMaster ? [{section:"데이터 관리",items:[
-      {key:"pkgaudit",    icon:"clipboard",label:"패키지 정리",    desc:"3소스 비교·수정 (메모/오라클/블리스)"},
-      {key:"branchaudit", icon:"building", label:"구매지점 조사",  desc:"보유권 구매지점 판정 (id_ebgbebctt3 Phase 2)"},
-      {key:"pointmig",    icon:"gift",     label:"포인트 설정",    desc:"10% 쿠폰 → 포인트 소급 전환"},
     ]}] : []),
     {section:"내 계정",items:[
       {key:"mypage",      icon:"user",     label:"마이페이지",     desc:"내 계정 정보 및 비밀번호 변경"},
@@ -449,11 +441,8 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     {tab==="brandmembers" && isMaster &&<AdminBrandMembers data={data} setData={setData} bizId={bizId} currentUser={currentUser}/>}
     {tab==="mypage"       &&<AdminMyPage       currentUser={currentUser} onLogout={onLogout}/>}
     {tab==="schedule"    && isMaster &&<AdminSchedule currentUser={currentUser} isMaster={isMaster}/>}
-    {tab==="pkgaudit"    && isMaster &&<AdminPkgAudit data={data} setData={setData} userBranches={userBranches}/>}
-    {tab==="branchaudit" && isMaster &&<AdminBranchAudit data={data} setPage={setPage} setPendingOpenCust={setPendingOpenCust}/>}
     {tab==="memberrules" && isMaster &&<AdminMemberPriceRules data={data} setData={setData} bizId={bizId}/>}
     {tab==="branchgroups"&& isMaster &&<AdminBranchGroups data={data} setData={setData} bizId={bizId}/>}
-    {tab==="pointmig"    && isMaster &&<AdminPointMigration data={data} setData={setData} bizId={bizId}/>}
     {tab==="joinbrand"    && !isMaster &&<AdminJoinBrand   currentUser={currentUser} onBack={back}/>}
     {tab && !["mypage","schedule"].includes(tab) && !isMaster && <div style={{textAlign:"center",padding:"60px 20px",color:T.textMuted}}>
       <div style={{fontSize:32,marginBottom:12}}>&#128274;</div>
