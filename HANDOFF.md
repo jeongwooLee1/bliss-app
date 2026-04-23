@@ -27,6 +27,15 @@
   3. 다른 지점·항목 점진 on
 - 테스트 전 폭주 방지가 필요하면: `INSERT INTO care_sms_log (reservation_id, days_after, status) SELECT reservation_id, 5, 'skip' FROM reservations WHERE ...`로 과거분을 미리 skip 처리
 
+### v3.7.39 (2026-04-24, 밤 자율 세션 — 회원가 자격 UI 준비)
+- DB: `services.grants_member_price boolean` 컬럼 추가 (null 허용)
+- db.js DBMAP/DB_COLS에 `grantsMemberPrice` 매핑
+- AdminSaleItems 편집 모달에 "⭐ 회원가 자격 부여" 토글 추가 (다회권 토글 옆)
+- **기존 로직은 건드리지 않음** — 컬럼 null 상태에선 `member_price_rules` + `_pkgType()` substring 매칭 그대로 동작. 유저 복귀 후 각 상품별 체크 → 추후 `isMemberCustomer` 로직을 `services.grants_member_price` 기반으로 마이그레이션
+- 기존 하드코딩 substring 대상 확인:
+  - `_pkgType()`에서 "연간" / "다담" / "다회" / "왁싱 PKG" 등 substring 매칭 → 유저가 "⭐ 회원가 자격" 체크해야 할 상품
+  - 추천: 연간회원권 / 연간할인권 / 다담권 50만 / 다회권 전체 / 풀페이스 PKG / 왁싱 PKG / 토탈 PKG
+
 ### v3.7.38 (2026-04-24, 밤 자율 세션)
 **시술후 케어 SMS 자동 발송 시스템 신설** (알림톡 → SMS 전환)
 

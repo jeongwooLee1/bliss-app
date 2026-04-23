@@ -53,7 +53,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
 
   const [sheet,setSheet]=useState(false);
   const [edit,setEdit]=useState(null);
-  const [form,setForm]=useState({cat:"",name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0,badgeText:"",badgeColor:"#ffffff",badgeBg:"#f97316",promoConfig:{},isActive:true});
+  const [form,setForm]=useState({cat:"",name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0,badgeText:"",badgeColor:"#ffffff",badgeBg:"#f97316",promoConfig:{},isActive:true,grantsMemberPrice:false});
   const [catSheet,setCatSheet]=useState(false);
   const [newCatName,setNewCatName]=useState("");
   const [saving,setSaving]=useState(false);
@@ -91,12 +91,12 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
   };
   const set=(k,v)=>setForm(p=>({...p,[k]:v}));
 
-  const openNew=()=>{setEdit(null);setForm({cat:defaultCatId,name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0,badgeText:"",badgeColor:"#ffffff",badgeBg:"#f97316",promoConfig:{},isActive:true});setSheet(true);};
+  const openNew=()=>{setEdit(null);setForm({cat:defaultCatId,name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0,badgeText:"",badgeColor:"#ffffff",badgeBg:"#f97316",promoConfig:{},isActive:true,grantsMemberPrice:false});setSheet(true);};
   const openEdit=s=>{
     let pc = s.promoConfig || {};
     if (typeof pc === "string") { try { pc = JSON.parse(pc); } catch(e) { pc = {}; } }
     setEdit(s);
-    setForm({cat:s.cat||"",name:s.name||"",dur:s.dur||20,priceF:s.priceF||0,priceM:s.priceM||0,memberPriceF:s.memberPriceF||0,memberPriceM:s.memberPriceM||0,note:s.note||"",isPackage:!!s.isPackage,pkgCount:s.pkgCount||10,pkgPriceF:s.pkgPriceF||0,pkgPriceM:s.pkgPriceM||0,badgeText:s.badgeText||"",badgeColor:s.badgeColor||"#ffffff",badgeBg:s.badgeBg||"#f97316",promoConfig:pc||{},isActive:s.isActive!==false});
+    setForm({cat:s.cat||"",name:s.name||"",dur:s.dur||20,priceF:s.priceF||0,priceM:s.priceM||0,memberPriceF:s.memberPriceF||0,memberPriceM:s.memberPriceM||0,note:s.note||"",isPackage:!!s.isPackage,pkgCount:s.pkgCount||10,pkgPriceF:s.pkgPriceF||0,pkgPriceM:s.pkgPriceM||0,badgeText:s.badgeText||"",badgeColor:s.badgeColor||"#ffffff",badgeBg:s.badgeBg||"#f97316",promoConfig:pc||{},isActive:s.isActive!==false,grantsMemberPrice:!!s.grantsMemberPrice});
     setSheet(true);
   };
   // 판매중단 토글 — 리스트에서 직접 전환
@@ -121,7 +121,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
       if (rawPc.validFrom) cleanPc.validFrom = rawPc.validFrom;
       if (rawPc.validUntil) cleanPc.validUntil = rawPc.validUntil;
       if (Array.isArray(rawPc.branchIds) && rawPc.branchIds.length > 0) cleanPc.branchIds = rawPc.branchIds;
-      const pl={cat:form.cat,name:form.name,dur:+form.dur,priceF:+form.priceF,priceM:+form.priceM,memberPriceF:+form.memberPriceF||null,memberPriceM:+form.memberPriceM||null,note:form.note,isPackage:form.isPackage,pkgCount:+form.pkgCount,pkgPriceF:+form.pkgPriceF,pkgPriceM:+form.pkgPriceM,badgeText:form.badgeText||null,badgeColor:form.badgeColor||null,badgeBg:form.badgeBg||null,promoConfig:Object.keys(cleanPc).length>0?cleanPc:null,isActive:form.isActive!==false};
+      const pl={cat:form.cat,name:form.name,dur:+form.dur,priceF:+form.priceF,priceM:+form.priceM,memberPriceF:+form.memberPriceF||null,memberPriceM:+form.memberPriceM||null,note:form.note,isPackage:form.isPackage,pkgCount:+form.pkgCount,pkgPriceF:+form.pkgPriceF,pkgPriceM:+form.pkgPriceM,badgeText:form.badgeText||null,badgeColor:form.badgeColor||null,badgeBg:form.badgeBg||null,promoConfig:Object.keys(cleanPc).length>0?cleanPc:null,isActive:form.isActive!==false,grantsMemberPrice:!!form.grantsMemberPrice};
       if(edit){
         await sb.update("services",edit.id,toDb("services",pl));
         setServices(p=>p.map(s=>s.id===edit.id?{...s,...pl}:s));
@@ -271,6 +271,10 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
         <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
           <AToggle size="sm" on={!!form.isPackage} onChange={v=>set("isPackage",v)}/>
           <span style={{fontSize:T.fs.sm}}>다회권</span>
+        </label>
+        <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} title="이 상품을 보유한 고객에게 회원가 적용 자격 부여 (연간권·다담권·패키지 등)">
+          <AToggle size="sm" on={!!form.grantsMemberPrice} onChange={v=>set("grantsMemberPrice",v)}/>
+          <span style={{fontSize:T.fs.sm,color:form.grantsMemberPrice?"#6B21A8":T.text,fontWeight:form.grantsMemberPrice?700:400}}>⭐ 회원가 자격 부여</span>
         </label>
       </div>
       {form.isPackage&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
