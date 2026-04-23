@@ -63,7 +63,7 @@ function prependScheduleLog(log, existing) {
   return existing ? `${log}\n${existing}` : log;
 }
 
-function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, currentUser, setPage, bizId, onMenuClick, bizName, pendingOpenRes, setPendingOpenRes, naverColShow={}, scraperStatus=null, setPendingChat, setPendingOpenCust }) {
+function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, currentUser, setPage, bizId, onMenuClick, bizName, pendingOpenRes, setPendingOpenRes, naverColShow={}, scraperStatus=null, setPendingChat, setPendingOpenCust, unreadMsgCount=0, unreadSample=[] }) {
   // 타임라인 블록 표시 항목 — App에서 prop으로 받음
   const effectiveNaverColShow = naverColShow;
   const SVC_LIST = (data?.services || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
@@ -2189,6 +2189,24 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
             <span style={{fontSize:T.fs.xxs,color:"#BF360C",marginLeft:8}}>{msg}</span>
           </div>
           <span style={{fontSize:T.fs.xxs,color:"#E65100",fontWeight:T.fw.bolder,flexShrink:0,whiteSpace:"nowrap"}}>login_local.py 실행 필요</span>
+        </div>;
+      })()}
+      {/* Unanswered Messages Alert — 확정대기 배너 스타일 통일 */}
+      {unreadMsgCount > 0 && (()=>{
+        const CH_NAME = {naver:"네이버",kakao:"카톡",instagram:"인스타",whatsapp:"왓츠앱",telegram:"텔레"};
+        const preview = (unreadSample||[]).slice(0,3).map(m => {
+          const who = m.user_name || (m.user_id ? m.user_id.slice(0,10) : "고객");
+          const txt = (m.message_text || "").replace(/\s+/g," ").slice(0,18);
+          return `[${CH_NAME[m.channel]||m.channel||"?"}] ${who}: ${txt}`;
+        }).join(" · ");
+        return <div style={{background:"#E0F2FE",borderBottom:"1px solid #7DD3FC",padding:"6px 12px",display:"flex",alignItems:"center",gap:T.sp.sm,flexShrink:0,cursor:"pointer",width:"100%",boxSizing:"border-box"}}
+          onClick={()=>setPage&&setPage("messages")}>
+          <span style={{fontSize:T.fs.xl}}>💬</span>
+          <div style={{flex:1,minWidth:0}}>
+            <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#0369A1"}}>답변 안 한 메시지 {unreadMsgCount}건</span>
+            <span style={{fontSize:T.fs.xxs,color:"#0369A1",marginLeft:8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{preview}{unreadMsgCount>3?` 외 ${unreadMsgCount-3}건`:""}</span>
+          </div>
+          <span style={{fontSize:T.fs.xxs,color:"#0369A1",fontWeight:T.fw.bold,flexShrink:0}}>확인 <I name="chevR" size={11} color="#0369A1"/></span>
         </div>;
       })()}
       {/* Pending Reservations Alert - OUTSIDE scroll, always visible */}

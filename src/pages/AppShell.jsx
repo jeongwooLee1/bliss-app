@@ -21,7 +21,7 @@ import BlissAI from '../components/BlissAI/BlissAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.17"
+const BLISS_V = "3.7.18"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -681,6 +681,7 @@ function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const [unreadMsgCount, setUnreadMsgCount] = useState(0);
+  const [unreadSample, setUnreadSample] = useState([]); // 배너용: [{user_id, channel, user_name, message_text, created_at, account_id}]
   const [pendingReqCount, setPendingReqCount] = useState(0);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
@@ -726,16 +727,25 @@ function App() {
     const load = () => {
       // userBranches 아직 안 로드됐으면 스킵 (isMaster는 전체 허용)
       if(accIds.length===0 && !isMaster && userBranches !== null) { setUnreadMsgCount(0); return; }
-      fetch(SB_URL+"/rest/v1/messages?is_read=eq.false&direction=eq.in&select=id,account_id,channel&limit=999",
+      fetch(SB_URL+"/rest/v1/messages?is_read=eq.false&direction=eq.in&select=id,account_id,channel,user_id,user_name,message_text,created_at&order=created_at.desc&limit=999",
         {headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY,"Cache-Control":"no-cache"},cache:"no-store"})
         .then(r=>r.json())
         .then(arr=>{
           if(!Array.isArray(arr)) return;
           // 네이버(지점 필터) + 소셜채널(전체 허용) 합산
-          const count = arr.filter(m =>
+          const filtered = arr.filter(m =>
             SOCIAL_CH.includes(m.channel) || accIds.length===0 || accIds.includes(String(m.account_id))
-          ).length;
-          setUnreadMsgCount(count);
+          );
+          setUnreadMsgCount(filtered.length);
+          // 스레드별 최신 1건 (user_id+channel 기준)
+          const seen = new Set(); const threads = [];
+          for (const m of filtered) {
+            const key = (m.channel||"")+"_"+(m.user_id||"");
+            if (seen.has(key)) continue;
+            seen.add(key); threads.push(m);
+            if (threads.length >= 5) break;
+          }
+          setUnreadSample(threads);
         })
         .catch(()=>{});
     };
@@ -1344,7 +1354,7 @@ function App() {
         <div className="mob-hdr" style={{display:"none"}}></div>
         <div className="page-pad" style={{flex:1,padding:(page==="timeline"||page==="messages"||page==="schedule")?"0":"16px 20px 16px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
           <Routes>
-            <Route path="/timeline" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust}/></div>}/>
+            <Route path="/timeline" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust} unreadMsgCount={unreadMsgCount} unreadSample={unreadSample}/></div>}/>
             <Route path="/reservations" element={<ScrollArea storageKey="page_reservations"><ReservationList data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} setNaverColShow={setNaverColShow}/></ScrollArea>}/>
             <Route path="/sales" element={<ScrollArea storageKey="page_sales"><SalesPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} role={role} setPendingOpenCust={setPendingOpenCust}/></ScrollArea>}/>
             <Route path="/customers" element={<ScrollArea storageKey="page_customers"><CustomersPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} pendingOpenCust={pendingOpenCust} setPendingOpenCust={setPendingOpenCust}/></ScrollArea>}/>

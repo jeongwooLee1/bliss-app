@@ -379,10 +379,10 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
       {lbl:"시술입금",  v:svcTransfer, c:T.primary},
       {lbl:"시술카드",  v:svcCard,     c:T.primary},
       {lbl:"시술포인트",v:svcPoint,    c:T.primary},
-      {lbl:"제품현금",  v:prodCash,    c:T.infoLt2},
-      {lbl:"제품입금",  v:prodTransfer,c:T.infoLt2},
-      {lbl:"제품카드",  v:prodCard,    c:T.infoLt2},
-      {lbl:"제품포인트",v:prodPoint,   c:T.infoLt2},
+      {lbl:"제품현금",  v:prodCash,    c:T.info},
+      {lbl:"제품입금",  v:prodTransfer,c:T.info},
+      {lbl:"제품카드",  v:prodCard,    c:T.info},
+      {lbl:"제품포인트",v:prodPoint,   c:T.info},
       {lbl:"상품권",    v:gift,        c:T.orange},
     ].filter(x=>x.v>0);
     if (!chips.length) return <span style={{color:T.textMuted,fontSize:T.fs.xxs}}>-</span>;
@@ -458,7 +458,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
           {[
             {lbl:"총 매출",  v:totals.total, c:T.info,    bold:true},
             {lbl:"시술",     v:totals.svc,   c:T.primary},
-            {lbl:"제품",     v:totals.prod,  c:T.infoLt2},
+            {lbl:"제품",     v:totals.prod,  c:T.info},
           ].map(({lbl,v,c,bold})=>(
             <div key={lbl} style={{background:T.bgCard,border:"1px solid "+T.border,borderRadius:T.radius.md,
               padding:"6px 14px",display:"flex",alignItems:"baseline",gap:6}}>
@@ -552,7 +552,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
                   </td>
                   <td style={{color:T.textSub,fontSize:T.fs.xxs}}>{s.staffName||"-"}</td>
                   <td style={{fontWeight:T.fw.bold,color:T.primary}}>{sv>0?fmt(sv):<Z/>}</td>
-                  <td style={{fontWeight:T.fw.bold,color:T.infoLt2}}>{pr>0?fmt(pr):<Z/>}</td>
+                  <td style={{fontWeight:T.fw.bold,color:T.info}}>{pr>0?fmt(pr):<Z/>}</td>
                   <td style={{fontWeight:T.fw.bold,color:rowCash>0?"#16a34a":T.gray400,textAlign:"right"}}>{rowCash>0?fmt(rowCash):"-"}</td>
                   <td style={{fontWeight:T.fw.bold,color:rowCard>0?T.primary:T.gray400,textAlign:"right"}}>{rowCard>0?fmt(rowCard):"-"}</td>
                   <td style={{fontWeight:T.fw.bold,color:rowTransfer>0?T.info:T.gray400,textAlign:"right"}}>{rowTransfer>0?fmt(rowTransfer):"-"}</td>
@@ -687,7 +687,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
         {sales.length>0 && <tr style={{background:T.gray200,fontWeight:T.fw.bolder}}>
           <td colSpan={6} style={{textAlign:"right",color:T.textSub,fontSize:T.fs.xxs}}>합 계</td>
           <td style={{color:T.primary}}>{fmt(totals.svc)}</td>
-          <td style={{color:T.infoLt2}}>{fmt(totals.prod)}</td>
+          <td style={{color:T.info}}>{fmt(totals.prod)}</td>
           <td style={{color:"#16a34a",textAlign:"right"}}>{fmt(totals.svcCash+totals.prodCash)}</td>
           <td style={{color:T.primary,textAlign:"right"}}>{fmt(totals.svcCard+totals.prodCard)}</td>
           <td style={{color:T.info,textAlign:"right"}}>{fmt(totals.svcTransfer+totals.prodTransfer)}</td>
@@ -837,7 +837,7 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     <GridLayout className="stat-cards" cols="repeat(auto-fit,minmax(160px,1fr))" gap={12} style={{marginBottom:20}}>
       <SC label="총 매출" val={`${fmt(t.total)}원`} sub={`${t.count}건`} clr={T.info}/>
       <SC label="시술 매출" val={`${fmt(t.svcTotal)}원`} sub="시술 합계" clr={T.primary}/>
-      <SC label="제품 매출" val={`${fmt(t.prodTotal)}원`} sub="제품 합계" clr={T.infoLt2}/>
+      <SC label="제품 매출" val={`${fmt(t.prodTotal)}원`} sub="제품 합계" clr={T.info}/>
       <SC label="상품권" val={`${fmt(t.gift)}원`} sub="상품권 합계" clr={T.danger}/>
       <SC label="일 평균" val={`${fmt(Math.round(t.total/days))}원`} sub={`${days}일 평균`} clr={T.info}/>
       <SC label="객단가" val={`${fmt(t.count>0?Math.round(t.total/t.count):0)}원`} sub="건당 평균" clr={T.gray400}/>
@@ -850,7 +850,7 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
           <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:T.sp.xs}}>
             <span style={{fontSize:T.fs.nano,color:T.textSub}}>{d.total>0?`${fmt(Math.round(d.total/10000))}만`:""}</span>
             <div style={{width:"100%",display:"flex",flexDirection:"column",gap:1}}>
-              <div style={{width:"100%",height:`${Math.max((d.prod/maxChart)*80,0)}px`,background:T.infoLt2,borderRadius:"4px 4px 0 0",transition:"height .3s"}}/>
+              <div style={{width:"100%",height:`${Math.max((d.prod/maxChart)*80,0)}px`,background:T.info,borderRadius:"4px 4px 0 0",transition:"height .3s"}}/>
               <div style={{width:"100%",height:`${Math.max((d.svc/maxChart)*80,2)}px`,background:T.primary,borderRadius:"0 0 4px 4px",transition:"height .3s"}}/>
             </div>
             <span style={{fontSize:T.fs.xs,color:T.gray500}}>{d.label}</span>
@@ -859,14 +859,14 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
       </div>
       <div style={{display:"flex",gap:T.sp.md,justifyContent:"center",marginTop:10}}>
         <span style={{fontSize:T.fs.xs,display:"flex",alignItems:"center",gap:T.sp.xs}}><span style={{width:8,height:8,borderRadius:T.radius.sm,background:T.primary}}/>시술</span>
-        <span style={{fontSize:T.fs.xs,display:"flex",alignItems:"center",gap:T.sp.xs}}><span style={{width:8,height:8,borderRadius:T.radius.sm,background:T.infoLt2}}/>제품</span>
+        <span style={{fontSize:T.fs.xs,display:"flex",alignItems:"center",gap:T.sp.xs}}><span style={{width:8,height:8,borderRadius:T.radius.sm,background:T.info}}/>제품</span>
       </div>
     </div>
     <GridLayout className="stat-charts" cols="repeat(auto-fit,minmax(300px,1fr))" gap={16}>
       {/* Payment Breakdown */}
       <div className="card" style={{padding:20}}>
         <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:14}}>결제수단별 시술 매출</div>
-        {[["현금",t.svcCash,T.infoLt2],["입금",t.svcTransfer,T.danger],["카드",t.svcCard,T.primary],["포인트",t.svcPoint,T.gray400]].map(([l,v,c])=>(
+        {[["현금",t.svcCash,T.info],["입금",t.svcTransfer,T.danger],["카드",t.svcCard,T.primary],["포인트",t.svcPoint,T.gray400]].map(([l,v,c])=>(
           <div key={l} style={{display:"flex",alignItems:"center",gap:T.sp.sm,marginBottom:8,fontSize:T.fs.sm}}>
             <span style={{width:45,color:c,fontWeight:T.fw.bold}}>{l}</span>
             <div style={{flex:1,height:6,background:T.gray300,borderRadius:T.radius.sm,overflow:"hidden"}}>
