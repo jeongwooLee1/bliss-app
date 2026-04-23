@@ -4,6 +4,7 @@ import { sb, SB_URL, SB_KEY, sbHeaders, matchAllTokens } from '../../lib/sb'
 import { fromDb } from '../../lib/db'
 import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, useSessionState } from '../../lib/utils'
 import I from '../common/I'
+import { ChannelLogo } from './channelIcons'
 
 
 // 지점 매핑은 data.branches에서 동적 생성 (하드코딩 제거)
@@ -584,17 +585,15 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
           const isOut=m.direction==="out";
           return <div key={key} onClick={()=>selectThread(m)}
             style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:14,borderBottom:"1px solid #f0f0f0",background:"#fff",cursor:"pointer"}}>
-            {/* 아바타 — 브랜드 색상 단일 배경 + 채널 아이콘 */}
+            {/* 아바타 — 브랜드 색상 배경 + 공식 로고 */}
             <div style={{position:"relative",flexShrink:0}}>
               <div style={{width:48,height:48,borderRadius:"50%",
                 background:CH_COLOR[ch]||"#888",
                 display:"flex",alignItems:"center",justifyContent:"center",
-                fontSize:ch==="naver"||ch==="kakao"?17:20,fontWeight:800,color:"#fff",
-                letterSpacing:ch==="naver"||ch==="kakao"?-0.5:0,
                 border:uc>0?"2.5px solid "+T.primary:"2.5px solid transparent",
                 boxSizing:"border-box",
                 boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}}>
-                {ch==="naver"?"N":ch==="kakao"?"K":ch==="whatsapp"?"W":ch==="telegram"?"T":ch==="instagram"?"IG":"?"}
+                <ChannelLogo channel={ch} size={26}/>
               </div>
             </div>
             {/* 텍스트 */}
@@ -628,7 +627,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       {/* 헤더 */}
       <div style={{padding:"12px 16px",borderBottom:"1px solid "+T.border,background:T.bgCard,display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
         <button onClick={()=>{ setSel(null); if(onChatOpen) onChatOpen(false); }} style={{background:"none",border:"none",cursor:"pointer",color:T.primary,padding:"4px 8px 4px 0"}}><I name="arrowL" size={20}/></button>
-        <div style={{width:28,height:28,borderRadius:14,background:CH_COLOR[sel.channel]||T.primary,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:800,flexShrink:0}} title={CH_NAME[sel.channel]||sel.channel}>{CH_LABEL[sel.channel]||"?"}</div>
+        <div style={{width:28,height:28,borderRadius:14,background:CH_COLOR[sel.channel]||T.primary,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} title={CH_NAME[sel.channel]||sel.channel}><ChannelLogo channel={sel.channel} size={16}/></div>
         <div style={{flex:1}}>
           <div style={{fontWeight:T.fw.bolder,fontSize:16}}>{branchName(convo[0])?branchName(convo[0])+" · ":""}{getDisplayName(convo[0]||{user_id:sel.user_id})}</div>
           <div style={{fontSize:12,color:T.textMuted}}>{CH_NAME[sel.channel]||sel.channel}{(convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone)?" · "+(convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone):""}</div>
@@ -744,15 +743,13 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
               style={{padding:"12px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:12,
                 background:isS?"rgba(124,58,237,0.06)":"transparent",
                 borderBottom:"1px solid "+T.border}}>
-              {/* 아바타 — 브랜드 색상 단일 배경 + 채널 아이콘 */}
+              {/* 아바타 — 브랜드 색상 배경 + 공식 로고 */}
               <div style={{position:"relative",flexShrink:0}}>
                 <div style={{width:40,height:40,borderRadius:"50%",background:CH_COLOR[ch]||"#888",
                   display:"flex",alignItems:"center",justifyContent:"center",
-                  fontSize:ch==="naver"||ch==="kakao"?14:16,fontWeight:800,color:"#fff",
-                  letterSpacing:ch==="naver"||ch==="kakao"?-0.5:0,
                   border:uc>0?"2px solid "+T.primary:"2px solid transparent",boxSizing:"border-box",
                   boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}}>
-                  {ch==="naver"?"N":ch==="kakao"?"K":ch==="whatsapp"?"W":ch==="telegram"?"T":ch==="instagram"?"IG":"?"}
+                  <ChannelLogo channel={ch} size={22}/>
                 </div>
               </div>
               {/* 텍스트 */}
@@ -779,7 +776,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       <div style={{flex:1,display:sel?"flex":"none",flexDirection:"column",background:"#f8f9fb"}}>
         {sel&&<>
           <div style={{padding:"12px 16px",borderBottom:"1px solid "+T.border,background:T.bgCard,display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:28,height:28,borderRadius:14,background:CH_COLOR[sel.channel]||T.primary,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:800,flexShrink:0}} title={CH_NAME[sel.channel]||sel.channel}>{CH_LABEL[sel.channel]||"?"}</div>
+            <div style={{width:28,height:28,borderRadius:14,background:CH_COLOR[sel.channel]||T.primary,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} title={CH_NAME[sel.channel]||sel.channel}><ChannelLogo channel={sel.channel} size={16}/></div>
             <div style={{flex:1}}>
               <div style={{fontWeight:T.fw.bolder,fontSize:T.fs.sm}}>{branchName(convo[0])?branchName(convo[0])+" · ":""}{getDisplayName(convo[0]||{user_id:sel.user_id})}</div>
               <div style={{fontSize:T.fs.xs,color:T.textMuted}}>{CH_NAME[sel.channel]||sel.channel}</div>
