@@ -631,7 +631,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       {/* 헤더 */}
       <div style={{padding:"12px 16px",borderBottom:"1px solid "+T.border,background:T.bgCard,display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
         <button onClick={()=>{ setSel(null); if(onChatOpen) onChatOpen(false); }} style={{background:"none",border:"none",cursor:"pointer",color:T.primary,padding:"4px 8px 4px 0"}}><I name="arrowL" size={20}/></button>
-        <span style={{fontSize:18}}>{CH_ICON[sel.channel]}</span>
+        <div style={{width:28,height:28,borderRadius:14,background:CH_COLOR[sel.channel]||T.primary,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:800,flexShrink:0}} title={CH_NAME[sel.channel]||sel.channel}>{CH_LABEL[sel.channel]||"?"}</div>
         <div style={{flex:1}}>
           <div style={{fontWeight:T.fw.bolder,fontSize:16}}>{branchName(convo[0])?branchName(convo[0])+" · ":""}{getDisplayName(convo[0]||{user_id:sel.user_id})}</div>
           <div style={{fontSize:12,color:T.textMuted}}>{CH_NAME[sel.channel]||sel.channel}{(convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone)?" · "+(convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone):""}</div>
@@ -647,7 +647,6 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
           if(m.direction==="system") return null;
           const isOut=m.direction==="out";
           return <div key={i} style={{display:"flex",flexDirection:isOut?"row-reverse":"row",alignItems:"flex-end",gap:8}}>
-            {!isOut&&<div style={{width:28,height:28,borderRadius:14,background:T.primaryHover,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>{CH_ICON[m.channel||"naver"]}</div>}
             {/* AI 발송 메시지는 보라색 아바타 🤖 (id_imgr471swt-2 요청) */}
             {isOut&&m.is_ai&&<div style={{width:28,height:28,borderRadius:14,background:"#7C3AED",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0,color:"#fff"}}>🤖</div>}
             <div style={{maxWidth:"75%"}}>
@@ -785,7 +784,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       <div style={{flex:1,display:sel?"flex":"none",flexDirection:"column",background:"#f8f9fb"}}>
         {sel&&<>
           <div style={{padding:"12px 16px",borderBottom:"1px solid "+T.border,background:T.bgCard,display:"flex",alignItems:"center",gap:10}}>
-            <span style={{fontSize:18}}>{CH_ICON[sel.channel]}</span>
+            <div style={{width:28,height:28,borderRadius:14,background:CH_COLOR[sel.channel]||T.primary,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:800,flexShrink:0}} title={CH_NAME[sel.channel]||sel.channel}>{CH_LABEL[sel.channel]||"?"}</div>
             <div style={{flex:1}}>
               <div style={{fontWeight:T.fw.bolder,fontSize:T.fs.sm}}>{branchName(convo[0])?branchName(convo[0])+" · ":""}{getDisplayName(convo[0]||{user_id:sel.user_id})}</div>
               <div style={{fontSize:T.fs.xs,color:T.textMuted}}>{CH_NAME[sel.channel]||sel.channel}</div>
@@ -802,7 +801,6 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
               if(m.direction==="system") return null;
               const isOut=m.direction==="out";
               return <div key={i} style={{display:"flex",flexDirection:isOut?"row-reverse":"row",alignItems:"flex-end",gap:8}}>
-                {!isOut&&<div style={{width:28,height:28,borderRadius:14,background:T.primaryHover,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>{CH_ICON[m.channel||"naver"]}</div>}
                 <div style={{maxWidth:"70%"}}>
                   <div style={{padding:"10px 14px",borderRadius:isOut?"16px 16px 4px 16px":"16px 16px 16px 4px",background:isOut?T.primary:"#fff",color:isOut?"#fff":T.text,fontSize:16,lineHeight:1.5,boxShadow:"0 1px 2px rgba(0,0,0,.08)",border:isOut?"none":"1px solid "+T.border,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
                     {m.message_text}
