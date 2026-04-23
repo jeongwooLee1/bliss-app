@@ -135,15 +135,12 @@
 - **Phase 2**: ReservationsPage는 날짜 range 쿼리, 통계는 RPC, 고객관리 매출 히스토리는 `cust_id` 쿼리
 - 각 페이지가 `data.reservations` 전체 가정하고 filter하는 패턴 전면 교체
 
-### 2. **WhatsApp Cloud API 마무리**
-- ✅ 강남점 등록 완료: 821080086547 (ID `1088922337632781`)
-- ⏳ **홍대마곡점** 등록됨 (ID `1022503714290354`), OTP 인증 **rate-limited** — 24h 대기 후 재시도
-- ⏳ **잠실위례점** 등록됨 (ID `1140758199115714`), OTP 인증 **rate-limited** — 동일
-- ⏳ **천호점** 821026504735 — 지점 핸드폰 WhatsApp 계정 삭제 필요
-- ⏳ **용산점** 821023308088 — 지점 핸드폰 WhatsApp 계정 삭제 필요
-- OTP 인증 완료 후 DB 업데이트 필요:
-  - `branches.whatsapp_account_id` 각 지점별 세팅
-  - `businesses.settings`의 WhatsApp 설정 브랜치별 매핑
+### 2. **WhatsApp 단일 계정 정책 확정** (2026-04-23)
+- 지점별 번호 정책 **폐기**. 전 지점 공통 1개 번호로 통일
+- 사용 번호: `821080086547` / Phone Number ID: `1088922337632781`
+- `businesses.settings.wa_phone_number_id = "1088922337632781"` 유지
+- Meta 관리: https://business.facebook.com/wa/manage/
+- 이전 "지점별 개별 OTP 등록" 계획은 취소 — 홍대마곡/잠실위례/천호/용산 개별 등록 불필요
 
 ### 3. **회원가 자격 상품별 등록 UI화** (추후개발)
 - 현재 `businesses.settings.member_price_rules` + `_pkgType()` 상품명 substring 매칭으로 하드코딩
