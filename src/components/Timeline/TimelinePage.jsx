@@ -400,7 +400,13 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       const wh = segHoursOf(s.branchId);
       const from = s.from || (i === 0 ? wh.start : sorted[i-1].until || wh.start);
       const nextFrom = sorted[i+1]?.from;
-      const until = s.until || nextFrom || wh.end;
+      let until = s.until || nextFrom || wh.end;
+      // 역전 방어: 저장된 empWorkHours.end 가 from 보다 이전 (예: 잘못 찍힌 30분 근무)
+      // → baseHours.end 시도 → 여전히 이전이면 "21:00"으로 fallback
+      if (from && until && until <= from) {
+        if (baseHours?.end && baseHours.end > from) until = baseHours.end;
+        else until = "21:00";
+      }
       return {...s, from, until};
     });
   };
