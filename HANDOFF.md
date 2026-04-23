@@ -1,7 +1,17 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.8** (https://blissme.ai/version.txt) — 2026-04-23 배포 완료
+- **라이브: v3.7.9** (https://blissme.ai/version.txt) — 2026-04-23 배포 완료
+
+### v3.7.9 (2026-04-23)
+- **회원가 자격 판정 재설계** — 카테고리 + 시술별 잔액 체크
+  - `_pkgType()` 카테고리 우선 판정 (SaleForm, CustomersPage) — 상품명 substring 매칭 하드코딩 제거
+  - 바프권 30만 `prepaid` 오분류(package) 버그 해결
+  - `isMemberPrice` 전역 → `isMemberCustomer`(전역) + `isMemberPriceFor(svc, g)`(시술별) 분리
+  - 선불권 보유자: 잔액 ≥ 시술 회원가일 때만 회원가 적용
+  - 연간권 보유자: 잔액 무관 항상 회원가
+  - DB `member_price_rules`: `prepaidMin=0`, `excludeServiceIds=["90dhkdsgp"]` (바프권 30만)
+- **AI 예약 삭제 버튼 버그 수정** — `ai_` 접두사 `reservation_id`도 삭제 가능하게 (chat_channel 체크 추가)
 
 ### v3.7.8 (2026-04-23)
 - **AI 자동대답 패널 UI 재설계** — 공간 문제·세로 접힘 수정
