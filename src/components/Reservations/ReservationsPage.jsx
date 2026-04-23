@@ -30,11 +30,12 @@ const StatCard = ({ label, value, sub, color }) => (
 );
 
 const resGridCols = (cols={}) => {
-  const c = ["82px","52px","96px","1fr"]; // 날짜, 매장, 고객, 시술 (항상)
-  if(cols.phone!==false) c.push("108px");
-  if(cols.naver_id!==false) c.push("90px");
-  if(cols.memo!==false) c.push("1fr");
-  c.push("60px","52px"); // 상태, 액션 (항상)
+  // 날짜(82), 매장(52), 고객번호(56), 고객이름(120), 시술(1fr)
+  const c = ["82px","52px","56px","120px","1fr"];
+  if(cols.phone!==false) c.push("110px");
+  if(cols.naver_id!==false) c.push("96px");
+  if(cols.memo!==false) c.push("minmax(120px,1fr)");
+  c.push("68px","52px"); // 상태, 액션
   return c.join(" ");
 };
 const DEFAULT_SOURCES = ["네이버","전화","방문","소개","인스타","카카오","기타"];
@@ -669,7 +670,7 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
       {resFinal.length > RES_PER_PAGE && <div style={{display:"flex",justifyContent:"flex-end",fontSize:T.fs.xxs,color:T.textMuted,marginBottom:4}}>{resPage*RES_PER_PAGE+1}~{Math.min((resPage+1)*RES_PER_PAGE, resFinal.length)} / {resFinal.length}건</div>}
       {/* 그리드 헤더 - 데스크톱만 */}
       {!isMobile && <div style={{display:"grid",gridTemplateColumns:resGridCols(showCols),gap:8,padding:"6px 14px",borderRadius:T.radius.md,background:T.gray200}}>
-        {["날짜·시간","매장","고객","시술 / 네이버정보",
+        {["날짜·시간","매장","번호","고객","시술 / 네이버정보",
           ...(showCols.phone!==false?["연락처"]:[]),
           ...(showCols.naver_id!==false?["예약번호"]:[]),
           ...(showCols.memo!==false?["메모"]:[]),
@@ -812,21 +813,24 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
           </div>
           {/* 매장 */}
           <div style={{fontSize:13,fontWeight:600,color:T.text}}>{br?.short||"-"}</div>
+          {/* 고객번호 */}
+          {(() => {
+            const cust = r.custId ? (data?.customers||[]).find(c=>c.id===r.custId) : null;
+            const num = cust?.custNum;
+            return <div style={{fontSize:12,color:num?T.textSub:T.gray300,fontFamily:"monospace",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{num?`#${num}`:"-"}</div>;
+          })()}
           {/* 고객 */}
           <div style={{display:"flex",alignItems:"center",gap:5,minWidth:0}}>
             {g && <span style={{fontSize:10,fontWeight:700,borderRadius:3,padding:"1px 4px",background:g==="M"?T.maleLt:T.femaleLt,color:g==="M"?T.male:T.female,flexShrink:0}}>{g==="M"?"남":"여"}</span>}
             <span style={{fontSize:14,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.custName||"-"}</span>
-            {(() => {
-              const cust = r.custId ? (data?.customers||[]).find(c=>c.id===r.custId) : null;
-              return cust?.custNum ? <span style={{fontSize:11,color:T.textMuted,fontFamily:"monospace",flexShrink:0}}>#{cust.custNum}</span> : null;
-            })()}
             {isNaver && <I name="naver" size={11} color={T.naver} style={{flexShrink:0}}/>}
           </div>
           {/* 시술 + 네이버정보 (합쳐서) */}
-          <div style={{minWidth:0}}>
-            <div style={{fontSize:13,color:T.gray700,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{svcDisplay}</div>
-            {showCols.naver_info!==false && naverInfoItems.length>0 && <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:3}}>
-              {naverInfoItems.slice(0,3).map(item=>
+          <div style={{minWidth:0,display:"flex",alignItems:"center",gap:6}}>
+            <div style={{flex:1,minWidth:0,fontSize:13,color:T.gray700,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={svcDisplay}>{svcDisplay}</div>
+            {isNaver && naverInfoItems.length>0 && <span title={naverInfoItems.map(x=>`${x.label}: ${x.value}`).join("\n")} style={{fontSize:10,padding:"1px 7px",borderRadius:10,background:T.primaryLt,color:T.primaryDk,fontWeight:700,whiteSpace:"nowrap",flexShrink:0,cursor:"help"}}>📋 네이버{naverInfoItems.length}</span>}
+            {showCols.naver_info!==false && naverInfoItems.length>0 && <div style={{display:"flex",flexWrap:"wrap",gap:3,marginLeft:4,flexShrink:0}}>
+              {naverInfoItems.slice(0,2).map(item=>
                 <span key={item.label} style={{fontSize:10,padding:"1px 5px",borderRadius:10,background:T.primaryLt,color:T.primaryDk,fontWeight:600,whiteSpace:"nowrap"}}>{item.label}: {item.value}</span>
               )}
             </div>}
