@@ -584,20 +584,17 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
           const isOut=m.direction==="out";
           return <div key={key} onClick={()=>selectThread(m)}
             style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:14,borderBottom:"1px solid #f0f0f0",background:"#fff",cursor:"pointer"}}>
-            {/* 아바타 */}
+            {/* 아바타 — 브랜드 색상 단일 배경 + 채널 아이콘 */}
             <div style={{position:"relative",flexShrink:0}}>
-              <div style={{width:56,height:56,borderRadius:"50%",
-                background:"linear-gradient(135deg,"+CH_COLOR[ch]+"66,"+CH_COLOR[ch]+"33)",
+              <div style={{width:48,height:48,borderRadius:"50%",
+                background:CH_COLOR[ch]||"#888",
                 display:"flex",alignItems:"center",justifyContent:"center",
-                fontSize:20,fontWeight:700,color:CH_COLOR[ch],
+                fontSize:ch==="naver"||ch==="kakao"?17:20,fontWeight:800,color:"#fff",
+                letterSpacing:ch==="naver"||ch==="kakao"?-0.5:0,
                 border:uc>0?"2.5px solid "+T.primary:"2.5px solid transparent",
-                boxSizing:"border-box"}}>
-                {ch==="naver"?initials:ch==="whatsapp"?"💬":ch==="telegram"?"✈":ch==="instagram"?"📷":initials}
-              </div>
-              <div style={{position:"absolute",bottom:1,right:1,width:18,height:18,borderRadius:"50%",
-                background:CH_COLOR[ch],border:"2px solid #fff",
-                display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#fff",fontWeight:800}}>
-                {CH_LABEL[ch]}
+                boxSizing:"border-box",
+                boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}}>
+                {ch==="naver"?"N":ch==="kakao"?"K":ch==="whatsapp"?"W":ch==="telegram"?"T":ch==="instagram"?"IG":"?"}
               </div>
             </div>
             {/* 텍스트 */}
@@ -747,17 +744,15 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
               style={{padding:"12px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:12,
                 background:isS?"rgba(124,58,237,0.06)":"transparent",
                 borderBottom:"1px solid "+T.border}}>
-              {/* 아바타 */}
+              {/* 아바타 — 브랜드 색상 단일 배경 + 채널 아이콘 */}
               <div style={{position:"relative",flexShrink:0}}>
-                <div style={{width:48,height:48,borderRadius:"50%",background:"linear-gradient(135deg,"+CH_COLOR[ch]+"44,"+CH_COLOR[ch]+"22)",
-                  display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:700,color:CH_COLOR[ch],
-                  border:uc>0?"2px solid "+T.primary:"2px solid transparent"}}>
-                  {ch==="naver"?initials:ch==="whatsapp"?"💬":ch==="telegram"?"✈":ch==="instagram"?"📷":initials}
-                </div>
-                <div style={{position:"absolute",bottom:0,right:0,width:16,height:16,borderRadius:"50%",
-                  background:CH_COLOR[ch],border:"2px solid #fff",
-                  display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,color:"#fff",fontWeight:800}}>
-                  {CH_LABEL[ch]}
+                <div style={{width:40,height:40,borderRadius:"50%",background:CH_COLOR[ch]||"#888",
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  fontSize:ch==="naver"||ch==="kakao"?14:16,fontWeight:800,color:"#fff",
+                  letterSpacing:ch==="naver"||ch==="kakao"?-0.5:0,
+                  border:uc>0?"2px solid "+T.primary:"2px solid transparent",boxSizing:"border-box",
+                  boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}}>
+                  {ch==="naver"?"N":ch==="kakao"?"K":ch==="whatsapp"?"W":ch==="telegram"?"T":ch==="instagram"?"IG":"?"}
                 </div>
               </div>
               {/* 텍스트 */}
