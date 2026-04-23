@@ -1089,17 +1089,15 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     return () => clearInterval(id);
   }, [alarms, userBranches]);
 
-  // 알람 드래그 전역 핸들러 — mousemove로 타겟 시간 계산, mouseup으로 저장
-  // 주: startHour/rowH/totalRows/topbarH/headerH는 아래에 정의되어 있어 TDZ 회피 위해 ref로 우회
+  // 알람 드래그/클릭 전역 핸들러 — mousedown부터 시작, 5px 이상 이동 시 drag mode, 아니면 click(edit)
   const _alarmDragCtxRef = React.useRef({});
+  const _alarmPressRef = React.useRef(null); // { alarm, branchId, startY, startX, dragStarted }
   React.useEffect(() => {
-    if (!alarmDrag) return;
-    const onMove = (e) => {
-      const y = e.touches ? e.touches[0]?.clientY : e.clientY;
-      if (!y) return;
+    const DRAG_THRESHOLD = 5;
+    const compTime = (y) => {
       const ctx = _alarmDragCtxRef.current || {};
       const sr = ctx.scrollRef?.current;
-      if (!sr) return;
+      if (!sr) return null;
       const rect = sr.getBoundingClientRect();
       const scrollTop = sr.scrollTop;
       const tbH = ctx.topbarH || 80;
@@ -1110,21 +1108,44 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       const relY = y - rect.top + scrollTop - (tbH + hdH);
       const rowIdx = Math.max(0, Math.min(tr-1, Math.floor(relY / rH)));
       const slotMin = sh*60 + rowIdx*5;
-      const tt = `${String(Math.floor(slotMin/60)).padStart(2,"0")}:${String(slotMin%60).padStart(2,"0")}`;
-      setAlarmDrag(prev => prev ? {...prev, targetTime: tt} : null);
+      return `${String(Math.floor(slotMin/60)).padStart(2,"0")}:${String(slotMin%60).padStart(2,"0")}`;
+    };
+    const onMove = (e) => {
+      const pr = _alarmPressRef.current;
+      if (!pr) return;
+      const y = e.touches ? e.touches[0]?.clientY : e.clientY;
+      const x = e.touches ? e.touches[0]?.clientX : e.clientX;
+      if (y == null) return;
+      if (!pr.dragStarted) {
+        if (Math.abs(y - pr.startY) < DRAG_THRESHOLD && Math.abs(x - pr.startX) < DRAG_THRESHOLD) return;
+        pr.dragStarted = true;
+        setAlarmDrag({alarm: pr.alarm, branchId: pr.branchId, origTime: pr.alarm.time, targetTime: pr.alarm.time});
+      }
+      const tt = compTime(y);
+      if (tt) setAlarmDrag(prev => prev ? {...prev, targetTime: tt} : prev);
       if (e.cancelable && e.type==="touchmove") e.preventDefault();
     };
     const onUp = () => {
-      const d = alarmDrag;
-      if (d && d.targetTime && d.targetTime !== d.origTime) {
-        saveAlarms(prev => ({
-          ...prev,
-          [d.branchId]: (prev[d.branchId] || []).map(a =>
-            a.id === d.alarm.id ? {...a, time: d.targetTime} : a
-          )
-        }));
+      const pr = _alarmPressRef.current;
+      if (!pr) return;
+      _alarmPressRef.current = null;
+      if (pr.dragStarted) {
+        // drag: save if moved
+        setAlarmDrag(curr => {
+          if (curr && curr.targetTime && curr.targetTime !== curr.origTime) {
+            saveAlarms(prev => ({
+              ...prev,
+              [curr.branchId]: (prev[curr.branchId] || []).map(a =>
+                a.id === curr.alarm.id ? {...a, time: curr.targetTime} : a
+              )
+            }));
+          }
+          return null;
+        });
+      } else {
+        // click: open edit modal
+        setAlarmModal({ branchId: pr.branchId, time: pr.alarm.time, editing: pr.alarm });
       }
-      setAlarmDrag(null);
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
@@ -1136,7 +1157,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       document.removeEventListener("touchmove", onMove);
       document.removeEventListener("touchend", onUp);
     };
-  }, [alarmDrag?.alarm?.id, alarmDrag?.branchId, saveAlarms]);
+  }, [saveAlarms]);
 
   // 직원 컬럼 순서 커스텀 (DB: schedule_data.empColOrder_v1)
   const [empColOrder, _setEmpColOrder] = useState({});
@@ -2576,9 +2597,16 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                   style={{position:"absolute",top:i*rowH,left:0,right:0,height:rowH,display:"flex",alignItems:"center",justifyContent:"flex-end",paddingRight:window.innerWidth<=768?3:6,cursor:"pointer"}}>
                   {slotAlarms.length > 0 && <span
                     onClick={(e)=>e.stopPropagation()}
-                    onMouseDown={(e)=>{e.stopPropagation();e.preventDefault();setAlarmDrag({alarm:slotAlarms[0],branchId:targetBid,origTime:slotAlarms[0].time,targetTime:slotAlarms[0].time});}}
-                    onTouchStart={(e)=>{e.stopPropagation();setAlarmDrag({alarm:slotAlarms[0],branchId:targetBid,origTime:slotAlarms[0].time,targetTime:slotAlarms[0].time});}}
-                    style={{position:"absolute",left:2,top:0,bottom:0,display:"flex",alignItems:"center",gap:2,fontSize:9,background:alarmDrag?.alarm?.id===slotAlarms[0].id?"#FDE68A":"#FEF3C7",color:"#92400E",padding:"0 4px",borderRadius:3,border:"1px solid #FBBF24",maxWidth:timeLabelsW-24,overflow:"hidden",whiteSpace:"nowrap",zIndex:2,cursor:"grab",userSelect:"none"}} title={`${slotAlarms[0].title} (드래그해서 이동)`}>🔔{slotAlarms[0].title?.slice(0,4)||""}</span>}
+                    onMouseDown={(e)=>{
+                      e.stopPropagation();
+                      _alarmPressRef.current = {alarm:slotAlarms[0], branchId:targetBid, startY:e.clientY, startX:e.clientX, dragStarted:false};
+                    }}
+                    onTouchStart={(e)=>{
+                      e.stopPropagation();
+                      const t = e.touches[0];
+                      _alarmPressRef.current = {alarm:slotAlarms[0], branchId:targetBid, startY:t.clientY, startX:t.clientX, dragStarted:false};
+                    }}
+                    style={{position:"absolute",left:2,top:0,bottom:0,display:"flex",alignItems:"center",gap:2,fontSize:9,background:alarmDrag?.alarm?.id===slotAlarms[0].id?"#FDE68A":"#FEF3C7",color:"#92400E",padding:"0 4px",borderRadius:3,border:"1px solid #FBBF24",maxWidth:timeLabelsW-24,overflow:"hidden",whiteSpace:"nowrap",zIndex:2,cursor:"grab",userSelect:"none"}} title={`${slotAlarms[0].title} (클릭 편집 / 드래그 이동)`}>🔔{slotAlarms[0].title?.slice(0,4)||""}</span>}
                   <span style={{fontSize:isHour?(window.innerWidth<=768?10:11):(window.innerWidth<=768?8:9),fontWeight:isHighlighted?700:(isHour?600:400),color:isHighlighted?T.primary:(isHour?T.gray700:T.gray500),whiteSpace:"nowrap",lineHeight:1,transition:"color 0.1s"}}>{text}</span>
                 </div>;
               })}
