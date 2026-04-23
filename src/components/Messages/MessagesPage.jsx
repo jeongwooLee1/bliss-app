@@ -232,9 +232,11 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   const threads = useMemo(()=>{
     const map = {};
     msgs.forEach(m=>{
-      // 지점 필터: account_id가 있고 허용 목록에 없으면 제외 (네이버·인스타·왓츠앱 모두 동일 기준)
+      // 지점 필터: account_id가 있고 허용 목록에 없으면 제외 (네이버·인스타만)
       // 예외: account_id 없음/'unknown' → 지점 미지정 메시지라 그대로 노출
-      if(allowedIds.length>0 && m.account_id && m.account_id!=="unknown" && !allowedIds.includes(String(m.account_id))) return;
+      // 왓츠앱은 전지점 공통이라 필터 우회
+      const isWhatsApp = (m.channel||"") === "whatsapp";
+      if(!isWhatsApp && allowedIds.length>0 && m.account_id && m.account_id!=="unknown" && !allowedIds.includes(String(m.account_id))) return;
       const key=(m.channel||"naver")+"_"+m.user_id;
       if(!map[key]||new Date(m.created_at)>new Date(map[key].created_at)) map[key]=m;
     });
@@ -580,7 +582,9 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
         :threads.map(m=>{
           const ch=m.channel||"naver"; const key=ch+"_"+m.user_id;
           const uc=unread(m.user_id,ch);
-          const name=getDisplayName(m); const branch=branchName(m);
+          const name=getDisplayName(m);
+          // 왓츠앱은 전지점 공통이라 지점명 숨김
+          const branch=ch==="whatsapp"?"":branchName(m);
           const initials=name.slice(0,2);
           const isOut=m.direction==="out";
           return <div key={key} onClick={()=>selectThread(m)}
@@ -629,7 +633,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
         <button onClick={()=>{ setSel(null); if(onChatOpen) onChatOpen(false); }} style={{background:"none",border:"none",cursor:"pointer",color:T.primary,padding:"4px 8px 4px 0"}}><I name="arrowL" size={20}/></button>
         <div style={{width:28,height:28,borderRadius:14,background:CH_COLOR[sel.channel]||T.primary,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} title={CH_NAME[sel.channel]||sel.channel}><ChannelLogo channel={sel.channel} size={16}/></div>
         <div style={{flex:1}}>
-          <div style={{fontWeight:T.fw.bolder,fontSize:16}}>{branchName(convo[0])?branchName(convo[0])+" · ":""}{getDisplayName(convo[0]||{user_id:sel.user_id})}</div>
+          <div style={{fontWeight:T.fw.bolder,fontSize:16}}>{(sel?.channel!=="whatsapp"&&branchName(convo[0]))?branchName(convo[0])+" · ":""}{getDisplayName(convo[0]||{user_id:sel.user_id})}</div>
           <div style={{fontSize:12,color:T.textMuted}}>{CH_NAME[sel.channel]||sel.channel}{(convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone)?" · "+(convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone):""}</div>
         </div>
         {(()=>{const res=chatResMap[sel.channel+"_"+sel.user_id];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"대기":res.status==="completed"?"완료":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":"#9E9E9E";return<button onClick={()=>{if(setPendingOpenRes&&setPage){setPendingOpenRes(res);setPage("timeline");setSel(null);}}} style={{fontSize:11,fontWeight:700,color:clr,background:clr+"15",border:"1px solid "+clr+"40",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📅{st}</button>;})()}
@@ -737,7 +741,9 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
             const ch=m.channel||"naver"; const key=ch+"_"+m.user_id;
             const isS=sel?.user_id===m.user_id&&sel?.channel===ch;
             const uc=unread(m.user_id,ch);
-            const name=getDisplayName(m); const branch=branchName(m);
+            const name=getDisplayName(m);
+            // 왓츠앱은 전지점 공통이라 지점명 숨김
+            const branch=ch==="whatsapp"?"":branchName(m);
             const initials=name.slice(0,1);
             return <div key={key} onClick={()=>selectThread(m)}
               style={{padding:"12px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:12,
@@ -778,7 +784,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
           <div style={{padding:"12px 16px",borderBottom:"1px solid "+T.border,background:T.bgCard,display:"flex",alignItems:"center",gap:10}}>
             <div style={{width:28,height:28,borderRadius:14,background:CH_COLOR[sel.channel]||T.primary,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} title={CH_NAME[sel.channel]||sel.channel}><ChannelLogo channel={sel.channel} size={16}/></div>
             <div style={{flex:1}}>
-              <div style={{fontWeight:T.fw.bolder,fontSize:T.fs.sm}}>{branchName(convo[0])?branchName(convo[0])+" · ":""}{getDisplayName(convo[0]||{user_id:sel.user_id})}</div>
+              <div style={{fontWeight:T.fw.bolder,fontSize:T.fs.sm}}>{(sel?.channel!=="whatsapp"&&branchName(convo[0]))?branchName(convo[0])+" · ":""}{getDisplayName(convo[0]||{user_id:sel.user_id})}</div>
               <div style={{fontSize:T.fs.xs,color:T.textMuted}}>{CH_NAME[sel.channel]||sel.channel}</div>
             </div>
             {(()=>{const res=chatResMap[sel.channel+"_"+sel.user_id];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"확정대기":res.status==="completed"?"완료":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":"#9E9E9E";return<button onClick={()=>{if(setPendingOpenRes&&setPage){setPendingOpenRes(res);setPage("timeline");}}} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:clr,background:clr+"15",border:"1px solid "+clr+"40",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit"}}>📅 {st} {res.date?.slice(5)} {res.time} →</button>;})()}
