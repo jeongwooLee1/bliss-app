@@ -122,12 +122,7 @@
 - **Phase 2**: ReservationsPage는 날짜 range 쿼리, 통계는 RPC, 고객관리 매출 히스토리는 `cust_id` 쿼리
 - 각 페이지가 `data.reservations` 전체 가정하고 filter하는 패턴 전면 교체
 
-### 2. **auto_assign_pkg_by_sale_event RPC 실제 적용** (PENDING)
-- Dry-run 11건 확인됨
-- `SELECT auto_assign_pkg_by_sale_event('biz_khvurgshb', false);` 실행하면 반영
-- 유저가 "일단 대기" 요청 → 실행 안 함
-
-### 3. **WhatsApp Cloud API 마무리**
+### 2. **WhatsApp Cloud API 마무리**
 - ✅ 강남점 등록 완료: 821080086547 (ID `1088922337632781`)
 - ⏳ **홍대마곡점** 등록됨 (ID `1022503714290354`), OTP 인증 **rate-limited** — 24h 대기 후 재시도
 - ⏳ **잠실위례점** 등록됨 (ID `1140758199115714`), OTP 인증 **rate-limited** — 동일
@@ -137,10 +132,15 @@
   - `branches.whatsapp_account_id` 각 지점별 세팅
   - `businesses.settings`의 WhatsApp 설정 브랜치별 매핑
 
-### 4. (보류) 세션 복구 Phase 2-4 — 로컬 watchdog / 캡차 자동화 / Task Scheduler
-### 5. (보류) Naver 자동예약 기본 상태 (id_7um1c7bp3o) — 서버 STATUS_MAP은 이미 reserved로 고침. 추가 이슈 있으면 재검토
-### 6. (보류) 직원 지점 이동 시 예약 자동 이동 (id_825fnuel64)
-### 7. (보류) AI 설정 UI 개선 (id_triao6fesy)
+### 3. (보류) 세션 복구 Phase 2-4 — 로컬 watchdog / 캡차 자동화 / Task Scheduler
+### 4. (보류) Naver 자동예약 기본 상태 (id_7um1c7bp3o) — 서버 STATUS_MAP은 이미 reserved로 고침. 추가 이슈 있으면 재검토
+### 5. (보류) 직원 지점 이동 시 예약 자동 이동 (id_825fnuel64)
+### 6. (보류) AI 설정 UI 개선 (id_triao6fesy)
+
+---
+
+### 2026-04-23 완료 (다른 세션)
+- **`auto_assign_pkg_by_sale_event` RPC 실제 적용** — Dry-run 11건 매칭 반영 완료
 
 ---
 
