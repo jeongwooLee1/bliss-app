@@ -417,7 +417,7 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
   const D = DENSITY[density] || DENSITY.comfortable;
 
   // ── 표시 컬럼 설정 ────────────────────────────────
-  const [showCols, setShowColsRaw] = useState(()=>{ try{return JSON.parse(localStorage.getItem("bliss_res_cols")||"null")||{phone:true,staff:true,service:true,naver_id:true,prepaid:true,memo:false,naver_info:true};}catch(e){return{phone:true,staff:true,service:true,naver_id:true,prepaid:true,memo:false,naver_info:true};} });
+  const [showCols, setShowColsRaw] = useState(()=>{ try{return JSON.parse(localStorage.getItem("bliss_res_cols")||"null")||{phone:true,staff:true,service:true,naver_id:true,prepaid:true,memo:false,naver_info:false};}catch(e){return{phone:true,staff:true,service:true,naver_id:true,prepaid:true,memo:false,naver_info:false};} });
   const setShowCols = v => { setShowColsRaw(v); try{localStorage.setItem("bliss_res_cols",JSON.stringify(v));}catch(e){} };
   const [showColPanel, setShowColPanel] = useState(false);
 
@@ -751,8 +751,8 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
             {staff && <span style={{fontSize:T.fs.xs,color:T.textSub}}>· {staff.dn}</span>}
             {r.isPrepaid && r.totalPrice ? <Badge color={T.success} bg={T.successLt} style={{marginLeft:"auto"}}>✓{r.totalPrice.toLocaleString()}원</Badge> : null}
           </div>
-          {/* Row4: 네이버 정보 태그 */}
-          {naverInfoItems.length>0 && <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:2}}>
+          {/* Row4: 네이버 정보 태그 — showCols.naver_info 토글로 숨김 */}
+          {showCols.naver_info!==false && naverInfoItems.length>0 && <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:2}}>
             {naverInfoItems.map(item=>(
               <span key={item.label} style={{fontSize:T.fs.nano,padding:"1px 6px",borderRadius:T.radius.full,background:T.primaryLt,color:T.primaryDk,fontWeight:T.fw.bold,whiteSpace:"nowrap"}}>{item.label}: {item.value}</span>
             ))}
@@ -825,7 +825,7 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
           {/* 시술 + 네이버정보 (합쳐서) */}
           <div style={{minWidth:0}}>
             <div style={{fontSize:13,color:T.gray700,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{svcDisplay}</div>
-            {naverInfoItems.length>0 && <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:3}}>
+            {showCols.naver_info!==false && naverInfoItems.length>0 && <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:3}}>
               {naverInfoItems.slice(0,3).map(item=>
                 <span key={item.label} style={{fontSize:10,padding:"1px 5px",borderRadius:10,background:T.primaryLt,color:T.primaryDk,fontWeight:600,whiteSpace:"nowrap"}}>{item.label}: {item.value}</span>
               )}
