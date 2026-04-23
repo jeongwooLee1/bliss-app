@@ -1837,7 +1837,6 @@ ${naverText}
               {/* AI 예약 확정 버튼 */}
               {f.status==="request" && <Btn style={{padding:"10px 26px",background:"#9C27B0",boxShadow:"0 4px 14px rgba(156,39,176,.35)"}}
                 onClick={async ()=>{
-                  const confirmMsg=`${f.custName}님, ${f.date} ${f.time} 예약이 확정되었습니다. 감사합니다!`;
                   // data.branches에서 동적으로 계정 매핑
                   const branchAccMap={};
                   (data?.branches||[]).forEach(b=>{ if(b.naverAccountId) branchAccMap[b.id]=b.naverAccountId; });
@@ -1846,6 +1845,20 @@ ${naverText}
                     // DB에서 chat_channel/chat_account_id/chat_user_id 직접 조회
                     const dbRows=await fetch(`${SB_URL}/rest/v1/reservations?id=eq.${f.id||item?.id}&select=chat_channel,chat_account_id,chat_user_id,memo`,{headers:{"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY},cache:"no-store"}).then(r=>r.json());
                     const dbRes=dbRows?.[0]||{};
+                    // 대화 언어 감지 — 고객 IN 메시지 최대 5건 샘플로 영/한 판단
+                    let useEnglish=false;
+                    if(dbRes.chat_channel && dbRes.chat_user_id){
+                      try{
+                        const sampleMsgs=await fetch(`${SB_URL}/rest/v1/messages?channel=eq.${dbRes.chat_channel}&user_id=eq.${dbRes.chat_user_id}&direction=eq.in&order=created_at.asc&limit=5&select=message_text`,{headers:{"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY},cache:"no-store"}).then(r=>r.json());
+                        const text=(sampleMsgs||[]).map(m=>m.message_text||"").join(" ");
+                        const ko=[...text].filter(c=>c>="\uAC00"&&c<="\uD7A3").length;
+                        const en=[...text].filter(c=>/[a-zA-Z]/.test(c)).length;
+                        useEnglish = en > ko*2;
+                      }catch{}
+                    }
+                    const confirmMsg = useEnglish
+                      ? `Hi ${f.custName}! Your booking on ${f.date} at ${f.time} is confirmed. Thank you! 😊`
+                      : `${f.custName}님, ${f.date} ${f.time} 예약이 확정되었습니다. 감사합니다!`;
                     // 1순위: chat 필드가 있으면 바로 사용
                     if(dbRes.chat_channel && dbRes.chat_account_id && dbRes.chat_user_id){
                       await sb.insert("send_queue",{account_id:dbRes.chat_account_id,user_id:dbRes.chat_user_id,message_text:confirmMsg,status:"pending",channel:dbRes.chat_channel});
