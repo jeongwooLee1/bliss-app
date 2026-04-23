@@ -2273,10 +2273,12 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           </div>
           <span style={{fontSize:T.fs.xxs,color:T.orange,fontWeight:T.fw.bold,flexShrink:0}}>확인 <I name="chevR" size={11} color={T.orange}/></span>
           {(() => {
-            const first = pendingList[0];
-            const br = allBranchList.find(b=>b.id===first.bid);
+            // 네이버 예약(source=naver + pending)인 경우만 "네이버 확정" 바로가기 노출
+            const naverPending = pendingList.find(r => (r.source==="naver"||r.source==="네이버") && r.status==="pending");
+            if (!naverPending) return null;
+            const br = allBranchList.find(b=>b.id===naverPending.bid);
             const bizId = br?.naverBizId;
-            const resId = first?.reservationId;
+            const resId = naverPending?.reservationId;
             const naverUrl = bizId ? (resId ? `https://partner.booking.naver.com/bizes/${bizId}/booking-list-view/bookings/${resId}` : `https://partner.booking.naver.com/bizes/${bizId}/booking-list-view`) : null;
             return naverUrl ? <a href={naverUrl} target="_blank" rel="noopener noreferrer"
               onClick={e=>e.stopPropagation()}
