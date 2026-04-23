@@ -30,10 +30,9 @@ const StatCard = ({ label, value, sub, color }) => (
 );
 
 const resGridCols = (cols={}) => {
-  // 날짜(82), 매장(52), 고객번호(56), 고객이름(120), 시술(1fr)
+  // 날짜(82), 매장(52), 고객번호(56), 고객이름(120), 시술+네이버(1fr)
   const c = ["82px","52px","56px","120px","1fr"];
   if(cols.phone!==false) c.push("110px");
-  if(cols.naver_id!==false) c.push("96px");
   if(cols.memo!==false) c.push("minmax(120px,1fr)");
   c.push("68px","52px"); // 상태, 액션
   return c.join(" ");
@@ -472,6 +471,36 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
   const resNextSet = new Set((data?.reservations||[]).filter(r=>r.prevReservationId).map(r=>r.prevReservationId));
   const resFinal = res.filter(r => !(r.status==="naver_changed" && resNextSet.has(r.reservationId)));
 
+  // 현재 페이지에 노출되는 예약의 cust_id 중 로컬에 없는 것 batch 로드 (고객번호 표시용)
+  const _pageCustIdsKey = React.useMemo(() => {
+    const slice = resFinal.slice(resPage * RES_PER_PAGE, (resPage + 1) * RES_PER_PAGE);
+    const loaded = new Set((data?.customers||[]).map(c=>c.id));
+    return [...new Set(slice.map(r=>r.custId).filter(id=>id && !loaded.has(id)))].sort().join(",");
+  }, [resFinal, resPage, data?.customers]);
+  React.useEffect(() => {
+    if (!_pageCustIdsKey) return;
+    const missing = _pageCustIdsKey.split(",").filter(Boolean);
+    if (missing.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (let i=0; i<missing.length; i+=100) {
+        const ch = missing.slice(i, i+100);
+        try {
+          const rows = await sb.get("customers", `&id=in.(${ch.join(",")})&select=id,cust_num,name,name2,phone,gender,bid`);
+          if (cancelled) return;
+          const parsed = fromDb("customers", rows||[]);
+          setData(prev => {
+            if (!prev) return prev;
+            const map = new Map((prev.customers||[]).map(c=>[c.id,c]));
+            parsed.forEach(c => { if (!map.has(c.id)) map.set(c.id, c); });
+            return {...prev, customers: Array.from(map.values())};
+          });
+        } catch(e) { console.error("cust-backfill err:", e); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [_pageCustIdsKey]);
+
   // ── 변경 히스토리 체인 구성 ─────────────────────────────────────
   // prev_reservation_id로 체인 연결: 최신 예약(naver_changed 아닌 것)이 대표, 이전 것들이 히스토리
   const [expandedChains, setExpandedChains] = useState({});
@@ -672,7 +701,6 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
       {!isMobile && <div style={{display:"grid",gridTemplateColumns:resGridCols(showCols),gap:8,padding:"6px 14px",borderRadius:T.radius.md,background:T.gray200}}>
         {["날짜·시간","매장","번호","고객","시술 / 네이버정보",
           ...(showCols.phone!==false?["연락처"]:[]),
-          ...(showCols.naver_id!==false?["예약번호"]:[]),
           ...(showCols.memo!==false?["메모"]:[]),
           "상태",""].map(h=>
           <span key={h} style={{fontSize:12,fontWeight:700,color:T.textSub}}>{h}</span>
@@ -746,10 +774,16 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
             {isNaver && <I name="naver" size={11} color={T.naver}/>}
             {r.custPhone && <span style={{fontSize:T.fs.xs,color:T.primary,marginLeft:4}} onClick={e=>{e.stopPropagation();}}>{r.custPhone}</span>}
           </div>
-          {/* Row3: 시술 + 시술자 + 예약금 */}
+          {/* Row3: 시술 + 시술자 + 네이버번호 + 예약금 */}
           <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:naverInfoItems.length?4:0}}>
             <span style={{fontSize:T.fs.sm,color:T.gray700,fontWeight:T.fw.medium}}>{svcDisplay}</span>
             {staff && <span style={{fontSize:T.fs.xs,color:T.textSub}}>· {staff.dn}</span>}
+            {isNaver && r.reservationId && <a
+              href={`https://partner.booking.naver.com/bizes/${br?.naverBizId||"449920"}/booking-list-view/bookings/${r.reservationId}`}
+              target="_blank" rel="noreferrer"
+              onClick={e=>e.stopPropagation()}
+              style={{fontSize:T.fs.nano,padding:"1px 7px",borderRadius:10,background:T.naver+"22",color:T.naver,fontWeight:T.fw.bolder,textDecoration:"none",whiteSpace:"nowrap"}}
+            >📋 #{r.reservationId}</a>}
             {r.isPrepaid && r.totalPrice ? <Badge color={T.success} bg={T.successLt} style={{marginLeft:"auto"}}>✓{r.totalPrice.toLocaleString()}원</Badge> : null}
           </div>
           {/* Row4: 네이버 정보 태그 — showCols.naver_info 토글로 숨김 */}
@@ -828,21 +862,16 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
           {/* 시술 + 네이버정보 (합쳐서) */}
           <div style={{minWidth:0,display:"flex",alignItems:"center",gap:6}}>
             <div style={{flex:1,minWidth:0,fontSize:13,color:T.gray700,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={svcDisplay}>{svcDisplay}</div>
-            {isNaver && naverInfoItems.length>0 && <span title={naverInfoItems.map(x=>`${x.label}: ${x.value}`).join("\n")} style={{fontSize:10,padding:"1px 7px",borderRadius:10,background:T.primaryLt,color:T.primaryDk,fontWeight:700,whiteSpace:"nowrap",flexShrink:0,cursor:"help"}}>📋 네이버{naverInfoItems.length}</span>}
-            {showCols.naver_info!==false && naverInfoItems.length>0 && <div style={{display:"flex",flexWrap:"wrap",gap:3,marginLeft:4,flexShrink:0}}>
-              {naverInfoItems.slice(0,2).map(item=>
-                <span key={item.label} style={{fontSize:10,padding:"1px 5px",borderRadius:10,background:T.primaryLt,color:T.primaryDk,fontWeight:600,whiteSpace:"nowrap"}}>{item.label}: {item.value}</span>
-              )}
-            </div>}
+            {isNaver && r.reservationId && <a
+              href={`https://partner.booking.naver.com/bizes/${br?.naverBizId||"449920"}/booking-list-view/bookings/${r.reservationId}`}
+              target="_blank" rel="noreferrer"
+              onClick={e=>e.stopPropagation()}
+              title={naverInfoItems.length>0?naverInfoItems.map(x=>`${x.label}: ${x.value}`).join("\n"):undefined}
+              style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:T.naver+"22",color:T.naver,fontWeight:700,whiteSpace:"nowrap",flexShrink:0,textDecoration:"none"}}
+            >📋 #{r.reservationId}{naverInfoItems.length>0?` · ${naverInfoItems.length}`:""}</a>}
           </div>
           {/* 연락처 */}
           {showCols.phone!==false && <div style={{fontSize:13,color:T.primary,whiteSpace:"nowrap"}} onClick={e=>e.stopPropagation()}>{r.custPhone||"-"}</div>}
-          {/* 예약번호 */}
-          {showCols.naver_id!==false && <div style={{fontSize:11}} onClick={e=>e.stopPropagation()}>
-            {r.reservationId
-              ? <a href={`https://partner.booking.naver.com/bizes/${br?.naverBizId||"449920"}/booking-list-view/bookings/${r.reservationId}`} target="_blank" rel="noreferrer" style={{color:T.naver,textDecoration:"none",fontWeight:600}}>{r.reservationId}</a>
-              : <span style={{color:T.gray300}}>-</span>}
-          </div>}
           {/* 메모 */}
           {showCols.memo!==false && <div style={{fontSize:12,color:T.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.ownerComment||r.memo||"-"}</div>}
           {/* 상태 */}

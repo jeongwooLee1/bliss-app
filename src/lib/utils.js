@@ -160,8 +160,12 @@ export const groupSvcNames = (ids, svcs) => {
   (ids||[]).forEach(id => { counts[id] = (counts[id]||0)+1; });
   return Object.entries(counts).map(([id,qty]) => {
     const s = svcs?.find(x=>x.id===id);
-    if (!s) return null;
-    return qty>1 ? s.name+' x'+qty : s.name;
+    let name = s?.name;
+    if (!name && typeof id === 'string' && id.startsWith('pkg__')) {
+      name = id.slice(5);
+    }
+    if (!name) return null;
+    return qty>1 ? name+' x'+qty : name;
   }).filter(Boolean);
 }
 

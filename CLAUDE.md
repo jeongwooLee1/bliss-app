@@ -273,6 +273,16 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - 미배정→배정(칼럼 이동): 안 물어봄
 - 시간 변경 + 010 고객만 팝업 표시
 
+### 알리고 SMS 통합 & 케어 SMS 자동발송 (2026-04-24, v3.7.38)
+- `alimtalk_queue.channel` 컬럼으로 알림톡/SMS 분기 (기본 'alimtalk')
+- 서버 `alimtalk_thread`가 channel='sms'이면 `https://apis.aligo.in/send/` 로 발송 (key/user_id/sender/receiver/msg)
+- 응답 성공: 알림톡 `code=0`, SMS `result_code=1`
+- `care_sms_scheduler_thread` 5분 주기 — 각 지점 noti_config의 after_Nd 항목(N=5/10/21/35/53) 을 sendTime±2분 창에 발송
+- `care_sms_log(reservation_id, days_after)` UNIQUE 로 중복 방지
+- 국내 휴대폰(010~019)만, `customers.sms_consent !== false` 만 발송
+- UI: AdminNoti 시술후 케어 알림 상세는 SMS 모드 (tplCode 숨김, 바이트 카운터, 테스트 전송 버튼)
+- 알리고 크레덴셜은 기존 알림톡 설정(aligoKey/aligoId/senderPhone) 재사용
+
 ### Slash Commands (2026-03-29~30)
 - `/deploy` — 빌드 → 서버 배포 → CF 퍼지 안내
 - `/sync` — Oracle→Supabase 동기화

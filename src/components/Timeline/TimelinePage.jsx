@@ -243,6 +243,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
 
   // 직원 목록: employees_v1 (schedule_data 테이블)에서 동적 로드 + Realtime + 폴링
   const [empList, setEmpList] = useState([]);
+  const [empSettings, setEmpSettings] = useState({});
   useEffect(() => {
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
     const mergeEmps = (empVal, customVal) => {
@@ -254,25 +255,34 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       // MALE_EMPLOYEES 하드코딩 제거 — 전 직원 employees_v1에 통합
       return merged;
     };
-    // employees_v1 + customEmployees_v1 동시 로드
+    const parseSettings = (val) => {
+      if (!val) return {};
+      const v = typeof val === 'string' ? JSON.parse(val) : val;
+      return (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+    };
+    // employees_v1 + customEmployees_v1 + empSettings_v1 동시 로드
     Promise.all([
       fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.employees_v1&select=value`, { headers: H }).then(r => r.json()),
       fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.customEmployees_v1&select=value`, { headers: H }).then(r => r.json()),
-    ]).then(([empRows, custRows]) => {
+      fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.empSettings_v1&select=value`, { headers: H }).then(r => r.json()),
+    ]).then(([empRows, custRows, setRows]) => {
       const empVal = empRows?.[0]?.value || [];
       const custVal = custRows?.[0]?.value || [];
       setEmpList(mergeEmps(empVal, custVal));
+      setEmpSettings(parseSettings(setRows?.[0]?.value));
     }).catch(() => {});
-    // Realtime 구독 (employees_v1 + customEmployees_v1)
+    // Realtime 구독 (employees_v1 + customEmployees_v1 + empSettings_v1)
     let empCh = null;
     let empLastRt = 0;
     const reload = () => {
       Promise.all([
         fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.employees_v1&select=value`, { headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY } }).then(r => r.json()),
         fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.customEmployees_v1&select=value`, { headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY } }).then(r => r.json()),
-      ]).then(([empRows, custRows]) => {
+        fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.empSettings_v1&select=value`, { headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY } }).then(r => r.json()),
+      ]).then(([empRows, custRows, setRows]) => {
         empLastRt = Date.now();
         setEmpList(mergeEmps(empRows?.[0]?.value || [], custRows?.[0]?.value || []));
+        setEmpSettings(parseSettings(setRows?.[0]?.value));
       }).catch(() => {});
     };
     if (window._sbClient) {
@@ -281,6 +291,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.employees_v1" }, reload)
         .on("postgres_changes", { event:"UPDATE", schema:"public", table:"schedule_data", filter:"key=eq.customEmployees_v1" }, reload)
         .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.customEmployees_v1" }, reload)
+        .on("postgres_changes", { event:"UPDATE", schema:"public", table:"schedule_data", filter:"key=eq.empSettings_v1" }, reload)
+        .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.empSettings_v1" }, reload)
         .subscribe();
     }
     return () => {
@@ -293,17 +305,20 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
 
   // employees_v1의 branch("gangnam")를 실제 branch_id("br_4bcauqvrb")로 매핑
   // 남자직원은 오늘의 로테이션 지점으로 동적 배치
+  // empSettings.excludeFromSchedule=true 직원은 타임라인 칼럼에서 제외 (근무표 제외와 동일)
   const BASE_EMP_LIST = React.useMemo(() => {
-    return empList.map(e => {
-      if (e.isMale) {
-        const rotBranch = getRotationBranch(e.id, selDate);
-        if (rotBranch && SCH_BRANCH_MAP[rotBranch]) {
-          return { id: e.id, branch_id: SCH_BRANCH_MAP[rotBranch] };
+    return empList
+      .filter(e => !empSettings[e.id]?.excludeFromSchedule)
+      .map(e => {
+        if (e.isMale) {
+          const rotBranch = getRotationBranch(e.id, selDate);
+          if (rotBranch && SCH_BRANCH_MAP[rotBranch]) {
+            return { id: e.id, branch_id: SCH_BRANCH_MAP[rotBranch] };
+          }
         }
-      }
-      return { id: e.id, branch_id: SCH_BRANCH_MAP[e.branch] || e.branch };
-    });
-  }, [empList, maleRotation, selDate]);
+        return { id: e.id, branch_id: SCH_BRANCH_MAP[e.branch] || e.branch };
+      });
+  }, [empList, empSettings, maleRotation, selDate]);
 
   // schHistory 파싱 함수
   const parseSchHistory = (rawVal) => {
@@ -614,12 +629,15 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     }
     schHistoryLoaded.current = true;
 
-    // 근무표 미작성 날짜 fallback: 이 지점 소속 직원 중 아무도 dayStatus 없으면
+    // 근무표 미작성 날짜 fallback: 전 직원 중 아무도 dayStatus/오버라이드 없으면
     // → 지점 배정 인원 전체를 빈 칼럼으로 표시 (선예약·네이버 자동 예약 대비)
+    // 오버라이드(이동/지원)가 있는 날짜는 fallback 타지 않고 정상 경로로 진입해야 오버라이드가 반영됨
     const branchBaseEmps = BASE_EMP_LIST.filter(e => e.branch_id === branchId);
-    const scheduleExistsForDate = branchBaseEmps.some(e => {
+    const scheduleExistsForDate = BASE_EMP_LIST.some(e => {
       const s = schHistory[e.id]?.[date];
-      return s && s !== "";
+      if (s && s !== "") return true;
+      const ov = getEmpOverride(e.id, date);
+      return !!(ov && ov.segments?.length);
     });
     if (!scheduleExistsForDate && branchBaseEmps.length > 0) {
       return branchBaseEmps;
@@ -699,40 +717,66 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       }
     });
 
+    // 부분 미작성 병합: 이 지점 base emp 중 dayStatus도 오버라이드도 없는 직원은 빈 칼럼으로 표시
+    // (오버라이드 있는 날 fallback이 스킵되면서 나머지 base emp가 사라지던 문제 보완)
+    branchBaseEmps.forEach(e => {
+      const s = schHistory[e.id]?.[date];
+      const ov = getEmpOverride(e.id, date);
+      const hasSchedule = (s && s !== "") || (ov && ov.segments?.length);
+      if (!hasSchedule && !working.some(w => w.id === e.id)) {
+        working.push(e);
+      }
+    });
+
     return working; // 빈 배열도 반환 (전원 휴무 시 rooms fallback 방지)
   };
 
-  // 직원이 특정 지점에서 활성인 시간 범위 반환 (null=종일)
-  const getEmpActiveRange = (empId, date, branchId) => {
+  // 직원이 특정 지점에서 활성인 시간 구간들 반환 (복수 세그먼트 지원)
+  // 반환: [{from, until}, ...] — 없으면 null, 종일은 [{from:null, until:null}] 또는 빈 배열 가능
+  const getEmpActiveSegments = (empId, date, branchId) => {
     const segs = getEmpBranches(empId, date);
     const emp = BASE_EMP_LIST.find(e=>e.id===empId);
     const baseBid = emp?.branch_id;
-    // 이 지점의 기본 근무시간 (fallback)
     const branchTs = (data?.branches||[]).find(b=>b.id===branchId)?.timelineSettings;
     const branchHours = branchTs?.defaultWorkStart ? {start:branchTs.defaultWorkStart, end:branchTs.defaultWorkEnd||"21:00"}
       : branchTs?.openTime ? {start:branchTs.openTime, end:branchTs.closeTime||"21:00"} : null;
     const wh = empWorkHours[empId+"_"+branchId+"_"+date] || empWorkHours[empId+"_"+branchId] || empWorkHours[empId+"_"+date] || empWorkHours[empId]
       || branchHours;
 
-    if (!segs || !segs.length) return wh ? {from: wh.start, until: wh.end} : {from: null, until: null};
+    if (!segs || !segs.length) return wh ? [{from: wh.start, until: wh.end}] : [{from: null, until: null}];
 
-    // 세그먼트 정규화 — from/until 자동 채움
     const normalized = normalizeSegments(empId, date, segs);
-    const seg = normalized.find(s => s.branchId === branchId);
-    if (seg) return {from: seg.from, until: seg.until};
+    const mine = normalized
+      .filter(s => s.branchId === branchId && s.from !== s.until)
+      .map(s => ({from: s.from, until: s.until}))
+      .sort((a,b)=>(a.from||"").localeCompare(b.from||""));
 
-    // 이 지점에 세그먼트 없음 — 원래 소속이면 남은 빈 구간 할당
+    // 원래 소속 지점: base 근무시간에서 타 지점 segments를 제외한 전체 구간을 활성으로 반환
+    // (mine이 있든 없든, "타지점 안 가 있는 시간"이 전부 원래 지점 근무)
     if (branchId === baseBid && !isBaseBranchCovered(empId, date)) {
       const baseHours = getEmpBaseHours(empId, date, baseBid);
-      const others = normalized.filter(s => s.branchId !== baseBid).sort((a,b)=>a.from.localeCompare(b.from));
-      // 첫 세그먼트 전 구간 우선, 없으면 마지막 후 구간
-      if (!others.length) return {from: baseHours.start, until: baseHours.end};
-      if (others[0].from > baseHours.start) return {from: baseHours.start, until: others[0].from};
-      const last = others[others.length-1];
-      if (last.until < baseHours.end) return {from: last.until, until: baseHours.end};
-      return null;
+      const others = normalized
+        .filter(s => s.branchId !== baseBid && s.from !== s.until)
+        .sort((a,b) => a.from.localeCompare(b.from));
+      const free = [];
+      let cursor = baseHours.start;
+      for (const o of others) {
+        if (o.from > cursor) free.push({from: cursor, until: o.from});
+        if (o.until > cursor) cursor = o.until;
+      }
+      if (cursor < baseHours.end) free.push({from: cursor, until: baseHours.end});
+      if (free.length > 0) return free;
     }
-    return null; // 이 지점에 없음
+
+    if (mine.length > 0) return mine;
+    return null;
+  };
+
+  // 하위 호환 — 첫 세그먼트만 반환 (hasActiveRange 체크 등 단일 range 소비처용)
+  const getEmpActiveRange = (empId, date, branchId) => {
+    const segs = getEmpActiveSegments(empId, date, branchId);
+    if (!segs || segs.length === 0) return null;
+    return segs[0];
   };
   const [showModal, setShowModal] = useState(false);
   const [modalData, setModalData] = useState(null);
@@ -1163,16 +1207,32 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const [empColOrder, _setEmpColOrder] = useState({});
   const empColOrderLoaded = React.useRef(false);
   React.useEffect(() => {
-    if (empColOrderLoaded.current) return;
-    empColOrderLoaded.current = true;
-    fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.empColOrder_v1&select=value`, {
-      headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
-    }).then(r => r.json()).then(rows => {
-      if (rows?.[0]?.value) {
-        const v = typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value;
-        _setEmpColOrder(v);
-      }
-    }).catch(console.error);
+    const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
+    const loadOrder = () => {
+      fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.empColOrder_v1&select=value`, { headers: H })
+        .then(r => r.json()).then(rows => {
+          if (rows?.[0]?.value) {
+            const v = typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value;
+            _setEmpColOrder(v);
+            empColOrderLoaded.current = true;
+          }
+        }).catch(console.error);
+    };
+    loadOrder();
+    // Realtime 구독 — 다른 세션/탭이 order를 바꿨을 때 즉시 반영
+    let ch = null;
+    if (window._sbClient) {
+      ch = window._sbClient.channel("emp_col_order_rt")
+        .on("postgres_changes", { event:"UPDATE", schema:"public", table:"schedule_data", filter:"key=eq.empColOrder_v1" }, loadOrder)
+        .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.empColOrder_v1" }, loadOrder)
+        .subscribe();
+    }
+    // 폴링 — Realtime 실패 대비 (30초)
+    const poll = setInterval(loadOrder, 30000);
+    return () => {
+      try { ch?.unsubscribe(); } catch(e) {}
+      clearInterval(poll);
+    };
   }, []);
   const setEmpColOrder = React.useCallback((updater) => {
     _setEmpColOrder(prev => {
@@ -1187,23 +1247,27 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   }, []);
   const moveEmpCol = (branchId, empId, dir) => {
     setEmpColOrder(prev => {
-      // 현재 화면에 실제로 보이는 컬럼 순서를 기준으로 작업
-      const visibleIds = (allRoomsRef.current||[])
-        .filter(r => r.branch_id === branchId && r.staffId && r.isStaffCol)
-        .map(r => r.staffId);
-      // 저장된 order에 있는데 현재 보이지 않는 직원도 보존 (다른 날짜에서 필요할 수 있음)
-      const saved = [...(prev[branchId]||[])];
-      // 새 order: visibleIds 순서대로 + 저장된 것 중 미노출 직원은 뒤에 보존
-      let order = [...visibleIds];
-      saved.forEach(id => { if (!order.includes(id)) order.push(id); });
-      if (!order.includes(empId)) return prev;
+      // prev(저장된 order)를 기준으로 swap 계산 — stale allRoomsRef 문제 회피
+      const visibleSet = new Set(
+        (allRoomsRef.current||[])
+          .filter(r => r.branch_id === branchId && r.staffId && r.isStaffCol)
+          .map(r => r.staffId)
+      );
+      let order = [...(prev[branchId] || [])];
+      if (!order.includes(empId)) order.unshift(empId); // order에 없으면 앞에 추가 (그 후 swap)
       const idx = order.indexOf(empId);
-      // 현재 화면에서 보이는 직원들 내에서만 이동 (보존된 직원은 건너뜀)
-      const visIdx = visibleIds.indexOf(empId);
-      const newVisIdx = visIdx + dir;
-      if (visIdx < 0 || newVisIdx < 0 || newVisIdx >= visibleIds.length) return prev;
-      const swapId = visibleIds[newVisIdx];
-      const swapIdx = order.indexOf(swapId);
+      // dir 방향으로 "오늘 보이는" 다음 직원 찾기 — 숨겨진 직원은 건너뛰고 swap
+      let swapIdx = -1;
+      if (dir > 0) {
+        for (let i = idx + 1; i < order.length; i++) {
+          if (visibleSet.has(order[i])) { swapIdx = i; break; }
+        }
+      } else {
+        for (let i = idx - 1; i >= 0; i--) {
+          if (visibleSet.has(order[i])) { swapIdx = i; break; }
+        }
+      }
+      if (swapIdx < 0) return prev;
       [order[idx], order[swapIdx]] = [order[swapIdx], order[idx]];
       return {...prev, [branchId]: order};
     });
@@ -1291,16 +1355,20 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         orderedStaff = [...baseStaff, ...guestStaff];
       }
       staffRooms = orderedStaff.map(e => {
-        const range = getEmpActiveRange(e.id, selDate, br.id);
+        const segments = getEmpActiveSegments(e.id, selDate, br.id);
+        const firstSeg = segments && segments[0];
+        const lastSeg = segments && segments[segments.length-1];
         return {
           id: `st_${br.id}_${e.id}`, name: e.id,
           branch_id: br.id, branchName: br.short||br.name||"",
           staffId: e.id, isStaffCol: true,
-          // 이동 칼럼은 근무외 오버레이 억제 (전체 회색 오버레이와 중첩 방지)
-          activeFrom: e._movedOut ? null : (range?.from || null),   // null=종일
-          activeUntil: e._movedOut ? null : (range?.until || null), // null=종일
-          isMovedOut: e._movedOut === true,   // 이동/지원으로 다른 지점으로 간 상태 → 비활성화 표시
-          hideName: e._hideName === true,     // 전시간 이동: 헤더에 직원 이름 숨김
+          // 복수 세그먼트 (같은 지점 여러 구간) — null=종일
+          activeSegments: e._movedOut ? null : (segments || null),
+          // 하위 호환: 드래그 핸들·클릭 판정용 전체 경계 (첫 from ~ 마지막 until)
+          activeFrom: e._movedOut ? null : (firstSeg?.from || null),
+          activeUntil: e._movedOut ? null : (lastSeg?.until || null),
+          isMovedOut: e._movedOut === true,
+          hideName: e._hideName === true,
         };
       });
     } else {
@@ -2822,54 +2890,53 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                       </div>
                     ) : <span className="tl-room-sub" style={{fontSize:T.fs.xs,color:T.gray400,fontStyle:"italic"}}>미배정</span>
                   ) : room.isStaffCol ? (
-                    <div style={{position:"relative",display:"flex",alignItems:"center",gap:4,justifyContent:"center",flexWrap:"wrap"}}>
+                    <div style={{position:"relative",display:"flex",alignItems:"center",gap:2,justifyContent:"center",flexWrap:"wrap"}}>
+                      {!room.hideName && <button title="왼쪽으로" onClick={e=>{e.stopPropagation();moveEmpCol(room.branch_id,room.staffId,-1);}}
+                        style={{width:16,height:16,padding:0,border:"none",background:"transparent",color:T.gray500,cursor:"pointer",fontSize:11,lineHeight:1,fontWeight:700,opacity:.55}}
+                        onMouseEnter={e=>{e.currentTarget.style.opacity="1";e.currentTarget.style.color=T.primary;}}
+                        onMouseLeave={e=>{e.currentTarget.style.opacity=".55";e.currentTarget.style.color=T.gray500;}}>◀</button>}
                       <span className="tl-room-sub" style={{fontSize:14,fontWeight:800,color:room.hideName?T.gray400:T.text,fontStyle:room.hideName?"italic":"normal",cursor:"pointer",borderBottom:"1px dashed "+T.gray400}}
                         onClick={e=>{e.stopPropagation();setEmpMovePopup(p=>(p?.empId===room.staffId && p?.branchId===room.branch_id)?null:{empId:room.staffId,branchId:room.branch_id,date:selDate,x:e.clientX,y:e.clientY});}}>
                         {room.hideName ? "(이동)" : room.name}
                       </span>
+                      {!room.hideName && <button title="오른쪽으로" onClick={e=>{e.stopPropagation();moveEmpCol(room.branch_id,room.staffId,1);}}
+                        style={{width:16,height:16,padding:0,border:"none",background:"transparent",color:T.gray500,cursor:"pointer",fontSize:11,lineHeight:1,fontWeight:700,opacity:.55}}
+                        onMouseEnter={e=>{e.currentTarget.style.opacity="1";e.currentTarget.style.color=T.primary;}}
+                        onMouseLeave={e=>{e.currentTarget.style.opacity=".55";e.currentTarget.style.color=T.gray500;}}>▶</button>}
                       {getTagsForEmp(room.staffId, selDate).map(t => (
                         <span key={t.id} title={t.name} style={{fontSize:9,color:t.color,background:t.color+'22',border:`1px solid ${t.color}66`,borderRadius:3,padding:'0 4px',fontWeight:700,lineHeight:1.3,whiteSpace:'nowrap'}}>{t.name}</span>
                       ))}
                       {empMovePopup?.empId===room.staffId && empMovePopup?.date===selDate && empMovePopup?.branchId===room.branch_id && (<>
                         <div style={{position:"fixed",inset:0,zIndex:9998}} onClick={e=>{e.stopPropagation();setEmpMovePopup(null);}}/>
                         <div onClick={e=>e.stopPropagation()} style={{position:"fixed",left:Math.min(empMovePopup.x,window.innerWidth-200),top:empMovePopup.y+8,background:T.bgCard,borderRadius:12,boxShadow:"0 4px 24px rgba(0,0,0,.22)",zIndex:9999,padding:"10px 0 6px",minWidth:200}}>
-                          {/* 근무시간 설정 */}
+                          {/* 근무시간 설정 — 하단 저장 버튼으로 통합 (draftWh) */}
                           <div style={{padding:"8px 12px",borderBottom:"1px solid "+T.border}}>
                             <div style={{fontSize:10,color:T.textMuted,marginBottom:4,fontWeight:700}}>근무시간</div>
                             {(()=>{
                               const whKey = room.staffId+"_"+room.branch_id+"_"+selDate;
-                              const wh = empWorkHours[whKey] || empWorkHours[room.staffId+"_"+room.branch_id] || (()=>{const bts=(data?.branches||[]).find(b=>b.id===room.branch_id)?.timelineSettings;return bts?.defaultWorkStart?{start:bts.defaultWorkStart,end:bts.defaultWorkEnd||"21:00"}:bts?.openTime?{start:bts.openTime,end:bts.closeTime||"21:00"}:null;})() || {start:"10:00",end:"21:00"};
-                              // 10분 단위 (6:00 ~ 23:50, 108슬롯) — 일퇴/당일 근무시간 변경을 더 세밀하게 (id_2t1n4mbjbe)
+                              const savedWh = empWorkHours[whKey] || empWorkHours[room.staffId+"_"+room.branch_id] || (()=>{const bts=(data?.branches||[]).find(b=>b.id===room.branch_id)?.timelineSettings;return bts?.defaultWorkStart?{start:bts.defaultWorkStart,end:bts.defaultWorkEnd||"21:00"}:bts?.openTime?{start:bts.openTime,end:bts.closeTime||"21:00"}:null;})() || {start:"10:00",end:"21:00"};
+                              const wh = empMovePopup.draftWh || savedWh;
                               const hours = Array.from({length:18*6},(_,i)=>{const h=Math.floor(i/6)+6,m=(i%6)*10;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;});
                               const selSt = {flex:1,fontSize:11,padding:"4px 3px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"};
-                              const startRef = React.createRef();
-                              const endRef = React.createRef();
                               return <div style={{display:"flex",gap:4,alignItems:"center"}}>
-                                <select ref={startRef} defaultValue={wh.start} style={selSt}
-                                  onChange={e=>{const v=e.target.value; const [hh,mm]=v.split(":").map(Number); const totalMin=Math.min(23*60+50,(hh+10)*60+mm); const eh=Math.floor(totalMin/60),em=totalMin%60; if(endRef.current) endRef.current.value=`${String(eh).padStart(2,"0")}:${String(em).padStart(2,"0")}`;}}>
+                                <select value={wh.start} style={selSt}
+                                  onChange={e=>{
+                                    const v=e.target.value;
+                                    const [hh,mm]=v.split(":").map(Number);
+                                    const totalMin=Math.min(23*60+50,(hh+10)*60+mm);
+                                    const eh=Math.floor(totalMin/60),em=totalMin%60;
+                                    const autoEnd = `${String(eh).padStart(2,"0")}:${String(em).padStart(2,"0")}`;
+                                    setEmpMovePopup(p=>({...p, draftWh:{start:v, end:autoEnd}}));
+                                  }}>
                                   {hours.map(h=><option key={h} value={h}>{h}</option>)}
                                 </select>
                                 <span style={{fontSize:11}}>~</span>
-                                <select ref={endRef} defaultValue={wh.end} style={selSt}>
+                                <select value={wh.end} style={selSt}
+                                  onChange={e=>setEmpMovePopup(p=>({...p, draftWh:{start:wh.start, end:e.target.value}}))}>
                                   {hours.map(h=><option key={h} value={h}>{h}</option>)}
                                 </select>
-                                <button onClick={()=>{
-                                  const s = startRef.current?.value || wh.start;
-                                  const en = endRef.current?.value || wh.end;
-                                  setEmpWorkHours(p=>({...p,[whKey]:{start:s,end:en}}));
-                                  setEmpMovePopup(null);
-                                }} style={{padding:"4px 8px",fontSize:10,fontWeight:700,border:"none",borderRadius:6,background:T.primary,color:"#fff",cursor:"pointer"}}>저장</button>
                               </div>;
                             })()}
-                          </div>
-                          <div style={{fontSize:11,color:T.textMuted,padding:"0 12px 8px",fontWeight:700,borderBottom:"1px solid "+T.border,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                            <span>{room.name}</span>
-                            <div style={{display:"flex",gap:2}}>
-                              <button onClick={()=>{moveEmpCol(room.branch_id,room.staffId,-1);setEmpMovePopup(null);}}
-                                style={{width:22,height:22,border:"1px solid "+T.border,borderRadius:4,background:T.bgCard,cursor:"pointer",fontSize:12,padding:0}}>←</button>
-                              <button onClick={()=>{moveEmpCol(room.branch_id,room.staffId,1);setEmpMovePopup(null);}}
-                                style={{width:22,height:22,border:"1px solid "+T.border,borderRadius:4,background:T.bgCard,cursor:"pointer",fontSize:12,padding:0}}>→</button>
-                            </div>
                           </div>
                           {/* 담당자 교체 — 이 컬럼의 예약을 다른 직원에게 넘기기 */}
                           {(()=>{
@@ -2918,7 +2985,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             const dbSegs = ov ? (typeof ov==="string" ? [{branchId:ov,from:null,until:null}] : (ov.segments||[])) : [];
                             // 드래프트(저장 전) 편집 상태 — 버튼 눌러야 DB 반영
                             const segs = empMovePopup.draftSegs !== undefined ? empMovePopup.draftSegs : dbSegs;
-                            const isDirty = empMovePopup.draftSegs !== undefined && JSON.stringify(empMovePopup.draftSegs) !== JSON.stringify(dbSegs);
+                            const isDirty = (empMovePopup.draftSegs !== undefined && JSON.stringify(empMovePopup.draftSegs) !== JSON.stringify(dbSegs))
+                              || (empMovePopup.draftWh !== undefined);
                             const setDraft = (newSegs) => setEmpMovePopup(p=>({...p, draftSegs: newSegs}));
                             const empBase = BASE_EMP_LIST.find(e=>e.id===room.staffId);
                             // 지원 근무 시엔 현재 컬럼 지점이 base (empBase.branch_id는 원소속이라 부정확)
@@ -2969,13 +3037,17 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             const commitDraft = () => {
                               const overrideKey2 = room.staffId+"_"+selDate;
                               if (!segs.length) {
-                                // 모두 제거된 상태
                                 setEmpBranchOverride(p=>{const n={...p};delete n[overrideKey2];return n;});
                                 syncOverrideToSch(room.staffId, selDate, null);
                               } else {
                                 const ovData = {segments: segs};
                                 setEmpBranchOverride(p=>({...p,[overrideKey2]:ovData}));
                                 syncOverrideToSch(room.staffId, selDate, ovData);
+                              }
+                              // 근무시간 변경도 함께 반영 (상단 저장 버튼 통합)
+                              if (empMovePopup.draftWh) {
+                                const whKey2 = room.staffId+"_"+room.branch_id+"_"+selDate;
+                                setEmpWorkHours(p=>({...p, [whKey2]: empMovePopup.draftWh}));
                               }
                               setEmpMovePopup(null);
                             };
@@ -2994,18 +3066,27 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             const whStartMn = toMn(wh?.start) || startHour*60;
                             const whEndMn = toMn(wh?.end) || endHour*60;
                             const whDur = whEndMn - whStartMn;
-                            // 시각적 타임라인 바 segments 계산 (원래 지점은 gap에만 채움)
+                            // 시각적 타임라인 바 segments 계산 (원래 지점은 gap·끝에도 자동 채움)
                             const visualSegs = (() => {
                               const sorted = [...segs].sort((a,b)=>(!a.from?-1:!b.from?1:a.from.localeCompare(b.from)));
-                              const out = [];
+                              const raw = [];
                               sorted.forEach((s, i) => {
                                 const fromMn = toMn(s.from) || whStartMn;
                                 const untilMn = toMn(s.until) || toMn(sorted[i+1]?.from) || whEndMn;
-                                if (untilMn > fromMn) out.push({branchId: s.branchId, fromMn, untilMn});
+                                if (untilMn > fromMn) raw.push({branchId: s.branchId, fromMn, untilMn});
                               });
-                              // 출근시간부터 첫 segment까지가 빈 구간이면 출근지로 채움
-                              if (baseBranch && out.length > 0 && out[0].fromMn > whStartMn) {
-                                out.unshift({branchId: baseBranch, fromMn: whStartMn, untilMn: out[0].fromMn, isHome: true});
+                              // base 지점 자동 보완 — 앞·사이·뒤의 빈 구간을 baseBranch로 채움
+                              const out = [];
+                              let cursor = whStartMn;
+                              for (const r of raw) {
+                                if (baseBranch && r.fromMn > cursor) {
+                                  out.push({branchId: baseBranch, fromMn: cursor, untilMn: r.fromMn, isHome: true});
+                                }
+                                out.push(r);
+                                if (r.untilMn > cursor) cursor = r.untilMn;
+                              }
+                              if (baseBranch && cursor < whEndMn) {
+                                out.push({branchId: baseBranch, fromMn: cursor, untilMn: whEndMn, isHome: true});
                               }
                               // segments가 전혀 없으면 전체 출근지
                               if (baseBranch && out.length === 0) {
@@ -3039,13 +3120,16 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                 const onHandleDown = (boundaryIdx) => (e) => {
                                   e.preventDefault(); e.stopPropagation();
                                   const isTouch = e.type === "touchstart";
-                                  const bar = e.currentTarget.parentElement.parentElement;
+                                  // bar 요소 찾기 — 아래 fader 핸들(바 외부)에서도 작동해야 함
+                                  let bar = e.currentTarget.parentElement;
+                                  while (bar && !bar.classList.contains("bliss-seg-hover")) bar = bar.parentElement;
+                                  if (!bar) bar = e.currentTarget.parentElement;
                                   const rect = bar.getBoundingClientRect();
                                   const onMove = (ev) => {
                                     const pt = isTouch ? ev.touches[0] : ev;
                                     if (!pt) return;
                                     const x = Math.max(0, Math.min(rect.width, pt.clientX - rect.left));
-                                    const mn = whStartMn + Math.round((x / rect.width) * whDur / 30) * 30; // 30분 단위 snap
+                                    const mn = whStartMn + Math.round((x / rect.width) * whDur / 10) * 10; // 10분 단위 snap
                                     const newTime = mnToTime(Math.max(whStartMn, Math.min(whEndMn, mn)));
                                     // 경계 = visualSegs[boundaryIdx].untilMn = visualSegs[boundaryIdx+1].fromMn
                                     const targetSeg = visualSegs[boundaryIdx+1];
@@ -3081,8 +3165,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                   try { bar.setPointerCapture(e.pointerId); } catch {}
                                   const calcTime = (clientX) => {
                                     const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
-                                    const mn = whStartMn + Math.round((x / rect.width) * whDur / 30) * 30;
-                                    const clamped = Math.max(whStartMn+30, Math.min(whEndMn-30, mn));
+                                    const mn = whStartMn + Math.round((x / rect.width) * whDur / 10) * 10; // 10분 단위 snap
+                                    const clamped = Math.max(whStartMn+10, Math.min(whEndMn-10, mn));
                                     return mnToTime(clamped);
                                   };
                                   let lastTime = calcTime(e.clientX);
@@ -3119,9 +3203,9 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                     .bliss-branch-pick:hover { transform:translateY(-1px); box-shadow:0 4px 10px rgba(0,0,0,.1) }
                                     .bliss-branch-pick:active { transform:translateY(0) }
                                   `}</style>
-                                  <div style={{padding:"10px 12px 2px",position:"relative"}}>
+                                  <div style={{padding:"10px 12px 22px",position:"relative"}}>
                                   <div className="bliss-seg-hover" draggable={false} onDragStart={e=>e.preventDefault()}
-                                    style={{position:"relative",display:"flex",height:26,borderRadius:6,overflow:"hidden",border:"1px solid "+T.border,userSelect:"none",WebkitUserDrag:"none",touchAction:"none",cursor:cropCursor,background:T.gray100,transition:"box-shadow .15s"}}
+                                    style={{position:"relative",display:"flex",height:26,borderRadius:6,overflow:"visible",border:"1px solid "+T.border,userSelect:"none",WebkitUserDrag:"none",touchAction:"none",cursor:cropCursor,background:T.gray100,transition:"box-shadow .15s"}}
                                     onPointerDown={onBarPointerDown}>
                                     {visualSegs.map((vs,i) => {
                                       const br = allBranches.find(b=>b.id===vs.branchId);
@@ -3134,14 +3218,49 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                       const softBg = `linear-gradient(180deg, ${bg}28, ${bg}18)`;
                                       return <div key={i} style={{position:"relative",width:w+"%",background:softBg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:bg,overflow:"hidden",whiteSpace:"nowrap",borderRight:isLast?"none":"1px solid "+bg+"55",letterSpacing:0.2}} title={`${name} ${mnToTime(vs.fromMn)}~${mnToTime(vs.untilMn)}`}>
                                         <span style={{pointerEvents:"none",opacity:vs.isHome?0.5:0.95,textShadow:"0 1px 0 rgba(255,255,255,.5)"}}>{w>8?name:""}</span>
-                                        {!isLast && <>
-                                          <div style={{position:"absolute",top:-14,right:-14,fontSize:9,fontWeight:700,color:T.textSub,background:T.bgCard,padding:"1px 4px",borderRadius:3,whiteSpace:"nowrap",pointerEvents:"none",border:"1px solid "+T.border,zIndex:3,lineHeight:"11px",boxShadow:"0 1px 2px rgba(0,0,0,.04)"}}>{mnToTime(vs.untilMn)}</div>
-                                          <div onMouseDown={e=>{e.stopPropagation();onHandleDown(i)(e);}} onTouchStart={e=>{e.stopPropagation();onHandleDown(i)(e);}} onClick={e=>e.stopPropagation()}
-                                            style={{position:"absolute",top:0,right:-4,width:8,height:"100%",cursor:"col-resize",zIndex:2,background:"rgba(255,255,255,.0)"}}
-                                            onMouseOver={e=>e.currentTarget.style.background=bg+"55"}
-                                            onMouseOut={e=>e.currentTarget.style.background="rgba(255,255,255,0)"}/>
-                                        </>}
                                       </div>;
+                                    })}
+                                    {/* DJ 페이더 스타일 경계 핸들 — 바 아래로 튀어나온 그립 */}
+                                    {visualSegs.slice(0, -1).map((vs, i) => {
+                                      const leftPct = (vs.untilMn - whStartMn) / whDur * 100;
+                                      const nextSeg = visualSegs[i+1];
+                                      const handleColor = colorOf(nextSeg?.branchId || vs.branchId);
+                                      return <React.Fragment key={`fader-${i}`}>
+                                        {/* 가이드 라인 — 바 위에서 fader까지 컬러 수직선 */}
+                                        <div style={{position:"absolute",left:`calc(${leftPct}% - 1px)`,top:0,bottom:-4,width:2,background:handleColor,pointerEvents:"none",zIndex:3,opacity:.7}}/>
+                                        {/* 시간 툴팁 — 바 위쪽 */}
+                                        <div style={{position:"absolute",top:-14,left:`calc(${leftPct}% - 16px)`,fontSize:9,fontWeight:700,color:T.textSub,background:T.bgCard,padding:"1px 4px",borderRadius:3,whiteSpace:"nowrap",pointerEvents:"none",border:"1px solid "+T.border,zIndex:4,lineHeight:"11px",boxShadow:"0 1px 2px rgba(0,0,0,.04)"}}>{mnToTime(vs.untilMn)}</div>
+                                        {/* 페이더 손잡이 — 바 아래 */}
+                                        <div
+                                          onPointerDown={e=>e.stopPropagation()}
+                                          onMouseDown={e=>{e.stopPropagation();onHandleDown(i)(e);}}
+                                          onTouchStart={e=>{e.stopPropagation();onHandleDown(i)(e);}}
+                                          onClick={e=>e.stopPropagation()}
+                                          onMouseEnter={e=>{e.currentTarget.style.transform="translate(-50%, 0) scale(1.1)";e.currentTarget.style.boxShadow=`0 3px 8px ${handleColor}88, 0 1px 2px rgba(0,0,0,.15)`;}}
+                                          onMouseLeave={e=>{e.currentTarget.style.transform="translate(-50%, 0)";e.currentTarget.style.boxShadow="0 2px 4px rgba(0,0,0,.15)";}}
+                                          style={{
+                                            position:"absolute",
+                                            left:`${leftPct}%`,
+                                            top:"100%",
+                                            transform:"translate(-50%, 0)",
+                                            marginTop:2,
+                                            width:22, height:16,
+                                            background:`linear-gradient(180deg, ${T.bgCard} 0%, ${handleColor}15 100%)`,
+                                            border:`1.5px solid ${handleColor}`,
+                                            borderRadius:4,
+                                            cursor:"ew-resize",
+                                            boxShadow:"0 2px 4px rgba(0,0,0,.15)",
+                                            display:"flex",alignItems:"center",justifyContent:"center",gap:2,
+                                            zIndex:6,
+                                            touchAction:"none",
+                                            transition:"transform .1s, box-shadow .1s"
+                                          }}
+                                        >
+                                          <span style={{width:1.5,height:8,background:handleColor,opacity:.7,borderRadius:1}}/>
+                                          <span style={{width:1.5,height:8,background:handleColor,opacity:.7,borderRadius:1}}/>
+                                          <span style={{width:1.5,height:8,background:handleColor,opacity:.7,borderRadius:1}}/>
+                                        </div>
+                                      </React.Fragment>;
                                     })}
                                     {/* 드래그 시 분할 효과 */}
                                     {insertAt && <>
@@ -3197,25 +3316,42 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                 </div>
                                 </>;
                               })()}
-                              {/* 현재 구간 목록 — 인라인 편집 가능 */}
-                              {segs.length>0 && <div style={{padding:"6px 12px"}}>
-                                {segs.map(s=>{
-                                  const br = allBranches.find(b=>b.id===s.branchId);
-                                  return <div key={s.branchId} style={{display:"flex",alignItems:"center",gap:3,marginBottom:4,fontSize:11}}>
+                              {/* 현재 구간 목록 — visualSegs 기반 (base 자동 구간 포함, 편집 구간과 동일 UI) */}
+                              {visualSegs.length>0 && <div style={{padding:"6px 12px"}}>
+                                {visualSegs.map((vs, idx) => {
+                                  const br = allBranches.find(b=>b.id===vs.branchId);
+                                  const mnToTime = (mn) => `${String(Math.floor(mn/60)).padStart(2,"0")}:${String(mn%60).padStart(2,"0")}`;
+                                  const fromT = mnToTime(vs.fromMn);
+                                  const untilT = mnToTime(vs.untilMn);
+                                  const selSt = {flex:1,fontSize:10,padding:"2px 3px",borderRadius:4,border:"1px solid "+T.border,fontFamily:"inherit"};
+                                  // 자동 구간(base 보완) — 같은 UI, select disabled
+                                  if (vs.isHome) {
+                                    return <div key={idx} style={{display:"flex",alignItems:"center",gap:3,marginBottom:4,fontSize:11}}>
+                                      <span style={{width:6,height:6,borderRadius:"50%",background:br?.color||T.primary,flexShrink:0}}/>
+                                      <span style={{fontWeight:600,minWidth:50}}>{br?.short||br?.name}</span>
+                                      <select value={fromT} disabled style={{...selSt, background:T.bgCard, color:T.text, cursor:"default"}}>
+                                        <option value={fromT}>{fromT}</option>
+                                      </select>
+                                      <span style={{color:T.textMuted}}>~</span>
+                                      <select value={untilT} disabled style={{...selSt, background:T.bgCard, color:T.text, cursor:"default"}}>
+                                        <option value={untilT}>{untilT}</option>
+                                      </select>
+                                      <span style={{width:16,flexShrink:0}}/>
+                                    </div>;
+                                  }
+                                  // 타 지점 이동 구간 — 편집 가능
+                                  const s = segs.find(x=>x.branchId===vs.branchId && (toMn(x.from)===vs.fromMn || (!x.from && vs.fromMn===whStartMn)));
+                                  return <div key={idx} style={{display:"flex",alignItems:"center",gap:3,marginBottom:4,fontSize:11}}>
                                     <span style={{width:6,height:6,borderRadius:"50%",background:br?.color||T.primary,flexShrink:0}}/>
                                     <span style={{fontWeight:600,minWidth:50}}>{br?.short||br?.name}</span>
-                                    <select value={s.from||""} onChange={e=>updateSeg(s.branchId,"from",e.target.value)}
-                                      style={{flex:1,fontSize:10,padding:"2px 3px",borderRadius:4,border:"1px solid "+T.border,fontFamily:"inherit"}}>
-                                      <option value="">시작</option>
+                                    <select value={s?.from||fromT} onChange={e=>updateSeg(vs.branchId,"from",e.target.value)} style={selSt}>
                                       {TIME_OPTS.map(t=><option key={t} value={t}>{t}</option>)}
                                     </select>
                                     <span style={{color:T.textMuted}}>~</span>
-                                    <select value={s.until||""} onChange={e=>updateSeg(s.branchId,"until",e.target.value)}
-                                      style={{flex:1,fontSize:10,padding:"2px 3px",borderRadius:4,border:"1px solid "+T.border,fontFamily:"inherit"}}>
-                                      <option value="">종일 (~{wh?.end||"21:00"})</option>
+                                    <select value={s?.until||untilT} onChange={e=>updateSeg(vs.branchId,"until",e.target.value)} style={selSt}>
                                       {TIME_OPTS.map(t=><option key={t} value={t}>{t}</option>)}
                                     </select>
-                                    <button onClick={()=>removeSeg(s.branchId)} style={{width:16,height:16,border:"none",background:"none",cursor:"pointer",color:T.danger,fontSize:14,padding:0,lineHeight:1,flexShrink:0}}>×</button>
+                                    <button onClick={()=>removeSeg(vs.branchId)} style={{width:16,height:16,border:"none",background:"none",cursor:"pointer",color:T.danger,fontSize:14,padding:0,lineHeight:1,flexShrink:0}}>×</button>
                                   </div>;
                                 })}
                               </div>}
@@ -3390,12 +3526,15 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                       return;
                     }
                     // 비활성 시간대: 내부일정만 허용
-                    if(room.isStaffCol && (room.activeFrom||room.activeUntil)) {
+                    if(room.isStaffCol && room.activeSegments) {
                       const rect2=e.currentTarget.getBoundingClientRect();
                       const clickMin = startHour*60 + Math.floor((e.clientY-rect2.top)/rowH)*5;
-                      const fromMin = room.activeFrom ? parseInt(room.activeFrom.split(":")[0])*60+parseInt(room.activeFrom.split(":")[1]) : 0;
-                      const untilMin = room.activeUntil ? parseInt(room.activeUntil.split(":")[0])*60+parseInt(room.activeUntil.split(":")[1]) : 24*60;
-                      if(clickMin < fromMin || clickMin >= untilMin) {
+                      const inActive = room.activeSegments.some(s => {
+                        const f = s.from ? parseInt(s.from.split(":")[0])*60+parseInt(s.from.split(":")[1]) : 0;
+                        const u = s.until ? parseInt(s.until.split(":")[0])*60+parseInt(s.until.split(":")[1]) : 24*60;
+                        return clickMin >= f && clickMin < u;
+                      });
+                      if(!inActive) {
                         // 근무 외 시간 → 내부일정 모드로 모달 열기
                         // ⚠️ 드래그 직후 mouseup이 onClick으로 올라오는 케이스 차단 (유저 피드백: 블록 위로 드래그 시 새 모달 뜸)
                         if (isDragging.current || isResizing.current) return;
@@ -3438,16 +3577,25 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                   }}
                 >
                   {/* Hover/touch highlight */}
-                  {/* 비활성 시간대 오버레이 + 드래그 핸들 */}
-                  {room.isStaffCol && (room.activeFrom||room.activeUntil) && (()=>{
+                  {/* 비활성 시간대 오버레이 (복수 세그먼트) + 출/퇴근 드래그 핸들 */}
+                  {room.isStaffCol && room.activeSegments && (()=>{
                     const startMin2 = startHour*60;
-                    const fromMin2 = room.activeFrom ? parseInt(room.activeFrom.split(":")[0])*60+parseInt(room.activeFrom.split(":")[1]) : startMin2;
-                    const untilMin2 = room.activeUntil ? parseInt(room.activeUntil.split(":")[0])*60+parseInt(room.activeUntil.split(":")[1]) : startMin2+totalRows*5;
-                    const beforeH2 = Math.max(0,(fromMin2-startMin2)/5*rowH);
-                    const afterTop2 = Math.min(totalRows*rowH,(untilMin2-startMin2)/5*rowH);
-                    const afterH2 = Math.max(0,totalRows*rowH-afterTop2);
+                    const endMin2 = startMin2 + totalRows*5;
+                    const parsed = room.activeSegments.map(s => ({
+                      from: s.from ? parseInt(s.from.split(":")[0])*60+parseInt(s.from.split(":")[1]) : startMin2,
+                      until: s.until ? parseInt(s.until.split(":")[0])*60+parseInt(s.until.split(":")[1]) : endMin2,
+                    })).sort((a,b)=>a.from-b.from);
+                    // segments 바깥의 빈 구간들 = 비활성
+                    const inactive = [];
+                    let cursor = startMin2;
+                    for (const p of parsed) {
+                      if (p.from > cursor) inactive.push({from: cursor, until: p.from});
+                      cursor = Math.max(cursor, p.until);
+                    }
+                    if (cursor < endMin2) inactive.push({from: cursor, until: endMin2});
+                    if (inactive.length === 0) return null;
+
                     const mnToTime = (mn) => `${String(Math.floor(mn/60)).padStart(2,"0")}:${String(mn%60).padStart(2,"0")}`;
-                    // 드래그 핸들러 (시작/종료 시간 조절)
                     const onWhDragStart = (boundary) => (ev) => {
                       ev.stopPropagation(); ev.preventDefault();
                       const isTouch = ev.type === "touchstart";
@@ -3459,9 +3607,9 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                         const y = Math.max(0, Math.min(grid.clientHeight, pt.clientY - rect.top));
                         const slot = Math.round(y / rowH);
                         const newMn = startMin2 + slot * 5;
-                        const t = mnToTime(Math.max(startMin2, Math.min(startMin2+totalRows*5, newMn)));
+                        const t = mnToTime(Math.max(startMin2, Math.min(endMin2, newMn)));
                         const whKey = room.staffId+"_"+room.branch_id+"_"+selDate;
-                        const wh = empWorkHours[whKey] || empWorkHours[room.staffId+"_"+room.branch_id] || {start: room.activeFrom||mnToTime(startMin2), end: room.activeUntil||mnToTime(startMin2+totalRows*5)};
+                        const wh = empWorkHours[whKey] || empWorkHours[room.staffId+"_"+room.branch_id] || {start: room.activeFrom||mnToTime(startMin2), end: room.activeUntil||mnToTime(endMin2)};
                         const newWh = boundary === "start" ? {...wh, start: t} : {...wh, end: t};
                         setEmpWorkHours(p=>({...p, [whKey]: newWh}));
                       };
@@ -3472,16 +3620,28 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                       document.addEventListener(isTouch?"touchmove":"mousemove", onMv, {passive:false});
                       document.addEventListener(isTouch?"touchend":"mouseup", onUp);
                     };
+                    const firstSeg = parsed[0];
+                    const lastSeg = parsed[parsed.length-1];
                     return <>
-                      {beforeH2>0&&<div style={{position:"absolute",top:0,left:0,right:0,height:beforeH2,background:"rgba(0,0,0,.06)",zIndex:2,pointerEvents:"none",borderBottom:"2px dashed rgba(0,0,0,.12)"}}/>}
-                      {afterH2>0&&<div style={{position:"absolute",top:afterTop2,left:0,right:0,height:afterH2,background:"rgba(0,0,0,.06)",zIndex:2,pointerEvents:"none",borderTop:"2px dashed rgba(0,0,0,.12)"}}/>}
-                      {/* 출근 시간 드래그 핸들 (start boundary) — 히트 영역만 유지, 시각 표시 제거 */}
-                      {beforeH2>0 && <div onMouseDown={onWhDragStart("start")} onTouchStart={onWhDragStart("start")}
-                        style={{position:"absolute",top:beforeH2-6,left:0,right:0,height:12,cursor:"ns-resize",zIndex:4}}
+                      {inactive.map((iv, idx) => {
+                        const top = (iv.from - startMin2) / 5 * rowH;
+                        const height = (iv.until - iv.from) / 5 * rowH;
+                        const isBefore = iv.from === startMin2 && iv.until === firstSeg.from;
+                        const isAfter = iv.from === lastSeg.until && iv.until === endMin2;
+                        return <div key={idx} style={{
+                          position:"absolute", top, left:0, right:0, height,
+                          background:"rgba(0,0,0,.06)", zIndex:2, pointerEvents:"none",
+                          borderTop: isAfter ? "2px dashed rgba(0,0,0,.12)" : undefined,
+                          borderBottom: isBefore ? "2px dashed rgba(0,0,0,.12)" : undefined,
+                        }}/>;
+                      })}
+                      {/* 출근 드래그 핸들 (첫 세그먼트 시작) */}
+                      {firstSeg.from > startMin2 && <div onMouseDown={onWhDragStart("start")} onTouchStart={onWhDragStart("start")}
+                        style={{position:"absolute",top:(firstSeg.from-startMin2)/5*rowH-6,left:0,right:0,height:12,cursor:"ns-resize",zIndex:4}}
                         title={`출근 ${room.activeFrom||""} (드래그)`}/>}
-                      {/* 퇴근 시간 드래그 핸들 (end boundary) */}
-                      {afterH2>0 && <div onMouseDown={onWhDragStart("end")} onTouchStart={onWhDragStart("end")}
-                        style={{position:"absolute",top:afterTop2-6,left:0,right:0,height:12,cursor:"ns-resize",zIndex:4}}
+                      {/* 퇴근 드래그 핸들 (마지막 세그먼트 종료) */}
+                      {lastSeg.until < endMin2 && <div onMouseDown={onWhDragStart("end")} onTouchStart={onWhDragStart("end")}
+                        style={{position:"absolute",top:(lastSeg.until-startMin2)/5*rowH-6,left:0,right:0,height:12,cursor:"ns-resize",zIndex:4}}
                         title={`퇴근 ${room.activeUntil||""} (드래그)`}/>}
                     </>;
                   })()}

@@ -50,12 +50,12 @@ function AdminNoti({ data, setData, sb, bizId, branches }) {
     {label:"연간할인권 알림",items:[
       {key:"annual_reg",label:"등록 완료",  desc:"연간할인권 등록 시 발송"},
     ]},
-    {label:"시술후 케어 알림",items:[
-      {key:"after_5d", label:"시술 후 5일",desc:"시술 5일 후 스크럽 안내"},
-      {key:"after_10d",label:"시술 후 10일",desc:"시술 10일 후 관리 안내"},
-      {key:"after_21d",label:"시술 후 21일",desc:"시술 21일 후 재방문 안내"},
-      {key:"after_35d",label:"시술 후 35일",desc:"시술 35일 후 재방문 안내"},
-      {key:"after_53d",label:"시술 후 53일",desc:"시술 53일 후 재방문 안내"},
+    {label:"시술후 케어 알림 (SMS 발송)", sms:true, items:[
+      {key:"after_5d", label:"시술 후 5일", desc:"시술 5일 후 스크럽 안내", hasTime:true, sms:true},
+      {key:"after_10d",label:"시술 후 10일",desc:"시술 10일 후 관리 안내", hasTime:true, sms:true},
+      {key:"after_21d",label:"시술 후 21일",desc:"시술 21일 후 재방문 안내", hasTime:true, sms:true},
+      {key:"after_35d",label:"시술 후 35일",desc:"시술 35일 후 재방문 안내", hasTime:true, sms:true},
+      {key:"after_53d",label:"시술 후 53일",desc:"시술 53일 후 재방문 안내", hasTime:true, sms:true},
     ]},
     {label:"포인트 알림",items:[
       {key:"pt_earn",label:"포인트 적립",desc:"포인트 적립 시 발송"},
@@ -68,24 +68,61 @@ function AdminNoti({ data, setData, sb, bizId, branches }) {
 
   if(detail){
     const item=GROUPS.flatMap(g=>g.items).find(it=>it.key===detail);
+    const isSms=!!item?.sms;
     const c=cfg[detail]||{};
     const upC=(k,v)=>up(detail,{...c,[k]:v});
+    const byteLen=(s)=>{let b=0;for(const ch of String(s||"")){b+=ch.charCodeAt(0)>127?2:1;}return b;};
+    const mb=byteLen(c.msgTpl||"");
+    const msgType=mb<=90?"SMS":"LMS";
     return <div>
       <button onClick={()=>setDetail(null)} style={{display:"inline-flex",alignItems:"center",gap:5,background:"none",border:"none",cursor:"pointer",fontSize:T.fs.sm,color:T.primary,fontWeight:T.fw.bolder,fontFamily:"inherit",marginBottom:20,padding:0}}>
-        <I name="arrowL" size={14}/> 알림톡 설정
+        <I name="arrowL" size={14}/> {isSms?"SMS 설정":"알림톡 설정"}
       </button>
-      <APageHeader title={item?.label||detail}/>
+      <APageHeader title={(item?.label||detail)+(isSms?" (SMS)":"")}/>
+      {isSms && <div style={{background:"#E3F2FD",border:"1px solid #90CAF9",borderRadius:8,padding:"10px 12px",marginBottom:12,fontSize:T.fs.xxs,color:"#1565C0",lineHeight:1.5}}>
+        📱 이 항목은 <b>알리고 SMS</b>로 발송됩니다. 템플릿 코드 불필요, 메시지는 최대 2,000바이트(한글 1,000자)까지 가능하며 90바이트 초과 시 자동 LMS로 전환됩니다.
+      </div>}
       <div className="card" style={{padding:20,marginBottom:12}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-          <span style={{fontSize:T.fs.sm,fontWeight:500}}>알림 발송</span>
+          <span style={{fontSize:T.fs.sm,fontWeight:500}}>{isSms?"SMS 발송":"알림 발송"}</span>
           <AToggle on={!!c.on} onChange={v=>upC("on",v)}/>
         </div>
-        <AField label="템플릿 코드"><input style={AInp} value={c.tplCode||""} onChange={e=>upC("tplCode",e.target.value)} placeholder="예: UG_2264" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
+        {!isSms && <AField label="템플릿 코드"><input style={AInp} value={c.tplCode||""} onChange={e=>upC("tplCode",e.target.value)} placeholder="예: UG_2264" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>}
         {item?.hasTime&&<AField label="발송 시각"><input style={{...AInp,width:"auto"}} type="time" value={c.sendTime||"09:00"} onChange={e=>upC("sendTime",e.target.value)}/></AField>}
-        <AField label="메시지 템플릿"><textarea style={{...AInp,height:100,resize:"vertical",lineHeight:1.5}} value={c.msgTpl||""} onChange={e=>upC("msgTpl",e.target.value)} placeholder={"예: 안녕하세요 #{고객명}님,\n#{날짜} #{시간} 예약이 확정되었습니다.\n지점: #{지점명}"} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
-        <div style={{fontSize:T.fs.xxs,color:T.textMuted,marginTop:-8,marginBottom:4}}>예약알림 변수: #{"{사용자명}"} #{"{날짜}"} #{"{시간}"} #{"{작업자}"} #{"{작업장소}"} #{"{대표전화번호}"} #{"{예약URL}"}</div>
+        <AField label="메시지 템플릿">
+          <textarea style={{...AInp,height:120,resize:"vertical",lineHeight:1.5}} value={c.msgTpl||""} onChange={e=>upC("msgTpl",e.target.value)} placeholder={isSms?"예: [하우스왁싱] #{고객명}님, 시술 후 #{일수}일이 지났습니다.\n#{지점명}에서 관리 예약 기다립니다.":"예: 안녕하세요 #{고객명}님,\n#{날짜} #{시간} 예약이 확정되었습니다.\n지점: #{지점명}"} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/>
+        </AField>
+        {isSms ? (
+          <>
+            <div style={{fontSize:T.fs.xxs,color:T.textMuted,marginTop:-8,marginBottom:4}}>
+              사용 가능 변수: #{"{고객명}"} #{"{지점명}"} #{"{매장명}"} #{"{시술일}"} #{"{일수}"}
+            </div>
+            <div style={{fontSize:T.fs.xxs,color:mb>90?T.warning:T.textMuted,fontWeight:600}}>
+              {mb} / {mb>90?"2000":"90"} byte · {msgType}
+            </div>
+          </>
+        ) : (
+          <div style={{fontSize:T.fs.xxs,color:T.textMuted,marginTop:-8,marginBottom:4}}>예약알림 변수: #{"{사용자명}"} #{"{날짜}"} #{"{시간}"} #{"{작업자}"} #{"{작업장소}"} #{"{대표전화번호}"} #{"{예약URL}"}</div>
+        )}
       </div>
-      <AIBtn onClick={save} disabled={false} label={saved?"✓ 저장됨":"저장"} style={{background:saved?T.success:T.primary}}/>
+      <div style={{display:"flex",gap:8}}>
+        <AIBtn onClick={save} disabled={false} label={saved?"✓ 저장됨":"저장"} style={{background:saved?T.success:T.primary,flex:1}}/>
+        {isSms && <button onClick={async()=>{
+          const tel = prompt("테스트로 SMS를 받을 번호를 입력하세요 (예: 01012345678)", cfg.senderPhone||"");
+          if(!tel) return;
+          const clean = String(tel).replace(/[^0-9]/g,"");
+          if(clean.length<10||clean.length>11){alert("번호 형식 확인");return;}
+          if(!c.msgTpl){alert("메시지 템플릿을 먼저 입력·저장하세요");return;}
+          try{
+            await sb.insert("alimtalk_queue",{
+              branch_id:selBranch, noti_key:detail, phone:clean,
+              params:{"#{고객명}":"테스트","#{지점명}":branch?.short||"","#{일수}":"0","#{시술일}":new Date().toISOString().slice(0,10)},
+              status:"pending", channel:"sms"
+            });
+            alert("✓ 테스트 큐에 등록됨 — 최대 10초 내 서버가 발송합니다");
+          }catch(err){alert("오류: "+err.message);}
+        }} style={{padding:"10px 18px",borderRadius:10,border:"1px solid "+T.primary,background:"#fff",color:T.primary,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>테스트 전송</button>}
+      </div>
     </div>;
   }
 
