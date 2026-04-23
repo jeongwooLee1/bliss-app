@@ -1,7 +1,20 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.6** (https://blissme.ai/version.txt) — 2026-04-23 배포 완료
+- **라이브: v3.7.8** (https://blissme.ai/version.txt) — 2026-04-23 배포 완료
+
+### v3.7.8 (2026-04-23)
+- **AI 자동대답 패널 UI 재설계** — 공간 문제·세로 접힘 수정
+  - 채널 필 버튼: ON 텍스트 제거, 활성 시 색상 배경 유지
+  - 스케줄 라벨 `whiteSpace:nowrap` + `flexShrink:0` (세로 접힘 차단)
+  - 상태 배지를 우측 상단으로 분리 (시간 필드와 경쟁 안 함)
+  - 시간 input `flex:1` + `minWidth:0` (반응형 폭)
+
+### v3.7.7 (2026-04-23)
+- **AI 자동응답 카카오 제거 + 스케줄 전채널 공통 단일화**
+  - 메시지함 🤖 AI 채널 설정: 카카오 토글 제거 (네이버/인스타/왓츠앱 3개)
+  - 시간 스케줄: 채널별 4개 → 전채널 공통 1개로 통합
+  - 서버 `ai_booking.py`: 단일 스케줄 읽기 + 구 per-channel 포맷 하위호환
 
 ### v3.7.6 (2026-04-23)
 - **AI 자동답변 시간 스케줄** — 메시지함 🤖 AI 토글 패널에 채널별 시간대 설정
@@ -133,16 +146,11 @@
 
 ## 다음 세션 진입 시 체크
 1. `git fetch origin main` 후 `git log HEAD..origin/main` 으로 다른 세션 push 유무 확인
-2. **main worktree uncommitted 상태** — v3.7.3 작업 포함 10개 파일 + 신규 `AdminMemberPriceRules.jsx`. 커밋 안 된 상태. 정리 필요 시 `git add -p` + `git commit`
-3. 주요 worktree 목록:
-   - `channel-deeplink` (feat/channel-deeplink) — v3.6.33~36 로컬 커밋 4개. **MessagesPage.jsx 수정은 이미 v3.7.3에 병합 배포됨**. 브랜치 삭제 가능 (보류 시 참고용)
-   - `ai-prompts-v3629` (feat/ai-prompts-v3629) — v3.6.30~31. 이미 origin/main 04542d6 에 merge됨. 삭제 가능
-   - `ai-faq-settings` (feat/ai-faq-settings) — AdminAISettings FAQ 탭. 이미 v3.3.106~배포됨
-   - `bliss-ai`, `chat-sidebar`, `pkg-audit-rewrite`, `saleform-mobile-fix`, `timeline-scroll-memory`, `user-requests-only`, `visitor-sale-target` — 이전 세션 잔여
-4. `naver-sync` 쪽 worktrees:
+2. **main worktree 정리 완료** (2026-04-23) — stale worktree 10개 전부 삭제, 로컬 브랜치 `main`만 남음. `.gitignore`에 `.claude/worktrees/` 추가하여 재발 방지. 커밋: `chore: clean up stale worktrees`
+3. `naver-sync` 쪽 worktrees:
    - `naver-sync-ai-review` (ai-review) — Claude Sonnet + FAQ + cancel action + 3단계 가격. 서버 배포 완료
    - `naver-sync-echo-dedup` (fix/naver-echo-dedup) — echo dedup + out translation. 서버 배포 완료. origin/master 에 push 안 됨
-5. 유저 지시 대기
+4. 유저 지시 대기
 
 ## 🚨 관리 세션 간 경쟁 방지 (이 세션 실제 사고 기반)
 - **배포 직전** 반드시 `git fetch origin main && git log HEAD..origin/main` 확인
