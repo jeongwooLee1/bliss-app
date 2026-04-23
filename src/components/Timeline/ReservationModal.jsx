@@ -1183,11 +1183,39 @@ ${naverText}
             {/* 시술 상품 선택 */}
             {(() => {
               const hasGender = !!f.custGender;
-              // 회원가 자격: 에너지/제품 제외한 활성 보유권이 있으면 회원가 적용
+              // 회원가 자격: 바프권 등 제외 상품 제외 + 연간권 무조건 자격 + 선불권(다담권 등)은 잔액 ≥ 시술 회원가
               const _isEnergyOrProd = p => { const n=(p.service_name||"").toLowerCase(); return n.includes("에너지")||n.includes("제품")||n.includes("구매권"); };
-              const isMember = (custPkgsInfo||[]).some(p => !_isEnergyOrProd(p) && ((p.total_count||0)-(p.used_count||0)>0 || (p.note||"").match(/잔액:[1-9]/) || (p.service_name||"").match(/연간|할인권|회원권/i)));
+              const _memExcludedNames = (() => {
+                try {
+                  const raw = (data?.businesses||[])[0]?.settings;
+                  const st = typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
+                  const ids = st.member_price_rules?.excludeServiceIds || [];
+                  return new Set((data?.services||[]).filter(s => ids.includes(s.id)).map(s => s.name));
+                } catch { return new Set(); }
+              })();
+              const _isAnnualPkg = p => (p.service_name||"").match(/연간|할인권|회원권/i);
+              const _pkgBal = p => {
+                const m = (p.note||"").match(/잔액:([0-9,]+)/);
+                if (m) return Number(m[1].replace(/,/g,'')) || 0;
+                return Math.max(0, (p.total_count||0) - (p.used_count||0));
+              };
+              const _grantsMember = (p) => {
+                if (_isEnergyOrProd(p)) return false;
+                if (_memExcludedNames.has(p.service_name)) return false;
+                if (_isAnnualPkg(p)) return true;
+                return _pkgBal(p) > 0;
+              };
+              const isMember = (custPkgsInfo||[]).some(_grantsMember);
               const _memberPrice = (svc, g) => {
-                if (!isMember || !g) return g ? (g==="M"?svc.priceM:svc.priceF) : svc.priceF;
+                if (!g) return svc.priceF;
+                const ok = (custPkgsInfo||[]).some(p => {
+                  if (!_grantsMember(p)) return false;
+                  if (_isAnnualPkg(p)) return true;
+                  const mp = g==="M" ? svc.memberPriceM : svc.memberPriceF;
+                  if (!mp) return false;
+                  return _pkgBal(p) >= mp;
+                });
+                if (!ok) return g==="M"?svc.priceM:svc.priceF;
                 const mp = g==="M" ? svc.memberPriceM : svc.memberPriceF;
                 return mp || (g==="M"?svc.priceM:svc.priceF);
               };

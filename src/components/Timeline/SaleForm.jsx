@@ -505,13 +505,16 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     }
   }, [cust?.id, cust?.phone]);
   const _pkgType = (p) => {
-    const n = (p.service_name||"").toLowerCase();
-    // 쿠폰 카테고리 서비스와 매칭 → coupon (자동 적용, 수동 체크 UI 제외)
     const svc = (data?.services||[]).find(s => s.name === p.service_name);
     if (svc) {
-      const cat = (data?.categories||[]).find(c => c.id === svc.cat);
-      if (cat?.name === '쿠폰') return "coupon";
+      const catName = (data?.categories||[]).find(c => c.id === svc.cat)?.name;
+      if (catName === '쿠폰') return "coupon";
+      if (catName === '선불권') return "prepaid";
+      if (catName === '회원권') return "annual";
+      if (catName === '패키지') return "package";
     }
+    // fallback: services 매칭 실패한 구버전 데이터 대응
+    const n = (p.service_name||"").toLowerCase();
     if (n.includes("다담권") || n.includes("선불")) return "prepaid";
     if (n.includes("연간") || n.includes("할인권") || n.includes("회원권")) return "annual";
     return "package";
@@ -576,31 +579,46 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     (data?.services || []).forEach(s => { if (ids.includes(s.id) && s.name) names.add(s.name); });
     return names;
   }, [_memberRules.excludeServiceIds, data?.services]);
-  // 회원가 자격: 전 지점 보유권 기준 (타지점 구매 보유권도 회원가 자격은 인정 — id_ebgbebctt3)
-  const isMemberPrice = validPkgs.some(p => {
+  // 보유권이 회원가 자격을 부여하는지 (명칭·카테고리 기반, 잔액 무관)
+  // - 바프권 등 excludeServiceIds 명시 제외
+  // - 연간권: annualEnabled 설정 준수
+  // - 선불권(다담권 등): 자격 O (잔액 체크는 시술별로 isMemberPriceFor에서)
+  const _pkgGrantsMember = (p) => {
     if (!_pkgStillValid(p)) return false;
-    // 회원가 자격 제외 상품 (예: 바프권 30만) — 해당 보유권은 자격 불인정
     if (_excludedSvcNames.has(p.service_name)) return false;
     const t = _pkgType(p);
     if (t === "annual") return !!_memberRules.annualEnabled;
-    if (t === "prepaid") {
-      const min = Number(_memberRules.prepaidMin)||0;
-      return min > 0 && _pkgOriginalCharge(p) >= min;
-    }
+    if (t === "prepaid") return true;
     return false;
-  });
+  };
+
+  // 회원 고객 여부 (쿠폰 회원할인·UI 배지 등 전역 판정용)
+  const isMemberCustomer = validPkgs.some(_pkgGrantsMember);
+
+  // 시술별 회원가 적용 가능 여부 (가격 결정용)
+  // - 연간권 보유 → 잔액 무관 자격 O
+  // - 선불권 보유 → 잔액 ≥ 시술의 회원가 일 때만 자격 O
+  const isMemberPriceFor = (svc, g) => {
+    return validPkgs.some(p => {
+      if (!_pkgGrantsMember(p)) return false;
+      if (_pkgType(p) === "annual") return true;
+      const memPrice = g === "M" ? svc.memberPriceM : svc.memberPriceF;
+      if (!memPrice) return false;
+      return _pkgBalance(p) >= memPrice;
+    });
+  };
 
   // 성별+회원가에 따른 기본 가격 계산
   const _defPrice = (svc, g) => {
     if (!g) {
       // 성별 미선택 — F/M 동일가격 시술만 지원
       if (svc.priceF !== svc.priceM) return 0;
-      // 회원가 자격 있고 회원가 F/M도 동일하면 회원가 반환 (케어 등 성별 공통 시술)
-      if (isMemberPrice && svc.memberPriceF && svc.memberPriceF === svc.memberPriceM) return svc.memberPriceF;
+      // 회원가 F/M도 동일하면 회원가 가능 (케어 등 성별 공통 시술)
+      if (svc.memberPriceF && svc.memberPriceF === svc.memberPriceM && isMemberPriceFor(svc, "F")) return svc.memberPriceF;
       return svc.priceF;
     }
     const regular = g === "M" ? svc.priceM : svc.priceF;
-    if (!isMemberPrice) return regular;
+    if (!isMemberPriceFor(svc, g)) return regular;
     const member = g === "M" ? svc.memberPriceM : svc.memberPriceF;
     return member || regular; // 회원가 없으면 정상가
   };
@@ -623,13 +641,13 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     return init;
   });
 
-  // 회원가 자격 비동기 로드 반영 — isMemberPrice가 나중에 true로 바뀌면
+  // 회원가 자격 비동기 로드 반영 — isMemberCustomer가 나중에 true로 바뀌면
   // 초기 정상가로 세팅된 체크된 시술들을 회원가로 재계산
   // 사용자가 수동으로 금액 수정한 경우는 건드리지 않음 (amount가 regular/member 중 하나와 정확히 일치할 때만 교체)
-  const _prevMemberRef = React.useRef(isMemberPrice);
+  const _prevMemberRef = React.useRef(isMemberCustomer);
   useEffect(() => {
-    if (_prevMemberRef.current === isMemberPrice) return;
-    _prevMemberRef.current = isMemberPrice;
+    if (_prevMemberRef.current === isMemberCustomer) return;
+    _prevMemberRef.current = isMemberCustomer;
     setItems(prev => {
       const next = { ...prev };
       let changed = false;
@@ -649,7 +667,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       });
       return changed ? next : prev;
     });
-  }, [isMemberPrice, gender]);
+  }, [isMemberCustomer, gender]);
 
   // 편집 모드: existingDetails에서 items 프리필 (시술/제품/추가/할인)
   const _prefilledFromDetails = useRef(false);
@@ -917,7 +935,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
         if (pc.newCustDiscountPct > 0) { const d = Math.round(it.amount * pc.newCustDiscountPct / 100); discount += d; reasons.push(`신규 ${pc.newCustDiscountPct}%`); }
         if (pc.newCustDiscountFlat > 0) { discount += pc.newCustDiscountFlat; reasons.push(`신규 -${pc.newCustDiscountFlat.toLocaleString()}원`); }
       }
-      if (isMemberPrice && pc.memberDiscountPct > 0) { const d = Math.round(it.amount * pc.memberDiscountPct / 100); discount += d; reasons.push(`회원 ${pc.memberDiscountPct}%`); }
+      if (isMemberCustomer && pc.memberDiscountPct > 0) { const d = Math.round(it.amount * pc.memberDiscountPct / 100); discount += d; reasons.push(`회원 ${pc.memberDiscountPct}%`); }
       if (pc.pointAwardFlat > 0) { earn += pc.pointAwardFlat; reasons.push(`${pc.pointAwardFlat.toLocaleString()}P`); }
       if (pc.pointAwardPct > 0) { const e = Math.round(it.amount * pc.pointAwardPct / 100); earn += e; reasons.push(`${pc.pointAwardPct}%P`); }
       if (discount > 0 || earn > 0) {
@@ -2078,7 +2096,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
               style={{ padding: "4px 10px", fontSize: 11, fontWeight: 700, borderRadius: g==="F"?"6px 0 0 6px":"0 6px 6px 0", cursor: "pointer", fontFamily: "inherit", border: "none",
                 background: gender === g ? (g==="F" ? "#e5737340" : "#7c7cc840") : T.gray200,
                 color: gender === g ? (g==="F" ? T.female : T.info) : T.gray400 }}>{g === "F" ? "여" : "남"}</button>)}
-            <span style={{ fontSize: 9, color: isMemberPrice ? T.primary : T.gray400, marginLeft: 2 }}>{gender ? (gender==="F"?"여성":"남성")+(isMemberPrice?" 회원가":" 가격") : "성별 미선택"}{isMemberPrice && " ★"}</span>
+            <span style={{ fontSize: 9, color: isMemberCustomer ? T.primary : T.gray400, marginLeft: 2 }}>{gender ? (gender==="F"?"여성":"남성")+(isMemberCustomer?" 회원가":" 가격") : "성별 미선택"}{isMemberCustomer && " ★"}</span>
           </div>
           {/* Totals */}
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>

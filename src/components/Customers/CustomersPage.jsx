@@ -696,12 +696,20 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
   const custPkgs = custPkgsServer;
   const pkgSvcs   = (data.services||[]).filter(s=>s.isPackage);
 
-  // 패키지 타입 판별
+  // 패키지 타입 판별 — 카테고리 우선, fallback으로 이름 substring
   const pkgType = (p) => {
+    const svc = (data?.services||[]).find(s => s.name === p.service_name);
+    if (svc) {
+      const catName = (data?.categories||[]).find(c => c.id === svc.cat)?.name;
+      if (catName === '쿠폰') return "coupon";
+      if (catName === '선불권') return "prepaid";
+      if (catName === '회원권') return "annual";
+      if (catName === '패키지') return "package";
+    }
     const n = (p.service_name||"").toLowerCase();
-    if (n.includes("다담권") || n.includes("선불") || n.includes("10%추가적립")) return "prepaid"; // 선불카드/다담권
-    if (n.includes("연간") || n.includes("할인권") || n.includes("회원권")) return "annual"; // 연간할인권
-    return "package"; // 일반 다회권(PKG)
+    if (n.includes("다담권") || n.includes("선불") || n.includes("10%추가적립")) return "prepaid";
+    if (n.includes("연간") || n.includes("할인권") || n.includes("회원권")) return "annual";
+    return "package";
   };
 
   // 다회권/다담권/연간할인권 카드
