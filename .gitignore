@@ -3,4 +3,5 @@ dist
 .env
 .DS_Store
 .claude/settings.local.json
+.claude/worktrees/
 새 폴더/
