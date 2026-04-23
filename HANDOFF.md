@@ -132,10 +132,18 @@
   - `branches.whatsapp_account_id` 각 지점별 세팅
   - `businesses.settings`의 WhatsApp 설정 브랜치별 매핑
 
-### 3. (보류) 세션 복구 Phase 2-4 — 로컬 watchdog / 캡차 자동화 / Task Scheduler
-### 4. (보류) Naver 자동예약 기본 상태 (id_7um1c7bp3o) — 서버 STATUS_MAP은 이미 reserved로 고침. 추가 이슈 있으면 재검토
-### 5. (보류) 직원 지점 이동 시 예약 자동 이동 (id_825fnuel64)
-### 6. (보류) AI 설정 UI 개선 (id_triao6fesy)
+### 3. **회원가 자격 상품별 등록 UI화** (추후개발)
+- 현재 `businesses.settings.member_price_rules` + `_pkgType()` 상품명 substring 매칭으로 하드코딩
+- 목표: `services.grants_member_price: boolean` 컬럼 추가 → 시술상품관리에서 상품별 체크박스
+- 예시: 연간회원권 ✓ / 다담권 50만 ✓ / 다담권 30만 ✗ / 바프권 ✗
+- 판정 로직: `customer_packages.service_name === services.name` + `grants_member_price=true`면 자격
+- 충전금액 기준(prepaidMin)은 사용 안 함 — 상품명 단위로만 판정
+- AdminMemberPriceRules 페이지 제거, 기존 settings 마이그레이션 일회성 SQL 필요
+
+### 4. (보류) 세션 복구 Phase 2-4 — 로컬 watchdog / 캡차 자동화 / Task Scheduler
+### 5. (보류) Naver 자동예약 기본 상태 (id_7um1c7bp3o) — 서버 STATUS_MAP은 이미 reserved로 고침. 추가 이슈 있으면 재검토
+### 6. (보류) 직원 지점 이동 시 예약 자동 이동 (id_825fnuel64)
+### 7. (보류) AI 설정 UI 개선 (id_triao6fesy)
 
 ---
 
