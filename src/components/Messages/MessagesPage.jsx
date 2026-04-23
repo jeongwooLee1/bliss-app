@@ -489,8 +489,10 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       if(dd.booked){
         alert("✅ 예약이 미배정으로 생성됐습니다.\n\n대화 헤더의 📅 버튼으로 확인/배정하세요.");
       }else{
-        // AI 응대 문구에는 "완료했습니다" 같은 확정형 표현이 섞여있어 시스템 실패 메시지와 모순. 노출하지 않음.
-        alert("ℹ️ 예약 생성 조건 미충족\n\n(날짜·시간·시술 중 하나 이상이 명확하지 않음)\n고객에게 필요한 정보를 확인 후 직접 등록해주세요.");
+        // AI가 ask_info로 반환 — AI가 어떤 정보를 더 필요하다고 판단했는지 그대로 노출
+        const aiReply = (dd.reply||"").trim();
+        const hint = aiReply ? `\n\nAI 응답:\n${aiReply.slice(0,200)}` : "";
+        alert("ℹ️ AI가 정보 부족으로 예약을 보류했어요.\n\n고객에게 필요한 정보를 확인 후 재시도하거나 타임라인에서 직접 등록해주세요."+hint);
       }
     }catch(e){console.error("[aiBook]",e);alert("AI 예약 오류: "+e.message);}
     finally{setAiBookLoading(false);}

@@ -2194,11 +2194,29 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       {/* Unanswered Messages Alert — 확정대기 배너 스타일 통일 */}
       {unreadMsgCount > 0 && (()=>{
         const CH_NAME = {naver:"네이버",kakao:"카톡",instagram:"인스타",whatsapp:"왓츠앱",telegram:"텔레"};
+        // account_id → 지점명 매핑 (네이버는 naverAccountId, 인스타는 instagramAccountId)
+        const acc2branch = {};
+        (data?.branches||[]).forEach(b=>{
+          if(b.naverAccountId) acc2branch[String(b.naverAccountId)] = b.short||b.name;
+          if(b.instagramAccountId) acc2branch[String(b.instagramAccountId)] = b.short||b.name;
+        });
+        // IG override 매핑 반영
+        try {
+          const s = typeof data?.businesses?.[0]?.settings==='string'?JSON.parse(data.businesses[0].settings):(data?.businesses?.[0]?.settings||{});
+          const ig_override = s?.ig_branch_override||{};
+          Object.entries(ig_override).forEach(([igId,bid])=>{
+            const br=(data?.branches||[]).find(b=>b.id===bid);
+            if(br) acc2branch[String(igId)] = br.short||br.name;
+          });
+        } catch {}
         const preview = (unreadSample||[]).slice(0,3).map(m => {
           const who = m.user_name || (m.user_id ? m.user_id.slice(0,10) : "고객");
           const txt = (m.message_text || "").replace(/\s+/g," ").slice(0,18);
-          return `[${CH_NAME[m.channel]||m.channel||"?"}] ${who}: ${txt}`;
-        }).join(" · ");
+          // 왓츠앱은 전지점 공통이라 지점명 생략
+          const br = m.channel==="whatsapp" ? "" : (acc2branch[String(m.account_id)] || "");
+          const brPart = br ? ` ${br} · ` : " ";
+          return `[${CH_NAME[m.channel]||m.channel||"?"}]${brPart}${who}: ${txt}`;
+        }).join(" / ");
         return <div style={{background:"#E0F2FE",borderBottom:"1px solid #7DD3FC",padding:"6px 12px",display:"flex",alignItems:"center",gap:T.sp.sm,flexShrink:0,cursor:"pointer",width:"100%",boxSizing:"border-box"}}
           onClick={()=>setPage&&setPage("messages")}>
           <span style={{fontSize:T.fs.xl}}>💬</span>
