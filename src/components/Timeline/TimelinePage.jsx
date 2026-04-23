@@ -63,6 +63,85 @@ function prependScheduleLog(log, existing) {
   return existing ? `${log}\n${existing}` : log;
 }
 
+// ═══════════════════════════════════════════
+// 알람 설정 모달
+// ═══════════════════════════════════════════
+function AlarmModal({ initial, brName, onSave, onDelete, onClose }) {
+  const [f, setF] = React.useState(initial);
+  const set = (k, v) => setF(p => ({...p, [k]: v}));
+  const toggleDay = (d) => {
+    const days = f.repeatDays || [];
+    set("repeatDays", days.includes(d) ? days.filter(x=>x!==d) : [...days, d].sort());
+  };
+  const WDS = ["일","월","화","수","목","금","토"];
+  React.useEffect(()=>{
+    const onKey = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return ()=>window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,padding:20,width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+        <div style={{fontSize:16,fontWeight:800,color:T.text}}>🔔 {onDelete?"알람 수정":"알람 생성"}</div>
+        <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:T.gray400}}>×</button>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <label style={{fontSize:12,fontWeight:700,color:T.gray600,width:60}}>지점</label>
+          <div style={{fontSize:13,color:T.text,fontWeight:600}}>{brName}</div>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <label style={{fontSize:12,fontWeight:700,color:T.gray600,width:60}}>시간</label>
+          <input type="time" value={f.time} onChange={e=>set("time",e.target.value)}
+            style={{padding:"6px 10px",fontSize:14,border:"1px solid "+T.border,borderRadius:6,fontFamily:"inherit"}}/>
+        </div>
+        <div>
+          <label style={{display:"block",fontSize:12,fontWeight:700,color:T.gray600,marginBottom:4}}>제목</label>
+          <input type="text" value={f.title||""} onChange={e=>set("title",e.target.value)} placeholder="예: 마감 체크"
+            style={{width:"100%",padding:"8px 12px",fontSize:14,border:"1px solid "+T.border,borderRadius:6,fontFamily:"inherit",boxSizing:"border-box"}}/>
+        </div>
+        <div>
+          <label style={{display:"block",fontSize:12,fontWeight:700,color:T.gray600,marginBottom:4}}>메모 (선택)</label>
+          <textarea value={f.note||""} onChange={e=>set("note",e.target.value)} rows={2}
+            style={{width:"100%",padding:"8px 12px",fontSize:13,border:"1px solid "+T.border,borderRadius:6,fontFamily:"inherit",boxSizing:"border-box",resize:"vertical"}}/>
+        </div>
+        <div>
+          <label style={{display:"block",fontSize:12,fontWeight:700,color:T.gray600,marginBottom:6}}>반복</label>
+          <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+            {[["once","일회성"],["daily","매일"],["weekdays","평일"],["weekly","요일 선택"]].map(([k,lbl])=>(
+              <button key={k} onClick={()=>set("repeat",k)}
+                style={{padding:"5px 10px",fontSize:12,fontWeight:f.repeat===k?700:500,border:"1.5px solid "+(f.repeat===k?T.primary:T.border),borderRadius:14,background:f.repeat===k?T.primaryLt:"#fff",color:f.repeat===k?T.primaryDk:T.gray600,cursor:"pointer",fontFamily:"inherit"}}>{lbl}</button>
+            ))}
+          </div>
+        </div>
+        {f.repeat === "weekly" && (
+          <div style={{display:"flex",gap:4,marginLeft:64}}>
+            {WDS.map((w,i)=>(
+              <button key={i} onClick={()=>toggleDay(i)}
+                style={{width:32,height:32,borderRadius:"50%",border:"1.5px solid "+((f.repeatDays||[]).includes(i)?T.primary:T.border),background:(f.repeatDays||[]).includes(i)?T.primary:"#fff",color:(f.repeatDays||[]).includes(i)?"#fff":T.gray600,cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"inherit"}}>{w}</button>
+            ))}
+          </div>
+        )}
+        {f.repeat === "once" && (
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <label style={{fontSize:12,fontWeight:700,color:T.gray600,width:60}}>날짜</label>
+            <input type="date" value={f.date||""} onChange={e=>set("date",e.target.value)}
+              style={{padding:"6px 10px",fontSize:14,border:"1px solid "+T.border,borderRadius:6,fontFamily:"inherit"}}/>
+          </div>
+        )}
+      </div>
+      <div style={{display:"flex",gap:8,marginTop:20,justifyContent:"flex-end"}}>
+        {onDelete && <button onClick={onDelete}
+          style={{padding:"8px 14px",fontSize:13,fontWeight:700,border:"1.5px solid "+T.danger+"66",background:"#fff5f5",color:T.danger,borderRadius:6,cursor:"pointer",fontFamily:"inherit",marginRight:"auto"}}>🗑 삭제</button>}
+        <button onClick={onClose}
+          style={{padding:"8px 14px",fontSize:13,fontWeight:600,border:"1px solid "+T.border,background:"#fff",color:T.gray600,borderRadius:6,cursor:"pointer",fontFamily:"inherit"}}>취소</button>
+        <button onClick={()=>{ if(!f.title?.trim()){alert("제목을 입력해주세요");return;} onSave({...f, title:f.title.trim(), note:(f.note||"").trim()}); }}
+          style={{padding:"8px 18px",fontSize:13,fontWeight:700,border:"none",background:T.primary,color:"#fff",borderRadius:6,cursor:"pointer",fontFamily:"inherit"}}>저장</button>
+      </div>
+    </div>
+  </div>;
+}
+
 function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, currentUser, setPage, bizId, onMenuClick, bizName, pendingOpenRes, setPendingOpenRes, naverColShow={}, scraperStatus=null, setPendingChat, setPendingOpenCust, unreadMsgCount=0, unreadSample=[] }) {
   // 타임라인 블록 표시 항목 — App에서 prop으로 받음
   const effectiveNaverColShow = naverColShow;
@@ -926,6 +1005,89 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     return map;
   }, [data?.branches]);
   const cellLongPress = useRef(null);
+
+  // ─── 알람 (DB: schedule_data.alarms_v1) — 지점별 {branchId: [alarm]}
+  const [alarms, _setAlarms] = useState({});
+  const alarmsLoaded = useRef(false);
+  const [alarmModal, setAlarmModal] = useState(null); // {time, branchId, editing?}
+  const [alarmFired, setAlarmFired] = useState(null); // {alarm, firedAt}
+  const firedKeysRef = useRef(new Set()); // 중복 발화 방지 (key: alarmId+date+time)
+  const [alarmDrag, setAlarmDrag] = useState(null); // {id, startY}
+  React.useEffect(() => {
+    if (alarmsLoaded.current) return;
+    alarmsLoaded.current = true;
+    fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.alarms_v1&select=value`, {
+      headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
+    }).then(r => r.json()).then(rows => {
+      if (rows?.[0]?.value) {
+        const v = typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value;
+        _setAlarms(v);
+      }
+    }).catch(console.error);
+  }, []);
+  const saveAlarms = React.useCallback((updater) => {
+    _setAlarms(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
+      fetch(`${SB_URL}/rest/v1/schedule_data`, {
+        method: "POST", headers: H,
+        body: JSON.stringify({ id: "alarms_v1", key: "alarms_v1", value: JSON.stringify(next) })
+      }).catch(console.error);
+      return next;
+    });
+  }, []);
+  // 현재 날짜/지점에 해당하는 알람만 필터 (반복 규칙 평가)
+  const getActiveAlarmsForBranch = (branchId, date) => {
+    const list = alarms[branchId] || [];
+    const d = new Date(date);
+    const dow = d.getDay(); // 0=Sun
+    return list.filter(a => {
+      if (a.disabled) return false;
+      if (a.repeat === "once") return a.date === date;
+      if (a.repeat === "daily") return true;
+      if (a.repeat === "weekdays") return dow >= 1 && dow <= 5;
+      if (a.repeat === "weekly") return (a.repeatDays || []).includes(dow);
+      return false;
+    });
+  };
+  // 알람 발화 체커 — 매 30초 점검
+  React.useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      const nowDate = now.toISOString().slice(0,10);
+      const nowMin = now.getHours()*60 + now.getMinutes();
+      Object.entries(alarms).forEach(([branchId, list]) => {
+        // 사용자가 보는 지점만 발화 (여러 지점 보면 그 중 하나만 울려도 OK)
+        if (userBranches.length > 0 && !userBranches.includes(branchId)) return;
+        (list||[]).forEach(a => {
+          if (a.disabled) return;
+          const [hh, mm] = (a.time||"0:0").split(":").map(Number);
+          const alarmMin = hh*60+mm;
+          const dowNow = now.getDay();
+          let shouldFire = false;
+          if (a.repeat === "once") shouldFire = a.date === nowDate;
+          else if (a.repeat === "daily") shouldFire = true;
+          else if (a.repeat === "weekdays") shouldFire = dowNow>=1 && dowNow<=5;
+          else if (a.repeat === "weekly") shouldFire = (a.repeatDays||[]).includes(dowNow);
+          if (!shouldFire) return;
+          if (Math.abs(nowMin - alarmMin) > 1) return; // 1분 window
+          const key = `${a.id}_${nowDate}_${a.time}`;
+          if (firedKeysRef.current.has(key)) return;
+          firedKeysRef.current.add(key);
+          setAlarmFired({ alarm: a, firedAt: new Date() });
+          // 브라우저 알림 (권한 있으면)
+          try {
+            if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+              new Notification(`🔔 ${a.title || "알람"}`, { body: `${a.time} · ${a.note || ""}`, tag: key });
+            }
+          } catch {}
+        });
+      });
+    };
+    const id = setInterval(tick, 30000);
+    tick();
+    return () => clearInterval(id);
+  }, [alarms, userBranches]);
 
   // 직원 컬럼 순서 커스텀 (DB: schedule_data.empColOrder_v1)
   const [empColOrder, _setEmpColOrder] = useState({});
@@ -2342,7 +2504,24 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
               {!dragBlock && hoverCell && hoverCell.rowIdx>=0 && <div style={{position:"absolute",top:hoverCell.rowIdx*rowH,left:0,right:0,height:rowH,background:"rgba(124,124,200,0.08)",zIndex:1,pointerEvents:"none"}}/>}
               {timeLabels.map(({i, isHour, m, text}) => {
                 const isHighlighted = hoverCell && hoverCell.rowIdx === i;
-                return <div key={i} className="tl-time-cell" style={{position:"absolute",top:i*rowH,left:0,right:0,height:rowH,display:"flex",alignItems:"center",justifyContent:"flex-end",paddingRight:window.innerWidth<=768?3:6}}>
+                const slotMin = startHour*60 + i*5;
+                const slotTime = `${String(Math.floor(slotMin/60)).padStart(2,"0")}:${String(slotMin%60).padStart(2,"0")}`;
+                // 이 슬롯에 해당하는 알람 (사용자가 보는 첫 지점 기준)
+                const targetBid = userBranches?.[0] || branchesToShow?.[0]?.id;
+                const slotAlarms = targetBid ? getActiveAlarmsForBranch(targetBid, selDate).filter(a => a.time === slotTime) : [];
+                return <div key={i} className="tl-time-cell"
+                  onClick={()=>{
+                    if (!targetBid) return;
+                    if (slotAlarms.length > 0) {
+                      // 기존 알람 편집
+                      setAlarmModal({ branchId: targetBid, time: slotTime, editing: slotAlarms[0] });
+                    } else {
+                      // 새 알람 생성
+                      setAlarmModal({ branchId: targetBid, time: slotTime });
+                    }
+                  }}
+                  style={{position:"absolute",top:i*rowH,left:0,right:0,height:rowH,display:"flex",alignItems:"center",justifyContent:"flex-end",paddingRight:window.innerWidth<=768?3:6,cursor:"pointer"}}>
+                  {slotAlarms.length > 0 && <span style={{position:"absolute",left:2,top:0,bottom:0,display:"flex",alignItems:"center",gap:2,fontSize:9,background:"#FEF3C7",color:"#92400E",padding:"0 4px",borderRadius:3,border:"1px solid #FBBF24",maxWidth:timeLabelsW-24,overflow:"hidden",whiteSpace:"nowrap",zIndex:2}} title={slotAlarms[0].title}>🔔{slotAlarms[0].title?.slice(0,4)||""}</span>}
                   <span style={{fontSize:isHour?(window.innerWidth<=768?10:11):(window.innerWidth<=768?8:9),fontWeight:isHighlighted?700:(isHour?600:400),color:isHighlighted?T.primary:(isHour?T.gray700:T.gray500),whiteSpace:"nowrap",lineHeight:1,transition:"color 0.1s"}}>{text}</span>
                 </div>;
               })}
@@ -3562,6 +3741,40 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           </div>
         </>;
       })()}
+
+      {/* 알람 설정 모달 */}
+      {alarmModal && (()=>{
+        const ed = alarmModal.editing || null;
+        const initial = ed || {id:"al_"+Math.random().toString(36).slice(2,10), time:alarmModal.time, title:"", note:"", repeat:"once", repeatDays:[1,2,3,4,5], date:selDate, disabled:false, branchId:alarmModal.branchId, createdAt:new Date().toISOString()};
+        const brName = (data?.branches||[]).find(b=>b.id===alarmModal.branchId)?.short||"";
+        return <AlarmModal initial={initial} brName={brName} onClose={()=>setAlarmModal(null)}
+          onSave={(alarm)=>{
+            saveAlarms(prev=>{
+              const list = prev[alarmModal.branchId]||[];
+              const idx = list.findIndex(a=>a.id===alarm.id);
+              const newList = idx>=0 ? list.map((a,i)=>i===idx?alarm:a) : [...list, alarm];
+              return {...prev, [alarmModal.branchId]: newList};
+            });
+            setAlarmModal(null);
+          }}
+          onDelete={ed ? ()=>{
+            saveAlarms(prev=>({...prev, [alarmModal.branchId]: (prev[alarmModal.branchId]||[]).filter(a=>a.id!==ed.id)}));
+            setAlarmModal(null);
+          } : null}
+        />;
+      })()}
+      {/* 알람 발화 토스트 */}
+      {alarmFired && <div style={{position:"fixed",top:60,left:"50%",transform:"translateX(-50%)",background:"#FEF3C7",border:"2px solid #FBBF24",color:"#92400E",padding:"16px 20px",borderRadius:12,zIndex:9999,boxShadow:"0 8px 32px rgba(0,0,0,0.2)",minWidth:280,maxWidth:400,animation:"pendingBlink 1.5s infinite"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
+          <span style={{fontSize:24}}>🔔</span>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,fontSize:15}}>{alarmFired.alarm.title||"알람"}</div>
+            <div style={{fontSize:12,color:"#78350F"}}>{alarmFired.alarm.time}</div>
+          </div>
+        </div>
+        {alarmFired.alarm.note && <div style={{fontSize:13,color:"#78350F",marginBottom:10,lineHeight:1.5}}>{alarmFired.alarm.note}</div>}
+        <button onClick={()=>setAlarmFired(null)} style={{width:"100%",padding:"8px 0",background:"#F59E0B",color:"#fff",border:"none",borderRadius:6,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:13}}>확인</button>
+      </div>}
 
       {showModal && <TimelineModal item={modalData} onSave={handleSave} onDelete={handleDelete} onDeleteRequest={handleDeleteRequest} naverColShow={naverColShow} onClose={()=>_mc(()=>{setShowModal(false);setModalData(null)})} selBranch={userBranches[0]} userBranches={userBranches} data={{...data, staff: BASE_EMP_LIST.map(e=>({id:e.id,bid:e.branch_id,dn:e.id,name:e.id,branch_id:e.branch_id})), workingStaffIds: (() => { const ws = getWorkingStaff(modalData?.bid || userBranches[0], selDate); return ws ? ws.map(e=>e.id) : null; })() }} setData={setData} setPage={setPage} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust}/>}
 
