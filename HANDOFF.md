@@ -1,7 +1,32 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.76** (https://blissme.ai/version.txt) — 2026-04-24 배포 완료
+- **라이브: v3.7.77** (https://blissme.ai/version.txt) — 2026-04-25 배포 완료
+
+## v3.7.77 (2026-04-25) — 동의서 키오스크 풀스택 통합
+- `feat/consent-integration` → main 머지 (origin 브랜치 삭제)
+- **UI 재구성**:
+  - 고객 상세 `📝 동의서` 버튼 제거 → **쉐어 옆 탭**으로 이동
+  - `ConsentPanel` 신규: 탭 안 서명 이력 리스트 + `➕ 새 동의서 요청` 버튼 (customer_consents Realtime INSERT 구독 → 서명 시 자동 갱신)
+- **ConsentModal 재설계**:
+  - 탭(작성/이력) 구조 → 작성 전용 단일 화면
+  - 전송 방식 분기: **📲 태블릿으로 전송** (주) / **QR·링크 폴백** (부)
+  - kiosk 드롭다운 (`businesses.settings.kiosks`) — 매장 태블릿 선택
+  - `consent_tokens` INSERT 시 `kiosk_id` 포함 → 태블릿 자동 서명 UI 진입
+- **AdminKiosks 신규** (관리설정 → 📲 태블릿/키오스크):
+  - kiosks CRUD (id/name/branch_id)
+  - 태블릿 URL 미리보기 + QR + 복사/열기 버튼
+- **연동 대상** (별도 repo):
+  - `sign.blissme.ai` `/?k=<id>` 키오스크 모드 — bliss-consent repo main 이미 배포
+  - StaffFlow (고객 검색 → 템플릿 → 즉시 서명)
+- **DB 선행 작업** (이미 완료):
+  - `consent_tokens.kiosk_id` 컬럼 추가
+  - Realtime publication: `customer_consents`, `consent_tokens`
+
+## v3.7.76 (2026-04-24)
+- **8개 지점 noti_config.tplCode 지점별 승인 코드로 교체** — 전 지점이 강남 tplCode 공유 사용 → Kakao drop 근본 원인 해소. 6건 테스트(강남 4 + 왕십리 1 + 잠실 1) 유저 폰 수신 확인 완료.
+- **SaleForm 회원가 동시 구매 적용** — 연간회원권/선불권 체크 시 같은 영수증 시술에 즉시 회원가. 함수 내 lazy items 접근으로 `const` TDZ 회피.
+- **Gmail Pub/Sub Push 복구** — GCP bliss-492906에 OAuth(Bliss Gmail Push)+토픽(gmail-push)+푸시구독(gmail-push-sub → blissme.ai/gmail-push) 재구성, 매 6일 cron으로 watch 자동 갱신. 서버 `/home/ubuntu/naver-sync/gmail_push/`.
 
 ## Gmail Pub/Sub Push 복구 (2026-04-24 23:58 KST)
 - **증상**: Apr 22 이후 gmail-push 로그 0건 → watch 자연 만료 (TTL 7일)
