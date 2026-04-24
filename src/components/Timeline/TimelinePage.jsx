@@ -15,17 +15,8 @@ import useTouchDragSort from '../../hooks/useTouchDragSort'
 const _mc = (fn) => { if(fn) fn(); };
 const uid = genId;
 
-// 지점별 은은한 배경색 팔레트 — 교차 배경 디자인용 (유저 요청: 최대한 은은)
-const BRANCH_BG_SOFT = {
-  'br_4bcauqvrb': '#F4F7FA', // 강남 — 연한 스카이
-  'br_wkqsxj6k1': '#FAF6F1', // 왕십리 — 연한 베이지
-  'br_l6yzs2pkq': '#F7F4FA', // 홍대 — 연한 라벤더
-  'br_k57zpkbx1': '#F4FAF6', // 마곡 — 연한 민트
-  'br_ybo3rmulv': '#FAF4F4', // 용산 — 연한 로즈
-  'br_lfv2wgdf1': '#F7FAF4', // 잠실 — 연한 라임
-  'br_g768xdu4w': '#F9F8F4', // 위례 — 연한 샌드
-  'br_xu60omgdf': '#F4F9FA', // 천호 — 연한 민트블루
-};
+// 타임라인 컬럼 바탕색 — 전 지점 공통 단일 톤, 지점 구분은 세로선으로만
+const SOFT_BG = '#F4F7FA';
 
 // 페이지 이동 후 돌아왔을 때 스크롤 위치 복원용 (모듈 레벨 - 컴포넌트 언마운트 후에도 유지)
 // 스크롤 위치 저장/복원 — sessionStorage 연동 (새로고침 시에도 유지)
@@ -1046,6 +1037,16 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const [hoverCell, setHoverCell] = useState(null); // {roomId, rowIdx}
   const [empMovePopup, setEmpMovePopup] = useState(null); // {empId, date, x, y}
   const [addStaffPopup, setAddStaffPopup] = useState(null); // {branchId, x, y}
+  // ESC 키로 팝업 닫기
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      if (addStaffPopup) { setAddStaffPopup(null); e.stopPropagation(); return; }
+      if (empMovePopup)  { setEmpMovePopup(null);  e.stopPropagation(); return; }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [addStaffPopup, empMovePopup]);
   // 빈 미배정 칼럼 (날짜·지점별 추가) — schedule_data.extraCols_v1 { "bid__date": count }
   const [extraCols, setExtraCols] = useState({});
   useEffect(() => {
@@ -2879,18 +2880,18 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
               });
             })();
             const isNewBranch = ci === 0 || room.branch_id !== allRooms[ci-1]?.branch_id;
-            // D안: 지점별 은은한 배경 + 첫 컬럼에만 지점 앵커 텍스트
-            const softBg = BRANCH_BG_SOFT[room.branch_id] || T.bgCard;
+            // D안: 전 지점 공통 배경 + 첫 컬럼에 지점 앵커 텍스트 + 지점 경계 세로선
             const isFirstOfBranch = room._isFirstOfBranch || (ci === 0 || allRooms[ci-1]?.branch_id !== room.branch_id);
+            const branchDivider = isFirstOfBranch && ci > 0; // 지점 경계 세로선
             return (
-              <div key={room.id} className="tl-room-col" data-branch-id={room.branch_id} style={{width:colW,flexShrink:0,borderLeft:isNewBranch&&ci>0?"none":"1px solid #f0f0f0",background:room.isBlank?T.gray100:softBg,marginLeft:isNewBranch&&ci>0?4:0,boxShadow:isNewBranch&&ci>0?"-4px 0 8px rgba(0,0,0,.04)":"none",position:"relative"}}>
+              <div key={room.id} className="tl-room-col" data-branch-id={room.branch_id} style={{width:colW,flexShrink:0,borderLeft:branchDivider?"2px solid #c9ced4":"1px solid #f0f0f0",background:SOFT_BG,marginLeft:0,boxShadow:"none",position:"relative"}}>
                 {/* 이동/지원 직원: 휴무 스타일 오버레이 (배경만, 블록 클릭은 허용) */}
                 {room.isMovedOut && <div style={{position:"absolute",top:headerH,left:0,right:0,bottom:0,background:"rgba(0,0,0,.06)",borderTop:"2px dashed rgba(0,0,0,.12)",zIndex:1,pointerEvents:"none"}}/>}
                 {/* Room Header - sticky. 지점명은 첫 컬럼에만 앵커로 (D안) */}
-                <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:10,background:room.isBlank?T.gray100:softBg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",lineHeight:1.2}}>
-                  {isFirstOfBranch && !room.isBlank && (
+                <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:10,background:SOFT_BG,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",paddingBottom:4,lineHeight:1.2}}>
+                  {isFirstOfBranch && (
                     <span style={{position:"absolute",top:2,left:6,fontSize:9,fontWeight:800,color:"#555",background:"rgba(255,255,255,.75)",padding:"1px 5px",borderRadius:3,letterSpacing:0.2,pointerEvents:"none"}}>
-                      🏢 {room.branchName}
+                      {room.branchName}
                     </span>
                   )}
                   {room.isBlank ? (
@@ -3042,14 +3043,14 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                           </div>
                         </>)}
                       </div>
-                    ) : <span className="tl-room-sub" style={{fontSize:T.fs.xs,color:T.gray400,fontStyle:"italic"}}>미배정</span>
+                    ) : <span className="tl-room-sub" style={{fontSize:14,fontWeight:800,color:T.gray500}}>미배정</span>
                   ) : room.isStaffCol ? (
                     <div style={{position:"relative",display:"flex",alignItems:"center",gap:2,justifyContent:"center",flexWrap:"wrap"}}>
                       {!room.hideName && <button title="왼쪽으로" onClick={e=>{e.stopPropagation();moveEmpCol(room.branch_id,room.staffId,-1);}}
                         style={{width:16,height:16,padding:0,border:"none",background:"transparent",color:T.gray500,cursor:"pointer",fontSize:11,lineHeight:1,fontWeight:700,opacity:.55}}
                         onMouseEnter={e=>{e.currentTarget.style.opacity="1";e.currentTarget.style.color=T.primary;}}
                         onMouseLeave={e=>{e.currentTarget.style.opacity=".55";e.currentTarget.style.color=T.gray500;}}>◀</button>}
-                      <span className="tl-room-sub" style={{fontSize:14,fontWeight:800,color:room.hideName?T.gray400:T.text,fontStyle:room.hideName?"italic":"normal",cursor:"pointer",borderBottom:"1px dashed "+T.gray400}}
+                      <span className="tl-room-sub" style={{fontSize:14,fontWeight:800,color:room.hideName?T.gray400:T.text,fontStyle:room.hideName?"italic":"normal",cursor:"pointer"}}
                         onClick={e=>{e.stopPropagation();setEmpMovePopup(p=>(p?.empId===room.staffId && p?.branchId===room.branch_id)?null:{empId:room.staffId,branchId:room.branch_id,date:selDate,x:e.clientX,y:e.clientY});}}>
                         {room.hideName ? "(이동)" : room.name}
                       </span>
@@ -3175,8 +3176,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                               || (empMovePopup.draftWh !== undefined);
                             const setDraft = (newSegs) => setEmpMovePopup(p=>({...p, draftSegs: newSegs}));
                             const empBase = BASE_EMP_LIST.find(e=>e.id===room.staffId);
-                            // 지원 근무 시엔 현재 컬럼 지점이 base (empBase.branch_id는 원소속이라 부정확)
-                            const baseBranch = room.branch_id;
+                            // base는 원소속 우선 — 지원 직원(타 지점 컬럼에서 열림)도 visualSegs가 원소속 구간을 자동 채우도록
+                            const baseBranch = empBase?.branch_id || room.branch_id;
                             const allBranches = (data.branches||[]).filter(b=>b.useYn!==false);
                             // 추가할 지점 + 시간 상태
                             const [addBranch,setAddBranch] = [empMovePopup.addBranch||"", v=>setEmpMovePopup(p=>({...p,addBranch:v}))];
@@ -3667,7 +3668,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                       </>)}
                     </div>
                   ) : (
-                    <span className="tl-room-sub" style={{fontSize:T.fs.nano,color:room.isNaver?"#FF9800":T.gray500,display:"inline-flex",alignItems:"center",gap:3,fontWeight:room.isNaver?700:400}}>
+                    <span className="tl-room-sub" style={{fontSize:14,color:room.isNaver?"#FF9800":T.gray500,display:"inline-flex",alignItems:"center",gap:3,fontWeight:800}}>
                       {room.name}
                       {/* 프리랜서 삭제 버튼 */}
                       {room.isStaffCol && room.staffId && (() => {
@@ -3700,7 +3701,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                   )}
                 </div>
                 {/* Grid Area */}
-                <div style={{position:"relative",height:totalRows*rowH,cursor:(room.isBlank&&room.isAddCol)?"pointer":room.isBlank?"default":room.isNaver?"default":(canEdit(room.branch_id)?"pointer":"default"),...(room.isBlank?{background:"repeating-linear-gradient(45deg,#f5f5f5,#f5f5f5 6px,#fafafa 6px,#fafafa 12px)"}:gridBg)}}
+                <div style={{position:"relative",height:totalRows*rowH,cursor:(room.isBlank&&room.isAddCol)?"pointer":room.isBlank?"default":room.isNaver?"default":(canEdit(room.branch_id)?"pointer":"default"),...gridBg}}
                   onClick={e=>{
                     // + 칼럼: 매일 반복 내부일정 템플릿 생성
                     if(room.isBlank && room.isAddCol) {
