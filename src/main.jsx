@@ -16,11 +16,15 @@ window.addEventListener('unhandledrejection', e => {
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import ChatPreview from './pages/ChatPreview'
+import TlHeaderPreview from './pages/TlHeaderPreview'
 import { AuthProvider } from './lib/AuthContext'
 
 // ?chat=1 → 사내 메신저 독립 프리뷰만 렌더 (라이브 앱 완전 우회)
 const isChatPreview = typeof window !== 'undefined' &&
   new URLSearchParams(window.location.search).get('chat') === '1'
+// ?preview=tl-header → 타임라인 헤더 디자인 비교 프리뷰 (임시)
+const isTlHeaderPreview = typeof window !== 'undefined' &&
+  new URLSearchParams(window.location.search).get('preview') === 'tl-header'
 
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { error: null }; }
@@ -36,7 +40,9 @@ class ErrorBoundary extends React.Component {
 try {
   ReactDOM.createRoot(document.getElementById('root')).render(
     <ErrorBoundary>
-      {isChatPreview ? (
+      {isTlHeaderPreview ? (
+        <TlHeaderPreview />
+      ) : isChatPreview ? (
         <ChatPreview />
       ) : (
         <BrowserRouter>
