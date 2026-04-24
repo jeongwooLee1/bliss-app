@@ -15,8 +15,8 @@ import useTouchDragSort from '../../hooks/useTouchDragSort'
 const _mc = (fn) => { if(fn) fn(); };
 const uid = genId;
 
-// 타임라인 컬럼 바탕색 — 전 지점 공통 단일 톤, 지점 구분은 세로선으로만
-const SOFT_BG = '#F4F7FA';
+// 타임라인 컬럼 바탕색 — 전 지점 공통 단일 톤(기본 흰색), 지점 구분은 세로선으로만
+const SOFT_BG = '#ffffff';
 
 // 페이지 이동 후 돌아왔을 때 스크롤 위치 복원용 (모듈 레벨 - 컴포넌트 언마운트 후에도 유지)
 // 스크롤 위치 저장/복원 — sessionStorage 연동 (새로고침 시에도 유지)
