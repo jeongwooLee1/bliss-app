@@ -648,7 +648,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       if (r.date !== date) return false;
       if (r.bid !== branchId) return false;
       if (r.staffId !== empId) return false;
-      if (r.status === "naver_changed" || r.status === "naver_cancelled" || r.status === "cancelled") return false;
+      // 변경건(naver_changed)은 제외, 취소는 포함 (컬럼 유지 근거)
+      if (r.status === "naver_changed") return false;
       return true;
     });
 
@@ -1393,7 +1394,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const blocks = (data?.reservations||[]).filter(r => {
     if (r.date !== selDate) return false;
     if (!branchesToShow.some(b=>b.id===r.bid)) return false;
-    if (r.status === "naver_changed" || r.status === "naver_cancelled" || r.status === "cancelled") return false;
+    // 변경으로 인한 구예약(naver_changed)은 숨김, 일반 취소는 "취소됨" 표시로 남김
+    if (r.status === "naver_changed") return false;
     const isNaver = r.source === "naver" || r.source === "네이버";
     // 네이버 스크래퍼 예약만 스크래핑 완료 대기 (수동 예약/manual_ 접두사는 즉시 표시)
     const isManual = !r.reservationId || String(r.reservationId).startsWith("manual_") || String(r.reservationId).startsWith("ai_");
@@ -3704,8 +3706,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                     const tagColor = block.type==="reservation" && block.selectedTags?.length
                       ? (block.selectedTags.map(tid=>tags.find(t=>t.id===tid)).find(t=>t?.color)?.color || "")
                       : "";
-                    // 네이버 취소/대기 상태 처리
-                    const isNaverCancelled = block.status === "naver_cancelled";
+                    // 취소/대기 상태 처리 — naver_cancelled와 일반 cancelled 모두 취소 스타일 적용
+                    const isNaverCancelled = block.status === "naver_cancelled" || block.status === "cancelled";
                     const isNaverPending = (block.status === "pending" || block.status === "request") && !(block.memo && block.memo.includes("확정완료"));
                     // 네이버 예약이고 아직 일반 칼럼에 미배정 (roomId 없거나 nv_ 접두)
                     const isNaverUnassigned = !!block.reservationId && !block.staffId && (!block.roomId || block.roomId.startsWith("nv_"));
