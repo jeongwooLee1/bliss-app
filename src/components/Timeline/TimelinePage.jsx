@@ -1205,7 +1205,31 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         .then(r => r.json()).then(rows => {
           if (rows?.[0]?.value) {
             const v = typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value;
-            _setEmpColOrder(v);
+            // 방어: DB가 축소되어 들어왔으면 현재 state의 누락 id를 뒤에 복구
+            _setEmpColOrder(cur => {
+              const merged = {};
+              const bids = new Set([...Object.keys(cur||{}), ...Object.keys(v||{})]);
+              let recovered = false;
+              bids.forEach(bid => {
+                const newList = Array.isArray(v[bid]) ? v[bid] : [];
+                const oldList = Array.isArray(cur[bid]) ? cur[bid] : [];
+                const newSet = new Set(newList);
+                const missing = oldList.filter(id => !newSet.has(id));
+                if (missing.length) recovered = true;
+                merged[bid] = [...newList, ...missing];
+              });
+              // 복구가 있었으면 DB에 재저장 (다른 탭도 복구되게 전파)
+              if (recovered) {
+                try {
+                  const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
+                  fetch(`${SB_URL}/rest/v1/schedule_data`, {
+                    method: "POST", headers: H,
+                    body: JSON.stringify({ id: "empColOrder_v1", key: "empColOrder_v1", value: JSON.stringify(merged) })
+                  }).catch(()=>{});
+                } catch(e) {}
+              }
+              return merged;
+            });
             empColOrderLoaded.current = true;
           }
         }).catch(console.error);
@@ -1229,12 +1253,22 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const setEmpColOrder = React.useCallback((updater) => {
     _setEmpColOrder(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
+      // 방어: next가 prev보다 길이 짧아진 경우(의도적 삭제 X) prev의 누락 id를 뒤에 복구
+      const merged = {};
+      const bids = new Set([...Object.keys(prev||{}), ...Object.keys(next||{})]);
+      bids.forEach(bid => {
+        const nList = Array.isArray(next[bid]) ? next[bid] : [];
+        const pList = Array.isArray(prev[bid]) ? prev[bid] : [];
+        const nSet = new Set(nList);
+        const missing = pList.filter(id => !nSet.has(id));
+        merged[bid] = [...nList, ...missing];
+      });
       const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
       fetch(`${SB_URL}/rest/v1/schedule_data`, {
         method: "POST", headers: H,
-        body: JSON.stringify({ id: "empColOrder_v1", key: "empColOrder_v1", value: JSON.stringify(next) })
+        body: JSON.stringify({ id: "empColOrder_v1", key: "empColOrder_v1", value: JSON.stringify(merged) })
       }).catch(console.error);
-      return next;
+      return merged;
     });
   }, []);
   const moveEmpCol = (branchId, empId, dir) => {
@@ -3434,6 +3468,22 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             }} style={{flex:1,padding:"7px 0",borderRadius:7,border:"1px solid "+T.gray400,background:T.gray100,color:T.text,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
                               오늘 휴무
                             </button>
+                            {/* 오늘 전체 이동 — 타지점으로 종일 배정 */}
+                            <select defaultValue="" onChange={(e)=>{
+                              e.stopPropagation();
+                              const targetBid = e.target.value;
+                              if (!targetBid) return;
+                              const targetBr = (data?.branches||[]).find(b=>b.id===targetBid);
+                              if (!confirm(`${room.staffId} 오늘(${selDate}) → ${targetBr?.short||targetBr?.name}(으)로 종일 이동할까요?\n(현재 지점의 예약은 미배정으로 옮겨집니다)`)) { e.target.value=""; return; }
+                              const overrideKey2 = room.staffId+"_"+selDate;
+                              const ovData = {segments:[{branchId: targetBid, from: null, until: null}], exclusive: true};
+                              setEmpBranchOverride(p=>({...p,[overrideKey2]:ovData}));
+                              syncOverrideToSch(room.staffId, selDate, ovData);
+                              setEmpMovePopup(null);
+                            }} style={{flex:1,padding:"7px 6px",borderRadius:7,border:"1px solid "+T.gray400,background:T.gray100,color:T.text,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                              <option value="">🚀 오늘 전체 이동 →</option>
+                              {(data?.branches||[]).filter(b=>b.id!==room.branch_id && b.useYn!==false).map(b=><option key={b.id} value={b.id}>{b.short||b.name}</option>)}
+                            </select>
                           </div>
                           {/* 프리랜서 컬럼 삭제 */}
                           {(() => {
