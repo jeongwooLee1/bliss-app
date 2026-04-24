@@ -3992,7 +3992,6 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                 {pkg.isDadam
                                   ? `${pkg.name} ${(()=>{const n=pkg.totalRemain;if(!n)return "0";const m=n/10000;return (m===Math.floor(m)?Math.floor(m):Math.round(m*10)/10)+"만";})()}`
                                   : `${pkg.name.replace(/\s*\d+회\s*$/, "").trim()} +${pkg.totalRemain}`}
-                                {pkg.count > 1 && <span style={{opacity:0.7,marginLeft:2}}>×{pkg.count}</span>}
                               </span>)}
                               {sorted.length>4 && <span style={{fontSize:Math.max(6,blockFs-3),color:T.gray400}}>+{sorted.length-4}</span>}
                             </div>;
