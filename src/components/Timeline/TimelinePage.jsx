@@ -3714,6 +3714,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                     return (
                       <div key={block.id} data-rid={block.reservationId||block.id}
                         onMouseEnter={e=>{
+                          // 모바일에선 mouseenter가 터치 후 발생 → 모달 뒤에 남는 문제. 팝업 자체 비활성
+                          if (window.innerWidth <= 768 || ('ontouchstart' in window)) return;
                           const memo = (block.memo||"").split("\n").filter(l => { const t=l.trim(); return !(/^\[등록:|^\[수정:/.test(t)) && !(/^\d+\.\d+\s+\d+:\d+\s*(예약)?(접수|변경|확정|취소|신청|확정완료)/.test(t)); }).join("\n").trim();
                           // 메모가 블록 높이(rowH*3 = 전체 보임) 안에 다 들어가면 팝업 불필요
                           if (!memo || memo.length < 30) return;
