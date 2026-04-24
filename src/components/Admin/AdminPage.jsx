@@ -358,7 +358,7 @@ function AdminJoinBrand({ currentUser, onBack }) {
 function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userBranches=[], setPage }) {
   const navTo = useNavigate();
   const loc = useLocation();
-  const TAB_SLUGS = {places:"places",saleitems:"services",coupons:"coupons",prodmgmt:"products",svctags:"tags",ressrc:"sources",extplatforms:"ext-platforms",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",branchgroups:"branch-groups",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",branchaudit:"branch-audit",pointmig:"point-migration",memberrules:"member-rules",joinbrand:"join-brand"};
+  const TAB_SLUGS = {places:"places",saleitems:"services",coupons:"coupons",prodmgmt:"products",svctags:"tags",ressrc:"sources",extplatforms:"ext-platforms",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",branchgroups:"branch-groups",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",branchaudit:"branch-audit",pointmig:"point-migration",memberrules:"member-rules",joinbrand:"join-brand",kiosks:"kiosks"};
   const SLUG_TO_TAB = Object.fromEntries(Object.entries(TAB_SLUGS).map(([k,v])=>[v,k]));
   const tab = SLUG_TO_TAB[loc.pathname.replace(/^\/settings\/?/,"").split("/")[0]] || null;
   const setTab=t=>{ if(t) navTo(`/settings/${TAB_SLUGS[t]||t}`); else navTo("/settings"); };
