@@ -2979,7 +2979,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                       {empMovePopup?.empId===room.staffId && empMovePopup?.date===selDate && empMovePopup?.branchId===room.branch_id && (<>
                         <div style={{position:"fixed",inset:0,zIndex:9998}} onClick={e=>{e.stopPropagation();setEmpMovePopup(null);}}/>
                         <div onClick={e=>e.stopPropagation()} style={{position:"fixed",left:Math.min(empMovePopup.x,window.innerWidth-200),top:empMovePopup.y+8,background:T.bgCard,borderRadius:12,boxShadow:"0 4px 24px rgba(0,0,0,.22)",zIndex:9999,padding:"10px 0 6px",minWidth:200}}>
-                          {/* 근무시간 설정 — 하단 저장 버튼으로 통합 (draftWh) */}
+                          {/* 근무시간 설정 + 종일 근무지 변경 — 하단 저장 버튼으로 통합 */}
                           <div style={{padding:"8px 12px",borderBottom:"1px solid "+T.border}}>
                             <div style={{fontSize:10,color:T.textMuted,marginBottom:4,fontWeight:700}}>근무시간</div>
                             {(()=>{
@@ -2988,24 +2988,54 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                               const wh = empMovePopup.draftWh || savedWh;
                               const hours = Array.from({length:18*6},(_,i)=>{const h=Math.floor(i/6)+6,m=(i%6)*10;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;});
                               const selSt = {flex:1,fontSize:11,padding:"4px 3px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"};
-                              return <div style={{display:"flex",gap:4,alignItems:"center"}}>
-                                <select value={wh.start} style={selSt}
-                                  onChange={e=>{
-                                    const v=e.target.value;
-                                    const [hh,mm]=v.split(":").map(Number);
-                                    const totalMin=Math.min(23*60+50,(hh+10)*60+mm);
-                                    const eh=Math.floor(totalMin/60),em=totalMin%60;
-                                    const autoEnd = `${String(eh).padStart(2,"0")}:${String(em).padStart(2,"0")}`;
-                                    setEmpMovePopup(p=>({...p, draftWh:{start:v, end:autoEnd}}));
-                                  }}>
-                                  {hours.map(h=><option key={h} value={h}>{h}</option>)}
-                                </select>
-                                <span style={{fontSize:11}}>~</span>
-                                <select value={wh.end} style={selSt}
-                                  onChange={e=>setEmpMovePopup(p=>({...p, draftWh:{start:wh.start, end:e.target.value}}))}>
-                                  {hours.map(h=><option key={h} value={h}>{h}</option>)}
-                                </select>
-                              </div>;
+
+                              // 종일 근무지 변경 — 체크박스 + 지점 select
+                              // 현재 segs가 exclusive=true 하나짜리면 "다른 지점 종일 근무" 상태
+                              const curSegs = empMovePopup.draftSegs !== undefined ? empMovePopup.draftSegs : (ov?.segments || []);
+                              const isDayMove = curSegs.length === 1 && curSegs[0]?.from == null && curSegs[0]?.until == null && curSegs[0]?.branchId !== room.branch_id;
+                              const dayMoveBid = isDayMove ? curSegs[0].branchId : "";
+                              const onDayMoveToggle = (checked) => {
+                                if (!checked) {
+                                  setEmpMovePopup(p=>({...p, draftSegs: []}));
+                                  return;
+                                }
+                                // 타 지점 첫 번째로 자동 선택 (유저가 드롭다운에서 교체 가능)
+                                const firstOther = (data?.branches||[]).find(b=>b.id!==room.branch_id && b.useYn!==false);
+                                if (!firstOther) return;
+                                setEmpMovePopup(p=>({...p, draftSegs: [{branchId: firstOther.id, from: null, until: null}]}));
+                              };
+                              const onDayMoveBranchChange = (bid) => {
+                                setEmpMovePopup(p=>({...p, draftSegs: [{branchId: bid, from: null, until: null}]}));
+                              };
+
+                              return <>
+                                <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                                  <select value={wh.start} style={selSt}
+                                    onChange={e=>{
+                                      const v=e.target.value;
+                                      const [hh,mm]=v.split(":").map(Number);
+                                      const totalMin=Math.min(23*60+50,(hh+10)*60+mm);
+                                      const eh=Math.floor(totalMin/60),em=totalMin%60;
+                                      const autoEnd = `${String(eh).padStart(2,"0")}:${String(em).padStart(2,"0")}`;
+                                      setEmpMovePopup(p=>({...p, draftWh:{start:v, end:autoEnd}}));
+                                    }}>
+                                    {hours.map(h=><option key={h} value={h}>{h}</option>)}
+                                  </select>
+                                  <span style={{fontSize:11}}>~</span>
+                                  <select value={wh.end} style={selSt}
+                                    onChange={e=>setEmpMovePopup(p=>({...p, draftWh:{start:wh.start, end:e.target.value}}))}>
+                                    {hours.map(h=><option key={h} value={h}>{h}</option>)}
+                                  </select>
+                                </div>
+                                <label style={{display:"flex",alignItems:"center",gap:5,marginTop:8,fontSize:11,cursor:"pointer",color:isDayMove?T.primary:T.textSub,fontWeight:isDayMove?700:500}}>
+                                  <input type="checkbox" checked={isDayMove} onChange={e=>onDayMoveToggle(e.target.checked)} style={{cursor:"pointer",accentColor:T.primary}}/>
+                                  🧳 다른 지점에서 종일 근무
+                                </label>
+                                {isDayMove && <select value={dayMoveBid} onChange={e=>onDayMoveBranchChange(e.target.value)}
+                                  style={{width:"100%",marginTop:4,fontSize:11,padding:"4px 6px",borderRadius:6,border:"1px solid "+T.primary,background:T.primaryLt,color:T.primary,fontWeight:700,fontFamily:"inherit"}}>
+                                  {(data?.branches||[]).filter(b=>b.id!==room.branch_id && b.useYn!==false).map(b=><option key={b.id} value={b.id}>{b.short||b.name}</option>)}
+                                </select>}
+                              </>;
                             })()}
                           </div>
                           {/* 담당자 교체 — 이 컬럼의 예약을 다른 직원에게 넘기기 */}
@@ -3511,22 +3541,6 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             }} style={{flex:1,padding:"7px 0",borderRadius:7,border:"1px solid "+T.gray400,background:T.gray100,color:T.text,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
                               오늘 휴무
                             </button>
-                            {/* 오늘 전체 이동 — 타지점으로 종일 배정 */}
-                            <select defaultValue="" onChange={(e)=>{
-                              e.stopPropagation();
-                              const targetBid = e.target.value;
-                              if (!targetBid) return;
-                              const targetBr = (data?.branches||[]).find(b=>b.id===targetBid);
-                              if (!confirm(`${room.staffId} 오늘(${selDate}) → ${targetBr?.short||targetBr?.name}(으)로 종일 이동할까요?\n(현재 지점의 예약은 미배정으로 옮겨집니다)`)) { e.target.value=""; return; }
-                              const overrideKey2 = room.staffId+"_"+selDate;
-                              const ovData = {segments:[{branchId: targetBid, from: null, until: null}], exclusive: true};
-                              setEmpBranchOverride(p=>({...p,[overrideKey2]:ovData}));
-                              syncOverrideToSch(room.staffId, selDate, ovData);
-                              setEmpMovePopup(null);
-                            }} style={{flex:1,padding:"7px 6px",borderRadius:7,border:"1px solid "+T.gray400,background:T.gray100,color:T.text,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                              <option value="">🚀 오늘 전체 이동 →</option>
-                              {(data?.branches||[]).filter(b=>b.id!==room.branch_id && b.useYn!==false).map(b=><option key={b.id} value={b.id}>{b.short||b.name}</option>)}
-                            </select>
                           </div>
                           {/* 프리랜서 컬럼 삭제 */}
                           {(() => {
