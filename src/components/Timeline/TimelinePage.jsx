@@ -1271,18 +1271,39 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       return merged;
     });
   }, []);
+  // sessionStorage 기반 임시 순서 override 트리거용 (남직원 이동 시 사용)
+  const [dailyOrderTick, setDailyOrderTick] = useState(0);
   const moveEmpCol = (branchId, empId, dir) => {
+    // 현재 보이는 칼럼 (렌더 기반)
+    const visibleIds = (allRoomsRef.current||[])
+      .filter(r => r.branch_id === branchId && r.staffId && r.isStaffCol)
+      .map(r => r.staffId);
+    const visIdx = visibleIds.indexOf(empId);
+    if (visIdx < 0) return;
+    const newIdx = visIdx + dir;
+    if (newIdx < 0 || newIdx >= visibleIds.length) return;
+    // 남직원 여부 — 본인 또는 swap 대상 중 한 명이라도 남직원이면 "그 날만" sessionStorage로 처리 (DB 변경 금지)
+    const swapEmpId = visibleIds[newIdx];
+    const isMaleEmp = (id) => {
+      const raw = empList.find(x => x.id === id);
+      return !!(raw?.isMale || raw?.gender === "M");
+    };
+    const sessionOnly = isMaleEmp(empId) || isMaleEmp(swapEmpId);
+    if (sessionOnly) {
+      const dayKey = `bliss_day_order_${selDate}_${branchId}`;
+      const newOrder = [...visibleIds];
+      [newOrder[visIdx], newOrder[newIdx]] = [newOrder[newIdx], newOrder[visIdx]];
+      try { sessionStorage.setItem(dayKey, JSON.stringify(newOrder)); } catch(e) {}
+      // 강제 리렌더 — state 자체는 변경 없음. 임시 버전 counter 사용
+      setDailyOrderTick(t => t + 1);
+      return;
+    }
+    // 일반 직원: 기존대로 DB 저장 order
     setEmpColOrder(prev => {
-      // prev(저장된 order)를 기준으로 swap 계산 — stale allRoomsRef 문제 회피
-      const visibleSet = new Set(
-        (allRoomsRef.current||[])
-          .filter(r => r.branch_id === branchId && r.staffId && r.isStaffCol)
-          .map(r => r.staffId)
-      );
       let order = [...(prev[branchId] || [])];
-      if (!order.includes(empId)) order.unshift(empId); // order에 없으면 앞에 추가 (그 후 swap)
+      if (!order.includes(empId)) order.unshift(empId);
       const idx = order.indexOf(empId);
-      // dir 방향으로 "오늘 보이는" 다음 직원 찾기 — 숨겨진 직원은 건너뛰고 swap
+      const visibleSet = new Set(visibleIds);
       let swapIdx = -1;
       if (dir > 0) {
         for (let i = idx + 1; i < order.length; i++) {
@@ -1380,6 +1401,28 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         });
         orderedStaff = [...baseStaff, ...guestStaff];
       }
+      // 🧔 남자직원 항상 맨 뒤로 (DB empColOrder 무관) — 단, 그 날짜만 적용된 세션 override(sessionStorage)가 있으면 그것 우선
+      try {
+        const dayKey = `bliss_day_order_${selDate}_${br.id}`;
+        const raw = sessionStorage.getItem(dayKey);
+        const dayOrder = raw ? JSON.parse(raw) : null;
+        if (Array.isArray(dayOrder) && dayOrder.length > 0) {
+          // 세션 override 순서 우선 + order에 없는 직원은 뒤에
+          const byId = new Map(orderedStaff.map(e => [e.id, e]));
+          const pinned = dayOrder.map(id => byId.get(id)).filter(Boolean);
+          const rest = orderedStaff.filter(e => !dayOrder.includes(e.id));
+          orderedStaff = [...pinned, ...rest];
+        } else {
+          // 기본: 남직원 isMale → 맨 뒤
+          const isMaleEmp = (id) => {
+            const raw = empList.find(x => x.id === id);
+            return !!(raw?.isMale || raw?.gender === "M");
+          };
+          const nonMale = orderedStaff.filter(e => !isMaleEmp(e.id));
+          const male    = orderedStaff.filter(e =>  isMaleEmp(e.id));
+          orderedStaff = [...nonMale, ...male];
+        }
+      } catch(e) {}
       staffRooms = orderedStaff.map(e => {
         const segments = getEmpActiveSegments(e.id, selDate, br.id);
         const firstSeg = segments && segments[0];
@@ -3806,8 +3849,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                           width: block._totalCols > 1 ? ((colW - 2) / block._totalCols) - 1 : undefined,
                           right: block._totalCols > 1 ? undefined : 1,
                           height:Math.max(h-1,10),
-                          background:isNaverCancelled?"#F5F5F5":isNaverUnassigned?T.warningLt:isNaverPending?`${color}15`:`${color}${bgAlpha}`,
-                          border:isNaverCancelled?"1.5px dashed #E53935":isNaverUnassigned?"1.5px dashed #FF9800":isNaverPending?`1.5px dashed ${color}`:"none",
+                          background:isNaverCancelled?T.warningLt:isNaverUnassigned?T.infoLt:isNaverPending?`${color}15`:`${color}${bgAlpha}`,
+                          border:isNaverCancelled?"1.5px dashed #E6A700":isNaverUnassigned?`1.5px dashed ${T.info}`:isNaverPending?`1.5px dashed ${color}`:"none",
                           borderRadius:4,padding:"4px 6px",overflow:"hidden",fontSize:blockFs,lineHeight:1.2,
                           boxShadow:isDrag?"none":"0 1px 4px rgba(0,0,0,.1)",
                           cursor:"pointer",zIndex:isDrag?0:3,transition:(isDrag||isBeingResized)?"none":"all .15s, box-shadow .2s",
@@ -3816,8 +3859,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                         {block.type==="reservation" && !block.isSchedule && <>
                           <div style={{display:"flex",alignItems:"center",gap:2,flexWrap:"wrap"}}>
                             {/* 태그 - 이름 앞에 */}
-                            {isNaverCancelled && <span style={{fontSize:Math.max(6,blockFs-2),padding:"1px 3px",borderRadius:T.radius.sm,background:"#E53935",color:T.bgCard,fontWeight:T.fw.bolder,lineHeight:1,flexShrink:0}}>취소</span>}
-                            {isNaverUnassigned && <span style={{fontSize:Math.max(6,blockFs-2),padding:"1px 3px",borderRadius:T.radius.sm,background:T.orange,color:T.bgCard,fontWeight:T.fw.bolder,lineHeight:1,flexShrink:0}}>미배정</span>}
+                            {isNaverCancelled && <span style={{fontSize:Math.max(6,blockFs-2),padding:"1px 3px",borderRadius:T.radius.sm,background:T.warning,color:T.bgCard,fontWeight:T.fw.bolder,lineHeight:1,flexShrink:0}}>취소</span>}
+                            {isNaverUnassigned && <span style={{fontSize:Math.max(6,blockFs-2),padding:"1px 3px",borderRadius:T.radius.sm,background:T.info,color:T.bgCard,fontWeight:T.fw.bolder,lineHeight:1,flexShrink:0}}>미배정</span>}
                             {isNaverPending && !isNaverUnassigned && <span style={{fontSize:Math.max(6,blockFs-2),padding:"1px 3px",borderRadius:T.radius.sm,background:T.orange,color:T.bgCard,fontWeight:T.fw.bolder,lineHeight:1,flexShrink:0,animation:"pendingBlink 1.5s infinite"}}>대기</span>}
                             {effectiveNaverColShow["태그"] !== false && block.selectedTags?.slice(0,3).map(tid=>{
                               const tg=tags.find(t=>t.id===tid);
