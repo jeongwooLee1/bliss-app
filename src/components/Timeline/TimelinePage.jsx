@@ -677,20 +677,15 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         if (emp && emp.branch_id === branchId && !working.some(w => w.id === e.id)) {
           const exclusive = ov.exclusive === true;
           if (exclusive) {
-            // 이동(전체 이관): 내용 있으면 비활성 칼럼 유지(이름 숨김), 없으면 제거
-            if (hasContent(e.id)) working.push({...e, _movedOut: true, _hideName: true});
+            // 전체 이동: 컬럼 제거 (예약은 아래 재배치 로직에서 자동으로 미배정 컬럼으로 이동)
           } else {
             // 지원(부분 이동): 원래 지점에 남은 근무 구간 있으면 활성 칼럼으로 표시
             const range = getEmpActiveRange(e.id, date, branchId);
-            // 실제 근무 구간(0분 세그먼트는 제외)
             const hasActiveRange = range && (range.from || range.until) && range.from !== range.until;
             if (hasActiveRange) {
               working.push({...e, _movedOut: false});
-            } else if (hasContent(e.id)) {
-              // 남은 구간은 없지만 예약 내용 있음 → 비활성 칼럼 유지
-              working.push({...e, _movedOut: true, _hideName: false});
             }
-            // 둘 다 없으면 칼럼 제거
+            // 남은 구간 없으면 컬럼 제거 — 예약은 미배정으로
           }
         }
         return;
@@ -703,12 +698,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         return;
       }
 
-      // 타지점으로 지원 중: 원래 지점에 내용 있으면 칼럼 유지(이름 숨김), 없으면 제거
+      // 타지점으로 지원 중: 컬럼 제거 (예약은 미배정으로 자동 재배치)
       if (supportBid) {
-        const emp = BASE_EMP_LIST.find(b => b.id === e.id);
-        if (emp && emp.branch_id === branchId) {
-          if (hasContent(e.id)) working.push({...e, _movedOut: true, _hideName: true});
-        }
         return;
       }
 
@@ -3765,8 +3756,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                           width: block._totalCols > 1 ? ((colW - 2) / block._totalCols) - 1 : undefined,
                           right: block._totalCols > 1 ? undefined : 1,
                           height:Math.max(h-1,10),
-                          background:isNaverCancelled?T.warningLt:isNaverUnassigned?T.warningLt:isNaverPending?`${color}15`:`${color}${bgAlpha}`,
-                          border:isNaverCancelled?"1.5px dashed #E6A700":isNaverUnassigned?"1.5px dashed #FF9800":isNaverPending?`1.5px dashed ${color}`:"none",
+                          background:isNaverCancelled?"#F5F5F5":isNaverUnassigned?T.warningLt:isNaverPending?`${color}15`:`${color}${bgAlpha}`,
+                          border:isNaverCancelled?"1.5px dashed #E53935":isNaverUnassigned?"1.5px dashed #FF9800":isNaverPending?`1.5px dashed ${color}`:"none",
                           borderRadius:4,padding:"4px 6px",overflow:"hidden",fontSize:blockFs,lineHeight:1.2,
                           boxShadow:isDrag?"none":"0 1px 4px rgba(0,0,0,.1)",
                           cursor:"pointer",zIndex:isDrag?0:3,transition:(isDrag||isBeingResized)?"none":"all .15s, box-shadow .2s",
@@ -3775,7 +3766,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                         {block.type==="reservation" && !block.isSchedule && <>
                           <div style={{display:"flex",alignItems:"center",gap:2,flexWrap:"wrap"}}>
                             {/* 태그 - 이름 앞에 */}
-                            {isNaverCancelled && <span style={{fontSize:Math.max(6,blockFs-2),padding:"1px 3px",borderRadius:T.radius.sm,background:T.warning,color:T.bgCard,fontWeight:T.fw.bolder,lineHeight:1,flexShrink:0}}>취소</span>}
+                            {isNaverCancelled && <span style={{fontSize:Math.max(6,blockFs-2),padding:"1px 3px",borderRadius:T.radius.sm,background:"#E53935",color:T.bgCard,fontWeight:T.fw.bolder,lineHeight:1,flexShrink:0}}>취소</span>}
                             {isNaverUnassigned && <span style={{fontSize:Math.max(6,blockFs-2),padding:"1px 3px",borderRadius:T.radius.sm,background:T.orange,color:T.bgCard,fontWeight:T.fw.bolder,lineHeight:1,flexShrink:0}}>미배정</span>}
                             {isNaverPending && !isNaverUnassigned && <span style={{fontSize:Math.max(6,blockFs-2),padding:"1px 3px",borderRadius:T.radius.sm,background:T.orange,color:T.bgCard,fontWeight:T.fw.bolder,lineHeight:1,flexShrink:0,animation:"pendingBlink 1.5s infinite"}}>대기</span>}
                             {effectiveNaverColShow["태그"] !== false && block.selectedTags?.slice(0,3).map(tid=>{
