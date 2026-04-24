@@ -76,7 +76,7 @@ export default function EditCellModal({
             {s} {active ? '✓' : ''}
           </button>
         })}
-        {BRANCHES_SCH.map(b => {
+        {BRANCHES_SCH.filter(b => b.key !== emp.branch && b.id !== emp.branch).map(b => {
           const sv = `지원(${b.name})`
           const sc = getSColor(sv)
           const active = cur === sv

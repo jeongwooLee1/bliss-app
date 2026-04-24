@@ -152,18 +152,23 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   const isReadOnly = item?.readOnly || false;
   const branchId = item?.bid || selBranch;
   const branchRooms = (data.rooms||[]).filter(r=>r.branch_id===branchId);
+  // 이 지점 base 소속 직원 (fallback 용)
   const allBranchStaff = (data.staff||[]).filter(s=>s.bid===branchId);
+  // workingStaffIds는 TimelinePage가 getWorkingStaff로 넘긴 "오늘 이 지점 타임라인 컬럼에 보이는 직원 전체"
+  // base 지점 필터링 없이 그대로 사용해야 지원·이동 직원도 포함됨
   const branchStaff = (() => {
     let list = data.workingStaffIds
-      ? allBranchStaff.filter(s => data.workingStaffIds.includes(s.id))
+      ? (data.staff||[]).filter(s => data.workingStaffIds.includes(s.id))
       : allBranchStaff;
-    // 전달된 item.staffId는 지원/근무외라도 항상 포함
+    // item.staffId가 있는데 목록에 없으면 추가 (근무외 지원 등)
     if (item?.staffId && !list.some(s => s.id === item.staffId)) {
       const extra = (data.staff||[]).find(s => s.id === item.staffId)
         || { id: item.staffId, bid: branchId, dn: item.staffId, name: item.staffId, branch_id: branchId };
       list = [extra, ...list];
     }
-    return list;
+    // 중복 제거 (id 기준)
+    const seen = new Set();
+    return list.filter(s => !seen.has(s.id) && seen.add(s.id));
   })();
   const fmt = (v) => v==null?"":Number(v).toLocaleString();
 
@@ -974,13 +979,14 @@ ${naverText}
                 <I name="mapPin" size={11} color={T.gray400}/>
                 <select className="res-room-sel fld-sel" style={{flex:"1 1 auto",minWidth:100}} value={`${f.roomId}|${f.staffId}`} onChange={e=>{const [r,s]=e.target.value.split("|");set("roomId",r);set("staffId",s)}}>
                   <option value="|">미배정</option>
-                  {branchRooms.map(rm => branchStaff.map(st => {
+                  {branchStaff.map(st => {
                     const br = (data.branches||[]).find(b=>b.id===branchId);
                     const brName = br?.short||br?.name||"";
-                    const stName = st.dn ? st.dn.replace(brName,"").trim() : "";
+                    const stName = st.dn ? st.dn.replace(brName,"").trim() : (st.name || st.id);
                     const label = stName ? `${brName}-${stName}` : brName;
-                    return <option key={rm.id+st.id} value={`${rm.id}|${st.id}`}>{label}</option>;
-                  }))}
+                    const defRoom = branchRooms[0]?.id || "";
+                    return <option key={st.id} value={`${defRoom}|${st.id}`}>{label}</option>;
+                  })}
                 </select>
               </div>
             </div>
@@ -1170,13 +1176,14 @@ ${naverText}
                 <I name="mapPin" size={11} color={T.gray400}/>
                 <select className="res-room-sel fld-sel" style={{flex:"1 1 auto",minWidth:100}} value={`${f.roomId}|${f.staffId}`} onChange={e=>{const [r,s]=e.target.value.split("|");set("roomId",r);set("staffId",s)}}>
                   <option value="|">미배정</option>
-                  {branchRooms.map(rm => branchStaff.map(st => {
+                  {branchStaff.map(st => {
                     const br = (data.branches||[]).find(b=>b.id===branchId);
                     const brName = br?.short||br?.name||"";
-                    const stName = st.dn ? st.dn.replace(brName,"").trim() : "";
+                    const stName = st.dn ? st.dn.replace(brName,"").trim() : (st.name || st.id);
                     const label = stName ? `${brName}-${stName}` : brName;
-                    return <option key={rm.id+st.id} value={`${rm.id}|${st.id}`}>{label}</option>;
-                  }))}
+                    const defRoom = branchRooms[0]?.id || "";
+                    return <option key={st.id} value={`${defRoom}|${st.id}`}>{label}</option>;
+                  })}
                 </select>
               </div>
             </div>
