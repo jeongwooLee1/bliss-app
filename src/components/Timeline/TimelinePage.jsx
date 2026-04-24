@@ -15,6 +15,18 @@ import useTouchDragSort from '../../hooks/useTouchDragSort'
 const _mc = (fn) => { if(fn) fn(); };
 const uid = genId;
 
+// 지점별 은은한 배경색 팔레트 — 교차 배경 디자인용 (유저 요청: 최대한 은은)
+const BRANCH_BG_SOFT = {
+  'br_4bcauqvrb': '#F4F7FA', // 강남 — 연한 스카이
+  'br_wkqsxj6k1': '#FAF6F1', // 왕십리 — 연한 베이지
+  'br_l6yzs2pkq': '#F7F4FA', // 홍대 — 연한 라벤더
+  'br_k57zpkbx1': '#F4FAF6', // 마곡 — 연한 민트
+  'br_ybo3rmulv': '#FAF4F4', // 용산 — 연한 로즈
+  'br_lfv2wgdf1': '#F7FAF4', // 잠실 — 연한 라임
+  'br_g768xdu4w': '#F9F8F4', // 위례 — 연한 샌드
+  'br_xu60omgdf': '#F4F9FA', // 천호 — 연한 민트블루
+};
+
 // 페이지 이동 후 돌아왔을 때 스크롤 위치 복원용 (모듈 레벨 - 컴포넌트 언마운트 후에도 유지)
 // 스크롤 위치 저장/복원 — sessionStorage 연동 (새로고침 시에도 유지)
 const _scrollLoad = () => {
@@ -1418,7 +1430,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     });
   });
 
-  const allRooms = branchesToShow.flatMap(br => {
+  const allRooms = branchesToShow.flatMap((br, brIdx) => {
     const baseNaver = br.naverEmail ? (br.naverColCount || 1) : 0;
     const extraCount = extraCols[`${br.id}__${selDate}`] || 0;
     const naverCount = baseNaver + extraCount;
@@ -1427,7 +1439,9 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       name: naverCount > 1 ? `미배정${i+1}` : "미배정",
       branch_id: br.id, branchName: br.short||br.name||"",
       isNaver: true,
-      isExtraCol: i >= baseNaver,  // 제거 가능한 추가 칼럼 표시
+      isExtraCol: i >= baseNaver,
+      _brIdx: brIdx,
+      _isFirstOfBranch: i === 0,
     }));
     // 출근표 기반 직원 컬럼 (커스텀 순서 적용)
     const rawStaff = getWorkingStaff(br.id, selDate);
@@ -2865,14 +2879,20 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
               });
             })();
             const isNewBranch = ci === 0 || room.branch_id !== allRooms[ci-1]?.branch_id;
-            const branchColor = (data.branchSettings || []).find(bs => bs.id === room.branch_id)?.color || "";
+            // D안: 지점별 은은한 배경 + 첫 컬럼에만 지점 앵커 텍스트
+            const softBg = BRANCH_BG_SOFT[room.branch_id] || T.bgCard;
+            const isFirstOfBranch = room._isFirstOfBranch || (ci === 0 || allRooms[ci-1]?.branch_id !== room.branch_id);
             return (
-              <div key={room.id} className="tl-room-col" data-branch-id={room.branch_id} style={{width:colW,flexShrink:0,borderLeft:room.isNaver?"2px solid #A5D6A7":(isNewBranch&&ci>0?"none":"1px solid #f0f0f0"),background:room.isNaver?T.successLt:(branchColor||T.bgCard),marginLeft:isNewBranch&&ci>0?4:0,boxShadow:isNewBranch&&ci>0?"-4px 0 8px rgba(0,0,0,.06)":room.isNaver?"inset 2px 0 4px rgba(76,175,80,.08)":"none",position:"relative"}}>
+              <div key={room.id} className="tl-room-col" data-branch-id={room.branch_id} style={{width:colW,flexShrink:0,borderLeft:isNewBranch&&ci>0?"none":"1px solid #f0f0f0",background:room.isBlank?T.gray100:softBg,marginLeft:isNewBranch&&ci>0?4:0,boxShadow:isNewBranch&&ci>0?"-4px 0 8px rgba(0,0,0,.04)":"none",position:"relative"}}>
                 {/* 이동/지원 직원: 휴무 스타일 오버레이 (배경만, 블록 클릭은 허용) */}
                 {room.isMovedOut && <div style={{position:"absolute",top:headerH,left:0,right:0,bottom:0,background:"rgba(0,0,0,.06)",borderTop:"2px dashed rgba(0,0,0,.12)",zIndex:1,pointerEvents:"none"}}/>}
-                {/* Room Header - sticky */}
-                <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:10,background:room.isBlank?T.gray100:room.isNaver?T.successLt:(branchColor||T.bgCard),display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",lineHeight:1.2}}>
-                  <span className="tl-room-name" style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:room.isNaver?T.successDk:T.text}}>{room.branchName}</span>
+                {/* Room Header - sticky. 지점명은 첫 컬럼에만 앵커로 (D안) */}
+                <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:10,background:room.isBlank?T.gray100:softBg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",lineHeight:1.2}}>
+                  {isFirstOfBranch && !room.isBlank && (
+                    <span style={{position:"absolute",top:2,left:6,fontSize:9,fontWeight:800,color:"#555",background:"rgba(255,255,255,.75)",padding:"1px 5px",borderRadius:3,letterSpacing:0.2,pointerEvents:"none"}}>
+                      🏢 {room.branchName}
+                    </span>
+                  )}
                   {room.isBlank ? (
                     room.isAddCol ? (
                       <div style={{position:"relative"}}>
@@ -3647,8 +3667,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                       </>)}
                     </div>
                   ) : (
-                    <span className="tl-room-sub" style={{fontSize:T.fs.nano,color:room.isNaver?T.successDk:T.gray500,display:"inline-flex",alignItems:"center",gap:3}}>
-                      {room.isNaver?<I name="naver" size={11}/>:""}{room.name}
+                    <span className="tl-room-sub" style={{fontSize:T.fs.nano,color:room.isNaver?"#FF9800":T.gray500,display:"inline-flex",alignItems:"center",gap:3,fontWeight:room.isNaver?700:400}}>
+                      {room.name}
                       {/* 프리랜서 삭제 버튼 */}
                       {room.isStaffCol && room.staffId && (() => {
                         const emp = empList.find(e => e.id === room.staffId);
