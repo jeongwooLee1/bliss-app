@@ -1052,9 +1052,20 @@ ${naverText}
                     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                       {editingCust ? (
                         <>
-                          <input value={f.custName||""} onChange={e=>{set("custName",e.target.value);if(f.custId)set("custId",null)}} placeholder="이름"
-                            style={{flex:"0 1 80px",minWidth:50,fontSize:14,fontWeight:700,color:"#1a1a2e",border:"1px solid #ccc",borderRadius:6,padding:"4px 8px",background:"#fff",fontFamily:"inherit",outline:"none"}}/>
-                          <input value={f.custPhone||""} onChange={e=>{set("custPhone",e.target.value.replace(/[^0-9]/g,""));if(f.custId)set("custId",null)}} placeholder="연락처"
+                          <input value={f.custName||""} onChange={e=>{
+                              const v=e.target.value;
+                              set("custName",v);
+                              if(f.custId)set("custId",null);
+                              // 기존 고객 검색 드롭다운 트리거
+                              setCustSearch(v); setShowCustDropdown(true);
+                            }} placeholder="이름 (입력 시 기존 고객 검색)"
+                            style={{flex:"0 1 120px",minWidth:60,fontSize:14,fontWeight:700,color:"#1a1a2e",border:"1px solid #ccc",borderRadius:6,padding:"4px 8px",background:"#fff",fontFamily:"inherit",outline:"none"}}/>
+                          <input value={f.custPhone||""} onChange={e=>{
+                              const v=e.target.value.replace(/[^0-9]/g,"");
+                              set("custPhone",v);
+                              if(f.custId)set("custId",null);
+                              setCustSearch(v); setShowCustDropdown(true);
+                            }} placeholder="연락처"
                             style={{flex:"1 1 110px",minWidth:90,fontSize:13,color:T.primary,fontWeight:500,border:"1px solid #ccc",borderRadius:6,padding:"4px 8px",background:"#fff",fontFamily:"inherit",outline:"none"}}/>
                         </>
                       ) : (
