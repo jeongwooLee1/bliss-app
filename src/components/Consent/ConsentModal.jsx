@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import QRCode from 'qrcode'
+import QRCode from 'qrcode/lib/browser'
 import { T } from '../../lib/constants'
 import { sb, SB_URL, sbHeaders } from '../../lib/sb'
 

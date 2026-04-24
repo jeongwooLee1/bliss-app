@@ -25,6 +25,7 @@ function TimelineSettings({
   startHour, setStartHour, endHour, setEndHour,
   timeUnit, setTimeUnit,
   statusClr, setStatusClr,
+  salesHighlight = { min: 0, color: "#FFD700" }, setSalesHighlight,
   tlSharedKeys = {}, setTlSharedKey,
 }) {
   // 전지점 공통 토글(🌐)은 대표/관리자(isMaster)만 변경 가능. 일반 직원은 아예 안 보임
@@ -34,6 +35,24 @@ function TimelineSettings({
       🌐
     </label>
   ) : null;
+
+  // 공통 닫기 애니메이션 (overlay click / ESC / X 버튼 모두 사용)
+  const closeWithAnim = React.useCallback(() => {
+    const p = document.querySelector('[data-settings-panel]');
+    const o = document.querySelector('[data-settings-ov]');
+    if (p) { p.style.transition = 'transform .3s ease-out'; p.style.transform = 'translateY(100%)'; }
+    if (o) { o.style.transition = 'opacity .3s'; o.style.opacity = '0'; }
+    setTimeout(() => setShowSettings(false), 300);
+  }, [setShowSettings]);
+
+  // ESC 키로 닫기
+  React.useEffect(() => {
+    if (!showSettings) return;
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeWithAnim(); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showSettings, closeWithAnim]);
+
   if (!showSettings) return null;
 
   const handleTouchStart = e => {
@@ -70,13 +89,7 @@ function TimelineSettings({
   };
 
   return createPortal(<>
-    <div style={{position:"fixed",inset:0,width:"100vw",height:"100vh",zIndex:99,background:"rgba(0,0,0,.3)",animation:"ovFadeIn .25s"}} onClick={()=>{
-      const p=document.querySelector('[data-settings-panel]');
-      const o=document.querySelector('[data-settings-ov]');
-      if(p){p.style.transition='transform .3s ease-out';p.style.transform='translateY(100%)';}
-      if(o){o.style.transition='opacity .3s';o.style.opacity='0';}
-      setTimeout(()=>setShowSettings(false),300);
-    }} data-settings-ov/>
+    <div style={{position:"fixed",inset:0,width:"100vw",height:"100vh",zIndex:99,background:"rgba(0,0,0,.3)",animation:"ovFadeIn .25s"}} onClick={closeWithAnim} data-settings-ov/>
     <div
       data-settings-panel
       onTouchStart={handleTouchStart}
@@ -86,9 +99,13 @@ function TimelineSettings({
       background:T.bgCard,borderRadius:"16px 16px 0 0",padding:"20px 20px calc(32px + 56px + env(safe-area-inset-bottom))",boxShadow:"0 -8px 32px rgba(0,0,0,.15)",zIndex:100,
       maxHeight:"80vh",overflowY:"auto",overflowX:"hidden",animation:"bottomSheet .4s cubic-bezier(.22,1,.36,1)",willChange:"transform"}}>
       <div style={{width:36,height:4,borderRadius:T.radius.sm,background:T.gray300,margin:"0 auto 16px",cursor:"grab"}}/>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6,gap:8}}>
         <div style={{fontSize:T.fs.md,fontWeight:T.fw.bolder,color:T.text}}><I name="settings" size={14}/> 타임라인 설정</div>
-        {isMaster && <div style={{fontSize:9,color:T.textMuted}}>🌐 = 전 지점 공통 적용</div>}
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          {isMaster && <div style={{fontSize:9,color:T.textMuted}}>🌐 = 전 지점 공통 적용</div>}
+          <button onClick={closeWithAnim} title="닫기 (ESC)"
+            style={{width:32,height:32,border:"none",background:T.gray100,borderRadius:"50%",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0,color:T.gray600,fontSize:18,lineHeight:1,fontFamily:"inherit",fontWeight:600}}>×</button>
+        </div>
       </div>
       {/* 지점 보기 토글 - staff만 */}
       {!isMaster && accessibleBids.length > userBranches.length && (
@@ -143,6 +160,36 @@ function TimelineSettings({
               color:timeUnit===u?T.bgCard:T.gray600,fontWeight:timeUnit===u?700:400,cursor:"pointer"}}>{u}분</button>)}
         </div>
       </div>
+
+      {setSalesHighlight && <div style={{marginTop:8,background:T.gray100,borderRadius:T.radius.lg,padding:"10px 12px"}}>
+        <div style={{fontSize:T.fs.sm,color:T.gray700,fontWeight:T.fw.bold,marginBottom:6,display:"inline-flex",alignItems:"center"}}>매출 강조 구간<ShareCheck k="hl"/></div>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <span style={{fontSize:T.fs.xs,color:T.textMuted}}>금액 ≥</span>
+          <input type="number" min={0} step={10000} value={salesHighlight.min||0}
+            onChange={e=>setSalesHighlight({min: Math.max(0, Number(e.target.value)||0)})}
+            style={{width:110,padding:"6px 8px",fontSize:T.fs.sm,border:"1px solid #ddd",borderRadius:T.radius.md,fontFamily:"inherit",textAlign:"right"}}/>
+          <span style={{fontSize:T.fs.xs,color:T.textMuted}}>원</span>
+          <span style={{fontSize:T.fs.xs,color:T.textMuted,marginLeft:8}}>색상</span>
+          <input type="color" value={salesHighlight.color||"#FFD700"}
+            onChange={e=>setSalesHighlight({color: e.target.value})}
+            style={{width:32,height:28,border:"1px solid #ddd",borderRadius:T.radius.md,cursor:"pointer",padding:1}}/>
+          <EyeDrop onPick={c=>setSalesHighlight({color:c})} size={28}/>
+          {salesHighlight.min > 0 && <button onClick={()=>setSalesHighlight({min:0})}
+            style={{padding:"4px 10px",fontSize:T.fs.xs,border:"1px solid "+T.border,borderRadius:T.radius.md,background:T.bgCard,color:T.gray600,cursor:"pointer",fontFamily:"inherit"}}>끄기</button>}
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8}}>
+          <span style={{fontSize:T.fs.xs,color:T.textMuted}}>적용 방식</span>
+          {[{k:"border",label:"테두리"},{k:"fill",label:"채우기"}].map(opt => {
+            const on = (salesHighlight.mode || "border") === opt.k;
+            return <button key={opt.k} onClick={()=>setSalesHighlight({mode: opt.k})}
+              style={{padding:"4px 12px",fontSize:T.fs.xs,border:"1px solid "+(on?T.primary:"#ddd"),borderRadius:T.radius.md,
+                background:on?T.primary:T.bgCard,color:on?"#fff":T.gray600,fontWeight:on?700:500,cursor:"pointer",fontFamily:"inherit"}}>{opt.label}</button>;
+          })}
+        </div>
+        <div style={{fontSize:T.fs.xxs,color:T.textMuted,marginTop:4}}>
+          {salesHighlight.min > 0 ? `매출 총합 ${Number(salesHighlight.min).toLocaleString()}원 이상 예약 블록에 ${(salesHighlight.mode||"border")==="fill"?"배경 채우기":"테두리·발광"} 효과` : "0원 = 비활성"}
+        </div>
+      </div>}
 
       <div style={{marginTop:8}}>
         <span style={{fontSize:T.fs.sm,color:T.gray700,fontWeight:T.fw.bold,marginBottom:6,display:"inline-flex",alignItems:"center"}}>예약상태 색상<ShareCheck k="sc"/></span>

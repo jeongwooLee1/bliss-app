@@ -650,13 +650,6 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
                           })}
                           </tbody>
                         </table>
-                        {/* 매출 전체 편집 버튼 — SaleForm 재사용 */}
-                        <div style={{padding:"8px 10px",borderTop:"1px solid "+T.border,background:T.gray100,display:"flex",justifyContent:"flex-end",gap:6}} onClick={e=>e.stopPropagation()}>
-                          <button onClick={()=>openFullEdit(s)}
-                            style={{padding:"6px 14px",fontSize:T.fs.xs,fontWeight:T.fw.bold,borderRadius:6,border:"1.5px solid "+T.primary,background:T.primaryLt||T.bgCard,color:T.primary,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:4}}>
-                            ✏️ 매출 전체 편집 (할인·보유권·포인트 포함)
-                          </button>
-                        </div>
                       </div>;
                     })()}
                     {/* 메모 — 상세 페이지 전용, 편집 가능 */}

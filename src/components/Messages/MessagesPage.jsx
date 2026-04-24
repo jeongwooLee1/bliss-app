@@ -29,12 +29,12 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   const [aiLoading, setAiLoading] = useState(false);
   const [aiBookLoading, setAiBookLoading] = useState(false);
   const [autoTranslate, setAutoTranslate] = useState(true);
-  // pendingChat: 예약 모달에서 넘어온 대화방 자동 선택
+  // pendingChat: 예약 모달에서 넘어온 대화방 자동 선택 — 이미 열린 sel이 있어도 강제 교체
   useEffect(() => {
-    if (pendingChat && msgs.length > 0 && !sel) {
-      setSel({ user_id: pendingChat.user_id, channel: pendingChat.channel, account_id: pendingChat.account_id });
-      if (onPendingChatDone) onPendingChatDone();
-    }
+    if (!pendingChat) return;
+    // msgs가 아직 비었으면 스레드에 없는 것처럼 보일 수 있으니 강제로 먼저 세팅
+    setSel({ user_id: pendingChat.user_id, channel: pendingChat.channel, account_id: pendingChat.account_id });
+    if (msgs.length > 0 && onPendingChatDone) onPendingChatDone();
   }, [pendingChat, msgs.length]);
   const [aiKoDraft, setAiKoDraft] = useState("");
   const [aiAutoChannels, setAiAutoChannels] = useState({});
@@ -509,13 +509,42 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
         const hasKorean = /[\uAC00-\uD7A3\u1100-\u11FF]/.test(lastIn.message_text);
         const lang = hasKorean ? "ko" : "en"; // 한글 없으면 영어로 간주
         if(lang!=="ko"){
-          const tRes=await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="+getGeminiKey(),{
-            method:"POST",headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({contents:[{parts:[{text:"Translate the following Korean text to "+lang+" naturally. Output translation only: \""+reply+"\""}]}]})
-          });
-          if(tRes.status===429){ await sendMsg(reply.trim()); return; }
-          const td=await tRes.json();
-          text=td.candidates?.[0]?.content?.parts?.[0]?.text||reply;
+          // 최근 6건의 대화 맥락 (Staff/Customer 구분) — 번역 품질 향상용
+          const contextLines = (convo||[]).slice(-6).map(m => {
+            const who = m.direction === "out" ? "Staff" : "Customer";
+            const txt = (m.translated_text || m.message_text || "").toString().replace(/\s+/g," ").slice(0,180);
+            return txt ? `${who}: ${txt}` : "";
+          }).filter(Boolean).join("\n");
+          // 서버 Claude(Haiku) 엔드포인트 호출 — 실패 시 Gemini 폴백
+          let translated = "";
+          try {
+            const sRes = await fetch("https://blissme.ai/translate-outgoing", {
+              method: "POST",
+              headers: { "Content-Type": "application/json; charset=utf-8" },
+              body: JSON.stringify({ text: reply, target_lang: lang, context: contextLines })
+            });
+            if (sRes.ok) {
+              const sd = await sRes.json();
+              translated = (sd?.translated || "").trim();
+            }
+          } catch(e) { /* 네트워크 실패 시 Gemini 폴백 */ }
+          if (!translated) {
+            const targetLang = lang === "en" ? "English" : lang === "ja" ? "Japanese" : lang === "zh" ? "Chinese" : lang;
+            const system = `You are a translator for a waxing salon chat. Translate Korean staff replies into natural, fluent ${targetLang}. Preserve intent, names, numbers, emojis. No added greetings. Output ONLY the translation.`;
+            const user = `[Conversation so far]\n${contextLines || "(no prior messages)"}\n\n[Korean staff reply to translate into ${targetLang}]\n${reply}\n\n${targetLang} translation only:`;
+            const tRes=await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="+getGeminiKey(),{
+              method:"POST",headers:{"Content-Type":"application/json"},
+              body:JSON.stringify({
+                systemInstruction:{parts:[{text:system}]},
+                contents:[{parts:[{text:user}]}],
+                generationConfig:{temperature:0.3}
+              })
+            });
+            if(tRes.status===429){ await sendMsg(reply.trim()); return; }
+            const td=await tRes.json();
+            translated=td.candidates?.[0]?.content?.parts?.[0]?.text||reply;
+          }
+          text = String(translated).replace(/^["'`]+|["'`]+$/g, "").trim();
         }
       }
       await sendMsg(text);

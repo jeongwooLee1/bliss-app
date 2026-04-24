@@ -195,6 +195,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   };
 
   const [showSaleForm, setShowSaleForm] = useState(false);
+  const [existingSaleDetails, setExistingSaleDetails] = useState(null);
   const [isSchedule, setIsSchedule] = useState(item?.isSchedule || false);
   // 🔒 race-condition 방어: 모달 오픈 시점의 네이버 관리 필드 스냅샷.
   //   네이버 확정 이메일 처리로 서버가 status='reserved' 저장한 뒤,
@@ -782,6 +783,19 @@ ${naverText}
     } catch { return false; }
   }, [existingSale]);
 
+  // 매출확인(viewOnly) 모드용 sale_details 로드 — SaleForm 이 실제 저장값으로 프리필되도록
+  React.useEffect(() => {
+    if (!existingSale?.id) { setExistingSaleDetails(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await sb.get("sale_details", `&sale_id=eq.${existingSale.id}&order=id.asc`);
+        if (!cancelled) setExistingSaleDetails(Array.isArray(rows) ? rows : []);
+      } catch(e) { if (!cancelled) setExistingSaleDetails([]); }
+    })();
+    return () => { cancelled = true; };
+  }, [existingSale?.id]);
+
   // 매출 취소 — 당일 등록분만 가능. 연관 트랜잭션 전부 롤백.
   const handleCancelSale = async () => {
     if (!existingSale?.id) return;
@@ -850,7 +864,9 @@ ${naverText}
 
   if (showSaleForm) {
     const saleReservation = existingSale
-      ? {...f, ...existingSale, saleMemo:existingSale.memo||"", _existingSale:existingSale}
+      ? {...f, ...existingSale, saleMemo:existingSale.memo||"",
+         _prefill: { existingDetails: existingSaleDetails || [], existingSaleId: existingSale.id },
+         _existingSale:existingSale}
       : f;
     // 기존 매출 있으면 읽기전용 모드 — 중복 INSERT 방지 + 수정 차단 (수정은 매출관리에서만)
     return <DetailedSaleForm reservation={saleReservation} branchId={branchId} onSubmit={handleSaleSubmit} onClose={() => setShowSaleForm(false)} data={data} setData={setData}

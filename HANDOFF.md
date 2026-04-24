@@ -1,11 +1,128 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.60** (https://blissme.ai/version.txt) — 2026-04-24 배포 완료
+- **라이브: v3.7.76** (https://blissme.ai/version.txt) — 2026-04-24 배포 완료
+
+## Gmail Pub/Sub Push 복구 (2026-04-24 23:58 KST)
+- **증상**: Apr 22 이후 gmail-push 로그 0건 → watch 자연 만료 (TTL 7일)
+- **근본 원인**: watch 자동 갱신 로직 부재 (서버 코드에 없음)
+- **복구 조치**:
+  - GCP `bliss-492906`: Gmail API + Pub/Sub API 활성화
+  - OAuth 클라이언트 "Bliss Gmail Push" (Desktop) 생성 → 데스크톱 OAuth 2.0
+  - OAuth 동의 화면 테스트 유저: housewaxing@gmail.com, cripiss@naver.com 추가
+  - Pub/Sub topic `gmail-push` + `gmail-api-push@system.gserviceaccount.com` Publisher 권한
+  - Push subscription `gmail-push-sub` → `https://blissme.ai/gmail-push`
+  - `users.watch()` 호출 (server 쪽도 재등록 확인)
+- **자동 갱신 cron**: `0 4 */6 * * /home/ubuntu/naver-sync/gmail_push/renew_watch.sh` (6일마다 새벽 4시). 실패 시 텔레그램 알림
+- **배포 경로**: `/home/ubuntu/naver-sync/gmail_push/{setup_watch.py,renew_watch.sh,client_secret.json,token.json}`
+- **검증**: 서버 로그 `[gmail-push] msgId=...` + `POST /gmail-push 204` 정상 수신
+- **주의**: `client_secret.json` + `token.json` 보안 중요 — 서버에만 저장, 외부 유출 금지
+
+## v3.7.76 (2026-04-24)
+- **회원가 동시구매 로직 **실제로** 작동하도록 수정** — `const` 바인딩 TDZ는 매 렌더마다 적용되므로, 상단에서 `items`를 즉시 참조하는 `_safeItemsSome(...)` 호출은 매 렌더에서 catch되어 항상 false 반환하는 치명적 버그였음.
+- **수정**: items 접근을 lazy 함수(`_hasAnnualInCart()`/`_hasPrepaidInCart()`)로 감싸서, 함수가 호출되는 시점(JSX 렌더·effect 내부)엔 이미 `items`가 선언된 후라 정상 접근. `isMemberCustomer`는 `_computeIsMemberCustomer()`로 계산하되 호출을 `useState(items)` 이후로 이동.
+
+## v3.7.75 (2026-04-24)
+- **TDZ 핫픽스(불완전)** — `_safeItemsSome` try/catch 래퍼 도입. 크래시는 막았지만 매 렌더 TDZ로 false 반환하는 부작용이 남아있었음 → v3.7.76에서 근본 수정.
+
+## v3.7.74 (2026-04-24)
+- **연간회원권·선불권 동시 구매 시 즉시 회원가 적용** — SaleForm `isMemberCustomer`/`isMemberPriceFor`에 신규 구매 감지 추가
+  - `items`에 `_isAnnualSvcMP` 매칭 시술 체크되면 `_newSaleAnnualGrants=true` → 모든 시술 회원가
+  - 선불권 신규 구매: 구매금액 ≥ 시술 회원가일 때 그 시술만 회원가
+  - `_excludedSvcNames`(바프권 등) 신규 구매는 자격 부여 안 함
+  - 기존 `useEffect([isMemberCustomer, gender])`가 체크된 시술 가격 자동 재계산
+
+## 🚧 PENDING (다음 세션 이어받을 것)
+
+### 매출등록 시 알림톡 자동발송 구현 (미구현)
+**현재 상태**: 관리설정의 on/off + 템플릿은 설정돼 있지만 **SaleForm에 `queueAlimtalk` 호출이 없음** → 큐에 안 쌓여 발송 안 됨.
+
+작동 중 ✓: `rsv_confirm`, `rsv_change`, `rsv_cancel` (TimelinePage/ReservationModal에서 트리거)
+
+구현 누락:
+- **`tkt_pay`** — 바프권/선불권 사용 시 (템플릿은 현재 횟수 기반 UG_6292인데 바프권은 금액 기반 → 템플릿 내용 재검토 필요)
+- **`pt_use`** — 포인트 사용 시 (msgTpl/tplCode **비어있음** — 먼저 템플릿 등록 필요)
+- **`pt_earn`** — 포인트 적립 시 (msgTpl/tplCode 비어있음)
+- `pkg_pay` — 패키지 잔여 차감 시 (템플릿은 UG_6288, 금액형 다담권 충전용 문구)
+- `tkt_charge` / `pkg_charge` — 신규 바프권/패키지 구매
+- `annual_reg` — 연간권 등록
+
+**작업 순서 (다음 세션)**:
+1. 유저와 템플릿 네이밍/내용 정리 (tkt vs pkg 의미 구분)
+2. 비어있는 pt_use/pt_earn 템플릿 알리고 대시보드에 등록 + DB 저장
+3. SaleForm submit 후 조건별 `queueAlimtalk` 호출 추가:
+   - prepaid 사용 금액 > 0 → tkt_pay
+   - 포인트 사용 > 0 → pt_use
+   - 포인트 적립 > 0 → pt_earn
+   - 신규 선불권/패키지/연간권 구매 → tkt_charge/pkg_charge/annual_reg
+4. 각 noti_key에 맞는 params 매핑
+
+### ✅ 타지점 알림톡 배송 실패 — 근본 원인 수정 (2026-04-24 v3.7.76 이후)
+- **근본 원인**: 전 지점이 강남의 tplCode(UG_2264 등)만 공유 사용 → 타지점 senderKey로 발송하면 Kakao가 tplCode 불일치로 drop (Aligo는 code:0 정상)
+- **Aligo 템플릿 조회 확인**: 8개 지점 **모두 각 senderKey에 9개 템플릿이 이미 APR 상태**로 등록됨 (강남도 동일 체계). 단 용산/천호 왁싱패키지는 UG_7454/UG_7456, 나머지는 UG_6xxx 대역.
+- **DB 수정 완료**: `branches.noti_config`의 tplCode를 지점별 올바른 코드로 일괄 교체 (jsonb merge). 강남은 유지.
+- **수정 후 테스트 (01057028008)**: 강남 4건(rsv/tkt/pkg/annual) + 왕십리 rsv + 잠실 pkg 모두 Aligo code:0 성공. 유저 폰 Kakao 도착 여부 확인 대기.
+
+### 지점별 tplCode 매핑 (2026-04-24 수정 반영)
+| 지점 | senderKey 뒷4자리 | rsv_confirm | rsv_change | rsv_cancel | rsv_1day | rsv_aftercare | tkt_* (왁싱PKG) | pkg_* (다담권) | annual_reg | *_exp_* |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 강남 | ...0888 | UG_2264 | UG_2266 | UG_2270 | UG_2271 | UG_2272 | UG_6292 | UG_6288 | UG_6294 | UG_6297 |
+| 마곡 | ...f68e | UG_6132 | UG_6133 | UG_6134 | UG_6135 | UG_6136 | UG_6314 | UG_6313 | UG_6328 | UG_6316 |
+| 왕십리 | ...0bac | UG_6115 | UG_6116 | UG_6118 | UG_6119 | UG_6120 | UG_6302 | UG_6301 | UG_6324 | UG_6317 |
+| 용산 | ...8799 | UG_6168 | UG_6169 | UG_6170 | UG_6173 | UG_6174 | UG_7454 | UG_6338 | UG_6340 | UG_6341 |
+| 위례 | ...b839 | UG_6147 | UG_6148 | UG_6149 | UG_6150 | UG_6151 | UG_6332 | UG_6331 | UG_6333 | UG_6335 |
+| 잠실 | ...6d1a | UG_6137 | UG_6138 | UG_6140 | UG_6141 | UG_6142 | UG_6321 | UG_6319 | UG_6322 | UG_6330 |
+| 천호 | ...ef53 | UG_6185 | UG_6186 | UG_6187 | UG_6191 | UG_6194 | UG_7456 | UG_6342 | UG_6345 | UG_6346 |
+| 홍대 | ...f18d | UG_6122 | UG_6123 | UG_6124 | UG_6129 | UG_6130 | UG_6310 | UG_6309 | UG_6325 | UG_6318 |
+
+### pt_use / pt_earn 템플릿 미등록 (전 8지점)
+- 모든 senderKey에 포인트 사용/적립 템플릿 자체가 없음 → 새로 작성 + Kakao 검수 신청 필요
+- 검수 승인 후 DB noti_config.pt_use / pt_earn에 tplCode + msgTpl 세팅해야 발송 가능
 
 ## 🚧 배포 대기 (다음 배포 시 처리)
-- **`feat/consent-integration` → main merge**: 동의서 통합 브랜치 병합 후 함께 배포 반영
+- **`feat/consent-integration` → main merge**: 동의서 통합 브랜치 병합 후 함께 배포 반영 (**이미 v3.7.61에서 merge됐을 수 있음 — 확인**)
 - **사전 준비 필수**: `sign.blissme.ai` Cloudflare Pages 배포 먼저 완료돼야 실사용 가능 (QR 스캔 → 태블릿/폰 서명 페이지). Pages 배포 없이 bliss-app만 올리면 링크 열어도 404
+
+## 📝 2026-04-24 세션 주요 작업
+
+### 서버 (bliss-naver) 패치
+- **Claude Sonnet/Haiku 번역 분리**: `CLAUDE_TRANSLATE_MODEL=claude-haiku-4-5`로 번역 전용 모델. Sonnet 대비 토큰 ~3배 저렴. 분석/AI답변은 Sonnet 유지
+- **_load_ai_settings()에 claude_key 누락 버그 수정**: 캐시에 `claude_key` 필드 추가. 이전엔 매번 Gemini 폴백 발동하던 문제
+- **번역에 대화 맥락 주입 (`_thread_context`)**: Naver/IG/WA 웹훅에서 최근 8건 스레드 맥락을 `prev_context`로 전달. IG/WA는 변수 스코프(acc/uid) 문제 수정
+- **`/translate-outgoing` Flask 엔드포인트 신설** (port 5055, nginx proxy): 한국어→외국어 번역. Haiku 사용. 클라이언트 `sendTranslated`가 호출
+- **알림톡 `get_branch_cfg` 버그 수정**: jsonb dict를 `json.loads()`로 파싱 시도해 TypeError → 빈 config → "noti off" 오판정. dict/str 양쪽 핸들링
+- **알림톡 `failover_1=N` 추가**: 알림톡 실패 시 SMS 폴백 비활성화 (유저 요청)
+- **IG 에코 dedup 강화**: 60초 내 동일 text 체크로 변경 (기존: 마지막 1건 비교). 중복 23건 DB 삭제
+
+### DB 작업
+- **매출 `reservation_id` 백필 207건** (4월 이후 app 매출, cust_id+bid+date+time 매칭)
+- **매출등록 중복 23건 삭제** (IG 에코 dedup 강화 전 누적분)
+- **8개 지점 `senderPhone` → `01057028008` 통일** (임시, 알리고 발신번호 미등록 이슈). 원본은 `senderPhoneOriginal`에 백업
+- **전 지점 noti_config on 플래그 동기화** (강남 → 타지점 7개)
+
+### 앱 (v3.7.61 → v3.7.73)
+- **이벤트 엔진 대개편**:
+  - `customerQualify: {any, M, F}` 3컬럼 그리드 (성별별 자격 OR)
+  - 쉐어 패키지는 조건 평가에서 제외 (본인 소유만)
+  - `prepaidMinRatioPct` / `prepaidMinBalance` 컬럼별 객체
+  - **바프권 qualifier 추가** (`barf`, 별도 임계값)
+  - 결제방식 단순화: cash/card 3-seg
+  - 레거시 필드 자동 마이그레이션
+- **v3.7.62~64**: 매출확인 viewOnly sale_details prefill, 강조 mode 저장, 매출 전체편집 버튼 제거, 타임라인 설정 ESC/X 닫기
+- **v3.7.65~66**: 매출 강조 구간 (테두리/채우기), 연간회원권 +99 제거
+- **v3.7.67**: Haiku 번역 엔드포인트 연동, 대화보기 버튼 sel 강제 교체
+- **v3.7.68~71**: 고객 자격 OR 그룹 + 성별 + 3컬럼 그리드 + 임계값 컬럼별
+- **v3.7.72~73**: 이벤트 조건 쉐어 제외, 바프권 qualifier, 바프권 "30만" 만 단위 표시
+
+### Supabase 장애 (KST 16:47 복구)
+- REST API timeout → 유저가 프로젝트 Restart 버튼으로 복구
+- 원인 추정: Small compute + `work_mem=5MB` + 대량 요청 동시성 (내 207건 백필 스크립트가 트리거)
+- Postgres 로그 17분 공백 (07:31~07:47 UTC) → CPU/IO 포화
+
+### 주의사항 (새 세션)
+- **senderPhone 01057028008 통일 상태**: 각 지점 실제 번호로 환원하려면 알리고에 통신서비스 이용증명원 서류 인증 필요 (smartsms.aligo.in). 승인되는 지점부터 `senderPhoneOriginal` 값으로 복원 가능
+- **알림톡 SMS 폴백 OFF** (`failover_1=N`): 카카오 배송 실패 시 SMS 안 나감. 의도적 설정
+- **번역 토큰 비용 주의**: Haiku 써도 메시지 많으면 누적됨. Anthropic usage 체크
 
 ### v3.7.60 (2026-04-24)
 - 예약블록 사용자 메모 폰트 -1 (제목행보다 1 작게)

@@ -12,7 +12,13 @@
 //     categoriesAny,                              // category id 배열
 //     prepaidServiceIds, pkgServiceIds, annualServiceIds,  // 정확 매칭
 //     amountMin, amountMax,                       // 시술합계 또는 충전금액
-//     customerHasActivePrepaid, customerHasActivePkg, customerHasActiveAnnual, // null|true|false
+//     paymentMethodType,                           // null|'cash'|'card' — 무관/현금만/카드만
+//     customerQualify: { any:[], M:[], F:[] },     // 성별별 자격 리스트 (OR). 각 컬럼 qualifier: 'new'|'prepaid'|'barf'|'pkg'|'annual'
+//       - 전부 비어있음 → 조건 무시 (모두 통과)
+//       - 고객 성별 M이면 any+M의 합집합이 applicable (OR 평가)
+//       - applicable이 비어있으면 fail (해당 성별은 이 이벤트 대상 아님)
+//     prepaidMinRatioPct: { any:0, M:0, F:0 },     // 0~100, 컬럼별 — 'prepaid' qualifier + 컬럼별 추가 제약
+//     prepaidMinBalance: { any:0, M:0, F:0 },      // 원 단위, 컬럼별 — 'prepaid' qualifier + 컬럼별 추가 제약
 //   },
 //   rewards: [                                    // 최대 3개
 //     { type:'point_earn', base:'svc'|'svc_prod'|'prepaid_amount'|'pkg_amount'|'category'|'services'|'fixed', rate, value, expiryMonths, baseCategoryIds, baseServiceIds },
@@ -34,15 +40,62 @@
 function normalize(evt) {
   if (!evt || typeof evt !== 'object') return evt
   const out = { ...evt, conditions: { ...(evt.conditions||{}) } }
+  const c = out.conditions
 
   // 레거시 트리거 변환
   if (out.trigger === 'prepaid_recharge') {
     out.trigger = 'prepaid_purchase'
-    if (out.conditions.customerHasActivePrepaid == null) out.conditions.customerHasActivePrepaid = true
+    if (c.customerHasActivePrepaid == null) c.customerHasActivePrepaid = true
   } else if (out.trigger === 'pkg_repurchase') {
     out.trigger = 'pkg_purchase'
-    if (out.conditions.customerHasActivePkg == null) out.conditions.customerHasActivePkg = true
+    if (c.customerHasActivePkg == null) c.customerHasActivePkg = true
   }
+
+  // 레거시 고객상태 flag (TriFlag) → customerQualifyAny 배열로 승격 (1차 마이그레이션)
+  if (!Array.isArray(c.customerQualifyAny) && !c.customerQualify) {
+    const q = []
+    if (c.customerIsNew === true) q.push('new')
+    if (c.customerHasActivePrepaid === true) q.push('prepaid')
+    if (c.customerHasActivePkg === true) q.push('pkg')
+    if (c.customerHasActiveAnnual === true) q.push('annual')
+    c.customerQualifyAny = q
+  }
+  // customerQualifyAny + customerGender → customerQualify {any,M,F} (2차 마이그레이션)
+  if (!c.customerQualify || typeof c.customerQualify !== 'object') {
+    const qa = Array.isArray(c.customerQualifyAny) ? c.customerQualifyAny : []
+    const cq = { any: [], M: [], F: [] }
+    if (c.customerGender === 'M') cq.M = qa
+    else if (c.customerGender === 'F') cq.F = qa
+    else cq.any = qa
+    c.customerQualify = cq
+  }
+  // 누락된 컬럼 보강
+  if (!Array.isArray(c.customerQualify.any)) c.customerQualify.any = []
+  if (!Array.isArray(c.customerQualify.M)) c.customerQualify.M = []
+  if (!Array.isArray(c.customerQualify.F)) c.customerQualify.F = []
+  // prepaidMinRatioPct/Balance: number → {any,M,F} 마이그레이션
+  if (typeof c.prepaidMinRatioPct === 'number') {
+    const legacyGender = c.customerGender
+    const obj = { any:0, M:0, F:0 }
+    if (legacyGender === 'M') obj.M = c.prepaidMinRatioPct
+    else if (legacyGender === 'F') obj.F = c.prepaidMinRatioPct
+    else obj.any = c.prepaidMinRatioPct
+    c.prepaidMinRatioPct = obj
+  } else if (!c.prepaidMinRatioPct || typeof c.prepaidMinRatioPct !== 'object') {
+    c.prepaidMinRatioPct = { any:0, M:0, F:0 }
+  }
+  if (typeof c.prepaidMinBalance === 'number') {
+    const legacyGender = c.customerGender
+    const obj = { any:0, M:0, F:0 }
+    if (legacyGender === 'M') obj.M = c.prepaidMinBalance
+    else if (legacyGender === 'F') obj.F = c.prepaidMinBalance
+    else obj.any = c.prepaidMinBalance
+    c.prepaidMinBalance = obj
+  } else if (!c.prepaidMinBalance || typeof c.prepaidMinBalance !== 'object') {
+    c.prepaidMinBalance = { any:0, M:0, F:0 }
+  }
+  if (!c.barfMinRatioPct || typeof c.barfMinRatioPct !== 'object') c.barfMinRatioPct = { any:0, M:0, F:0 }
+  if (!c.barfMinBalance || typeof c.barfMinBalance !== 'object') c.barfMinBalance = { any:0, M:0, F:0 }
 
   // 레거시 단일 보상 → rewards[]
   if (!Array.isArray(out.rewards) || out.rewards.length === 0) {
@@ -135,24 +188,48 @@ export function evaluateConditions(evt, ctx) {
     if (amtForRange > Number(c.amountMax)) return false
   }
 
-  // 고객 상태 플래그
-  if (c.customerHasActivePrepaid === true && !ctx.hasActivePrepaid) return false
-  if (c.customerHasActivePrepaid === false && ctx.hasActivePrepaid) return false
-  if (c.customerHasActivePkg === true && !ctx.hasActivePkg) return false
-  if (c.customerHasActivePkg === false && ctx.hasActivePkg) return false
-  if (c.customerHasActiveAnnual === true && !ctx.hasActiveAnnual) return false
-  if (c.customerHasActiveAnnual === false && ctx.hasActiveAnnual) return false
+  // 고객 자격 (성별별 OR) — customerQualify: {any, M, F}
+  const cq = c.customerQualify || { any:[], M:[], F:[] }
+  const qAny = Array.isArray(cq.any) ? cq.any : []
+  const qM = Array.isArray(cq.M) ? cq.M : []
+  const qF = Array.isArray(cq.F) ? cq.F : []
+  const hasAnyCheck = qAny.length > 0 || qM.length > 0 || qF.length > 0
+  if (hasAnyCheck) {
+    // [col, qual] 쌍으로 구성 — 컬럼별 임계값 참조용
+    const pairs = []
+    qAny.forEach(q => pairs.push(['any', q]))
+    if (ctx.customerGender === 'M') qM.forEach(q => pairs.push(['M', q]))
+    else if (ctx.customerGender === 'F') qF.forEach(q => pairs.push(['F', q]))
+    if (pairs.length === 0) return false
+    const getPct = (col) => Number((c.prepaidMinRatioPct||{})[col] || 0)
+    const getBal = (col) => Number((c.prepaidMinBalance||{})[col] || 0)
+    const checkPair = (col, qual) => {
+      if (qual === 'new') return !!ctx.isNewCustomer
+      if (qual === 'prepaid') {
+        if (!ctx.hasActivePrepaid) return false
+        const pctT = getPct(col), balT = getBal(col)
+        if (pctT > 0 && Number(ctx.prepaidBalanceRatioPct || 0) < pctT) return false
+        if (balT > 0 && Number(ctx.prepaidMaxBalance || 0) < balT) return false
+        return true
+      }
+      if (qual === 'barf') {
+        if (!ctx.hasActiveBarf) return false
+        const pctT = Number((c.barfMinRatioPct||{})[col] || 0)
+        const balT = Number((c.barfMinBalance||{})[col] || 0)
+        if (pctT > 0 && Number(ctx.barfBalanceRatioPct || 0) < pctT) return false
+        if (balT > 0 && Number(ctx.barfMaxBalance || 0) < balT) return false
+        return true
+      }
+      if (qual === 'pkg') return !!ctx.hasActivePkg
+      if (qual === 'annual') return !!ctx.hasActiveAnnual
+      return false
+    }
+    if (!pairs.some(([col, q]) => checkPair(col, q))) return false
+  }
 
-  // 결제 수단 플래그 (이번 매출의 결제 수단 사용 여부)
-  if (c.paymentUsesPrepaid === true && !ctx.paymentUsesPrepaid) return false
-  if (c.paymentUsesPrepaid === false && ctx.paymentUsesPrepaid) return false
-  // 다담권 전액 결제 (부분 제외)
-  if (c.paymentFullPrepaid === true && !ctx.paymentFullPrepaid) return false
-  if (c.paymentFullPrepaid === false && ctx.paymentFullPrepaid) return false
-  if (c.paymentUsesPoint === true && !ctx.paymentUsesPoint) return false
-  if (c.paymentUsesPoint === false && ctx.paymentUsesPoint) return false
-  if (c.paymentUsesCoupon === true && !ctx.paymentUsesCoupon) return false
-  if (c.paymentUsesCoupon === false && ctx.paymentUsesCoupon) return false
+  // 결제 방식 (이번 매출의 결제 수단) — 'cash' | 'card' | null(무관)
+  if (c.paymentMethodType === 'cash' && !ctx.paymentUsesCash) return false
+  if (c.paymentMethodType === 'card' && !ctx.paymentUsesCard) return false
 
   return true
 }

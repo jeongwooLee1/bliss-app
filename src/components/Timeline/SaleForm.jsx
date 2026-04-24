@@ -468,6 +468,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   const [pointEarn, setPointEarn] = useState(0);
   const [pointUse, setPointUse] = useState(0);
   const [issueCouponIds, setIssueCouponIds] = useState({}); // 매출과 함께 수동 발행할 쿠폰 {svcId: count}
+  const [couponsOpen, setCouponsOpen] = useState(false); // 쿠폰 발행 아코디언 — 기본 접힘
   const pointEarnManualRef = React.useRef(false); // 사용자가 수동 수정했는지
   useEffect(() => {
     if (!cust?.id) { setPointBalance(0); return; }
@@ -592,20 +593,53 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     return false;
   };
 
+  // 이번 매출에서 신규 구매하는 연간권/선불권으로도 회원가 자격 부여
+  // (동시 구매 시 같은 영수증에서 바로 회원가 적용)
+  // 주의: `items`는 아래 useState로 선언되기에, 상단에서 즉시 접근하면 매 렌더마다 TDZ.
+  //       따라서 접근은 반드시 함수 본문 안에서 lazy하게. 호출 시점엔 이미 items 선언 이후라 안전.
+  const _PREPAID_CAT_MP = "1s18w2l46";
+  const _isAnnualSvcMP = (s) => {
+    const n = (s?.name||"").toLowerCase();
+    if (s?.cat === _PREPAID_CAT_MP) return false;
+    return n.includes("연간") || n.includes("회원권") || n.includes("할인권");
+  };
+  const _hasAnnualInCart = () => {
+    try { return (data?.services || []).some(s => _isAnnualSvcMP(s) && items[s.id]?.checked && !_excludedSvcNames.has(s.name)); }
+    catch { return false; }
+  };
+  const _hasPrepaidInCart = () => {
+    try { return (data?.services || []).some(s => s.cat === _PREPAID_CAT_MP && items[s.id]?.checked && !_excludedSvcNames.has(s.name)); }
+    catch { return false; }
+  };
+
   // 회원 고객 여부 (쿠폰 회원할인·UI 배지 등 전역 판정용)
-  const isMemberCustomer = validPkgs.some(_pkgGrantsMember);
+  // items 접근은 함수 호출 시점에 이루어짐 → JSX 렌더 및 effect에서 호출될 땐 items 이미 정의됨.
+  const _computeIsMemberCustomer = () => {
+    if (validPkgs.some(_pkgGrantsMember)) return true;
+    if (_hasAnnualInCart() && !!_memberRules.annualEnabled) return true;
+    return _hasPrepaidInCart();
+  };
 
   // 시술별 회원가 적용 가능 여부 (가격 결정용)
-  // - 연간권 보유 → 잔액 무관 자격 O
-  // - 선불권 보유 → 잔액 ≥ 시술의 회원가 일 때만 자격 O
   const isMemberPriceFor = (svc, g) => {
-    return validPkgs.some(p => {
+    if (validPkgs.some(p => {
       if (!_pkgGrantsMember(p)) return false;
       if (_pkgType(p) === "annual") return true;
       const memPrice = g === "M" ? svc.memberPriceM : svc.memberPriceF;
       if (!memPrice) return false;
       return _pkgBalance(p) >= memPrice;
-    });
+    })) return true;
+    if (_hasAnnualInCart() && !!_memberRules.annualEnabled) return true;
+    const memPrice = g === "M" ? svc.memberPriceM : svc.memberPriceF;
+    if (!memPrice) return false;
+    try {
+      return (data?.services || []).some(s => (
+        s.cat === _PREPAID_CAT_MP &&
+        items[s.id]?.checked &&
+        !_excludedSvcNames.has(s.name) &&
+        (items[s.id]?.amount || 0) >= memPrice
+      ));
+    } catch { return false; }
   };
 
   // 성별+회원가에 따른 기본 가격 계산
@@ -626,9 +660,14 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   // State: { [id]: { checked, amount } }
   const [items, setItems] = useState(() => {
     const init = {};
-    // selectedServices(신) 우선, 비었으면 serviceId(레거시) fallback
-    let selSvcs = reservation?.selectedServices || [];
-    if (selSvcs.length === 0 && reservation?.serviceId) selSvcs = [reservation.serviceId];
+    // selectedServices(신) 우선. 배열이 아예 없는(레거시 예약) 경우에만 serviceId fallback.
+    // 빈 배열 []은 "아무것도 선택 안 함"이므로 fallback 금지.
+    let selSvcs;
+    if (Array.isArray(reservation?.selectedServices)) {
+      selSvcs = reservation.selectedServices;
+    } else {
+      selSvcs = reservation?.serviceId ? [reservation.serviceId] : [];
+    }
     SVC_LIST.forEach(svc => {
       const preSelected = selSvcs.includes(svc.id);
       const defPrice = _defPrice(svc, gender);
@@ -640,6 +679,9 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     init["extra_prod"] = { checked: false, amount: 0, label: "" };
     return init;
   });
+
+  // items 선언 이후에만 isMemberCustomer 계산 가능 (items가 내부에서 참조되기 때문)
+  const isMemberCustomer = _computeIsMemberCustomer();
 
   // 회원가 자격 비동기 로드 반영 — isMemberCustomer가 나중에 true로 바뀌면
   // 초기 정상가로 세팅된 체크된 시술들을 회원가로 재계산
@@ -1044,19 +1086,53 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
         if (!m) return false; // 유효기간 미설정 = 아직 유효 (미사용 원칙)
         return m[1] < todayStr;
       };
-      // 기존 다담권(선불권) 보유 여부 — 잔액 > 0 + 미만료
-      const hasExistingPrepaid = (custPkgs||[]).some(p => {
+      // 이벤트 조건 판정용 — 본인 소유만 (쉐어받은 것 제외). _shared_from이 null이면 본인 소유.
+      const ownPkgs = (custPkgs||[]).filter(p => !p._shared_from);
+      // 다담권 보유 — name에 "다담" 포함
+      const hasExistingPrepaid = ownPkgs.some(p => {
         const n = (p.service_name||'').toLowerCase();
-        const isPrep = n.includes('다담');
-        if (!isPrep) return false;
+        if (!n.includes('다담')) return false;
         if (_pkgExpired(p)) return false;
-        // 다담권: note "잔액:N" 우선, fallback 은 total-used
         const balM = (p.note||'').match(/잔액:([0-9,]+)/);
         const bal = balM ? Number(balM[1].replace(/,/g,'')) : ((p.total_count||0) - (p.used_count||0));
         return bal > 0;
       });
-      // 기존 패키지 보유 여부 — 잔여 > 0 + 미만료
-      const hasExistingPkg = (custPkgs||[]).some(p => {
+      // 바프권 보유 — name에 "바프" 포함
+      const hasExistingBarf = ownPkgs.some(p => {
+        const n = (p.service_name||'').toLowerCase();
+        if (!n.includes('바프')) return false;
+        if (_pkgExpired(p)) return false;
+        const balM = (p.note||'').match(/잔액:([0-9,]+)/);
+        const bal = balM ? Number(balM[1].replace(/,/g,'')) : ((p.total_count||0) - (p.used_count||0));
+        return bal > 0;
+      });
+      // 활성 선불권 통계 (이름 키워드로 분리: 다담 / 바프)
+      const _prepaidLikeStats = (matchKw) => {
+        let maxPct = 0, maxBal = 0;
+        ownPkgs.forEach(p => {
+          const n = (p.service_name||'').toLowerCase();
+          if (!n.includes(matchKw)) return;
+          if (_pkgExpired(p)) return;
+          const balM = (p.note||'').match(/잔액:([0-9,]+)/);
+          const chgM = (p.note||'').match(/충전:([0-9,]+)/);
+          const bal = balM ? Number(balM[1].replace(/,/g,'')) : 0;
+          const chg = chgM ? Number(chgM[1].replace(/,/g,'')) : 0;
+          if (bal > maxBal) maxBal = bal;
+          if (chg > 0 && bal >= 0) {
+            const pct = (bal / chg) * 100;
+            if (pct > maxPct) maxPct = pct;
+          }
+        });
+        return { maxPct, maxBal };
+      };
+      const _ps = _prepaidLikeStats('다담');
+      const prepaidBalanceRatioPct = _ps.maxPct;
+      const prepaidMaxBalance = _ps.maxBal;
+      const _bs = _prepaidLikeStats('바프');
+      const barfBalanceRatioPct = _bs.maxPct;
+      const barfMaxBalance = _bs.maxBal;
+      // 기존 패키지 보유 여부 — 잔여 > 0 + 미만료 (본인 소유만)
+      const hasExistingPkg = ownPkgs.some(p => {
         const n = (p.service_name||'').toLowerCase();
         const isPkg = n.includes('pkg') || n.includes('패키지');
         if (!isPkg) return false;
@@ -1064,8 +1140,8 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
         const remain = (p.total_count||0) - (p.used_count||0);
         return remain > 0;
       });
-      // 기존 연간회원권 보유 여부 — 미만료 + 이름에 연간/회원권/할인권
-      const hasExistingAnnual = (custPkgs||[]).some(p => {
+      // 기존 연간회원권 보유 여부 — 미만료 + 이름에 연간/회원권/할인권 (본인 소유만)
+      const hasExistingAnnual = ownPkgs.some(p => {
         const n = (p.service_name||'').toLowerCase();
         const isAnn = n.includes('연간') || n.includes('회원권') || n.includes('할인권');
         if (!isAnn) return false;
@@ -1083,25 +1159,21 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
         hasAnyAnnualPurchase: newAnnualPurchases.length > 0,
         // 고객 현재 상태
         hasActivePrepaid: hasExistingPrepaid,
+        hasActiveBarf: hasExistingBarf,
         hasActivePkg: hasExistingPkg,
         hasActiveAnnual: hasExistingAnnual,
+        prepaidBalanceRatioPct,
+        prepaidMaxBalance,
+        barfBalanceRatioPct,
+        barfMaxBalance,
         // 레거시 호환 (prepaid_recharge/pkg_repurchase 트리거용)
         hasPrepaidRecharge: hasExistingPrepaid && newPrepaidPurchases.length > 0,
         hasPkgRepurchase: hasExistingPkg && newPkgPurchases.length > 0,
-        // 결제 수단 플래그 (이번 매출에 다담권·포인트·쿠폰 실제 사용 여부)
-        paymentUsesPrepaid: pkgDeduct > 0,
-        // 다담권 "전액 결제" — 실제 카드/현금/입금으로 낼 돈이 0원 (다담권·쿠폰·포인트로 전부 커버)
-        // 주의: eventDiscountTotal/newPkgInstantDeduct는 여기서 계산 후에 생기므로 제외 (순환 방지)
-        // 이벤트 할인이 실제 발동되면 더 넉넉해질 뿐, '전액 결제' 판정엔 유리한 방향이라 안전
-        paymentFullPrepaid: (() => {
-          if (pkgDeduct <= 0) return false;
-          const gross = (svcTotal||0) + (prodTotal||0);
-          const nonPrepaidDeducts = (discount||0) + (promoDiscountTotal||0) + (couponDiscountTotal||0)
-            + (naverDeduct||0) + (externalDeduct||0) + (pointDeduct||0);
-          return (gross - pkgDeduct - nonPrepaidDeducts) <= 0;
-        })(),
-        paymentUsesPoint: pointDeduct > 0,
-        paymentUsesCoupon: (Array.isArray(activeCoupons) ? activeCoupons.some(c => (c.discount||0) > 0) : false),
+        // 결제 방식 (현금/카드) — 이번 매출 payMethod 기반
+        paymentUsesCash: (payMethod.svcCash||0) + (payMethod.prodCash||0) > 0,
+        paymentUsesCard: (payMethod.svcCard||0) + (payMethod.prodCard||0) > 0,
+        // 고객 성별 (M/F)
+        customerGender: gender || null,
         // 금액
         svcTotal, prodTotal,
         prepaidPurchaseAmount, pkgPurchaseAmount, annualPurchaseAmount,
@@ -1113,7 +1185,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       };
       return applyEvents(events, ctx);
     } catch (e) { console.warn('[eventEngine]', e); return { pointEarn:0, pointExpiresAt:null, discountFlat:0, discountFlatPkg:0, discountFlatPrepaid:0, discountFlatAnnual:0, discountPct:0, prepaidBonus:0, issueCoupons:[], virtualCoupons:[], appliedEvents:[] }; }
-  }, [data?.businesses, cust.id, custHasSale, custPkgs, newPrepaidPurchases, newPkgPurchases, newAnnualPurchases, svcTotal, prodTotal, items, pkgDeduct, pointDeduct]);
+  }, [data?.businesses, cust.id, custHasSale, custPkgs, newPrepaidPurchases, newPkgPurchases, newAnnualPurchases, svcTotal, prodTotal, items, payMethod.svcCash, payMethod.svcCard, payMethod.prodCash, payMethod.prodCard, gender]);
 
   // 레거시 호환: 기존 UI/로직에서 참조하던 newCustEventEarn 형태 유지
   // 신규 스키마(rewards[])와 레거시(rewardType) 모두 지원
@@ -2157,7 +2229,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                       }
                       {surchargeHint && <span title="여자 패키지를 남자가 사용 → +33,000원 보정" style={{marginLeft:4,fontSize:9,padding:"1px 5px",borderRadius:6,background:"#FEF3C7",color:"#92400E",fontWeight:700}}>+33,000원</span>}
                     </span>
-                    <span style={{flexShrink:0,fontSize:10,color:T.gray400}}>잔여 {g.totalRemain}회</span>
+                    <span style={{flexShrink:0,fontSize:11,color:T.gray700,fontWeight:700}}>잔여 {g.totalRemain}회</span>
                     <span style={{flexShrink:0,width:95,textAlign:"right",padding:"0 6px",fontSize:13,fontWeight:isActive?700:400,color:isActive?T.danger:T.gray400}}>
                       {isActive ? "1회 사용" : "0원"}
                     </span>
@@ -2180,7 +2252,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                   <span style={{flex:1,fontSize:13,color:isActive?T.text:T.gray700,fontWeight:isActive?700:400,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                     {isActive&&<span style={{color:T.primary,marginRight:3}}>✓</span>}{svc.name}
                   </span>
-                  <span style={{flexShrink:0,fontSize:10,color:T.gray400}}>총 {total}회</span>
+                  <span style={{flexShrink:0,fontSize:11,color:T.gray700,fontWeight:700}}>총 {total}회</span>
                   <span style={{flexShrink:0,width:95,textAlign:"right",padding:"0 6px",fontSize:13,fontWeight:isActive?700:400,color:isActive?T.danger:T.gray400}}>
                     {isActive ? "1회 사용" : "0원"}
                   </span>
@@ -2318,8 +2390,8 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           {/* 금액 브레이크다운 */}
           <div style={{marginBottom:8,padding:"7px 10px",background:T.bgCard,borderRadius:T.radius.md,border:"1px solid #e8e8e8"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
-              <span style={{fontSize:T.fs.sm,color:T.text,fontWeight:600}}><I name="scissors" size={12}/> 시술 합계</span>
-              <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.primary}}>{fmt(svcTotal)}원</span>
+              <span style={{fontSize:T.fs.xs,color:T.text,fontWeight:600}}><I name="scissors" size={12}/> 시술 합계</span>
+              <span style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.primary}}>{fmt(svcTotal)}원</span>
             </div>
             {/* 쉐어 남녀 보정금 안내 (id_nfv71exl14 수정요청) */}
             {shareSurchargeTotal > 0 && <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",fontSize:11,color:"#5B21B6"}}>
@@ -2338,31 +2410,31 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
               <span style={{fontSize:T.fs.sm,color:T.female}}><I name="tag" size={11}/> 할인</span>
               <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.female}}>-{fmt(discount)}원</span>
             </div>}
-            {eventDiscountTotal > 0 && <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
-              <span style={{fontSize:T.fs.sm,color:"#E65100"}}>🎉 이벤트 할인{(() => {
+            {eventDiscountTotal > 0 && <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",gap:8}}>
+              <span style={{fontSize:T.fs.xs,color:"#E65100",flex:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={(()=>{const n=(eventResult?.appliedEvents||[]).filter(e=>(e.rewards||[]).some(r=>r.type==='discount_flat')).map(e=>e.name).filter(Boolean);return n.join(", ");})()}>🎉 이벤트 할인{(() => {
                 const names = (eventResult?.appliedEvents||[])
                   .filter(e => (e.rewards||[]).some(r => r.type === 'discount_flat'))
                   .map(e => e.name).filter(Boolean);
                 return names.length ? ` · ${names.join(", ")}` : "";
               })()}</span>
-              <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#E65100"}}>-{fmt(eventDiscountTotal)}원</span>
+              <span style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:"#E65100",flexShrink:0,whiteSpace:"nowrap"}}>-{fmt(eventDiscountTotal)}원</span>
             </div>}
             {couponDiscountTotal > 0 && <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
               <span style={{fontSize:T.fs.sm,color:"#b45309"}}>🎫 쿠폰 할인</span>
               <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#b45309"}}>-{fmt(couponDiscountTotal)}원</span>
             </div>}
             {/* 외부 선결제 — 좁은 패널에서 자동 줄바꿈 허용 */}
-            <div style={{display:"flex",alignItems:"center",gap:5,padding:"7px 10px",marginTop:4,background:"#F3E5F5",borderRadius:8,border:"1px solid #CE93D8",flexWrap:"wrap",rowGap:6}}>
-              <span style={{fontSize:11,color:"#6A1B9A",fontWeight:700,flexShrink:0}}>🏷 선결제</span>
+            <div style={{display:"flex",alignItems:"center",gap:5,padding:"4px 0",marginTop:0}}>
+              <span style={{fontSize:T.fs.xs,color:"#6A1B9A",fontWeight:700,flexShrink:0}}>🏷 선결제</span>
               <select value={externalPlatform} onChange={e=>setExternalPlatform(e.target.value)}
-                style={{flex:"1 1 80px",minWidth:70,padding:"4px 4px",fontSize:11,border:"1px solid #CE93D8",borderRadius:6,background:"#fff",color:"#6A1B9A",fontFamily:"inherit"}}>
+                style={{flex:"0 1 90px",minWidth:70,padding:"3px 4px",fontSize:T.fs.xs,border:"1px solid #CE93D8",borderRadius:6,background:"#fff",color:"#6A1B9A",fontFamily:"inherit"}}>
                 <option value="">플랫폼</option>
                 {externalPlatforms.map(p=><option key={p} value={p}>{p}</option>)}
               </select>
               <input type="text" inputMode="numeric" value={externalPrepaid ? externalPrepaid.toLocaleString() : ""} placeholder="0"
                 onChange={e=>{const v=Number(String(e.target.value).replace(/[^0-9]/g,""))||0; setExternalPrepaid(Math.max(0,v));}}
-                style={{flex:"1 1 90px",minWidth:80,padding:"4px 6px",fontSize:11,textAlign:"right",fontWeight:700,color:"#6A1B9A",border:"1px solid #CE93D8",borderRadius:6,background:"#fff",fontFamily:"inherit"}}/>
-              <span style={{fontSize:11,color:"#6A1B9A",fontWeight:700,flexShrink:0}}>원</span>
+                style={{flex:"1 1 70px",minWidth:60,padding:"3px 6px",fontSize:T.fs.xs,textAlign:"right",fontWeight:700,color:"#6A1B9A",border:"1px solid #CE93D8",borderRadius:6,background:"#fff",fontFamily:"inherit"}}/>
+              <span style={{fontSize:T.fs.xs,color:"#6A1B9A",fontWeight:700,flexShrink:0}}>원</span>
             </div>
             <div style={{borderTop:"2px solid #333",marginTop:6,paddingTop:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <span style={{fontSize:T.fs.sm,fontWeight:T.fw.black,color:T.text}}>{isNaver ? "현장 결제금액" : "총 결제금액"}</span>
@@ -2399,8 +2471,28 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                   const clr = "#C62828", bg = "#FFEBEE";
                   const active = pointUse > 0;
                   const toggle = () => {
-                    if (active) setPointUse(0);
-                    else setPointUse(Math.min(pointBalance, svcPayTotal + pointUse));
+                    if (active) { setPointUse(0); return; }
+                    const avail = svcPayTotal + pointUse;
+                    if (avail > 0) {
+                      setPointUse(Math.min(pointBalance, avail));
+                    } else if (pkgDeduct > 0) {
+                      // svcPayTotal=0 (선불잔액이 이미 전액 덮음) → 선불잔액에서 포인트로 재분배
+                      const desired = Math.min(pointBalance, pkgDeduct);
+                      setPointUse(desired);
+                      setPkgUse(prev => {
+                        const next = {...prev};
+                        let remaining = desired;
+                        Object.keys(next).forEach(pid => {
+                          if (remaining <= 0) return;
+                          const cur = Number(next[pid]) || 0;
+                          if (cur <= 0) return;
+                          const cut = Math.min(cur, remaining);
+                          next[pid] = cur - cut;
+                          remaining -= cut;
+                        });
+                        return next;
+                      });
+                    }
                   };
                   const editAmount = (raw) => {
                     const n = parseInt(String(raw).replace(/[^0-9]/g,""))||0;
@@ -2650,7 +2742,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
               ))}
             </div>}
           </div>}
-          {/* 쿠폰 발행 — 이 매출과 함께 고객에게 발행 (3개월 유효, 수동, 복수 발행 가능) */}
+          {/* 쿠폰 발행 — 이 매출과 함께 고객에게 발행 (3개월 유효, 수동, 복수 발행 가능). 아코디언으로 기본 접힘 */}
           {cust?.id && !editMode && (() => {
             const coupons = (data?.services||[]).filter(s => {
               const cat = (data?.categories||[]).find(c => c.id === s.cat);
@@ -2658,11 +2750,19 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
               return cat?.name === '쿠폰' && s.name !== '10%추가적립쿠폰';
             });
             if (!coupons.length) return null;
-            return <div style={{padding:"7px 10px",marginTop:6,background:"#FFF3E0",borderRadius:8,border:"1px solid #FFB74D"}}>
-              <div style={{fontSize:11,color:"#E65100",fontWeight:700,marginBottom:6,display:"flex",alignItems:"center",gap:5}}>
-                🎫 쿠폰 발행 <span style={{fontSize:9,fontWeight:500,color:"#8D6E00"}}>(+/− 눌러 장수 지정 · 3개월 유효)</span>
-              </div>
-              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+            const totalIssued = Object.values(issueCouponIds).reduce((s,n)=>s+(n||0),0);
+            return <div style={{padding:"0",marginTop:6,background:"#FFF3E0",borderRadius:8,border:"1px solid #FFB74D",overflow:"hidden"}}>
+              <button type="button" onClick={()=>setCouponsOpen(o=>!o)}
+                style={{width:"100%",padding:"7px 10px",background:"transparent",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:6,fontFamily:"inherit"}}>
+                <span style={{fontSize:11,color:"#E65100",fontWeight:700,flex:1,textAlign:"left",display:"flex",alignItems:"center",gap:5}}>
+                  🎫 쿠폰 발행
+                  {totalIssued > 0 && <span style={{fontSize:10,padding:"1px 6px",background:"#E65100",color:"#fff",borderRadius:8,fontWeight:800}}>{totalIssued}장 선택됨</span>}
+                  {!couponsOpen && totalIssued===0 && <span style={{fontSize:9,fontWeight:500,color:"#8D6E00"}}>(눌러서 펼치기)</span>}
+                </span>
+                <span style={{fontSize:12,color:"#E65100",transform:couponsOpen?"rotate(180deg)":"rotate(0)",transition:"transform .2s"}}>▾</span>
+              </button>
+              {couponsOpen && <div style={{padding:"0 10px 10px",display:"flex",flexDirection:"column",gap:4}}>
+                <div style={{fontSize:9,fontWeight:500,color:"#8D6E00",marginBottom:2}}>+/− 눌러 장수 지정 · 3개월 유효</div>
                 {coupons.map(c => {
                   const cnt = issueCouponIds[c.id] || 0;
                   return <div key={c.id} style={{display:"flex",alignItems:"center",gap:6}}>
@@ -2675,7 +2775,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                       style={{width:24,height:24,borderRadius:6,border:'1px solid #E65100',background:cnt>0?'#E65100':'#fff',color:cnt>0?'#fff':'#E65100',fontSize:13,fontWeight:800,cursor:'pointer',fontFamily:'inherit',padding:0,lineHeight:1}}>＋</button>
                   </div>;
                 })}
-              </div>
+              </div>}
             </div>;
           })()}
           {/* 매출 메모 */}

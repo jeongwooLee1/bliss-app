@@ -965,10 +965,15 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         const expMatch = (p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/);
         if (expMatch && expMatch[1] < today) return;
         const isDadam = sn.includes("다담") || sn.includes("선불");
-        if (isDadam) {
+        const isBarf = sn.includes("바프");
+        // 연간회원권·연간할인권·멤버십은 구독형 — 잔여횟수(+N) 표시 무의미
+        const isMembership = /연간|멤버[십쉽]/.test(sn);
+        if (isDadam || isBarf) {
           const m = (p.note||"").match(/잔액:([0-9,]+)/);
           const bal = m ? Number(m[1].replace(/,/g,"")) : 0;
           if (bal > 0) map[p.customer_id].push({ name: sn.replace(/\(잔액:[^)]*\)/,"").trim(), remain: bal, isDadam: true });
+        } else if (isMembership) {
+          map[p.customer_id].push({ name: sn.replace(/[여남]\)/,"").trim(), remain: 0, isDadam: false, isMembership: true });
         } else {
           const remain = (p.total_count||0) - (p.used_count||0);
           if (remain > 0) map[p.customer_id].push({
@@ -1616,6 +1621,13 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     const sc = dbTl.current.sc;
     return sc ? {...STATUS_CLR_DEFAULT,...sc} : {...STATUS_CLR_DEFAULT};
   });
+  // 매출 강조 — 매출 총합이 min 이상이면 블록 테두리/그림자에 color 적용. min=0 이면 비활성
+  const [salesHighlight, setSalesHighlightRaw] = useState(() => {
+    const hl = dbTl.current.hl;
+    return (hl && typeof hl === "object")
+      ? { min: Number(hl.min)||0, color: hl.color || "#FFD700", mode: hl.mode || "border" }
+      : { min: 0, color: "#FFD700", mode: "border" };
+  });
   // 항목별 전 지점 공통 적용 — 각 설정 키를 개별 토글
   // sharedKeys: {sh: true, eh: false, rh: true, cw:true, tu:true, fs:false, op:false, sc:false}
   // DB의 tl_shared_settings_v1.value._sk 에 저장되어 전 PC 동기화 (값도 같은 row에 병합 저장)
@@ -1662,6 +1674,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         if (sharedKeys.fs && s.fs !== undefined) { setBlockFsRaw(Number(s.fs)); dbTl.current.fs = Number(s.fs); }
         if (sharedKeys.op && s.op !== undefined) { setBlockOpRaw(Number(s.op)); dbTl.current.op = Number(s.op); }
         if (sharedKeys.sc && s.sc) { setStatusClrRaw({...STATUS_CLR_DEFAULT, ...s.sc}); dbTl.current.sc = s.sc; }
+        if (sharedKeys.hl && s.hl && typeof s.hl === "object") { setSalesHighlightRaw({ min: Number(s.hl.min)||0, color: s.hl.color || "#FFD700", mode: s.hl.mode || "border" }); dbTl.current.hl = s.hl; }
         tlSaveLocal(dbTl.current);
       }).catch(console.error);
   }, []);
@@ -1693,6 +1706,20 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const setBlockFs = makeTlSave("fs", setBlockFsRaw);
   const setBlockOp = makeTlSave("op", setBlockOpRaw);
   const setStatusClr = (k,v) => { setStatusClrRaw(p => { const n = {...p,[k]:v}; dbTl.current = {...dbTl.current, sc:n}; tlSaveLocal(dbTl.current); try{localStorage.setItem("tl_sc",JSON.stringify(n))}catch(e){} if (tlSharedKeysRef.current.sc) pushToDb({sc: n}); return n; }); };
+  const setSalesHighlight = (patch) => { setSalesHighlightRaw(p => { const n = {...p, ...patch}; dbTl.current = {...dbTl.current, hl:n}; tlSaveLocal(dbTl.current); if (tlSharedKeysRef.current.hl) pushToDb({hl: n}); return n; }); };
+  // 매출 총합 매핑: reservationId → total amount (결제수단 합계)
+  const salesByResId = useMemo(() => {
+    const m = new Map();
+    (data?.sales||[]).forEach(s => {
+      const rid = s.reservationId;
+      if (!rid) return;
+      const t = (s.svcCash||0)+(s.svcTransfer||0)+(s.svcCard||0)+(s.svcPoint||0)
+              + (s.prodCash||0)+(s.prodTransfer||0)+(s.prodCard||0)+(s.prodPoint||0)
+              + (s.externalPrepaid||0);
+      m.set(rid, (m.get(rid)||0) + t);
+    });
+    return m;
+  }, [data?.sales]);
   // Sync status colors to localStorage for other components using getStatusClr()
   useEffect(() => { try{localStorage.setItem("tl_sc",JSON.stringify(statusClr))}catch(e){} }, [statusClr]);
   // 예약 endTime이 설정된 종료시간을 초과하면 자동 확장
@@ -3960,17 +3987,24 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                           if(isEditable && !isResizing.current)handleDragStart(block,e);
                         }}
                         onContextMenu={e=>e.preventDefault()}
-                        style={{position:"absolute",top:y,
+                        style={(()=>{
+                          const _saleAmt = salesByResId.get(block.id) || 0;
+                          const _hlOn = salesHighlight.min > 0 && _saleAmt >= salesHighlight.min && !isNaverCancelled;
+                          const _hlC = salesHighlight.color || "#FFD700";
+                          const _hlMode = salesHighlight.mode || "border";
+                          const _baseBg = isNaverCancelled?T.warningLt:isNaverUnassigned?T.infoLt:isNaverPending?`${color}15`:`${color}${bgAlpha}`;
+                          return {position:"absolute",top:y,
                           left: block._totalCols > 1 ? 1 + (block._col * ((colW - 2) / block._totalCols)) : 1,
                           width: block._totalCols > 1 ? ((colW - 2) / block._totalCols) - 1 : undefined,
                           right: block._totalCols > 1 ? undefined : 1,
                           height:Math.max(h-1,10),
-                          background:isNaverCancelled?T.warningLt:isNaverUnassigned?T.infoLt:isNaverPending?`${color}15`:`${color}${bgAlpha}`,
-                          border:"none",
+                          background: _hlOn && _hlMode === "fill" ? _hlC : _baseBg,
+                          border: _hlOn && _hlMode === "border" ? `2px solid ${_hlC}` : "none",
                           borderRadius:4,padding:"4px 6px",overflow:"hidden",fontSize:blockFs,lineHeight:1.2,
-                          boxShadow:isDrag?"none":"0 1px 4px rgba(0,0,0,.1)",
-                          cursor:"pointer",zIndex:isDrag?0:3,transition:(isDrag||isBeingResized)?"none":"all .15s, box-shadow .2s",
-                          opacity:isDrag?0.35:1,userSelect:"none",WebkitUserSelect:"none",MozUserSelect:"none",msUserSelect:"none",WebkitTouchCallout:"none",touchAction:"pan-x pan-y"}}
+                          boxShadow: isDrag ? "none" : (_hlOn && _hlMode === "border" ? `0 0 0 1px ${_hlC}, 0 2px 10px ${_hlC}99` : "0 1px 4px rgba(0,0,0,.1)"),
+                          cursor:"pointer",zIndex:isDrag?0:(_hlOn?4:3),transition:(isDrag||isBeingResized)?"none":"all .15s, box-shadow .2s",
+                          opacity:isDrag?0.35:1,userSelect:"none",WebkitUserSelect:"none",MozUserSelect:"none",msUserSelect:"none",WebkitTouchCallout:"none",touchAction:"pan-x pan-y"};
+                        })()}
                         className="tl-block">
                         {block.type==="reservation" && !block.isSchedule && <>
                           <div style={{display:"flex",alignItems:"center",gap:2,flexWrap:"wrap"}}>
@@ -4022,12 +4056,14 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             return <div style={{display:"flex",gap:2,flexWrap:"wrap",marginTop:1}}>
                               {sorted.slice(0,4).map((pkg,pi) => <span key={pi} style={{
                                 fontSize:Math.max(6,blockFs-3),padding:"0px 3px",borderRadius:3,lineHeight:"14px",fontWeight:700,
-                                background:pkg.isDadam?"#ffeaa7":"#dfe6e9",
-                                color:pkg.isDadam?"#d35400":"#2d3436"
+                                background:pkg.isMembership?"#d4edda":pkg.isDadam?"#ffeaa7":"#dfe6e9",
+                                color:pkg.isMembership?"#1f6b3a":pkg.isDadam?"#d35400":"#2d3436"
                               }}>
-                                {pkg.isDadam
-                                  ? `${pkg.name} ${(()=>{const n=pkg.totalRemain;if(!n)return "0";const m=n/10000;return (m===Math.floor(m)?Math.floor(m):Math.round(m*10)/10)+"만";})()}`
-                                  : `${pkg.name.replace(/\s*\d+회\s*$/, "").trim()} +${pkg.totalRemain}`}
+                                {pkg.isMembership
+                                  ? pkg.name.replace(/\s*\d+회\s*$/, "").trim()
+                                  : pkg.isDadam
+                                    ? `${pkg.name} ${(()=>{const n=pkg.totalRemain;if(!n)return "0";const m=n/10000;return (m===Math.floor(m)?Math.floor(m):Math.round(m*10)/10)+"만";})()}`
+                                    : `${pkg.name.replace(/\s*\d+회\s*$/, "").trim()} +${pkg.totalRemain}`}
                               </span>)}
                               {sorted.length>4 && <span style={{fontSize:Math.max(6,blockFs-3),color:T.gray400}}>+{sorted.length-4}</span>}
                             </div>;
@@ -4288,6 +4324,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         startHour={startHour} setStartHour={setStartHour} endHour={endHour} setEndHour={setEndHour}
         timeUnit={timeUnit} setTimeUnit={setTimeUnit}
         statusClr={statusClr} setStatusClr={setStatusClr}
+        salesHighlight={salesHighlight} setSalesHighlight={setSalesHighlight}
         tlSharedKeys={tlSharedKeys} setTlSharedKey={setTlSharedKey}
       />
 

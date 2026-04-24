@@ -145,6 +145,51 @@ function EventList({ data, setData, bizId }) {
       d.trigger = 'pkg_purchase'
       if (d.conditions.customerHasActivePkg == null) d.conditions.customerHasActivePkg = true
     }
+    // 레거시 고객상태 TriFlag → customerQualifyAny 배열로 1차 승격
+    if (!Array.isArray(d.conditions.customerQualifyAny) && !d.conditions.customerQualify) {
+      const q = []
+      if (d.conditions.customerIsNew === true) q.push('new')
+      if (d.conditions.customerHasActivePrepaid === true) q.push('prepaid')
+      if (d.conditions.customerHasActivePkg === true) q.push('pkg')
+      if (d.conditions.customerHasActiveAnnual === true) q.push('annual')
+      d.conditions.customerQualifyAny = q
+    }
+    // customerQualifyAny + customerGender → customerQualify {any,M,F} 2차 승격
+    if (!d.conditions.customerQualify || typeof d.conditions.customerQualify !== 'object') {
+      const qa = Array.isArray(d.conditions.customerQualifyAny) ? d.conditions.customerQualifyAny : []
+      const cq = { any: [], M: [], F: [] }
+      if (d.conditions.customerGender === 'M') cq.M = qa
+      else if (d.conditions.customerGender === 'F') cq.F = qa
+      else cq.any = qa
+      d.conditions.customerQualify = cq
+    }
+    if (!Array.isArray(d.conditions.customerQualify.any)) d.conditions.customerQualify.any = []
+    if (!Array.isArray(d.conditions.customerQualify.M)) d.conditions.customerQualify.M = []
+    if (!Array.isArray(d.conditions.customerQualify.F)) d.conditions.customerQualify.F = []
+    // prepaidMinRatioPct/Balance: 단일 number → {any,M,F} 객체로 승격
+    const _migPct = d.conditions.prepaidMinRatioPct
+    if (typeof _migPct === 'number') {
+      const g = d.conditions.customerGender
+      d.conditions.prepaidMinRatioPct = { any:0, M:0, F:0 }
+      if (g==='M') d.conditions.prepaidMinRatioPct.M = _migPct
+      else if (g==='F') d.conditions.prepaidMinRatioPct.F = _migPct
+      else d.conditions.prepaidMinRatioPct.any = _migPct
+    } else if (!_migPct || typeof _migPct!=='object') {
+      d.conditions.prepaidMinRatioPct = { any:0, M:0, F:0 }
+    }
+    const _migBal = d.conditions.prepaidMinBalance
+    if (typeof _migBal === 'number') {
+      const g = d.conditions.customerGender
+      d.conditions.prepaidMinBalance = { any:0, M:0, F:0 }
+      if (g==='M') d.conditions.prepaidMinBalance.M = _migBal
+      else if (g==='F') d.conditions.prepaidMinBalance.F = _migBal
+      else d.conditions.prepaidMinBalance.any = _migBal
+    } else if (!_migBal || typeof _migBal!=='object') {
+      d.conditions.prepaidMinBalance = { any:0, M:0, F:0 }
+    }
+    // 바프권 임계값 초기화
+    if (!d.conditions.barfMinRatioPct || typeof d.conditions.barfMinRatioPct!=='object') d.conditions.barfMinRatioPct = { any:0, M:0, F:0 }
+    if (!d.conditions.barfMinBalance || typeof d.conditions.barfMinBalance!=='object') d.conditions.barfMinBalance = { any:0, M:0, F:0 }
     setEditing(evt.id); setDraft(d)
   }
   const cancelEdit = () => { setEditing(null); setDraft({}); setCreating(false) }
@@ -358,7 +403,9 @@ function ConditionsSection({ data, draft, setDraft }) {
   const [open, setOpen] = useState({
     svc: !!(c.servicesAny?.length || c.servicesAll?.length || c.servicesNone?.length || c.categoriesAny?.length),
     amt: !!(c.amountMin || c.amountMax),
-    flags: (c.customerHasActivePrepaid!=null || c.customerHasActivePkg!=null || c.customerHasActiveAnnual!=null),
+    gender: !!c.customerGender,
+    qualify: !!(Array.isArray(c.customerQualifyAny) && c.customerQualifyAny.length),
+    pay: !!c.paymentMethodType,
   })
 
   return (
@@ -413,23 +460,107 @@ function ConditionsSection({ data, draft, setDraft }) {
         </div>
       </Collapsible>
 
-      {/* 고객 상태 플래그 */}
-      <Collapsible title="👤 고객 상태" open={open.flags} setOpen={v=>setOpen(o=>({...o,flags:v}))}>
-        <TriFlag label="유효한 다담권 보유" value={c.customerHasActivePrepaid} onChange={v=>setC({customerHasActivePrepaid:v})}/>
-        <TriFlag label="유효한 패키지 보유" value={c.customerHasActivePkg} onChange={v=>setC({customerHasActivePkg:v})}/>
-        <TriFlag label="유효한 연간회원권 보유" value={c.customerHasActiveAnnual} onChange={v=>setC({customerHasActiveAnnual:v})}/>
+      {/* 고객 자격 (성별별 · OR 그룹) */}
+      <Collapsible title="🎯 고객 자격 (성별별 설정 가능)" open={open.qualify} setOpen={v=>setOpen(o=>({...o,qualify:v}))}>
+        {(() => {
+          const cq = c.customerQualify || { any:[], M:[], F:[] }
+          const cols = [{k:'any',label:'무관'},{k:'M',label:'남자'},{k:'F',label:'여자'}]
+          const rows = [
+            {k:'new', label:'신규 고객 (매출 0건)'},
+            {k:'prepaid', label:'다담권 보유'},
+            {k:'barf', label:'바프권 보유'},
+            {k:'pkg', label:'패키지 보유'},
+            {k:'annual', label:'연간권 보유'},
+          ]
+          const toggle = (colKey, qualKey) => {
+            const list = Array.isArray(cq[colKey]) ? cq[colKey] : []
+            const on = list.includes(qualKey)
+            const next = on ? list.filter(x=>x!==qualKey) : [...list, qualKey]
+            setC({customerQualify: { ...cq, [colKey]: next }})
+          }
+          const prepaidChecked = cols.some(col => (cq[col.k]||[]).includes('prepaid'))
+          const barfChecked = cols.some(col => (cq[col.k]||[]).includes('barf'))
+          return <div>
+            {/* 헤더 row */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 56px 56px 56px",gap:4,padding:"4px 0",borderBottom:`1px solid ${T.border}`,marginBottom:4}}>
+              <div/>
+              {cols.map(col => <div key={col.k} style={{fontSize:10,fontWeight:800,color:T.gray700,textAlign:"center"}}>{col.label}</div>)}
+            </div>
+            {/* 행 */}
+            {rows.map(row => <React.Fragment key={row.k}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 56px 56px 56px",gap:4,padding:"3px 0",alignItems:"center"}}>
+                <span style={{fontSize:12,color:T.gray700}}>{row.label}</span>
+                {cols.map(col => {
+                  const on = (cq[col.k]||[]).includes(row.k)
+                  return <label key={col.k} style={{display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                    <input type="checkbox" checked={on} onChange={()=>toggle(col.k, row.k)} style={{accentColor:T.primary,width:16,height:16,margin:0}}/>
+                  </label>
+                })}
+              </div>
+              {(row.k==='prepaid' || row.k==='barf') && ((row.k==='prepaid' && prepaidChecked) || (row.k==='barf' && barfChecked)) && (() => {
+                const isBarf = row.k === 'barf'
+                const pctKey = isBarf ? 'barfMinRatioPct' : 'prepaidMinRatioPct'
+                const balKey = isBarf ? 'barfMinBalance' : 'prepaidMinBalance'
+                const pctObj = (c[pctKey] && typeof c[pctKey]==='object') ? c[pctKey] : {any:0,M:0,F:0}
+                const balObj = (c[balKey] && typeof c[balKey]==='object') ? c[balKey] : {any:0,M:0,F:0}
+                const setPct = (col, v) => setC({[pctKey]: { ...pctObj, [col]: v }})
+                const setBal = (col, v) => setC({[balKey]: { ...balObj, [col]: v }})
+                return <div style={{paddingLeft:16,marginBottom:4,background:T.gray100,borderRadius:6,padding:"6px 10px"}}>
+                  {cols.map(col => {
+                    const colChecked = (cq[col.k]||[]).includes(row.k)
+                    if (!colChecked) return null
+                    return <div key={col.k} style={{marginBottom:4}}>
+                      <div style={{fontSize:10,fontWeight:700,color:T.gray700,marginBottom:2}}>[{col.label}]</div>
+                      <div style={{display:"flex",alignItems:"center",gap:6,padding:"2px 0 2px 10px",fontSize:11}}>
+                        <span style={{color:T.textMuted}}>↳ 잔액 비율</span>
+                        <input type="text" inputMode="numeric"
+                          value={pctObj[col.k]?String(pctObj[col.k]):""}
+                          onChange={e=>{
+                            const raw=String(e.target.value).replace(/[^0-9]/g,"");
+                            setPct(col.k, raw===""?0:Math.max(0,Math.min(100,Number(raw)||0)));
+                          }}
+                          placeholder="0" style={{width:60,padding:"3px 6px",fontSize:11,border:"1px solid "+T.border,borderRadius:6,fontFamily:"inherit",textAlign:"right"}}/>
+                        <span style={{color:T.textMuted}}>% 이상</span>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:6,padding:"2px 0 2px 10px",fontSize:11}}>
+                        <span style={{color:T.textMuted}}>↳ 잔액</span>
+                        <input type="text" inputMode="numeric"
+                          value={balObj[col.k]?Number(balObj[col.k]).toLocaleString():""}
+                          onChange={e=>{
+                            const raw=String(e.target.value).replace(/[^0-9]/g,"");
+                            setBal(col.k, raw===""?0:Math.max(0,Number(raw)||0));
+                          }}
+                          placeholder="0" style={{width:110,padding:"3px 6px",fontSize:11,border:"1px solid "+T.border,borderRadius:6,fontFamily:"inherit",textAlign:"right"}}/>
+                        <span style={{color:T.textMuted}}>원 이상</span>
+                      </div>
+                    </div>
+                  })}
+                  <div style={{fontSize:10,color:T.textMuted,lineHeight:1.4,marginTop:2}}>둘 다 지정하면 AND · 0 = 무관</div>
+                </div>
+              })()}
+            </React.Fragment>)}
+            <div style={{fontSize:10,color:T.textMuted,marginTop:8,lineHeight:1.5,paddingTop:6,borderTop:`1px solid ${T.border}`}}>
+              • <b>무관</b> 컬럼: 남녀 구분 없이 적용<br/>
+              • <b>남자 / 여자</b> 컬럼: 해당 성별만 적용<br/>
+              • 한 컬럼 내 여러 체크 = OR (하나만 충족하면 통과)<br/>
+              • 전부 비어있으면 조건 무시 (모든 고객 통과)
+            </div>
+          </div>
+        })()}
       </Collapsible>
 
-      {/* 결제 수단 조건 */}
-      <Collapsible title="💳 결제 수단" open={open.pay} setOpen={v=>setOpen(o=>({...o,pay:v}))}>
-        <TriFlag label="다담권 일부라도 차감" value={c.paymentUsesPrepaid} onChange={v=>setC({paymentUsesPrepaid:v})}/>
-        <TriFlag label="다담권으로 전액 결제" value={c.paymentFullPrepaid} onChange={v=>setC({paymentFullPrepaid:v})}/>
-        <TriFlag label="포인트 사용" value={c.paymentUsesPoint} onChange={v=>setC({paymentUsesPoint:v})}/>
-        <TriFlag label="쿠폰 할인 적용" value={c.paymentUsesCoupon} onChange={v=>setC({paymentUsesCoupon:v})}/>
-        <div style={{fontSize:10,color:T.textMuted,marginTop:6,lineHeight:1.5}}>
-          • <b>다담권 일부라도 차감</b>: 다담권을 조금이라도 쓰면 해당 (부분·전액 모두)<br/>
-          • <b>다담권으로 전액 결제</b>: 카드/현금 0원이어야 (다담권만으로 완결)<br/>
-          • 각 버튼 <b>다시 클릭하면 해제</b> (→ 무관)
+      {/* 결제 방식 (이번 매출의 결제 수단) */}
+      <Collapsible title="💳 결제 방식" open={open.pay} setOpen={v=>setOpen(o=>({...o,pay:v}))}>
+        <div style={{display:"flex",gap:6}}>
+          {[{k:null,label:"무관"},{k:"cash",label:"현금"},{k:"card",label:"카드"}].map(opt=>{
+            const on = (c.paymentMethodType||null) === opt.k
+            return <button key={String(opt.k)} type="button" onClick={()=>setC({paymentMethodType:opt.k})}
+              style={{flex:1,padding:"6px 0",fontSize:11,fontWeight:on?800:500,border:"1px solid "+(on?T.primary:T.border),
+                borderRadius:6,background:on?T.primary:'#fff',color:on?'#fff':T.gray700,cursor:"pointer",fontFamily:"inherit"}}>{opt.label}</button>
+          })}
+        </div>
+        <div style={{fontSize:10,color:T.textMuted,marginTop:6}}>
+          이번 매출에 해당 결제 수단이 조금이라도 사용됐는지 기준
         </div>
       </Collapsible>
     </div>
@@ -545,12 +676,36 @@ function ConditionSummary({ evt, data }) {
   if (c.annualServiceIds?.length) chips.push(`연간권: ${c.annualServiceIds.map(svcName).join(',')}`)
   if (c.amountMin) chips.push(`≥ ${Number(c.amountMin).toLocaleString()}`)
   if (c.amountMax) chips.push(`≤ ${Number(c.amountMax).toLocaleString()}`)
-  if (c.customerHasActivePrepaid===true) chips.push('다담권 보유')
-  if (c.customerHasActivePrepaid===false) chips.push('다담권 無')
-  if (c.customerHasActivePkg===true) chips.push('패키지 보유')
-  if (c.customerHasActivePkg===false) chips.push('패키지 無')
-  if (c.customerHasActiveAnnual===true) chips.push('연간권 보유')
-  if (c.customerHasActiveAnnual===false) chips.push('연간권 無')
+  const cq = c.customerQualify || {any:[], M:[], F:[]}
+  const nameMap = {new:'신규', prepaid:'다담권', barf:'바프권', pkg:'패키지', annual:'연간권'}
+  const pctObj = (c.prepaidMinRatioPct && typeof c.prepaidMinRatioPct==='object') ? c.prepaidMinRatioPct : {}
+  const balObj = (c.prepaidMinBalance && typeof c.prepaidMinBalance==='object') ? c.prepaidMinBalance : {}
+  const bPctObj = (c.barfMinRatioPct && typeof c.barfMinRatioPct==='object') ? c.barfMinRatioPct : {}
+  const bBalObj = (c.barfMinBalance && typeof c.barfMinBalance==='object') ? c.barfMinBalance : {}
+  const fmtQual = (x, colKey) => {
+    if (x==='prepaid') {
+      const extra = []
+      if (Number(pctObj[colKey])>0) extra.push(`${pctObj[colKey]}%+`)
+      if (Number(balObj[colKey])>0) extra.push(`${Number(balObj[colKey]).toLocaleString()}원+`)
+      return extra.length ? `다담권(${extra.join(',')})` : '다담권'
+    }
+    if (x==='barf') {
+      const extra = []
+      if (Number(bPctObj[colKey])>0) extra.push(`${bPctObj[colKey]}%+`)
+      if (Number(bBalObj[colKey])>0) extra.push(`${Number(bBalObj[colKey]).toLocaleString()}원+`)
+      return extra.length ? `바프권(${extra.join(',')})` : '바프권'
+    }
+    return nameMap[x]||x
+  }
+  const renderCol = (label, colKey, arr) => arr.length ? `${label}[${arr.map(x=>fmtQual(x,colKey)).join('/')}]` : ''
+  const parts = [
+    renderCol('무관', 'any', cq.any||[]),
+    renderCol('남', 'M', cq.M||[]),
+    renderCol('여', 'F', cq.F||[]),
+  ].filter(Boolean)
+  if (parts.length) chips.push(`자격: ${parts.join(' · ')}`)
+  if (c.paymentMethodType==='cash') chips.push('현금 결제')
+  if (c.paymentMethodType==='card') chips.push('카드 결제')
   if (chips.length === 0) return null
   return (
     <div style={{display:'flex', flexWrap:'wrap', gap:4, marginTop:4}}>
