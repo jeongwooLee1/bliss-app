@@ -3029,7 +3029,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                 </div>
                                 <label style={{display:"flex",alignItems:"center",gap:5,marginTop:8,fontSize:11,cursor:"pointer",color:isDayMove?T.primary:T.textSub,fontWeight:isDayMove?700:500}}>
                                   <input type="checkbox" checked={isDayMove} onChange={e=>onDayMoveToggle(e.target.checked)} style={{cursor:"pointer",accentColor:T.primary}}/>
-                                  🧳 다른 지점에서 종일 근무
+                                  🧳 타지점 종일 근무
                                 </label>
                                 {isDayMove && <select value={dayMoveBid} onChange={e=>onDayMoveBranchChange(e.target.value)}
                                   style={{width:"100%",marginTop:4,fontSize:11,padding:"4px 6px",borderRadius:6,border:"1px solid "+T.primary,background:T.primaryLt,color:T.primary,fontWeight:700,fontFamily:"inherit"}}>
