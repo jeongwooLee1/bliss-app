@@ -3570,7 +3570,13 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                     const lp=cellLongPress.current;cellLongPress.current=null;
                     if(lp&&!lp.moved){
                       const time=yToTime(lp.y);
-                      setModalData({roomId:lp.room.id,bid:lp.room.branch_id,time,date:selDate});
+                      // 직원 컬럼이면 staffId 전달 (데스크탑 handleCellClick과 동일 동작)
+                      setModalData({
+                        roomId: lp.room.isStaffCol ? "" : lp.room.id,
+                        bid: lp.room.branch_id,
+                        time, date: selDate,
+                        staffId: lp.room.isStaffCol ? lp.room.staffId : undefined,
+                      });
                       setShowModal(true);
                     }
                     setTimeout(()=>setHoverCell(null),300);
@@ -3818,7 +3824,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                 color:pkg.isDadam?"#d35400":"#2d3436"
                               }}>
                                 {pkg.isDadam
-                                  ? `${pkg.name} ${pkg.totalRemain.toLocaleString()}원`
+                                  ? `${pkg.name} ${(()=>{const n=pkg.totalRemain;if(!n)return "0";const m=n/10000;if(m>=1)return (m===Math.floor(m)?Math.floor(m):Math.round(m*10)/10)+"만";return n.toLocaleString();})()}`
                                   : `${pkg.name.replace(/\s*\d+회\s*$/, "").trim()} +${pkg.totalRemain}`}
                                 {pkg.count > 1 && <span style={{opacity:0.7,marginLeft:2}}>×{pkg.count}</span>}
                               </span>)}
