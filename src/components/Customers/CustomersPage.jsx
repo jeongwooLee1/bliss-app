@@ -7,6 +7,7 @@ import { Btn, FLD, Empty, fmt, Spinner, DataTable } from '../common'
 import I from '../common/I'
 import { DetailedSaleForm } from '../Timeline/SaleForm'
 import ConsentModal from '../Consent/ConsentModal'
+import ConsentPanel from '../Consent/ConsentPanel'
 
 const uid = genId;
 const _mc = (fn) => { if(fn) fn(); };
@@ -1224,14 +1225,10 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                         <span style={{fontSize:T.fs.xs,color:T.textMuted}}>{s.label}</span>
                         <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:s.color}}>{s.val}</span>
                       </div>)}
-                      <button onClick={e=>{ e.stopPropagation(); setConsentCust(c); }}
-                        style={{marginLeft:"auto",padding:"4px 10px",fontSize:T.fs.xs,fontWeight:T.fw.bolder,background:T.primaryLt,color:T.primary,border:"1px solid "+T.primary,borderRadius:6,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
-                        📝 동의서
-                      </button>
                     </div>
                     {/* 탭 */}
                     <div style={{display:"flex",gap:0,borderBottom:"1px solid "+T.border,background:T.bgCard}}>
-                      {[["sales","매출 내역 ("+custSales.length+")"],["pkg","보유권 ("+custPkgs.filter(p=>{const t=pkgType(p);const ex=(p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/);const isExp=ex&&ex[1]<todayStr();if(isExp)return false;return t==="prepaid"?((p.note||"").match(/잔액:([0-9,]+)/)?.[1]||"0").replace(/,/g,"")>0:(p.total_count-p.used_count)>0;}).length+")"],["point","포인트 ("+custPointBalance.toLocaleString()+"P)"],["share","🤝 쉐어 ("+shareCusts.length+")"]].map(([tab,lbl])=>(
+                      {[["sales","매출 내역 ("+custSales.length+")"],["pkg","보유권 ("+custPkgs.filter(p=>{const t=pkgType(p);const ex=(p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/);const isExp=ex&&ex[1]<todayStr();if(isExp)return false;return t==="prepaid"?((p.note||"").match(/잔액:([0-9,]+)/)?.[1]||"0").replace(/,/g,"")>0:(p.total_count-p.used_count)>0;}).length+")"],["point","포인트 ("+custPointBalance.toLocaleString()+"P)"],["share","🤝 쉐어 ("+shareCusts.length+")"],["consent","📝 동의서"]].map(([tab,lbl])=>(
                         <button key={tab} onClick={()=>setDetailTab(tab)}
                           style={{padding:"8px 16px",fontSize:T.fs.xs,fontWeight:detailTab===tab?T.fw.bolder:T.fw.normal,
                             color:detailTab===tab?T.primary:T.textSub,background:"none",border:"none",
@@ -1395,6 +1392,9 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                           + 쉐어 고객 추가
                         </button>
                       </div>}
+                      {detailTab==="consent" && <div style={{padding:"6px 2px"}}>
+                        <ConsentPanel cust={c} onRequestNew={()=>setConsentCust(c)}/>
+                      </div>}
                     </div>
                 </div></td></tr>}
               </React.Fragment>;
@@ -1428,6 +1428,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
     {consentCust && <ConsentModal
       cust={consentCust}
       bizId={_activeBizId}
+      data={data}
       onClose={()=>setConsentCust(null)}/>}
   </div>;
 }

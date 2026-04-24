@@ -21,6 +21,7 @@ import AdminServiceTags from './AdminServiceTags'
 import SchedulePage from '../Schedule/SchedulePage'
 import AdminMemberPriceRules from './AdminMemberPriceRules'
 import AdminBranchGroups from './AdminBranchGroups'
+import AdminKiosks from './AdminKiosks'
 
 const uid = genId;
 
@@ -379,6 +380,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
       {key:"saleitems",   icon:"scissors", label:"시술 상품 관리", desc:"시술 항목 및 가격 설정"},
       {key:"coupons",     icon:"gift",     label:"이벤트 관리",    desc:"쿠폰 등록·적립/할인/쿠폰 발행 이벤트 통합 관리"},
       {key:"memberrules", icon:"star",     label:"회원가 적용 규칙", desc:"연간권/선불권 회원가 자격 + 상품별 예외 설정"},
+      {key:"kiosks",      icon:"mobile",   label:"📲 태블릿 (키오스크)", desc:"매장 비치 태블릿 등록 — 동의서 서명용"},
       {key:"prodmgmt",    icon:"clipboard",label:"제품 관리",      desc:"판매 제품 관리"},
       ...(isOwner ? [{key:"brandmembers", icon:"userPlus", label:"브랜드 멤버 관리", desc:"지점 가입 요청 승인/거절", badge:pendingCount}] : []),
       {key:"schedule",     icon:"calendar", label:"직원 근무표",      desc:"직원 월별 근무 자동 배정"},
@@ -443,6 +445,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     {tab==="schedule"    && isMaster &&<AdminSchedule currentUser={currentUser} isMaster={isMaster}/>}
     {tab==="memberrules" && isMaster &&<AdminMemberPriceRules data={data} setData={setData} bizId={bizId}/>}
     {tab==="branchgroups"&& isMaster &&<AdminBranchGroups data={data} setData={setData} bizId={bizId}/>}
+    {tab==="kiosks"      && isMaster &&<AdminKiosks        data={data} setData={setData} bizId={bizId}/>}
     {tab==="joinbrand"    && !isMaster &&<AdminJoinBrand   currentUser={currentUser} onBack={back}/>}
     {tab && !["mypage","schedule"].includes(tab) && !isMaster && <div style={{textAlign:"center",padding:"60px 20px",color:T.textMuted}}>
       <div style={{fontSize:32,marginBottom:12}}>&#128274;</div>
