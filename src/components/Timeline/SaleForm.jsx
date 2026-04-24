@@ -2446,7 +2446,18 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                 {(()=>{
                   if (newPrepaidActiveTotal > 0) return null;
                   // 지점 제한 롤백: 전체 prepaid 사용 가능
-                  const prepaidPkgs = activePkgs.filter(p=>_pkgType(p)==="prepaid").sort((a,b)=>_pkgBalance(b)-_pkgBalance(a));
+                  // 차감 순서: 만기 임박 먼저 → 오래된 것 먼저 (FEFO + FIFO). 만기 없으면 뒤로
+                  const _expKey = (p) => {
+                    const m = (p.note||"").match(/유효:\s*(\d{4}-\d{2}-\d{2})/);
+                    return m ? m[1] : "9999-12-31";
+                  };
+                  const _cKey = (p) => p.created_at || p.createdAt || "9999-12-31";
+                  const prepaidPkgs = activePkgs.filter(p=>_pkgType(p)==="prepaid")
+                    .sort((a,b)=>{
+                      const ea = _expKey(a), eb = _expKey(b);
+                      if (ea !== eb) return ea.localeCompare(eb);
+                      return String(_cKey(a)).localeCompare(String(_cKey(b)));
+                    });
                   const prepaidBal = prepaidPkgs.reduce((s,p)=>s+_pkgBalance(p),0);
                   if (prepaidBal <= 0) return null;
                   const isActive = prepaidPkgs.some(p=>!!pkgUse[p.id]);
