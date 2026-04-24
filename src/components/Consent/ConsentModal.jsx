@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import QRCode from 'qrcode/lib/browser'
 import { T } from '../../lib/constants'
 import { sb, SB_URL, sbHeaders } from '../../lib/sb'
@@ -10,16 +10,36 @@ function genToken() {
   return 'bc_' + (s() + s()).slice(0, 18)
 }
 
-export default function ConsentModal({ cust, bizId, onClose }) {
-  const [tab, setTab] = useState('create')
+/**
+ * 동의서 요청 모달 — 작성 전용.
+ * 프로세스:
+ *  1) 템플릿 선택 (번들 가능)
+ *  2) prefill (선택)
+ *  3) 대상 태블릿(kiosk) 선택 → 전송 → 태블릿이 realtime으로 즉시 서명 UI 띄움
+ *  4) 키오스크 없는 매장: "링크 복사/QR 보기"로 폴백 (고객 폰으로 QR 스캔)
+ */
+export default function ConsentModal({ cust, bizId, data, onClose }) {
   const [tpls, setTpls] = useState([])
   const [folders, setFolders] = useState([])
   const [selectedIds, setSelectedIds] = useState([])
   const [prefill, setPrefill] = useState({})
+  const [kioskId, setKioskId] = useState('')
   const [loading, setLoading] = useState(false)
-  const [linkUrl, setLinkUrl] = useState('')
-  const [qrDataUri, setQrDataUri] = useState('')
-  const [history, setHistory] = useState([])
+  const [result, setResult] = useState(null) // {token, url, qr, via:'kiosk'|'qr'}
+
+  // 매장 등록 kiosks 목록 (businesses.settings.kiosks)
+  const kiosks = useMemo(() => {
+    try {
+      const raw = (data?.businesses || [])[0]?.settings
+      const st = typeof raw === 'string' ? JSON.parse(raw) : (raw || {})
+      return Array.isArray(st.kiosks) ? st.kiosks : []
+    } catch { return [] }
+  }, [data?.businesses])
+
+  // 모달 열릴 때 기본 kiosk: 현재 지점 매칭 or 첫 번째
+  useEffect(() => {
+    if (kiosks.length > 0 && !kioskId) setKioskId(kiosks[0].id)
+  }, [kiosks])
 
   useEffect(() => {
     const onKey = e => { if (e.key === 'Escape') onClose?.() }
@@ -40,26 +60,11 @@ export default function ConsentModal({ cust, bizId, onClose }) {
     })()
   }, [bizId])
 
-  useEffect(() => {
-    if (tab !== 'history' || !cust?.id) return
-    let cancelled = false
-    const load = async () => {
-      try {
-        const r = await fetch(`${SB_URL}/rest/v1/customer_consents?customer_id=eq.${cust.id}&select=id,template_id,template_name,signature_url,document_url,signer_name,signed_at,ip&order=signed_at.desc&limit=50`, { headers: sbHeaders }).then(r => r.json())
-        if (!cancelled && Array.isArray(r)) setHistory(r)
-      } catch (e) { console.error('[consent] history load', e) }
-    }
-    load()
-    const ch = window._sbClient?.channel(`consent_${cust.id}_${Date.now()}`)
-      ?.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'customer_consents', filter: `customer_id=eq.${cust.id}` }, () => load())
-      ?.subscribe()
-    return () => { cancelled = true; try { ch?.unsubscribe(); window._sbClient?.removeChannel(ch) } catch {} }
-  }, [tab, cust?.id])
-
   const toggleTpl = id => setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
 
-  const createLink = async () => {
+  const send = async (via) => {
     if (selectedIds.length === 0) return alert('템플릿을 1개 이상 선택하세요.')
+    if (via === 'kiosk' && !kioskId) return alert('대상 태블릿을 선택하세요.')
     setLoading(true)
     try {
       const token = genToken()
@@ -73,24 +78,26 @@ export default function ConsentModal({ cust, bizId, onClose }) {
         template_ids: selectedIds.length > 1 ? selectedIds : null,
         prefill_data: Object.keys(cleanPrefill).length ? cleanPrefill : null,
         expires_at,
+        kiosk_id: via === 'kiosk' ? kioskId : null,
       })
       const url = `${SIGN_HOST}/?t=${token}`
-      setLinkUrl(url)
-      const dataUri = await QRCode.toDataURL(url, { width: 256, margin: 2 })
-      setQrDataUri(dataUri)
+      if (via === 'kiosk') {
+        setResult({ token, url, via: 'kiosk' })
+      } else {
+        const qr = await QRCode.toDataURL(url, { width: 256, margin: 2 })
+        setResult({ token, url, qr, via: 'qr' })
+      }
     } catch (e) {
-      console.error('[consent] create err', e)
-      alert('링크 생성 실패: ' + (e?.message || e))
+      console.error('[consent] send err', e)
+      alert('전송 실패: ' + (e?.message || e))
     } finally {
       setLoading(false)
     }
   }
 
   const copyLink = () => {
-    navigator.clipboard?.writeText(linkUrl).then(() => alert('링크 복사됨')).catch(() => {})
+    navigator.clipboard?.writeText(result.url).then(() => alert('링크 복사됨')).catch(() => {})
   }
-
-  const reset = () => { setLinkUrl(''); setQrDataUri(''); setSelectedIds([]); setPrefill({}) }
 
   const grouped = { _uncat: { name: '미분류', items: [] } }
   folders.forEach(f => { grouped[f.id] = { name: f.name, items: [] } })
@@ -103,20 +110,35 @@ export default function ConsentModal({ cust, bizId, onClose }) {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={onClose}>
       <div style={{ width: 'min(540px, 95vw)', maxHeight: '90vh', overflow: 'auto', background: '#fff', borderRadius: 12, boxShadow: '0 20px 40px rgba(0,0,0,.2)' }} onClick={e => e.stopPropagation()}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid ' + T.border, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, flex: 1 }}>📝 동의서 · {cust?.name || ''}</div>
+          <div style={{ fontSize: 15, fontWeight: 800, flex: 1 }}>📝 동의서 요청 · {cust?.name || ''}</div>
           <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 20, cursor: 'pointer', color: T.textMuted }}>×</button>
         </div>
 
-        <div style={{ display: 'flex', borderBottom: '1px solid ' + T.border }}>
-          {[['create', '작성'], ['history', '이력']].map(([k, lbl]) => (
-            <button key={k} onClick={() => { setTab(k); if (k === 'create') reset() }}
-              style={{ flex: 1, padding: '10px 0', fontSize: 13, fontWeight: tab === k ? 800 : 500, border: 'none', background: 'none', color: tab === k ? T.primary : T.textSub, borderBottom: tab === k ? '2px solid ' + T.primary : '2px solid transparent', cursor: 'pointer' }}>
-              {lbl}
-            </button>
-          ))}
-        </div>
+        {/* 전송 결과 화면 */}
+        {result && result.via === 'kiosk' && <div style={{ padding: 30, textAlign: 'center' }}>
+          <div style={{ fontSize: 60, marginBottom: 14 }}>📲</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: '#10b981', marginBottom: 8 }}>태블릿으로 전송 완료</div>
+          <div style={{ fontSize: 13, color: T.textMuted, marginBottom: 20 }}>
+            <b>{kiosks.find(k => k.id === kioskId)?.name || kioskId}</b> 태블릿에 서명 화면이 열렸습니다.<br />
+            고객님께 태블릿을 전달해주세요.
+          </div>
+          <button onClick={onClose} style={{ padding: '10px 24px', fontSize: 14, fontWeight: 700, background: T.primary, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>확인</button>
+        </div>}
 
-        {tab === 'create' && !linkUrl && <div style={{ padding: 16 }}>
+        {result && result.via === 'qr' && <div style={{ padding: 20, textAlign: 'center' }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: '#10b981', marginBottom: 12 }}>✅ 링크 생성</div>
+          {result.qr && <img src={result.qr} alt="QR" style={{ width: 220, height: 220, border: '1px solid ' + T.border, borderRadius: 8, marginBottom: 12 }} />}
+          <div style={{ fontSize: 11, color: T.textMuted, wordBreak: 'break-all', padding: '6px 10px', background: T.gray100, borderRadius: 6, marginBottom: 10 }}>{result.url}</div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button onClick={copyLink} style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, background: T.gray200, color: T.text, border: 'none', borderRadius: 6, cursor: 'pointer' }}>📋 복사</button>
+            <a href={result.url} target="_blank" rel="noopener noreferrer" style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, background: T.primary, color: '#fff', borderRadius: 6, textDecoration: 'none' }}>🖥 열기</a>
+            <button onClick={onClose} style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, background: '#fff', color: T.textSub, border: '1px solid ' + T.border, borderRadius: 6, cursor: 'pointer' }}>닫기</button>
+          </div>
+          <div style={{ fontSize: 11, color: T.textMuted, marginTop: 10 }}>💡 24시간 이내 서명 안 하면 만료</div>
+        </div>}
+
+        {/* 작성 폼 */}
+        {!result && <div style={{ padding: 16 }}>
           {tpls.length === 0 && <div style={{ textAlign: 'center', color: T.textMuted, padding: 30, fontSize: 13 }}>
             등록된 템플릿 없음.<br />
             <a href={`${SIGN_HOST}/?admin=1`} target="_blank" rel="noopener noreferrer" style={{ color: T.primary }}>관리자 편집기</a>에서 추가하세요.
@@ -146,37 +168,33 @@ export default function ConsentModal({ cust, bizId, onClose }) {
             </div>
           </details>}
 
-          <button onClick={createLink} disabled={loading || selectedIds.length === 0}
-            style={{ width: '100%', padding: '10px', marginTop: 10, fontSize: 14, fontWeight: 800, background: T.primary, color: '#fff', border: 'none', borderRadius: 8, cursor: selectedIds.length && !loading ? 'pointer' : 'not-allowed', opacity: selectedIds.length && !loading ? 1 : .5 }}>
-            {loading ? '생성중…' : `✅ 링크 생성 (${selectedIds.length}건)`}
-          </button>
-        </div>}
-
-        {tab === 'create' && linkUrl && <div style={{ padding: 20, textAlign: 'center' }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: '#10b981', marginBottom: 12 }}>✅ 링크 생성 완료</div>
-          {qrDataUri && <img src={qrDataUri} alt="QR" style={{ width: 256, height: 256, border: '1px solid ' + T.border, borderRadius: 8, marginBottom: 12 }} />}
-          <div style={{ fontSize: 11, color: T.textMuted, wordBreak: 'break-all', padding: '6px 10px', background: T.gray100, borderRadius: 6, marginBottom: 10 }}>{linkUrl}</div>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <button onClick={copyLink} style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, background: T.gray200, color: T.text, border: 'none', borderRadius: 6, cursor: 'pointer' }}>📋 복사</button>
-            <a href={linkUrl} target="_blank" rel="noopener noreferrer" style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, background: T.primary, color: '#fff', borderRadius: 6, textDecoration: 'none' }}>🖥 열기</a>
-            <button onClick={reset} style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, background: '#fff', color: T.primary, border: '1px solid ' + T.primary, borderRadius: 6, cursor: 'pointer' }}>↻ 새로</button>
-          </div>
-          <div style={{ fontSize: 11, color: T.textMuted, marginTop: 10 }}>💡 24시간 이내 서명 안 하면 만료</div>
-        </div>}
-
-        {tab === 'history' && <div style={{ padding: 12, maxHeight: 420, overflow: 'auto' }}>
-          {history.length === 0 ? (
-            <div style={{ textAlign: 'center', color: T.textMuted, padding: 30, fontSize: 13 }}>서명 이력 없음</div>
-          ) : history.map(h => (
-            <div key={h.id} style={{ padding: '10px 12px', borderBottom: '1px solid ' + T.border, fontSize: 12 }}>
-              <div style={{ fontWeight: 700, marginBottom: 4 }}>{h.template_name || h.template_id}</div>
-              <div style={{ color: T.textMuted, marginBottom: 6 }}>{(h.signed_at || '').replace('T', ' ').slice(0, 16)}{h.signer_name ? ' · ' + h.signer_name : ''}</div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {h.document_url && <a href={h.document_url} target="_blank" rel="noopener noreferrer" style={{ padding: '4px 10px', background: T.primary, color: '#fff', borderRadius: 4, fontSize: 11, textDecoration: 'none' }}>📄 PDF</a>}
-                {h.signature_url && <a href={h.signature_url} target="_blank" rel="noopener noreferrer" style={{ padding: '4px 10px', background: T.gray200, color: T.text, borderRadius: 4, fontSize: 11, textDecoration: 'none' }}>🖼 서명</a>}
+          {/* 전송 방식 */}
+          {tpls.length > 0 && <div style={{ marginTop: 14, padding: 12, background: T.gray100, borderRadius: 8 }}>
+            {kiosks.length > 0 ? <>
+              <div style={{ fontSize: 12, fontWeight: 700, color: T.textSub, marginBottom: 6 }}>📲 대상 태블릿</div>
+              <select value={kioskId} onChange={e => setKioskId(e.target.value)}
+                style={{ width: '100%', padding: '8px 10px', fontSize: 13, border: '1px solid ' + T.border, borderRadius: 6, background: '#fff' }}>
+                {kiosks.map(k => <option key={k.id} value={k.id}>{k.name || k.id}</option>)}
+              </select>
+              <button onClick={() => send('kiosk')} disabled={loading || selectedIds.length === 0}
+                style={{ width: '100%', padding: '10px', marginTop: 10, fontSize: 14, fontWeight: 800, background: T.primary, color: '#fff', border: 'none', borderRadius: 8, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
+                {loading ? '전송중…' : `📲 태블릿으로 전송 (${selectedIds.length}건)`}
+              </button>
+              <button onClick={() => send('qr')} disabled={loading || selectedIds.length === 0}
+                style={{ width: '100%', padding: '8px', marginTop: 6, fontSize: 12, fontWeight: 600, background: 'transparent', color: T.textSub, border: '1px dashed ' + T.border, borderRadius: 6, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
+                QR/링크로 대신 받기 (폴백)
+              </button>
+            </> : <>
+              <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 8, lineHeight: 1.5 }}>
+                등록된 태블릿(키오스크)이 없습니다.<br />
+                관리설정에서 태블릿을 등록하거나, QR/링크로 고객 폰에 전송하세요.
               </div>
-            </div>
-          ))}
+              <button onClick={() => send('qr')} disabled={loading || selectedIds.length === 0}
+                style={{ width: '100%', padding: '10px', fontSize: 14, fontWeight: 800, background: T.primary, color: '#fff', border: 'none', borderRadius: 8, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
+                {loading ? '생성중…' : `🔗 QR 링크 생성 (${selectedIds.length}건)`}
+              </button>
+            </>}
+          </div>}
         </div>}
       </div>
     </div>
