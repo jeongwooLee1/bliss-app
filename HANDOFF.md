@@ -1,7 +1,23 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.38** (https://blissme.ai/version.txt) — 2026-04-24 배포 완료
+- **라이브: v3.7.60** (https://blissme.ai/version.txt) — 2026-04-24 배포 완료
+
+## 🚧 배포 대기 (다음 배포 시 처리)
+- **`feat/consent-integration` → main merge**: 동의서 통합 브랜치 병합 후 함께 배포 반영
+- **사전 준비 필수**: `sign.blissme.ai` Cloudflare Pages 배포 먼저 완료돼야 실사용 가능 (QR 스캔 → 태블릿/폰 서명 페이지). Pages 배포 없이 bliss-app만 올리면 링크 열어도 404
+
+### v3.7.60 (2026-04-24)
+- 예약블록 사용자 메모 폰트 -1 (제목행보다 1 작게)
+- **SaleForm `reservationId` 필드 누락 버그 수정** — 매출등록 시 `sale.reservationId` 저장되지 않아 예약모달 매출완료 전환이 안 되던 문제. `sale` 객체에 `reservationId: reservation?.id || null` 추가
+- DB 백필: 4월 이후 app 등록 매출 **207건** `reservation_id` 복구 (cust_id+bid+date+time 매칭)
+
+### v3.7.59 (2026-04-24)
+- 미배정 칼럼 ✕ 삭제 버튼 (추가된 extra column만, 남은 미배정으로 자동 이관)
+- 다담권 FIFO 정렬 (purchased_at ASC)
+- 다담권 유효기간 1년 -1일 (SaleForm 3곳)
+- 받은메시지함 배너: 1분 이상 미답변부터 표시
+- 예약모달 변경모드 고객검색 연결
 
 ### 케어 SMS 지점별 템플릿 확인 및 준비 완료 (2026-04-24 밤)
 - 알리고 알림톡 템플릿 전수 조회 — `UG_8978~UG_8982` 코드로 시술후 5/10/21/35/53일 메시지가 이미 브랜드 톤으로 작성되어 있음. `fetch_templates.py` 응답엔 안 뜨는데 실제 `noti_config.after_Nd.msgTpl`에는 저장돼 있음 (senderkey 구버전 조회 결과일 가능성).

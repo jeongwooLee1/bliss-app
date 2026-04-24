@@ -3670,6 +3670,21 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                   ) : (
                     <span className="tl-room-sub" style={{fontSize:14,color:room.isNaver?"#FF9800":T.gray500,display:"inline-flex",alignItems:"center",gap:3,fontWeight:800}}>
                       {room.name}
+                      {/* 빈 미배정 칼럼 삭제 버튼 (추가된 칼럼만) */}
+                      {room.isExtraCol && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!canEdit(room.branch_id)) return;
+                            if (!confirm(`이 빈 미배정 칼럼을 삭제할까요?\n(달려있던 예약은 남은 미배정 칼럼으로 자동 이관됩니다)`)) return;
+                            removeExtraCol(room.branch_id);
+                          }}
+                          title="미배정 칼럼 삭제"
+                          style={{width:14,height:14,borderRadius:"50%",border:"none",background:T.gray200,color:T.gray500,cursor:"pointer",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",padding:0,lineHeight:1}}
+                          onMouseOver={e=>{e.currentTarget.style.background=T.dangerLt;e.currentTarget.style.color=T.danger;}}
+                          onMouseOut={e=>{e.currentTarget.style.background=T.gray200;e.currentTarget.style.color=T.gray500;}}
+                        >×</button>
+                      )}
                       {/* 프리랜서 삭제 버튼 */}
                       {room.isStaffCol && room.staffId && (() => {
                         const emp = empList.find(e => e.id === room.staffId);
@@ -4039,7 +4054,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                         {block.type==="memo" && <div style={{color:T.danger,fontWeight:T.fw.black}}><I name="fileText" size={10} color={T.danger}/> 메모</div>}
                         {block.type==="clockin" && <div style={{color:T.gray600,fontWeight:T.fw.bold}}><I name="clock" size={10} color={T.gray600}/> {staff?.dn||"출근"}</div>}
                         {block.type==="cleaning" && <div style={{color:T.info,fontWeight:T.fw.bold}}><I name="sparkles" size={10} color={T.info}/> 청소</div>}
-                        {effectiveNaverColShow["블록메모"] !== false && block.memo && (() => { const clean = block.memo.split("\n").filter(l => { const t=l.trim(); return !(/^\[등록:|^\[수정:/.test(t)) && !(/^\d+\.\d+\s+\d+:\d+\s*(예약)?(접수|변경|확정|취소|신청|확정완료)/.test(t)); }).join("\n").trim(); return clean ? <div style={{color:block.isSchedule?T.text:T.gray700,fontWeight:T.fw.normal,marginTop:1,whiteSpace:"pre-line",wordBreak:"break-word"}}><I name="msgSq" size={10} color={T.gray600}/> {clean}</div> : null; })()}
+                        {effectiveNaverColShow["블록메모"] !== false && block.memo && (() => { const clean = block.memo.split("\n").filter(l => { const t=l.trim(); return !(/^\[등록:|^\[수정:/.test(t)) && !(/^\d+\.\d+\s+\d+:\d+\s*(예약)?(접수|변경|확정|취소|신청|확정완료)/.test(t)); }).join("\n").trim(); return clean ? <div style={{color:block.isSchedule?T.text:T.gray700,fontWeight:T.fw.normal,fontSize:Math.max(6,blockFs-1),marginTop:1,whiteSpace:"pre-line",wordBreak:"break-word"}}><I name="msgSq" size={10} color={T.gray600}/> {clean}</div> : null; })()}
                         {/* Resize handle — 넓은 히트 영역 */}
                         {isEditable && <div className="resize-handle" onMouseDown={e=>handleResizeStart(block,e)} onTouchStart={e=>handleResizeStart(block,e)}
                           style={{position:"absolute",bottom:-10,left:"10%",right:"10%",height:20,cursor:"ns-resize",

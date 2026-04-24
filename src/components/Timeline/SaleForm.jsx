@@ -1560,7 +1560,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
         const totalCnt = pkg.total_count || 0;
         const upd = { used_count: newUsed };
         if (prevUsed === 0 && !(/유효:\d{4}-\d{2}-\d{2}/.test(pkg.note||""))) {
-          const exp = new Date(); exp.setFullYear(exp.getFullYear()+1);
+          const exp = new Date(); exp.setFullYear(exp.getFullYear()+1); exp.setDate(exp.getDate()-1);
           const expStr = exp.toISOString().slice(0,10);
           const n = pkg.note||"";
           upd.note = n.includes("유효:") ? n.replace(/유효:\s*(?!\d)/, `유효:${expStr} `) : (n ? `${n} | 유효:${expStr}` : `유효:${expStr}`);
@@ -1580,7 +1580,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
         let newNote = (pkg.note || "").replace(/잔액:[0-9,]+/, `잔액:${newBal.toLocaleString()}`);
         // 유효기간 없으면 첫 사용 시점부터 1년 자동 설정
         if (!/유효:\s*\d{4}-\d{2}-\d{2}/.test(newNote)) {
-          const d = new Date(); d.setFullYear(d.getFullYear()+1);
+          const d = new Date(); d.setFullYear(d.getFullYear()+1); d.setDate(d.getDate()-1);
           const expStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
           newNote = newNote ? `${newNote} | 유효:${expStr}` : `유효:${expStr}`;
         }
@@ -1633,7 +1633,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
         let _note = `잔액:${balance.toLocaleString()}`;
         if (bonus > 0) _note += ` | 보너스:+${bonus.toLocaleString()}`;
         if (deduct > 0) {
-          const _expD = new Date(); _expD.setFullYear(_expD.getFullYear()+1);
+          const _expD = new Date(); _expD.setFullYear(_expD.getFullYear()+1); _expD.setDate(_expD.getDate()-1);
           const _expStr = `${_expD.getFullYear()}-${String(_expD.getMonth()+1).padStart(2,"0")}-${String(_expD.getDate()).padStart(2,"0")}`;
           _note += ` | 유효:${_expStr}`;
         }
@@ -1708,6 +1708,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       svcCash: payMethod.svcCash, svcTransfer: payMethod.svcTransfer, svcCard: payMethod.svcCard, svcPoint: payMethod.svcPoint, svcComped: svcCompedTotal || 0,
       prodCash: payMethod.prodCash, prodTransfer: payMethod.prodTransfer, prodCard: payMethod.prodCard, prodPoint: payMethod.prodPoint, prodComped: prodCompedTotal || 0,
       gift: 0, orderNum: String(252000 + Math.floor(Math.random() * 200)),
+      reservationId: reservation?.id || null,
       externalPrepaid: externalPrepaid > 0 ? externalPrepaid : 0,
       externalPlatform: externalPrepaid > 0 ? (externalPlatform || "") : null,
       memo: (isPkgUseSubmit ? "[패키지 사용] " : "") + (externalPrepaid > 0 && externalPlatform ? `[${externalPlatform} 선결제 ${externalPrepaid.toLocaleString()}원] ` : "") + (saleMemo || ""),
@@ -2446,18 +2447,10 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                 {(()=>{
                   if (newPrepaidActiveTotal > 0) return null;
                   // 지점 제한 롤백: 전체 prepaid 사용 가능
-                  // 차감 순서: 만기 임박 먼저 → 오래된 것 먼저 (FEFO + FIFO). 만기 없으면 뒤로
-                  const _expKey = (p) => {
-                    const m = (p.note||"").match(/유효:\s*(\d{4}-\d{2}-\d{2})/);
-                    return m ? m[1] : "9999-12-31";
-                  };
-                  const _cKey = (p) => p.created_at || p.createdAt || "9999-12-31";
+                  // 차감 순서: 구매일 ASC (FIFO) — 기존 다담권을 먼저 소진, 신규 충전분은 나중에
+                  const _cKey = (p) => p.purchased_at || p.purchasedAt || p.created_at || p.createdAt || "9999-12-31";
                   const prepaidPkgs = activePkgs.filter(p=>_pkgType(p)==="prepaid")
-                    .sort((a,b)=>{
-                      const ea = _expKey(a), eb = _expKey(b);
-                      if (ea !== eb) return ea.localeCompare(eb);
-                      return String(_cKey(a)).localeCompare(String(_cKey(b)));
-                    });
+                    .sort((a,b)=>String(_cKey(a)).localeCompare(String(_cKey(b))));
                   const prepaidBal = prepaidPkgs.reduce((s,p)=>s+_pkgBalance(p),0);
                   if (prepaidBal <= 0) return null;
                   const isActive = prepaidPkgs.some(p=>!!pkgUse[p.id]);

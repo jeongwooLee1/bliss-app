@@ -21,7 +21,7 @@ import BlissAI from '../components/BlissAI/BlissAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.58"
+const BLISS_V = "3.7.60"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -727,7 +727,9 @@ function App() {
     const load = () => {
       // userBranches 아직 안 로드됐으면 스킵 (isMaster는 전체 허용)
       if(accIds.length===0 && !isMaster && userBranches !== null) { setUnreadMsgCount(0); return; }
-      fetch(SB_URL+"/rest/v1/messages?is_read=eq.false&direction=eq.in&select=id,account_id,channel,user_id,user_name,message_text,created_at&order=created_at.desc&limit=999",
+      // 1분 이상 답변 안 된 IN 메시지만 배너에 포함 (즉시 응답 중인 상담은 제외)
+      const cutoff = new Date(Date.now() - 60_000).toISOString();
+      fetch(SB_URL+`/rest/v1/messages?is_read=eq.false&direction=eq.in&created_at=lte.${encodeURIComponent(cutoff)}&select=id,account_id,channel,user_id,user_name,message_text,created_at&order=created_at.desc&limit=999`,
         {headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY,"Cache-Control":"no-cache"},cache:"no-store"})
         .then(r=>r.json())
         .then(arr=>{
@@ -750,15 +752,17 @@ function App() {
         .catch(()=>{});
     };
     load();
-    // Realtime: INSERT/UPDATE 시 재카운트
+    // Realtime: INSERT는 1분 뒤 재평가 (1분 이상 미응답 케이스만 배너), UPDATE(읽음 처리) 즉시 재카운트
     const rt = window._sbClient?.channel("unread_badge")
       ?.on("postgres_changes",{event:"INSERT",schema:"public",table:"messages"},
-        p=>{ if(p?.new?.direction==="in"&&!p?.new?.is_read) load(); }
+        p=>{ if(p?.new?.direction==="in"&&!p?.new?.is_read) setTimeout(load, 60_000); }
       )
       ?.on("postgres_changes",{event:"UPDATE",schema:"public",table:"messages"},
         p=>{ if(p?.new?.is_read===true) load(); }
       )?.subscribe();
-    return ()=>{ try{rt?.unsubscribe();}catch(e){} };
+    // 30초마다 재평가 (1분 경과 자동 반영)
+    const int = setInterval(load, 30_000);
+    return ()=>{ try{rt?.unsubscribe();}catch(e){} clearInterval(int); };
   }, [userBranches, isMaster]);
   // 수정요청 pending 카운트
   useEffect(() => {
@@ -846,6 +850,53 @@ function App() {
     if (total > 0) navigator.setAppBadge(total).catch(()=>{});
     else navigator.clearAppBadge().catch(()=>{});
   }, [unreadMsgCount, data, userBranches, isMaster]);
+
+  // 🔔 알림 사운드 — 확정대기/미답변 배너가 0→1 으로 전환될 때 짧은 비프음 재생
+  const _prevCountsRef = React.useRef({ msg: 0, pending: 0, initialized: false });
+  const _audioCtxRef = React.useRef(null);
+  const _playBeep = React.useCallback((pattern = "msg") => {
+    try {
+      // 사용자 제스처 후에만 AudioContext 생성 가능 — 실패 시 무음
+      if (!_audioCtxRef.current) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        _audioCtxRef.current = new AC();
+      }
+      const ctx = _audioCtxRef.current;
+      if (ctx.state === "suspended") ctx.resume().catch(()=>{});
+      const tones = pattern === "pending" ? [880, 1175, 880] : [1046, 1318]; // 확정대기: 도미도 / 메시지: 도미
+      const dur = 0.16;
+      tones.forEach((freq, i) => {
+        const t0 = ctx.currentTime + i * (dur + 0.05);
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        osc.connect(gain); gain.connect(ctx.destination);
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.25, t0 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+        osc.start(t0); osc.stop(t0 + dur + 0.02);
+      });
+    } catch(e) { /* 무음 */ }
+  }, []);
+  useEffect(() => {
+    const pendingCnt = (data?.reservations||[]).filter(r =>
+      (r.status === "pending" || r.status === "request") &&
+      !(r.memo && r.memo.includes("확정완료")) &&
+      (isMaster || (userBranches||[]).includes(r.bid))
+    ).length;
+    const prev = _prevCountsRef.current;
+    // 첫 로드에선 사운드 울리지 않음 (기존 상태 동기화용)
+    if (!prev.initialized) {
+      _prevCountsRef.current = { msg: unreadMsgCount, pending: pendingCnt, initialized: true };
+      return;
+    }
+    // 확정대기 증가 감지 (우선)
+    if (pendingCnt > prev.pending) { _playBeep("pending"); }
+    else if (unreadMsgCount > prev.msg) { _playBeep("msg"); }
+    _prevCountsRef.current = { msg: unreadMsgCount, pending: pendingCnt, initialized: true };
+  }, [unreadMsgCount, data?.reservations, userBranches, isMaster, _playBeep]);
   // server_logs에서 서버 버전 + 스크래퍼 상태 1분마다 폴링
   React.useEffect(()=>{
     const fetchServerV = async ()=>{
