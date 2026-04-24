@@ -3826,7 +3826,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                 color:pkg.isDadam?"#d35400":"#2d3436"
                               }}>
                                 {pkg.isDadam
-                                  ? `${pkg.name} ${(()=>{const n=pkg.totalRemain;if(!n)return "0";const m=n/10000;if(m>=1)return (m===Math.floor(m)?Math.floor(m):Math.round(m*10)/10)+"만";return n.toLocaleString();})()}`
+                                  ? `${pkg.name} ${(()=>{const n=pkg.totalRemain;if(!n)return "0";const m=n/10000;return (m===Math.floor(m)?Math.floor(m):Math.round(m*10)/10)+"만";})()}`
                                   : `${pkg.name.replace(/\s*\d+회\s*$/, "").trim()} +${pkg.totalRemain}`}
                                 {pkg.count > 1 && <span style={{opacity:0.7,marginLeft:2}}>×{pkg.count}</span>}
                               </span>)}
