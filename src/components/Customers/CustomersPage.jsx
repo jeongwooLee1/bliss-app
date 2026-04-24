@@ -6,6 +6,7 @@ import { genId, todayStr, useScrollRestore, useSessionState, getCustPkgBranchIni
 import { Btn, FLD, Empty, fmt, Spinner, DataTable } from '../common'
 import I from '../common/I'
 import { DetailedSaleForm } from '../Timeline/SaleForm'
+import ConsentModal from '../Consent/ConsentModal'
 
 const uid = genId;
 const _mc = (fn) => { if(fn) fn(); };
@@ -354,6 +355,8 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
 
   const [custSales, setCustSales] = useState([]);
   const [custPkgsServer, setCustPkgsServer] = useState([]);
+  // 동의서 모달 (선택된 고객 오브젝트 있으면 열림)
+  const [consentCust, setConsentCust] = useState(null);
   const [pkgEditId, setPkgEditId] = useState(null);
   const [custResStats, setCustResStats] = useState({total:0,noshow:0,samedayCancel:0,samedayChange:0});
   const [custPointTx, setCustPointTx] = useState([]);
@@ -1211,7 +1214,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                       {memoSaving && <span style={{marginLeft:8,fontSize:T.fs.xxs,color:T.textMuted}}>저장중...</span>}
                     </div>
                     {/* 예약 통계 (id_imgr471swt-5 수정요청: 당일취소/당일변경 분리) */}
-                    <div style={{display:"flex",gap:8,padding:"8px 12px",background:T.bgCard,borderBottom:"1px solid "+T.border}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:T.bgCard,borderBottom:"1px solid "+T.border}}>
                       {[
                         {label:"예약",val:custResStats.total,color:T.primary},
                         {label:"노쇼",val:custResStats.noshow,color:custResStats.noshow>0?"#e53e3e":T.gray500},
@@ -1221,6 +1224,10 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                         <span style={{fontSize:T.fs.xs,color:T.textMuted}}>{s.label}</span>
                         <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:s.color}}>{s.val}</span>
                       </div>)}
+                      <button onClick={e=>{ e.stopPropagation(); setConsentCust(c); }}
+                        style={{marginLeft:"auto",padding:"4px 10px",fontSize:T.fs.xs,fontWeight:T.fw.bolder,background:T.primaryLt,color:T.primary,border:"1px solid "+T.primary,borderRadius:6,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
+                        📝 동의서
+                      </button>
                     </div>
                     {/* 탭 */}
                     <div style={{display:"flex",gap:0,borderBottom:"1px solid "+T.border,background:T.bgCard}}>
@@ -1418,6 +1425,10 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       onPick={addShare}
       onClose={()=>setShowShareModal(false)}
       setData={setData}/>}
+    {consentCust && <ConsentModal
+      cust={consentCust}
+      bizId={_activeBizId}
+      onClose={()=>setConsentCust(null)}/>}
   </div>;
 }
 
