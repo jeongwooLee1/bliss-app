@@ -1034,6 +1034,56 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const [hoverCell, setHoverCell] = useState(null); // {roomId, rowIdx}
   const [empMovePopup, setEmpMovePopup] = useState(null); // {empId, date, x, y}
   const [addStaffPopup, setAddStaffPopup] = useState(null); // {branchId, x, y}
+  // 빈 미배정 칼럼 (날짜·지점별 추가) — schedule_data.extraCols_v1 { "bid__date": count }
+  const [extraCols, setExtraCols] = useState({});
+  useEffect(() => {
+    const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
+    const loadExtra = () => {
+      fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.extraCols_v1&select=value`, { headers: H })
+        .then(r => r.json()).then(rows => {
+          if (rows?.[0]?.value != null) {
+            const v = typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value;
+            setExtraCols(v || {});
+          }
+        }).catch(() => {});
+    };
+    loadExtra();
+    let ch = null;
+    if (window._sbClient) {
+      ch = window._sbClient.channel("extra_cols_rt")
+        .on("postgres_changes", { event:"UPDATE", schema:"public", table:"schedule_data", filter:"key=eq.extraCols_v1" }, loadExtra)
+        .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.extraCols_v1" }, loadExtra)
+        .subscribe();
+    }
+    const poll = setInterval(loadExtra, 30000);
+    return () => { try { ch?.unsubscribe(); } catch(e) {} clearInterval(poll); };
+  }, []);
+  const _saveExtraCols = (next) => {
+    const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
+    fetch(`${SB_URL}/rest/v1/schedule_data`, {
+      method: "POST", headers: H,
+      body: JSON.stringify({ id: "extraCols_v1", key: "extraCols_v1", value: JSON.stringify(next) })
+    }).catch(console.error);
+  };
+  const addExtraCol = (branchId) => {
+    const key = `${branchId}__${selDate}`;
+    setExtraCols(prev => {
+      const next = { ...prev, [key]: (prev[key] || 0) + 1 };
+      _saveExtraCols(next);
+      return next;
+    });
+  };
+  const removeExtraCol = (branchId) => {
+    const key = `${branchId}__${selDate}`;
+    setExtraCols(prev => {
+      const cur = prev[key] || 0;
+      if (cur <= 0) return prev;
+      const next = { ...prev };
+      if (cur === 1) delete next[key]; else next[key] = cur - 1;
+      _saveExtraCols(next);
+      return next;
+    });
+  };
   // 지점별 고정 컬럼 수 - branches.staffColCount에서 읽음
   const branchColCount = React.useMemo(() => {
     const map = {};
@@ -1369,10 +1419,15 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   });
 
   const allRooms = branchesToShow.flatMap(br => {
-    const naverCount = br.naverEmail ? (br.naverColCount || 1) : 0;
+    const baseNaver = br.naverEmail ? (br.naverColCount || 1) : 0;
+    const extraCount = extraCols[`${br.id}__${selDate}`] || 0;
+    const naverCount = baseNaver + extraCount;
     const naverRooms = Array.from({length: naverCount}, (_, i) => ({
-      id: `nv_${br.id}_${i}`, name: naverCount > 1 ? `미배정${i+1}` : "미배정",
-      branch_id: br.id, branchName: br.short||br.name||"", isNaver: true
+      id: i < baseNaver ? `nv_${br.id}_${i}` : `nv_${br.id}_extra_${i - baseNaver}`,
+      name: naverCount > 1 ? `미배정${i+1}` : "미배정",
+      branch_id: br.id, branchName: br.short||br.name||"",
+      isNaver: true,
+      isExtraCol: i >= baseNaver,  // 제거 가능한 추가 칼럼 표시
     }));
     // 출근표 기반 직원 컬럼 (커스텀 순서 적용)
     const rawStaff = getWorkingStaff(br.id, selDate);
@@ -2829,6 +2884,15 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                           <div style={{position:"fixed",inset:0,zIndex:9998}} onClick={e=>{e.stopPropagation();setAddStaffPopup(null);}}/>
                           <div onClick={e=>e.stopPropagation()} style={{position:"fixed",left:Math.min(addStaffPopup.x,window.innerWidth-220),top:addStaffPopup.y+8,background:T.bgCard,borderRadius:12,boxShadow:"0 4px 24px rgba(0,0,0,.22)",zIndex:9999,padding:"8px 0",minWidth:200,maxHeight:300,overflowY:"auto"}}>
                             <div style={{fontSize:11,color:T.textMuted,padding:"0 12px 6px",fontWeight:700,borderBottom:"1px solid "+T.border}}>직원 추가 (당일)</div>
+                            {!addStaffPopup?.selectedEmp && <div style={{padding:"6px 12px",borderBottom:"1px solid "+T.border,background:T.infoLt}}>
+                              <button onClick={(e)=>{e.stopPropagation();addExtraCol(room.branch_id);setAddStaffPopup(null);}}
+                                style={{width:"100%",padding:"7px 8px",fontSize:11,fontWeight:700,border:`1px solid ${T.info}`,borderRadius:7,background:T.bgCard,color:T.info,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+                                🆕 빈 미배정 칼럼 추가
+                              </button>
+                              <div style={{fontSize:9,color:T.textMuted,marginTop:4,lineHeight:1.4}}>
+                                선예약 등 담당자 미정 예약을 달아둘 용도. 이 날짜에만 추가되며, 직원 없이 예약만 받을 수 있어요.
+                              </div>
+                            </div>}
                             {addStaffPopup?.selectedEmp ? null : BASE_EMP_LIST.filter(e => {
                               // 이 지점에 아직 없는 직원만 — 휴무자도 표시 (배지로 구분)
                               const already = allRooms.some(r => r.isStaffCol && r.branch_id === room.branch_id && r.staffId === e.id);
@@ -2991,7 +3055,9 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
 
                               // 종일 근무지 변경 — 체크박스 + 지점 select
                               // 현재 segs가 exclusive=true 하나짜리면 "다른 지점 종일 근무" 상태
-                              const curSegs = empMovePopup.draftSegs !== undefined ? empMovePopup.draftSegs : (ov?.segments || []);
+                              const _ovKey = room.staffId+"_"+selDate;
+                              const _ovCur = empBranchOverride[_ovKey];
+                              const curSegs = empMovePopup.draftSegs !== undefined ? empMovePopup.draftSegs : (_ovCur?.segments || []);
                               const isDayMove = curSegs.length === 1 && curSegs[0]?.from == null && curSegs[0]?.until == null && curSegs[0]?.branchId !== room.branch_id;
                               const dayMoveBid = isDayMove ? curSegs[0].branchId : "";
                               const onDayMoveToggle = (checked) => {
