@@ -21,7 +21,7 @@ import BlissAI from '../components/BlissAI/BlissAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.39"
+const BLISS_V = "3.7.40"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1275,9 +1275,32 @@ function App() {
     };
     window.addEventListener("online", onOnline);
 
+    // 폴링 fallback — Realtime 채널 오류 시에도 stale state 방지 (60초, 최근 예약 범위만)
+    const pollInt = setInterval(async () => {
+      if (document.hidden) return; // 백그라운드 탭은 스킵
+      try {
+        const today = new Date();
+        const d2s = (d) => d.toISOString().slice(0,10);
+        const from = new Date(today); from.setDate(today.getDate() - 3);
+        const to   = new Date(today); to.setDate(today.getDate() + 60);
+        const rows = await sb.get("reservations",
+          `&business_id=eq.${currentBizId}&date=gte.${d2s(from)}&date=lte.${d2s(to)}&limit=5000`);
+        const parsed = fromDb("reservations", rows||[]);
+        if (parsed.length > 0) {
+          setData(prev => {
+            if (!prev) return prev;
+            const map = new Map((prev.reservations||[]).map(r => [r.id, r]));
+            parsed.forEach(r => map.set(r.id, r));
+            return { ...prev, reservations: Array.from(map.values()) };
+          });
+        }
+      } catch(e) {}
+    }, 60000);
+
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("online", onOnline);
+      clearInterval(pollInt);
       if (channel && supaClient) { try { supaClient.removeChannel(channel); } catch(e){} }
     };
   }, [phase, currentBizId]);
