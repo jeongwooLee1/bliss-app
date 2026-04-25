@@ -2032,9 +2032,14 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const handleDeleteRequest = (block) => {
     // + 칼럼 반복 템플릿: 묻지 않고 바로 삭제 (내부일정 템플릿)
     if (block._isColTemplate) {
+      // _templateId가 있으면 그것 우선, 없으면 block.id 사용 (기존 데이터 호환)
+      const tplId = block._templateId || block.id;
       const next = {...colTemplates};
-      Object.keys(next).forEach(bid => { next[bid] = (next[bid]||[]).filter(t => t.id !== block.id); });
+      Object.keys(next).forEach(bid => { next[bid] = (next[bid]||[]).filter(t => t.id !== tplId); });
       saveColTemplates(next);
+      // 모달이 열려 있으면 닫음 (저장 버튼 재클릭 시 재INSERT 방지)
+      setShowModal(false);
+      setModalData(null);
       return;
     }
     const sourceId = block.repeatSourceId || block.id;
