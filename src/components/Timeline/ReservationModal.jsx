@@ -1629,7 +1629,7 @@ ${naverText}
                   </button>
                 )
               )}
-              {/* 삭제 — 네이버 예약은 버튼 자체를 숨김. 내부일정/수동예약/AI예약(instagram 등)은 확인창 없이 바로 삭제 */}
+              {/* 삭제 — 네이버 예약은 버튼 숨김. 단, 네이버 취소건(naver_cancelled)은 정리 목적으로 삭제 허용. 내부일정/수동/AI는 확인창 없이 바로 삭제 */}
               {(() => {
                 if (!item?.id) return null;
                 const resId = String(item?.reservationId || '');
@@ -1637,7 +1637,8 @@ ${naverText}
                 const isNaverRes = !!item?.reservationId
                   && !/^(manual_|ai_)/.test(resId)
                   && !item?.chatChannel;
-                if (isNaverRes) return null;
+                // 네이버 활성 예약은 삭제 차단. 단, 네이버에서 이미 취소된 건은 삭제 허용 (직원이 정리 가능)
+                if (isNaverRes && f.status !== "naver_cancelled") return null;
                 return <button onClick={()=>onDeleteRequest?.(item)}
                   style={{padding:"10px 16px",borderRadius:T.radius.md,fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5,lineHeight:1,transition:"all .15s",border:"2px solid "+T.danger,color:T.danger,background:T.dangerLt}}>
                   <I name="trash" size={12}/> 삭제
