@@ -1829,14 +1829,23 @@ ${naverText}
                         try {
                           const penaltySaleId = 'sale_' + genId();
                           const _bizId = (data?.businesses||[])[0]?.id;
-                          const svcName = pkgUsedName
-                            ? `당일취소 페널티 (다회권: ${pkgUsedName} 1회)`
+                          // service_name에 차감 종류·금액 명시 (매출관리 한눈에 식별)
+                          const svcParts = [];
+                          if (pointDed > 0) svcParts.push(`포인트 ${pointDed.toLocaleString()}P`);
+                          if (prepaidDed > 0) svcParts.push(`선불권 ${prepaidDed.toLocaleString()}원`);
+                          if (pkgUsedName) svcParts.push(`다회권 ${pkgUsedName} 1회`);
+                          const svcName = svcParts.length
+                            ? `당일취소 페널티 (${svcParts.join(', ')})`
                             : '당일취소 페널티';
-                          const amt = pkgUsedName ? 0 : PENALTY;
-                          const memoParts = [];
-                          if (pointDed > 0) memoParts.push(`포인트 ${pointDed.toLocaleString()}P`);
-                          if (prepaidDed > 0) memoParts.push(`선불권 ${prepaidDed.toLocaleString()}원`);
-                          if (pkgUsedName) memoParts.push(`다회권 ${pkgUsedName} 1회`);
+                          const memoParts = svcParts.slice();
+                          // cust_num 보정: f.custNum 없으면 customers 테이블에서 조회
+                          let custNumFinal = f.custNum || '';
+                          if (!custNumFinal && f.custId) {
+                            try {
+                              const _rows = await sb.get("customers", `&id=eq.${f.custId}&select=cust_num&limit=1`);
+                              custNumFinal = (_rows && _rows[0]?.cust_num) || '';
+                            } catch {}
+                          }
                           await sb.insert("sales", {
                             id: penaltySaleId,
                             business_id: _bizId,
@@ -1844,13 +1853,16 @@ ${naverText}
                             cust_id: f.custId,
                             cust_name: f.custName,
                             cust_phone: f.custPhone || '',
-                            cust_num: f.custNum || '',
+                            cust_num: custNumFinal,
                             cust_gender: f.custGender || '',
                             date: todayStr(),
                             service_name: svcName,
+                            // 결제수단 칼럼: 포인트만 실제 svc_point에 기록.
+                            // 선불권(다담권)·다회권 차감은 customer_packages 업데이트로 기록 → sales 결제칼럼은 0.
+                            // external_prepaid는 외부 플랫폼(서울뷰티·크리에이트립) 전용이라 사용 안 함.
                             svc_cash: 0, svc_card: 0, svc_transfer: 0,
                             svc_point: pointDed,
-                            external_prepaid: prepaidDed,
+                            external_prepaid: 0,
                             memo: `당일취소 페널티 — ${memoParts.join(' + ')} (예약 ${f.id})`,
                           }).catch(e => console.error('[penalty sales insert]', e));
                           await sb.insert("sale_details", {
@@ -1858,7 +1870,7 @@ ${naverText}
                             business_id: _bizId,
                             sale_id: penaltySaleId,
                             service_name: svcName,
-                            unit_price: amt,
+                            unit_price: PENALTY,  // 페널티 액면가 (33,000원) — 통계용
                             qty: 1,
                             cash: 0, card: 0, bank: 0, point: pointDed,
                           }).catch(e => console.error('[penalty sd insert]', e));
