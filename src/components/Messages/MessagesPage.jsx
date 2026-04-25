@@ -104,7 +104,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
     if (loadingRef.current) return; // 중복 호출 방지
     loadingRef.current = true;
     try {
-      const r = await fetch(SB_URL+"/rest/v1/messages?order=created_at.desc&limit=300&select=*",{headers:{...sbHeaders,"Cache-Control":"no-cache"},cache:"no-store"});
+      const r = await fetch(SB_URL+"/rest/v1/messages?order=created_at.desc&limit=2000&select=*",{headers:{...sbHeaders,"Cache-Control":"no-cache"},cache:"no-store"});
       const d2 = await r.json();
       if (Array.isArray(d2)) {
         setMsgs(d2);
