@@ -1768,6 +1768,34 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
         }
       });
     }
+
+    // ── 신규 연간회원권/연간할인권 구매 처리 ──
+    // 보유권으로 발급해서 회원가 자격 부여. 유효기간 1년 (구매일+1년-1일)
+    if (cust.id && newAnnualPurchases.length > 0) {
+      newAnnualPurchases.forEach(svc => {
+        const newPkgId = uid();
+        const _annBranchShort = (data?.branches||[]).find(b=>b.id===branchId)?.short || "";
+        const _expD = new Date(); _expD.setFullYear(_expD.getFullYear()+1); _expD.setDate(_expD.getDate()-1);
+        const _expStr = `${_expD.getFullYear()}-${String(_expD.getMonth()+1).padStart(2,"0")}-${String(_expD.getDate()).padStart(2,"0")}`;
+        let _note = `유효:${_expStr}`;
+        if (_annBranchShort) _note += ` | 매장:${_annBranchShort.replace(/점$|본점$/,'')}`;
+        const newPkg = {
+          id: newPkgId, business_id: _activeBizId, customer_id: cust.id,
+          service_id: svc.id, service_name: svc.name,
+          total_count: 1, used_count: 0,
+          purchased_at: new Date().toISOString(),
+          note: _note,
+          branch_id: branchId || null,
+        };
+        sb.insert("customer_packages", newPkg).catch(console.error);
+        _pkgTxRecords.push({
+          package_id: newPkgId, service_name: svc.name,
+          type: "charge", unit: "count", amount: 1,
+          balance_before: 0, balance_after: 1,
+          note: `신규 구매 (연간 ~ ${_expStr})`,
+        });
+      });
+    }
     const sale = {
       id: uid(), bid: selBranch,
       custId: cust.id || null, custName: custName,
