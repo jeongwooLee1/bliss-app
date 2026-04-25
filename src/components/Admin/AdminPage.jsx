@@ -22,6 +22,7 @@ import SchedulePage from '../Schedule/SchedulePage'
 import AdminMemberPriceRules from './AdminMemberPriceRules'
 import AdminBranchGroups from './AdminBranchGroups'
 import AdminKiosks from './AdminKiosks'
+import AdminAlimtalkLog from './AdminAlimtalkLog'
 
 const uid = genId;
 
@@ -358,7 +359,7 @@ function AdminJoinBrand({ currentUser, onBack }) {
 function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userBranches=[], setPage }) {
   const navTo = useNavigate();
   const loc = useLocation();
-  const TAB_SLUGS = {places:"places",saleitems:"services",coupons:"coupons",prodmgmt:"products",svctags:"tags",ressrc:"sources",extplatforms:"ext-platforms",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",branchgroups:"branch-groups",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",branchaudit:"branch-audit",pointmig:"point-migration",memberrules:"member-rules",joinbrand:"join-brand",kiosks:"kiosks"};
+  const TAB_SLUGS = {places:"places",saleitems:"services",coupons:"coupons",prodmgmt:"products",svctags:"tags",ressrc:"sources",extplatforms:"ext-platforms",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",branchgroups:"branch-groups",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",branchaudit:"branch-audit",pointmig:"point-migration",memberrules:"member-rules",joinbrand:"join-brand",kiosks:"kiosks",alimtalkLog:"alimtalk-log"};
   const SLUG_TO_TAB = Object.fromEntries(Object.entries(TAB_SLUGS).map(([k,v])=>[v,k]));
   const tab = SLUG_TO_TAB[loc.pathname.replace(/^\/settings\/?/,"").split("/")[0]] || null;
   const setTab=t=>{ if(t) navTo(`/settings/${TAB_SLUGS[t]||t}`); else navTo("/settings"); };
@@ -392,6 +393,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     ]}] : []),
     ...(isMaster ? [{section:"알림 & AI",items:[
       {key:"notiSettings",icon:"bell",     label:"알림톡 설정",    desc:"카카오 알림톡 자동 발송 설정"},
+      {key:"alimtalkLog", icon:"clipboard",label:"📨 알림톡·SMS 전송내역", desc:"각 지점 발송 이력·성공/실패 조회"},
       {key:"memoTemplates",icon:"file",      label:"메모 템플릿",    desc:"매출·예약·고객 메모 양식 설정"},
       ...(isOwner ? [{key:"aisettings",  icon:"sparkles", label:"AI 설정",        desc:"AI 분석 규칙 관리"}] : []),
     ]}] : []),
@@ -446,6 +448,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     {tab==="memberrules" && isMaster &&<AdminMemberPriceRules data={data} setData={setData} bizId={bizId}/>}
     {tab==="branchgroups"&& isMaster &&<AdminBranchGroups data={data} setData={setData} bizId={bizId}/>}
     {tab==="kiosks"      && isMaster &&<AdminKiosks        data={data} setData={setData} bizId={bizId}/>}
+    {tab==="alimtalkLog" && isMaster &&<AdminAlimtalkLog   data={data} userBranches={userBranches}/>}
     {tab==="joinbrand"    && !isMaster &&<AdminJoinBrand   currentUser={currentUser} onBack={back}/>}
     {tab && !["mypage","schedule"].includes(tab) && !isMaster && <div style={{textAlign:"center",padding:"60px 20px",color:T.textMuted}}>
       <div style={{fontSize:32,marginBottom:12}}>&#128274;</div>
