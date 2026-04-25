@@ -1770,12 +1770,37 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     }
 
     // ── 신규 연간회원권/연간할인권 구매 처리 ──
-    // 보유권으로 발급해서 회원가 자격 부여. 유효기간 1년 (구매일+1년-1일)
+    // 보유권으로 발급해서 회원가 자격 부여.
+    // 유효기간 규칙:
+    //   - 유효한 기존 연간권 보유 시 → 기존 만료일 다음날부터 1년 (선구매 갱신 누적)
+    //   - 없으면 → 오늘 + 1년 - 1일 (당일부터 1년)
     if (cust.id && newAnnualPurchases.length > 0) {
+      // 기존 활성 연간권의 가장 늦은 만료일 추출
+      const _today = new Date(); _today.setHours(0,0,0,0);
+      const _activeAnnualExp = (custPkgs||[]).reduce((latest, p) => {
+        const isAnnual = _isAnnualSvc({name: p.service_name, cat: ""});
+        if (!isAnnual) return latest;
+        const m = (p.note||"").match(/유효:\s*(\d{4}-\d{2}-\d{2})/);
+        if (!m) return latest;
+        const expD = new Date(m[1]);
+        if (isNaN(expD.getTime()) || expD < _today) return latest; // 만료된 건 무시
+        return (!latest || expD > latest) ? expD : latest;
+      }, null);
+
       newAnnualPurchases.forEach(svc => {
         const newPkgId = uid();
         const _annBranchShort = (data?.branches||[]).find(b=>b.id===branchId)?.short || "";
-        const _expD = new Date(); _expD.setFullYear(_expD.getFullYear()+1); _expD.setDate(_expD.getDate()-1);
+        let _expD;
+        if (_activeAnnualExp) {
+          // 기보유 만료일 다음날부터 1년
+          _expD = new Date(_activeAnnualExp);
+          _expD.setDate(_expD.getDate() + 1);          // 다음날 (시작일)
+          _expD.setFullYear(_expD.getFullYear() + 1);  // +1년
+          _expD.setDate(_expD.getDate() - 1);          // -1일 = 만료일
+        } else {
+          // 신규: 당일 + 1년 - 1일
+          _expD = new Date(); _expD.setFullYear(_expD.getFullYear()+1); _expD.setDate(_expD.getDate()-1);
+        }
         const _expStr = `${_expD.getFullYear()}-${String(_expD.getMonth()+1).padStart(2,"0")}-${String(_expD.getDate()).padStart(2,"0")}`;
         let _note = `유효:${_expStr}`;
         if (_annBranchShort) _note += ` | 매장:${_annBranchShort.replace(/점$|본점$/,'')}`;
@@ -1788,11 +1813,14 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
           branch_id: branchId || null,
         };
         sb.insert("customer_packages", newPkg).catch(console.error);
+        const _txNote = _activeAnnualExp
+          ? `선구매 갱신 (기존 만료 ${_activeAnnualExp.toISOString().slice(0,10)} 다음날 ~ ${_expStr})`
+          : `신규 구매 (연간 ~ ${_expStr})`;
         _pkgTxRecords.push({
           package_id: newPkgId, service_name: svc.name,
           type: "charge", unit: "count", amount: 1,
           balance_before: 0, balance_after: 1,
-          note: `신규 구매 (연간 ~ ${_expStr})`,
+          note: _txNote,
         });
       });
     }
