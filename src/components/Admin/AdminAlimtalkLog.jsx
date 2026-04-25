@@ -137,6 +137,45 @@ export default function AdminAlimtalkLog({ data, userBranches }) {
     return { total, done, failed, pending }
   }, [filtered])
 
+  // 지점별 카운트 (정산용) — done(성공) 기준 + 채널별 분할
+  const byBranch = useMemo(() => {
+    const map = {} // bid → {name, alimtalkDone, alimtalkFail, smsDone, smsFail, pending, total}
+    filtered.forEach(r => {
+      const bid = r.branch_id || '__none__'
+      if (!map[bid]) map[bid] = {
+        bid, name: branchMap[bid] || bid,
+        alimtalkDone: 0, alimtalkFail: 0,
+        smsDone: 0, smsFail: 0,
+        pending: 0, total: 0,
+      }
+      const m = map[bid]
+      m.total += 1
+      const ch = r.channel || 'alimtalk'
+      if (r.status === 'pending') m.pending += 1
+      else if (r.status === 'done') {
+        if (ch === 'sms') m.smsDone += 1
+        else m.alimtalkDone += 1
+      } else if (r.status === 'failed') {
+        if (ch === 'sms') m.smsFail += 1
+        else m.alimtalkFail += 1
+      }
+    })
+    // 정렬: 지점 이름순
+    return Object.values(map).sort((a, b) => a.name.localeCompare(b.name))
+  }, [filtered, branchMap])
+
+  // 전체 합계 (정산용 푸터)
+  const branchTotals = useMemo(() => {
+    return byBranch.reduce((acc, b) => ({
+      alimtalkDone: acc.alimtalkDone + b.alimtalkDone,
+      alimtalkFail: acc.alimtalkFail + b.alimtalkFail,
+      smsDone: acc.smsDone + b.smsDone,
+      smsFail: acc.smsFail + b.smsFail,
+      pending: acc.pending + b.pending,
+      total: acc.total + b.total,
+    }), { alimtalkDone: 0, alimtalkFail: 0, smsDone: 0, smsFail: 0, pending: 0, total: 0 })
+  }, [byBranch])
+
   // 사용 중인 noti_key 목록 (드롭다운용)
   const keyOptions = useMemo(() => {
     const set = new Set()
@@ -198,6 +237,54 @@ export default function AdminAlimtalkLog({ data, userBranches }) {
         <span style={{ color: '#F57F17' }}>⏳ 대기 {stats.pending}</span>
         {stats.total > 0 && <span style={{ color: T.textSub }}>(성공률 {Math.round(stats.done / stats.total * 100)}%)</span>}
       </div>
+
+      {/* 지점별 카운트 (정산용) */}
+      {byBranch.length > 0 && (
+        <div style={{ marginBottom: 14, border: '1px solid ' + T.border, borderRadius: 8, overflow: 'hidden' }}>
+          <div style={{ padding: '8px 12px', background: T.primaryLt, fontSize: 12, fontWeight: 800, color: T.primary, borderBottom: '1px solid ' + T.border }}>
+            🧾 지점별 발송 카운트 (정산 기준 = 성공 건만 과금)
+          </div>
+          <div style={{ overflow: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead style={{ background: T.gray100 }}>
+                <tr>
+                  <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid ' + T.border }}>지점</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'right', borderBottom: '1px solid ' + T.border, color: '#2E7D32' }}>알림톡 성공</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'right', borderBottom: '1px solid ' + T.border, color: '#C62828' }}>알림톡 실패</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'right', borderBottom: '1px solid ' + T.border, color: '#1976D2' }}>SMS 성공</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'right', borderBottom: '1px solid ' + T.border, color: '#C62828' }}>SMS 실패</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'right', borderBottom: '1px solid ' + T.border, color: '#F57F17' }}>대기</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'right', borderBottom: '1px solid ' + T.border, fontWeight: 800 }}>합계</th>
+                </tr>
+              </thead>
+              <tbody>
+                {byBranch.map(b => (
+                  <tr key={b.bid}>
+                    <td style={{ padding: '6px 10px', borderBottom: '1px solid ' + T.border, fontWeight: 600 }}>{b.name}</td>
+                    <td style={{ padding: '6px 10px', borderBottom: '1px solid ' + T.border, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: b.alimtalkDone > 0 ? '#2E7D32' : T.textMuted, fontWeight: b.alimtalkDone > 0 ? 700 : 400 }}>{b.alimtalkDone}</td>
+                    <td style={{ padding: '6px 10px', borderBottom: '1px solid ' + T.border, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: b.alimtalkFail > 0 ? '#C62828' : T.textMuted }}>{b.alimtalkFail}</td>
+                    <td style={{ padding: '6px 10px', borderBottom: '1px solid ' + T.border, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: b.smsDone > 0 ? '#1976D2' : T.textMuted, fontWeight: b.smsDone > 0 ? 700 : 400 }}>{b.smsDone}</td>
+                    <td style={{ padding: '6px 10px', borderBottom: '1px solid ' + T.border, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: b.smsFail > 0 ? '#C62828' : T.textMuted }}>{b.smsFail}</td>
+                    <td style={{ padding: '6px 10px', borderBottom: '1px solid ' + T.border, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: b.pending > 0 ? '#F57F17' : T.textMuted }}>{b.pending}</td>
+                    <td style={{ padding: '6px 10px', borderBottom: '1px solid ' + T.border, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{b.total}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot style={{ background: T.gray100 }}>
+                <tr>
+                  <td style={{ padding: '8px 10px', fontWeight: 800 }}>전 지점 합계</td>
+                  <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: '#2E7D32' }}>{branchTotals.alimtalkDone}</td>
+                  <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: '#C62828' }}>{branchTotals.alimtalkFail}</td>
+                  <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: '#1976D2' }}>{branchTotals.smsDone}</td>
+                  <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: '#C62828' }}>{branchTotals.smsFail}</td>
+                  <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: '#F57F17' }}>{branchTotals.pending}</td>
+                  <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 900 }}>{branchTotals.total}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* 표 */}
       <div style={{ overflow: 'auto', border: '1px solid ' + T.border, borderRadius: 8 }}>
