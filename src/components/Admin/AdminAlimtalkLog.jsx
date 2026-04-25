@@ -145,7 +145,7 @@ export default function AdminAlimtalkLog({ data, userBranches }) {
   }, [rows])
 
   return (
-    <div style={{ padding: T.spacing.md, maxWidth: 1400 }}>
+    <div style={{ padding: T.sp.md, maxWidth: 1400 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
         <h3 style={{ margin: 0, fontSize: T.fs.lg, fontWeight: T.fw.black, color: T.text }}>📨 알림톡·SMS 전송 내역</h3>
         <button onClick={load} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, background: T.primary, color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
@@ -241,7 +241,7 @@ export default function AdminAlimtalkLog({ data, userBranches }) {
                     <td style={{ padding: '6px', borderBottom: '1px solid ' + T.border, color: r.status === 'failed' ? T.danger : T.textSub, fontSize: 11, maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{resultSummary(r)}</td>
                   </tr>
                   {isOpen && (
-                    <tr><td colSpan={7} style={{ padding: '10px 14px', background: T.bgPanel, borderBottom: '1px solid ' + T.border }}>
+                    <tr><td colSpan={7} style={{ padding: '10px 14px', background: T.gray100, borderBottom: '1px solid ' + T.border }}>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, fontSize: 11 }}>
                         <div>
                           <div style={{ fontWeight: 800, marginBottom: 6, color: T.textSub }}>params</div>
