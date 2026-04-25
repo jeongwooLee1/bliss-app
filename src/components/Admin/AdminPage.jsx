@@ -393,10 +393,12 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     ]}] : []),
     ...(isMaster ? [{section:"알림 & AI",items:[
       {key:"notiSettings",icon:"bell",     label:"알림톡 설정",    desc:"카카오 알림톡 자동 발송 설정"},
-      {key:"alimtalkLog", icon:"clipboard",label:"📨 알림톡·SMS 전송내역", desc:"각 지점 발송 이력·성공/실패 조회"},
       {key:"memoTemplates",icon:"file",      label:"메모 템플릿",    desc:"매출·예약·고객 메모 양식 설정"},
       ...(isOwner ? [{key:"aisettings",  icon:"sparkles", label:"AI 설정",        desc:"AI 분석 규칙 관리"}] : []),
     ]}] : []),
+    {section:"전송 내역",items:[
+      {key:"alimtalkLog", icon:"clipboard", label:"📨 알림톡·SMS 전송내역", desc:"내 지점 발송 이력·성공/실패 조회"},
+    ]},
     {section:"내 계정",items:[
       {key:"mypage",      icon:"user",     label:"마이페이지",     desc:"내 계정 정보 및 비밀번호 변경"},
       ...(!isMaster ? [{key:"joinbrand", icon:"link", label:"브랜드 가입 요청", desc:"브랜드 코드로 가입 요청"}] : []),
@@ -448,7 +450,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     {tab==="memberrules" && isMaster &&<AdminMemberPriceRules data={data} setData={setData} bizId={bizId}/>}
     {tab==="branchgroups"&& isMaster &&<AdminBranchGroups data={data} setData={setData} bizId={bizId}/>}
     {tab==="kiosks"      && isMaster &&<AdminKiosks        data={data} setData={setData} bizId={bizId}/>}
-    {tab==="alimtalkLog" && isMaster &&<AdminAlimtalkLog   data={data} userBranches={userBranches}/>}
+    {tab==="alimtalkLog" && <AdminAlimtalkLog   data={data} userBranches={userBranches}/>}
     {tab==="joinbrand"    && !isMaster &&<AdminJoinBrand   currentUser={currentUser} onBack={back}/>}
     {tab && !["mypage","schedule"].includes(tab) && !isMaster && <div style={{textAlign:"center",padding:"60px 20px",color:T.textMuted}}>
       <div style={{fontSize:32,marginBottom:12}}>&#128274;</div>
