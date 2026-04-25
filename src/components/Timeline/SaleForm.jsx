@@ -2017,7 +2017,14 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   const uncatSvcs = SVC_LIST.filter(s => !CATS.find(c=>c.id===s.cat) && !COUPON_CAT_IDS.includes(s.cat));
   const halfProd = Math.ceil(PROD_LIST.length / 2);
 
-  const _m = false; // 항상 데스크탑 모달
+  // 모바일 감지: 700px 이하면 1단 세로 레이아웃 (좌·우 패널을 위아래로 쌓음)
+  const [_m, _setM] = useState(() => typeof window !== "undefined" && window.innerWidth <= 700);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onResize = () => _setM(window.innerWidth <= 700);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   const _overlayDownRef = React.useRef(false);
   return (
     <div
