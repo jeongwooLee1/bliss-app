@@ -21,7 +21,7 @@ import BlissAI from '../components/BlissAI/BlissAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.83"
+const BLISS_V = "3.7.84"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -723,7 +723,7 @@ function App() {
   useEffect(() => {
     // data.branches에서 동적으로 계정 매핑
     const accIds = (userBranches||[]).map(bid => (data?.branches||[]).find(b=>b.id===bid)?.naverAccountId).filter(Boolean);
-    const SOCIAL_CH = ["whatsapp","telegram","instagram","kakao"];
+    const SOCIAL_CH = ["whatsapp","telegram","instagram","kakao","line"];
     const load = () => {
       // userBranches 아직 안 로드됐으면 스킵 (isMaster는 전체 허용)
       if(accIds.length===0 && !isMaster && userBranches !== null) { setUnreadMsgCount(0); return; }

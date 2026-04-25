@@ -12,10 +12,10 @@ import { ChannelLogo } from './channelIcons'
 
 function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], isMaster=false, pendingChat=null, onPendingChatDone, setPendingOpenRes, setPage }) {
   const isMobile = window.innerWidth < 768;
-  const CH_ICON = {naver:"N",kakao:"K",instagram:"I",whatsapp:"W",telegram:"T"};
-  const CH_NAME = {naver:"네이버톡톡",kakao:"카카오",instagram:"인스타",whatsapp:"왓츠앱",telegram:"텔레그램"};
-  const CH_COLOR = {naver:"#03C75A",kakao:"#F9E000",instagram:"#E1306C",whatsapp:"#128C7E",telegram:"#2AABEE"};
-  const CH_LABEL = {naver:"N",kakao:"K",instagram:"I",whatsapp:"W",telegram:"T"};
+  const CH_ICON = {naver:"N",kakao:"K",instagram:"I",whatsapp:"W",telegram:"T",line:"L"};
+  const CH_NAME = {naver:"네이버톡톡",kakao:"카카오",instagram:"인스타",whatsapp:"왓츠앱",telegram:"텔레그램",line:"LINE"};
+  const CH_COLOR = {naver:"#03C75A",kakao:"#F9E000",instagram:"#E1306C",whatsapp:"#128C7E",telegram:"#2AABEE",line:"#06C755"};
+  const CH_LABEL = {naver:"N",kakao:"K",instagram:"I",whatsapp:"W",telegram:"T",line:"L"};
   const getGeminiKey = () => window.__systemGeminiKey || window.__geminiKey || localStorage.getItem("bliss_gemini_key") || "";
 
   const [msgs, setMsgs] = useState([]);
@@ -202,7 +202,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   };
 
   // AI 자동대답 채널 메타 (카카오 제외)
-  const _chMeta = [["naver","N 네이버","#03C75A"],["instagram","I 인스타","#E1306C"],["whatsapp","W 왓츠앱","#128C7E"]];
+  const _chMeta = [["naver","N 네이버","#03C75A"],["instagram","I 인스타","#E1306C"],["whatsapp","W 왓츠앱","#128C7E"],["line","L LINE","#06C755"]];
   const _nowInWindow = (sc) => {
     if (!sc?.enabled) return true;
     const now=new Date(); const cur=now.getHours()*60+now.getMinutes();
