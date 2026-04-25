@@ -236,7 +236,8 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       // 예외: account_id 없음/'unknown' → 지점 미지정 메시지라 그대로 노출
       // 왓츠앱은 전지점 공통이라 필터 우회
       const isWhatsApp = (m.channel||"") === "whatsapp";
-      if(!isWhatsApp && allowedIds.length>0 && m.account_id && m.account_id!=="unknown" && !allowedIds.includes(String(m.account_id))) return;
+      const isLine = (m.channel||"") === "line";
+      if(!isWhatsApp && !isLine && allowedIds.length>0 && m.account_id && m.account_id!=="unknown" && !allowedIds.includes(String(m.account_id))) return;
       const key=(m.channel||"naver")+"_"+m.user_id;
       if(!map[key]||new Date(m.created_at)>new Date(map[key].created_at)) map[key]=m;
     });
