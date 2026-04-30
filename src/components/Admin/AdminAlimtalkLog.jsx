@@ -8,6 +8,7 @@ import { sb } from '../../lib/sb'
  * 필터: 지점 / 채널 / 상태 / 종류 / 기간(최근 N일)
  */
 
+// pkg_* = 정액권(다담권/선불권, 금액 기반) / tkt_* = 다회권(횟수 기반)
 const NOTI_LABELS = {
   rsv_confirm: '예약확정',
   rsv_change: '예약변경',
@@ -15,10 +16,10 @@ const NOTI_LABELS = {
   rsv_1day: '하루전 리마인드',
   rsv_today: '당일 리마인드',
   rsv_aftercare: '사후관리',
-  tkt_charge: '선불권 충전',
-  tkt_pay: '선불권 사용',
-  pkg_charge: '패키지 구매',
-  pkg_pay: '패키지 사용',
+  tkt_charge: '다회권 등록',
+  tkt_pay: '다회권 사용',
+  pkg_charge: '다담권/선불권 충전',
+  pkg_pay: '다담권/선불권 사용',
   annual_reg: '연간권 등록',
   pt_earn: '포인트 적립',
   pt_use: '포인트 사용',
@@ -81,6 +82,35 @@ export default function AdminAlimtalkLog({ data, userBranches }) {
     const m = {}
     ;(data?.branches || []).forEach(b => { m[b.id] = b.name || b.id })
     return m
+  }, [data?.branches])
+
+  // 실제 발송된 메시지 렌더링: 지점의 notiConfig에서 msgTpl 가져와 #{} 치환
+  const renderSentMessage = useCallback((row) => {
+    try {
+      const br = (data?.branches || []).find(b => b.id === row.branch_id)
+      if (!br) return null
+      // db.js에서 noti_config → notiConfig 매핑 (snake → camel)
+      let cfgRoot = br.notiConfig || br.noti_config
+      if (!cfgRoot) return null
+      // noti_config는 jsonb (객체) 또는 텍스트일 수 있음 — 문자열이면 파싱
+      if (typeof cfgRoot === 'string') {
+        try { cfgRoot = JSON.parse(cfgRoot) } catch { return null }
+      }
+      const cfg = cfgRoot[row.noti_key]
+      if (!cfg) return null
+      const tpl = cfg.msgTpl || ''
+      if (!tpl) return null
+      let msg = tpl
+      const params = row.params || {}
+      Object.entries(params).forEach(([k, v]) => {
+        msg = msg.split(k).join(v == null ? '' : String(v))
+      })
+      // 못 채운 #{} 변수도 빈 문자열로 (혹시 누락된 키)
+      msg = msg.replace(/#\{[^}]*\}/g, '')
+      return { msg, tplCode: cfg.tplCode || '', buttons: cfg.buttons || [] }
+    } catch (e) {
+      return null
+    }
   }, [data?.branches])
 
   const [days, setDays] = useState(7)
@@ -327,21 +357,54 @@ export default function AdminAlimtalkLog({ data, userBranches }) {
                     </td>
                     <td style={{ padding: '6px', borderBottom: '1px solid ' + T.border, color: r.status === 'failed' ? T.danger : T.textSub, fontSize: 11, maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{resultSummary(r)}</td>
                   </tr>
-                  {isOpen && (
-                    <tr><td colSpan={7} style={{ padding: '10px 14px', background: T.gray100, borderBottom: '1px solid ' + T.border }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, fontSize: 11 }}>
-                        <div>
-                          <div style={{ fontWeight: 800, marginBottom: 6, color: T.textSub }}>params</div>
-                          <pre style={{ margin: 0, background: '#fff', padding: 8, borderRadius: 4, border: '1px solid ' + T.border, maxHeight: 200, overflow: 'auto', fontSize: 10 }}>{JSON.stringify(r.params || {}, null, 2)}</pre>
+                  {isOpen && (() => {
+                    const rendered = renderSentMessage(r)
+                    return <tr><td colSpan={7} style={{ padding: '10px 14px', background: T.gray100, borderBottom: '1px solid ' + T.border }}>
+                      {/* 실제 발송 내용 (사용자에게 보낸 그대로) */}
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontWeight: 800, marginBottom: 6, color: '#3C1E1E', fontSize: 12 }}>
+                          📨 실제 발송 내용
+                          {rendered?.tplCode && <span style={{ marginLeft: 8, fontSize: 10, color: T.textMuted, fontWeight: 600 }}>tplCode: {rendered.tplCode}</span>}
                         </div>
-                        <div>
-                          <div style={{ fontWeight: 800, marginBottom: 6, color: T.textSub }}>result</div>
-                          <pre style={{ margin: 0, background: '#fff', padding: 8, borderRadius: 4, border: '1px solid ' + T.border, maxHeight: 200, overflow: 'auto', fontSize: 10 }}>{JSON.stringify(r.result || {}, null, 2)}</pre>
-                        </div>
+                        {rendered?.msg ? (
+                          <div style={{
+                            background: '#FEE500', color: '#3C1E1E',
+                            padding: '14px 16px', borderRadius: 10, border: '1px solid #ECD000',
+                            fontSize: 12, lineHeight: 1.7, whiteSpace: 'pre-wrap', maxWidth: 520,
+                            fontFamily: 'inherit', boxShadow: '0 2px 6px rgba(0,0,0,.08)'
+                          }}>
+                            {rendered.msg}
+                            {rendered.buttons && rendered.buttons.length > 0 && (
+                              <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                {rendered.buttons.map((btn, i) => (
+                                  <div key={i} style={{ background: '#fff', padding: '8px 12px', borderRadius: 6, border: '1px solid #ECD000', textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#3C1E1E' }}>{btn.name}</div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{ padding: '10px 14px', background: '#FFF3E0', border: '1px solid #FFA726', borderRadius: 6, fontSize: 11, color: '#E65100' }}>
+                            ⚠ 템플릿(msgTpl)이 등록되어 있지 않아 실제 메시지 재구성 불가. 관리설정 → 알림 설정에서 해당 종류의 템플릿을 등록하세요.
+                          </div>
+                        )}
                       </div>
+                      {/* 디버그: params + result (기술자용) */}
+                      <details style={{ fontSize: 11 }}>
+                        <summary style={{ cursor: 'pointer', color: T.textSub, userSelect: 'none' }}>🔧 기술 정보 (params · result)</summary>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 8 }}>
+                          <div>
+                            <div style={{ fontWeight: 800, marginBottom: 6, color: T.textSub }}>params (변수 값)</div>
+                            <pre style={{ margin: 0, background: '#fff', padding: 8, borderRadius: 4, border: '1px solid ' + T.border, maxHeight: 200, overflow: 'auto', fontSize: 10 }}>{JSON.stringify(r.params || {}, null, 2)}</pre>
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 800, marginBottom: 6, color: T.textSub }}>result</div>
+                            <pre style={{ margin: 0, background: '#fff', padding: 8, borderRadius: 4, border: '1px solid ' + T.border, maxHeight: 200, overflow: 'auto', fontSize: 10 }}>{JSON.stringify(r.result || {}, null, 2)}</pre>
+                          </div>
+                        </div>
+                      </details>
                       {r.processed_at && <div style={{ marginTop: 8, fontSize: 11, color: T.textSub }}>처리 시각: {fmtDt(r.processed_at)}</div>}
                     </td></tr>
-                  )}
+                  })()}
                 </React.Fragment>
               )
             })}

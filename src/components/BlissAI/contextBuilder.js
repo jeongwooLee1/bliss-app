@@ -10,42 +10,79 @@
  */
 
 // ─── 시스템 프롬프트 ─────────────────────────────────────────────────────────
-export const SYSTEM_PROMPT = `당신은 Bliss 예약관리 앱의 AI 업무 도우미 "블리스 AI"입니다.
+// ⚠️ 이 도구는 매장 직원/관리자 전용 내부 도구입니다 — 고객 응대용이 아닙니다.
+// 답변 톤은 "동료에게 보고하듯" 간결·실무적이어야 합니다.
+export const SYSTEM_PROMPT = `당신은 Bliss 예약관리 앱의 직원 전용 AI 업무 도구 "블리스 AI"입니다.
+
+[중요 - 사용 맥락]
+- 이 도구는 **매장 내부 직원/관리자**가 사용합니다. 고객 상담용이 절대 아닙니다.
+- 따라서 "감사합니다", "예약 도와드릴게요!", "잠시만 기다려주세요" 같은 고객 응대형 인사 절대 사용하지 말 것.
+- 동료에게 사실만 보고하는 실무적·간결한 톤으로 응답.
+
 주요 역할:
-- 신입 직원이 업무를 빠르게 익히도록 FAQ·정책·가격·시스템 이용법을 안내합니다.
-- 매장 운영 데이터(예약·고객·매출)를 조회해 간결하게 알려줍니다.
-- 사장님의 앱 초기 세팅(지점·시술·직원 등)을 대화로 도와드립니다. 사용자가 "처음이야", "세팅 시작", "매장 등록" 같은 말을 하면 단계적으로 질문하며 세팅을 진행합니다.
-- 한국어로 따뜻하고 친근하게 답변합니다. 존댓말 사용.
-- 확실한 정보만 답하고, 모르는 것은 "모르겠습니다" 또는 "담당자에게 확인 부탁드립니다"라고 솔직히 말합니다.
-- 고객 개인정보(전화번호·주소 등)를 출력할 때는 마스킹 여부 지시를 따릅니다.
-- 답변은 핵심부터, 불필요하게 길게 쓰지 않습니다. 필요하면 불릿/번호 사용.
+- 직원이 시스템 사용법, 가격·시술 정책, FAQ를 빠르게 찾을 수 있게 도움.
+- 매장 운영 데이터(예약·고객·매출) 조회해 간결하게 보고.
+- 직원이 자연어로 예약·설정 변경을 요청하면 시스템이 자동으로 confirm 카드를 띄워 처리.
+- 한국어 존댓말, 핵심부터, 불필요하게 길게 쓰지 않음.
+
+[지원 가능한 작업 — 직원이 자연어로 요청 시 시스템이 처리]
+- ✅ **예약 생성**: "내일 3시 강남 김철수 010... 브라질리언 예약" → 자동 등록 (직원 미배정, 상태 예약중)
+- ✅ 지점/시술/직원/고객 등 설정 변경 (마스터 권한 한정)
+- ✅ 데이터 조회 (예약·매출·고객)
+
+[응답 규칙]
+1. 직원이 "예약해줘", "예약 잡아줘" 같은 명령을 하면 → 인사말이나 수다 없이 시스템이 confirm 카드 띄울 수 있도록 두면 됨
+2. 정보 조회 결과는 표/불릿으로 간결하게
+3. 모르는 것은 "확인 안 됨" 또는 "관리자에게 문의 필요"라고 솔직히
+4. 고객 개인정보(전화·주소)는 그대로 출력 가능 (직원 도구이므로)
 
 [세팅 도우미 모드]
-사용자가 앱을 처음 쓰거나 "세팅 도와줘" 요청하면:
-1. 현재 등록된 데이터(지점/시술/직원)를 참고해서 부족한 항목을 안내
-2. 한 번에 하나씩 질문 (지점부터 → 시술 → 직원 순)
-3. 사용자가 정보를 주면 "변경/추가 액션"으로 처리 (시스템이 confirm 카드 띄워줌)
-4. 사용자가 "메뉴판 사진 있어" 하면 "사진 기능은 관리설정 → 설정마법사에서 업로드 가능해요"라고 안내 (사진 파싱은 현재 대화로 불가)`;
+사용자가 "처음이야", "세팅 시작" 등 요청하면 단계적 안내 (지점→시술→직원).`;
 
 // ─── Tier 1: 항상 주입 ─────────────────────────────────────────────────────
 export function buildStaticContext(data) {
   const parts = [];
-  // 지점 목록
+  // 지점 목록 — 풍부한 정보 (운영시간, 대표번호, 보조번호=WhatsApp, 주소, 예약안내)
   const branches = (data?.branches || []).filter(b => b.useYn !== false);
   if (branches.length) {
-    const lines = branches.map(b => `- ${b.short || b.name}${b.address ? ` (${b.address})` : ''}${b.phone ? ` · ☎ ${b.phone}` : ''}`);
-    parts.push(`[지점 ${branches.length}개]\n${lines.join('\n')}`);
+    const lines = branches.map(b => {
+      const ts = (typeof b.timelineSettings === 'string' ? (() => { try { return JSON.parse(b.timelineSettings); } catch { return {}; } })() : (b.timelineSettings || {}));
+      const open = ts.openTime || '';
+      const close = ts.closeTime || '';
+      const hours = (open && close) ? `${open}~${close}` : '';
+      const segs = [b.short || b.name];
+      if (b.address) segs.push(`주소: ${b.address}`);
+      if (b.phone) segs.push(`☎ ${b.phone}`);
+      if (b.altPhone) segs.push(`보조/WhatsApp: ${b.altPhone}`);
+      if (hours) segs.push(`운영시간 ${hours}`);
+      let line = '- ' + segs.join(' · ');
+      if (b.bookingNotice && String(b.bookingNotice).trim()) {
+        const notice = String(b.bookingNotice).trim().replace(/\n+/g, ' / ');
+        line += `\n  · 예약/방문 안내: ${notice.length > 240 ? notice.slice(0, 240) + '…' : notice}`;
+      }
+      return line;
+    });
+    parts.push(`[지점 ${branches.length}개 — 운영시간/연락처/안내]\n${lines.join('\n')}`);
   }
   // 카테고리 요약
   const cats = (data?.serviceCategories || data?.categories || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
   if (cats.length) {
     parts.push(`[시술 카테고리]\n${cats.map(c => c.name).filter(Boolean).join(' · ')}`);
   }
-  // 예약 경로
+  // 예약 경로 (네이버/인스타/와츠앱/카톡 등)
   const sources = (data?.resSources || []).filter(s => s.useYn !== false);
   if (sources.length) {
     parts.push(`[예약 경로]\n${sources.map(s => s.name).join(' · ')}`);
   }
+  // 외부 SNS / 메신저 핸들 — 비즈니스 settings 또는 branch 기반
+  const snsLines = [];
+  branches.forEach(b => {
+    const tag = b.short || b.name;
+    if (b.naverAccountId) snsLines.push(`${tag} · 네이버톡톡: ${b.naverAccountId}`);
+    if (b.instagramAccountId) snsLines.push(`${tag} · 인스타그램 비즈니스 ID: ${b.instagramAccountId}`);
+    if (b.whatsappAccountId) snsLines.push(`${tag} · WhatsApp Phone ID: ${b.whatsappAccountId}`);
+  });
+  if (snsLines.length) parts.push(`[채널/메신저 연동]\n${snsLines.join('\n')}\n(고객 안내용 번호는 보조/WhatsApp 행을 참고하세요)`);
   return parts.join('\n\n');
 }
 
@@ -89,22 +126,46 @@ export function buildServicesContext(data, filterKeyword = '') {
 }
 
 // ─── Tier 2: FAQ 검색 주입 ─────────────────────────────────────────────────
-// 키워드 기반 매칭. 나중에 임베딩 기반으로 업그레이드 가능.
-// 점수: 질문 내 각 단어가 FAQ q/a에 포함되면 +1. 카테고리 일치 +2.
+// 키워드 기반 매칭 (한국어 조사 제거 + 양방향 부분일치).
+// 점수: 토큰이 FAQ q/a에 포함되면 +1, 질문에 있으면 +0.5, 카테고리 일치 +2.
+const _STRIP_RE = /(이|가|은|는|을|를|의|에|에서|에게|한테|로|으로|와|과|랑|이랑|하고|도|만|야|요|입니다|입니까|인가요|이에요|예요|있어요|있나요|있다고|있는데|되나요|되요|돼요|되었어요|해요|해야|해야하나요|해야해|해주세요|해줘|왔어|왔어요|왔는데|클레임|어떻게|어떡해|어떡해야|있음|있나)$/;
+function _stripParticle(t) {
+  let cur = t;
+  for (let i = 0; i < 3; i++) {
+    const next = cur.replace(_STRIP_RE, '');
+    if (next === cur || next.length < 2) break;
+    cur = next;
+  }
+  return cur;
+}
+
 export function searchFAQ(question, faqItems, topN = 8) {
   const active = (faqItems || []).filter(f => f?.active !== false && f?.q && f?.a);
   if (!active.length) return [];
   const q = question.toLowerCase().trim();
   if (!q) return [];
-  const tokens = q.split(/[\s?!.,]+/).filter(t => t.length >= 2);
+  const rawTokens = q.split(/[\s?!.,~()]+/).filter(t => t.length >= 2);
+  // 원형 + 조사 제거형 모두 후보로
+  const tokens = Array.from(new Set(rawTokens.flatMap(t => {
+    const s = _stripParticle(t);
+    return s !== t && s.length >= 2 ? [t, s] : [t];
+  })));
   if (!tokens.length) return [];
 
   const scored = active.map(f => {
     let score = 0;
     const text = (f.q + ' ' + f.a).toLowerCase();
+    const qLow = f.q.toLowerCase();
     tokens.forEach(tok => {
-      if (text.includes(tok)) score += 1;
-      if (f.q.toLowerCase().includes(tok)) score += 0.5; // 질문에 있으면 가중
+      // 양방향 부분 일치: tok가 text에 있거나, text의 단어가 tok에 포함되어도 부분 점수
+      if (text.includes(tok)) {
+        score += 1;
+        if (qLow.includes(tok)) score += 0.5;
+      } else if (tok.length >= 3) {
+        // tok의 앞 2~3글자라도 FAQ q에 있으면 약한 매칭 (조사 패턴 미커버 케이스)
+        const pref = tok.slice(0, Math.min(3, tok.length - 1));
+        if (pref.length >= 2 && qLow.includes(pref)) score += 0.4;
+      }
     });
     // 카테고리 힌트 (남자/임산부/위생 등 명시적 언급)
     const cat = (f.category || '').toLowerCase();
@@ -285,6 +346,13 @@ export function buildFullPrompt({ question, data, faqItems, role = 'master', ext
   // Tier 3 (실시간 조회) 결과
   if (extraContext) parts.push(extraContext);
   parts.push(`[현재 사용자 질문]\n${question}`);
-  parts.push('[답변 지침] 관련 FAQ·데이터가 있으면 근거로 삼고, 없으면 모른다고 답하세요. 친근하고 간결하게.');
+  parts.push(
+    '[답변 지침]\n' +
+    '1) 매장 정책·가격·운영시간·예약/매출/고객 데이터처럼 "이 매장만의 사실"은 반드시 제공된 FAQ/데이터/컨텍스트에 근거해 답하세요. 근거가 없으면 추측하지 말고 "FAQ에 등록된 내용이 없어 정확히 안내드리기 어렵습니다"라고 답하고 대표에게 확인 권유하세요.\n' +
+    '2) 그 외 일반 지식(왁싱 시술 후 케어, 붉은기·트러블 대처, 피부 관리 상식, 고객 클레임 응대 톤, 인그로운/제모 일반 정보 등)은 전문 왁싱 살롱의 시니어 직원처럼 신뢰할 수 있는 일반 지식으로 답해주세요. "FAQ에 없어서 모른다"고만 하지 마세요.\n' +
+    '3) 고객 응대 문장을 요청받으면 따뜻하고 격식 있는 톤으로 즉시 작성해 제시하세요.\n' +
+    '4) 의학적 진단·처방은 피하고, 심한 통증/지속되는 발진/감염 의심 등은 의료 상담 권유로 마무리하세요.\n' +
+    '5) 친근하고 간결하게.'
+  );
   return parts.join('\n\n');
 }

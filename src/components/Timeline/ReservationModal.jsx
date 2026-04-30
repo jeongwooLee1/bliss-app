@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { T, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, SYSTEM_TAG_NAME_NEW_CUST, SYSTEM_TAG_NAME_PREPAID, SYSTEM_SRC_NAME_NAVER } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY, queueAlimtalk, buildTokenSearch } from '../../lib/sb'
 import { fromDb, toDb, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS, _activeBizId } from '../../lib/db'
-import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, getDow, genId, fmtLocal, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, getCustPkgBranchInitial } from '../../lib/utils'
+import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, getDow, genId, fmtLocal, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, getCustPkgBranchInitial, naverConfirmBooking } from '../../lib/utils'
 import I from '../common/I'
+import SendSmsModal from '../common/SendSmsModal'
 import { DetailedSaleForm } from './SaleForm'
 
 const uid = genId;
@@ -138,16 +139,156 @@ function CopySpan({ text, children, style={} }) {
   </span>;
 }
 
+// ─── 차감 결정 모달 — 모든 취소 흐름(naver_cancelled / cancelled / no_show)에서 공용 ───
+function CancelDecisionModal({ open, onResolve, onClose, custId, custName, branchName, dateStr, timeStr, prepaid, reasonLabel }) {
+  const [pointBal, setPointBal] = React.useState(0);
+  const [prepaidPkgs, setPrepaidPkgs] = React.useState([]);
+  const [multiPkgs, setMultiPkgs] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    if (!open || !custId) return;
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      try {
+        const ptxs = await sb.get("point_transactions", `&customer_id=eq.${custId}&select=type,amount`) || [];
+        let pBal = 0;
+        ptxs.forEach(t => {
+          if (t.type === 'earn') pBal += +t.amount || 0;
+          else if (t.type === 'deduct' || t.type === 'expire') pBal -= +t.amount || 0;
+        });
+        const myPkgs = await sb.get("customer_packages", `&customer_id=eq.${custId}`) || [];
+        const today = todayStr();
+        const isExpired = (p) => {
+          const exp = ((p.note||'').match(/유효:\s*(\d{4}-\d{2}-\d{2})/)||[])[1];
+          return exp && exp < today;
+        };
+        const _prepaid = myPkgs.filter(p => {
+          const n = (p.service_name||'').toLowerCase();
+          if (!(n.includes('다담') || n.includes('선불'))) return false;
+          if (isExpired(p)) return false;
+          const m = (p.note||'').match(/잔액:([0-9,]+)/);
+          return m && +m[1].replace(/,/g,'') > 0;
+        });
+        const _multi = myPkgs.filter(p => {
+          const n = (p.service_name||'').toLowerCase();
+          if (n.includes('다담') || n.includes('선불') || n.includes('연간') || n.includes('할인권') || n.includes('회원권')) return false;
+          if (isExpired(p)) return false;
+          return (p.total_count||0) - (p.used_count||0) > 0;
+        }).sort((a,b) => {
+          const ea = ((a.note||'').match(/유효:\s*(\d{4}-\d{2}-\d{2})/)||[0,''])[1] || '9999-12-31';
+          const eb = ((b.note||'').match(/유효:\s*(\d{4}-\d{2}-\d{2})/)||[0,''])[1] || '9999-12-31';
+          return ea.localeCompare(eb);
+        });
+        if (cancelled) return;
+        setPointBal(pBal);
+        setPrepaidPkgs(_prepaid);
+        setMultiPkgs(_multi);
+      } catch(e) { console.error('[CancelDecisionModal load]', e); }
+      finally { if (!cancelled) setLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [open, custId]);
+
+  if (!open) return null;
+  const PENALTY = 33000;
+  const userPrepaid = Math.max(0, Number(prepaid)||0);
+  const prepaidBal = prepaidPkgs.reduce((s,p) => {
+    const m = (p.note||'').match(/잔액:([0-9,]+)/);
+    return s + (m ? +m[1].replace(/,/g,'') : 0);
+  }, 0);
+  const total = pointBal + prepaidBal;
+  let simulationLine = null;
+  if (userPrepaid > 0) {
+    simulationLine = `취소금 입금 ${userPrepaid.toLocaleString()}원으로 페널티 처리 (보유권 차감 없음)`;
+  } else if (total >= PENALTY) {
+    simulationLine = `포인트 → 선불권 순으로 ${PENALTY.toLocaleString()}원 차감`;
+  } else if (multiPkgs.length > 0) {
+    simulationLine = `포인트·선불권 부족 (${total.toLocaleString()}원) → 다회권 "${multiPkgs[0].service_name}" 1회 차감`;
+  } else {
+    simulationLine = `차감 가능 항목 없음`;
+  }
+  const canDeduct = userPrepaid > 0 || total >= PENALTY || multiPkgs.length > 0;
+
+  return (
+    <div onClick={onClose} style={{
+      position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:4000,
+      display:'flex', alignItems:'center', justifyContent:'center',
+      animation:'fadeIn .15s ease-out'
+    }}>
+      <div onClick={e=>e.stopPropagation()} style={{
+        background:T.bgCard, borderRadius:T.radius.lg, padding:24,
+        width:'min(94vw, 460px)', maxHeight:'90vh', overflowY:'auto',
+        boxShadow:'0 16px 48px rgba(0,0,0,.3)',
+        animation:'slideUp .2s ease-out'
+      }}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
+          <h2 style={{fontSize:T.fs.lg,fontWeight:T.fw.bolder,margin:0,color:T.text}}>🚫 {reasonLabel || '예약 취소'} 처리</h2>
+          <button onClick={onClose} aria-label="닫기" style={{background:'none',border:'none',fontSize:24,cursor:'pointer',color:T.gray400,lineHeight:1,padding:0}}>×</button>
+        </div>
+
+        <div style={{padding:'10px 12px',background:T.gray100,borderRadius:T.radius.md,marginBottom:14,fontSize:T.fs.sm,color:T.textSub,lineHeight:1.6}}>
+          <div style={{fontWeight:T.fw.bolder,color:T.text,marginBottom:2}}>{custName||'고객'}</div>
+          <div>{dateStr||''} {timeStr||''}{branchName?` · ${branchName}`:''}</div>
+        </div>
+
+        {loading ? (
+          <div style={{padding:'30px 0',textAlign:'center',color:T.gray500,fontSize:T.fs.sm}}>잔액 조회 중...</div>
+        ) : (
+          <>
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,marginBottom:6,color:T.text}}>💰 차감 가능 항목</div>
+              <div style={{padding:'10px 12px',background:'#f8fafc',borderRadius:T.radius.md,fontSize:T.fs.sm,lineHeight:1.7,border:'1px solid '+T.border}}>
+                {userPrepaid > 0 && <div>• 선결제(취소금): <strong style={{color:T.text}}>{userPrepaid.toLocaleString()}원</strong></div>}
+                <div>• 포인트: <strong style={{color:T.text}}>{pointBal.toLocaleString()}P</strong></div>
+                <div>• 선불권 합계: <strong style={{color:T.text}}>{prepaidBal.toLocaleString()}원</strong>{prepaidPkgs.length>0 && <span style={{color:T.gray500}}> ({prepaidPkgs.length}건)</span>}</div>
+                {multiPkgs.length > 0 && <div>• 다회권: <strong style={{color:T.text}}>{multiPkgs.length}건</strong> <span style={{color:T.gray500}}>(예: {multiPkgs[0].service_name})</span></div>}
+                {!canDeduct && <div style={{color:T.danger,marginTop:4,fontWeight:T.fw.bolder}}>차감 가능 항목 없음</div>}
+              </div>
+            </div>
+
+            <div style={{marginBottom:18,padding:'10px 12px',background:'#fff7ed',border:'1px solid #fed7aa',borderRadius:T.radius.md,fontSize:T.fs.sm,color:'#9a3412',lineHeight:1.55}}>
+              <div style={{fontWeight:T.fw.bolder,marginBottom:4}}>💸 차감 시 처리</div>
+              {simulationLine}
+            </div>
+          </>
+        )}
+
+        <div style={{display:'flex',gap:8,marginTop:8}}>
+          <button onClick={()=>onResolve('skip')} disabled={loading} style={{
+            flex:1, padding:'12px', fontSize:T.fs.sm, fontWeight:T.fw.bolder,
+            background:'#fff', color:T.text, border:'1.5px solid '+T.border, borderRadius:T.radius.md,
+            cursor:loading?'wait':'pointer', fontFamily:'inherit'
+          }}>↪ 차감없이 취소</button>
+          <button onClick={()=>onResolve('deduct')} disabled={loading || !canDeduct} style={{
+            flex:1, padding:'12px', fontSize:T.fs.sm, fontWeight:T.fw.bolder,
+            background:canDeduct?T.danger:T.gray200, color:'#fff', border:'none', borderRadius:T.radius.md,
+            cursor:(loading||!canDeduct)?'not-allowed':'pointer',
+            opacity:(loading||!canDeduct)?0.55:1, fontFamily:'inherit'
+          }}>💸 차감하고 취소</button>
+        </div>
+        <button onClick={onClose} style={{
+          width:'100%', padding:'10px', marginTop:8, fontSize:T.fs.xs,
+          background:'transparent', color:T.gray500, border:'none', cursor:'pointer', fontFamily:'inherit'
+        }}>← 돌아가기 (취소 액션 자체 취소)</button>
+      </div>
+    </div>
+  );
+}
+
 function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBranch, userBranches, data, setData, setPage, naverColShow={}, setPendingChat, setPendingOpenCust }) {
   // 카테고리 순서 → 카테고리 내 시술 순서 (시술상품관리와 동일)
+  // 쿠폰·포인트 카테고리는 시술 선택 대상이 아니므로 제외 (증정/사용 대상)
+  const _excludedCatIds = (data?.categories || []).filter(c => c.name === '쿠폰' || c.name === '포인트').map(c => c.id);
   const _catSort = {};
   (data?.categories || []).forEach(c => { _catSort[c.id] = c.sort ?? 9999; });
-  const SVC_LIST = (data?.services || []).slice().sort((a,b) => {
+  const SVC_LIST = (data?.services || []).filter(s => !_excludedCatIds.includes(s.cat)).slice().sort((a,b) => {
     const ca = _catSort[a.cat] ?? 9999, cb = _catSort[b.cat] ?? 9999;
     return ca !== cb ? ca - cb : (a.sort??9999) - (b.sort??9999);
   });
   const PROD_LIST = (data?.products || []);
-  const CATS = (data?.categories || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
+  const CATS = (data?.categories || []).slice().filter(c => c.name !== '쿠폰' && c.name !== '포인트').sort((a,b)=>(a.sort||0)-(b.sort||0));
   const isNew = !item?.id || item?.roomId;
   const isReadOnly = item?.readOnly || false;
   const branchId = item?.bid || selBranch;
@@ -195,7 +336,31 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   };
 
   const [showSaleForm, setShowSaleForm] = useState(false);
+  const [showSmsModal, setShowSmsModal] = useState(false);
   const [existingSaleDetails, setExistingSaleDetails] = useState(null);
+  // 변경 이력 chain — prev_reservation_id를 따라 거슬러 올라간 옛 예약 목록
+  const [changeChain, setChangeChain] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const startPrev = item?.prevReservationId || item?.prev_reservation_id || "";
+        if (!startPrev) { setChangeChain([]); return; }
+        const acc = []; let cur = startPrev; let safety = 0;
+        while (cur && safety < 10) {
+          safety++;
+          const rows = await sb.get("reservations", `&reservation_id=eq.${cur}&limit=1`);
+          if (!rows?.length) break;
+          const rec = (rows[0]?.id) ? rows[0] : null;
+          if (!rec) break;
+          acc.push(rec);
+          cur = rec.prev_reservation_id || "";
+        }
+        if (!cancelled) setChangeChain(acc);
+      } catch (e) { if (!cancelled) setChangeChain([]); }
+    })();
+    return () => { cancelled = true; };
+  }, [item?.id, item?.prevReservationId, item?.prev_reservation_id]);
   const [isSchedule, setIsSchedule] = useState(item?.isSchedule || false);
   // 🔒 race-condition 방어: 모달 오픈 시점의 네이버 관리 필드 스냅샷.
   //   네이버 확정 이메일 처리로 서버가 status='reserved' 저장한 뒤,
@@ -341,16 +506,19 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   useEffect(() => {
     const bizId = _activeBizId || "biz_khvurgshb";
 
-    // Case A: custId 있음 → 고객 레코드에서 빈 필드(성별/이메일/이름2) 백필
+    // Case A: custId 있음 → 고객 레코드에서 빈 필드(성별/이메일/이름2) 백필 + 이름 변경시 최신 이름으로 동기화
     if (f.custId) {
-      if (f.custGender && f.custEmail && f.custName2) return; // 이미 다 채워짐
       const local = (data?.customers||[]).find(c => c.id === f.custId);
       if (local) {
+        // phone 비어있으면 phone2 사용 (보조번호에만 정확한 번호 있는 케이스)
+        const fullPhone = local.phone || local.phone2 || "";
         setF(p => ({
           ...p,
+          custName: local.name || p.custName,
           custName2: p.custName2 || local.name2 || "",
           custGender: p.custGender || local.gender || "",
           custEmail: p.custEmail || local.email || "",
+          custPhone: fullPhone || p.custPhone,
           isNewCust: false,
         }));
         if (local.custNum) setCustNum(local.custNum);
@@ -361,11 +529,14 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
         if (!rows?.length) return;
         const c = fromDb("customers", rows)[0];
         if (!c) return;
+        const fullPhone = c.phone || c.phone2 || "";
         setF(p => ({
           ...p,
+          custName: c.name || p.custName,
           custName2: p.custName2 || c.name2 || "",
           custGender: p.custGender || c.gender || "",
           custEmail: p.custEmail || c.email || "",
+          custPhone: fullPhone || p.custPhone,
           isNewCust: false,
         }));
         if (c.custNum) setCustNum(c.custNum);
@@ -494,7 +665,14 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
     }, 300);
     return () => clearTimeout(timer);
   }, [custSearch]);
-  const selectCust = (c) => { setF(p=>({...p, custId:c.id, custName:c.name, custName2:c.name2||"", custPhone:c.phone, custGender:c.gender, custEmail:c.email||"", isNewCust:false})); setCustNum(c.custNum||""); setCustSearch(""); setShowCustDropdown(false); };
+  const selectCust = (c) => {
+    const fullPhone = c.phone || c.phone2 || "";
+    setF(p=>({...p, custId:c.id, custName:c.name, custName2:c.name2||"", custPhone:fullPhone, custGender:c.gender, custEmail:c.email||"", isNewCust:false}));
+    setCustNum(c.custNum||"");
+    setCustSearch("");
+    setShowCustDropdown(false);
+    setEditingCust(false);
+  };
 
   // 태그 선택 → 기본 5분 + 태그 소요시간 합산 → 종료시간 자동 계산
   const toggleTag = (tagId) => {
@@ -859,12 +1037,196 @@ ${naverText}
     }
   };
 
+  // ─── 페널티 차감 헬퍼 — 수동 취소·노쇼·네이버 취소 모두 사용 ───
+  // 페널티 매출 이미 존재 여부 (sales.service_name 에 "페널티" 포함)
+  const penaltyAlreadyDone = useMemo(() => {
+    return !!(existingSale && /페널티/.test(existingSale.serviceName || existingSale.service_name || ''));
+  }, [existingSale]);
+
+  // 차감 진행 중 (중복 호출 방지)
+  const _penaltyRunningRef = React.useRef(false);
+  const runPenaltyDeduction = async (reasonLabel) => {
+    if (_penaltyRunningRef.current) return;
+    if (penaltyAlreadyDone) { alert('이미 페널티 차감이 처리된 예약입니다.'); return; }
+    if (!f.custId || isSchedule) { alert('고객 연결이 없거나 내부일정 — 차감 불가'); return; }
+    _penaltyRunningRef.current = true;
+    try {
+      const PENALTY = 33000;
+      const today = todayStr();
+      const _bizId = (data?.businesses||[])[0]?.id;
+      const _userPrepaid = Math.max(0, Number(f.externalPrepaid)||0);
+      const _resolveCustNum = async () => {
+        let custNumFinal = f.custNum || '';
+        if (!custNumFinal && f.custId) {
+          try {
+            const _rows = await sb.get("customers", `&id=eq.${f.custId}&select=cust_num&limit=1`);
+            custNumFinal = (_rows && _rows[0]?.cust_num) || '';
+          } catch {}
+        }
+        return custNumFinal;
+      };
+      if (_userPrepaid > 0) {
+        // confirm 제거 (v3.7.210) — CancelDecisionModal이 결정 책임. 여기 도달했으면 사용자가 차감 결정한 상태.
+        const penaltySaleId = 'sale_' + genId();
+        const custNumFinal = await _resolveCustNum();
+        const svcName = `${reasonLabel} 페널티 (선결제 ${_userPrepaid.toLocaleString()}원)`;
+        const _saleRow = {
+          id: penaltySaleId, business_id: _bizId, bid: f.bid,
+          reservation_id: f.id,
+          cust_id: f.custId, cust_name: f.custName, cust_phone: f.custPhone||'',
+          cust_num: custNumFinal, cust_gender: f.custGender||'',
+          date: f.date || today, service_name: svcName,
+          svc_cash: 0, svc_card: 0, svc_transfer: 0, svc_point: 0,
+          external_prepaid: _userPrepaid,
+          memo: `${reasonLabel} 페널티 — 선결제 ${_userPrepaid.toLocaleString()}원 차감 (예약 ${f.id})`,
+        };
+        await sb.insert("sales", _saleRow).catch(e => console.error('[penalty sales insert]', e));
+        await sb.insert("sale_details", {
+          id: 'sd_' + genId(), business_id: _bizId, sale_id: penaltySaleId,
+          service_name: svcName, unit_price: _userPrepaid, qty: 1,
+          cash: 0, card: 0, bank: 0, point: 0,
+        }).catch(e => console.error('[penalty sd insert]', e));
+        if (setData) setData(prev => ({...prev, sales: [...(prev?.sales||[]), {..._saleRow, reservationId: f.id, custId: f.custId, serviceName: svcName}]}));
+        alert(`${reasonLabel} 페널티 ${_userPrepaid.toLocaleString()}원 처리 완료 (선결제)`);
+        return;
+      }
+      // 선결제 없음 — 포인트→선불권→다회권 차감
+      const ptxs = await sb.get("point_transactions", `&customer_id=eq.${f.custId}&select=type,amount`) || [];
+      let pointBal = 0;
+      for (const t of ptxs) {
+        if (t.type === 'earn') pointBal += Number(t.amount)||0;
+        else if (t.type === 'deduct' || t.type === 'expire') pointBal -= Number(t.amount)||0;
+      }
+      const myPkgs = await sb.get("customer_packages", `&customer_id=eq.${f.custId}`) || [];
+      const isExpired = (p) => {
+        const exp = ((p.note||'').match(/유효:\s*(\d{4}-\d{2}-\d{2})/)||[])[1];
+        return exp && exp < today;
+      };
+      const prepaidPkgs = myPkgs.filter(p => {
+        const n = (p.service_name||'').toLowerCase();
+        if (!(n.includes('다담') || n.includes('선불'))) return false;
+        if (isExpired(p)) return false;
+        const m = (p.note||'').match(/잔액:([0-9,]+)/);
+        return m ? Number(m[1].replace(/,/g,'')) > 0 : false;
+      });
+      const prepaidBal = prepaidPkgs.reduce((s,p) => {
+        const m = (p.note||'').match(/잔액:([0-9,]+)/);
+        return s + (m ? Number(m[1].replace(/,/g,'')) : 0);
+      }, 0);
+      const total = pointBal + prepaidBal;
+      // confirm 제거 (v3.7.210) — CancelDecisionModal이 결정 책임. 여기 도달했으면 사용자가 차감 결정한 상태.
+      let pointDed = 0, prepaidDed = 0, pkgUsedName = '';
+      if (total >= PENALTY) {
+        let remain = PENALTY;
+        if (pointBal > 0) {
+          const ded = Math.min(pointBal, remain);
+          await sb.insert("point_transactions", {
+            id: 'ptx_'+genId(), business_id: _bizId,
+            bid: f.bid, customer_id: f.custId,
+            type: 'deduct', amount: ded,
+            balance_after: pointBal - ded,
+            note: `${reasonLabel} 페널티 (예약 ${f.id})`,
+          }).catch(()=>{});
+          remain -= ded;
+          pointDed = ded;
+        }
+        if (remain > 0) {
+          prepaidPkgs.sort((a,b) => {
+            const ba = Number(((a.note||'').match(/잔액:([0-9,]+)/)||[0,'0'])[1].replace(/,/g,''));
+            const bb = Number(((b.note||'').match(/잔액:([0-9,]+)/)||[0,'0'])[1].replace(/,/g,''));
+            return bb - ba;
+          });
+          for (const p of prepaidPkgs) {
+            if (remain <= 0) break;
+            const m = (p.note||'').match(/잔액:([0-9,]+)/);
+            const bal = m ? Number(m[1].replace(/,/g,'')) : 0;
+            const ded = Math.min(bal, remain);
+            const newBal = bal - ded;
+            const newUsed = (p.used_count||0) + ded;
+            const newNote = (p.note||'').replace(/잔액:[0-9,]+/, `잔액:${newBal.toLocaleString()}`);
+            await sb.update("customer_packages", p.id, { used_count: newUsed, note: newNote }).catch(()=>{});
+            remain -= ded;
+            prepaidDed += ded;
+          }
+        }
+        alert(`${reasonLabel} 페널티 ${PENALTY.toLocaleString()}원 차감 완료`);
+      } else {
+        const multi = myPkgs.filter(p => {
+          const n = (p.service_name||'').toLowerCase();
+          if (n.includes('다담') || n.includes('선불') || n.includes('연간') || n.includes('할인권') || n.includes('회원권')) return false;
+          if (isExpired(p)) return false;
+          return (p.total_count||0) - (p.used_count||0) > 0;
+        }).sort((a,b) => {
+          const ea = ((a.note||'').match(/유효:\s*(\d{4}-\d{2}-\d{2})/)||[0,''])[1] || '9999-12-31';
+          const eb = ((b.note||'').match(/유효:\s*(\d{4}-\d{2}-\d{2})/)||[0,''])[1] || '9999-12-31';
+          return ea.localeCompare(eb);
+        });
+        if (multi.length) {
+          const p = multi[0];
+          await sb.update("customer_packages", p.id, { used_count: (p.used_count||0) + 1 }).catch(()=>{});
+          pkgUsedName = p.service_name || '';
+          alert(`다회권 "${p.service_name}" 1회 차감 완료`);
+        } else {
+          alert("차감할 포인트·선불권·다회권이 없어 페널티 미적용");
+        }
+      }
+      if (pointDed > 0 || prepaidDed > 0 || pkgUsedName) {
+        try {
+          const penaltySaleId = 'sale_' + genId();
+          const svcParts = [];
+          if (pointDed > 0) svcParts.push(`포인트 ${pointDed.toLocaleString()}P`);
+          if (prepaidDed > 0) svcParts.push(`선불권 ${prepaidDed.toLocaleString()}원`);
+          if (pkgUsedName) svcParts.push(`다회권 ${pkgUsedName} 1회`);
+          const svcName = svcParts.length ? `${reasonLabel} 페널티 (${svcParts.join(', ')})` : `${reasonLabel} 페널티`;
+          const memoParts = svcParts.slice();
+          const custNumFinal = await _resolveCustNum();
+          const _saleRow = {
+            id: penaltySaleId, business_id: _bizId, bid: f.bid,
+            reservation_id: f.id,
+            cust_id: f.custId, cust_name: f.custName, cust_phone: f.custPhone||'',
+            cust_num: custNumFinal, cust_gender: f.custGender||'',
+            date: f.date || today, service_name: svcName,
+            svc_cash: 0, svc_card: 0, svc_transfer: 0, svc_point: pointDed,
+            external_prepaid: 0,
+            memo: `${reasonLabel} 페널티 — ${memoParts.join(' + ')} (예약 ${f.id})`,
+          };
+          await sb.insert("sales", _saleRow).catch(e => console.error('[penalty sales insert]', e));
+          await sb.insert("sale_details", {
+            id: 'sd_' + genId(), business_id: _bizId, sale_id: penaltySaleId,
+            service_name: svcName, unit_price: PENALTY, qty: 1,
+            cash: 0, card: 0, bank: 0, point: pointDed,
+          }).catch(e => console.error('[penalty sd insert]', e));
+          if (setData) setData(prev => ({...prev, sales: [...(prev?.sales||[]), {..._saleRow, reservationId: f.id, custId: f.custId, serviceName: svcName}]}));
+        } catch(e) { console.error('[penaltySale]', e); }
+      }
+    } catch (e) {
+      console.error('[runPenaltyDeduction]', e);
+      alert('페널티 처리 중 오류: ' + (e?.message || e));
+    } finally {
+      _penaltyRunningRef.current = false;
+    }
+  };
+
+  // 네이버 자동 취소 자동 트리거 제거 (v3.7.210) — 직원이 "취소확정" 버튼 명시적 클릭할 때만 모달 띄움.
+  // 차감 결정 모달 state — 모든 취소 흐름(naver_cancelled / cancelled / no_show)에서 공용.
+  // resolve는 'deduct'(차감하고 취소) | 'skip'(차감없이 취소) | 'close'(취소 행위 자체 중단)
+  const [cancelDecision, setCancelDecision] = useState(null);
+  // { reason: '취소확정'|'당일취소'|'노쇼'|'네이버 취소', onResolve: (decision)=>void }
+  const openCancelDecision = (reasonLabel) => new Promise(resolve => {
+    setCancelDecision({
+      reason: reasonLabel,
+      onResolve: (decision) => { setCancelDecision(null); resolve(decision); }
+    });
+  });
+
   // ⚠️ 모든 hook은 조건부 early return 이전에 호출되어야 함 (React Rules of Hooks)
   const _overlayDownRef = React.useRef(false);
 
   if (showSaleForm) {
+    // 빈 값(null/empty)은 f의 값을 보존 — 페널티 sale은 cust_num 등이 비어있어 spread하면 reservation의 값을 지움 (id_6uosrdj14g)
+    const _existingSaleClean = existingSale ? Object.fromEntries(Object.entries(existingSale).filter(([_,v]) => v !== '' && v !== null && v !== undefined)) : {};
     const saleReservation = existingSale
-      ? {...f, ...existingSale, saleMemo:existingSale.memo||"",
+      ? {...f, ..._existingSaleClean, saleMemo:existingSale.memo||"",
          _prefill: { existingDetails: existingSaleDetails || [], existingSaleId: existingSale.id },
          _existingSale:existingSale}
       : f;
@@ -960,8 +1322,22 @@ ${naverText}
           </div>}
           {f.status === "naver_cancelled" && <div style={{background:T.warningLt,borderRadius:T.radius.md,padding:"8px 12px",marginBottom:12,display:"flex",alignItems:"center",gap:T.sp.sm,boxShadow:"0 2px 8px rgba(230,167,0,.15)"}}>
             <span style={{fontSize:T.fs.lg}}><I name="alert" size={16} color={T.orange}/></span>
-            <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.warning}}>취소</span>
-            {f.reservationId && <span style={{fontSize:T.fs.sm,color:T.gray500,marginLeft:"auto"}}>#{f.reservationId}</span>}
+            <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.warning}}>네이버 고객 취소</span>
+            {f.reservationId && <span style={{fontSize:T.fs.xs,color:T.gray500}}>#{f.reservationId}</span>}
+            {!penaltyAlreadyDone && f.custId && !isSchedule && (
+              <button
+                onClick={async ()=>{
+                  const decision = await openCancelDecision('취소확정');
+                  if (decision === 'deduct') {
+                    await runPenaltyDeduction('네이버 취소');
+                  }
+                  // skip / close 시 별도 처리 없음 (status는 이미 naver_cancelled)
+                }}
+                style={{marginLeft:'auto',padding:'5px 12px',fontSize:T.fs.xs,fontWeight:T.fw.bolder,background:T.warning,color:'#fff',border:'none',borderRadius:T.radius.sm,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>
+                ✅ 취소확정
+              </button>
+            )}
+            {penaltyAlreadyDone && <span style={{marginLeft:'auto',fontSize:T.fs.xs,color:T.gray500,fontStyle:'italic'}}>처리완료</span>}
           </div>}
           {f.status === "pending" && !(f.memo && f.memo.includes("확정완료")) && <div style={{background:T.orangeLt,borderRadius:T.radius.md,padding:"8px 12px",marginBottom:12,display:"flex",alignItems:"center",gap:T.sp.sm,flexWrap:"wrap",animation:"naverBlink 1.5s infinite",boxShadow:"0 2px 8px rgba(255,152,0,.15)"}}>
             <span style={{fontSize:T.fs.lg}}><I name="bell" size={16} color={T.orange}/></span>
@@ -971,10 +1347,23 @@ ${naverText}
               const br = (data.branchSettings||data.branches||[]).find(b=>b.id===branchId);
               const bizId = br?.naverBizId;
               const resId = f?.reservationId || item?.reservationId;
-              const naverUrl2 = bizId ? (resId ? `https://partner.booking.naver.com/bizes/${bizId}/booking-list-view/bookings/${resId}` : `https://partner.booking.naver.com/bizes/${bizId}/booking-list-view`) : null;
-              return naverUrl2 ? <a href={naverUrl2} target="_blank" rel="noopener noreferrer"
-                onClick={e=>e.stopPropagation()}
-                style={{fontSize:T.fs.sm,color:T.bgCard,fontWeight:T.fw.bolder,background:T.naver,padding:"5px 12px",borderRadius:T.radius.md,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:3}}>네이버 확정 <I name="chevR" size={11} color={T.bgCard}/></a> : null;
+              if (!bizId || !resId) return null;
+              const onConfirm = async (e) => {
+                e.stopPropagation();
+                const btn = e.currentTarget; const orig = btn.textContent;
+                btn.textContent = '확정 중…'; btn.disabled = true;
+                const r = await naverConfirmBooking(bizId, resId);
+                if (r.ok) {
+                  btn.textContent = '✓ 완료';
+                  setF(prev => ({...prev, status:'reserved'}));
+                  if (setData) setData(prev => ({...prev, reservations:(prev.reservations||[]).map(x => x.id === f.id ? {...x, status:'reserved'} : x)}));
+                } else {
+                  btn.textContent = orig; btn.disabled = false;
+                  alert('네이버 확정 실패: ' + (r.msg || r.error || ''));
+                }
+              };
+              return <button onClick={onConfirm}
+                style={{fontSize:T.fs.sm,color:T.bgCard,fontWeight:T.fw.bolder,background:T.naver,padding:"5px 12px",borderRadius:T.radius.md,border:'none',cursor:'pointer',display:"inline-flex",alignItems:"center",gap:3,fontFamily:'inherit'}}>✓ 네이버 확정</button>;
               })()}
             </div>
           </div>}
@@ -1067,23 +1456,16 @@ ${naverText}
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                       {editingCust ? (
-                        <>
-                          <input value={f.custName||""} onChange={e=>{
-                              const v=e.target.value;
-                              set("custName",v);
-                              if(f.custId)set("custId",null);
-                              // 기존 고객 검색 드롭다운 트리거
-                              setCustSearch(v); setShowCustDropdown(true);
-                            }} placeholder="이름 (입력 시 기존 고객 검색)"
-                            style={{flex:"0 1 120px",minWidth:60,fontSize:14,fontWeight:700,color:"#1a1a2e",border:"1px solid #ccc",borderRadius:6,padding:"4px 8px",background:"#fff",fontFamily:"inherit",outline:"none"}}/>
-                          <input value={f.custPhone||""} onChange={e=>{
-                              const v=e.target.value.replace(/[^0-9]/g,"");
-                              set("custPhone",v);
-                              if(f.custId)set("custId",null);
-                              setCustSearch(v); setShowCustDropdown(true);
-                            }} placeholder="연락처"
-                            style={{flex:"1 1 110px",minWidth:90,fontSize:13,color:T.primary,fontWeight:500,border:"1px solid #ccc",borderRadius:6,padding:"4px 8px",background:"#fff",fontFamily:"inherit",outline:"none"}}/>
-                        </>
+                        /* 변경 모드 — 초기 등록과 동일한 통합 검색 필드 (이름·전화 부분일치 다토큰 검색) */
+                        <div style={{position:"relative",display:"flex",alignItems:"center",flex:1,minWidth:200}}>
+                          <span style={{position:"absolute",left:10,color:T.gray500,display:"flex",alignItems:"center",pointerEvents:"none"}}><I name="search" size={14}/></span>
+                          <input className="inp inp-search" style={{flex:1,minHeight:32,borderRadius:T.radius.md,paddingLeft:32,fontSize:13}}
+                            value={custSearch}
+                            onChange={e=>{ setCustSearch(e.target.value); setShowCustDropdown(true); }}
+                            onFocus={()=>setShowCustDropdown(true)}
+                            placeholder="이름·전화 (예: 정우 8008)"
+                            autoFocus/>
+                        </div>
                       ) : (
                         <>
                           <CopySpan text={f.custName} style={{fontSize:14,fontWeight:700,color:"#1a1a2e",whiteSpace:"nowrap"}}>{f.custName}</CopySpan>
@@ -1098,19 +1480,14 @@ ${naverText}
                         </>
                       )}
                     </div>
-                    {(editingCust || f.custEmail) && (
-                      <div style={{display:"flex",alignItems:"center",gap:8,marginTop:editingCust?6:3}}>
+                    {!editingCust && f.custEmail && (
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginTop:3}}>
                         <span style={{fontSize:11,color:"#aaa"}}>✉</span>
-                        {editingCust ? (
-                          <input type="email" value={f.custEmail||""} onChange={e=>set("custEmail",e.target.value)} placeholder="이메일"
-                            style={{flex:1,minWidth:90,fontSize:13,color:"#777",fontWeight:500,border:"1px solid #ccc",borderRadius:6,padding:"4px 8px",background:"#fff",fontFamily:"inherit",outline:"none"}}/>
-                        ) : (
-                          <CopySpan text={f.custEmail} style={{fontSize:12,color:"#777"}}>{f.custEmail}</CopySpan>
-                        )}
+                        <CopySpan text={f.custEmail} style={{fontSize:12,color:"#777"}}>{f.custEmail}</CopySpan>
                       </div>
                     )}
-                    {/* 성별 선택 — 편집 모드 또는 신규 고객 또는 미지정 고객 */}
-                    {(editingCust || f.isNewCust || !f.custGender) && (
+                    {/* 성별 선택 — 신규 고객 또는 미지정 고객만 (변경 모드 X) */}
+                    {!editingCust && (f.isNewCust || !f.custGender) && (
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6}}>
                         <span style={{fontSize:11,color:"#aaa"}}>성별</span>
                         {[["F","여","#e91e63","#fce4ec"],["M","남","#283593","#e8eaf6"],["","미지정","#999","#f5f5f5"]].map(([v,lv,clr,bg])=>(
@@ -1139,19 +1516,53 @@ ${naverText}
                       })}
                     </div>}
                   </div>
-                  {/* 변경/완료 + 고객관리 */}
+                  {/* 변경/취소 + 고객관리 */}
                   {editingCust ? (
                     <div style={{display:"flex",flexDirection:"column",gap:3,alignSelf:"flex-start",flexShrink:0}}>
-                      <button onClick={()=>setEditingCust(false)}
-                        style={{padding:"3px 8px",borderRadius:5,border:"1px solid "+T.primary,background:T.primary,color:"#fff",fontSize:10,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>완료</button>
+                      <button onClick={()=>{ setEditingCust(false); setCustSearch(""); setShowCustDropdown(false); }}
+                        style={{padding:"3px 8px",borderRadius:5,border:"1px solid #ddd",background:"#fff",color:"#999",fontSize:10,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>취소</button>
                     </div>
                   ) : (
                     <div style={{display:"flex",flexDirection:"column",gap:3,alignSelf:"flex-start",flexShrink:0}}>
-                      <button onClick={()=>setEditingCust(true)}
+                      <button onClick={()=>{
+                          setEditingCust(true);
+                          // 변경 모드 진입 시 현재 phone(또는 name)으로 즉시 기존고객 검색 트리거
+                          const phone = (f.custPhone||"").replace(/[^0-9]/g,"");
+                          const q = phone || (f.custName||"").trim();
+                          if (q.length >= 2) { setCustSearch(q); setShowCustDropdown(true); }
+                        }}
                         style={{padding:"3px 8px",borderRadius:5,border:"1px solid #ddd",background:"#fff",color:"#999",fontSize:10,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>변경</button>
+                      {!f.custId && f.custPhone && <button onClick={()=>{
+                          // 기존 고객 자동 매칭 시도 — phone 정확 일치 또는 phone(끝 4자리)+name
+                          const phone = (f.custPhone||"").replace(/[^0-9]/g,"");
+                          const name = (f.custName||"").trim();
+                          if (!phone && !name) return;
+                          // 1) 로컬 캐시에서 phone 정확 일치
+                          let cand = (data?.customers||[]).find(c => (c.phone||"").replace(/-/g,"") === phone);
+                          // 2) 로컬에서 phone 끝 4자리 + name 매칭
+                          if (!cand && phone.length>=4) {
+                            const last4 = phone.slice(-4);
+                            cand = (data?.customers||[]).find(c => name && c.name===name && (c.phone||"").endsWith(last4));
+                          }
+                          if (cand) {
+                            if (confirm(`기존 고객 매칭됨:\n\n${cand.name}${cand.custNum?` #${cand.custNum}`:''}  ${cand.phone}\n\n이 고객으로 연결할까요?`)) {
+                              selectCust(cand); setEditingCust(false);
+                              return;
+                            }
+                          }
+                          // 3) 서버 검색 — 편집 모드 진입 + 검색어 자동 입력
+                          setEditingCust(true);
+                          const q = phone || name;
+                          if (q.length >= 2) { setCustSearch(q); setShowCustDropdown(true); }
+                        }}
+                        title="이 전화번호로 기존 고객 찾기"
+                        style={{padding:"3px 8px",borderRadius:5,border:"1px solid "+T.success,background:"#ecfdf5",color:T.success,fontSize:10,cursor:"pointer",fontFamily:"inherit",fontWeight:700,whiteSpace:"nowrap"}}>🔍 기존고객</button>}
                       {f.custId && <button onClick={()=>setCustPopupOpen(true)}
                         title="고객정보 빠른 보기"
                         style={{padding:"3px 8px",borderRadius:5,border:"1px solid "+T.primary,background:T.primaryLt||"#fff0ec",color:T.primary,fontSize:10,cursor:"pointer",fontFamily:"inherit",fontWeight:600,whiteSpace:"nowrap"}}>고객정보 ↗</button>}
+                      {f.custPhone && <button onClick={()=>setShowSmsModal(true)}
+                        title="이 고객에게 문자 발송"
+                        style={{padding:"3px 9px",borderRadius:5,border:"1px solid #7C3AED",background:"#7C3AED",color:"#fff",fontSize:13,cursor:"pointer",fontFamily:"inherit",fontWeight:800,whiteSpace:"nowrap",lineHeight:1}}>✉</button>}
                     </div>
                   )}
                 </div>
@@ -1233,7 +1644,14 @@ ${naverText}
                 if (m) return Number(m[1].replace(/,/g,'')) || 0;
                 return Math.max(0, (p.total_count||0) - (p.used_count||0));
               };
+              // 유효기간 체크 (note의 "유효:YYYY-MM-DD" 패턴) — 만료된 보유권은 회원가 자격 없음
+              const _pkgStillValid = (p) => {
+                const exp = ((p.note||"").match(/유효:\s*(\d{4}-\d{2}-\d{2})/)||[])[1];
+                if (!exp) return true; // 유효기간 미설정 = 사용 전 = 유효
+                return exp >= new Date().toISOString().slice(0,10);
+              };
               const _grantsMember = (p) => {
+                if (!_pkgStillValid(p)) return false; // 만료 보유권은 회원가 자격 없음 (id_g0d2q6d4p8 fix)
                 if (_isEnergyOrProd(p)) return false;
                 if (_memExcludedNames.has(p.service_name)) return false;
                 if (_isAnnualPkg(p)) return true;
@@ -1354,17 +1772,33 @@ ${naverText}
                     const txt = (0.299*r+0.587*g+0.114*b)/255>0.55?T.text:T.bgCard;
                     return <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bold,color:txt,background:bg,borderRadius:T.radius.sm,padding:"1px 7px"}}>{f.source}</span>;
                   })()}
-                  {(f.chatChannel || item?.chatChannel) && setPendingChat && <button onClick={async(e)=>{
-                    e.stopPropagation();
-                    let ch=f.chatChannel, acc=f.chatAccountId, uid=f.chatUserId;
-                    if(!ch && item?.id){
-                      const rows=await fetch(`${SB_URL}/rest/v1/reservations?id=eq.${item.id}&select=chat_channel,chat_account_id,chat_user_id`,{headers:{"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY},cache:"no-store"}).then(r=>r.json());
-                      if(rows?.[0]){ch=rows[0].chat_channel;acc=rows[0].chat_account_id;uid=rows[0].chat_user_id;}
+                  {(() => {
+                    // 1순위: 예약에 chat 정보 박힌 경우 (AI 예약)
+                    let ch=f.chatChannel||item?.chatChannel, acc=f.chatAccountId||item?.chatAccountId, uid=f.chatUserId||item?.chatUserId;
+                    // 2순위: 고객 sns_accounts 매핑 (수동 연결된 경우)
+                    if(!ch || !uid){
+                      const _cust=(data?.customers||[]).find(c=>c.id===f.custId);
+                      let sns=_cust?.snsAccounts||_cust?.sns_accounts||[];
+                      if(typeof sns==="string"){try{sns=JSON.parse(sns);}catch{sns=[];}}
+                      const first=Array.isArray(sns)&&sns[0];
+                      if(first){ch=first.channel; acc=first.account_id; uid=first.user_id;}
                     }
-                    if(ch&&uid){setPendingChat({user_id:uid,channel:ch,account_id:acc});setPage("messages");onClose();}
-                  }} style={{fontSize:11,fontWeight:700,color:"#5B63B5",background:"#5B63B510",border:"1px solid #5B63B530",borderRadius:5,padding:"2px 8px",cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:3}}>
-                    💬 대화보기
-                  </button>}
+                    if(!ch || !uid || !setPendingChat) return null;
+                    return <button onClick={async(e)=>{
+                      e.stopPropagation();
+                      // 예약에 chat 정보 없으면 DB에서 한 번 더 확인 (데이터 최신화)
+                      if(!f.chatChannel && !item?.chatChannel && item?.id){
+                        try {
+                          const rows=await fetch(`${SB_URL}/rest/v1/reservations?id=eq.${item.id}&select=chat_channel,chat_account_id,chat_user_id`,{headers:{"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY},cache:"no-store"}).then(r=>r.json());
+                          if(rows?.[0]?.chat_channel){ch=rows[0].chat_channel;acc=rows[0].chat_account_id;uid=rows[0].chat_user_id;}
+                        } catch {}
+                      }
+                      setPendingChat({user_id:uid,channel:ch,account_id:acc});
+                      setPage("messages"); onClose();
+                    }} style={{fontSize:11,fontWeight:700,color:"#5B63B5",background:"#5B63B510",border:"1px solid #5B63B530",borderRadius:5,padding:"2px 8px",cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:3}}>
+                      💬 대화보기
+                    </button>;
+                  })()}
                 </span>
                 <span className={"tags-acc-chev"+(srcOpen?" open":"")}>▾</span>
               </div>
@@ -1400,9 +1834,10 @@ ${naverText}
                       return ["네이버", ...userList.filter(p => p !== "네이버")];
                     } catch { return ["네이버","서울뷰티","크리에이트립"]; }
                   })();
+                  const _needPlatform = (f.externalPrepaid || 0) > 0 && !(f.externalPlatform || "").trim();
                   return <select value={f.externalPlatform||""} onChange={e=>set("externalPlatform", e.target.value)}
-                    style={{padding:"4px 6px",fontSize:T.fs.sm,border:"1px solid #FFB74D",borderRadius:6,background:"#fff",color:"#E65100",fontFamily:"inherit"}}>
-                    <option value="">플랫폼</option>
+                    style={{padding:"4px 6px",fontSize:T.fs.sm,border:`${_needPlatform?"2px":"1px"} solid ${_needPlatform?"#dc2626":"#FFB74D"}`,borderRadius:6,background:_needPlatform?"#fee2e2":"#fff",color:_needPlatform?"#dc2626":"#E65100",fontFamily:"inherit",fontWeight:_needPlatform?800:400}}>
+                    <option value="">{_needPlatform?"⚠ 플랫폼 선택!":"플랫폼"}</option>
                     {platforms.map(p=><option key={p} value={p}>{p}</option>)}
                   </select>;
                 })()}
@@ -1578,6 +2013,29 @@ ${naverText}
                 ✨ {aiAnalyzing?"분석중":"AI"}
               </button>}
             </div>
+            {/* 변경 이력 — prev_reservation_id 체인 (메모 위) */}
+            {changeChain.length > 0 && (
+              <div style={{marginBottom:10,padding:"10px 12px",background:"#FFF8E1",border:"1px solid #FFD54F",borderRadius:T.radius.md}}>
+                <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:"#E65100",marginBottom:6,display:"flex",alignItems:"center",gap:6}}>
+                  🔄 변경 이력 ({changeChain.length}건)
+                </div>
+                {changeChain.map((rec, i) => {
+                  const stMap = { naver_changed:"변경됨", cancelled:"취소", naver_cancelled:"취소", reserved:"예약", confirmed:"확정", completed:"완료", no_show:"노쇼" };
+                  const stLabel = stMap[rec.status] || rec.status;
+                  const dt = rec.date || "";
+                  const tm = rec.time || "";
+                  return (
+                    <div key={rec.id || i} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderTop:i>0?"1px dashed #FFD54F":"none",fontSize:11,color:"#5D4037"}}>
+                      <span style={{fontWeight:700,minWidth:90}}>{dt} {tm}</span>
+                      <span style={{padding:"1px 6px",borderRadius:8,background:"#FFE0B2",color:"#E65100",fontSize:10,fontWeight:700}}>{stLabel}</span>
+                      <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:10,color:"#8D6E63"}}>
+                        {(rec.memo || "").split("\n")[0].slice(0, 50)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             <textarea className="inp inp-memo" ref={el=>{if(el){el.style.height="auto";el.style.height=Math.max(90,el.scrollHeight)+"px";}}}
               value={f.memo} onChange={e=>{set("memo",e.target.value);const t=e.target;t.style.height="auto";t.style.height=Math.max(90,t.scrollHeight)+"px";}}
               style={{resize:"vertical",minHeight:90,lineHeight:1.6,marginTop:4}} placeholder="직원 메모를 입력하세요"/>
@@ -1648,6 +2106,11 @@ ${naverText}
                 disabled={!isSchedule && f.type==="reservation" && !f.custName?.trim()}
                 style={{marginLeft:"auto",padding:"10px 22px",borderRadius:T.radius.md,fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5,lineHeight:1,transition:"all .15s",border:"2px solid "+(isSchedule?T.orange:T.primary),color:"#fff",background:isSchedule?T.orange:T.primary,boxShadow:isSchedule?"0 4px 14px rgba(225,112,85,.35)":"0 4px 14px rgba(124,124,200,.35)"}}
                 onClick={async ()=>{
+                // 외부선결제 금액 입력 시 플랫폼 필수
+                if ((f.externalPrepaid || 0) > 0 && !(f.externalPlatform || "").trim()) {
+                  alert("선결제 금액을 입력하셨는데 플랫폼이 선택되지 않았습니다.\n\n네이버/트레이지/서울뷰티/크리에이트립/입금 중에서 선택해주세요.");
+                  return;
+                }
                 const now = new Date();
                 const ts = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
                 const prevLog = f.tsLog || [];
@@ -1729,155 +2192,23 @@ ${naverText}
                     "#{대표전화번호}":branch?.phone||""
                   });
                 }
-                // 당일 취소 페널티 (id_imgr471swt-6): 예약일 = 오늘 + 신규 cancelled 전환 시
-                // 포인트 → 선불권 순으로 33,000원 차감. 합계 부족 시 다회권 1회 차감.
-                if(f.status==="cancelled" && item?.status!=="cancelled"
-                   && f.date === todayStr() && f.custId && !isSchedule){
-                  try {
-                    const PENALTY = 33000;
-                    const today = todayStr();
-                    // 포인트 잔액
-                    const ptxs = await sb.get("point_transactions", `&customer_id=eq.${f.custId}&select=type,amount`) || [];
-                    let pointBal = 0;
-                    for (const t of ptxs) {
-                      if (t.type === 'earn') pointBal += Number(t.amount)||0;
-                      else if (t.type === 'deduct' || t.type === 'expire') pointBal -= Number(t.amount)||0;
-                    }
-                    // 본인 보유권 (활성)
-                    const myPkgs = await sb.get("customer_packages", `&customer_id=eq.${f.custId}`) || [];
-                    const isExpired = (p) => {
-                      const exp = ((p.note||'').match(/유효:\s*(\d{4}-\d{2}-\d{2})/)||[])[1];
-                      return exp && exp < today;
-                    };
-                    const prepaidPkgs = myPkgs.filter(p => {
-                      const n = (p.service_name||'').toLowerCase();
-                      if (!(n.includes('다담') || n.includes('선불'))) return false;
-                      if (isExpired(p)) return false;
-                      const m = (p.note||'').match(/잔액:([0-9,]+)/);
-                      return m ? Number(m[1].replace(/,/g,'')) > 0 : false;
-                    });
-                    const prepaidBal = prepaidPkgs.reduce((s,p) => {
-                      const m = (p.note||'').match(/잔액:([0-9,]+)/);
-                      return s + (m ? Number(m[1].replace(/,/g,'')) : 0);
-                    }, 0);
-                    const total = pointBal + prepaidBal;
-                    const doDeduct = confirm(
-                      `당일 취소입니다. 페널티 ${PENALTY.toLocaleString()}원 차감 진행할까요?\n\n` +
-                      `• 포인트 잔액: ${pointBal.toLocaleString()}P\n` +
-                      `• 선불권 잔액 합계: ${prepaidBal.toLocaleString()}원\n` +
-                      `${total >= PENALTY ? `→ 포인트 → 선불권 순으로 ${PENALTY.toLocaleString()}원 차감` : `→ 부족 (${total.toLocaleString()}원). 다회권 1회 차감`}`
-                    );
-                    if (doDeduct) {
-                      let pointDed = 0, prepaidDed = 0, pkgUsedName = '';
-                      if (total >= PENALTY) {
-                        let remain = PENALTY;
-                        if (pointBal > 0) {
-                          const ded = Math.min(pointBal, remain);
-                          await sb.insert("point_transactions", {
-                            id: 'ptx_'+genId(), business_id: (data?.businesses||[])[0]?.id,
-                            bid: f.bid, customer_id: f.custId,
-                            type: 'deduct', amount: ded,
-                            balance_after: pointBal - ded,
-                            note: `당일취소 페널티 (예약 ${f.id})`,
-                          }).catch(()=>{});
-                          remain -= ded;
-                          pointDed = ded;
-                        }
-                        if (remain > 0) {
-                          prepaidPkgs.sort((a,b) => {
-                            const ba = Number(((a.note||'').match(/잔액:([0-9,]+)/)||[0,'0'])[1].replace(/,/g,''));
-                            const bb = Number(((b.note||'').match(/잔액:([0-9,]+)/)||[0,'0'])[1].replace(/,/g,''));
-                            return bb - ba;
-                          });
-                          for (const p of prepaidPkgs) {
-                            if (remain <= 0) break;
-                            const m = (p.note||'').match(/잔액:([0-9,]+)/);
-                            const bal = m ? Number(m[1].replace(/,/g,'')) : 0;
-                            const ded = Math.min(bal, remain);
-                            const newBal = bal - ded;
-                            const newUsed = (p.used_count||0) + ded;
-                            const newNote = (p.note||'').replace(/잔액:[0-9,]+/, `잔액:${newBal.toLocaleString()}`);
-                            await sb.update("customer_packages", p.id, { used_count: newUsed, note: newNote }).catch(()=>{});
-                            remain -= ded;
-                            prepaidDed += ded;
-                          }
-                        }
-                        alert(`페널티 ${PENALTY.toLocaleString()}원 차감 완료`);
-                      } else {
-                        // 다회권 1회 차감 — 유효기간 빠른 것 우선
-                        const multi = myPkgs.filter(p => {
-                          const n = (p.service_name||'').toLowerCase();
-                          if (n.includes('다담') || n.includes('선불') || n.includes('연간') || n.includes('할인권') || n.includes('회원권')) return false;
-                          if (isExpired(p)) return false;
-                          return (p.total_count||0) - (p.used_count||0) > 0;
-                        }).sort((a,b) => {
-                          const ea = ((a.note||'').match(/유효:\s*(\d{4}-\d{2}-\d{2})/)||[0,''])[1] || '9999-12-31';
-                          const eb = ((b.note||'').match(/유효:\s*(\d{4}-\d{2}-\d{2})/)||[0,''])[1] || '9999-12-31';
-                          return ea.localeCompare(eb);
-                        });
-                        if (multi.length) {
-                          const p = multi[0];
-                          await sb.update("customer_packages", p.id, { used_count: (p.used_count||0) + 1 }).catch(()=>{});
-                          pkgUsedName = p.service_name || '';
-                          alert(`다회권 "${p.service_name}" 1회 차감 완료`);
-                        } else {
-                          alert("차감할 포인트·선불권·다회권이 없어 페널티 미적용");
-                        }
-                      }
-                      // 페널티 매출 자동 기록 (유저 피드백): 차감이 실제로 이루어진 경우에만
-                      if (pointDed > 0 || prepaidDed > 0 || pkgUsedName) {
-                        try {
-                          const penaltySaleId = 'sale_' + genId();
-                          const _bizId = (data?.businesses||[])[0]?.id;
-                          // service_name에 차감 종류·금액 명시 (매출관리 한눈에 식별)
-                          const svcParts = [];
-                          if (pointDed > 0) svcParts.push(`포인트 ${pointDed.toLocaleString()}P`);
-                          if (prepaidDed > 0) svcParts.push(`선불권 ${prepaidDed.toLocaleString()}원`);
-                          if (pkgUsedName) svcParts.push(`다회권 ${pkgUsedName} 1회`);
-                          const svcName = svcParts.length
-                            ? `당일취소 페널티 (${svcParts.join(', ')})`
-                            : '당일취소 페널티';
-                          const memoParts = svcParts.slice();
-                          // cust_num 보정: f.custNum 없으면 customers 테이블에서 조회
-                          let custNumFinal = f.custNum || '';
-                          if (!custNumFinal && f.custId) {
-                            try {
-                              const _rows = await sb.get("customers", `&id=eq.${f.custId}&select=cust_num&limit=1`);
-                              custNumFinal = (_rows && _rows[0]?.cust_num) || '';
-                            } catch {}
-                          }
-                          await sb.insert("sales", {
-                            id: penaltySaleId,
-                            business_id: _bizId,
-                            bid: f.bid,
-                            cust_id: f.custId,
-                            cust_name: f.custName,
-                            cust_phone: f.custPhone || '',
-                            cust_num: custNumFinal,
-                            cust_gender: f.custGender || '',
-                            date: todayStr(),
-                            service_name: svcName,
-                            // 결제수단 칼럼: 포인트만 실제 svc_point에 기록.
-                            // 선불권(다담권)·다회권 차감은 customer_packages 업데이트로 기록 → sales 결제칼럼은 0.
-                            // external_prepaid는 외부 플랫폼(서울뷰티·크리에이트립) 전용이라 사용 안 함.
-                            svc_cash: 0, svc_card: 0, svc_transfer: 0,
-                            svc_point: pointDed,
-                            external_prepaid: 0,
-                            memo: `당일취소 페널티 — ${memoParts.join(' + ')} (예약 ${f.id})`,
-                          }).catch(e => console.error('[penalty sales insert]', e));
-                          await sb.insert("sale_details", {
-                            id: 'sd_' + genId(),
-                            business_id: _bizId,
-                            sale_id: penaltySaleId,
-                            service_name: svcName,
-                            unit_price: PENALTY,  // 페널티 액면가 (33,000원) — 통계용
-                            qty: 1,
-                            cash: 0, card: 0, bank: 0, point: pointDed,
-                          }).catch(e => console.error('[penalty sd insert]', e));
-                        } catch(e) { console.error('[penaltySale]', e); }
-                      }
-                    }
-                  } catch (e) { console.error('[cancelPenalty]', e); }
+                // 취소·노쇼 페널티 결정 — 모달이 결정 책임 (v3.7.210 리팩토링)
+                // (네이버 고객 직접 취소는 status='naver_cancelled'로 들어와 배너의 "취소확정" 버튼으로 별도 처리)
+                const _isNewCancel = f.status==="cancelled" && item?.status!=="cancelled";
+                const _isNewNoShow = f.status==="no_show" && item?.status!=="no_show";
+                const _penaltyTrigger = (_isNewCancel || _isNewNoShow) && f.custId && !isSchedule && !penaltyAlreadyDone;
+                if(_penaltyTrigger){
+                  const _reason = _isNewNoShow ? '노쇼' : '당일취소';
+                  const _decision = await openCancelDecision(_reason);
+                  if (_decision === 'close') {
+                    // 취소 행위 자체 중단 — status 원복 + 저장 X
+                    setF(prev => ({...prev, status: item?.status || 'reserved'}));
+                    return;
+                  }
+                  if (_decision === 'deduct') {
+                    await runPenaltyDeduction(_reason);
+                  }
+                  // 'skip' → 차감 없이 진행
                 }
                 onSave({...f, memo: memoToSave, scheduleLog: scheduleLogToSave, tsLog: newLog, selectedTags: autoTags, isSchedule, _isColTemplate: item?._isColTemplate, _templateId: item?._templateId, _initialServerSnap: initialServerSnap});
               }}>{item?.id?"저장":"등록"}</button>
@@ -2102,6 +2433,37 @@ ${naverText}
           </div>
         </div>
       )}
+      {/* 차감 결정 모달 — 모든 취소 흐름(naver_cancelled / cancelled / no_show)에서 공용 */}
+      <CancelDecisionModal
+        open={!!cancelDecision}
+        reasonLabel={cancelDecision?.reason}
+        onResolve={(d)=>cancelDecision?.onResolve(d)}
+        onClose={()=>cancelDecision?.onResolve('close')}
+        custId={f.custId}
+        custName={f.custName}
+        branchName={(data?.branches||[]).find(b=>b.id===f.bid)?.name||''}
+        dateStr={f.date}
+        timeStr={f.time}
+        prepaid={f.externalPrepaid}
+      />
+      {/* 📱 문자 발송 모달 — 현재 예약 고객 자동 입력 */}
+      {showSmsModal && (() => {
+        const _localCust = (data?.customers||[]).find(c => c.id === f.custId);
+        const _smsCust = {
+          id: f.custId || ('res_' + (item?.id || 'tmp')),
+          name: f.custName || '',
+          phone: f.custPhone || '',
+          smsConsent: _localCust ? _localCust.smsConsent : true,
+          bid: f.bid,
+        };
+        return <SendSmsModal
+          open={showSmsModal}
+          onClose={() => setShowSmsModal(false)}
+          customers={[_smsCust]}
+          branches={data?.branches || []}
+          userBranches={userBranches}
+          defaultBranchId={f.bid}/>;
+      })()}
     </div>
   );
 }

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { T, NAVER_COLS, getNaverVal } from '../../lib/constants'
 import { sb, buildTokenSearch, matchAllTokens } from '../../lib/sb'
 import { fromDb } from '../../lib/db'
-import { todayStr, genId, fmtLocal, groupSvcNames, useSessionState } from '../../lib/utils'
+import { todayStr, genId, fmtLocal, groupSvcNames, useSessionState, TTL } from '../../lib/utils'
 import I from '../common/I'
 import TimelineModal from '../Timeline/ReservationModal'
 
@@ -344,21 +344,16 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
     setRefreshing(false);
   };
 
-  // ── 필터 상태 (localStorage 유지) ──────────────────
-  const _ls = () => { try { return JSON.parse(sessionStorage.getItem("bliss_res_filter")||"null")||{}; } catch(e){return{};} };
-  const _save = (patch) => { try { sessionStorage.setItem("bliss_res_filter", JSON.stringify({..._ls(),...patch})); } catch(e){} };
-  const [startDate, setStartDateRaw] = useState(()=>_ls().startDate||today);
-  const [endDate,   setEndDateRaw]   = useState(()=>{ const f=_ls(); if(f.endDate)return f.endDate; const d=new Date(); d.setDate(d.getDate()+6); return fmtLocal(d); });
-  const [periodKey, setPeriodKeyRaw] = useState(()=>_ls().periodKey||"7days");
-  const [vb,        setVbRaw]        = useState(()=>_ls().vb||"all");
-  const [statusFilter, setStatusFilterRaw] = useState(()=>_ls().statusFilter||"all");
-  const setStartDate = v => { setStartDateRaw(v); _save({startDate:v}); };
-  const setEndDate   = v => { setEndDateRaw(v);   _save({endDate:v});   };
-  const setPeriodKey = v => { setPeriodKeyRaw(v); _save({periodKey:v}); };
-  const setVb        = v => { setVbRaw(v);        _save({vb:v});        };
-  const setStatusFilter = v => { setStatusFilterRaw(v); _save({statusFilter:v}); };
+  // ── 필터 상태 (TTL 적용 — 날짜 6h, 탭 24h) ──────────────────
+  // 기존 통합 키 'bliss_res_filter'에서 개별 키로 분리. TTL.DATE_RANGE/TAB 적용.
+  const _defEnd = () => { const d=new Date(); d.setDate(d.getDate()+6); return fmtLocal(d); };
+  const [startDate, setStartDate] = useSessionState("res_startDate", today, { ttlMs: TTL.DATE_RANGE });
+  const [endDate,   setEndDate]   = useSessionState("res_endDate", _defEnd(), { ttlMs: TTL.DATE_RANGE });
+  const [periodKey, setPeriodKey] = useSessionState("res_periodKey", "7days", { ttlMs: TTL.DATE_RANGE });
+  const [vb,        setVb]        = useSessionState("res_vb", "all", { ttlMs: TTL.TAB });
+  const [statusFilter, setStatusFilter] = useSessionState("res_statusFilter", "all", { ttlMs: TTL.TAB });
   const [showSheet, setShowSheet] = useState(false);
-  const [q, setQ] = useSessionState("res_q", "");
+  const [q, setQ] = useSessionState("res_q", "", { ttlMs: TTL.SEARCH });
   const [resPage, setResPage] = useState(0);
   const [serverSearching, setServerSearching] = useState(false);
   const RES_PER_PAGE = 50;
@@ -524,7 +519,37 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
     return chain;
   };
 
-  const deleteRes = id => setData(prev=>({...prev,reservations:(prev?.reservations||[]).filter(r=>r.id!==id)}));
+  const deleteRes = async (id) => {
+    const r = (data?.reservations||[]).find(x => x.id === id);
+    if (!r) return;
+    const label = `${r.date||""} ${r.time||""} ${r.custName||""} ${r.custPhone||""}`.trim();
+    // 매출 연결 검사 — 로컬 + 서버 둘 다 확인 (로컬 미로드 케이스 방어)
+    const localLinked = (data?.sales||[]).filter(s => s.reservationId === id);
+    let serverLinked = [];
+    try {
+      const rows = await sb.get("sales", `&reservation_id=eq.${id}&limit=5`);
+      serverLinked = rows || [];
+    } catch (e) {
+      console.warn("[deleteRes sale check]", e);
+    }
+    const linkedCount = Math.max(localLinked.length, serverLinked.length);
+    if (linkedCount > 0) {
+      alert(
+        `이 예약에 연결된 매출이 ${linkedCount}건 있어 삭제할 수 없습니다.\n\n` +
+        `${label}\n\n` +
+        `매출관리 페이지에서 매출을 먼저 삭제하거나, 예약을 취소(상태 변경)로 처리하세요.`
+      );
+      return;
+    }
+    if (!confirm(`예약을 삭제하시겠습니까?\n\n${label}\n\n되돌릴 수 없습니다.`)) return;
+    try {
+      await sb.del("reservations", id);
+      setData(prev => ({...prev, reservations:(prev?.reservations||[]).filter(x => x.id !== id)}));
+    } catch (e) {
+      console.error("[deleteRes]", e);
+      alert("예약 삭제 실패: " + (e?.message || e));
+    }
+  };
 
   // ── 날짜 라벨 ─────────────────────────────────────
   const fmtShort = ds => {

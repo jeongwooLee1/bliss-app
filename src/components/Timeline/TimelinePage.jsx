@@ -4,7 +4,7 @@ import { sb, SB_URL, SB_KEY, sbHeaders, queueAlimtalk } from '../../lib/sb'
 import { useMaleRotation, useScheduleData } from '../../lib/useData'
 import { DEFAULT_CELL_TAGS } from '../Schedule/scheduleConstants'
 import { fromDb, toDb, resolveSystemIds, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS } from '../../lib/db'
-import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, useSessionState, getCustPkgBranchInitial } from '../../lib/utils'
+import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, useSessionState, getCustPkgBranchInitial, naverConfirmBooking } from '../../lib/utils'
 import I from '../common/I'
 import TimelineModal from './ReservationModal'
 import QuickBookModal from './QuickBookModal'
@@ -145,7 +145,7 @@ function AlarmModal({ initial, brName, onSave, onDelete, onClose }) {
   </div>;
 }
 
-function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, currentUser, setPage, bizId, onMenuClick, bizName, pendingOpenRes, setPendingOpenRes, naverColShow={}, scraperStatus=null, setPendingChat, setPendingOpenCust, unreadMsgCount=0, unreadSample=[] }) {
+function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, currentUser, setPage, bizId, onMenuClick, bizName, pendingOpenRes, setPendingOpenRes, naverColShow={}, scraperStatus=null, setPendingChat, setPendingOpenCust, unreadMsgCount=0, unreadSample=[], previewBlockStyle=false }) {
   // 타임라인 블록 표시 항목 — App에서 prop으로 받음
   const effectiveNaverColShow = naverColShow;
   const SVC_LIST = (data?.services || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
@@ -153,6 +153,9 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   // 새로고침·재진입 시 항상 오늘 날짜로 복귀 (유저 요청: 타임라인 refresh → today)
   const [selDate, setSelDate] = useState(todayStr());
   const [schHistory, setSchHistory] = useState(null);
+  // ── 네이버 막기 상태: { [bizId]: { [date]: { [itemId]: {name, hour_bit(48자)} } } } ──
+  const [naverBlockState, setNaverBlockState] = useState({});
+  const [blockSlotPopup, setBlockSlotPopup] = useState(null); // {bizId, branchId, date, slotIdx, time, x, y}
   // ── 셀 태그 (쉐어/일출 등) — 직원 컬럼 헤더에 날짜별 배지 표시용 ──
   const { data:cellTagDefsRaw } = useScheduleData('cellTagDefs_v1', null);
   const cellTagDefs = Array.isArray(cellTagDefsRaw) && cellTagDefsRaw.length > 0 ? cellTagDefsRaw : DEFAULT_CELL_TAGS;
@@ -432,6 +435,56 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       try { channel?.unsubscribe(); } catch(e) {}
     };
   }, []);
+
+  // ── 네이버 막기 상태 자동 로드 ──
+  // 권한 있는 지점만, 선택 날짜만 fetch.
+  // 첫 로드 + 날짜 변경 시 즉시 호출 + 10분 주기 폴링.
+  // 안전장치: tab hidden 시 스킵 / 401·403 발생 시 폴링 중단(세션 만료).
+  const naverBlockFailRef = React.useRef(false);
+  const fetchNaverBlockStateRef = React.useRef(null);
+  useEffect(() => {
+    if (!selDate) return;
+    // 권한 있는 지점만
+    const allowedBids = new Set(accessibleBids);
+    const targets = (data?.branches || []).filter(b => b.naverBizId && allowedBids.has(b.id));
+    if (!targets.length) return;
+
+    let cancel = false;
+    const runFetch = async () => {
+      if (cancel) return;
+      // 안전장치 1: tab hidden이면 스킵
+      if (typeof document !== 'undefined' && document.hidden) return;
+      // 안전장치 4: 이전에 401/403 등 실패 → 세션 만료 의심, 폴링 중단
+      if (naverBlockFailRef.current) return;
+      const results = await Promise.all(targets.map(async (br) => {
+        try {
+          const r = await fetch(`https://blissme.ai/naver-block-state?biz_id=${encodeURIComponent(br.naverBizId)}&date=${encodeURIComponent(selDate)}`, { cache: 'no-store' });
+          if (r.status === 401 || r.status === 403) {
+            naverBlockFailRef.current = true;
+            console.warn('[naver-block-state] 세션 만료 추정 → 폴링 중단 (status='+r.status+')');
+            return null;
+          }
+          if (!r.ok) return null;
+          const j = await r.json();
+          return j.ok ? { bizId: br.naverBizId, items: j.items || {} } : null;
+        } catch { return null; }
+      }));
+      if (cancel) return;
+      setNaverBlockState(prev => {
+        const next = { ...prev };
+        results.forEach(r => {
+          if (!r) return;
+          if (!next[r.bizId]) next[r.bizId] = {};
+          next[r.bizId][selDate] = r.items;
+        });
+        return next;
+      });
+    };
+    fetchNaverBlockStateRef.current = runFetch;
+    // 첫 로드 1회만 (자동 폴링·visibility refetch 비활성 — 막기 팝업 열 때 강제 refetch는 그대로)
+    runFetch();
+    return () => { cancel = true; };
+  }, [selDate, data?.branches]);
 
   // AI 키 로드 (DB에서)
   useEffect(()=>{
@@ -775,6 +828,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   };
   const [showModal, setShowModal] = useState(false);
   const [modalData, setModalData] = useState(null);
+  // 🔴 빨강 테두리 깜빡임 하이라이트 (메시지함 예약버튼/확정대기 배너 클릭 시)
+  const [highlightedBlockId, setHighlightedBlockId] = useState(null);
 
   // ReservationList에서 넘어온 예약 자동 오픈 + 스크롤 중앙 정렬
   useEffect(()=>{
@@ -823,26 +878,31 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         }
       } catch(e) { console.warn("scroll err:", e); }
 
-      // 4. 모달 오픈 (DB에서 fresh 데이터 fetch)
-      const openWithFresh = async () => {
-        let freshData = pendingOpenRes;
-        try {
-          const resId = pendingOpenRes.id;
-          if (resId) {
-            const rows = await sb.get("reservations", resId);
-            if (rows && rows.id) {
-              const parsed = fromDb("reservations", [rows])[0];
-              freshData = {...pendingOpenRes, ...parsed};
-              // data state도 업데이트
-              setData(prev => prev ? {...prev, reservations: (prev.reservations||[]).map(r => r.id === parsed.id ? {...r, ...parsed} : r)} : prev);
-            }
-          }
-        } catch(e) { console.warn("fresh fetch err:", e); }
-        setModalData({...freshData, readOnly: false});
-        setShowModal(true);
+      // 4. 모달 오픈 (DB에서 fresh 데이터 fetch) — 단, _highlightOnly=true면 모달 안 열고 빨강 테두리만
+      if (pendingOpenRes._highlightOnly) {
+        const rid = pendingOpenRes.reservationId || pendingOpenRes.id;
+        if (rid) setHighlightedBlockId(rid);
         setPendingOpenRes && setPendingOpenRes(null);
-      };
-      openWithFresh();
+      } else {
+        const openWithFresh = async () => {
+          let freshData = pendingOpenRes;
+          try {
+            const resId = pendingOpenRes.id;
+            if (resId) {
+              const rows = await sb.get("reservations", resId);
+              if (rows && rows.id) {
+                const parsed = fromDb("reservations", [rows])[0];
+                freshData = {...pendingOpenRes, ...parsed};
+                setData(prev => prev ? {...prev, reservations: (prev.reservations||[]).map(r => r.id === parsed.id ? {...r, ...parsed} : r)} : prev);
+              }
+            }
+          } catch(e) { console.warn("fresh fetch err:", e); }
+          setModalData({...freshData, readOnly: false});
+          setShowModal(true);
+          setPendingOpenRes && setPendingOpenRes(null);
+        };
+        openWithFresh();
+      }
     }, 120);
     return ()=>clearTimeout(timer);
   },[pendingOpenRes]);
@@ -943,6 +1003,27 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
 
   const toggleView = (bid) => setViewBids(prev => (prev||[]).includes(bid) ? (prev||[]).filter(x=>x!==bid) : [...(prev||[]), bid]);
   const canEdit = (bid) => isMaster || userBranches.includes(bid);
+
+  // ── 타임라인에 표시되는 예약의 고객 최신 정보 보강 (data.customers는 100건만 로드) ──
+  const [custInfoMap, setCustInfoMap] = useState({});  // {custId: {name, phone, gender}}
+  useEffect(() => {
+    const todayCustIds = [...new Set((data?.reservations||[]).filter(r => r.date === selDate && r.custId && !r.isSchedule).map(r => r.custId))];
+    const loaded = new Set((data?.customers||[]).map(c => c.id));
+    const missing = todayCustIds.filter(id => !loaded.has(id) && !custInfoMap[id]);
+    if (missing.length === 0) return;
+    const batchSize = 50;
+    const batches = [];
+    for (let i = 0; i < missing.length; i += batchSize) batches.push(missing.slice(i, i + batchSize));
+    Promise.all(batches.map(batch =>
+      fetch(`${SB_URL}/rest/v1/customers?id=in.(${batch.join(",")})&select=id,name,phone,gender,cust_num`, {
+        headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
+      }).then(r => r.json()).catch(() => [])
+    )).then(results => {
+      const next = {};
+      results.flat().forEach(c => { if (c?.id) next[c.id] = { name: c.name, phone: c.phone, gender: c.gender, custNum: c.cust_num }; });
+      if (Object.keys(next).length) setCustInfoMap(prev => ({...prev, ...next}));
+    });
+  }, [selDate, data?.reservations?.length, data?.customers?.length]);
 
   // ── 고객 보유 패키지 로드 (현재 날짜 예약 기준) ──
   const [custPkgMap, setCustPkgMap] = useState({});  // {custId: [{svc_name, remain}]}
@@ -1099,6 +1180,57 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       const next = { ...prev };
       if (cur === 1) delete next[key]; else next[key] = cur - 1;
       _saveExtraCols(next);
+      return next;
+    });
+  };
+
+  // ── 미배정 칼럼 위치 (날짜·지점별) — { "bid__date": { naverIdx: shift } }
+  // shift = 직원칼럼 N개 뒤에 위치 (0=최좌측, staffCount=최우측 + 칼럼 직전)
+  // 디폴트: base naver(naverEmail에서 자동) → 0(좌측), 추가 naver → staffCount(우측)
+  const [naverColShifts, setNaverColShifts] = useState({});
+  useEffect(() => {
+    const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
+    const load = () => {
+      fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.naverColShifts_v1&select=value`, { headers: H })
+        .then(r => r.json()).then(rows => {
+          if (rows?.[0]?.value != null) {
+            const v = typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value;
+            setNaverColShifts(v || {});
+          }
+        }).catch(() => {});
+    };
+    load();
+    let ch = null;
+    if (window._sbClient) {
+      ch = window._sbClient.channel("naver_col_shifts_rt")
+        .on("postgres_changes", { event:"UPDATE", schema:"public", table:"schedule_data", filter:"key=eq.naverColShifts_v1" }, load)
+        .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.naverColShifts_v1" }, load)
+        .subscribe();
+    }
+    const poll = setInterval(load, 30000);
+    return () => { try { ch?.unsubscribe(); } catch(e) {} clearInterval(poll); };
+  }, []);
+  const _saveNaverColShifts = (next) => {
+    const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
+    fetch(`${SB_URL}/rest/v1/schedule_data`, {
+      method: "POST", headers: H,
+      body: JSON.stringify({ id: "naverColShifts_v1", key: "naverColShifts_v1", value: JSON.stringify(next) })
+    }).catch(console.error);
+  };
+  const moveNaverCol = (branchId, naverIdx, dir) => {
+    const key = `${branchId}__${selDate}`;
+    // 현재 지점의 staff 칼럼 수 + base naver 수 계산
+    const br = (data?.branches||[]).find(b=>b.id===branchId);
+    const baseNaver = br?.naverEmail ? (br.naverColCount || 1) : 0;
+    const staffCount = (allRoomsRef.current||[]).filter(r => r.branch_id === branchId && r.isStaffCol).length;
+    setNaverColShifts(prev => {
+      const cur = prev[key] || {};
+      const defaultShift = naverIdx < baseNaver ? 0 : staffCount;
+      const curShift = cur[naverIdx] ?? defaultShift;
+      const newShift = Math.max(0, Math.min(staffCount, curShift + dir));
+      if (newShift === curShift) return prev;
+      const next = { ...prev, [key]: { ...cur, [naverIdx]: newShift } };
+      _saveNaverColShifts(next);
       return next;
     });
   };
@@ -1442,13 +1574,15 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     const naverCount = baseNaver + extraCount;
     const naverRooms = Array.from({length: naverCount}, (_, i) => ({
       id: i < baseNaver ? `nv_${br.id}_${i}` : `nv_${br.id}_extra_${i - baseNaver}`,
-      name: naverCount > 1 ? `미배정${i+1}` : "미배정",
+      name: i === 0 ? "미배정" : `미배정 ${i+1}`,
       branch_id: br.id, branchName: br.short||br.name||"",
       isNaver: true,
       isExtraCol: i >= baseNaver,
       _brIdx: brIdx,
       _isFirstOfBranch: i === 0,
     }));
+    // 🚨 네이버 예약 막기 컬럼 — 긴급 차단됨 (시술 비활성 의혹 조사 중)
+    const blockCol = [];
     // 출근표 기반 직원 컬럼 (커스텀 순서 적용)
     const rawStaff = getWorkingStaff(br.id, selDate);
     const workingStaff = rawStaff ? sortStaffByOrder(rawStaff, br.id) : null;
@@ -1503,7 +1637,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         const firstSeg = segments && segments[0];
         const lastSeg = segments && segments[segments.length-1];
         return {
-          id: `st_${br.id}_${e.id}`, name: e.id,
+          id: `st_${br.id}_${e.id}`, name: e.name || e.id,
           branch_id: br.id, branchName: br.short||br.name||"",
           staffId: e.id, isStaffCol: true,
           // 복수 세그먼트 (같은 지점 여러 구간) — null=종일
@@ -1519,13 +1653,38 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       // schHistory 미로드 시 직원 컬럼 표시 안 함 (로딩 후 리렌더링됨)
       staffRooms = [];
     }
-    // 오른쪽 끝에 + 컬럼 추가
-    staffRooms.push({
+    const addCol = {
       id: `blank_${br.id}_add`, name: "+",
       branch_id: br.id, branchName: br.short||br.name||"",
       isBlank: true, isAddCol: true
+    };
+    // 미배정 칼럼 위치 적용 (디폴트: base→0, extra→staffRooms.length)
+    const shifts = naverColShifts[`${br.id}__${selDate}`] || {};
+    const buckets = Array.from({length: staffRooms.length + 1}, () => []);
+    naverRooms.forEach((nv, i) => {
+      const def = i < baseNaver ? 0 : staffRooms.length;
+      const s = Math.max(0, Math.min(staffRooms.length, shifts[i] ?? def));
+      // 메타데이터 첨부 — 헤더 화살표·boundary 판정에 사용
+      nv._naverIdx = i;
+      nv._shift = s;
+      nv._maxShift = staffRooms.length;
+      buckets[s].push(nv);
     });
-    return [...naverRooms, ...staffRooms];
+    const ordered = [];
+    for (let i = 0; i < staffRooms.length; i++) {
+      ordered.push(...buckets[i]);
+      ordered.push(staffRooms[i]);
+    }
+    ordered.push(...buckets[staffRooms.length]);
+    // 막기 칼럼: 첫 번째 미배정(slot 0) 직후에 삽입 — 미배정 옆에 좁게
+    if (blockCol.length) {
+      // 첫 슬롯의 마지막 미배정 칼럼 다음 위치 찾기
+      const firstNaverIdx = ordered.findIndex(r => r.isNaver && r._naverIdx === 0);
+      if (firstNaverIdx >= 0) ordered.splice(firstNaverIdx + 1, 0, ...blockCol);
+      else ordered.unshift(...blockCol);
+    }
+    ordered.push(addCol);
+    return ordered;
   });
   allRoomsRef.current = allRooms;
   const isNaverRes = (r) => !!r.reservationId || r.source === "ai_booking";
@@ -1571,6 +1730,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       const regularRooms = allRooms.filter(r => !r.isNaver && !r.isBlank && r.branch_id === br.id);
       const targetRooms = naverRooms.length > 0 ? naverRooms : regularRooms;
       if (targetRooms.length === 0) return;
+      const naverIds = new Set(naverRooms.map(r => r.id));
       // Track occupied times per room
       const roomOcc = new Map();
       targetRooms.forEach(r => roomOcc.set(r.id, []));
@@ -1582,8 +1742,18 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           else if (roomOcc.has(b.roomId)) roomOcc.get(b.roomId).push({ s: toMin(b.time), e: toMin(b.time) + (b.dur||30) });
         });
       }
-      // Sort naver blocks by time, assign to leftmost available room
-      [...brNaverBlocks].sort((a,b) => a.time.localeCompare(b.time)).forEach(block => {
+      // Phase 1: 명시적 미배정 칼럼 지정 블록 (사용자가 특정 미배정 칼럼에 드롭) — 그대로 배치
+      const explicit = new Set();
+      brNaverBlocks.forEach(block => {
+        if (block.roomId && naverIds.has(block.roomId)) {
+          asgn[block.id] = block.roomId;
+          explicit.add(block.id);
+          const bS = toMin(block.time), bE = bS + (block.dur||30);
+          roomOcc.get(block.roomId)?.push({ s: bS, e: bE });
+        }
+      });
+      // Phase 2: 자동 배치 — 시간순 leftmost available
+      [...brNaverBlocks].filter(b => !explicit.has(b.id)).sort((a,b) => a.time.localeCompare(b.time)).forEach(block => {
         const bS = toMin(block.time), bE = bS + (block.dur||30);
         let best = targetRooms[0].id;
         for (const rm of targetRooms) {
@@ -1794,11 +1964,16 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const handleCellClick = (room, y) => {
     if (isDragging.current || isResizing.current) return;
     if (!canEdit(room.branch_id)) return;
-    if (room.isNaver) return;
     // 모바일: 터치 직후 click 무시 (롱프레스로만 등록)
     if (Date.now() - lastTouchCell.current < 500) return;
     const time = yToTime(y);
-    setModalData({ roomId: room.isStaffCol ? "" : room.id, bid: room.branch_id, time, date: selDate, staffId: room.isStaffCol ? room.staffId : undefined });
+    // 미배정/직원 칼럼 클릭: 미배정은 roomId/staffId 모두 비움 → 진짜 미배정 상태
+    setModalData({
+      roomId: (room.isStaffCol || room.isNaver) ? "" : room.id,
+      bid: room.branch_id,
+      time, date: selDate,
+      staffId: room.isStaffCol ? room.staffId : undefined,
+    });
     setShowModal(true);
   };
 
@@ -1862,10 +2037,31 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     if (!item.isSchedule && item.type === "reservation" && !item.custName?.trim()) {
       alert("고객 이름을 입력해 주세요."); return;
     }
+    // ── 비활성 직원 컬럼 예약 등록 차단 (내부일정은 허용) ──
+    // 예약(고객 시술): 직원이 그 시간대에 활성이 아니면 저장 차단
+    // 내부일정(청소·메모 등 isSchedule): 비활성 시간대에도 등록 허용
+    if (!item.isSchedule && item.type === "reservation" && item.staffId && item.bid && item.date && item.time) {
+      const tToMin = (t) => { if(!t) return 0; const [h,m] = String(t).split(":").map(Number); return (h||0)*60 + (m||0); };
+      const segs = getEmpActiveSegments(item.staffId, item.date, item.bid);
+      const startMin = tToMin(item.time);
+      const endMin = startMin + (Number(item.dur) || 30);
+      const inAny = Array.isArray(segs) && segs.length > 0 && segs.some(s => {
+        const sStart = s.from ? tToMin(s.from) : 0;
+        const sEnd = s.until ? tToMin(s.until) : 24*60;
+        return startMin >= sStart && endMin <= sEnd;
+      });
+      if (!inAny) {
+        const _br = (data?.branches||[]).find(b => b.id === item.bid);
+        const _brName = _br?.name || _br?.short || item.bid;
+        alert(`해당 직원이 ${_brName}에서 ${item.time} 시간대에 근무하지 않습니다.\n\n예약은 직원이 활성인 시간대에만 등록 가능합니다.\n(내부일정/청소는 비활성 시간대에도 등록 가능 — 일정 종류를 "내부일정"으로 변경해주세요)`);
+        return;
+      }
+    }
     // 수동 예약에 고유 reservation_id 생성 (NULLS NOT DISTINCT unique constraint 회피)
     if (!item.reservationId) item.reservationId = "manual_" + (item.id || uid());
-    // 신규고객이면 DB에 고객 등록 (전화번호 중복 체크 — 로컬 + 서버)
-    if (item.isNewCust && item.custName && !item.custId) {
+    // 고객 미연결 + 이름 있으면 자동 신규 등록 (직원이 "신규" 체크 잊어도 누락 방지)
+    // — 같은 전화번호 중복은 기존 고객 연결 confirm으로 별도 보호 (아래 dup 체크)
+    if (!item.custId && item.custName) {
       const normPhone = (item.custPhone || "").replace(/[^0-9]/g, "");
       // 1) 로컬 캐시 검사
       let dup = normPhone ? (data?.customers||[]).find(c => (c.phone||"").replace(/[^0-9]/g,'') === normPhone) : null;
@@ -2081,12 +2277,34 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       const rect = sr.getBoundingClientRect();
       const x = pt.clientX - rect.left + sr.scrollLeft;
       const y = pt.clientY - rect.top + sr.scrollTop;
-      setDragPos({ x: pt.clientX - rect.left, y: pt.clientY - rect.top });
       const colX = x - timeLabelsW;
-      const roomIdx = Math.max(0, Math.min(allRooms.length - 1, Math.floor(colX / colW)));
+      // 가변 칼럼 폭 + 지점 간 14px 갭 누적
+      const _colWidthOf = (rm) => rm?.isBlockCol ? 36 : colW;
+      const _gapBefore = (idx) => (idx > 0 && allRooms[idx-1]?.branch_id !== allRooms[idx]?.branch_id) ? 14 : 0;
+      let _cumLeft = 0, roomIdx = -1;
+      for (let i = 0; i < allRooms.length; i++) {
+        _cumLeft += _gapBefore(i);
+        const w = _colWidthOf(allRooms[i]);
+        if (colX < _cumLeft + w) { roomIdx = i; break; }
+        _cumLeft += w;
+      }
+      if (roomIdx < 0) {
+        roomIdx = allRooms.length - 1;
+        _cumLeft = 0;
+        for (let i = 0; i < roomIdx; i++) { _cumLeft += _gapBefore(i); _cumLeft += _colWidthOf(allRooms[i]); }
+        _cumLeft += _gapBefore(roomIdx);
+      }
       const targetRoom = allRooms[roomIdx];
       const gridY = y - clickOffsetY;
       const snappedTime = yToTime(Math.max(0, gridY));
+      // 일반 블록 드래그와 동일 공식: 미리보기 viewport 좌표 = 스냅된 그리드 위치
+      const blockTopV = (rect.top || 0) + topbarH + headerH + timeToY(snappedTime) - sr.scrollTop;
+      const colLeftInScroll = timeLabelsW + _cumLeft;
+      const newLeftV = rect.left + colLeftInScroll - sr.scrollLeft + 3;
+      setDragPos({
+        x: colLeftInScroll - sr.scrollLeft, y: blockTopV - rect.top,
+        clientX: newLeftV, clientY: blockTopV,
+      });
       setDragSnap({ roomId: targetRoom?.id, bid: targetRoom?.branch_id, time: snappedTime });
       dragSnapRef.current = { roomId: targetRoom?.id, bid: targetRoom?.branch_id, time: snappedTime };
     };
@@ -2245,8 +2463,18 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         clickOffsetYView = startPt.clientY - blockRect.top;
       }
     }
-    // viewport 기준 offset 저장 — floating preview가 커서를 정확히 따라오도록
-    clickOffsetRef.current = { x: clickOffsetX, y: clickOffsetYView, yGrid: clickOffsetY };
+    // viewport 기준 offset 저장 — floating preview 위치 계산용
+    // 스냅 드래그: 블록의 viewport top을 formula로 계산 (DOM 측정 비신뢰 → known sticky 영역 명시)
+    const _scrRect = sr ? sr.getBoundingClientRect() : { top: 0 };
+    const blockTopV = (_scrRect.top || 0) + topbarH + headerH + timeToY(block.time) - (sr?.scrollTop || 0);
+    clickOffsetRef.current = {
+      x: clickOffsetX, y: clickOffsetYView, yGrid: clickOffsetY,
+      startClientY: startPt.clientY,
+      startScrollTop: sr ? sr.scrollTop : 0,
+      startScrollLeft: sr ? sr.scrollLeft : 0,
+      blockTopV,
+      origTimeMin: (() => { const [h,m] = (block.time||"10:00").split(":").map(Number); return h*60+m; })(),
+    };
 
     const getPoint = (ev) => isTouch ? ev.touches[0] : ev;
 
@@ -2257,23 +2485,64 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       if (!sr) return;
       const rect = sr.getBoundingClientRect();
       const x = pt.clientX - rect.left + sr.scrollLeft;
-      const y = pt.clientY - rect.top + sr.scrollTop;
-      // viewport 기준 client 좌표도 함께 저장 — floating preview(position:fixed)용
-      setDragPos({ x: pt.clientX - rect.left, y: pt.clientY - rect.top, clientX: pt.clientX, clientY: pt.clientY });
       const colX = x - timeLabelsW;
-      const roomIdx = Math.max(0, Math.min(allRooms.length - 1, Math.floor(colX / colW)));
+      // 칼럼별 실제 너비 + 지점 간 14px 갭 반영해 누적 left 계산
+      const _colWidthOf = (rm) => rm?.isBlockCol ? 36 : colW;
+      const _gapBefore = (idx) => (idx > 0 && allRooms[idx-1]?.branch_id !== allRooms[idx]?.branch_id) ? 14 : 0;
+      let _cumLeft = 0, roomIdx = -1;
+      for (let i = 0; i < allRooms.length; i++) {
+        _cumLeft += _gapBefore(i);
+        const w = _colWidthOf(allRooms[i]);
+        if (colX < _cumLeft + w) { roomIdx = i; break; }
+        _cumLeft += w;
+      }
+      if (roomIdx < 0) {
+        roomIdx = allRooms.length - 1;
+        _cumLeft = 0;
+        for (let i = 0; i < roomIdx; i++) { _cumLeft += _gapBefore(i); _cumLeft += _colWidthOf(allRooms[i]); }
+        _cumLeft += _gapBefore(roomIdx);
+      }
+      // 막기 칼럼 위에 드롭 시도 → 인접 직원/미배정 칼럼으로 보정
+      if (allRooms[roomIdx]?.isBlockCol) {
+        const next = allRooms[roomIdx + 1];
+        const prev = allRooms[roomIdx - 1];
+        if (next && !next.isBlockCol) { _cumLeft += _colWidthOf(allRooms[roomIdx]); roomIdx += 1; }
+        else if (prev && !prev.isBlockCol) { _cumLeft -= _colWidthOf(prev); roomIdx -= 1; }
+      }
       const targetRoom = allRooms[roomIdx];
-      const gridY = y - clickOffsetY;
-      // 수직 이동은 임계치 없이 즉시 반영 — 사용자가 놓은 자리 그대로
-      const snappedTime = yToTime(Math.max(0, gridY));
+      // Google Calendar 스타일 — viewport delta 기반 row 단위 스냅
+      // ⚠️ 자동 스크롤 시 viewport delta만으론 부족 → 스크롤 델타도 보정
+      const cor = clickOffsetRef.current;
+      const scrollDeltaY = sr.scrollTop - (cor.startScrollTop ?? sr.scrollTop);
+      const dy = (pt.clientY - (cor.startClientY ?? pt.clientY)) + scrollDeltaY;
+      const slotsMoved = Math.round(dy / rowH);
+      const snappedDy = slotsMoved * rowH;
+      // 시간: origTimeMin + 슬롯×timeUnit
+      const newTimeMin = (cor.origTimeMin ?? 0) + slotsMoved * timeUnit;
+      const clamped = Math.max(startHour * 60, newTimeMin);
+      const sh = Math.floor(clamped / 60), sm = Math.max(0, clamped % 60);
+      const snappedTime = `${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}`;
       setDragSnap({ roomId: targetRoom?.id, bid: targetRoom?.branch_id, time: snappedTime });
       dragSnapRef.current = { roomId: targetRoom?.id, bid: targetRoom?.branch_id, time: snappedTime };
-      const edgeZone = 40;
-      if (pt.clientY - rect.top < edgeZone) sr.scrollTop -= 8;
-      if (rect.bottom - pt.clientY < edgeZone) sr.scrollTop += 8;
-      // 좌우 엣지 자동 스크롤 (오른쪽/왼쪽 컬럼으로 이동 가능)
-      if (pt.clientX - rect.left < edgeZone) sr.scrollLeft -= 12;
-      if (rect.right - pt.clientX < edgeZone) sr.scrollLeft += 12;
+      // 미리보기 viewport top: blockTopV(드래그 시작) + 스냅Δy - 현재 스크롤 델타
+      // (페이지가 스크롤된 만큼 viewport top도 같이 올라감)
+      const newTopV = (cor.blockTopV ?? 0) + snappedDy - scrollDeltaY;
+      // 누적 left (가변 칼럼 폭 반영)
+      const colLeftInScroll = timeLabelsW + _cumLeft;
+      const newLeftV = rect.left + colLeftInScroll - sr.scrollLeft + 3;
+      setDragPos({
+        x: colLeftInScroll - sr.scrollLeft, y: newTopV - rect.top,
+        clientX: newLeftV, clientY: newTopV,
+      });
+      // 자동 스크롤: 모바일은 edgeZone 줄이고 스텝 작게 (위아래 핑퐁 완화)
+      const isMobile = window.innerWidth <= 768;
+      const edgeZone = isMobile ? 20 : 40;
+      const stepY = isMobile ? 4 : 8;
+      const stepX = isMobile ? 6 : 12;
+      if (pt.clientY - rect.top < edgeZone) sr.scrollTop -= stepY;
+      if (rect.bottom - pt.clientY < edgeZone) sr.scrollTop += stepY;
+      if (pt.clientX - rect.left < edgeZone) sr.scrollLeft -= stepX;
+      if (rect.right - pt.clientX < edgeZone) sr.scrollLeft += stepX;
     };
 
     const onDragUp = () => {
@@ -2307,7 +2576,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
             const toNaverCol = snap.roomId?.startsWith("nv_");
             const targetRoom = allRooms.find(rm => rm.id === snap.roomId);
             const staffUpdate = toNaverCol
-              ? { staffId: "", roomId: "" }
+              ? { staffId: "", roomId: snap.roomId }
               : targetRoom?.isStaffCol
                 ? { staffId: targetRoom.staffId, roomId: snap.roomId }
                 : snap.roomId ? { roomId: snap.roomId } : {};
@@ -2317,7 +2586,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           const toNaverCol2 = snap.roomId?.startsWith("nv_");
           const targetRoom2 = allRooms.find(rm => rm.id === snap.roomId);
           const movedStaffId = toNaverCol2 ? "" : targetRoom2?.isStaffCol ? targetRoom2.staffId : "";
-          const movedRoomId = toNaverCol2 ? "" : snap.roomId || "";
+          const movedRoomId = snap.roomId || "";
           const movedBid = snap.bid || block.bid;
           const [mh,mm] = snap.time.split(":").map(Number);
           const mEndMin = mh*60+mm+(block.dur||60);
@@ -2336,6 +2605,24 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
               bid: movedBid, staff_id: movedStaffId || null
             }).catch(console.error);
           }
+          // 🆕 자동 네이버 확정: 네이버 pending 예약을 직원 칼럼으로 이동 시 → API로 확정
+          (() => {
+            const isPending = block.status === "pending" && !(block.memo && block.memo.includes("확정완료"));
+            const isNaverRes = !!block.reservationId && !String(block.reservationId).startsWith("ai_") && !String(block.reservationId).startsWith("manual_");
+            const movedToStaff = !toNaverCol2 && !!movedStaffId;
+            if (!isPending || !isNaverRes || !movedToStaff) return;
+            const targetBranch = (data?.branches||[]).find(b => b.id === movedBid);
+            const bizId = targetBranch?.naverBizId;
+            if (!bizId) return;
+            naverConfirmBooking(bizId, block.reservationId).then(rr => {
+              if (rr.ok) {
+                setData(prev => ({...prev, reservations:(prev?.reservations||[]).map(x => x.id === block.id ? {...x, status:'reserved'} : x)}));
+                sb.update("reservations", block.id, {status:'reserved'}).catch(console.error);
+              } else {
+                console.warn('[auto naver-confirm] fail:', rr.msg || rr.error);
+              }
+            });
+          })();
         }
       }
       setDragBlock(null); setDragPos(null); setDragSnap(null); dragSnapRef.current = null;
@@ -2367,11 +2654,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         longPressActive.current = true;
         isDragging.current = true;
         setDragBlock(block);
-        // 즉시 floating preview 표시 — 손가락 움직이기 전부터 "잡혔다" 피드백
-        if (sr) {
-          const rect0 = sr.getBoundingClientRect();
-          setDragPos({ x: startPt.clientX - rect0.left, y: startPt.clientY - rect0.top, clientX: startPt.clientX, clientY: startPt.clientY });
-        }
+        // floating preview는 첫 touchmove에서 정확한 위치로 계산되어 표시됨
+        // (long-press 시점에 손가락 위치로 초기화하면 블록이 손가락 아래로 점프하는 시각 버그)
         document.body.style.cursor="move";
         try { navigator.vibrate && navigator.vibrate([20, 30, 40]); } catch(ex){}
         // 이제 드래그 리스너 등록 (passive:false → 스크롤 차단)
@@ -2645,6 +2929,17 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
 
   return (
     <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0}}>
+      {/* 모바일 롱프레스 시 텍스트 선택/콜아웃 메뉴 차단 (드래그 UX 보호) */}
+      <style>{`
+        .tl-block, .tl-block *, .tl-room-col, .tl-room-col * {
+          -webkit-touch-callout: none !important;
+          -webkit-user-select: none !important;
+          -moz-user-select: none !important;
+          -ms-user-select: none !important;
+          user-select: none !important;
+          -webkit-tap-highlight-color: transparent;
+        }
+      `}</style>
       {/* 스크래퍼 상태 경고 배너 */}
       {scraperStatus?.isWarning && isMaster && (() => {
         const fmtAgo = (diffH) => {
@@ -2714,6 +3009,9 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
             const target = pendingList[idx];
             pendingClickIdx.current = idx + 1;
             setSelDate(target.date);
+            // 🔴 클릭한 예약 빨강 테두리 깜빡임 (모달 안 열고 하이라이트만)
+            const _rid = target.reservationId || target.id;
+            if (_rid) setHighlightedBlockId(_rid);
             setTimeout(()=>{
               if(!scrollRef.current) return;
               const rid = target.reservationId || target.id;
@@ -2749,24 +3047,37 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           </div>
           <span style={{fontSize:T.fs.xxs,color:T.orange,fontWeight:T.fw.bold,flexShrink:0}}>확인 <I name="chevR" size={11} color={T.orange}/></span>
           {(() => {
-            // 네이버 예약(source=naver + pending)인 경우만 "네이버 확정" 바로가기 노출
+            // 네이버 예약(source=naver + pending)인 경우만 "✓ 네이버 확정" 버튼 노출 (API 호출)
             const naverPending = pendingList.find(r => (r.source==="naver"||r.source==="네이버") && r.status==="pending");
             if (!naverPending) return null;
             const br = allBranchList.find(b=>b.id===naverPending.bid);
             const bizId = br?.naverBizId;
             const resId = naverPending?.reservationId;
-            const naverUrl = bizId ? (resId ? `https://partner.booking.naver.com/bizes/${bizId}/booking-list-view/bookings/${resId}` : `https://partner.booking.naver.com/bizes/${bizId}/booking-list-view`) : null;
-            return naverUrl ? <a href={naverUrl} target="_blank" rel="noopener noreferrer"
-              onClick={e=>e.stopPropagation()}
-              style={{fontSize:T.fs.xxs,color:T.bgCard,fontWeight:T.fw.bolder,background:T.naver,padding:"4px 10px",borderRadius:T.radius.md,textDecoration:"none",flexShrink:0,whiteSpace:"nowrap"}}>네이버 확정</a> : null;
+            if (!bizId || !resId) return null;
+            const onConfirm = async (e) => {
+              e.stopPropagation();
+              const btn = e.currentTarget; const orig = btn.textContent;
+              btn.textContent = '확정 중…'; btn.disabled = true;
+              const r = await naverConfirmBooking(bizId, resId);
+              if (r.ok) {
+                btn.textContent = '✓ 완료';
+                // 로컬 상태 reserved로 즉시 반영
+                setData(p => ({...p, reservations: (p.reservations||[]).map(x => x.id === naverPending.id ? {...x, status:'reserved'} : x)}));
+              } else {
+                btn.textContent = orig; btn.disabled = false;
+                alert('네이버 확정 실패: ' + (r.msg || r.error || ''));
+              }
+            };
+            return <button onClick={onConfirm}
+              style={{fontSize:T.fs.xxs,color:T.bgCard,fontWeight:T.fw.bolder,background:T.naver,padding:"4px 10px",borderRadius:T.radius.md,border:'none',cursor:'pointer',flexShrink:0,whiteSpace:"nowrap",fontFamily:'inherit'}}>✓ 네이버 확정</button>;
           })()}
         </div>;
       })()}
       {/* Single scroll container */}
-      <div ref={scrollRef} className="timeline-scroll" style={{flex:1,overflow:"auto",minHeight:0,overscrollBehavior:"none"}}>
+      <div ref={scrollRef} className="timeline-scroll" style={{flex:1,overflow:"auto",minHeight:0,overscrollBehavior:"none",paddingBottom:200}}>
 
         {/* Top Bar - sticky */}
-        <div ref={topbarRef} className="tl-topbar" style={{position:"sticky",top:0,left:0,zIndex:30,borderBottom:"1px solid "+T.border,background:T.bgCard,padding:"6px 12px",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",minWidth:"100%",boxSizing:"border-box",overflow:"visible"}}>
+        <div ref={topbarRef} className="tl-topbar" style={{position:"sticky",top:0,left:0,zIndex:30,borderBottom:"none",boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",background:T.bgCard,padding:"6px 12px",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",minWidth:"100%",boxSizing:"border-box",overflow:"visible"}}>
         {/* Row 1: Date nav + settings + branch */}
         <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0,flexWrap:"wrap",maxWidth:"100%"}}>
           <button onClick={()=>changeDate(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:T.fs.sm,color:T.gray600,padding:"2px 4px",flexShrink:0}}><I name="chevL" size={14}/></button>
@@ -2814,7 +3125,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           {/* Time Labels */}
           <div className="tl-time-col" style={{width:timeLabelsW,flexShrink:0,position:"sticky",left:0,zIndex:20,background:T.bgCard,borderRight:"1px solid #eee"}}>
             <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:25,background:T.bgCard}}/>
-            <div style={{position:"relative",height:totalRows*rowH,...gridBg}}>
+            <div style={{position:"relative",height:totalRows*rowH,boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",...gridBg}}>
               {!dragBlock && hoverCell && hoverCell.rowIdx>=0 && <div style={{position:"absolute",top:hoverCell.rowIdx*rowH,left:0,right:0,height:rowH,background:"rgba(124,124,200,0.08)",zIndex:1,pointerEvents:"none"}}/>}
               {timeLabels.map(({i, isHour, m, text}) => {
                 const isHighlighted = hoverCell && hoverCell.rowIdx === i;
@@ -2893,6 +3204,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                 }));
               }
               return blocks.filter(b => {
+                // 막기 칼럼은 어떤 예약/내부일정도 표시 X (네이버 막기 전용 칼럼)
+                if (room.isBlockCol) return false;
                 if (room.isNaver) {
                   // 미배정 칼럼: roomId/staffId 없는 예약
                   if (!isUnassigned(b) || b.bid !== room.branch_id) return false;
@@ -2912,17 +3225,37 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
               });
             })();
             const isNewBranch = ci === 0 || room.branch_id !== allRooms[ci-1]?.branch_id;
-            // D안: 전 지점 공통 배경 + 첫 컬럼에 지점 앵커 텍스트 + 지점 경계 세로선
+            // 첫 컬럼에만 지점 앵커 텍스트 (구분선은 제거 — 지점명 배지로 충분)
             const isFirstOfBranch = room._isFirstOfBranch || (ci === 0 || allRooms[ci-1]?.branch_id !== room.branch_id);
-            const branchDivider = isFirstOfBranch && ci > 0; // 지점 경계 세로선
+            // 각 지점 첫 미배정 칼럼은 연두색 배경 (구분 강조)
+            const isFirstNaverOfBranch = room.isNaver && room._naverIdx === 0;
+            const colBg = room.isBlockCol ? '#E8F5E9' : (isFirstNaverOfBranch ? '#E8F5E9' : SOFT_BG);
+            const _colWidth = room.isBlockCol ? 36 : colW;
             return (
-              <div key={room.id} className="tl-room-col" data-branch-id={room.branch_id} style={{width:colW,flexShrink:0,borderLeft:branchDivider?"2px solid #c9ced4":"1px solid #f0f0f0",background:SOFT_BG,marginLeft:0,boxShadow:"none",position:"relative"}}>
+              <div key={room.id} className="tl-room-col" data-branch-id={room.branch_id} style={(()=>{
+                const isLastOfBranch = ci === allRooms.length-1 || allRooms[ci+1]?.branch_id !== room.branch_id;
+                // 지점 박스: 좌·상은 굵은 보더 (지점 시작 컬럼만 좌측 테두리). 같은 지점 내부는 얇은 회색 보더로 컬럼 구분
+                return {
+                  width:_colWidth,flexShrink:0,
+                  // 지점 사이 세로선 제거 — 그림자(우측) + marginLeft(좌측) 갭으로만 구분
+                  borderLeft: isFirstOfBranch ? "none" : "1px solid #f0f0f0",
+                  borderRight: "none",
+                  // 컬럼 자체 borderTop 제거 — sticky 헤더의 1.5px 라인만 사용 (스크롤·상단 동일 굵기)
+                  borderTop: "none",
+                  borderBottom: "none",
+                  background:colBg,
+                  marginLeft: isFirstOfBranch && ci>0 ? 14 : 0,
+                  // 지점 박스 마지막 칼럼 우측에 그림자 — 지점 구분 입체감
+                  boxShadow: isLastOfBranch ? "4px 0 8px -2px rgba(0,0,0,0.18)" : "none",
+                  position:"relative"
+                };
+              })()}>
                 {/* 이동/지원 직원: 휴무 스타일 오버레이 (배경만, 블록 클릭은 허용) */}
                 {room.isMovedOut && <div style={{position:"absolute",top:headerH,left:0,right:0,bottom:0,background:"rgba(0,0,0,.06)",borderTop:"2px dashed rgba(0,0,0,.12)",zIndex:1,pointerEvents:"none"}}/>}
                 {/* Room Header - sticky. 지점명은 첫 컬럼에만 앵커로 (D안) */}
-                <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:10,background:SOFT_BG,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",paddingBottom:4,lineHeight:1.2}}>
+                <div style={{height:headerH,borderTop:"1px solid "+T.border,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:10,background:colBg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",paddingBottom:4,lineHeight:1.2}}>
                   {isFirstOfBranch && (
-                    <span style={{position:"absolute",top:2,left:6,fontSize:9,fontWeight:800,color:"#555",background:"rgba(255,255,255,.75)",padding:"1px 5px",borderRadius:3,letterSpacing:0.2,pointerEvents:"none"}}>
+                    <span style={{position:"absolute",top:2,left:0,right:0,textAlign:"center",fontSize:14,fontWeight:800,color:T.text,letterSpacing:0,pointerEvents:"none",zIndex:2}}>
                       {room.branchName}
                     </span>
                   )}
@@ -2975,18 +3308,22 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                               const targetBid = room.branch_id;
                               const schKey = Object.entries(SCH_BRANCH_MAP).find(([k,v])=>v===targetBid)?.[0] || "";
                               const addFreelancer = async () => {
-                                if(!flName.trim()) return;
+                                const nm = flName.trim();
+                                if(!nm) return;
                                 // 시스템 예약어 보호
                                 const RESERVED = ["메모","미배정","청소","출근","휴무","알람","이동","지원"];
-                                if (RESERVED.includes(flName.trim())) { alert(`"${flName.trim()}"은(는) 시스템 예약어로 사용할 수 없습니다.`); return; }
-                                const newEmp = {id: flName.trim(), branch: schKey, isMale: false, isFreelancer: true};
+                                if (RESERVED.includes(nm)) { alert(`"${nm}"은(는) 시스템 예약어로 사용할 수 없습니다.`); return; }
+                                // 항상 고유 id 생성 — 직원과 이름이 같아도 충돌 없게 (직원근무표/empSettings 격리)
+                                const newId = `fl_${nm}_${Date.now().toString(36)}`;
+                                const newEmp = {id: newId, name: nm, branch: schKey, isMale: false, isFreelancer: true};
                                 // customEmployees_v1에 추가
                                 const H = {apikey:SB_KEY, Authorization:"Bearer "+SB_KEY, "Content-Type":"application/json", "Prefer":"resolution=merge-duplicates"};
                                 try {
                                   const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.customEmployees_v1&select=value`, {headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY}});
                                   const rows = await r.json();
                                   const existing = typeof rows?.[0]?.value === 'string' ? JSON.parse(rows[0].value) : (Array.isArray(rows?.[0]?.value) ? rows[0].value : []);
-                                  if(existing.some(e=>e.id===newEmp.id)){alert("이미 존재하는 이름입니다.");return;}
+                                  // 같은 이름의 프리랜서가 이미 같은 지점에 있으면 차단 (UI 혼란 방지)
+                                  if (existing.some(e => e.isFreelancer && (e.name||e.id) === nm && e.branch === schKey)) { alert("같은 지점에 같은 이름의 프리랜서가 이미 있습니다."); return; }
                                   const updated = [...existing, newEmp];
                                   await fetch(`${SB_URL}/rest/v1/schedule_data`, {method:"POST", headers:H, body:JSON.stringify({id:"customEmployees_v1",key:"customEmployees_v1",value:JSON.stringify(updated)})});
                                   setEmpList(prev=>[...prev.filter(e=>e.id!==newEmp.id), newEmp]);
@@ -3700,22 +4037,25 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                       </>)}
                     </div>
                   ) : (
-                    <span className="tl-room-sub" style={{fontSize:14,color:room.isNaver?"#FF9800":T.gray500,display:"inline-flex",alignItems:"center",gap:3,fontWeight:800}}>
-                      {room.name}
-                      {/* 빈 미배정 칼럼 삭제 버튼 (추가된 칼럼만) */}
-                      {room.isExtraCol && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (!canEdit(room.branch_id)) return;
-                            if (!confirm(`이 빈 미배정 칼럼을 삭제할까요?\n(달려있던 예약은 남은 미배정 칼럼으로 자동 이관됩니다)`)) return;
-                            removeExtraCol(room.branch_id);
-                          }}
-                          title="미배정 칼럼 삭제"
-                          style={{width:14,height:14,borderRadius:"50%",border:"none",background:T.gray200,color:T.gray500,cursor:"pointer",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",padding:0,lineHeight:1}}
-                          onMouseOver={e=>{e.currentTarget.style.background=T.dangerLt;e.currentTarget.style.color=T.danger;}}
-                          onMouseOut={e=>{e.currentTarget.style.background=T.gray200;e.currentTarget.style.color=T.gray500;}}
-                        >×</button>
+                    <span className="tl-room-sub" style={{fontSize:14,color:room.isNaver?"#FF9800":T.gray500,display:"inline-flex",alignItems:"center",gap:6,fontWeight:800}}>
+                      {/* 미배정 칼럼 좌우 이동 화살표 — 첫 미배정(_naverIdx===0)은 고정, 추가분만 이동 */}
+                      {room.isNaver && typeof room._naverIdx === "number" && room._naverIdx > 0 && (
+                        <button title="왼쪽으로" disabled={!(room._shift > 0)} onClick={e=>{e.stopPropagation();moveNaverCol(room.branch_id, room._naverIdx, -1);}}
+                          style={{width:18,height:18,padding:0,border:"none",background:"transparent",color:room._shift>0?T.gray500:T.gray300,cursor:room._shift>0?"pointer":"default",fontSize:12,lineHeight:1,fontWeight:700,opacity:room._shift>0?.7:.3}}
+                          onMouseEnter={e=>{if(room._shift>0){e.currentTarget.style.opacity="1";e.currentTarget.style.color="#FF9800";}}}
+                          onMouseLeave={e=>{if(room._shift>0){e.currentTarget.style.opacity=".7";e.currentTarget.style.color=T.gray500;}}}>◀</button>
+                      )}
+                      {room.isBlockCol ? (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2.4" strokeLinecap="round" style={{display:"block"}}>
+                          <circle cx="12" cy="12" r="9"/>
+                          <line x1="6" y1="12" x2="18" y2="12"/>
+                        </svg>
+                      ) : room.name}
+                      {room.isNaver && typeof room._naverIdx === "number" && room._naverIdx > 0 && (
+                        <button title="오른쪽으로" disabled={!(room._shift < (room._maxShift||0))} onClick={e=>{e.stopPropagation();moveNaverCol(room.branch_id, room._naverIdx, 1);}}
+                          style={{width:18,height:18,padding:0,border:"none",background:"transparent",color:room._shift<(room._maxShift||0)?T.gray500:T.gray300,cursor:room._shift<(room._maxShift||0)?"pointer":"default",fontSize:12,lineHeight:1,fontWeight:700,opacity:room._shift<(room._maxShift||0)?.7:.3}}
+                          onMouseEnter={e=>{if(room._shift<(room._maxShift||0)){e.currentTarget.style.opacity="1";e.currentTarget.style.color="#FF9800";}}}
+                          onMouseLeave={e=>{if(room._shift<(room._maxShift||0)){e.currentTarget.style.opacity=".7";e.currentTarget.style.color=T.gray500;}}}>▶</button>
                       )}
                       {/* 프리랜서 삭제 버튼 */}
                       {room.isStaffCol && room.staffId && (() => {
@@ -3746,10 +4086,48 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                       })()}
                     </span>
                   )}
+                  {/* 빈 미배정 칼럼 삭제 버튼 — 우상단 절대위치 */}
+                  {room.isExtraCol && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!canEdit(room.branch_id)) return;
+                        if (!confirm(`이 빈 미배정 칼럼을 삭제할까요?\n(달려있던 예약은 남은 미배정 칼럼으로 자동 이관됩니다)`)) return;
+                        removeExtraCol(room.branch_id);
+                      }}
+                      title="미배정 칼럼 삭제"
+                      style={{position:"absolute",top:3,right:3,width:16,height:16,borderRadius:"50%",border:"none",background:T.gray200,color:T.gray500,cursor:"pointer",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",padding:0,lineHeight:1,zIndex:11}}
+                      onMouseOver={e=>{e.currentTarget.style.background=T.dangerLt;e.currentTarget.style.color=T.danger;}}
+                      onMouseOut={e=>{e.currentTarget.style.background=T.gray200;e.currentTarget.style.color=T.gray500;}}
+                    >×</button>
+                  )}
                 </div>
                 {/* Grid Area */}
-                <div style={{position:"relative",height:totalRows*rowH,cursor:(room.isBlank&&room.isAddCol)?"pointer":room.isBlank?"default":room.isNaver?"default":(canEdit(room.branch_id)?"pointer":"default"),...gridBg}}
+                <div style={{position:"relative",height:totalRows*rowH,cursor:(room.isBlank&&room.isAddCol)?"pointer":room.isBlank?"default":(canEdit(room.branch_id)?"pointer":"default"),boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",...gridBg}}
                   onClick={e=>{
+                    // 막기 칼럼: 시간 슬롯 클릭 → 4개 시술 토글 팝업 (30분 단위 스냅)
+                    if (room.isBlockCol) {
+                      const rectB = e.currentTarget.getBoundingClientRect();
+                      const tm = yToTime(e.clientY - rectB.top);
+                      const [_h, _m] = tm.split(':').map(Number);
+                      const totalMin = _h * 60 + _m;
+                      const snappedMin = Math.floor(totalMin / 30) * 30;
+                      const sh = Math.floor(snappedMin / 60), sm = snappedMin % 60;
+                      const snappedTm = `${String(sh).padStart(2,'0')}:${String(sm).padStart(2,'0')}`;
+                      const slotIdx = snappedMin / 30;
+                      setBlockSlotPopup({
+                        bizId: room._naverBizId,
+                        branchId: room.branch_id,
+                        date: selDate,
+                        slotIdx,
+                        time: snappedTm,
+                        x: e.clientX,
+                        y: e.clientY,
+                      });
+                      // 안전장치 5: 팝업 열 때 강제 refetch (사용자가 막기 누르기 직전 최신화)
+                      try { fetchNaverBlockStateRef.current?.(); } catch {}
+                      return;
+                    }
                     // + 칼럼: 매일 반복 내부일정 템플릿 생성
                     if(room.isBlank && room.isAddCol) {
                       if(!canEdit(room.branch_id)) return;
@@ -3782,11 +4160,11 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                     }
                     const rect=e.currentTarget.getBoundingClientRect();handleCellClick(room,e.clientY-rect.top);
                   }}
-                  onMouseMove={e=>{if(room.isNaver)return;const rect=e.currentTarget.getBoundingClientRect();const y=e.clientY-rect.top;const ri=Math.floor(y/rowH);setHoverCell({roomId:room.id,rowIdx:ri})}}
+                  onMouseMove={e=>{if(room.isBlank)return;const rect=e.currentTarget.getBoundingClientRect();const y=e.clientY-rect.top;const ri=Math.floor(y/rowH);setHoverCell({roomId:room.id,rowIdx:ri})}}
                   onMouseLeave={()=>setHoverCell(null)}
                   onTouchStart={e=>{
                     lastTouchCell.current=Date.now();
-                    if(room.isNaver||!canEdit(room.branch_id))return;
+                    if(room.isBlank||!canEdit(room.branch_id))return;
                     const t=e.touches[0];const rect=e.currentTarget.getBoundingClientRect();
                     const y=t.clientY-rect.top;const ri=Math.floor(y/rowH);
                     setHoverCell({roomId:room.id,rowIdx:ri});
@@ -3795,18 +4173,41 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                   onTouchMove={e=>{
                     if(cellLongPress.current)cellLongPress.current.moved=true;
                     clearTimeout(cellLongPress.current?.timer);
-                    if(room.isNaver)return;
+                    if(room.isBlank)return;
                     const t=e.touches[0];const rect=e.currentTarget.getBoundingClientRect();
                     const y=t.clientY-rect.top;const ri=Math.floor(y/rowH);
                     setHoverCell({roomId:room.id,rowIdx:ri});
                   }}
-                  onTouchEnd={()=>{
+                  onTouchEnd={(e)=>{
                     const lp=cellLongPress.current;cellLongPress.current=null;
                     if(lp&&!lp.moved){
+                      // 막기 칼럼: 예약막기 팝업 (예약 등록 모달 X)
+                      if (lp.room.isBlockCol) {
+                        const tm = yToTime(lp.y);
+                        const [_h, _m] = tm.split(':').map(Number);
+                        const totalMin = _h * 60 + _m;
+                        const snappedMin = Math.floor(totalMin / 30) * 30;
+                        const sh = Math.floor(snappedMin / 60), sm = snappedMin % 60;
+                        const snappedTm = `${String(sh).padStart(2,'0')}:${String(sm).padStart(2,'0')}`;
+                        const slotIdx = snappedMin / 30;
+                        const t = e.changedTouches?.[0];
+                        setBlockSlotPopup({
+                          bizId: lp.room._naverBizId,
+                          branchId: lp.room.branch_id,
+                          date: selDate,
+                          slotIdx,
+                          time: snappedTm,
+                          x: t?.clientX || 0,
+                          y: t?.clientY || 0,
+                        });
+                        try { fetchNaverBlockStateRef.current?.(); } catch {}
+                        setTimeout(()=>setHoverCell(null),300);
+                        return;
+                      }
                       const time=yToTime(lp.y);
-                      // 직원 컬럼이면 staffId 전달 (데스크탑 handleCellClick과 동일 동작)
+                      // 직원/미배정 컬럼 처리 (데스크탑 handleCellClick과 동일 동작)
                       setModalData({
-                        roomId: lp.room.isStaffCol ? "" : lp.room.id,
+                        roomId: (lp.room.isStaffCol || lp.room.isNaver) ? "" : lp.room.id,
                         bid: lp.room.branch_id,
                         time, date: selDate,
                         staffId: lp.room.isStaffCol ? lp.room.staffId : undefined,
@@ -3871,8 +4272,6 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                         return <div key={idx} style={{
                           position:"absolute", top, left:0, right:0, height,
                           background:"rgba(0,0,0,.06)", zIndex:2, pointerEvents:"none",
-                          borderTop: isAfter ? "2px dashed rgba(0,0,0,.12)" : undefined,
-                          borderBottom: isBefore ? "2px dashed rgba(0,0,0,.12)" : undefined,
                         }}/>;
                       })}
                       {/* 출근 드래그 핸들 (첫 세그먼트 시작) */}
@@ -3885,13 +4284,77 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                         title={`퇴근 ${room.activeUntil||""} (드래그)`}/>}
                     </>;
                   })()}
-                  {!dragBlock && hoverCell?.roomId===room.id && hoverCell.rowIdx>=0 && <div style={{position:"absolute",top:hoverCell.rowIdx*rowH,left:0,right:0,height:rowH,background:"rgba(124,124,200,0.12)",borderTop:"1px solid rgba(124,124,200,0.3)",borderBottom:"1px solid rgba(124,124,200,0.3)",zIndex:1,pointerEvents:"none",transition:"top 0.05s ease"}}/>}
+                  {!dragBlock && hoverCell?.roomId===room.id && hoverCell.rowIdx>=0 && (()=>{
+                    if (room.isBlockCol) {
+                      // 막기 칼럼: 30분 슬롯 전체 하이라이트 (네이버 예약 단위)
+                      const startMinB = startHour * 60;
+                      const absMin = startMinB + hoverCell.rowIdx * timeUnit;
+                      const slotStartAbs = Math.floor(absMin / 30) * 30;
+                      const snappedTop = ((slotStartAbs - startMinB) / timeUnit) * rowH;
+                      const slotH = (30 / timeUnit) * rowH;
+                      // 입체 슬롯이 진해지는 hover (빨간 박스 X)
+                      return <div style={{position:"absolute",top:snappedTop,left:1,right:1,height:slotH,borderRadius:6,background:"linear-gradient(180deg, rgba(0,0,0,.04) 0%, rgba(0,0,0,.14) 100%)",boxShadow:"inset 0 1px 2px rgba(255,255,255,.5), inset 0 -3px 6px rgba(0,0,0,.18), 0 1px 3px rgba(0,0,0,.08)",zIndex:3,pointerEvents:"none",transition:"top 0.05s ease"}}/>;
+                    }
+                    return <div style={{position:"absolute",top:hoverCell.rowIdx*rowH,left:0,right:0,height:rowH,background:"rgba(124,124,200,0.12)",borderTop:"1px solid rgba(124,124,200,0.3)",borderBottom:"1px solid rgba(124,124,200,0.3)",zIndex:1,pointerEvents:"none",transition:"top 0.05s ease"}}/>;
+                  })()}
                   {/* Row crosshair highlight (other columns) — 드래그 중 숨김 */}
                   {!dragBlock && hoverCell && hoverCell.roomId!==room.id && hoverCell.rowIdx>=0 && <div style={{position:"absolute",top:hoverCell.rowIdx*rowH,left:0,right:0,height:rowH,background:"rgba(124,124,200,0.04)",zIndex:1,pointerEvents:"none"}}/>}
                   {/* Current time */}
                   {nowY > 0 && <div style={{position:"absolute",top:nowY,left:0,right:0,borderTop:"2px solid #e57373",zIndex:5}}>
                     <div style={{position:"absolute",top:-4,left:-1,width:8,height:8,borderRadius:T.radius.sm,background:T.danger}}/>
                   </div>}
+                  {/* 막기 칼럼: 30분 슬롯 가이드 + 시술별 막힘 인디케이터 (그 슬롯에 노출되는 시술만 카운트) */}
+                  {room.isBlockCol && (()=>{
+                    const slotPx = (30 / timeUnit) * rowH;
+                    const startMinB = startHour * 60;
+                    const itemsStateAll = naverBlockState[room._naverBizId]?.[selDate] || {};
+                    const itemsState = Object.fromEntries(Object.entries(itemsStateAll).filter(([_, v]) => v.is_active !== false));
+                    const itemIds = Object.keys(itemsState);
+                    const out = [];
+                    // 슬롯 인디케이터 — 슬롯별로 노출(-)·막힘(0)·가능(1) 분리 카운트
+                    for (let slotIdx = 0; slotIdx < 48; slotIdx++) {
+                      const slotMin = slotIdx * 30;
+                      const offsetFromStart = slotMin - startMinB;
+                      if (offsetFromStart < 0 || offsetFromStart >= totalRows * timeUnit) continue;
+                      const top = (offsetFromStart / timeUnit) * rowH;
+                      // 그 슬롯에 노출되는 시술만 (bit이 '0' 또는 '1')
+                      const visibleIds = itemIds.filter(iid => {
+                        const bit = itemsState[iid].hour_bit?.[slotIdx];
+                        return bit === '0' || bit === '1';
+                      });
+                      const slotTotal = visibleIds.length;
+                      const blockedCount = visibleIds.filter(iid => itemsState[iid].hour_bit[slotIdx] === '0').length;
+                      if (slotTotal > 0 && blockedCount > 0) {
+                        const NAVER_GREEN = '#03C75A';
+                        const BLOCK_GRAY = '#9CA3AF';
+                        const fullyBlocked = blockedCount === slotTotal;
+                        const dots = visibleIds.map((iid, i) => {
+                          const isBlocked = itemsState[iid].hour_bit[slotIdx] === '0';
+                          return <span key={i} style={{
+                            display:'block', width:7, height:7, borderRadius:'50%',
+                            background: isBlocked ? BLOCK_GRAY : NAVER_GREEN,
+                          }}/>;
+                        });
+                        const cellBg = fullyBlocked ? "rgba(0,0,0,.06)" : "rgba(156,163,175,.10)";
+                        const cellBorder = fullyBlocked ? "2px dashed rgba(0,0,0,.12)" : "1px solid rgba(0,0,0,.06)";
+                        out.push(
+                          <div key={`s${slotIdx}`} style={{position:"absolute",top,left:0,right:0,height:slotPx,background:cellBg,borderTop:cellBorder,pointerEvents:"none",zIndex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3}}>
+                            {dots}
+                          </div>
+                        );
+                      }
+                    }
+                    // 30분 가이드 — 미배정 칼럼과 동일 배경색 + 그림자 유지, 라운드 축소
+                    const firstOffsetMin = (30 - (startMinB % 30)) % 30;
+                    for (let mn = firstOffsetMin; mn < totalRows * timeUnit; mn += 30) {
+                      const top = (mn / timeUnit) * rowH;
+                      const slotH = (30 / timeUnit) * rowH;
+                      out.push(
+                        <div key={`sl${mn}`} style={{position:"absolute",top,left:1,right:1,height:slotH,borderRadius:3,background:"#E8F5E9",boxShadow:"inset 0 1px 2px rgba(255,255,255,.7), inset 0 -2px 4px rgba(0,0,0,.10), 0 1px 2px rgba(0,0,0,.04)",pointerEvents:"none",zIndex:2}}/>
+                      );
+                    }
+                    return <>{out}</>;
+                  })()}
                   {/* Blocks */}
                   {(() => {
                     // ── 겹침 감지 + 좌우 분할 (Google Calendar 방식) ──
@@ -3960,11 +4423,17 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                           // 메모가 블록 높이(rowH*3 = 전체 보임) 안에 다 들어가면 팝업 불필요
                           if (!memo || memo.length < 30) return;
                           const r = e.currentTarget.getBoundingClientRect();
-                          setMemoPopup({ id: block.id, memo, x: r.right + 8, y: r.top });
+                          setMemoPopup({ id: block.id, memo, x: r.left, y: r.top - 6 });
                         }}
                         onMouseLeave={()=>setMemoPopup(p => p?.id === block.id ? null : p)}
                         onClick={e=>{
                           e.stopPropagation();
+                          // 🔴 빨강 깜빡임 하이라이트 클릭 시 사라짐 — 모달 안 열고 하이라이트만 해제
+                          const _rid = block.reservationId || block.id;
+                          if (highlightedBlockId && (highlightedBlockId === _rid || highlightedBlockId === block.id)) {
+                            setHighlightedBlockId(null);
+                            return;
+                          }
                           if (block._isColTemplate) {
                             // 템플릿 편집: 모달 열기
                             setModalData({
@@ -3997,17 +4466,22 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                           const _hlOn = salesHighlight.min > 0 && _saleAmt >= salesHighlight.min && !isNaverCancelled;
                           const _hlC = salesHighlight.color || "#FFD700";
                           const _hlMode = salesHighlight.mode || "border";
-                          const _baseBg = isNaverCancelled?T.warningLt:isNaverUnassigned?T.infoLt:isNaverPending?`${color}15`:`${color}${bgAlpha}`;
+                          // 🔴 외부 하이라이트 (메시지함/확정대기 클릭) — 빨강 테두리 깜빡임
+                          const _isHL = highlightedBlockId && (highlightedBlockId === (block.reservationId||block.id) || highlightedBlockId === block.id);
+                          // 상태별 색상이 정해진 예약(취소/노쇼/완료)은 미배정으로 가도 상태 색상 유지
+                          const _hasStatusColor = block.status === "no_show" || block.status === "completed";
+                          const _baseBg = isNaverCancelled?T.warningLt:_hasStatusColor?`${color}${bgAlpha}`:isNaverUnassigned?T.infoLt:isNaverPending?`${color}15`:`${color}${bgAlpha}`;
                           return {position:"absolute",top:y,
                           left: block._totalCols > 1 ? 1 + (block._col * ((colW - 2) / block._totalCols)) : 1,
                           width: block._totalCols > 1 ? ((colW - 2) / block._totalCols) - 1 : undefined,
                           right: block._totalCols > 1 ? undefined : 1,
                           height:Math.max(h-1,10),
                           background: _hlOn && _hlMode === "fill" ? _hlC : _baseBg,
-                          border: _hlOn && _hlMode === "border" ? `2px solid ${_hlC}` : "none",
+                          border: _isHL ? "3px solid #ef4444" : (_hlOn && _hlMode === "border" ? `2px solid ${_hlC}` : "none"),
                           borderRadius:4,padding:"4px 6px",overflow:"hidden",fontSize:blockFs,lineHeight:1.2,
-                          boxShadow: isDrag ? "none" : (_hlOn && _hlMode === "border" ? `0 0 0 1px ${_hlC}, 0 2px 10px ${_hlC}99` : "0 1px 4px rgba(0,0,0,.1)"),
-                          cursor:"pointer",zIndex:isDrag?0:(_hlOn?4:3),transition:(isDrag||isBeingResized)?"none":"all .15s, box-shadow .2s",
+                          boxShadow: isDrag ? "none" : (_isHL ? "0 0 0 2px #fff, 0 0 12px #ef4444" : (_hlOn && _hlMode === "border" ? `0 0 0 1px ${_hlC}, 0 2px 10px ${_hlC}99` : "0 1px 4px rgba(0,0,0,.1)")),
+                          cursor:"pointer",zIndex:isDrag?0:(_isHL?6:(_hlOn?4:3)),transition:(isDrag||isBeingResized)?"none":"all .15s, box-shadow .2s",
+                          animation: _isHL ? "blissHlBlink 1s ease-in-out infinite" : undefined,
                           opacity:isDrag?0.35:1,userSelect:"none",WebkitUserSelect:"none",MozUserSelect:"none",msUserSelect:"none",WebkitTouchCallout:"none",touchAction:"pan-x pan-y"};
                         })()}
                         className="tl-block">
@@ -4029,9 +4503,15 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             {/* 이름 */}
                             <span style={{fontWeight:T.fw.bold,color:isNaverCancelled?T.gray500:T.text,textDecoration:isNaverCancelled?"line-through":"none",flexShrink:1,minWidth:0}}>
                               {(() => {
-                                const g = block.custGender || (block.custId && (data?.customers||[]).find(c=>c.id===block.custId)?.gender) || "";
-                                return g ? <span style={{color:g==="M"?T.male:T.female}}>{g==="M"?"남":"여"}</span> : null;
-                              })()} {block.custName}
+                                const liveCust = block.custId ? ((data?.customers||[]).find(c=>c.id===block.custId) || custInfoMap[block.custId]) : null;
+                                const g = block.custGender || liveCust?.gender || "";
+                                const displayName = liveCust?.name || block.custName;
+                                const custNum = liveCust?.custNum || liveCust?.cust_num || "";
+                                return <>
+                                  {g ? <span style={{color:g==="M"?T.male:T.female}}>{g==="M"?"남":"여"}</span> : null} {displayName}
+                                  {custNum && <span style={{marginLeft:3,fontSize:Math.max(7,blockFs-2),color:T.text,fontWeight:T.fw.bold,fontFamily:"monospace"}}>#{custNum}</span>}
+                                </>;
+                              })()}
                             </span>
                           </div>
                           {effectiveNaverColShow["시술"] !== false && block.selectedServices?.length>0 && <div style={{fontSize:Math.max(6,blockFs-2),color:T.text,fontWeight:T.fw.bold,marginTop:1}}>
@@ -4115,14 +4595,15 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         </div>
       </div>
 
-      {/* 메모 호버 팝업 — 긴 블록메모만 전체 표시 */}
+      {/* 메모 호버 팝업 — 긴 블록메모만 전체 표시 (블록 위로, 반투명) */}
       {memoPopup && (() => {
-        const px = Math.min(memoPopup.x, window.innerWidth - 280);
-        const py = Math.min(memoPopup.y, window.innerHeight - 200);
+        const px = Math.max(8, Math.min(memoPopup.x, window.innerWidth - 240));
+        const py = Math.max(40, memoPopup.y);
         return <div style={{position:"fixed",left:px,top:py,zIndex:9998,pointerEvents:"none",
-          background:"#FFF8E1",border:"1px solid #F59E0B",borderRadius:8,padding:"8px 10px",
-          boxShadow:"0 6px 20px rgba(0,0,0,.15)",fontSize:11,color:"#4B3200",
-          maxWidth:260,whiteSpace:"pre-wrap",wordBreak:"break-word",lineHeight:1.45}}>
+          background:"rgba(255,248,225,.92)",border:"1px solid rgba(245,158,11,.7)",borderRadius:8,padding:"7px 10px",
+          boxShadow:"0 4px 16px rgba(0,0,0,.18)",fontSize:11,color:"#4B3200",backdropFilter:"blur(2px)",
+          maxWidth:230,whiteSpace:"pre-wrap",wordBreak:"break-word",lineHeight:1.45,
+          transform:"translateY(-100%)"}}>
           {memoPopup.memo}
         </div>;
       })()}
@@ -4138,22 +4619,18 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         const bgAlpha = dragBlock.isSchedule ? opHex(Math.min(blockOp, 80)) : opHex(blockOp);
         const w = colW - 6;
         const h = Math.max((dragBlock.dur / timeUnit) * rowH, 10);
-        // 커서가 블록 내부에서 클릭된 오프셋을 그대로 유지 — viewport 좌표계
-        // clickOffsetRef.y (viewport 기준: startPt.clientY - blockRect.top) 를 사용
-        const top2 = dragPos.clientY - (clickOffsetRef.current.y || 14);
-        const left2 = dragPos.clientX - (clickOffsetRef.current.x || w*0.3);
-        return <>
-          <style>{`@keyframes blissDragGrab { 0%{transform:scale(1);opacity:.85} 50%{transform:scale(1.08);opacity:1} 100%{transform:scale(1.03);opacity:.96} }`}</style>
+        // dragPos.clientX/Y 는 이미 스냅된 셀 좌상단 — 그대로 사용 (transform/scale 제거 → viewport 정확)
+        const top2 = dragPos.clientY;
+        const left2 = dragPos.clientX;
+        return (
           <div style={{position:"fixed",top:top2,left:left2,width:w,height:h,
-            background:`${color}${bgAlpha}`,border:`2px solid ${color}`,borderLeft:`4px solid ${color}`,borderRadius:T.radius.md,
+            background:`${color}${bgAlpha}`,border:`1px solid ${color}`,borderLeft:`3px solid ${color}`,borderRadius:T.radius.md,
             padding:"4px 6px",overflow:"hidden",fontSize:blockFs,lineHeight:1.2,fontWeight:T.fw.bold,color:T.text,
-            boxShadow:`0 12px 32px rgba(0,0,0,.35), 0 4px 10px rgba(0,0,0,.2), 0 0 0 3px ${color}55`,
-            transform:"scale(1.03)",transformOrigin:"top left",
-            animation:"blissDragGrab .22s ease-out",
-            pointerEvents:"none",zIndex:9999,cursor:"grabbing",opacity:.96}}>
+            boxShadow:`0 8px 20px rgba(0,0,0,.25)`,
+            pointerEvents:"none",zIndex:9999,cursor:"grabbing",opacity:.92}}>
             {dragBlock.custName || (dragBlock.memo||"").slice(0,30) || ""}
           </div>
-        </>;
+        );
       })()}
 
       {/* 이동/리사이즈 확인 팝업 */}
@@ -4388,6 +4865,127 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           </div>
         </div>
       </div>}
+
+      {/* 네이버 막기 슬롯 토글 팝업 */}
+      {blockSlotPopup && (()=>{
+        const itemsState = naverBlockState[blockSlotPopup.bizId]?.[blockSlotPopup.date] || {};
+        // 노출중(활성) 시술 먼저, 비활성은 뒤로 정렬해서 모두 표시
+        const itemIds = Object.keys(itemsState).sort((a,b) => {
+          const aActive = itemsState[a].is_active !== false ? 0 : 1;
+          const bActive = itemsState[b].is_active !== false ? 0 : 1;
+          return aActive - bActive;
+        });
+        const popX = Math.max(8, Math.min(blockSlotPopup.x + 12, window.innerWidth - 320));
+        const popY = Math.max(8, Math.min(blockSlotPopup.y + 12, window.innerHeight - 280));
+        // 슬롯 상태 헬퍼: '1'=가능, '0'=막힘, '-'=운영 외(노출 안 함)
+        const slotBitOf = (iid) => itemsState[iid].hour_bit?.[blockSlotPopup.slotIdx];
+        const visibleIds = itemIds.filter(iid => {
+          const b = slotBitOf(iid);
+          return b === '0' || b === '1';
+        });
+        const allBlocked = visibleIds.length > 0 && visibleIds.every(iid => slotBitOf(iid) === '0');
+        const anyOpen = visibleIds.some(iid => slotBitOf(iid) === '1');
+        const toggleOne = async (itemId, currentlyBlocked) => {
+          const newBit = currentlyBlocked ? '1' : '0';
+          // 옵티미스틱
+          setNaverBlockState(prev => {
+            const next = {...prev};
+            const items = {...(next[blockSlotPopup.bizId]?.[blockSlotPopup.date] || {})};
+            const cur = items[itemId];
+            if (!cur) return prev;
+            const bits = cur.hour_bit.split('');
+            bits[blockSlotPopup.slotIdx] = newBit;
+            items[itemId] = { ...cur, hour_bit: bits.join('') };
+            next[blockSlotPopup.bizId] = { ...(next[blockSlotPopup.bizId]||{}), [blockSlotPopup.date]: items };
+            return next;
+          });
+          try {
+            const r = await fetch('https://blissme.ai/naver-toggle-slot', {
+              method:'POST', headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({ biz_id: blockSlotPopup.bizId, item_id: itemId, date: blockSlotPopup.date, time: blockSlotPopup.time, block: !currentlyBlocked })
+            });
+            const j = await r.json();
+            if (!j.ok) throw new Error(j.error || j.msg || 'fail');
+          } catch(e) {
+            // 롤백
+            setNaverBlockState(prev => {
+              const next = {...prev};
+              const items = {...(next[blockSlotPopup.bizId]?.[blockSlotPopup.date] || {})};
+              const cur = items[itemId];
+              if (!cur) return prev;
+              const bits = cur.hour_bit.split('');
+              bits[blockSlotPopup.slotIdx] = currentlyBlocked ? '0' : '1';
+              items[itemId] = { ...cur, hour_bit: bits.join('') };
+              next[blockSlotPopup.bizId] = { ...(next[blockSlotPopup.bizId]||{}), [blockSlotPopup.date]: items };
+              return next;
+            });
+            alert('네이버 적용 실패: ' + e.message);
+          }
+        };
+        const toggleAll = async (block) => {
+          for (const iid of itemIds) {
+            if (itemsState[iid].is_active === false) continue; // 비활성 시술은 건너뜀
+            const bit = slotBitOf(iid);
+            if (bit !== '0' && bit !== '1') continue; // 운영 외 슬롯('-') 건너뜀
+            const isBlocked = bit === '0';
+            if (block && !isBlocked) await toggleOne(iid, false);
+            if (!block && isBlocked) await toggleOne(iid, true);
+          }
+        };
+        return (
+          <>
+            <div onClick={()=>setBlockSlotPopup(null)} style={{position:"fixed",inset:0,zIndex:9998,background:"transparent"}}/>
+            <div onClick={e=>e.stopPropagation()} style={{position:"fixed",left:popX,top:popY,zIndex:9999,background:"#fff",borderRadius:12,boxShadow:"0 8px 32px rgba(0,0,0,.18)",padding:14,minWidth:280,maxWidth:320,fontSize:13}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,gap:8}}>
+                <div style={{fontWeight:800,fontSize:14,flex:1}}>🚫 네이버 예약 막기 · {blockSlotPopup.time}</div>
+                <a href={`https://partner.booking.naver.com/bizes/${blockSlotPopup.bizId}/simple-management`}
+                   target="_blank" rel="noopener noreferrer" title="네이버 예약관리 열기"
+                   onClick={e=>e.stopPropagation()}
+                   style={{background:"#03C75A",color:"#fff",fontSize:11,fontWeight:800,padding:"4px 10px",borderRadius:6,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:3,letterSpacing:-0.3}}>
+                  N↗
+                </a>
+                <button onClick={()=>setBlockSlotPopup(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:"#999",padding:0,lineHeight:1}}>×</button>
+              </div>
+              {itemIds.length === 0 ? (
+                <div style={{color:"#999",padding:"12px 0",textAlign:"center"}}>로딩 중…</div>
+              ) : (
+                <>
+                  <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
+                    {itemIds.map(iid => {
+                      const cur = itemsState[iid];
+                      const bit = slotBitOf(iid);
+                      const isBlocked = bit === '0';
+                      const isInactive = cur.is_active === false;
+                      const isOutOfHours = bit === '-' || bit === undefined; // 그 슬롯에 노출 안 됨
+                      const disabled = isInactive || isOutOfHours;
+                      const bg = isInactive ? "#F3F4F6" : (isOutOfHours ? "#F9FAFB" : (isBlocked ? "#FEE2E2" : "#ECFDF5"));
+                      return (
+                        <div key={iid} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 8px",background:bg,borderRadius:6,gap:8,opacity:disabled?0.55:1}}>
+                          <span style={{fontSize:12,fontWeight:600,color:"#333",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>
+                            {cur.name || iid}
+                            {isInactive && <span style={{marginLeft:6,fontSize:9,fontWeight:700,padding:"1px 5px",background:"#6B7280",color:"#fff",borderRadius:3}}>노출X</span>}
+                            {!isInactive && isOutOfHours && <span style={{marginLeft:6,fontSize:9,fontWeight:700,padding:"1px 5px",background:"#9CA3AF",color:"#fff",borderRadius:3}}>운영외</span>}
+                          </span>
+                          <button onClick={()=>!disabled && toggleOne(iid, isBlocked)} disabled={disabled} style={{
+                            position:"relative",width:38,height:22,borderRadius:11,border:"none",cursor:disabled?"not-allowed":"pointer",
+                            background: disabled ? "#D1D5DB" : (isBlocked ? "#9CA3AF" : "#03C75A"), transition:"background .15s", padding:0, flexShrink:0
+                          }}>
+                            <div style={{position:"absolute",top:2,left:isBlocked||disabled?2:18,width:18,height:18,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,.2)",transition:"left .15s"}}/>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{display:"flex",gap:6,paddingTop:8,borderTop:"1px solid #eee"}}>
+                    <button onClick={()=>toggleAll(true)} disabled={allBlocked} style={{flex:1,padding:"7px 10px",fontSize:11,fontWeight:700,border:"1px solid #EF4444",borderRadius:6,background:allBlocked?"#FEE2E2":"#fff",color:"#EF4444",cursor:allBlocked?"default":"pointer",opacity:allBlocked?0.5:1}}>전체 막기</button>
+                    <button onClick={()=>toggleAll(false)} disabled={visibleIds.length>0 && visibleIds.every(iid => slotBitOf(iid) === '1')} style={{flex:1,padding:"7px 10px",fontSize:11,fontWeight:700,border:"1px solid #10B981",borderRadius:6,background:"#fff",color:"#10B981",cursor:"pointer"}}>전체 풀기</button>
+                  </div>
+                </>
+              )}
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }

@@ -3,10 +3,11 @@ import { T } from '../../lib/constants'
 import { sb } from '../../lib/sb'
 import { APageHeader } from './AdminUI'
 import AdminCoupons from './AdminCoupons'
+import AdminMemberPriceRules from './AdminMemberPriceRules'
 
 // ═══════════════════════════════════════════════════════════════
-// 이벤트 관리 v2
-//   - 트리거 5종: new_first_sale / prepaid_purchase / pkg_purchase / annual_purchase / any_sale
+// 혜택 관리 (이벤트 + 쿠폰 + 회원가 자격)
+//   - 이벤트 트리거 5종: new_first_sale / prepaid_purchase / pkg_purchase / annual_purchase / any_sale
 //   - 조건 빌더: 시술 any/all/none, 카테고리, 다담권/패키지/연간 정확 매칭, 금액 범위, 고객 플래그
 //   - 보상 최대 3개
 // ═══════════════════════════════════════════════════════════════
@@ -18,11 +19,12 @@ function AdminEvents({ data, setData, bizId }) {
   const [mode, setMode] = useState('events')
   return (
     <div>
-      <APageHeader title="이벤트 관리" desc="쿠폰·적립·할인·쿠폰 발행 이벤트 통합 관리" />
+      <APageHeader title="혜택 관리" desc="이벤트·쿠폰·회원가 자격 통합 관리" />
       <div style={{display:'flex', gap:6, marginBottom:12, borderBottom:`2px solid ${T.border}`}}>
         {[
           ['events','💥 이벤트 등록'],
           ['coupon','🎫 쿠폰 등록'],
+          ['member','⭐ 회원가 자격'],
         ].map(([k,l])=>(
           <button key={k} onClick={()=>setMode(k)} style={{
             padding:'10px 16px', fontSize:13, fontWeight:700,
@@ -33,7 +35,9 @@ function AdminEvents({ data, setData, bizId }) {
           }}>{l}</button>
         ))}
       </div>
-      {mode==='coupon' ? <AdminCoupons data={data} setData={setData}/> : <EventList data={data} setData={setData} bizId={bizId}/>}
+      {mode==='coupon' ? <AdminCoupons data={data} setData={setData}/>
+        : mode==='member' ? <AdminMemberPriceRules data={data} setData={setData} bizId={bizId}/>
+        : <EventList data={data} setData={setData} bizId={bizId}/>}
     </div>
   )
 }
@@ -814,6 +818,17 @@ function SvcPicker({ data, label='시술', value, onChange }) {
   )
 }
 
+// 텍스트 입력은 로컬 state로 격리 → 매 키스트로크에 부모 재렌더 안 일으킴
+// blur 또는 onCommit 신호 시에만 부모로 값 전달 (debounce 효과)
+function TextFieldLocal({ value, onCommit }) {
+  const [local, setLocal] = React.useState(value ?? '')
+  React.useEffect(() => { setLocal(value ?? '') }, [value])
+  return <input className="inp" value={local}
+    onChange={e => setLocal(e.target.value)}
+    onBlur={() => { if (local !== value) onCommit(local) }}
+  />
+}
+
 function Field({ label, value, onChange, type='text', options }) {
   return (
     <div>
@@ -822,7 +837,9 @@ function Field({ label, value, onChange, type='text', options }) {
         ? <select className="inp" value={value||''} onChange={e=>onChange(e.target.value)}>
             {(options||[]).map(([v,l])=><option key={v} value={v}>{l}</option>)}
           </select>
-        : <input className="inp" type={type} value={value??''} onChange={e=>onChange(e.target.value)}/>
+        : type === 'number'
+          ? <input className="inp" type="number" value={value??''} onChange={e=>onChange(e.target.value)}/>
+          : <TextFieldLocal value={value} onCommit={onChange}/>
       }
     </div>
   )

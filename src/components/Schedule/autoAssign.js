@@ -1,4 +1,22 @@
-export default function autoAssign(year, month, ownerReqs, prevSchData, empSettings={}, supportConfig={}, ruleConfig={}, ownerRepeat={}, employees=employees, empReqs={}, seed=null, empReqsTs={}) {
+import { getDim, getDow0Mon, fmtDs, isSupport, STATUS, BRANCHES_SCH as BRANCHES, addDays } from './scheduleConstants'
+
+export default function autoAssign(year, month, ownerReqs, prevSchData, empSettings={}, supportConfig={}, ruleConfig={}, ownerRepeat={}, employees=employees, empReqs={}, seed=null, empReqsTs={}, maleRotation={}) {
+  // 남자직원 로테이션 효과적 지점 — 평일 근무 시 해당 주의 지점으로 매핑
+  const SCH_TO_BR = {gangnam:'gangnam', wangsimni:'wangsimni', hongdae:'hongdae', magok:'magok', yongsan:'yongsan', cheonho:'cheonho', wirye:'wirye', jamsil:'jamsil'};
+  const getEffectiveBranch = (emp, ds) => {
+    if (!emp?.isMale) return emp?.branch;
+    const rot = (maleRotation || {})[emp.id];
+    if (!rot?.branches?.length || !rot.startDate) return emp.branch;
+    try {
+      const start = new Date(rot.startDate);
+      const target = new Date(ds);
+      const diffDays = Math.floor((target - start) / (1000*60*60*24));
+      if (diffDays < 0) return emp.branch;
+      const weekIdx = Math.floor(diffDays / 7);
+      const idx = ((weekIdx % rot.branches.length) + rot.branches.length) % rot.branches.length;
+      return SCH_TO_BR[rot.branches[idx]] || rot.branches[idx] || emp.branch;
+    } catch { return emp.branch; }
+  };
   const dim = getDim(year, month);
   const rc = {
     minWork:         Number(ruleConfig.minWork)         || 11,
@@ -12,6 +30,16 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
   };
   const sch = {};
   employees.forEach(e => { sch[e.id] = {}; });
+
+  // 인턴은 모든 규칙의 근무/휴무 인원 카운트에서 제외
+  const isIntern = (emp) => emp?.rank === '인턴';
+
+  // 규칙 ON/OFF 헬퍼 — UI에서 토글 가능
+  const ruleEnabled = (key) => {
+    const r = ruleConfig.rulesMeta?.[key];
+    if (r?.enabled === false) return false;
+    return true; // default ON
+  };
 
   // 랜덤 시드 기반 셔플 (자동배치마다 다른 결과)
   const _seed = seed ?? Date.now();
@@ -80,11 +108,17 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
     empReqsByDay[ds].push({ eid, ts, status });
   });
   // 날짜별 타임스탬프 정렬 후 maxDailyOff 이내만 적용, 나머지는 WORK 유지
+  // 인턴은 카운트 제외 — 인턴 휴무 신청은 항상 허용
   Object.entries(empReqsByDay).forEach(([ds, reqs]) => {
     reqs.sort((a, b) => a.ts - b.ts); // 빠른 순
     let offCount = 0;
     reqs.forEach(({ eid, ts, status }) => {
       if (!sch[eid]) return;
+      const emp = employees.find(e => e.id === eid);
+      if (isIntern(emp)) {
+        sch[eid][ds] = status;
+        return;
+      }
       if (offCount < rc.maxDailyOff) {
         sch[eid][ds] = status;
         offCount++;
@@ -94,9 +128,12 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
   });
 
   // 1-b) 반복 설정: ownerRepeat dows → 이번달 + 이월(isNext) 날짜 자동 적용 (ownerReqs 우선)
-  employees.filter(e=>e.isOwner).forEach(emp => {
+  // 원장 + 일반직원(휴무 고정 켠 경우) 모두 처리
+  employees.forEach(emp => {
     const rep = (ownerRepeat||{})[emp.id];
     if (!rep?.enabled || !rep.dows?.length) return;
+    // 비-원장은 fixedOffEnabled가 켜져있을 때만 반복 적용 (안전장치)
+    if (!emp.isOwner && !empSettings[emp.id]?.fixedOffEnabled) return;
     // 이번달 날짜
     for (let d=1; d<=dim; d++) {
       const dow = getDow0Mon(year, month, d);
@@ -106,8 +143,6 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
       }
     }
     // 이월(isNext) 날짜 — 마지막 주에 포함된 다음달 날짜도 적용
-    const nextYear_ = month === 11 ? year + 1 : year;
-    const nextMonth_ = month === 11 ? 0 : month + 1;
     // isNext 이월 날짜는 weeks 생성 후 별도 처리 (ownerRepeat_pending에 등록)
     // → weeks 정의 이후 step1-b-post에서 처리
     if (!ownerRepeat_pending) ownerRepeat_pending = [];
@@ -137,9 +172,9 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
     // 3일 연속 휴무 절대 금지
     if (isOff2(emp.id,p1h) && isOff2(emp.id,p2h)) return false;
     if (isOff2(emp.id,p1h) && isOff2(emp.id,n1h)) return false;
-    // 전체 하루 최대 휴무 — 강제 배정도 maxDailyOff 엄격 준수
-    if (!emp.isMale) {
-      const totalOff = employees.filter(e => !e.isMale && ["휴무","휴무(꼭)","무급"].includes(sch[e.id]?.[ds]||"")).length;
+    // 전체 하루 최대 휴무 — 강제 배정도 maxDailyOff 엄격 준수 (인턴 제외)
+    if (!emp.isMale && !isIntern(emp)) {
+      const totalOff = employees.filter(e => !e.isMale && !isIntern(e) && ["휴무","휴무(꼭)","무급"].includes(sch[e.id]?.[ds]||"")).length;
       if (totalOff >= rc.maxDailyOff) return false;
     }
     // 대표 지점(branch) 소속 직원 최소 1명 상주 체크
@@ -147,7 +182,8 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
       const repBranch = emp.branch;
       const repBr = BRANCHES.find(b => b.id === repBranch);
       if (repBr) {
-        const repEmps = employees.filter(e => e.branch === repBranch && e.id !== emp.id && !e.isMale && !e.isOwner);
+        // 인턴은 인원 카운트에서 제외
+        const repEmps = employees.filter(e => e.branch === repBranch && e.id !== emp.id && !e.isMale && !e.isOwner && !isIntern(e));
         const repWorking = repEmps.filter(be => {
           const s = sch[be.id]?.[ds] || "";
           if (["휴무","휴무(꼭)","무급"].includes(s)) return false;
@@ -158,12 +194,18 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
       }
     }
 
-    // 지점 최소 인원 — 직원의 모든 소속 지점(branches) 각각 체크
-    const empBranchesH = emp.branches || [emp.branch];
+    // 지점 최소 인원 — branchMinStaff OFF면 스킵
+    const empBranchesH = ruleEnabled('branchMinStaff') ? (emp.branches || [emp.branch]) : [];
     for (const bId of empBranchesH) {
       const br_ = BRANCHES.find(b => b.id === bId);
       if (!br_) continue;
-      const brEmps_ = employees.filter(e => (e.branches||[e.branch]).includes(bId) && !e.isMale);
+      // 인턴 제외 / 본 지점만 카운트 (multi-branch는 지원→로만 인정)
+      // 남자직원은 로테이션 효과 지점으로 매칭
+      const brEmps_ = employees.filter(e => {
+        if (isIntern(e)) return false;
+        if (e.isMale) return getEffectiveBranch(e, ds) === bId;
+        return e.branch === bId;
+      });
       const working = brEmps_.filter(be => {
         if (be.id === emp.id) return false;
         const s = sch[be.id]?.[ds] || "";
@@ -171,9 +213,11 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
         if (isSupport(s) && !s.includes(br_.name)) return false;
         return true;
       }).length;
-      const supportIn = employees.filter(e =>
-        !(e.branches||[e.branch]).includes(bId) && sch[e.id]?.[ds] === `지원(${br_.name})`
-      ).length;
+      const supportIn = employees.filter(e => {
+        if (isIntern(e) || e.isMale) return false;
+        if (e.branch === bId) return false;
+        return sch[e.id]?.[ds] === `지원(${br_.name})`;
+      }).length;
       const minRequired = rc.branchMinStaff[bId] ?? br_.minStaff ?? 1;
       if (working + supportIn < minRequired) return false;
     }
@@ -329,50 +373,52 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
     }
 
 
-    // 전체 하루 최대 휴무 5명 제한 (남자직원 제외 - 별도 집계)
-    if (!emp.isMale) {
-      const totalOffToday = employees.filter(e => !e.isMale && !(e.isFreelancer || empSettings[e.id]?.isFreelancer) && ["휴무","휴무(꼭)","무급"].includes(sch[e.id][ds])).length;
+    // 전체 하루 최대 휴무 — 인턴은 카운트 제외 (workCount OFF면 스킵)
+    if (ruleEnabled('workCount') && !emp.isMale && !isIntern(emp)) {
+      const totalOffToday = employees.filter(e => !e.isMale && !(e.isFreelancer || empSettings[e.id]?.isFreelancer) && !isIntern(e) && ["휴무","휴무(꼭)","무급"].includes(sch[e.id][ds])).length;
       if (totalOffToday >= rc.maxDailyOff) return R(`전체휴무${totalOffToday}명 초과`);
     }
 
-    // 지점 최소 근무인원 보호: 직원의 모든 소속 지점(branches) 각각 체크
-    const empBranches_ = emp.branches || [emp.branch];
+    // 지점 최소 근무인원 보호 (branchMinStaff OFF면 스킵)
+    const empBranches_ = ruleEnabled('branchMinStaff') ? (emp.branches || [emp.branch]) : [];
     for (const bId of empBranches_) {
       const br_ = BRANCHES.find(b => b.id === bId);
       if (!br_) continue;
-      const brEmps_ = employees.filter(e => (e.branches || [e.branch]).includes(bId) && !e.isMale);
-      // 실제로 이 지점에 있는 인원: 근무 또는 지원(이 지점으로 온 경우)
-      // 타지점 지원 나간 직원(지원(타지점명))은 이 지점 근무 인원에서 제외
+      // 인턴 제외 / 본 지점만 카운트 (multi-branch는 지원→로만 인정)
+      // 남자직원은 로테이션 효과 지점으로 매칭
+      const brEmps_ = employees.filter(e => {
+        if (isIntern(e)) return false;
+        if (e.isMale) return getEffectiveBranch(e, ds) === bId;
+        return e.branch === bId;
+      });
       const ownWorking = brEmps_.filter(be => {
-        if (be.id === emp.id) return false; // 본인 제외
+        if (be.id === emp.id) return false;
         const s = sch[be.id]?.[ds] || "";
-        if (["휴무","휴무(꼭)","무급"].includes(s)) return false; // 휴무 제외
-        if (isSupport(s) && !s.includes(br_.name)) return false; // 타지점 지원 나간 경우 제외
+        if (["휴무","휴무(꼭)","무급"].includes(s)) return false;
+        if (isSupport(s) && !s.includes(br_.name)) return false;
         return true;
       }).length;
-      const supportIn = employees.filter(e =>
-        !(e.branches || [e.branch]).includes(bId) && sch[e.id]?.[ds] === `지원(${br_.name})`
-      ).length;
+      const supportIn = employees.filter(e => {
+        if (isIntern(e) || e.isMale) return false;
+        if (e.branch === bId) return false;
+        return sch[e.id]?.[ds] === `지원(${br_.name})`;
+      }).length;
       const minS = rc.branchMinStaff[bId] ?? br_.minStaff ?? 1;
       if (ownWorking + supportIn < minS) return false;
     }
 
-    // 대표 지점(branch) 소속 직원 최소 1명 상주 체크
-    // 경아/서현은 branch=gangnam → 이 중 최소 1명은 강남에 있어야 함
-    // 소연/수연은 branch=wangsimni → 이 중 최소 1명은 왕십리에 있어야 함
+    // 대표 지점 소속 직원 최소 1명 상주 체크 (인턴 제외)
     if (!emp.isOwner && !emp.isMale) {
       const repBranch = emp.branch;
       const repBr = BRANCHES.find(b => b.id === repBranch);
       if (repBr) {
-        // 같은 대표 지점 소속 직원 중 본인 제외하고 근무 중인 인원
-        const repEmps = employees.filter(e => e.branch === repBranch && e.id !== emp.id && !e.isMale && !e.isOwner);
+        const repEmps = employees.filter(e => e.branch === repBranch && e.id !== emp.id && !e.isMale && !e.isOwner && !isIntern(e));
         const repWorking = repEmps.filter(be => {
           const s = sch[be.id]?.[ds] || "";
           if (["휴무","휴무(꼭)","무급"].includes(s)) return false;
-          if (isSupport(s) && !s.includes(repBr.name)) return false; // 타지점 지원 나간 경우 제외
+          if (isSupport(s) && !s.includes(repBr.name)) return false;
           return true;
         }).length;
-        // 대표 지점 직원이 본인뿐이면 체크 의미 없음 → 스킵
         if (repEmps.length >= 1 && repWorking < 1) return false;
       }
     }
@@ -417,12 +463,12 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
     // 남자직원 전원 휴무 금지
     const otherMales = employees.filter(e => e.isMale && e.id !== emp.id);
     if (otherMales.length > 0 && otherMales.every(e => isOff(e.id, ds))) return false;
-    // 지점 최소 인원 보호 — branches 기반
-    const empBranchesM = emp.branches || [emp.branch];
+    // 지점 최소 인원 보호 — 본 지점만 카운트 (인턴/남자 제외, branchMinStaff OFF면 스킵)
+    const empBranchesM = ruleEnabled('branchMinStaff') ? (emp.branches || [emp.branch]) : [];
     for (const bId of empBranchesM) {
       const br_ = BRANCHES.find(b => b.id === bId);
       if (!br_) continue;
-      const brEmps_ = employees.filter(e => (e.branches||[e.branch]).includes(bId) && !e.isMale);
+      const brEmps_ = employees.filter(e => !e.isMale && !isIntern(e) && e.branch === bId);
       const working = brEmps_.filter(be => {
         if (be.id === emp.id) return false;
         const s = sch[be.id]?.[ds] || "";
@@ -430,9 +476,11 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
         if (isSupport(s) && !s.includes(br_.name)) return false;
         return true;
       }).length;
-      const supportIn = employees.filter(e =>
-        !(e.branches||[e.branch]).includes(bId) && sch[e.id]?.[ds] === `지원(${br_.name})`
-      ).length;
+      const supportIn = employees.filter(e => {
+        if (isIntern(e) || e.isMale) return false;
+        if (e.branch === bId) return false;
+        return sch[e.id]?.[ds] === `지원(${br_.name})`;
+      }).length;
       const minS = rc.branchMinStaff[bId] ?? br_.minStaff ?? 1;
       if (working + supportIn < minS) return false;
     }
@@ -867,7 +915,10 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
       // 대표지점(branch)이 targetBranch인 직원: 근무/전체쉐어면 포함 (타지점 지원 나간 경우 제외)
       // 대표지점이 다른 내부 그룹 직원: 지원(targetBranch.name) 상태일 때만 포함
       // 외부 지점 직원: 지원(targetBranch.name) 상태일 때만 포함
-      const targetEmps_ = employees.filter(e => (e.branches||[e.branch]).includes(targetBranch.id));
+      // 인턴/남자 제외 (사용자 규칙: 근무인원 카운트에서 빠짐)
+      const targetEmps_ = employees.filter(e =>
+        !isIntern(e) && !e.isMale && (e.branches||[e.branch]).includes(targetBranch.id)
+      );
       const baseWorking = targetEmps_.filter(e => {
         const s = sch[e.id][ds];
         if (["휴무","휴무(꼭)","무급"].includes(s)) return false;
@@ -880,7 +931,9 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
         return s === supportLabel;
       }).length;
       const supportersIn = employees.filter(e =>
-        !(e.branches||[e.branch]).includes(targetBranch.id) && sch[e.id][ds] === supportLabel
+        !isIntern(e) && !e.isMale &&
+        !(e.branches||[e.branch]).includes(targetBranch.id) &&
+        sch[e.id][ds] === supportLabel
       ).length;
       const totalWorking = baseWorking + supportersIn;
       if (totalWorking >= minS) continue;
@@ -890,9 +943,9 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
 
       // ① 같은 branches 그룹 내 다른 지점 소속 직원 (내부 로테이션 우선)
       const internalCands = employees.filter(e =>
-        !e.mustStay &&
+        !isIntern(e) && !e.isMale && !e.isOwner && !e.mustStay &&
         (e.branches||[e.branch]).includes(targetBranch.id) &&
-        e.branch !== targetBranch.id && // 대표 지점이 다른 직원
+        e.branch !== targetBranch.id &&
         sch[e.id][ds] === STATUS.WORK
       );
       internalCands.sort((a, b) => {
@@ -902,10 +955,11 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
       });
       candidates.push(...internalCands.map(e => e.id));
 
-      // ② supportOrder 지정 외부 지점 직원
+      // ② supportOrder 지정 외부 지점 직원 (인턴/남자/원장/mustStay 제외)
       for (const bId of supportOrder) {
         const extCands = employees.filter(e =>
-          e.branch === bId && !e.mustStay &&
+          !isIntern(e) && !e.isMale && !e.isOwner && !e.mustStay &&
+          e.branch === bId &&
           !(e.branches||[e.branch]).includes(targetBranch.id) &&
           sch[e.id][ds] === STATUS.WORK
         );
@@ -920,8 +974,9 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
       // ③ 나머지 지점 직원
       const prioritySet = new Set(supportOrder);
       const otherCands = employees.filter(e =>
+        !isIntern(e) && !e.isMale && !e.isOwner && !e.mustStay &&
         !(e.branches||[e.branch]).includes(targetBranch.id) &&
-        !prioritySet.has(e.branch) && !e.mustStay &&
+        !prioritySet.has(e.branch) &&
         sch[e.id][ds] === STATUS.WORK
       ).map(e => e.id);
       candidates.push(...otherCands);
@@ -1062,19 +1117,20 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
           const s = sch[e.id][day.ds];
           return s===STATUS.WORK||isSupport(s)||s===STATUS.SHARE;
         }).length;
-        if (totalWorking <= rc.minWork) continue;
-        // branches 기반 지점 최소인원 체크
+        if (ruleEnabled('workCount') && totalWorking <= rc.minWork) continue;
+        // branches 기반 지점 최소인원 체크 (branchMinStaff OFF면 스킵)
         let branchOk = true;
-        for (const bId of (emp.branches||[emp.branch])) {
+        const branchesToCheck = ruleEnabled('branchMinStaff') ? (emp.branches||[emp.branch]) : [];
+        for (const bId of branchesToCheck) {
           const br_ = BRANCHES.find(b=>b.id===bId); if (!br_) continue;
-          const brW = employees.filter(e=>(e.branches||[e.branch]).includes(bId)&&!e.isMale).filter(be=>{
+          const brW = employees.filter(e=>e.branch===bId && !e.isMale && !isIntern(e)).filter(be=>{
             if (be.id===emp.id) return false;
             const s=sch[be.id]?.[day.ds]||"";
             if(["휴무","휴무(꼭)","무급"].includes(s)) return false;
             if(isSupport(s)&&!s.includes(br_.name)) return false;
             return true;
           }).length;
-          const supIn=employees.filter(e=>!(e.branches||[e.branch]).includes(bId)&&sch[e.id]?.[day.ds]===`지원(${br_.name})`).length;
+          const supIn=employees.filter(e=>e.branch!==bId && !isIntern(e) && !e.isMale && sch[e.id]?.[day.ds]===`지원(${br_.name})`).length;
           if(brW+supIn < (rc.branchMinStaff[bId]??br_.minStaff??1)){branchOk=false;break;}
         }
         if (!branchOk) continue;
@@ -1401,6 +1457,200 @@ export default function autoAssign(year, month, ownerReqs, prevSchData, empSetti
     });
   }
 
+
+  // ════════════════════════════════════════════════════════
+  // POST-PASS A: weeklyOff 강제 보장 (최우선 규칙)
+  // 각 직원이 weeklyOff 갯수만큼 주별로 쉬어야 함. 부족하면 강제 휴무 추가.
+  // ════════════════════════════════════════════════════════
+  const isOffStr = (s) => ["휴무","휴무(꼭)","무급"].includes(s);
+  const realWeeks = []; // 이번달에 속하는 주 단위 그룹
+  {
+    let wk = [];
+    weeks.forEach(week => {
+      const inMonth = week.filter(d => !d.isPrev);
+      if (inMonth.length === 0) return;
+      realWeeks.push(inMonth);
+    });
+  }
+  employees.forEach(emp => {
+    if (emp.isOwner) return; // 원장은 ownerReqs/ownerRepeat 따라감
+    if (isIntern(emp)) return; // 인턴은 자유
+    if (emp.isMale) return; // 남자직원 별도 로직
+    if (empSettings[emp.id]?.excludeFromSchedule) return;
+    if (isAltPattern(emp)) return; // 격주 패턴은 자체 로직 사용
+    const wOff = (7 - (Number(empSettings[emp.id]?.weeklyWork) || (7 - (emp.weeklyOff||2))));
+    if (wOff <= 0) return;
+    realWeeks.forEach(weekDays => {
+      const sd = empSettings[emp.id]?.startDate;
+      const elig = weekDays.filter(d => !d.isNext && (!sd || d.ds >= sd));
+      if (elig.length === 0) return;
+      // 시드된 날(전달 이월)은 그대로 카운트
+      let curOff = elig.filter(d => isOffStr(sch[emp.id]?.[d.ds] || "")).length;
+      const target = Math.min(wOff, elig.length);
+      if (curOff >= target) return;
+      // 부족분만큼 근무일을 휴무로 전환 — branchMinStaff 영향 최소 + 연속휴무 안되게
+      const candidates = elig.filter(d => sch[emp.id]?.[d.ds] === STATUS.WORK && !seededDates.has(d.ds));
+      // 정렬: 같은 지점에 다른 직원 많이 일하는 날 우선 (영향 최소)
+      const scoreDay = (d) => {
+        const otherWorkers = employees.filter(x =>
+          x.id !== emp.id && x.branch === emp.branch && !x.isMale && !isIntern(x) &&
+          [STATUS.WORK].includes(sch[x.id]?.[d.ds]||"") && !isSupport(sch[x.id]?.[d.ds]||"")
+        ).length;
+        return -otherWorkers;
+      };
+      const sorted = candidates.slice().sort((a,b)=>scoreDay(a)-scoreDay(b));
+      for (const day of sorted) {
+        if (curOff >= target) break;
+        // 직전 직후 모두 휴무인 경우 (3일 연속) 피하기
+        const p1 = addDays(day.ds, -1), n1 = addDays(day.ds, 1);
+        const p1Off = isOffStr(sch[emp.id]?.[p1] || "");
+        const n1Off = isOffStr(sch[emp.id]?.[n1] || "");
+        if (p1Off && n1Off) continue;
+        sch[emp.id][day.ds] = STATUS.OFF;
+        curOff++;
+      }
+    });
+  });
+
+  // ════════════════════════════════════════════════════════
+  // POST-PASS A+: swap 감지 + undo
+  // emp X (primary A) → 지원(B) 이고 동시에 emp Y (primary B) → 지원(A) 이면
+  // 둘 다 본 지점 근무로 되돌림 (불필요한 swap 제거)
+  // ════════════════════════════════════════════════════════
+  {
+    const swapAllDs = weeks.flatMap(w => w.filter(d => !d.isPrev).map(d => d.ds));
+    swapAllDs.forEach(ds => {
+      // 지원 중인 직원들 추출: { sender_id, fromBranch, toBranchName }
+      const supports = [];
+      employees.forEach(e => {
+        if (e.isMale || isIntern(e)) return;
+        const s = sch[e.id]?.[ds] || "";
+        const m = s.match(/^지원\((.+)\)$/);
+        if (!m) return;
+        const toBrName = m[1];
+        const toBr = BRANCHES.find(b => b.name === toBrName);
+        if (!toBr) return;
+        supports.push({ id: e.id, fromBId: e.branch, toBId: toBr.id, toBrName });
+      });
+      // swap pair 찾기: A→B 동시 B→A
+      const used = new Set();
+      for (let i = 0; i < supports.length; i++) {
+        if (used.has(supports[i].id)) continue;
+        for (let j = i+1; j < supports.length; j++) {
+          if (used.has(supports[j].id)) continue;
+          const a = supports[i], b = supports[j];
+          if (a.fromBId === b.toBId && b.fromBId === a.toBId) {
+            // swap! 둘 다 근무로 되돌림
+            sch[a.id][ds] = STATUS.WORK;
+            sch[b.id][ds] = STATUS.WORK;
+            used.add(a.id); used.add(b.id);
+            break;
+          }
+        }
+      }
+    });
+  }
+
+  // ════════════════════════════════════════════════════════
+  // POST-PASS B: 지점 최소 인원 커버리지 (chained 지원)
+  // 규칙 'branchMinStaff' OFF면 스킵
+  // ════════════════════════════════════════════════════════
+  const allDsList = weeks.flatMap(w => w.filter(d => !d.isPrev).map(d => d.ds));
+  const branchMinStaff = rc.branchMinStaff || {};
+  if (ruleEnabled('branchMinStaff')) {
+  const countAtBranch = (bId, ds, br_name) => {
+    const own = employees.filter(e =>
+      !e.isMale && !isIntern(e) && e.branch === bId &&
+      [STATUS.WORK, STATUS.SHARE].includes(sch[e.id]?.[ds]||"")
+    ).length;
+    const supIn = employees.filter(e =>
+      !e.isMale && !isIntern(e) && e.branch !== bId &&
+      sch[e.id]?.[ds] === `지원(${br_name})`
+    ).length;
+    return own + supIn;
+  };
+  // 지점 처리 순서: 사용 가능한 소스 풀이 적은 지점부터 (위례/잠실 권역 먼저)
+  // 풀 크기가 작을수록 더 일찍 처리해서 한정된 소스를 선점
+  const sortedBranches = [...BRANCHES].sort((a, b) => {
+    const poolA = (Array.isArray(supportOrderRaw) ? supportOrderRaw : (supportOrderRaw[a.id] || [])).length;
+    const poolB = (Array.isArray(supportOrderRaw) ? supportOrderRaw : (supportOrderRaw[b.id] || [])).length;
+    return poolA - poolB;
+  });
+  for (let iter = 0; iter < 6; iter++) {
+    let didFix = false;
+    allDsList.forEach(ds => {
+      sortedBranches.forEach(br => {
+        const minS = branchMinStaff[br.id] ?? br.minStaff ?? 1;
+        const cur = countAtBranch(br.id, ds, br.name);
+        if (cur >= minS) return;
+        const need = minS - cur;
+        // 그래프 BFS로 간접 source까지 모두 후보 (transitive support)
+        // 예: 잠실←[천호,위례,강남]. 강남←[홍대,...]. 그래서 홍대도 잠실의 간접 source.
+        const reachableSources = (() => {
+          if (Array.isArray(supportOrderRaw)) return supportOrderRaw;
+          const visited = new Set([br.id]);
+          const queue = [br.id];
+          const out = [];
+          while (queue.length) {
+            const cur = queue.shift();
+            const direct = supportOrderRaw[cur] || [];
+            direct.forEach(src => {
+              if (visited.has(src)) return;
+              visited.add(src);
+              out.push(src);
+              queue.push(src);
+            });
+          }
+          return out;
+        })();
+        const reachableSet = new Set(reachableSources);
+        const candidates = employees.filter(e => {
+          if (e.isMale || isIntern(e) || e.isOwner || e.mustStay) return false;
+          if (e.branch === br.id) return false;
+          if (sch[e.id]?.[ds] !== STATUS.WORK) return false;
+          if (seededDates.has(ds)) return false;
+          // multi-branch 직원 또는 그래프 reachable source 지점 직원
+          const isMulti = (e.branches || []).includes(br.id);
+          const isReachable = reachableSet.has(e.branch);
+          if (!isMulti && !isReachable) return false;
+          // 본 지점 surplus 체크 (보낸 후에도 minStaff 유지)
+          const senderBrName = BRANCHES.find(b => b.id === e.branch)?.name || e.branch;
+          const senderCur = countAtBranch(e.branch, ds, senderBrName);
+          const senderMin = branchMinStaff[e.branch] ?? 1;
+          return senderCur > senderMin;
+        });
+        // 정렬: 직접 source(supportOrder[br].includes) 우선, 그 다음 surplus 큰 순
+        const directSourcesArr = Array.isArray(supportOrderRaw) ? supportOrderRaw : (supportOrderRaw[br.id] || []);
+        const directSet = new Set(directSourcesArr);
+        candidates.sort((a, b) => {
+          const aDirect = directSet.has(a.branch) ? 0 : 1;
+          const bDirect = directSet.has(b.branch) ? 0 : 1;
+          if (aDirect !== bDirect) return aDirect - bDirect;
+          // 둘 다 같은 카테고리면 supportOrder 순서 우선
+          if (aDirect === 0) {
+            const ai = directSourcesArr.indexOf(a.branch);
+            const bi = directSourcesArr.indexOf(b.branch);
+            if (ai !== bi) return ai - bi;
+          }
+          const aSpare = countAtBranch(a.branch, ds, BRANCHES.find(x=>x.id===a.branch)?.name||a.branch) - (branchMinStaff[a.branch] ?? 1);
+          const bSpare = countAtBranch(b.branch, ds, BRANCHES.find(x=>x.id===b.branch)?.name||b.branch) - (branchMinStaff[b.branch] ?? 1);
+          return bSpare - aSpare;
+        });
+        for (let i = 0; i < Math.min(need, candidates.length); i++) {
+          // 매번 sender 지점 surplus 재확인 (이미 보냈을 수도 있음)
+          const c = candidates[i];
+          const senderBrName = BRANCHES.find(b => b.id === c.branch)?.name || c.branch;
+          const senderCur = countAtBranch(c.branch, ds, senderBrName);
+          const senderMin = branchMinStaff[c.branch] ?? 1;
+          if (senderCur <= senderMin) continue;
+          sch[c.id][ds] = `지원(${br.name})`;
+          didFix = true;
+        }
+      });
+    });
+    if (!didFix) break;
+  }
+  } // /if (ruleEnabled('branchMinStaff'))
 
   // 디버그: window.__debugDate 설정 시 해당 날짜 canAssignOff 원인 로깅
   if (typeof window !== 'undefined' && window.__debugDate) {

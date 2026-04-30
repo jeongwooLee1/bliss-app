@@ -14,7 +14,7 @@ function AdminNoti({ data, setData, sb, bizId, branches }) {
   useEffect(()=>{
     if(!selBranch)return;
     const raw=branch?.notiConfig; setCfg(typeof raw==="string"?JSON.parse(raw)||{}:raw||{}); setDetail(null);
-  },[selBranch]);
+  },[selBranch, JSON.stringify(branch?.notiConfig)]);
 
   const up=(k,v)=>{setCfg(p=>({...p,[k]:v}));setSaved(false);};
   const save=async()=>{
@@ -23,6 +23,14 @@ function AdminNoti({ data, setData, sb, bizId, branches }) {
     await sb.update("branches",selBranch,{noti_config:cfgStr}).catch(console.error);
     setData(prev=>prev?{...prev,branches:(prev.branches||[]).map(b=>b.id===selBranch?{...b,notiConfig:cfg}:b)}:prev);
     setSaved(true); setTimeout(()=>setSaved(false),2000);
+  };
+  // 목록 토글 즉시 저장 — 사용자가 별도 저장 버튼 안 눌러도 DB 반영
+  const saveCfg=async(newCfg)=>{
+    if(!selBranch)return;
+    try{
+      await sb.update("branches",selBranch,{noti_config:JSON.stringify(newCfg)});
+      setData(prev=>prev?{...prev,branches:(prev.branches||[]).map(b=>b.id===selBranch?{...b,notiConfig:newCfg}:b)}:prev);
+    }catch(e){console.error(e);alert("저장 실패: "+(e?.message||e));}
   };
 
   const GROUPS=[
@@ -64,7 +72,13 @@ function AdminNoti({ data, setData, sb, bizId, branches }) {
   ];
 
   const notiOn=key=>!!(cfg[key]?.on);
-  const toggleOn=key=>up(key,{...(cfg[key]||{}),on:!notiOn(key)});
+  const toggleOn=async(key)=>{
+    const newVal={...(cfg[key]||{}),on:!notiOn(key)};
+    const newCfg={...cfg,[key]:newVal};
+    setCfg(newCfg);
+    setSaved(true); setTimeout(()=>setSaved(false),1500);
+    await saveCfg(newCfg); // 즉시 DB 저장
+  };
 
   if(detail){
     const item=GROUPS.flatMap(g=>g.items).find(it=>it.key===detail);

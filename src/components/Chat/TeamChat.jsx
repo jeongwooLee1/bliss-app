@@ -7,7 +7,7 @@ import { useTeamChat } from './useTeamChat'
 
 // 루트 컨테이너
 // 부모가 width/height 결정 (사이드바 안에서 flex:1 등으로 사용)
-function TeamChat({ style, extraHeaderRight }) {
+function TeamChat({ style, extraHeaderRight, scrollTrigger }) {
   const chat = useTeamChat()
 
   // 메시지 보낼 때 읽음 처리 (= 대화에 참여했다는 신호)
@@ -35,6 +35,7 @@ function TeamChat({ style, extraHeaderRight }) {
         currentUserId={chat.currentUserId}
         lastReadAt={chat.lastReadAt}
         loading={chat.loading}
+        scrollTrigger={scrollTrigger}
       />
       <ChatInput
         onSend={handleSend}

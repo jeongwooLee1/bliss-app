@@ -58,7 +58,7 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
     </div>
     {!isMobile && <div style={{borderTop:`2px solid ${T.primary}`,display:"flex",flexDirection:"column",flexShrink:0,flexGrow:0,flexBasis:(chatExpanded?420:190)+"px",height:(chatExpanded?420:190)+"px",overflow:"hidden",transition:"flex-basis .18s,height .18s"}}>
       <div style={{flex:1,minHeight:0,display:"flex",flexDirection:"column"}}>
-        <TeamChat extraHeaderRight={
+        <TeamChat scrollTrigger={chatExpanded} extraHeaderRight={
           <button onClick={()=>setChatExpanded(v=>!v)} title={chatExpanded?"축소":"펼치기"}
             style={{border:"none",background:"transparent",color:T.primaryDk,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"2px 4px",flexShrink:0,whiteSpace:"nowrap"}}>
             {chatExpanded?"▾ 접기":"▴ 펼치기"}

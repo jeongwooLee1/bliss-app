@@ -7,6 +7,11 @@ export function validateSch(schData, empList, days, ruleConfig, empSettings) {
     const s = getV(id, ds)
     return s === STATUS.WORK || (s && s.startsWith('지원')) || s === STATUS.SHARE
   }
+  const ruleEnabled = (key) => {
+    const r = ruleConfig?.rulesMeta?.[key]
+    if (r?.enabled === false) return false
+    return true
+  }
 
   // 이월(isNext) 날짜는 검증 제외
   ;(days || []).filter(d => !d.isNext).forEach(day => {
@@ -16,17 +21,21 @@ export function validateSch(schData, empList, days, ruleConfig, empSettings) {
     const c = empList.filter(e => {
       if (e.isMale) return false
       if (e.isFreelancer) return false
+      if (e.rank === '인턴') return false
       const s = getV(e.id, day.ds)
       return s === STATUS.WORK || isSupport(s) || s === STATUS.SHARE
     }).length
-    if (c > 0 && c < ruleConfig.minWork) v.push(`${day.d}일 근무${c}명(최소${ruleConfig.minWork})`)
-    if (c > ruleConfig.maxWork) v.push(`${day.d}일 근무${c}명(최대${ruleConfig.maxWork}초과)`)
+    if (ruleEnabled('workCount')) {
+      if (c > 0 && c < ruleConfig.minWork) v.push(`${day.d}일 근무${c}명(최소${ruleConfig.minWork})`)
+      if (c > ruleConfig.maxWork) v.push(`${day.d}일 근무${c}명(최대${ruleConfig.maxWork}초과)`)
 
-    const offC = empList.filter(e =>
-      !e.isMale && !(e.isFreelancer || empSettings[e.id]?.isFreelancer) &&
-      ['휴무','휴무(꼭)','무급'].includes(getV(e.id, day.ds))
-    ).length
-    if (offC > ruleConfig.maxDailyOff) v.push(`${day.d}일 휴무${offC}명(최대${ruleConfig.maxDailyOff}초과)`)
+      const offC = empList.filter(e =>
+        !e.isMale && !(e.isFreelancer || empSettings[e.id]?.isFreelancer) &&
+        e.rank !== '인턴' &&
+        ['휴무','휴무(꼭)','무급'].includes(getV(e.id, day.ds))
+      ).length
+      if (offC > ruleConfig.maxDailyOff) v.push(`${day.d}일 휴무${offC}명(최대${ruleConfig.maxDailyOff}초과)`)
+    }
 
     if (day.dow === 6) {
       const mw = empList.filter(e => e.isMale && getV(e.id, day.ds) === STATUS.WORK).length

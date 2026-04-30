@@ -17,7 +17,9 @@ import { buildFullPrompt, searchFAQ } from './contextBuilder'
 import { classifyIntentLLM, queryCustomer, querySales, queryReservations, formatIntentResult } from './dataQuery'
 import { buildWriteIntentPrompt, ACTION_SCHEMAS } from './actionSchemas'
 import { validateAction, buildPreview, executeAction } from './actionRunner'
+import { parseBookingWithAI, findCustomerForBooking, findReservationsToCancel } from '../../lib/aiBookParse'
 import ActionConfirmCard from './ActionConfirmCard'
+import SetupWizard from '../SetupWizard/SetupWizard'
 
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
 const SESSIONS_KEY = 'bliss_claude_sessions_v1'
@@ -50,12 +52,31 @@ const saveSessions = (sessions) => {
 }
 const welcomeMessage = (userName) => ({
   role: 'assistant',
-  text: `안녕하세요 ${userName ? userName + '님' : '직원님'} :) 블리스 AI예요.\nFAQ·가격·매장 정보는 물론, 오늘 예약 / 이번 달 매출 / 특정 고객 정보도 알려드려요.\n아래 제안을 클릭하거나 질문을 입력해보세요.`,
+  text: `안녕하세요 ${userName ? userName + '님' : '직원님'} :) 블리스 AI예요.\nFAQ·가격·매장 정보는 물론, 오늘 예약 / 이번 달 매출 / 특정 고객 정보도 알려드려요.\n\n🪄 좌측 상단 **"설정 마법사"** 버튼을 누르시면 언제든 시술/직원/예약경로 등 매장 기본 설정을 도와드려요.\n\n아래 제안을 클릭하거나 질문을 입력해보세요.`,
   suggestions: true,
   at: Date.now(),
 })
 
-export default function BlissAI({ data, currentUser, userBranches, isMaster, bizId }) {
+export default function BlissAI({ data, setData, currentUser, userBranches, isMaster, bizId, bizName }) {
+  // 설정 마법사 모드 — sessionStorage 'bliss_open_setup'='1'이면 자동 진입 (가입 직후 자동 트리거)
+  const [setupOpen, setSetupOpen] = useState(() => {
+    try {
+      const flag = sessionStorage.getItem('bliss_open_setup')
+      if (flag === '1') {
+        sessionStorage.removeItem('bliss_open_setup')
+        return true
+      }
+    } catch {}
+    return false
+  })
+  const closeSetup = () => setSetupOpen(false)
+  const _geminiKey = (() => {
+    try {
+      const settings = (data?.businesses || [])[0]?.settings
+      const parsed = typeof settings === 'string' ? JSON.parse(settings || '{}') : (settings || {})
+      return window.__systemGeminiKey || window.__geminiKey || parsed.gemini_key || localStorage.getItem('bliss_gemini_key') || ''
+    } catch { return '' }
+  })()
   // ── 세션 관리 ─────────────────────────────────────────────────────────────
   const [sessions, setSessions] = useState(() => {
     const loaded = loadSessions()
@@ -276,14 +297,59 @@ export default function BlissAI({ data, currentUser, userBranches, isMaster, biz
       // 1단계: 쓰기/세팅 요청인지 먼저 판별 (LLM)
       const writeCheck = await tryParseWriteIntent(q, data, callGemini)
       if (writeCheck?.intent === 'write' && writeCheck.action) {
-        // 권한 체크: 쓰기는 브랜드 대표(isMaster)만
-        if (!isMaster) {
+        // 권한 체크: 예약 생성·취소는 모든 사용자 허용. 그 외 설정 변경은 마스터만.
+        const isReservationOp = writeCheck.action === 'create_reservation' || writeCheck.action === 'cancel_reservation'
+        if (!isMaster && !isReservationOp) {
           appendMessage({
             role: 'assistant',
-            text: '⛔ 설정 변경은 브랜드 대표(마스터) 계정에서만 가능합니다.\n조회 기능(예약/매출/고객/FAQ)은 자유롭게 이용하실 수 있어요.',
+            text: '⛔ 설정 변경은 브랜드 대표(마스터) 계정에서만 가능합니다.\n예약 생성과 조회 기능은 자유롭게 이용하실 수 있어요.',
             at: Date.now(),
           })
           return
+        }
+        // 예약 생성: 자연어 → AI Book 파서로 구조화 데이터 미리 추출
+        if (writeCheck.action === 'create_reservation') {
+          const inputText = writeCheck.changes?.input || q
+          try {
+            const parsed = await parseBookingWithAI({ text: inputText }, data, geminiKey)
+            // 기존 고객 매칭 (정확/부분 검색) — ps도 매칭 정보로 보강됨
+            const { custId: matchedCustId } = await findCustomerForBooking(parsed, bizId, inputText)
+            writeCheck.changes = { ...writeCheck.changes, _parsed: parsed, _matchedCustId: matchedCustId }
+            // 필수 정보 검증 — 부족하면 confirm 카드 대신 묻기 (추측 금지)
+            const missing = []
+            if (!parsed.date) missing.push('날짜')
+            if (!parsed.time) missing.push('시간')
+            if (!parsed.branch) missing.push('지점 (강남/왕십리/홍대/마곡/잠실/위례/용산/천호)')
+            if (!parsed.custName && !parsed.custPhone && !parsed.custEmail) missing.push('고객 (이름·연락처·이메일 중 하나)')
+            if (missing.length > 0) {
+              appendMessage({ role: 'assistant', text: `다음 정보가 필요해요:\n• ${missing.join('\n• ')}`, at: Date.now() })
+              return
+            }
+          } catch (e) {
+            appendMessage({
+              role: 'assistant',
+              text: '❌ 예약 정보 분석 실패: ' + (e?.message || e) + '\n\n다시 입력해주세요. 예: "내일 오후 3시 강남점 김철수 010-1234-5678 브라질리언 예약"',
+              error: true, at: Date.now(),
+            })
+            return
+          }
+        }
+        // 예약 취소: 자연어 파싱 → 고객 매칭 → 예약 검색
+        if (writeCheck.action === 'cancel_reservation') {
+          const inputText = writeCheck.changes?.input || q
+          try {
+            const parsed = await parseBookingWithAI({ text: inputText }, data, geminiKey)
+            const { custId: matchedCustId } = await findCustomerForBooking(parsed, bizId, inputText)
+            const matched = await findReservationsToCancel(parsed, matchedCustId, bizId)
+            writeCheck.changes = { ...writeCheck.changes, _parsed: parsed, _matchedRes: matched }
+          } catch (e) {
+            appendMessage({
+              role: 'assistant',
+              text: '❌ 예약 검색 실패: ' + (e?.message || e),
+              error: true, at: Date.now(),
+            })
+            return
+          }
         }
         // 쓰기 요청 — confirm 카드 메시지로 추가
         const validateErr = validateAction(writeCheck.action, writeCheck.changes)
@@ -333,7 +399,22 @@ export default function BlissAI({ data, currentUser, userBranches, isMaster, biz
       }
 
       const prompt = buildFullPrompt({ question: q, data, faqItems, role, extraContext })
-      const answer = await callGemini(prompt, { useHistory: true })
+      // 메인 답변은 Claude Sonnet 4.5 (서버 프록시) — 실패 시 Gemini 폴백
+      let answer = ''
+      try {
+        const histTurns = (activeSession?.messages || [])
+          .filter(m => m.role === 'user' || m.role === 'assistant').slice(-10)
+          .map(m => ({ role: m.role, text: m.text || '' }))
+        const cr = await fetch('https://blissme.ai/bliss-ai-chat', {
+          method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({ messages: [...histTurns, { role: 'user', text: prompt }] }),
+        })
+        if (cr.ok) {
+          const cd = await cr.json()
+          if (cd?.answer) answer = cd.answer
+        }
+      } catch {}
+      if (!answer) answer = await callGemini(prompt, { useHistory: true })
       appendMessage({ role: 'assistant', text: answer, intent: intent.type, at: Date.now() })
       logQuery(q, intent, answer)
     } catch (e) {
@@ -366,8 +447,9 @@ export default function BlissAI({ data, currentUser, userBranches, isMaster, biz
 
   // ── 액션 실행 핸들러 ────────────────────────────────────────────────────
   const runAction = async (msgIdx, actionPayload) => {
-    // 권한 2중 방어
-    if (!isMaster) {
+    // 권한 2중 방어 — 예약 생성·취소는 전 사용자, 그 외 마스터 전용
+    const isReservationOp = actionPayload?.action === 'create_reservation' || actionPayload?.action === 'cancel_reservation'
+    if (!isMaster && !isReservationOp) {
       updateActionStatus(msgIdx, 'error', '권한 없음')
       appendMessage({ role: 'assistant', text: '⛔ 설정 변경은 브랜드 대표만 가능합니다.', error: true, at: Date.now() })
       return
@@ -394,7 +476,7 @@ export default function BlissAI({ data, currentUser, userBranches, isMaster, biz
   }
   const cancelAction = (msgIdx) => {
     updateActionStatus(msgIdx, 'cancelled')
-    appendMessage({ role: 'assistant', text: '취소됐어요. 다시 말씀해주세요.', at: Date.now() })
+    appendMessage({ role: 'assistant', text: '요청을 진행하지 않았어요. 다시 말씀해주세요.', at: Date.now() })
   }
   const updateActionStatus = (msgIdx, status, errMsg) => {
     setSessions(prev => prev.map(s => {
@@ -416,12 +498,19 @@ export default function BlissAI({ data, currentUser, userBranches, isMaster, biz
           width: 240, flexShrink: 0, borderRight: '1px solid ' + T.border,
           display: 'flex', flexDirection: 'column', background: T.gray100,
         }}>
-          <div style={{ padding: '12px 12px 8px', borderBottom: '1px solid ' + T.border }}>
+          <div style={{ padding: '12px 12px 8px', borderBottom: '1px solid ' + T.border, display:'flex', flexDirection:'column', gap:6 }}>
             <button onClick={newSession}
               style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: 'none',
                 background: T.primary, color: '#fff', fontSize: 13, fontWeight: 700,
                 cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
               ＋ 새 대화
+            </button>
+            <button onClick={() => setSetupOpen(true)}
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 10,
+                border: '1px solid '+T.primary, background: '#fff', color: T.primary,
+                fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+              🪄 설정 마법사
             </button>
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '6px 8px' }}>
@@ -465,7 +554,14 @@ export default function BlissAI({ data, currentUser, userBranches, isMaster, biz
         </div>
       )}
 
-      {/* 우측 메인 */}
+      {/* 우측 메인 — 설정 마법사 모드면 SetupWizard로 대체 */}
+      {setupOpen ? (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
+          <SetupWizard bizId={bizId} bizName={bizName} geminiKey={_geminiKey}
+            sb={sb} data={data} setData={setData}
+            onComplete={closeSetup} onClose={closeSetup} />
+        </div>
+      ) : (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', maxWidth: sidebarOpen ? 'none' : 900, margin: sidebarOpen ? 0 : '0 auto', padding: '12px 16px 0', minWidth: 0 }}>
         {/* 헤더 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 4px 12px', borderBottom: '1px solid ' + T.border }}>
@@ -557,6 +653,7 @@ export default function BlissAI({ data, currentUser, userBranches, isMaster, biz
           </div>
         </div>
       </div>
+      )}
     </div>
   )
 }

@@ -53,7 +53,64 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
 
   const [sheet,setSheet]=useState(false);
   const [edit,setEdit]=useState(null);
+  const [editPair,setEditPair]=useState(null); // 페어 편집 시 {half, full}
   const [form,setForm]=useState({cat:"",name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0,badgeText:"",badgeColor:"#ffffff",badgeBg:"#f97316",promoConfig:{},isActive:true,grantsMemberPrice:false});
+  // 옵션 그룹 (절반/전체 같은 한 부위에 변형 옵션)
+  const [useOptions, setUseOptions] = useState(false);
+  const [opt1, setOpt1] = useState({name:"절반", dur:25, priceF:0, priceM:0, memberPriceF:0, memberPriceM:0});
+  const [opt2, setOpt2] = useState({name:"전체", dur:40, priceF:0, priceM:0, memberPriceF:0, memberPriceM:0});
+  // ── 페어 감지: note의 [pair:XX] 플래그가 일치하는 두 record만 페어로 처리 ──
+  const _getPairId = (note) => {
+    const m = (note||"").match(/\[pair:([a-z0-9]+)\]/i);
+    return m ? m[1] : null;
+  };
+  const _stripPairTag = (note) => (note||"").replace(/\s*\[pair:[a-z0-9]+\]\s*/gi, '').trim();
+  const _getBaseAndOpt = (name) => {
+    const trimmed = (name||"").trim();
+    const parts = trimmed.split(/\s+/);
+    if (parts.length < 2) return null;
+    return { base: parts.slice(0,-1).join(' '), opt: parts[parts.length-1] };
+  };
+  const groupedFiltered = useMemo(() => {
+    const out = [];
+    const used = new Set();
+    for (let i = 0; i < filtered.length; i++) {
+      if (used.has(i)) continue;
+      const sv = filtered[i];
+      const pid = _getPairId(sv.note);
+      if (pid) {
+        const otherIdx = filtered.findIndex((s, j) => j !== i && !used.has(j) && _getPairId(s.note) === pid);
+        if (otherIdx >= 0) {
+          used.add(i); used.add(otherIdx);
+          const otherSvc = filtered[otherIdx];
+          const bo = _getBaseAndOpt(sv.name) || { base: sv.name, opt: '' };
+          const otherBo = _getBaseAndOpt(otherSvc.name) || { base: otherSvc.name, opt: '' };
+          const isHalfA = /절반|반/.test(bo.opt);
+          let halfSvc, fullSvc;
+          if (isHalfA) { halfSvc = sv; fullSvc = otherSvc; }
+          else { halfSvc = otherSvc; fullSvc = sv; }
+          out.push({type:'pair', base: bo.base, half: halfSvc, full: fullSvc, idx: i});
+          continue;
+        }
+      }
+      out.push({type:'single', svc: sv, idx: i});
+    }
+    return out;
+  }, [filtered]);
+  // 페어 편집 열기
+  const openEditPair = (g) => {
+    let pc = g.full.promoConfig || g.half.promoConfig || {};
+    if (typeof pc === "string") { try { pc = JSON.parse(pc); } catch(e) { pc = {}; } }
+    setEdit(null);
+    setEditPair({half: g.half, full: g.full});
+    setForm({cat:g.full.cat||"", name:g.base, dur:0, priceF:0, priceM:0, memberPriceF:0, memberPriceM:0, note:_stripPairTag(g.full.note||g.half.note||""), isPackage:false, pkgCount:10, pkgPriceF:0, pkgPriceM:0, badgeText:g.full.badgeText||"", badgeColor:g.full.badgeColor||"#ffffff", badgeBg:g.full.badgeBg||"#f97316", promoConfig:pc||{}, isActive:g.full.isActive!==false, grantsMemberPrice:!!g.full.grantsMemberPrice});
+    const halfBo = _getBaseAndOpt(g.half.name);
+    const fullBo = _getBaseAndOpt(g.full.name);
+    setOpt1({name: halfBo?.opt||"절반", dur:g.half.dur||0, priceF:g.half.priceF||0, priceM:g.half.priceM||0, memberPriceF:g.half.memberPriceF||0, memberPriceM:g.half.memberPriceM||0});
+    setOpt2({name: fullBo?.opt||"전체", dur:g.full.dur||0, priceF:g.full.priceF||0, priceM:g.full.priceM||0, memberPriceF:g.full.memberPriceF||0, memberPriceM:g.full.memberPriceM||0});
+    setUseOptions(true);
+    setSheet(true);
+  };
   const [catSheet,setCatSheet]=useState(false);
   const [newCatName,setNewCatName]=useState("");
   const [saving,setSaving]=useState(false);
@@ -91,12 +148,22 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
   };
   const set=(k,v)=>setForm(p=>({...p,[k]:v}));
 
-  const openNew=()=>{setEdit(null);setForm({cat:defaultCatId,name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0,badgeText:"",badgeColor:"#ffffff",badgeBg:"#f97316",promoConfig:{},isActive:true,grantsMemberPrice:false});setSheet(true);};
+  const openNew=()=>{
+    setEdit(null);
+    setEditPair(null);
+    setForm({cat:defaultCatId,name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0,badgeText:"",badgeColor:"#ffffff",badgeBg:"#f97316",promoConfig:{},isActive:true,grantsMemberPrice:false});
+    setUseOptions(false);
+    setOpt1({name:"절반", dur:25, priceF:0, priceM:0, memberPriceF:0, memberPriceM:0});
+    setOpt2({name:"전체", dur:40, priceF:0, priceM:0, memberPriceF:0, memberPriceM:0});
+    setSheet(true);
+  };
   const openEdit=s=>{
     let pc = s.promoConfig || {};
     if (typeof pc === "string") { try { pc = JSON.parse(pc); } catch(e) { pc = {}; } }
     setEdit(s);
+    setEditPair(null);
     setForm({cat:s.cat||"",name:s.name||"",dur:s.dur||20,priceF:s.priceF||0,priceM:s.priceM||0,memberPriceF:s.memberPriceF||0,memberPriceM:s.memberPriceM||0,note:s.note||"",isPackage:!!s.isPackage,pkgCount:s.pkgCount||10,pkgPriceF:s.pkgPriceF||0,pkgPriceM:s.pkgPriceM||0,badgeText:s.badgeText||"",badgeColor:s.badgeColor||"#ffffff",badgeBg:s.badgeBg||"#f97316",promoConfig:pc||{},isActive:s.isActive!==false,grantsMemberPrice:!!s.grantsMemberPrice});
+    setUseOptions(false);
     setSheet(true);
   };
   // 판매중단 토글 — 리스트에서 직접 전환
@@ -121,15 +188,64 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
       if (rawPc.validFrom) cleanPc.validFrom = rawPc.validFrom;
       if (rawPc.validUntil) cleanPc.validUntil = rawPc.validUntil;
       if (Array.isArray(rawPc.branchIds) && rawPc.branchIds.length > 0) cleanPc.branchIds = rawPc.branchIds;
-      const pl={cat:form.cat,name:form.name,dur:+form.dur,priceF:+form.priceF,priceM:+form.priceM,memberPriceF:+form.memberPriceF||null,memberPriceM:+form.memberPriceM||null,note:form.note,isPackage:form.isPackage,pkgCount:+form.pkgCount,pkgPriceF:+form.pkgPriceF,pkgPriceM:+form.pkgPriceM,badgeText:form.badgeText||null,badgeColor:form.badgeColor||null,badgeBg:form.badgeBg||null,promoConfig:Object.keys(cleanPc).length>0?cleanPc:null,isActive:form.isActive!==false,grantsMemberPrice:!!form.grantsMemberPrice};
-      if(edit){
-        await sb.update("services",edit.id,toDb("services",pl));
-        setServices(p=>p.map(s=>s.id===edit.id?{...s,...pl}:s));
-      }else{
-        const id="sv_"+uid();
-        const res=await sb.insert("services",toDb("services",{id,business_id:_activeBizId,...pl,sort:services.length}));
-        if(!res)return;
-        setServices(p=>[...p,{id,...pl,sort:services.length}]);
+      // 🎫 쿠폰 효과 필드 — 쿠폰 카테고리 시술 저장 시 보존되어야 함
+      if (rawPc.couponType) cleanPc.couponType = rawPc.couponType;
+      if (rawPc.couponTarget) cleanPc.couponTarget = rawPc.couponTarget;
+      if (rawPc.couponValue !== undefined && Number(rawPc.couponValue) > 0) cleanPc.couponValue = Number(rawPc.couponValue);
+      if (Array.isArray(rawPc.couponTargetServiceIds) && rawPc.couponTargetServiceIds.length > 0) cleanPc.couponTargetServiceIds = rawPc.couponTargetServiceIds;
+      if (Array.isArray(rawPc.couponTargetCategoryIds) && rawPc.couponTargetCategoryIds.length > 0) cleanPc.couponTargetCategoryIds = rawPc.couponTargetCategoryIds;
+      if (rawPc.autoApply !== undefined) cleanPc.autoApply = !!rawPc.autoApply;
+      if (rawPc.consumeOnUse !== undefined) cleanPc.consumeOnUse = !!rawPc.consumeOnUse;
+      if (rawPc.priority !== undefined && rawPc.priority !== null && rawPc.priority !== "") cleanPc.priority = Number(rawPc.priority) || 0;
+      if (rawPc.expiryMonths !== undefined && rawPc.expiryMonths !== null && rawPc.expiryMonths !== "" && Number(rawPc.expiryMonths) > 0) cleanPc.expiryMonths = Number(rawPc.expiryMonths);
+      const baseCommon = {cat:form.cat,note:form.note,isPackage:form.isPackage,pkgCount:+form.pkgCount,pkgPriceF:+form.pkgPriceF,pkgPriceM:+form.pkgPriceM,badgeText:form.badgeText||null,badgeColor:form.badgeColor||null,badgeBg:form.badgeBg||null,promoConfig:Object.keys(cleanPc).length>0?cleanPc:null,isActive:form.isActive!==false,grantsMemberPrice:!!form.grantsMemberPrice};
+      if (useOptions && editPair) {
+        // 페어 편집: 양쪽 record 동시 업데이트, [pair:XX] 플래그 보존
+        const pairId = _getPairId(editPair.full.note) || _getPairId(editPair.half.note) || uid().slice(0,8);
+        const stripped = _stripPairTag(form.note||"");
+        const noteWithPair = stripped ? `${stripped} [pair:${pairId}]` : `[pair:${pairId}]`;
+        const baseName = form.name.trim();
+        const updates = [
+          { svc: editPair.half, opt: opt1 },
+          { svc: editPair.full, opt: opt2 },
+        ];
+        for (const u of updates) {
+          const optName = (u.opt.name||"").trim();
+          if (!optName) continue;
+          const recName = `${baseName} ${optName}`;
+          const pl = {...baseCommon, note:noteWithPair, name:recName, dur:+u.opt.dur||0, priceF:+u.opt.priceF||0, priceM:+u.opt.priceM||0, memberPriceF:+u.opt.memberPriceF||null, memberPriceM:+u.opt.memberPriceM||null};
+          await sb.update("services", u.svc.id, toDb("services", pl));
+          setServices(p => p.map(x => x.id === u.svc.id ? {...x, ...pl} : x));
+        }
+      } else if (useOptions && !edit) {
+        // 옵션 그룹 신규: 2개 record 생성, [pair:XX] 플래그 부여
+        const pairId = uid().slice(0,8);
+        const stripped = _stripPairTag(form.note||"");
+        const noteWithPair = stripped ? `${stripped} [pair:${pairId}]` : `[pair:${pairId}]`;
+        const baseName = form.name.trim();
+        const opts = [opt1, opt2];
+        for (let i = 0; i < opts.length; i++) {
+          const opt = opts[i];
+          const optName = (opt.name||"").trim();
+          if (!optName) continue;
+          const id = "sv_" + uid();
+          const recName = `${baseName} ${optName}`;
+          const optPl = {...baseCommon, note:noteWithPair, name: recName, dur: +opt.dur||0, priceF: +opt.priceF||0, priceM: +opt.priceM||0, memberPriceF: +opt.memberPriceF||null, memberPriceM: +opt.memberPriceM||null};
+          const res = await sb.insert("services", toDb("services", {id, business_id:_activeBizId, ...optPl, sort: services.length+i}));
+          if (!res) continue;
+          setServices(p => [...p, {id, ...optPl, sort: services.length+i}]);
+        }
+      } else {
+        const pl={...baseCommon, name:form.name, dur:+form.dur, priceF:+form.priceF, priceM:+form.priceM, memberPriceF:+form.memberPriceF||null, memberPriceM:+form.memberPriceM||null};
+        if(edit){
+          await sb.update("services",edit.id,toDb("services",pl));
+          setServices(p=>p.map(s=>s.id===edit.id?{...s,...pl}:s));
+        }else{
+          const id="sv_"+uid();
+          const res=await sb.insert("services",toDb("services",{id,business_id:_activeBizId,...pl,sort:services.length}));
+          if(!res)return;
+          setServices(p=>[...p,{id,...pl,sort:services.length}]);
+        }
       }
       setSheet(false);
     }catch(e){alert("저장 실패: "+e.message);}
@@ -180,7 +296,6 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
 
   return <div>
     <APageHeader title={couponMode?"쿠폰 관리":"시술 상품 관리"} count={visibleServices.length} onAdd={openNew}/>
-    {!couponMode && <MemberRulesCard data={data} setData={setData}/>}
     <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16,alignItems:"center"}}>
       <button onClick={()=>setFilterCat("all")}
   style={{padding:"5px 13px",borderRadius:20,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:T.fs.xs,fontWeight:filterCat==="all"?700:500,
@@ -199,45 +314,82 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
         style={{padding:"5px 12px",borderRadius:20,border:"1px solid "+T.primary,background:T.primaryLt||"#EDE9FE",color:T.primary,fontSize:T.fs.xs,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
         <I name="edit" size={11}/> 카테고리 편집
       </button>
-      <button onClick={()=>setBulkSheet(true)} style={{marginLeft:"auto",padding:"5px 13px",borderRadius:20,border:"1px solid "+T.primary,background:T.primaryLt||T.bgCard,color:T.primary,fontSize:T.fs.xs,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
+      {couponMode && <button onClick={()=>setBulkSheet(true)} style={{marginLeft:"auto",padding:"5px 13px",borderRadius:20,border:"1px solid "+T.primary,background:T.primaryLt||T.bgCard,color:T.primary,fontSize:T.fs.xs,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
         🎁 이벤트 일괄 적용
-      </button>
+      </button>}
     </div>
     {filtered.length===0?<AEmpty icon="scissors" message="등록된 시술이 없어요" onAdd={openNew} addLabel="시술 추가"/>
     :<div style={{display:"flex",flexDirection:"column",gap:8}}>
-      {filtered.map((s,sidx)=><div key={s.id} className="card" data-drag-idx={sidx} {...svcMH(sidx)} {...svcTH(sidx)} style={{padding:"14px 16px",cursor:"grab",opacity:s.isActive===false?0.55:1,background:s.isActive===false?T.gray100:""}}>
-        <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5,flexWrap:"wrap"}}>
-              <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.text,textDecoration:s.isActive===false?"line-through":"none"}}>{s.name}</span>
-              {s.isActive===false&&<ABadge color={T.danger} bg={T.dangerLt||"#fee2e2"}>판매중단</ABadge>}
-              {s.isPackage&&<ABadge color={T.primary}>다회권</ABadge>}
-              {qtyOn(s.note)&&<ABadge color={T.female} bg={T.femaleLt}>수량허용</ABadge>}
-              {s.badgeText&&<span style={{display:"inline-block",padding:"2px 8px",borderRadius:10,fontSize:10,fontWeight:700,color:s.badgeColor||"#fff",background:s.badgeBg||T.primary}}>{s.badgeText}</span>}
+      {groupedFiltered.map((g)=>{
+        if(g.type==='pair'){
+          const {half,full,base,idx:sidx}=g;
+          const halfBo=_getBaseAndOpt(half.name);
+          const fullBo=_getBaseAndOpt(full.name);
+          const halfOpt=halfBo?.opt||"절반";
+          const fullOpt=fullBo?.opt||"전체";
+          const inactive=half.isActive===false&&full.isActive===false;
+          return <div key={`pair-${half.id}-${full.id}`} className="card" data-drag-idx={sidx} {...svcMH(sidx)} {...svcTH(sidx)} style={{padding:"14px 16px",cursor:"grab",opacity:inactive?0.55:1,background:inactive?T.gray100:"",borderLeft:`3px solid ${T.primary}`}}>
+            <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,flexWrap:"wrap"}}>
+                  <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.text}}>{base}</span>
+                  <ABadge color={T.primary} bg={T.primaryLt||"#fef3c7"}>옵션 {halfOpt}/{fullOpt}</ABadge>
+                  {inactive&&<ABadge color={T.danger} bg={T.dangerLt||"#fee2e2"}>판매중단</ABadge>}
+                  {full.badgeText&&<span style={{display:"inline-block",padding:"2px 8px",borderRadius:10,fontSize:10,fontWeight:700,color:full.badgeColor||"#fff",background:full.badgeBg||T.primary}}>{full.badgeText}</span>}
+                </div>
+                {[{lbl:halfOpt,sv:half},{lbl:fullOpt,sv:full}].map((o,oi)=>(
+                  <div key={oi} style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,padding:"3px 8px",background:o.sv.isActive===false?"#fff5f5":"#fafafa",borderRadius:6,opacity:o.sv.isActive===false?0.6:1}}>
+                    <span style={{fontSize:10,fontWeight:700,color:T.primary,minWidth:42,textDecoration:o.sv.isActive===false?"line-through":"none"}}>{o.lbl}</span>
+                    <span style={{fontSize:T.fs.xxs,color:T.textMuted}}><I name="clock" size={10}/> {o.sv.dur}분</span>
+                    <span style={{fontSize:T.fs.xxs,color:T.female}}>여 {fmtSvc(o.sv.priceF)}{o.sv.memberPriceF?<span style={{color:T.primary,marginLeft:3}}>→{fmtSvc(o.sv.memberPriceF)}</span>:""}</span>
+                    <span style={{fontSize:T.fs.xxs,color:T.male}}>남 {fmtSvc(o.sv.priceM)}{o.sv.memberPriceM?<span style={{color:T.primary,marginLeft:3}}>→{fmtSvc(o.sv.memberPriceM)}</span>:""}</span>
+                  </div>
+                ))}
+                <ABadge color={T.gray500} bg={T.gray100}>{catName(full.cat)}</ABadge>
+              </div>
+              <div style={{display:"flex",gap:4,flexShrink:0,alignItems:"center"}}>
+                <button onClick={()=>openEditPair(g)} style={{padding:"4px 9px",borderRadius:7,border:"1px solid "+T.primary,background:T.primaryLt||"#fef3c7",color:T.primary,cursor:"pointer",display:"flex",alignItems:"center",gap:3,fontSize:10,fontWeight:700,fontFamily:"inherit"}}><I name="edit" size={11}/>페어 편집</button>
+                <button onClick={()=>{setDel(half.id);}} title={`${halfOpt} 삭제`} style={{width:28,height:28,borderRadius:7,border:"1px solid #fecaca",background:"#fff5f5",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><I name="trash" size={13} style={{color:T.danger}}/></button>
+              </div>
             </div>
-            <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:6}}>
-              <span style={{fontSize:T.fs.xxs,color:T.textMuted}}><I name="clock" size={10}/> {s.dur}분</span>
-              <span style={{fontSize:T.fs.xxs,color:T.female}}>여 {fmtSvc(s.priceF)}{s.memberPriceF?<span style={{color:T.primary,marginLeft:3}}>→{fmtSvc(s.memberPriceF)}</span>:""}</span>
-              <span style={{fontSize:T.fs.xxs,color:T.male}}>남 {fmtSvc(s.priceM)}{s.memberPriceM?<span style={{color:T.primary,marginLeft:3}}>→{fmtSvc(s.memberPriceM)}</span>:""}</span>
+          </div>;
+        }
+        const s=g.svc;
+        const sidx=g.idx;
+        return <div key={s.id} className="card" data-drag-idx={sidx} {...svcMH(sidx)} {...svcTH(sidx)} style={{padding:"14px 16px",cursor:"grab",opacity:s.isActive===false?0.55:1,background:s.isActive===false?T.gray100:""}}>
+          <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5,flexWrap:"wrap"}}>
+                <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.text,textDecoration:s.isActive===false?"line-through":"none"}}>{s.name}</span>
+                {s.isActive===false&&<ABadge color={T.danger} bg={T.dangerLt||"#fee2e2"}>판매중단</ABadge>}
+                {s.isPackage&&<ABadge color={T.primary}>다회권</ABadge>}
+                {qtyOn(s.note)&&<ABadge color={T.female} bg={T.femaleLt}>수량허용</ABadge>}
+                {s.badgeText&&<span style={{display:"inline-block",padding:"2px 8px",borderRadius:10,fontSize:10,fontWeight:700,color:s.badgeColor||"#fff",background:s.badgeBg||T.primary}}>{s.badgeText}</span>}
+              </div>
+              <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:6}}>
+                <span style={{fontSize:T.fs.xxs,color:T.textMuted}}><I name="clock" size={10}/> {s.dur}분</span>
+                <span style={{fontSize:T.fs.xxs,color:T.female}}>여 {fmtSvc(s.priceF)}{s.memberPriceF?<span style={{color:T.primary,marginLeft:3}}>→{fmtSvc(s.memberPriceF)}</span>:""}</span>
+                <span style={{fontSize:T.fs.xxs,color:T.male}}>남 {fmtSvc(s.priceM)}{s.memberPriceM?<span style={{color:T.primary,marginLeft:3}}>→{fmtSvc(s.memberPriceM)}</span>:""}</span>
+              </div>
+              <ABadge color={T.gray500} bg={T.gray100}>{catName(s.cat)}</ABadge>
             </div>
-            <ABadge color={T.gray500} bg={T.gray100}>{catName(s.cat)}</ABadge>
+            <div style={{display:"flex",gap:4,flexShrink:0,alignItems:"center"}}>
+              <div style={{display:"flex",flexDirection:"column",gap:2}}>
+              <button onClick={e=>{e.stopPropagation();moveSvc(sidx,-1);}} style={{width:22,height:20,border:"1px solid "+T.border,background:sidx===0?T.gray100:"#fff",borderRadius:4,cursor:sidx===0?"not-allowed":"pointer",fontSize:9,opacity:sidx===0?.4:1}}>&#9650;</button>
+              <button onClick={e=>{e.stopPropagation();moveSvc(sidx,1);}} style={{width:22,height:20,border:"1px solid "+T.border,background:sidx===filtered.length-1?T.gray100:"#fff",borderRadius:4,cursor:sidx===filtered.length-1?"not-allowed":"pointer",fontSize:9,opacity:sidx===filtered.length-1?.4:1}}>&#9660;</button>
+              </div>
+              <button onClick={()=>toggleActive(s)} title={s.isActive===false?"판매 재개":"판매중단"}
+                style={{padding:"3px 8px",borderRadius:7,border:`1px solid ${s.isActive===false?"#fecaca":T.border}`,background:s.isActive===false?"#fff5f5":"#fff",color:s.isActive===false?T.danger:T.gray600,cursor:"pointer",fontSize:10,fontWeight:700,fontFamily:"inherit"}}>
+                {s.isActive===false?"중단":"판매중"}
+              </button>
+              <button onClick={()=>openEdit(s)} style={{width:28,height:28,borderRadius:7,border:"1px solid "+T.border,background:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><I name="edit" size={13} style={{color:T.gray500}}/></button>
+              <button onClick={()=>setDel(s.id)} style={{width:28,height:28,borderRadius:7,border:"1px solid #fecaca",background:"#fff5f5",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><I name="trash" size={13} style={{color:T.danger}}/></button>
+            </div>
           </div>
-          <div style={{display:"flex",gap:4,flexShrink:0,alignItems:"center"}}>
-            <div style={{display:"flex",flexDirection:"column",gap:2}}>
-            <button onClick={e=>{e.stopPropagation();moveSvc(sidx,-1);}} style={{width:22,height:20,border:"1px solid "+T.border,background:sidx===0?T.gray100:"#fff",borderRadius:4,cursor:sidx===0?"not-allowed":"pointer",fontSize:9,opacity:sidx===0?.4:1}}>&#9650;</button>
-            <button onClick={e=>{e.stopPropagation();moveSvc(sidx,1);}} style={{width:22,height:20,border:"1px solid "+T.border,background:sidx===filtered.length-1?T.gray100:"#fff",borderRadius:4,cursor:sidx===filtered.length-1?"not-allowed":"pointer",fontSize:9,opacity:sidx===filtered.length-1?.4:1}}>&#9660;</button>
-            </div>
-            <button onClick={()=>toggleActive(s)} title={s.isActive===false?"판매 재개":"판매중단"}
-              style={{padding:"3px 8px",borderRadius:7,border:`1px solid ${s.isActive===false?"#fecaca":T.border}`,background:s.isActive===false?"#fff5f5":"#fff",color:s.isActive===false?T.danger:T.gray600,cursor:"pointer",fontSize:10,fontWeight:700,fontFamily:"inherit"}}>
-              {s.isActive===false?"중단":"판매중"}
-            </button>
-            <button onClick={()=>openEdit(s)} style={{width:28,height:28,borderRadius:7,border:"1px solid "+T.border,background:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><I name="edit" size={13} style={{color:T.gray500}}/></button>
-            <button onClick={()=>setDel(s.id)} style={{width:28,height:28,borderRadius:7,border:"1px solid #fecaca",background:"#fff5f5",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><I name="trash" size={13} style={{color:T.danger}}/></button>
-          </div>
-        </div>
-      </div>)}
+        </div>;
+      })}
     </div>}
-    <ASheet open={sheet} onClose={()=>setSheet(false)} title={edit?"시술 수정":"시술 추가"} onSave={save} saving={saving} saveDisabled={saving||!form.name.trim()} saveLabel={edit?"저장":"시술 추가"}>
+    <ASheet open={sheet} onClose={()=>setSheet(false)} title={editPair?"옵션 그룹 수정":(edit?"시술 수정":"시술 추가")} onSave={save} saving={saving} saveDisabled={saving||!form.name.trim()} saveLabel={editPair?"저장":(edit?"저장":"시술 추가")}>
       <AField label="카테고리">
         {cats.length===0
           ? <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -249,16 +401,49 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
             </select>
         }
       </AField>
-      <AField label="시술명" required><input style={AInp} value={form.name} onChange={e=>set("name",e.target.value)} placeholder="예: 브라질리언" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
-        <AField label="소요(분)"><input style={AInp} type="number" value={form.dur} onChange={e=>set("dur",e.target.value)} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
-        <AField label="여성 정상가"><input style={AInp} type="number" value={form.priceF} onChange={e=>set("priceF",e.target.value)} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
-        <AField label="남성 정상가"><input style={AInp} type="number" value={form.priceM} onChange={e=>set("priceM",e.target.value)} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-        <AField label="여성 회원가"><input style={{...AInp,borderColor:"#e0d4f5"}} type="number" value={form.memberPriceF} onChange={e=>set("memberPriceF",e.target.value)} placeholder="없으면 0" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e0d4f5"}/></AField>
-        <AField label="남성 회원가"><input style={{...AInp,borderColor:"#e0d4f5"}} type="number" value={form.memberPriceM} onChange={e=>set("memberPriceM",e.target.value)} placeholder="없으면 0" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e0d4f5"}/></AField>
-      </div>
+      <AField label={useOptions?"부위명":"시술명"} required><input style={AInp} value={form.name} onChange={e=>set("name",e.target.value)} placeholder={useOptions?"예: 다리 (옵션이 자동 추가됨)":"예: 브라질리언"} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
+      {/* 옵션 그룹 토글 (절반/전체 같은 변형) — 신규 등록 시만 */}
+      {!edit && !editPair && <div style={{padding:"8px 10px",background:"#FFF8E1",border:"1px solid #FFE082",borderRadius:8,marginBottom:10}}>
+        <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+          <AToggle size="sm" on={useOptions} onChange={v=>setUseOptions(v)}/>
+          <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bold}}>옵션 그룹 등록 (절반/전체 같은 변형)</span>
+        </label>
+        <div style={{fontSize:10,color:T.textMuted,marginTop:4,paddingLeft:30}}>체크 시 두 개의 시술이 자동 생성됩니다 (예: "다리 절반", "다리 전체"). 옵션명 자유 입력.</div>
+      </div>}
+      {editPair && <div style={{padding:"8px 10px",background:"#fef3c7",border:"1px solid "+T.primary,borderRadius:8,marginBottom:10,fontSize:T.fs.xs,color:T.text}}>
+        🔗 옵션 그룹 편집 모드 — 부위명을 바꾸면 양쪽 옵션 모두 새 부위명으로 저장됩니다.
+      </div>}
+      {!useOptions ? (
+        <>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+            <AField label="소요(분)"><input style={AInp} type="number" value={form.dur} onChange={e=>set("dur",e.target.value)} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
+            <AField label="여성 정상가"><input style={AInp} type="number" value={form.priceF} onChange={e=>set("priceF",e.target.value)} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
+            <AField label="남성 정상가"><input style={AInp} type="number" value={form.priceM} onChange={e=>set("priceM",e.target.value)} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <AField label="여성 회원가"><input style={{...AInp,borderColor:"#e0d4f5"}} type="number" value={form.memberPriceF} onChange={e=>set("memberPriceF",e.target.value)} placeholder="없으면 0" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e0d4f5"}/></AField>
+            <AField label="남성 회원가"><input style={{...AInp,borderColor:"#e0d4f5"}} type="number" value={form.memberPriceM} onChange={e=>set("memberPriceM",e.target.value)} placeholder="없으면 0" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e0d4f5"}/></AField>
+          </div>
+        </>
+      ) : (
+        <>
+          {[{label:"옵션 1", val:opt1, set:setOpt1},{label:"옵션 2", val:opt2, set:setOpt2}].map((o,i)=>(
+            <div key={i} style={{padding:"8px 10px",border:"1px solid "+T.border,borderRadius:8,marginBottom:8,background:"#fafafa"}}>
+              <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bold,color:T.primary,marginBottom:6}}>{o.label}</div>
+              <AField label="옵션명"><input style={AInp} value={o.val.name} onChange={e=>o.set({...o.val,name:e.target.value})} placeholder="예: 절반 / 전체 / 1시간 / 2시간"/></AField>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                <AField label="소요(분)"><input style={AInp} type="number" value={o.val.dur} onChange={e=>o.set({...o.val,dur:e.target.value})}/></AField>
+                <AField label="여성가"><input style={AInp} type="number" value={o.val.priceF} onChange={e=>o.set({...o.val,priceF:e.target.value})}/></AField>
+                <AField label="남성가"><input style={AInp} type="number" value={o.val.priceM} onChange={e=>o.set({...o.val,priceM:e.target.value})}/></AField>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <AField label="여성 회원가"><input style={{...AInp,borderColor:"#e0d4f5"}} type="number" value={o.val.memberPriceF} onChange={e=>o.set({...o.val,memberPriceF:e.target.value})} placeholder="없으면 0"/></AField>
+                <AField label="남성 회원가"><input style={{...AInp,borderColor:"#e0d4f5"}} type="number" value={o.val.memberPriceM} onChange={e=>o.set({...o.val,memberPriceM:e.target.value})} placeholder="없으면 0"/></AField>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
       <div style={{display:"flex",gap:20,padding:"12px 0",borderTop:"1px solid "+T.gray100,borderBottom:"1px solid "+T.gray100,marginBottom:14,flexWrap:"wrap"}}>
         <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
           <AToggle size="sm" on={form.isActive!==false} onChange={v=>set("isActive",v)}/>
@@ -283,9 +468,9 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
         <AField label="다회권 남성가"><input style={AInp} type="number" value={form.pkgPriceM} onChange={e=>set("pkgPriceM",e.target.value)} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
       </div>}
 
-      {/* ─── 배지 + 이벤트/쿠폰 설정 ─── */}
-      <div style={{marginTop:4,paddingTop:12,borderTop:"1px dashed "+T.border}}>
-        <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bold,color:T.textSub,marginBottom:8}}>{couponMode?"🎫 배지":"🎁 이벤트 / 배지"}</div>
+      {/* ─── 배지 + 이벤트/쿠폰 설정 (쿠폰 모드 전용 — 일반 시술 이벤트는 이벤트 관리 페이지에서) ─── */}
+      {couponMode && <div style={{marginTop:4,paddingTop:12,borderTop:"1px dashed "+T.border}}>
+        <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bold,color:T.textSub,marginBottom:8}}>🎫 배지</div>
         <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr",gap:10,marginBottom:10}}>
           <AField label="배지 문구">
             <input style={AInp} value={form.badgeText} onChange={e=>set("badgeText",e.target.value)} placeholder={couponMode?"예: 제품3만원, 10%적립":"예: 신규10%, 5만P 적립"}/>
@@ -400,22 +585,30 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
                 <div>
                   <div style={{fontSize:T.fs.xxs,fontWeight:T.fw.bold,color:T.textSub,marginBottom:4}}>대상 시술/제품 (복수 선택) <span style={{color:T.primary,fontWeight:900}}>({selIds.length})</span></div>
                   <div style={{maxHeight:220,overflowY:"auto",border:"1px solid "+T.border,borderRadius:8,padding:8,background:"#fff"}}>
-                    {cats.filter(c=>c.name!=='쿠폰').map(c => {
-                      const catSvcs = services.filter(s=>s.cat===c.id && s.id!==edit?.id);
-                      if (catSvcs.length === 0) return null;
-                      return <div key={c.id} style={{marginBottom:10}}>
-                        <div style={{fontSize:10,fontWeight:700,color:T.textSub,marginBottom:4}}>{c.name}</div>
-                        <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
-                          {catSvcs.map(s => {
-                            const on = selIds.includes(s.id);
-                            return <label key={s.id} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"3px 8px",border:`1px solid ${on?T.primary:T.border}`,borderRadius:12,background:on?(T.primaryLt||"#ede9ff"):"#fff",cursor:"pointer",fontSize:11,color:on?T.primary:T.text,fontWeight:on?700:400}}>
-                              <input type="checkbox" checked={on} onChange={()=>toggleSvc(s.id)} style={{accentColor:T.primary}}/>
-                              {s.name}
-                            </label>;
-                          })}
-                        </div>
-                      </div>;
-                    })}
+                    {(() => {
+                      // 쿠폰 모드에서도 전체 시술 표시 — data?.categories 직접 참조 (cats state는 visibleCats로 필터될 수 있음)
+                      const allCats = (data?.categories || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
+                      const allSvcs = (data?.services || []);
+                      const nonCouponCats = allCats.filter(c => c.name !== '쿠폰');
+                      const rendered = nonCouponCats.map(c => {
+                        const catSvcs = allSvcs.filter(s => s.cat === c.id && s.id !== edit?.id && s.isActive !== false);
+                        if (catSvcs.length === 0) return null;
+                        return <div key={c.id} style={{marginBottom:10}}>
+                          <div style={{fontSize:10,fontWeight:700,color:T.textSub,marginBottom:4}}>{c.name}</div>
+                          <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                            {catSvcs.map(s => {
+                              const on = selIds.includes(s.id);
+                              return <label key={s.id} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"3px 8px",border:`1px solid ${on?T.primary:T.border}`,borderRadius:12,background:on?(T.primaryLt||"#ede9ff"):"#fff",cursor:"pointer",fontSize:11,color:on?T.primary:T.text,fontWeight:on?700:400}}>
+                                <input type="checkbox" checked={on} onChange={()=>toggleSvc(s.id)} style={{accentColor:T.primary}}/>
+                                {s.name}
+                              </label>;
+                            })}
+                          </div>
+                        </div>;
+                      }).filter(Boolean);
+                      if (rendered.length === 0) return <div style={{fontSize:11,color:T.textMuted,padding:"6px 4px"}}>등록된 시술이 없어요. (관리설정 → 시술상품 관리에서 먼저 등록)</div>;
+                      return rendered;
+                    })()}
                   </div>
                 </div>
               )}
@@ -433,6 +626,11 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
                     <input style={AInp} type="number" value={priority} onChange={e=>set("promoConfig",{...form.promoConfig,priority:+e.target.value||0})} placeholder="100"/>
                   </AField>
                 </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr",gap:10,marginTop:8}}>
+                  <AField label="유효 기간 (개월)" hint="쿠폰 발행 시점부터 N개월 후 만료. 비우면 3개월(기본)">
+                    <input style={AInp} type="number" min="0" value={form.promoConfig?.expiryMonths ?? ""} onChange={e=>set("promoConfig",{...form.promoConfig, expiryMonths: e.target.value === "" ? undefined : (+e.target.value || 0)})} placeholder="3"/>
+                  </AField>
+                </div>
                 <div style={{marginTop:6,fontSize:10,color:T.textMuted,lineHeight:1.4}}>
                   💡 자동 우선 적용이 켜지면 조건에 맞는 매출 등록 시 이 쿠폰이 자동으로 먼저 차감됩니다. 소진 시 고객 보유권에서 1회 감소.
                 </div>
@@ -440,7 +638,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
             </div>
           );
         })()}
-      </div>
+      </div>}
 
     </ASheet>
     <ASheet open={bulkSheet} onClose={()=>setBulkSheet(false)} title="🎁 이벤트 일괄 적용" onSave={bulkApply} saving={false} saveLabel={`${bulkForm.targetIds.size}개 상품에 적용`} saveDisabled={bulkForm.targetIds.size===0}>
@@ -530,60 +728,6 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
       </div>
     </ASheet>
     <AConfirm open={!!del} title="시술 삭제" onOk={()=>doDelete(del)} onCancel={()=>setDel(null)}/>
-  </div>;
-}
-
-// 회원가 자격 조건 카드 — businesses.settings.member_price_rules
-// ⚠️ settings는 JSON 문자열이라 {...settings} 같은 spread를 직접 하면 문자 배열로 파괴됨 (2026-04-21 버그)
-function MemberRulesCard({ data, setData }) {
-  const biz = (data?.businesses||[])[0];
-  // settings 파싱 (문자열이면 parse, 객체면 그대로)
-  const parsedSettings = (() => {
-    try {
-      const raw = biz?.settings;
-      return typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
-    } catch { return {}; }
-  })();
-  const rules = parsedSettings.member_price_rules || { annualEnabled: true, prepaidMin: 300000 };
-  const [annualEnabled, setAnnualEnabled] = useState(!!rules.annualEnabled);
-  const [prepaidMin, setPrepaidMin] = useState(Number(rules.prepaidMin) || 0);
-  const [dirty, setDirty] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const save = async () => {
-    if (!biz?.id) return;
-    setSaving(true);
-    // 파싱된 객체에서 시작 (문자열 파괴 방지)
-    const nextSettings = { ...parsedSettings, member_price_rules: { annualEnabled, prepaidMin: Number(prepaidMin)||0 } };
-    try {
-      // DB는 JSON 문자열로 저장
-      await sb.update("businesses", biz.id, { settings: JSON.stringify(nextSettings) });
-      // 로컬 state도 문자열로 동기화 (앱 전체 일관성)
-      if (setData) setData(p => p ? { ...p, businesses: (p.businesses||[]).map(b => b.id === biz.id ? { ...b, settings: JSON.stringify(nextSettings) } : b) } : p);
-      setDirty(false);
-    } catch(e) { console.error("member_price_rules save failed", e); alert("저장 실패"); }
-    setSaving(false);
-  };
-  return <div style={{marginBottom:12,padding:"10px 14px",background:"#F3E8FF",border:"1px solid #D8B4FE",borderRadius:8}}>
-    <div style={{fontSize:12,fontWeight:700,color:"#6B21A8",marginBottom:6}}>⭐ 회원가 자동 적용 조건</div>
-    <div style={{fontSize:11,color:"#6B21A8",marginBottom:8}}>아래 조건 중 하나라도 충족하는 고객은 매출등록 시 시술가가 <b>회원가</b>로 자동 표시됩니다.</div>
-    <div style={{display:"flex",flexDirection:"column",gap:6,fontSize:12,color:"#4B5563"}}>
-      <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
-        <input type="checkbox" checked={annualEnabled} onChange={e=>{setAnnualEnabled(e.target.checked);setDirty(true);}}/>
-        연간회원권 보유 (유효기간 내)
-      </label>
-      <label style={{display:"flex",alignItems:"center",gap:6}}>
-        <span>다담권 원 충전액</span>
-        <input type="number" value={prepaidMin} onChange={e=>{setPrepaidMin(e.target.value);setDirty(true);}}
-          style={{width:100,padding:"3px 6px",fontSize:12,borderRadius:6,border:"1px solid "+T.border,textAlign:"right"}}/>
-        <span>원 이상 (0 = 비활성화)</span>
-      </label>
-    </div>
-    {dirty && <div style={{marginTop:8,display:"flex",gap:6}}>
-      <button onClick={save} disabled={saving}
-        style={{padding:"5px 12px",fontSize:11,fontWeight:700,borderRadius:6,border:"none",background:"#7C3AED",color:"#fff",cursor:saving?"default":"pointer",fontFamily:"inherit"}}>
-        {saving?"저장 중...":"저장"}
-      </button>
-    </div>}
   </div>;
 }
 

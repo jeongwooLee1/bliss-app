@@ -29,7 +29,7 @@ function MobileBottomNav({ nav, page, setPage, isChatOpen=false }) {
           const isMore = item.id==="__more";
           const active = isMore ? moreOpen : page===item.id;
           return (
-            <button key={item.id} onClick={()=>isMore?setMoreOpen(v=>!v):setPage(item.id)} style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",gap:4,flex:1,paddingTop:0,border:"none",background:"none",cursor:"pointer",fontFamily:"inherit",color:active?T.primary:T.textMuted,transition:"color .15s"}}>
+            <button key={item.id} onClick={()=>{ if(isMore){ setMoreOpen(v=>!v); } else { setPage(item.id); setMoreOpen(false); } }} style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",gap:4,flex:1,paddingTop:0,border:"none",background:"none",cursor:"pointer",fontFamily:"inherit",color:active?T.primary:T.textMuted,transition:"color .15s"}}>
               <div style={{width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
                 <I name={item.icon} size={22} style={{strokeWidth: active ? 2.5 : 1.8}}/>
                 {item.badge>0 && !active && <span style={{position:"absolute",top:-4,right:-6,background:T.danger,color:"#fff",borderRadius:8,fontSize:9,fontWeight:700,padding:"1px 4px",minWidth:14,textAlign:"center"}}>{item.badge>99?"99+":item.badge}</span>}

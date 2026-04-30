@@ -19,10 +19,11 @@ import AdminMemoTemplates from './AdminMemoTemplates'
 import AdminExtPlatforms from './AdminExtPlatforms'
 import AdminServiceTags from './AdminServiceTags'
 import SchedulePage from '../Schedule/SchedulePage'
-import AdminMemberPriceRules from './AdminMemberPriceRules'
 import AdminBranchGroups from './AdminBranchGroups'
 import AdminKiosks from './AdminKiosks'
 import AdminAlimtalkLog from './AdminAlimtalkLog'
+import AdminSmsLog from './AdminSmsLog'
+import AdminLongValidityReview from './AdminLongValidityReview'
 
 const uid = genId;
 
@@ -359,7 +360,7 @@ function AdminJoinBrand({ currentUser, onBack }) {
 function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userBranches=[], setPage }) {
   const navTo = useNavigate();
   const loc = useLocation();
-  const TAB_SLUGS = {places:"places",saleitems:"services",coupons:"coupons",prodmgmt:"products",svctags:"tags",ressrc:"sources",extplatforms:"ext-platforms",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",branchgroups:"branch-groups",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",branchaudit:"branch-audit",pointmig:"point-migration",memberrules:"member-rules",joinbrand:"join-brand",kiosks:"kiosks",alimtalkLog:"alimtalk-log"};
+  const TAB_SLUGS = {places:"places",saleitems:"services",coupons:"coupons",prodmgmt:"products",svctags:"tags",ressrc:"sources",extplatforms:"ext-platforms",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",branchgroups:"branch-groups",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",branchaudit:"branch-audit",pointmig:"point-migration",memberrules:"member-rules",joinbrand:"join-brand",kiosks:"kiosks",alimtalkLog:"alimtalk-log",smsLog:"sms-log",longValidity:"long-validity"};
   const SLUG_TO_TAB = Object.fromEntries(Object.entries(TAB_SLUGS).map(([k,v])=>[v,k]));
   const tab = SLUG_TO_TAB[loc.pathname.replace(/^\/settings\/?/,"").split("/")[0]] || null;
   const setTab=t=>{ if(t) navTo(`/settings/${TAB_SLUGS[t]||t}`); else navTo("/settings"); };
@@ -376,11 +377,11 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
   const MENU=[
     {section:"지점 관리",items:[
       {key:"places", icon:"building", label:"예약장소 관리", desc:isOwner?"지점 추가·수정·삭제 + 지점 연계":"내 지점 설정"},
+      {key:"longValidity", icon:"alert", label:"보유권 유효기간 검토", desc:"1년 초과 잔존 보유권 검토·수정·삭제 (전 직원 접근)"},
     ]},
     ...(isMaster ? [{section:"사업장 관리",items:[
       {key:"saleitems",   icon:"scissors", label:"시술 상품 관리", desc:"시술 항목 및 가격 설정"},
-      {key:"coupons",     icon:"gift",     label:"이벤트 관리",    desc:"쿠폰 등록·적립/할인/쿠폰 발행 이벤트 통합 관리"},
-      {key:"memberrules", icon:"star",     label:"회원가 적용 규칙", desc:"연간권/선불권 회원가 자격 + 상품별 예외 설정"},
+      {key:"coupons",     icon:"gift",     label:"혜택 관리",      desc:"이벤트·쿠폰·회원가 자격 통합 관리"},
       {key:"kiosks",      icon:"mobile",   label:"📲 태블릿 (키오스크)", desc:"매장 비치 태블릿 등록 — 동의서 서명용"},
       {key:"prodmgmt",    icon:"clipboard",label:"제품 관리",      desc:"판매 제품 관리"},
       ...(isOwner ? [{key:"brandmembers", icon:"userPlus", label:"브랜드 멤버 관리", desc:"지점 가입 요청 승인/거절", badge:pendingCount}] : []),
@@ -397,7 +398,8 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
       ...(isOwner ? [{key:"aisettings",  icon:"sparkles", label:"AI 설정",        desc:"AI 분석 규칙 관리"}] : []),
     ]}] : []),
     {section:"전송 내역",items:[
-      {key:"alimtalkLog", icon:"clipboard", label:"📨 알림톡·SMS 전송내역", desc:"내 지점 발송 이력·성공/실패 조회"},
+      {key:"alimtalkLog", icon:"clipboard", label:"📨 알림톡·SMS 전송내역", desc:"자동 알림톡/케어 SMS 큐 이력"},
+      {key:"smsLog",      icon:"send",      label:"📤 직원 SMS 발송 이력", desc:"고객관리에서 직원이 직접 발송한 SMS"},
     ]},
     {section:"내 계정",items:[
       {key:"mypage",      icon:"user",     label:"마이페이지",     desc:"내 계정 정보 및 비밀번호 변경"},
@@ -447,10 +449,11 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     {tab==="brandmembers" && isMaster &&<AdminBrandMembers data={data} setData={setData} bizId={bizId} currentUser={currentUser}/>}
     {tab==="mypage"       &&<AdminMyPage       currentUser={currentUser} onLogout={onLogout}/>}
     {tab==="schedule"    && isMaster &&<AdminSchedule currentUser={currentUser} isMaster={isMaster}/>}
-    {tab==="memberrules" && isMaster &&<AdminMemberPriceRules data={data} setData={setData} bizId={bizId}/>}
     {tab==="branchgroups"&& isMaster &&<AdminBranchGroups data={data} setData={setData} bizId={bizId}/>}
     {tab==="kiosks"      && isMaster &&<AdminKiosks        data={data} setData={setData} bizId={bizId}/>}
     {tab==="alimtalkLog" && <AdminAlimtalkLog   data={data} userBranches={userBranches}/>}
+    {tab==="smsLog" && <AdminSmsLog data={data} userBranches={userBranches}/>}
+    {tab==="longValidity" && <AdminLongValidityReview data={data} userBranches={userBranches}/>}
     {tab==="joinbrand"    && !isMaster &&<AdminJoinBrand   currentUser={currentUser} onBack={back}/>}
     {tab && !["mypage","schedule"].includes(tab) && !isMaster && <div style={{textAlign:"center",padding:"60px 20px",color:T.textMuted}}>
       <div style={{fontSize:32,marginBottom:12}}>&#128274;</div>

@@ -1,18 +1,38 @@
 import { useState, useEffect, useRef } from 'react'
 
 // ── sessionStorage 연동 state 훅 (새로고침 시 유지, 탭 닫으면 초기화) ──
-export function useSessionState(key, initial) {
+// opts: { ttlMs } — 마지막 변경 후 N ms 지나면 디폴트로 리셋
+// 표준 TTL: 검색어 1h(3600000), 날짜범위 6h(21600000), 탭/확장 24h(86400000)
+export function useSessionState(key, initial, opts) {
+  const ttlMs = opts && typeof opts.ttlMs === 'number' ? opts.ttlMs : null
+  const getInit = () => typeof initial === 'function' ? initial() : initial
   const [val, setVal] = useState(() => {
     try {
       const raw = sessionStorage.getItem(key)
-      if (raw !== null) return JSON.parse(raw)
-    } catch(e) {}
-    return typeof initial === 'function' ? initial() : initial
+      if (raw === null) return getInit()
+      const parsed = JSON.parse(raw)
+      // TTL 적용: {_v, _t} 래핑된 형식만 만료 체크. 기존 형식(원시값)은 그대로 사용
+      if (ttlMs && parsed && typeof parsed === 'object' && '_v' in parsed && '_t' in parsed) {
+        if (Date.now() - parsed._t > ttlMs) return getInit()
+        return parsed._v
+      }
+      return parsed
+    } catch(e) { return getInit() }
   })
   useEffect(() => {
-    try { sessionStorage.setItem(key, JSON.stringify(val)) } catch(e) {}
-  }, [key, val])
+    try {
+      if (ttlMs) sessionStorage.setItem(key, JSON.stringify({ _v: val, _t: Date.now() }))
+      else sessionStorage.setItem(key, JSON.stringify(val))
+    } catch(e) {}
+  }, [key, val, ttlMs])
   return [val, setVal]
+}
+
+// 표준 TTL 상수 (외부에서 import해서 일관되게 사용)
+export const TTL = {
+  SEARCH: 60 * 60 * 1000,        // 1시간 — 검색어
+  DATE_RANGE: 6 * 60 * 60 * 1000, // 6시간 — 날짜 범위 필터 (출근→퇴근)
+  TAB: 24 * 60 * 60 * 1000,       // 24시간 — 탭 선택, 확장 상태
 }
 
 // ── 스크롤 위치 자동 저장/복원 ──
@@ -150,6 +170,21 @@ export const timeToY = (timeStr, startHour=10, pixPerHour=60) => {
 }
 
 export const durationToH = (mins, pixPerHour=60) => (mins/60) * pixPerHour
+
+// 네이버 예약 확정 (서버 PATCH 프록시 호출). bizId = branch.naverBizId, rid = reservation.reservationId
+export async function naverConfirmBooking(bizId, rid) {
+  if (!bizId || !rid) return { ok: false, error: 'bizId/rid required' };
+  try {
+    const r = await fetch('https://blissme.ai/naver-confirm-booking', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ biz_id: String(bizId), reservation_id: String(rid) })
+    });
+    const j = await r.json().catch(() => ({}));
+    return j;
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
 
 export const fmtLocal = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`
 export const dateFromStr = (s) => { if (!s) return null; const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); }

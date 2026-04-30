@@ -132,20 +132,40 @@ export function useMaleRotation() {
   return { maleRotation, getRotationBranch }
 }
 
-// ── 범용 schedule_data 훅 ─────────────────────────────────
+// ── 범용 schedule_data 훅 (Realtime 동기화 포함) ─────────────
 export function useScheduleData(key, defaultValue = null) {
   const [data, setData] = useState(defaultValue)
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
+    let cancelled = false
+    // 초기 로드
     supabase.from('schedule_data').select('value').eq('key', key).single()
       .then(({ data: row }) => {
+        if (cancelled) return
         if (row?.value) {
           const val = typeof row.value === 'string' ? JSON.parse(row.value) : row.value
           setData(val)
         }
         setLoaded(true)
       })
+
+    // Realtime 구독 — 다른 PC에서 변경 시 자동 반영
+    const ch = supabase.channel(`sch_data_${key}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public',
+        table: 'schedule_data', filter: `key=eq.${key}`
+      }, ({ new: n }) => {
+        if (cancelled) return
+        if (n?.value !== undefined && n?.value !== null) {
+          try {
+            const val = typeof n.value === 'string' ? JSON.parse(n.value) : n.value
+            setData(val)
+          } catch {}
+        }
+      }).subscribe()
+
+    return () => { cancelled = true; ch.unsubscribe() }
   }, [key])
 
   const save = async (val) => {

@@ -53,7 +53,7 @@ function EmptyState() {
   )
 }
 
-function ChatMessageList({ messages, userMap, currentUserId, lastReadAt, loading }) {
+function ChatMessageList({ messages, userMap, currentUserId, lastReadAt, loading, scrollTrigger }) {
   const scrollRef = useRef(null)
 
   // 메시지 + 구분선 렌더 리스트 계산
@@ -100,12 +100,19 @@ function ChatMessageList({ messages, userMap, currentUserId, lastReadAt, loading
     return result
   }, [messages, userMap, currentUserId, lastReadAt])
 
-  // 자동 스크롤 (하단)
+  // 자동 스크롤 (하단) — 메시지 변경 시·초기 로드 시·펼치기 토글 시 항상 최신으로
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    el.scrollTop = el.scrollHeight
-  }, [messages.length])
+    // 펼치기 시 CSS transition(0.18s)으로 높이가 늘어나므로 여러 프레임 후에도 한 번 더 스크롤
+    const r1 = requestAnimationFrame(() => {
+      if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    })
+    const t1 = setTimeout(() => {
+      if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }, 220)
+    return () => { cancelAnimationFrame(r1); clearTimeout(t1) }
+  }, [messages, loading, scrollTrigger])
 
   if (loading) {
     return (

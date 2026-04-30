@@ -155,6 +155,47 @@ const BUSINESS = {
   },
 };
 
+// ─── 예약 생성 (자연어 파싱 기반) ────────────────────────────────────────
+const RESERVATION = {
+  create_reservation: {
+    label: '예약 추가',
+    op: 'create_reservation',
+    icon: '📅',
+    // changes:
+    //   input: 자연어 (필수, 최초 intent 단계에서 채움)
+    //   _parsed: { custName, custPhone, custEmail, date, time, dur, branch, matchedServiceIds, ... }
+    //            BlissAI에서 미리 파싱해 채워줌 (preview 표시용)
+    //   _matchedCustId: 검색된 기존 고객 ID (있으면 표시용)
+    fieldsAllowed: ['input', '_parsed', '_matchedCustId'],
+    validate: (p) => {
+      const ps = p?._parsed || {}
+      const missing = []
+      if (!ps.date) missing.push('날짜')
+      if (!ps.time) missing.push('시간')
+      if (!ps.branch) missing.push('지점')
+      if (!ps.custName && !ps.custPhone && !ps.custEmail) missing.push('고객 (이름/연락처/이메일)')
+      if (missing.length > 0) return `다음 정보가 필요합니다: ${missing.join(', ')}`
+      return null
+    },
+  },
+  cancel_reservation: {
+    label: '예약 취소',
+    op: 'cancel_reservation',
+    icon: '❌',
+    dangerous: true,
+    // changes:
+    //   input: 자연어 (필수)
+    //   _parsed: AI Book 파서 결과 (고객/날짜/시간 매칭용)
+    //   _matchedRes: 검색된 예약 목록 (preview 표시용)
+    fieldsAllowed: ['input', '_parsed', '_matchedRes'],
+    validate: (p) => {
+      const matches = p?._matchedRes || []
+      if (matches.length === 0) return '취소할 예약을 찾지 못했습니다 (고객 이름·전화·날짜·시간 확인)'
+      return null
+    },
+  },
+}
+
 // ─── 세팅 마법사 전용 액션 ─────────────────────────────────────────────────
 const SETUP = {
   setup_initial: {
@@ -176,6 +217,7 @@ export const ACTION_SCHEMAS = {
   ...RES_SOURCE,
   ...CUSTOMER,
   ...BUSINESS,
+  ...RESERVATION,
   ...SETUP,
 };
 
@@ -216,6 +258,45 @@ ${stateSnapshot || '(없음)'}
 
 사용자: "오늘 예약 몇 건?"
 응답: {"intent":"query"}
+
+사용자: "내일 오후 3시 강남점 김철수 010-1234-5678 브라질리언 예약해줘"
+응답: {"intent":"write","action":"create_reservation","changes":{"input":"내일 오후 3시 강남점 김철수 010-1234-5678 브라질리언 예약해줘"}}
+
+사용자: "5/3 19시 왕십리 이정우 01057028008 음모왁싱 예약 잡아줘"
+응답: {"intent":"write","action":"create_reservation","changes":{"input":"5/3 19시 왕십리 이정우 01057028008 음모왁싱 예약 잡아줘"}}
+
+사용자: "정우 8008 오늘 8시 음모왁싱 예약해"
+응답: {"intent":"write","action":"create_reservation","changes":{"input":"정우 8008 오늘 8시 음모왁싱 예약해"}}
+
+사용자: "이정우 8시 강남 브라질리언 예약"
+응답: {"intent":"write","action":"create_reservation","changes":{"input":"이정우 8시 강남 브라질리언 예약"}}
+
+사용자: "이정우 5/3 7시 예약 취소해줘"
+응답: {"intent":"write","action":"cancel_reservation","changes":{"input":"이정우 5/3 7시 예약 취소해줘"}}
+
+사용자: "정우 8008 오늘 예약 취소"
+응답: {"intent":"write","action":"cancel_reservation","changes":{"input":"정우 8008 오늘 예약 취소"}}
+
+[예약 생성 규칙 — 매우 중요]
+- "예약해줘/예약 잡아줘/예약 등록/추가해줘/예약해" 등 예약 의도가 있으면 create_reservation
+- **부분 정보(전화 뒷자리만, 이름만)는 허용** — 시스템이 기존 고객 검색·매칭으로 보강
+- 단 **다음 정보가 명시되지 않으면 ambiguous로 응답하고 묻기**:
+  · 지점 (강남/왕십리/홍대/마곡/잠실/위례/용산/천호 중 하나가 텍스트에 없으면)
+  · 시간 (몇 시인지 모르면)
+  · 날짜 (오늘/내일/모레/요일/날짜 표기 없으면)
+  · 고객 정보 (이름·전화·이메일 중 하나도 없으면)
+- ambiguous 응답: {"intent":"ambiguous","need_info":"지점을 알려주세요. (강남/왕십리/홍대/마곡/잠실/위례/용산/천호)"}
+- 절대 추측 금지 — 모르면 묻기
+- changes.input에는 사용자 원문 그대로 (이름/연락처/시간/지점/시술 정보 추출은 후속 단계)
+
+사용자: "오늘 8시 음모왁싱 예약해"
+응답: {"intent":"ambiguous","need_info":"지점과 고객 정보(이름 또는 연락처)를 알려주세요. 지점: 강남/왕십리/홍대/마곡/잠실/위례/용산/천호"}
+
+사용자: "정우 8008 8시 음모왁싱"
+응답: {"intent":"ambiguous","need_info":"지점과 날짜를 알려주세요. 지점: 강남/왕십리/홍대/마곡/잠실/위례/용산/천호"}
+
+사용자: "강남 정우 8008 8시 음모왁싱"
+응답: {"intent":"ambiguous","need_info":"날짜를 알려주세요. (오늘/내일/날짜)"}
 
 [사용자 요청]
 ${question}

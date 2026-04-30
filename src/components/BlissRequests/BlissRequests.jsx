@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { T } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY } from '../../lib/sb'
+import { uploadImageToStorage } from '../../lib/supabase'
 import { genId } from '../../lib/utils'
 import I from '../common/I'
 
@@ -17,6 +18,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
   const [tab, setTab] = useState("notices"); // notices | requests
   const [requests, setRequests] = useState([]);
   const [notices, setNotices] = useState([]);
+  const [employees, setEmployees] = useState([]); // employees_v1 (확인 명단용)
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [showNoticeForm, setShowNoticeForm] = useState(false);
@@ -31,16 +33,19 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
 
   const loadData = async () => {
     try {
-      const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=in.(bliss_requests_v1,bliss_notices_v1)&select=key,value`, {
+      const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=in.(bliss_requests_v1,bliss_notices_v1,employees_v1)&select=key,value`, {
         headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
       });
       const rows = await r.json();
       const reqRow = rows.find(x=>x.key==='bliss_requests_v1');
       const ntcRow = rows.find(x=>x.key==='bliss_notices_v1');
+      const empRow = rows.find(x=>x.key==='employees_v1');
       const reqList = (() => { const v=reqRow?.value; return typeof v==='string'?JSON.parse(v):(Array.isArray(v)?v:[]); })();
       const ntcList = (() => { const v=ntcRow?.value; return typeof v==='string'?JSON.parse(v):(Array.isArray(v)?v:[]); })();
+      const empList = (() => { const v=empRow?.value; return typeof v==='string'?JSON.parse(v):(Array.isArray(v)?v:[]); })();
       setRequests(Array.isArray(reqList) ? reqList.sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||"")) : []);
       setNotices(Array.isArray(ntcList) ? ntcList.sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||"")) : []);
+      setEmployees(Array.isArray(empList) ? empList : []);
     } catch (e) { console.error("Load failed:", e); }
     setLoading(false);
   };
@@ -80,29 +85,45 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
     await saveNotices(notices.filter(n => n.id !== id));
     if (openNoticeId === id) setOpenNoticeId(null);
   };
+  // 공지 확인 토글 — 클릭 시 ack 추가/해제 (확인 안 한 상태면 ISO 저장, 이미 확인한 상태면 제거)
+  const ackNotice = async (noticeId, empName) => {
+    const nowIso = new Date().toISOString();
+    const next = notices.map(n => {
+      if (n.id !== noticeId) return n;
+      const acks = { ...(n.acks||{}) };
+      if (acks[empName]) {
+        delete acks[empName]; // 이미 확인 → 해제
+      } else {
+        acks[empName] = nowIso; // 미확인 → 확인 처리
+      }
+      return { ...n, acks };
+    });
+    await saveNotices(next);
+  };
 
   // 공지용 이미지 — 여러 장 첨부 가능 (각 2MB 이하, 총 6장까지 권장)
-  const onNoticeImagePick = (e) => {
+  // v3.7.215: base64 → Supabase Storage URL로 전환 (DB row 폭증 방지)
+  const onNoticeImagePick = async (e) => {
     const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-    files.forEach(file => {
-      if (file.size > 2 * 1024 * 1024) { alert(`"${file.name}" 2MB 초과 — 건너뜀`); return; }
-      const reader = new FileReader();
-      reader.onload = (ev) => setNoticeForm(p => ({ ...p, images: [...(p.images||[]), ev.target.result] }));
-      reader.readAsDataURL(file);
-    });
     e.target.value = ""; // 같은 파일 다시 선택 가능하게
+    if (!files.length) return;
+    for (const file of files) {
+      if (file.size > 5 * 1024 * 1024) { alert(`"${file.name}" 5MB 초과 — 건너뜀`); continue; }
+      const url = await uploadImageToStorage(file, 'notices');
+      if (url) setNoticeForm(p => ({ ...p, images: [...(p.images||[]), url] }));
+      else alert(`"${file.name}" 업로드 실패`);
+    }
   };
-  const onNoticePasteImage = (e) => {
+  const onNoticePasteImage = async (e) => {
     const items = e.clipboardData?.items || [];
     for (const item of items) {
       if (item.type?.startsWith("image/")) {
         const file = item.getAsFile();
         if (!file) continue;
-        if (file.size > 2 * 1024 * 1024) { alert("붙여넣은 이미지가 2MB를 초과합니다"); continue; }
-        const reader = new FileReader();
-        reader.onload = (ev) => setNoticeForm(p => ({ ...p, images: [...(p.images||[]), ev.target.result] }));
-        reader.readAsDataURL(file);
+        if (file.size > 5 * 1024 * 1024) { alert("붙여넣은 이미지가 5MB를 초과합니다"); continue; }
+        const url = await uploadImageToStorage(file, 'notices');
+        if (url) setNoticeForm(p => ({ ...p, images: [...(p.images||[]), url] }));
+        else alert("이미지 업로드 실패");
       }
     }
   };
@@ -114,12 +135,14 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
   const [reqMarkupOpen, setReqMarkupOpen] = useState(false);
   const [existingMarkup, setExistingMarkup] = useState(null); // {noticeId, idx}
 
-  // 등록된 공지 이미지 마킹 저장
+  // 등록된 공지 이미지 마킹 저장 — MarkupEditor가 base64 반환하므로 storage 업로드 후 URL 저장
   const saveExistingNoticeImage = async (noticeId, imgIdx, newB64) => {
+    const url = await uploadImageToStorage(newB64, 'notices');
+    if (!url) { alert('이미지 저장 실패'); return; }
     const next = notices.map(n => {
       if (n.id !== noticeId) return n;
       const imgs = Array.isArray(n.images) ? [...n.images] : (n.imageData ? [n.imageData] : []);
-      imgs[imgIdx] = newB64;
+      imgs[imgIdx] = url;
       return { ...n, images: imgs };
     });
     await saveNotices(next);
@@ -136,33 +159,36 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
     });
     await saveNotices(next);
   };
-  const replaceNoticeImage = (idx, newB64) => {
-    setNoticeForm(p => ({ ...p, images: (p.images||[]).map((img, i) => i === idx ? newB64 : img) }));
+  const replaceNoticeImage = async (idx, newB64) => {
+    const url = await uploadImageToStorage(newB64, 'notices');
+    if (!url) { alert('이미지 저장 실패'); return; }
+    setNoticeForm(p => ({ ...p, images: (p.images||[]).map((img, i) => i === idx ? url : img) }));
     setMarkupIdx(null);
   };
 
-  // 이미지 → base64 (간단한 미리보기/저장용, 1MB 이하 권장)
-  const onImagePick = (e) => {
+  // 이미지 → Supabase Storage 업로드 후 URL 저장 (v3.7.215, DB 부담 격감)
+  const onImagePick = async (e) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) { alert("이미지 크기 2MB 이하로 업로드해주세요"); return; }
-    const reader = new FileReader();
-    reader.onload = (ev) => setForm(p => ({ ...p, imageData: ev.target.result }));
-    reader.readAsDataURL(file);
+    if (file.size > 5 * 1024 * 1024) { alert("이미지 크기 5MB 이하로 업로드해주세요"); return; }
+    const url = await uploadImageToStorage(file, 'requests');
+    if (url) setForm(p => ({ ...p, imageData: url }));
+    else alert("이미지 업로드 실패");
   };
 
   // 클립보드 이미지 붙여넣기 — Ctrl+V / Cmd+V
-  const onPasteImage = (e) => {
+  const onPasteImage = async (e) => {
     const items = e.clipboardData?.items || [];
     for (const it of items) {
       if (it.kind === "file" && it.type.startsWith("image/")) {
         e.preventDefault();
         const file = it.getAsFile();
         if (!file) continue;
-        if (file.size > 2 * 1024 * 1024) { alert("이미지 크기 2MB 이하만 붙여넣기 가능합니다"); return; }
-        const reader = new FileReader();
-        reader.onload = (ev) => setForm(p => ({ ...p, imageData: ev.target.result }));
-        reader.readAsDataURL(file);
+        if (file.size > 5 * 1024 * 1024) { alert("이미지 크기 5MB 이하만 붙여넣기 가능합니다"); return; }
+        const url = await uploadImageToStorage(file, 'requests');
+        if (url) setForm(p => ({ ...p, imageData: url }));
+        else alert("이미지 업로드 실패");
         return;
       }
     }
@@ -344,8 +370,38 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
                     </div>
                   ))}
                 </div>}
+                {/* 직원 확인 명단 */}
+                {employees.length > 0 && <div style={{marginTop:14,paddingTop:12,borderTop:"1px dashed "+T.gray100}}>
+                  {(() => {
+                    const acks = n.acks || {};
+                    const ackedCount = employees.filter(e => acks[e.id]).length;
+                    return <div style={{fontSize:12,fontWeight:T.fw.bolder,color:T.text,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
+                      📋 확인 명단 <span style={{fontSize:11,color:T.textMuted,fontWeight:600}}>({ackedCount}/{employees.length})</span>
+                    </div>;
+                  })()}
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                    {employees.map(e => {
+                      const acks = n.acks || {};
+                      const acked = acks[e.id];
+                      return <button key={e.id}
+                        onClick={()=>ackNotice(n.id, e.id)}
+                        title={acked ? `확인 ${fmtDate(acked)} — 클릭하면 해제` : "클릭해서 확인 처리"}
+                        style={{
+                          padding:"5px 10px",borderRadius:16,fontSize:11,fontWeight:700,
+                          border: acked ? `1px solid #10B98166` : `1.5px dashed ${T.primary}`,
+                          background: acked ? "#D1FAE5" : (T.primaryLt||"#EEF2FF"),
+                          color: acked ? "#065F46" : T.primary,
+                          cursor: "pointer",
+                          fontFamily:"inherit", display:"inline-flex", alignItems:"center", gap:4
+                        }}>
+                        {acked ? "✅" : "👉"} {e.id}
+                        {acked && <span style={{fontSize:9,color:"#065F46",opacity:.8,fontWeight:500}}>{fmtDate(acked)}</span>}
+                      </button>;
+                    })}
+                  </div>
+                </div>}
                 {isMaster && <button onClick={()=>removeNotice(n.id)}
-                  style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+T.danger+"66",background:"#fff5f5",color:T.danger,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                  style={{marginTop:12,padding:"4px 10px",borderRadius:6,border:"1px solid "+T.danger+"66",background:"#fff5f5",color:T.danger,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
                   공지 전체 삭제
                 </button>}
               </div>}
@@ -387,7 +443,12 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
       {reqMarkupOpen && form.imageData && <MarkupEditor
         open={true}
         imageSrc={form.imageData}
-        onSave={(newB64)=>{ setForm(p=>({...p,imageData:newB64})); setReqMarkupOpen(false); }}
+        onSave={async (newB64)=>{
+          const url = await uploadImageToStorage(newB64, 'requests');
+          if (url) setForm(p=>({...p,imageData:url}));
+          else { alert('이미지 저장 실패'); return; }
+          setReqMarkupOpen(false);
+        }}
         onClose={()=>setReqMarkupOpen(false)}
       />}
       <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>

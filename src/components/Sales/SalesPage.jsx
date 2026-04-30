@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback } from 'react'
 import { T } from '../../lib/constants'
 import { sb, buildTokenSearch, matchAllTokens } from '../../lib/sb'
 import { toDb } from '../../lib/db'
-import { todayStr, genId, fmtLocal, useSessionState } from '../../lib/utils'
+import { todayStr, genId, fmtLocal, useSessionState, TTL } from '../../lib/utils'
 import { Btn, StatCard, GridLayout, fmt, Empty, DataTable, FLD } from '../common'
 import I from '../common/I'
 import { SmartDatePicker } from '../Reservations/ReservationsPage'
@@ -87,20 +87,31 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
       });
     } catch (e) { alert("편집 진입 실패: " + (e?.message || e)); }
   };
-  const [salesTab, setSalesTab] = useSessionState("sales_tab", "sales"); // "sales" | "stats"
+  const [salesTab, setSalesTab] = useSessionState("sales_tab", "sales", { ttlMs: TTL.TAB }); // "sales" | "stats"
   const dateAnchorRef = React.useRef(null);
-  const [startDate, setStartDate] = useSessionState("sales_startDate", todayStr());
-  const [endDate, setEndDate] = useSessionState("sales_endDate", todayStr());
-  const [periodKey, setPeriodKey] = useSessionState("sales_periodKey", "1day");
+  const [startDate, setStartDate] = useSessionState("sales_startDate", todayStr(), { ttlMs: TTL.DATE_RANGE });
+  const [endDate, setEndDate] = useSessionState("sales_endDate", todayStr(), { ttlMs: TTL.DATE_RANGE });
+  const [periodKey, setPeriodKey] = useSessionState("sales_periodKey", "1day", { ttlMs: TTL.DATE_RANGE });
   const [showSheet, setShowSheet] = useState(false);
-  const [vb, setVb] = useSessionState("sales_vb", "all");
+  const [vb, setVb] = useSessionState("sales_vb", "all", { ttlMs: TTL.TAB });
   const [showModal, setShowModal] = useState(false);
   const [editSale, setEditSale] = useState(null);
   const [editMemoId, setEditMemoId] = useState(null);
   const [editMemoText, setEditMemoText] = useState("");
-  const [q, setQ] = useSessionState("sales_q", "");
-  const [expandedId, setExpandedId] = useSessionState("sales_expandedId", null);
+  const [q, setQ] = useSessionState("sales_q", "", { ttlMs: TTL.SEARCH });
+  const [expandedId, setExpandedId] = useSessionState("sales_expandedId", null, { ttlMs: TTL.TAB });
   const [detailMap, setDetailMap] = useState({});  // saleId → [detail rows]
+
+  // sales 행의 svc_x/prod_x NET 결제값 직접 사용
+  // v3.7.240 SaleForm에서 매출 저장 시 결제수단을 시술/제품으로 정확히 분리해 DB에 저장하므로
+  // 이 값 자체가 신뢰할 수 있는 NET. 합계는 항상 결제액과 일치.
+  // - 구버전 데이터 (모두 svc 컬럼에 들어간 케이스): 제품합계는 0으로 표시되지만, 총합계는 정확.
+  // - 매출 편집 시 split-on-save 로직이 다시 적용되어 누락된 분리 교정 가능.
+  const splitSvcProd = useCallback((sale) => {
+    const svcRaw = (sale.svcCash||0) + (sale.svcTransfer||0) + (sale.svcCard||0) + (sale.svcPoint||0);
+    const prodRaw = (sale.prodCash||0) + (sale.prodTransfer||0) + (sale.prodCard||0) + (sale.prodPoint||0);
+    return { svc: svcRaw, prod: prodRaw, fromDetails: false };
+  }, []);
 
   /* ── sale_details lazy 로드 ── */
   const loadDetails = useCallback(async (saleId) => {
@@ -187,11 +198,14 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
     const pr = s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint;
     // 외부선결제는 결제수단이지만 시술에 대한 금액이므로 제품이 없는 매출에서는 시술합계에 포함
     const extToSvc = pr === 0 ? (s.externalPrepaid||0) : 0;
-    const sv = svRaw + extToSvc;
+    // 시술/제품 합계는 sale_details 기반 정확 분리 (구버전 데이터는 svc_*/prod_* fallback)
+    const split = splitSvcProd(s);
+    const svDisp = split.svc + extToSvc;
+    const prDisp = split.prod;
     return {
-      svc:  a.svc+sv,  svcCash:a.svcCash+s.svcCash, svcTransfer:a.svcTransfer+s.svcTransfer,
+      svc:  a.svc+svDisp,  svcCash:a.svcCash+s.svcCash, svcTransfer:a.svcTransfer+s.svcTransfer,
       svcCard:a.svcCard+s.svcCard, svcPoint:a.svcPoint+s.svcPoint,
-      prod: a.prod+pr, prodCash:a.prodCash+s.prodCash, prodTransfer:a.prodTransfer+s.prodTransfer,
+      prod: a.prod+prDisp, prodCash:a.prodCash+s.prodCash, prodTransfer:a.prodTransfer+s.prodTransfer,
       prodCard:a.prodCard+s.prodCard, prodPoint:a.prodPoint+s.prodPoint,
       gift: a.gift+(s.gift||0),
       extPrepaid: a.extPrepaid+(s.externalPrepaid||0),
@@ -523,7 +537,10 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
               const pr = s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint;
               // 외부선결제는 시술에 대한 결제수단 — 제품이 없으면 시술합계에 포함
               const extToSvc = pr === 0 ? (s.externalPrepaid||0) : 0;
-              const sv = svRaw + extToSvc;
+              // 시술/제품 분리 — sale_details 기반 (구버전 데이터는 svc_*/prod_* fallback)
+              const _split = splitSvcProd(s);
+              const sv = _split.svc + extToSvc;
+              const prDisp = _split.prod;
               const rowCash = (s.svcCash||0)+(s.prodCash||0);
               const rowCard = (s.svcCard||0)+(s.prodCard||0);
               const rowTransfer = (s.svcTransfer||0)+(s.prodTransfer||0);
@@ -552,7 +569,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
                   </td>
                   <td style={{color:T.textSub,fontSize:T.fs.xxs}}>{s.staffName||"-"}</td>
                   <td style={{fontWeight:T.fw.bold,color:T.primary}}>{sv>0?fmt(sv):<Z/>}</td>
-                  <td style={{fontWeight:T.fw.bold,color:T.info}}>{pr>0?fmt(pr):<Z/>}</td>
+                  <td style={{fontWeight:T.fw.bold,color:T.info}}>{prDisp>0?fmt(prDisp):<Z/>}</td>
                   <td style={{fontWeight:T.fw.bold,color:rowCash>0?"#16a34a":T.gray400,textAlign:"right"}}>{rowCash>0?fmt(rowCash):"-"}</td>
                   <td style={{fontWeight:T.fw.bold,color:rowCard>0?T.primary:T.gray400,textAlign:"right"}}>{rowCard>0?fmt(rowCard):"-"}</td>
                   <td style={{fontWeight:T.fw.bold,color:rowTransfer>0?T.info:T.gray400,textAlign:"right"}}>{rowTransfer>0?fmt(rowTransfer):"-"}</td>
@@ -656,13 +673,17 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
                     <div style={{marginTop:10,padding:"8px 12px",background:T.bgCard,border:"1px solid "+T.border,borderRadius:T.radius.md}}>
                       <div style={{fontSize:T.fs.xxs,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:4}}>📝 메모</div>
                       {editMemoId===s.id ? (
-                        <div style={{display:"flex",gap:6,alignItems:"flex-start"}}>
-                          <textarea value={editMemoText} onChange={e=>setEditMemoText(e.target.value)} autoFocus
-                            style={{flex:1,fontSize:12,padding:"6px 8px",borderRadius:6,border:"1px solid "+T.primary,fontFamily:"inherit",minHeight:70,resize:"vertical"}}
-                            onKeyDown={e=>{if(e.key==="Escape")setEditMemoId(null);}}/>
-                          <div style={{display:"flex",flexDirection:"column",gap:3}}>
-                            <Btn size="sm" onClick={()=>saveMemo(s.id)}>저장</Btn>
+                        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                          <textarea value={editMemoText} onChange={e=>{
+                              setEditMemoText(e.target.value);
+                              const ta=e.target; ta.style.height="auto"; ta.style.height=Math.max(120, ta.scrollHeight+2)+"px";
+                            }} autoFocus
+                            ref={el=>{ if(el && el.style.height==="auto") return; if(el){ el.style.height="auto"; el.style.height=Math.max(120, el.scrollHeight+2)+"px"; } }}
+                            style={{width:"100%",boxSizing:"border-box",fontSize:T.fs.xs,padding:"8px 10px",borderRadius:6,border:"1.5px solid "+T.primary,fontFamily:"inherit",lineHeight:1.5,resize:"vertical",overflow:"hidden"}}
+                            onKeyDown={e=>{if(e.key==="Escape")setEditMemoId(null); if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();saveMemo(s.id);}}}/>
+                          <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
                             <Btn variant="secondary" size="sm" onClick={()=>setEditMemoId(null)}>취소</Btn>
+                            <Btn size="sm" onClick={()=>saveMemo(s.id)}>💾 저장 (Ctrl+Enter)</Btn>
                           </div>
                         </div>
                       ) : (
@@ -718,6 +739,8 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
   const [vb, setVb] = useState("all");
   const dateAnchorRef = React.useRef(null);
   const [showSheet, setShowSheet] = useState(false);
+  // 매출통계는 권한 무관 전 지점 표시 (userBranches 무시)
+  const allBids = (data?.branches || []).map(b => b.id);
 
   // 기간 범위 계산 (매출관리와 동일한 로직)
   const inRange = (date) => {
@@ -727,7 +750,7 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
   };
 
   const filtered = (data?.sales||[]).filter(s => {
-    if (!((vb==="all"?userBranches.includes(s.bid):s.bid===vb))) return false;
+    if (!((vb==="all"?allBids.includes(s.bid):s.bid===vb))) return false;
     return inRange(s.date);
   });
 
@@ -791,7 +814,7 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     const cur = new Date(chartStart);
     while (cur <= chartEnd) {
       const ds = fmtLocal(cur);
-      const dayData = (data?.sales||[]).filter(s=>s.date===ds && ((vb==="all"?userBranches.includes(s.bid):s.bid===vb)));
+      const dayData = (data?.sales||[]).filter(s=>s.date===ds && ((vb==="all"?allBids.includes(s.bid):s.bid===vb)));
       const svc = dayData.reduce((a,s)=>a+s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint,0);
       const prod = dayData.reduce((a,s)=>a+s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint,0);
       out.push({label:`${cur.getMonth()+1}/${cur.getDate()}`,svc,prod,total:svc+prod});
@@ -811,7 +834,7 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
       <div style={{display:"flex",gap:T.sp.sm,alignItems:"center"}}>
         {<select className="inp" style={{maxWidth:150,width:"auto"}} value={vb} onChange={e=>setVb(e.target.value)}>
           <option value="all">전체 매장</option>
-          {(data.branches||[]).filter(b=>userBranches.includes(b.id)).map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
+          {(data.branches||[]).map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
         </select>}
         <button ref={dateAnchorRef} onClick={()=>setShowSheet(true)}
           style={{height:36,borderRadius:T.radius.md,border:"1px solid "+T.primary+"44",background:T.primaryHover,

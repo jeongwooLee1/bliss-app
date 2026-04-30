@@ -146,6 +146,12 @@ export function evaluateConditions(evt, ctx) {
     (ctx.svcList || []).filter(s => items[s.id]?.checked).map(s => s.cat).filter(Boolean)
   )
 
+  // 보유권 EXCLUSION (TriFlag false = 보유 시 제외)
+  // 예: "첫방문 5만 할인" 이벤트에 customerHasActivePkg=false → 패키지 보유 고객 제외
+  if (c.customerHasActivePrepaid === false && ctx.hasActivePrepaid) return false
+  if (c.customerHasActivePkg === false && ctx.hasActivePkg) return false
+  if (c.customerHasActiveAnnual === false && ctx.hasActiveAnnual) return false
+
   // 시술 포함 조건
   if (Array.isArray(c.servicesAny) && c.servicesAny.length) {
     if (!c.servicesAny.some(id => checkedSvcIds.has(id))) return false
@@ -154,7 +160,18 @@ export function evaluateConditions(evt, ctx) {
     if (!c.servicesAll.every(id => checkedSvcIds.has(id))) return false
   }
   if (Array.isArray(c.servicesNone) && c.servicesNone.length) {
+    // 카트에 담긴 시술 중 제외 ID 있으면 미반영
     if (c.servicesNone.some(id => checkedSvcIds.has(id))) return false
+    // 추가: 고객이 이미 보유한 보유권(다담권/패키지/연간권)도 제외 ID와 동일 시술명이면 미반영
+    // 예: "첫방문 5만 할인" 제외 목록에 "다담권 50만" 추가 → 다담권 50만 보유 고객 자동 제외
+    const ownedPkgNames = new Set((ctx.customerPkgs || []).map(p => p.service_name).filter(Boolean))
+    if (ownedPkgNames.size > 0) {
+      const noneNames = c.servicesNone.map(id => {
+        const sv = (ctx.svcList || []).find(s => s.id === id)
+        return sv?.name
+      }).filter(Boolean)
+      if (noneNames.some(n => ownedPkgNames.has(n))) return false
+    }
   }
   if (Array.isArray(c.categoriesAny) && c.categoriesAny.length) {
     if (!c.categoriesAny.some(id => checkedCatIds.has(id))) return false
@@ -236,34 +253,63 @@ export function evaluateConditions(evt, ctx) {
 
 /**
  * 적립/할인 기준 금액 계산
+ *
+ * baseCategoryIds / baseServiceIds 가 설정되면 base 종류와 무관하게 그 카테고리/시술로 한정.
+ * - svc / svc_prod / category / services: 카트 합계만 계산 (할인 전)
+ * - net_pay: 카트 합계의 비율로 net_pay 비례 배분 (할인 후)
  */
 function baseAmount(reward, ctx) {
   const base = reward.base || 'svc'
-  if (base === 'svc_prod') return (ctx.svcTotal||0) + (ctx.prodTotal||0)
-  if (base === 'net_pay') return ctx.netAmount || 0 // 할인 후 실결제액 (2-pass에서 계산됨)
+  if (base === 'fixed') return 0 // 고정금액은 rate가 아니라 value 사용
   if (base === 'prepaid_amount') return ctx.prepaidPurchaseAmount || 0
   if (base === 'pkg_amount') return ctx.pkgPurchaseAmount || 0
   if (base === 'annual_amount') return ctx.annualPurchaseAmount || 0
-  if (base === 'fixed') return 0 // 고정금액은 rate가 아니라 value 사용
-  if (base === 'category' && Array.isArray(reward.baseCategoryIds) && reward.baseCategoryIds.length) {
-    const items = ctx.items || {}
-    const svcList = ctx.svcList || []
-    return svcList.reduce((sum, s) => {
-      if (!reward.baseCategoryIds.includes(s.cat)) return sum
+
+  const items = ctx.items || {}
+  const svcList = ctx.svcList || []
+  const hasCatFilter = Array.isArray(reward.baseCategoryIds) && reward.baseCategoryIds.length > 0
+  const hasSvcFilter = Array.isArray(reward.baseServiceIds) && reward.baseServiceIds.length > 0
+
+  // 카테고리/시술 필터가 있으면 — base 종류와 무관하게 그 시술 합계만 사용
+  if (hasCatFilter || hasSvcFilter || base === 'category' || base === 'services') {
+    const matchedSubtotal = svcList.reduce((sum, s) => {
       const it = items[s.id]
       if (!it?.checked) return sum
+      if (hasSvcFilter && !reward.baseServiceIds.includes(s.id)) return sum
+      if (hasCatFilter && !reward.baseCategoryIds.includes(s.cat)) return sum
       return sum + (it.amount || 0)
     }, 0)
+
+    // net_pay base + 카테고리/시술 필터:
+    //   매칭 대상이 모두 시술이면 → svcNetAmount(=시술합계-시술할인) 기준 비례
+    //   매칭 대상이 제품 포함이면 → 전체 net_pay 비례 (혼합 fallback)
+    if (base === 'net_pay') {
+      // 시술 단독 매칭 판정 (제품이 아닌 시술만 매칭됐는지)
+      const prodIds = new Set((ctx.prodList || []).map(p => p.id))
+      const matchedItems = svcList.filter(s => {
+        const it = items[s.id]; if (!it?.checked) return false
+        if (hasSvcFilter && !reward.baseServiceIds.includes(s.id)) return false
+        if (hasCatFilter && !reward.baseCategoryIds.includes(s.cat)) return false
+        return true
+      })
+      const allSvc = matchedItems.length > 0 && matchedItems.every(s => !prodIds.has(s.id))
+      if (allSvc && (ctx.svcTotal || 0) > 0) {
+        // 시술합계 대비 매칭 비율 × 시술 실결제액
+        const ratio = matchedSubtotal / (ctx.svcTotal || 1)
+        return Math.round((ctx.svcNetAmount || 0) * ratio)
+      }
+      // fallback: 매출 전체 net_pay 비례
+      const grossTotal = (ctx.svcTotal || 0) + (ctx.prodTotal || 0)
+      if (grossTotal <= 0) return 0
+      const ratio = (ctx.netAmount || 0) / grossTotal
+      return Math.round(matchedSubtotal * ratio)
+    }
+    return matchedSubtotal
   }
-  if (base === 'services' && Array.isArray(reward.baseServiceIds) && reward.baseServiceIds.length) {
-    const items = ctx.items || {}
-    return reward.baseServiceIds.reduce((sum, sid) => {
-      const it = items[sid]
-      if (!it?.checked) return sum
-      return sum + (it.amount || 0)
-    }, 0)
-  }
-  return ctx.svcTotal || 0 // default
+
+  if (base === 'svc_prod') return (ctx.svcTotal||0) + (ctx.prodTotal||0)
+  if (base === 'net_pay') return ctx.netAmount || 0
+  return ctx.svcTotal || 0 // svc default
 }
 
 /**
@@ -311,7 +357,11 @@ function applyReward(reward, evt, ctx, result, now) {
         exp = d.toISOString()
       }
       if (reward.couponName) {
-        result.issueCoupons.push({ name: reward.couponName, qty, expiresAt: exp, evtName: evt.name })
+        // trigger·expiryMonths도 같이 전달 (SaleForm에서 보유권 연결 처리에 사용)
+        result.issueCoupons.push({
+          name: reward.couponName, qty, expiresAt: exp, evtName: evt.name,
+          trigger: evt.trigger, expiryMonths: Number(reward.expiryMonths) || 0,
+        })
       }
       break
     }
@@ -377,12 +427,19 @@ export function applyEvents(events, ctx) {
   })
 
   // 할인 후 실결제액(netAmount) 계산 — point_earn base='net_pay'에서 사용
+  // externalDiscount: 엔진 외부 차감 (수동 할인 + 쿠폰 + 프로모 + 체험단)
   const netAmount = Math.max(0,
     (ctx.svcTotal||0) + (ctx.prodTotal||0)
     - (result.discountFlat||0)
     - Math.round((ctx.svcTotal||0) * (result.discountPct||0) / 100)
+    - (ctx.externalDiscount||0)
   )
-  const ctx2 = { ...ctx, netAmount }
+  // 시술 실결제액 — 시술합계 - 시술 적용 할인 (point_earn 카테고리 기준 적립에 사용)
+  const svcDiscountTotal = (result.discountFlat||0)
+    + Math.round((ctx.svcTotal||0) * (result.discountPct||0) / 100)
+    + (ctx.externalSvcDiscount||0)
+  const svcNetAmount = Math.max(0, (ctx.svcTotal||0) - svcDiscountTotal)
+  const ctx2 = { ...ctx, netAmount, svcNetAmount }
 
   // Pass 2: point_earn만 계산 (netAmount 반영)
   result.appliedEvents.forEach(evt => {

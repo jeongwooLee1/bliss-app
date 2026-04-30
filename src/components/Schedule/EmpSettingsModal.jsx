@@ -212,6 +212,26 @@ function EmpCard({ emp, branch, empSettings, onSetEmpSetting, onDeleteEmp, onUpd
             </button>
           ))}
         </div>
+        {/* 성별 (남/여) */}
+        <div style={{ display:'flex', gap:3, marginBottom:6 }}>
+          {[
+            { v:'F', label:'여', clr:'#E91E63' },
+            { v:'M', label:'남', clr:'#1976D2' },
+          ].map(({v,label,clr})=>{
+            const cur = emp.gender || (emp.isMale ? 'M' : 'F')
+            const on = cur === v
+            return <button key={v}
+              onClick={()=>{
+                onUpdateEmp(emp.id, '__merge', { gender: v, isMale: v === 'M' })
+              }}
+              style={{ flex:1, padding:'3px 0', borderRadius:4, fontSize:10, fontWeight:on?700:400, cursor:'pointer', fontFamily:'inherit',
+                border:`1.5px solid ${on?clr:T.border}`,
+                background:on?clr+'22':'#fff',
+                color:on?clr:'#bbb' }}>
+              {label}
+            </button>
+          })}
+        </div>
         <div style={{ fontSize:11, color:cfg.altPattern ? T.gray400 : T.textSub, marginBottom:4 }}>
           주 근무일수{cfg.altPattern && <span style={{ fontSize:9, color:'#bbb', marginLeft:4 }}>(격주패턴 우선)</span>}
         </div>

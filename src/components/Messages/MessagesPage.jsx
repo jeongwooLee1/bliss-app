@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { T } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY, sbHeaders, matchAllTokens } from '../../lib/sb'
 import { fromDb } from '../../lib/db'
-import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, useSessionState } from '../../lib/utils'
+import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, useSessionState, TTL } from '../../lib/utils'
 import I from '../common/I'
 import { ChannelLogo } from './channelIcons'
 
@@ -10,8 +10,9 @@ import { ChannelLogo } from './channelIcons'
 // 지점 매핑은 data.branches에서 동적 생성 (하드코딩 제거)
 
 
-function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], isMaster=false, pendingChat=null, onPendingChatDone, setPendingOpenRes, setPage }) {
-  const isMobile = window.innerWidth < 768;
+function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranches=[], isMaster=false, currentUser=null, pendingChat=null, onPendingChatDone, setPendingOpenRes, setPage, forceCompact=false }) {
+  // forceCompact: 사이드 패널 모드 — 좁은 폭에서 모바일 UI(리스트↔개별 토글) 사용
+  const isMobile = forceCompact || (typeof window !== "undefined" && window.innerWidth < 768);
   const CH_ICON = {naver:"N",kakao:"K",instagram:"I",whatsapp:"W",telegram:"T",line:"L"};
   const CH_NAME = {naver:"네이버톡톡",kakao:"카카오",instagram:"인스타",whatsapp:"왓츠앱",telegram:"텔레그램",line:"LINE"};
   const CH_COLOR = {naver:"#03C75A",kakao:"#F9E000",instagram:"#E1306C",whatsapp:"#128C7E",telegram:"#2AABEE",line:"#06C755"};
@@ -19,8 +20,8 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   const getGeminiKey = () => window.__systemGeminiKey || window.__geminiKey || localStorage.getItem("bliss_gemini_key") || "";
 
   const [msgs, setMsgs] = useState([]);
-  // 선택된 대화방 {channel,user_id} — 새로고침 시 유지
-  const [sel, setSel] = useSessionState("msg_sel", null);
+  // 선택된 대화방 {channel,user_id} — 새로고침 시 유지 (24h TTL)
+  const [sel, setSel] = useSessionState("msg_sel", null, { ttlMs: TTL.TAB });
   const [reply, setReply] = useState("");
   // AI로 생성된 답변인지 추적 (is_ai 플래그용)
   const [replyIsAi, setReplyIsAi] = useState(false);
@@ -84,7 +85,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   }, [userBranches, data?.branchGroups]);
 
   // 필터 모드: 'mine'(내 지점 + 연계, 디폴트) | 'all'(전지점)
-  const [branchFilter, setBranchFilter] = useSessionState("msg_branch_filter", "mine");
+  const [branchFilter, setBranchFilter] = useSessionState("msg_branch_filter", "mine", { ttlMs: TTL.TAB });
 
   // 선택된 필터에 따른 branch id 집합
   const activeBids = useMemo(() => {
@@ -104,7 +105,9 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
     if (loadingRef.current) return; // 중복 호출 방지
     loadingRef.current = true;
     try {
-      const r = await fetch(SB_URL+"/rest/v1/messages?order=created_at.desc&limit=2000&select=*",{headers:{...sbHeaders,"Cache-Control":"no-cache"},cache:"no-store"});
+      // 최근 60일치만 로드 (장기 누적 시 렉 방지). 더 오래된 건 검색 시 별도 호출 가능
+      const _since = new Date(Date.now() - 60 * 86400000).toISOString();
+      const r = await fetch(SB_URL+`/rest/v1/messages?created_at=gte.${encodeURIComponent(_since)}&order=created_at.desc&limit=3000&select=*`,{headers:{...sbHeaders,"Cache-Control":"no-cache"},cache:"no-store"});
       const d2 = await r.json();
       if (Array.isArray(d2)) {
         setMsgs(d2);
@@ -214,7 +217,7 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
 
   useEffect(()=>{ convoEndRef.current?.scrollIntoView({behavior:"smooth"}); },[sel, msgs.length]);
 
-  const [msgSearch, setMsgSearch] = useSessionState("msg_search", "");
+  const [msgSearch, setMsgSearch] = useSessionState("msg_search", "", { ttlMs: TTL.SEARCH });
 
   // 채팅 user_id → 예약 매핑 (active 예약 우선)
   const chatResMap = useMemo(()=>{
@@ -229,15 +232,55 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
     return m;
   },[data?.reservations]);
 
+  // 채팅 user_id → 고객 매핑
+  // 1순위: customer.sns_accounts에 직접 링크된 경우 (가장 신뢰)
+  // 2순위: 예약 cust_id 통해 매칭 (chatResMap 경유)
+  const chatCustMap = useMemo(()=>{
+    const m={};
+    const cMap = new Map((data?.customers||[]).map(c=>[c.id, c]));
+    // 1순위: sns_accounts 기반
+    (data?.customers||[]).forEach(c => {
+      const sns = Array.isArray(c.snsAccounts) ? c.snsAccounts : (Array.isArray(c.sns_accounts) ? c.sns_accounts : []);
+      sns.forEach(s => {
+        if (s?.channel && s?.user_id) m[`${s.channel}_${s.user_id}`] = c;
+      });
+    });
+    // 2순위: 예약을 통한 매칭 (sns_accounts에 없을 때만)
+    Object.entries(chatResMap).forEach(([key, res])=>{
+      if (m[key]) return;
+      if(!res.custId) return;
+      const cust = cMap.get(res.custId);
+      if(cust) m[key] = cust;
+    });
+    return m;
+  },[chatResMap, data?.customers]);
+
+  // 채팅 → 가장 최근 예약 (chatResMap 우선 → 없으면 고객 cust_id로 최근 active 예약)
+  const chatLatestRes = useMemo(()=>{
+    const m={};
+    const SKIP=["cancelled","naver_cancelled","naver_changed"];
+    // 1순위: chatResMap (chat 정보가 직접 박힌 예약)
+    Object.entries(chatResMap).forEach(([k, r]) => { m[k] = r; });
+    // 2순위: 고객 매칭으로 최근 예약 찾기
+    Object.entries(chatCustMap).forEach(([k, cust])=>{
+      if (m[k]) return;
+      const list = (data?.reservations||[]).filter(r => r.custId === cust.id && !SKIP.includes(r.status))
+        .sort((a,b) => ((b.date||"")+(b.time||"")).localeCompare((a.date||"")+(a.time||"")));
+      if (list[0]) m[k] = list[0];
+    });
+    return m;
+  },[chatResMap, chatCustMap, data?.reservations]);
+
   const threads = useMemo(()=>{
     const map = {};
     msgs.forEach(m=>{
       // 지점 필터: account_id가 있고 허용 목록에 없으면 제외 (네이버·인스타만)
       // 예외: account_id 없음/'unknown' → 지점 미지정 메시지라 그대로 노출
-      // 왓츠앱은 전지점 공통이라 필터 우회
+      // 왓츠앱·ai_test는 전지점 공통/전체이라 필터 우회
       const isWhatsApp = (m.channel||"") === "whatsapp";
       const isLine = (m.channel||"") === "line";
-      if(!isWhatsApp && !isLine && allowedIds.length>0 && m.account_id && m.account_id!=="unknown" && !allowedIds.includes(String(m.account_id))) return;
+      const isAitest = (m.channel||"") === "ai_test";
+      if(!isWhatsApp && !isLine && !isAitest && allowedIds.length>0 && m.account_id && m.account_id!=="unknown" && !allowedIds.includes(String(m.account_id))) return;
       const key=(m.channel||"naver")+"_"+m.user_id;
       if(!map[key]||new Date(m.created_at)>new Date(map[key].created_at)) map[key]=m;
     });
@@ -251,6 +294,8 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       });
       list=list.filter(m=>matchUids.has((m.channel||"naver")+"_"+m.user_id));
     }
+    // ai_test 채널 노출 제거 (요청)
+    list = list.filter(m => (m.channel||"") !== "ai_test");
     return list;
   },[msgs, allowedIds.length, msgSearch]);
 
@@ -309,11 +354,16 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
     return "고객"+(uids.indexOf(uid)+1||"");
   };
 
-  const markRead = async(uid)=>{
-    const unreadCount = msgs.filter(m=>m.user_id===uid&&!m.is_read&&m.direction==="in").length;
-    await fetch(SB_URL+"/rest/v1/messages?user_id=eq."+uid+"&is_read=eq.false",
-      {method:"PATCH",headers:{...sbHeaders,Prefer:"return=minimal"},body:JSON.stringify({is_read:true})});
-    setMsgs(prev=>prev.map(m=>m.user_id===uid?{...m,is_read:true}:m));
+  const markRead = async(uid, ch)=>{
+    // ch가 있으면 해당 채널만, 없으면 user_id 전체 (구버전 호환)
+    const matches = (m) => m.user_id===uid && (!ch || (m.channel||"naver")===ch);
+    const unreadCount = msgs.filter(m => matches(m) && !m.is_read && m.direction==="in").length;
+    let url = SB_URL+"/rest/v1/messages?user_id=eq."+uid+"&is_read=eq.false";
+    if (ch) url += "&channel=eq."+encodeURIComponent(ch);
+    try {
+      await fetch(url, {method:"PATCH",headers:{...sbHeaders,Prefer:"return=minimal"},body:JSON.stringify({is_read:true})});
+    } catch(e) { /* fail-safe — 로컬 상태는 갱신 */ }
+    setMsgs(prev=>prev.map(m=>matches(m)?{...m,is_read:true}:m));
     if(onRead && unreadCount > 0) onRead(unreadCount);
   };
 
@@ -321,11 +371,159 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
     const ch=m.channel||"naver";
     setSel({user_id:m.user_id,channel:ch,account_id:m.account_id});
     setReply("");
-    markRead(m.user_id);
+    markRead(m.user_id, ch);
+    setLinkPickerOpen(false); setLinkSearch("");
     if(onChatOpen) onChatOpen(true);
   };
 
-  const sendMsg = async(text)=>{
+  // 수동 고객 연결 — sns_accounts에 채널/user_id 추가
+  const [linkPickerOpen, setLinkPickerOpen] = useState(false);
+  const [linkSearch, setLinkSearch] = useState("");
+  const [linkRemoteResults, setLinkRemoteResults] = useState([]);
+  // 서버 검색 — 로컬에 없는 고객도 찾을 수 있게
+  useEffect(()=>{
+    const q = linkSearch.trim();
+    if (!q || q.length < 2) { setLinkRemoteResults([]); return; }
+    const t = setTimeout(async ()=>{
+      try {
+        const _bizId = data?.businesses?.[0]?.id || (data?.customers?.[0]?.businessId);
+        if (!_bizId) return;
+        // 다토큰 AND 검색 — "신영 8008" → name 어딘가 "신영" + phone 어딘가 "8008"
+        // 숫자 토큰은 하이픈·공백 제거 후 매칭 (예: "010-3260-0787" → "01032600787")
+        const _normNumeric = (t) => /[-\s+0-9]/.test(t) && /\d/.test(t) ? t.replace(/[-\s+]/g, '') : t;
+        const tokens = q.split(/\s+/).filter(Boolean).map(_normNumeric);
+        const fields = ['name','name2','phone','phone2','email','cust_num','cust_num2'];
+        let filter;
+        if (tokens.length === 1) {
+          const enc = encodeURIComponent(tokens[0]);
+          filter = `or=(${fields.map(f=>`${f}.ilike.*${enc}*`).join(',')})`;
+        } else {
+          const ands = tokens.map(tok => {
+            const enc = encodeURIComponent(tok);
+            return `or(${fields.map(f=>`${f}.ilike.*${enc}*`).join(',')})`;
+          });
+          filter = `and=(${ands.join(',')})`;
+        }
+        const rows = await sb.get("customers", `&business_id=eq.${_bizId}&is_hidden=eq.false&${filter}&limit=10`);
+        // snake → camel 정규화 (로컬과 일관)
+        const norm = (Array.isArray(rows) ? rows : []).map(r => ({
+          ...r,
+          custNum: r.custNum || r.cust_num || "",
+          phone2: r.phone2 || "",
+          name2: r.name2 || "",
+        }));
+        setLinkRemoteResults(norm);
+      } catch { setLinkRemoteResults([]); }
+    }, 250);
+    return () => clearTimeout(t);
+  },[linkSearch, data?.businesses, data?.customers]);
+  const linkCandidates = useMemo(()=>{
+    const q = linkSearch.trim().toLowerCase();
+    if (!q || q.length < 1) return [];
+    // 다토큰 AND 검색 — 각 토큰이 어떤 필드에든 부분매칭되어야 함
+    const tokens = q.split(/\s+/).filter(Boolean);
+    const local = (data?.customers||[]).filter(c => {
+      const fields = [c.name||"", c.name2||"", c.phone||"", c.phone2||"", c.custNum||"", c.email||""].map(s=>String(s).toLowerCase());
+      return tokens.every(tok => fields.some(f => f.includes(tok)));
+    });
+    // 로컬 + 서버 결과 합치고 중복 제거
+    const seen = new Set(local.map(c=>c.id));
+    const remote = (linkRemoteResults||[]).filter(c => !seen.has(c.id));
+    return [...local, ...remote].slice(0, 12);
+  },[linkSearch, data?.customers, linkRemoteResults]);
+  const linkCustomer = async (cust) => {
+    if (!sel || !cust?.id) return;
+    const ch = sel.channel || "naver";
+    const accId = sel.account_id || (convo[0]?.account_id) || ch;
+    const uid = sel.user_id;
+    // 현재 sns_accounts 가져오기
+    let cur = [];
+    try {
+      const rows = await sb.get("customers", `&id=eq.${cust.id}&select=sns_accounts&limit=1`);
+      cur = rows?.[0]?.sns_accounts || [];
+      if (typeof cur === "string") cur = JSON.parse(cur);
+      if (!Array.isArray(cur)) cur = [];
+    } catch {}
+    const exists = cur.some(s => s?.channel === ch && s?.user_id === uid);
+    if (!exists) {
+      cur.push({ channel: ch, account_id: accId, user_id: uid, linked_at: new Date().toISOString() });
+      try {
+        const resp = await fetch(SB_URL+"/rest/v1/customers?id=eq."+cust.id, {
+          method:"PATCH",
+          headers:{...sbHeaders, "Content-Type":"application/json", Prefer:"return=minimal"},
+          body: JSON.stringify({ sns_accounts: cur })
+        });
+        if (!resp.ok) {
+          const txt = await resp.text().catch(()=>"");
+          alert(`연결 저장 실패 (status=${resp.status}): ${txt.slice(0,200)}`);
+          return;
+        }
+      } catch(e) { alert("연결 실패: "+e.message); return; }
+    }
+    // 로컬 data.customers 즉시 반영 — 기존이면 update, 없으면 insert (서버 검색 결과 포함)
+    if (setData) setData(prev => {
+      const list = prev?.customers || [];
+      const existing = list.find(c => c.id === cust.id);
+      const merged = { ...cust, snsAccounts: cur };
+      const next = existing ? list.map(c => c.id === cust.id ? {...c, ...merged} : c) : [merged, ...list];
+      return { ...prev, customers: next };
+    });
+    setLinkPickerOpen(false); setLinkSearch("");
+  };
+
+  // 직원 목록 (말머리 드롭다운용) + 선택된 직원
+  const [empList, setEmpList] = useState([]);
+  const [selStaff, setSelStaff] = useState(currentUser?.name || "");
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.employees_v1&select=value&limit=1`, {
+          headers: { ...sbHeaders, "Cache-Control": "no-cache" }, cache: "no-store"
+        });
+        const rows = await r.json();
+        const v = rows?.[0]?.value;
+        const arr = typeof v === "string" ? JSON.parse(v) : (Array.isArray(v) ? v : []);
+        if (!cancelled) setEmpList(Array.isArray(arr) ? arr : []);
+      } catch(e) { console.warn("[empList load]", e); }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  // currentUser.name 변경 시 selStaff 기본값도 업데이트 (한 번만)
+  useEffect(() => { if (!selStaff && currentUser?.name) setSelStaff(currentUser.name); }, [currentUser?.name]);
+
+  // 고객 연결 해제 — sns_accounts에서 현재 채팅방의 (channel, user_id) 항목 제거
+  const unlinkCustomer = async () => {
+    if (!sel) return;
+    const cust = chatCustMap[sel.channel + "_" + sel.user_id];
+    if (!cust?.id) return;
+    if (!confirm(`이 대화방에서 [${cust.name}] 고객 연결을 해제할까요?\n\n해제 후 다른 고객으로 다시 연결할 수 있습니다.`)) return;
+    const ch = sel.channel || "naver";
+    const uid = sel.user_id;
+    let cur = [];
+    try {
+      const rows = await sb.get("customers", `&id=eq.${cust.id}&select=sns_accounts&limit=1`);
+      cur = rows?.[0]?.sns_accounts || [];
+      if (typeof cur === "string") cur = JSON.parse(cur);
+      if (!Array.isArray(cur)) cur = [];
+    } catch {}
+    const next = cur.filter(s => !(s?.channel === ch && s?.user_id === uid));
+    try {
+      const resp = await fetch(SB_URL+"/rest/v1/customers?id=eq."+cust.id, {
+        method:"PATCH",
+        headers:{...sbHeaders, "Content-Type":"application/json", Prefer:"return=minimal"},
+        body: JSON.stringify({ sns_accounts: next })
+      });
+      if (!resp.ok) {
+        const txt = await resp.text().catch(()=>"");
+        alert(`해제 실패 (status=${resp.status}): ${txt.slice(0,200)}`);
+        return;
+      }
+    } catch(e) { alert("해제 실패: "+e.message); return; }
+    if (setData) setData(prev => ({...prev, customers: (prev?.customers||[]).map(c => c.id === cust.id ? {...c, snsAccounts: next} : c)}));
+  };
+
+  const sendMsg = async(text, translated)=>{
     if(!sel||!text.trim()) return;
     setSending(true);
     try{
@@ -333,13 +531,28 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       // AI 생성 답변이면 서버 큐와 로컬 echo 모두에 is_ai=true 표시
       const body = {account_id:accId,user_id:sel.user_id,message_text:text,status:"pending",channel:sel.channel||"naver"};
       if (replyIsAi) body.is_ai = true;
+      // 답장 직원 정보 — 메시지 본문엔 영향 없고 messages 테이블 메타데이터에만 저장 (관리화면 표시용)
+      // selStaff(드롭다운에서 선택한 직원) 우선, 없으면 로그인 currentUser
+      const _staffName = (selStaff || currentUser?.name || "").trim();
+      const _staffId = _staffName; // employee id = 이름 (employees_v1 구조)
+      if (_staffName) {
+        body.sent_by_staff_id = _staffId;
+        body.sent_by_staff_name = _staffName;
+      }
+      // 응답 모델이 만든 한국어(또는 사용자 원문 한국어) 동반 → echo 처리 시 messages.translated_text에 사용
+      if (translated && translated.trim()) body.translated_text = translated.trim();
       const r = await fetch(SB_URL+"/rest/v1/send_queue",{
         method:"POST",headers:{...sbHeaders,Prefer:"return=representation"},
         body:JSON.stringify(body)
       });
       if(r.ok){
-        setMsgs(prev=>[...prev,{user_id:sel.user_id,channel:sel.channel,direction:"out",account_id:accId,message_text:text,is_read:true,is_ai:!!replyIsAi,created_at:new Date().toISOString()}]);
-        setReply(""); setReplyIsAi(false);
+        const localEcho = {user_id:sel.user_id,channel:sel.channel,direction:"out",account_id:accId,message_text:text,is_read:true,is_ai:!!replyIsAi,created_at:new Date().toISOString()};
+        if (_staffName) { localEcho.sent_by_staff_id = _staffId; localEcho.sent_by_staff_name = _staffName; }
+        if (translated && translated.trim()) localEcho.translated_text = translated.trim();
+        setMsgs(prev=>[...prev,localEcho]);
+        setReply(""); setReplyIsAi(false); setAiKoDraft("");
+        // 답변 송신 시점에 들어와있는 미읽음 메시지 일괄 처리 (열어놓고 답변 작성 중 도착한 신규 포함)
+        markRead(sel.user_id, sel.channel||"naver");
       }
     }finally{setSending(false);}
   };
@@ -441,6 +654,19 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   • English: "Hi! I'm House Waxing's AI assistant 😊 Feel free to ask me anything!"
 ★ 매번 반복하진 말고, 첫 접촉/신원 질문 시에만. 사람 상담원인 척 금지.
 
+[콜라보·체험단 정책 — 최우선 적용 ⛔]
+★ 고객 메시지에 다음 키워드 있으면 즉시 콜라보 분기 (아래 정책들보다 우선):
+  - 한국어: 콜라보, 콜라보레이션, 협업, 체험단, 광고, PR, 인플루언서, 협찬, 콜라보레이트
+  - 영어: collaboration, collab, partnership, influencer, sponsored, brand deal, PR
+  - 일본어: コラボ, コラボレーション, インフルエンサー, 体験
+  - 직전 대화 맥락에 위 키워드가 한 번이라도 있었으면 동일하게 콜라보 분기 유지
+★ ⛔ 가격 안내·예약 진행·시술명 안내·시간 안내 절대 금지
+★ 답변은 아래 문구만 출력 (다른 내용·이모지·인사 추가 금지):
+  • 한국어: "콜라보 문의 감사합니다 😊 마케팅 담당자가 업무시간(평일 10~18시)에 직접 연락드릴게요!"
+  • English: "Thank you for your collaboration inquiry! 😊 Our marketing team will reach out to you directly during business hours (Mon-Fri, 10am-6pm KST)."
+  • 日本語: "コラボのお問い合わせありがとうございます 😊 マーケティング担当者が営業時間(平日10時〜18時)に直接ご連絡いたします!"
+★ 콜라보 = 체험단(무료 시술 + SNS 후기) 마케팅. 별도 마케팅 담당자가 직접 처리하므로 AI는 인계만.
+
 [가격 안내 정책 — 매우 중요]
 ★ 고객이 가격을 물으면 반드시 "신규 첫방문 할인가"를 메인으로 강조. 대부분 고객이 처음이라 이 가격을 낸다.
 ★ 정상가(154,000/176,000원 등)만 단독 안내 금지! 첫방문가를 앞에 내세워서 예약 유도할 것.
@@ -471,10 +697,9 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
   };
 
   // 🤖 대화 맥락 분석 → AI 자동 예약 생성 (서버 /ai-book 호출)
+  // v3.7.218: confirm() 제거 — iOS PWA·일부 모바일 브라우저에서 차단되어 동작 불가하던 문제 해결
   const aiBook = async()=>{
     if(!sel||aiBookLoading) return;
-    const custName=(convo.find(m=>m.cust_name)?.cust_name)||getDisplayName(convo[0]||{user_id:sel.user_id})||"";
-    if(!confirm(`${custName||"고객"}님의 대화를 분석해서 AI가 예약을 생성합니다.\n(미배정으로 저장되며, 타임라인에서 배정하세요)\n\n계속할까요?`)) return;
     setAiBookLoading(true);
     try{
       const res=await fetch("https://blissme.ai/ai-book",{
@@ -510,13 +735,21 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
         const hasKorean = /[\uAC00-\uD7A3\u1100-\u11FF]/.test(lastIn.message_text);
         const lang = hasKorean ? "ko" : "en"; // 한글 없으면 영어로 간주
         if(lang!=="ko"){
-          // 최근 6건의 대화 맥락 (Staff/Customer 구분) — 번역 품질 향상용
+          // 최근 6건의 대화 맥락 (시각·발화자 구분) — 번역 품질 + stale fact 방지용
+          // 타임스탬프 포함: LLM이 "내일/오늘" 같은 상대 날짜를 KST 기준으로 재해석하도록.
+          const _fmtKst = (iso) => {
+            try {
+              const d = new Date(iso);
+              return d.toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0,16) + " KST";
+            } catch { return ""; }
+          };
           const contextLines = (convo||[]).slice(-6).map(m => {
             const who = m.direction === "out" ? "Staff" : "Customer";
+            const ts = _fmtKst(m.created_at);
             const txt = (m.translated_text || m.message_text || "").toString().replace(/\s+/g," ").slice(0,180);
-            return txt ? `${who}: ${txt}` : "";
+            return txt ? `[${ts}] ${who}: ${txt}` : "";
           }).filter(Boolean).join("\n");
-          // 서버 Claude(Haiku) 엔드포인트 호출 — 실패 시 Gemini 폴백
+          // 서버 GPT-4o-mini 엔드포인트 호출 — 실패 시 원문 그대로 발송
           let translated = "";
           try {
             const sRes = await fetch("https://blissme.ai/translate-outgoing", {
@@ -528,24 +761,11 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
               const sd = await sRes.json();
               translated = (sd?.translated || "").trim();
             }
-          } catch(e) { /* 네트워크 실패 시 Gemini 폴백 */ }
-          if (!translated) {
-            const targetLang = lang === "en" ? "English" : lang === "ja" ? "Japanese" : lang === "zh" ? "Chinese" : lang;
-            const system = `You are a translator for a waxing salon chat. Translate Korean staff replies into natural, fluent ${targetLang}. Preserve intent, names, numbers, emojis. No added greetings. Output ONLY the translation.`;
-            const user = `[Conversation so far]\n${contextLines || "(no prior messages)"}\n\n[Korean staff reply to translate into ${targetLang}]\n${reply}\n\n${targetLang} translation only:`;
-            const tRes=await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="+getGeminiKey(),{
-              method:"POST",headers:{"Content-Type":"application/json"},
-              body:JSON.stringify({
-                systemInstruction:{parts:[{text:system}]},
-                contents:[{parts:[{text:user}]}],
-                generationConfig:{temperature:0.3}
-              })
-            });
-            if(tRes.status===429){ await sendMsg(reply.trim()); return; }
-            const td=await tRes.json();
-            translated=td.candidates?.[0]?.content?.parts?.[0]?.text||reply;
-          }
-          text = String(translated).replace(/^["'`]+|["'`]+$/g, "").trim();
+          } catch(e) { /* 서버 실패 시 원문 발송 */ }
+          text = String(translated || reply).replace(/^["'`]+|["'`]+$/g, "").trim();
+          // 외국어 발송 시 사용자가 친 한국어 원문을 translated_text로 동반 → echo 처리 시 메시지함에 그대로 표시
+          await sendMsg(text, reply.trim());
+          return;
         }
       }
       await sendMsg(text);
@@ -620,34 +840,34 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
           const initials=name.slice(0,2);
           const isOut=m.direction==="out";
           return <div key={key} onClick={()=>selectThread(m)}
-            style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:14,borderBottom:"1px solid #f0f0f0",background:"#fff",cursor:"pointer"}}>
+            style={{padding:forceCompact?"8px 12px":"12px 16px",display:"flex",alignItems:"center",gap:forceCompact?10:14,borderBottom:"1px solid #f0f0f0",background:"#fff",cursor:"pointer"}}>
             {/* 아바타 — 브랜드 색상 배경 + 공식 로고 */}
             <div style={{position:"relative",flexShrink:0}}>
-              <div style={{width:48,height:48,borderRadius:"50%",
+              <div style={{width:forceCompact?36:48,height:forceCompact?36:48,borderRadius:"50%",
                 background:CH_COLOR[ch]||"#888",
                 display:"flex",alignItems:"center",justifyContent:"center",
-                border:uc>0?"2.5px solid "+T.primary:"2.5px solid transparent",
+                border:uc>0?"2px solid "+T.primary:"2px solid transparent",
                 boxSizing:"border-box",
                 boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}}>
-                <ChannelLogo channel={ch} size={26}/>
+                <ChannelLogo channel={ch} size={forceCompact?20:26}/>
               </div>
             </div>
             {/* 텍스트 */}
             <div style={{flex:1,minWidth:0}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
-                <span style={{fontWeight:uc>0?700:600,fontSize:16,color:"#111",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:200}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
+                <span style={{fontWeight:uc>0?700:600,fontSize:forceCompact?12:16,color:"#111",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:forceCompact?180:200}}>
                   {name}{branch?" · "+branch:""}
                 </span>
-                <span style={{fontSize:12,color:uc>0?T.primary:"#999",fontWeight:uc>0?600:400,flexShrink:0,marginLeft:6}}>{fmtTime(m.created_at)}</span>
+                <span style={{fontSize:forceCompact?10:12,color:uc>0?T.primary:"#999",fontWeight:uc>0?600:400,flexShrink:0,marginLeft:6}}>{fmtTime(m.created_at)}</span>
               </div>
-              <div style={{fontSize:12,color:"#aaa",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+              {!forceCompact && <div style={{fontSize:12,color:"#aaa",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                 {(()=>{const ph=msgs.filter(x=>x.user_id===m.user_id&&x.cust_phone).map(x=>x.cust_phone)[0];return ph||""})()}
-              </div>
+              </div>}
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                <span style={{fontSize:14,color:uc>0?"#111":"#555",fontWeight:uc>0?500:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>
+                <span style={{fontSize:forceCompact?11:14,color:uc>0?"#111":"#555",fontWeight:uc>0?500:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>
                   {isOut?"나: ":""}{m.message_text}
                 </span>
-                {uc>0&&<div style={{width:20,height:20,borderRadius:"50%",background:T.primary,color:"#fff",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:4}}>{uc}</div>}
+                {uc>0&&<div style={{width:forceCompact?16:20,height:forceCompact?16:20,borderRadius:"50%",background:T.primary,color:"#fff",fontSize:forceCompact?9:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:4}}>{uc}</div>}
               </div>
               {(()=>{const res=chatResMap[key];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"확정대기":res.status==="completed"?"완료":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":"#9E9E9E";return<div style={{display:"flex",alignItems:"center",gap:4,marginTop:3}}><span style={{fontSize:10,fontWeight:700,color:clr,background:clr+"18",borderRadius:3,padding:"1px 6px"}}>📅 {st} {res.date?.slice(5)} {res.time}</span></div>;})()}
             </div>
@@ -657,40 +877,66 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
     </div>
   );
 
-  // 모바일 채팅창 렌더
+  // 모바일/사이드패널 채팅창 렌더 — forceCompact일 때는 부모 컨테이너 안에 절대위치 (사이드 패널 안)
   if(isMobile && sel) return (
-    <div style={{position:"fixed",inset:0,zIndex:600,display:"flex",flexDirection:"column",background:"#f5f5f7"}}>
-      {/* 헤더 */}
-      <div style={{padding:"12px 16px",borderBottom:"1px solid "+T.border,background:T.bgCard,display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
-        <button onClick={()=>{ setSel(null); if(onChatOpen) onChatOpen(false); }} style={{background:"none",border:"none",cursor:"pointer",color:T.primary,padding:"4px 8px 4px 0"}}><I name="arrowL" size={20}/></button>
-        <div style={{width:28,height:28,borderRadius:14,background:CH_COLOR[sel.channel]||T.primary,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} title={CH_NAME[sel.channel]||sel.channel}><ChannelLogo channel={sel.channel} size={16}/></div>
-        <div style={{flex:1}}>
-          <div style={{fontWeight:T.fw.bolder,fontSize:16}}>{(sel?.channel!=="whatsapp"&&branchName(convo[0]))?branchName(convo[0])+" · ":""}{getDisplayName(convo[0]||{user_id:sel.user_id})}</div>
-          <div style={{fontSize:12,color:T.textMuted}}>{CH_NAME[sel.channel]||sel.channel}{(()=>{ const ph=convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone||(sel.channel==="whatsapp"&&sel.user_id?(sel.user_id.startsWith("82")?"0"+sel.user_id.slice(2):sel.user_id):""); return ph?" · "+ph:""; })()}</div>
+    <div style={forceCompact ? {position:"absolute",inset:0,zIndex:5,display:"flex",flexDirection:"column",background:"#f5f5f7"} : {position:"fixed",inset:0,zIndex:600,display:"flex",flexDirection:"column",background:"#f5f5f7"}}>
+      {/* 헤더 — compact 모드에선 padding/font/buttons 모두 축소 */}
+      <div style={{padding:forceCompact?"6px 8px":"12px 16px",borderBottom:"1px solid "+T.border,background:T.bgCard,display:"flex",alignItems:"center",gap:forceCompact?6:10,flexShrink:0}}>
+        <button onClick={()=>{ setSel(null); if(onChatOpen) onChatOpen(false); }} style={{background:"none",border:"none",cursor:"pointer",color:T.primary,padding:"4px 6px 4px 0",flexShrink:0}}><I name="arrowL" size={forceCompact?16:20}/></button>
+        <div style={{width:forceCompact?22:28,height:forceCompact?22:28,borderRadius:14,background:CH_COLOR[sel.channel]||T.primary,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} title={CH_NAME[sel.channel]||sel.channel}><ChannelLogo channel={sel.channel} size={forceCompact?13:16}/></div>
+        <div style={{flex:1,minWidth:0,position:"relative"}}>
+          <div style={{fontWeight:T.fw.bolder,fontSize:forceCompact?12:16,display:"flex",alignItems:"center",gap:4,flexWrap:"nowrap",overflow:"hidden"}}>
+            <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{(sel?.channel!=="whatsapp"&&branchName(convo[0]))?branchName(convo[0])+" · ":""}{getDisplayName(convo[0]||{user_id:sel.user_id})}</span>
+            {(()=>{ const cust = chatCustMap[sel.channel+"_"+sel.user_id]; if(cust) return <span style={{display:"inline-flex",alignItems:"center",gap:2,fontSize:forceCompact?9:11,fontWeight:700,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary+"40",borderRadius:6,padding:"1px 5px",whiteSpace:"nowrap",flexShrink:0}}>👤 {cust.name}{cust.custNum?` #${cust.custNum}`:""}<button onClick={unlinkCustomer} title="고객 연결 해제" style={{marginLeft:2,background:"none",border:"none",padding:"0 2px",fontSize:11,fontWeight:900,color:T.textMuted,cursor:"pointer",lineHeight:1,fontFamily:"inherit"}}>×</button></span>; return <button onClick={()=>setLinkPickerOpen(v=>!v)} style={{fontSize:forceCompact?9:10,fontWeight:800,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary,borderRadius:6,padding:"2px 7px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0}}>🔗 연결</button>; })()}
+          </div>
+          <div style={{fontSize:forceCompact?10:12,color:T.textSub,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{CH_NAME[sel.channel]||sel.channel}{(()=>{ const ph=convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone||(sel.channel==="whatsapp"&&sel.user_id?(sel.user_id.startsWith("82")?"0"+sel.user_id.slice(2):sel.user_id):""); return ph?" · "+ph:""; })()}{(()=>{ const cust = chatCustMap[sel.channel+"_"+sel.user_id]; if(!cust?.phone) return null; return " · "+cust.phone; })()}</div>
+          {linkPickerOpen && !chatCustMap[sel.channel+"_"+sel.user_id] && (
+            <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:50,background:"#fff",border:"1px solid "+T.border,borderRadius:8,boxShadow:"0 4px 20px rgba(0,0,0,.15)",padding:8,width:280}}>
+              <input autoFocus value={linkSearch} onChange={e=>setLinkSearch(e.target.value)} placeholder="이름·전화·이메일·번호 검색"
+                style={{width:"100%",padding:"6px 10px",fontSize:12,border:"1px solid "+T.border,borderRadius:6,fontFamily:"inherit",boxSizing:"border-box"}}/>
+              {linkCandidates.length > 0 && <div style={{marginTop:6,maxHeight:240,overflowY:"auto"}}>
+                {linkCandidates.map(c => (
+                  <div key={c.id} onClick={()=>linkCustomer(c)} style={{padding:"6px 8px",cursor:"pointer",borderRadius:4,fontSize:12,display:"flex",justifyContent:"space-between",gap:6}}
+                    onMouseEnter={e=>e.currentTarget.style.background=T.gray100} onMouseLeave={e=>e.currentTarget.style.background=""}>
+                    <span style={{fontWeight:600}}>{c.name}{c.name2?` (${c.name2})`:""}</span>
+                    <span style={{color:T.textMuted}}>{c.phone}{c.custNum?` · #${c.custNum}`:""}</span>
+                  </div>
+                ))}
+              </div>}
+              {linkSearch.trim() && linkCandidates.length === 0 && <div style={{padding:"8px 4px",fontSize:11,color:T.textMuted,textAlign:"center"}}>일치하는 고객 없음</div>}
+              <div style={{display:"flex",justifyContent:"flex-end",marginTop:6}}>
+                <button onClick={()=>{setLinkPickerOpen(false);setLinkSearch("");}} style={{padding:"3px 10px",fontSize:11,border:"1px solid "+T.border,background:"#fff",borderRadius:6,cursor:"pointer",color:T.textSub,fontFamily:"inherit"}}>취소</button>
+              </div>
+            </div>
+          )}
         </div>
-        {(()=>{const res=chatResMap[sel.channel+"_"+sel.user_id];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"대기":res.status==="completed"?"완료":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":"#9E9E9E";return<button onClick={()=>{if(setPendingOpenRes&&setPage){setPendingOpenRes(res);setPage("timeline");setSel(null);}}} style={{fontSize:11,fontWeight:700,color:clr,background:clr+"15",border:"1px solid "+clr+"40",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📅{st}</button>;})()}
-        {_extLink && <a href={_extLink.url} target="_blank" rel="noopener noreferrer" title={_extLink.label} style={{fontSize:11,fontWeight:700,color:_extLink.color,background:_extLink.color+"18",border:"1px solid "+_extLink.color+"44",borderRadius:6,padding:"4px 8px",textDecoration:"none",flexShrink:0,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}>{_extLink.short} ↗</a>}
-        <button onClick={aiBook} disabled={aiBookLoading} title="AI 예약생성" style={{padding:"5px 10px",background:aiBookLoading?"#9CA3AF":"#7C3AED",color:"#fff",border:"none",borderRadius:6,fontSize:12,cursor:aiBookLoading?"wait":"pointer",fontWeight:700,flexShrink:0,whiteSpace:"nowrap"}}>{aiBookLoading?"⏳":"🤖 예약"}</button>
-        <button onClick={genAI} disabled={aiLoading} style={{padding:"5px 12px",background:T.primary,color:"#fff",border:"none",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>{aiLoading?"...":"✨ AI"}</button>
+        {(()=>{const res=chatLatestRes[sel.channel+"_"+sel.user_id];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"대기":res.status==="completed"?"완료":res.status==="reserved"?"예약":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":res.status==="completed"?"#9E9E9E":res.status==="no_show"?"#EF5350":T.primary;return<button onClick={()=>{if(setPendingOpenRes&&setPage){setPendingOpenRes({...res, _highlightOnly:true});setPage("timeline");setSel(null);}}} title={`${st} ${res.date?.slice(5)} ${res.time} — 예약 바로가기`} style={{fontSize:forceCompact?10:11,fontWeight:700,color:clr,background:clr+"15",border:"1px solid "+clr+"40",borderRadius:6,padding:forceCompact?"3px 6px":"4px 8px",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>📅{forceCompact?"":st}</button>;})()}
+        {_extLink && <a href={_extLink.url} target="_blank" rel="noopener noreferrer" title={_extLink.label} style={{fontSize:forceCompact?10:11,fontWeight:700,color:_extLink.color,background:_extLink.color+"18",border:"1px solid "+_extLink.color+"44",borderRadius:6,padding:forceCompact?"3px 6px":"4px 8px",textDecoration:"none",flexShrink:0,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}>{forceCompact?"↗":_extLink.short+" ↗"}</a>}
       </div>
       {/* 메시지 */}
-      <div style={{flex:1,overflowY:"auto",padding:"16px 16px 4px",display:"flex",flexDirection:"column",gap:10,WebkitOverflowScrolling:"touch",background:"#f5f5f7"}}>
+      <div style={{flex:1,overflowY:"auto",padding:forceCompact?"10px 10px 4px":"16px 16px 4px",display:"flex",flexDirection:"column",gap:forceCompact?6:10,WebkitOverflowScrolling:"touch",background:"#f5f5f7"}}>
         {convo.map((m,i)=>{
           if(m.direction==="system") return null;
           const isOut=m.direction==="out";
-          return <div key={i} style={{display:"flex",flexDirection:isOut?"row-reverse":"row",alignItems:"flex-end",gap:8}}>
+          return <div key={i} style={{display:"flex",flexDirection:isOut?"row-reverse":"row",alignItems:"flex-end",gap:forceCompact?5:8}}>
             {/* AI 발송 메시지는 보라색 아바타 🤖 (id_imgr471swt-2 요청) */}
-            {isOut&&m.is_ai&&<div style={{width:28,height:28,borderRadius:14,background:"#7C3AED",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0,color:"#fff"}}>🤖</div>}
-            <div style={{maxWidth:"75%"}}>
+            {isOut&&m.is_ai&&<div style={{width:forceCompact?22:28,height:forceCompact?22:28,borderRadius:14,background:"#7C3AED",display:"flex",alignItems:"center",justifyContent:"center",fontSize:forceCompact?11:14,flexShrink:0,color:"#fff"}}>🤖</div>}
+            <div style={{maxWidth:"82%"}}>
               {/* AI 발송 메시지에 선명한 AI 배지 */}
               {m.is_ai&&<div style={{display:"flex",justifyContent:isOut?"flex-end":"flex-start",marginBottom:3}}>
-                <span style={{background:"#7C3AED",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:800,letterSpacing:0.3}}>🤖 AI 자동응답</span>
+                <span style={{background:"#7C3AED",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:forceCompact?9:10,fontWeight:800,letterSpacing:0.3}}>🤖 AI 자동응답</span>
               </div>}
-              <div style={{padding:"10px 14px",borderRadius:isOut?"16px 16px 4px 16px":"16px 16px 16px 4px",background:isOut?(m.is_ai?"#7C3AED":T.primary):"#fff",color:isOut?"#fff":T.text,fontSize:16,lineHeight:1.5,boxShadow:"0 1px 2px rgba(0,0,0,.08)",border:isOut?"none":"1px solid "+T.border,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
+              {/* 직원 답장 말머리 — 고객엔 노출 안 됨, 직원만 봄 */}
+              {isOut && !m.is_ai && m.sent_by_staff_name && <div style={{display:"flex",justifyContent:isOut?"flex-end":"flex-start",marginBottom:3}}>
+                <span style={{background:"#6D28D9",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:forceCompact?9:10,fontWeight:800,letterSpacing:0.3}}>👤 {m.sent_by_staff_name}</span>
+              </div>}
+              <div style={{padding:forceCompact?"7px 10px":"10px 14px",borderRadius:isOut?"14px 14px 4px 14px":"14px 14px 14px 4px",background:isOut?(m.is_ai?"#7C3AED":T.primary):"#fff",color:isOut?"#fff":T.text,fontSize:forceCompact?12:16,lineHeight:1.45,boxShadow:"0 1px 2px rgba(0,0,0,.08)",border:isOut?"none":"1px solid "+T.border,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
                 {m.message_text}
-                {m.translated_text&&<div style={{marginTop:6,paddingTop:6,borderTop:isOut?"1px solid rgba(255,255,255,0.45)":"1px solid rgba(0,0,0,0.18)",fontSize:12,color:isOut?"rgba(255,255,255,0.95)":"rgba(0,0,0,0.78)",fontWeight:500}}>🔤 {m.translated_text}</div>}
+                {m.translated_text&&<div style={{marginTop:5,paddingTop:5,borderTop:isOut?"1px solid rgba(255,255,255,0.45)":"1px solid rgba(0,0,0,0.18)",fontSize:forceCompact?11:12,color:isOut?"rgba(255,255,255,0.95)":"rgba(0,0,0,0.78)",fontWeight:500}}>🔤 {m.translated_text}</div>}
               </div>
-              <div style={{fontSize:10,color:T.textMuted,marginTop:3,textAlign:isOut?"right":"left"}}>{fmtTime(m.created_at)}</div>
+              <div style={{fontSize:forceCompact?9:10,color:T.textMuted,marginTop:2,textAlign:isOut?"right":"left"}}>
+                {fmtTime(m.created_at)}
+              </div>
             </div>
           </div>;
         })}
@@ -698,20 +944,28 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
       </div>
       {/* 입력창 */}
       <div style={{background:"transparent",padding:"8px 12px 12px",flexShrink:0}}>
-        <div style={{display:"flex",gap:6,marginBottom:6}}>
-          <button onClick={genAI} disabled={aiLoading} style={{padding:"4px 10px",background:"#f0f4ff",color:"#4338ca",border:"1px solid #c7d2fe",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>{aiLoading?"⏳":"✨ AI"}</button>
-          <button onClick={()=>setAutoTranslate(v=>!v)} style={{padding:"4px 10px",background:autoTranslate?"#166534":"#f0fdf4",color:autoTranslate?"#fff":"#166534",border:"1px solid #bbf7d0",borderRadius:6,fontSize:12,cursor:"pointer",fontWeight:600}}>🌐 자동번역 {autoTranslate?"ON":"OFF"}</button>
+        <div style={{display:"flex",gap:6,marginBottom:6,alignItems:"center",flexWrap:"wrap"}}>
+          <button onClick={genAI} disabled={aiLoading} title="AI 답변 생성" style={{padding:forceCompact?"3px 8px":"4px 10px",background:"#f0f4ff",color:"#4338ca",border:"1px solid #c7d2fe",borderRadius:6,fontSize:forceCompact?10:12,cursor:"pointer",fontWeight:600}}>{aiLoading?"⏳":"✨ AI"}</button>
+          <button onClick={()=>setAutoTranslate(v=>!v)} style={{padding:forceCompact?"3px 8px":"4px 10px",background:autoTranslate?"#166534":"#f0fdf4",color:autoTranslate?"#fff":"#166534",border:"1px solid #bbf7d0",borderRadius:6,fontSize:forceCompact?10:12,cursor:"pointer",fontWeight:600}}>🌐 {autoTranslate?"ON":"OFF"}</button>
+          <button onClick={aiBook} disabled={aiBookLoading} title="대화 분석하여 AI 예약 생성" style={{padding:forceCompact?"3px 8px":"4px 10px",background:aiBookLoading?"#9CA3AF":"#7C3AED",color:"#fff",border:"1px solid "+(aiBookLoading?"#9CA3AF":"#6D28D9"),borderRadius:6,fontSize:forceCompact?10:12,cursor:aiBookLoading?"wait":"pointer",fontWeight:700}}>{aiBookLoading?"⏳":"🤖 예약"}</button>
+          {/* 직원 말머리 선택 — 답장 보낼 때 누가 보내는지 */}
+          <select value={selStaff} onChange={e=>setSelStaff(e.target.value)}
+            title="답장 보낼 직원 (말머리에 표시)"
+            style={{padding:forceCompact?"3px 6px":"4px 8px",background:"#EDE9FE",color:"#6D28D9",border:"1px solid #C4B5FD",borderRadius:6,fontSize:forceCompact?10:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>
+            <option value="">👤 직원 선택</option>
+            {empList.map(e=><option key={e.id||e.name} value={e.id||e.name}>👤 {e.id||e.name}</option>)}
+          </select>
         </div>
-        {aiKoDraft&&<div style={{fontSize:12,color:"#4338ca",padding:"4px 8px",background:"#eff6ff",borderRadius:6,marginBottom:6,borderLeft:"3px solid #818cf8"}}>🇰🇷 {aiKoDraft}</div>}
+        {aiKoDraft&&<div style={{fontSize:forceCompact?11:12,color:"#4338ca",padding:"4px 8px",background:"#eff6ff",borderRadius:6,marginBottom:6,borderLeft:"3px solid #818cf8"}}>🇰🇷 {aiKoDraft}</div>}
         <div style={{position:"relative"}}>
           <textarea id="bliss-reply-ta" value={reply} onChange={e=>{ setReply(e.target.value); setAiKoDraft(""); }}
-            onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();autoTranslate?sendTranslated():sendMsg(reply.trim());}}}
+            onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();autoTranslate?sendTranslated():sendMsg(reply.trim(), aiKoDraft);}}}
             placeholder="메시지 입력..."
-            style={{width:"100%",padding:"10px 52px 10px 14px",border:"1px solid "+T.border,borderRadius:12,fontSize:15,resize:"none",minHeight:42,maxHeight:200,fontFamily:"inherit",outline:"none",background:"#fff",color:"#1f2937",lineHeight:"22px",overflowY:"auto",boxSizing:"border-box",WebkitAppearance:"none",appearance:"none"}}
+            style={{width:"100%",padding:forceCompact?"8px 44px 8px 12px":"10px 52px 10px 14px",border:"1px solid "+T.border,borderRadius:12,fontSize:forceCompact?12:15,resize:"none",minHeight:forceCompact?36:42,maxHeight:200,fontFamily:"inherit",outline:"none",background:"#fff",color:"#1f2937",lineHeight:"20px",overflowY:"auto",boxSizing:"border-box",WebkitAppearance:"none",appearance:"none"}}
           />
-          {(reply.trim()||sending)&&<button onClick={()=>autoTranslate?sendTranslated():sendMsg(reply.trim())} disabled={sending||!reply.trim()}
-            style={{position:"absolute",right:8,bottom:6,width:32,height:32,background:"#7C3AED",color:"#fff",border:"none",borderRadius:"50%",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-            {sending?<span style={{fontSize:12}}>⏳</span>:<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>}
+          {(reply.trim()||sending)&&<button onClick={()=>autoTranslate?sendTranslated():sendMsg(reply.trim(), aiKoDraft)} disabled={sending||!reply.trim()}
+            style={{position:"absolute",right:6,bottom:5,width:forceCompact?26:32,height:forceCompact?26:32,background:"#7C3AED",color:"#fff",border:"none",borderRadius:"50%",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            {sending?<span style={{fontSize:11}}>⏳</span>:<svg width={forceCompact?13:16} height={forceCompact?13:16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>}
           </button>}
         </div>
       </div>
@@ -815,16 +1069,34 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
         {sel&&<>
           <div style={{padding:"12px 16px",borderBottom:"1px solid "+T.border,background:T.bgCard,display:"flex",alignItems:"center",gap:10}}>
             <div style={{width:28,height:28,borderRadius:14,background:CH_COLOR[sel.channel]||T.primary,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} title={CH_NAME[sel.channel]||sel.channel}><ChannelLogo channel={sel.channel} size={16}/></div>
-            <div style={{flex:1}}>
-              <div style={{fontWeight:T.fw.bolder,fontSize:T.fs.sm}}>{(sel?.channel!=="whatsapp"&&branchName(convo[0]))?branchName(convo[0])+" · ":""}{getDisplayName(convo[0]||{user_id:sel.user_id})}</div>
-              <div style={{fontSize:T.fs.xs,color:T.textMuted}}>{CH_NAME[sel.channel]||sel.channel}{(()=>{ const ph=convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone||(sel.channel==="whatsapp"&&sel.user_id?(sel.user_id.startsWith("82")?"0"+sel.user_id.slice(2):sel.user_id):""); return ph?" · "+ph:""; })()}</div>
+            <div style={{flex:1,minWidth:0,position:"relative"}}>
+              <div style={{fontWeight:T.fw.bolder,fontSize:T.fs.sm,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                <span>{(sel?.channel!=="whatsapp"&&branchName(convo[0]))?branchName(convo[0])+" · ":""}{getDisplayName(convo[0]||{user_id:sel.user_id})}</span>
+                {(()=>{ const cust = chatCustMap[sel.channel+"_"+sel.user_id]; if(cust) return <span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:11,fontWeight:700,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary+"40",borderRadius:6,padding:"2px 6px",whiteSpace:"nowrap"}} title={cust.phone||""}>👤 {cust.name}{cust.custNum?` #${cust.custNum}`:""}<button onClick={unlinkCustomer} title="고객 연결 해제" style={{marginLeft:2,background:"none",border:"none",padding:"0 2px",fontSize:12,fontWeight:900,color:T.textMuted,cursor:"pointer",lineHeight:1,fontFamily:"inherit"}}>×</button></span>; return <button onClick={()=>setLinkPickerOpen(v=>!v)} style={{fontSize:10,fontWeight:700,color:T.textMuted,background:"#fff",border:"1px dashed "+T.gray400,borderRadius:6,padding:"2px 6px",cursor:"pointer",fontFamily:"inherit"}}>🔗 고객 연결</button>; })()}
+              </div>
+              <div style={{fontSize:T.fs.xs,color:T.textMuted}}>{CH_NAME[sel.channel]||sel.channel}{(()=>{ const ph=convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone||(sel.channel==="whatsapp"&&sel.user_id?(sel.user_id.startsWith("82")?"0"+sel.user_id.slice(2):sel.user_id):""); return ph?" · "+ph:""; })()}{(()=>{ const cust = chatCustMap[sel.channel+"_"+sel.user_id]; if(!cust?.phone) return null; return " · "+cust.phone; })()}</div>
+              {linkPickerOpen && !chatCustMap[sel.channel+"_"+sel.user_id] && (
+                <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:50,background:"#fff",border:"1px solid "+T.border,borderRadius:8,boxShadow:"0 4px 20px rgba(0,0,0,.15)",padding:8,width:300}}>
+                  <input autoFocus value={linkSearch} onChange={e=>setLinkSearch(e.target.value)} placeholder="이름·전화·이메일·번호 검색"
+                    style={{width:"100%",padding:"6px 10px",fontSize:12,border:"1px solid "+T.border,borderRadius:6,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  {linkCandidates.length > 0 && <div style={{marginTop:6,maxHeight:240,overflowY:"auto"}}>
+                    {linkCandidates.map(c => (
+                      <div key={c.id} onClick={()=>linkCustomer(c)} style={{padding:"6px 8px",cursor:"pointer",borderRadius:4,fontSize:12,display:"flex",justifyContent:"space-between",gap:6}}
+                        onMouseEnter={e=>e.currentTarget.style.background=T.gray100} onMouseLeave={e=>e.currentTarget.style.background=""}>
+                        <span style={{fontWeight:600}}>{c.name}{c.name2?` (${c.name2})`:""}</span>
+                        <span style={{color:T.textMuted}}>{c.phone}{c.custNum?` · #${c.custNum}`:""}</span>
+                      </div>
+                    ))}
+                  </div>}
+                  {linkSearch.trim() && linkCandidates.length === 0 && <div style={{padding:"8px 4px",fontSize:11,color:T.textMuted,textAlign:"center"}}>일치하는 고객 없음 (목록에 없으면 고객관리에서 검색 후 다시 시도)</div>}
+                  <div style={{display:"flex",justifyContent:"flex-end",marginTop:6}}>
+                    <button onClick={()=>{setLinkPickerOpen(false);setLinkSearch("");}} style={{padding:"3px 10px",fontSize:11,border:"1px solid "+T.border,background:"#fff",borderRadius:6,cursor:"pointer",color:T.textSub,fontFamily:"inherit"}}>취소</button>
+                  </div>
+                </div>
+              )}
             </div>
-            {(()=>{const res=chatResMap[sel.channel+"_"+sel.user_id];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"확정대기":res.status==="completed"?"완료":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":"#9E9E9E";return<button onClick={()=>{if(setPendingOpenRes&&setPage){setPendingOpenRes(res);setPage("timeline");}}} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:clr,background:clr+"15",border:"1px solid "+clr+"40",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit"}}>📅 {st} {res.date?.slice(5)} {res.time} →</button>;})()}
+            {(()=>{const res=chatLatestRes[sel.channel+"_"+sel.user_id];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"확정대기":res.status==="completed"?"완료":res.status==="reserved"?"예약":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":res.status==="completed"?"#9E9E9E":res.status==="no_show"?"#EF5350":T.primary;return<button onClick={()=>{if(setPendingOpenRes&&setPage){setPendingOpenRes({...res, _highlightOnly:true});setPage("timeline");}}} title="예약 바로가기" style={{display:"flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:clr,background:clr+"15",border:"1px solid "+clr+"40",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit"}}>📅 {st} {res.date?.slice(5)} {res.time} →</button>;})()}
             {_extLink && <a href={_extLink.url} target="_blank" rel="noopener noreferrer" title={_extLink.label} style={{fontSize:11,fontWeight:700,color:_extLink.color,background:_extLink.color+"18",border:"1px solid "+_extLink.color+"44",borderRadius:6,padding:"4px 10px",textDecoration:"none",whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:4,flexShrink:0}}>{_extLink.label} ↗</a>}
-            <button onClick={aiBook} disabled={aiBookLoading} title="대화 맥락 분석하여 AI가 미배정으로 예약 생성"
-              style={{fontSize:11,fontWeight:700,color:"#fff",background:aiBookLoading?"#9CA3AF":"#7C3AED",border:"1px solid "+(aiBookLoading?"#9CA3AF":"#6D28D9"),borderRadius:6,padding:"4px 10px",cursor:aiBookLoading?"wait":"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>
-              {aiBookLoading?"⏳ 분석 중…":"🤖 AI 예약생성"}
-            </button>
           </div>
           <div style={{flex:1,overflowY:"auto",padding:"16px 20px",display:"flex",flexDirection:"column",gap:10}}>
             {convo.map((m,i)=>{
@@ -832,29 +1104,44 @@ function AdminInbox({ sb, branches, data, onRead, onChatOpen, userBranches=[], i
               const isOut=m.direction==="out";
               return <div key={i} style={{display:"flex",flexDirection:isOut?"row-reverse":"row",alignItems:"flex-end",gap:8}}>
                 <div style={{maxWidth:"70%"}}>
+                  {/* 직원 답장 말머리 — 고객엔 노출 안 됨, 직원만 봄 */}
+                  {isOut && !m.is_ai && m.sent_by_staff_name && <div style={{display:"flex",justifyContent:"flex-end",marginBottom:3}}>
+                    <span style={{background:"#6D28D9",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:800,letterSpacing:0.3}}>👤 {m.sent_by_staff_name}</span>
+                  </div>}
                   <div style={{padding:"10px 14px",borderRadius:isOut?"16px 16px 4px 16px":"16px 16px 16px 4px",background:isOut?T.primary:"#fff",color:isOut?"#fff":T.text,fontSize:16,lineHeight:1.5,boxShadow:"0 1px 2px rgba(0,0,0,.08)",border:isOut?"none":"1px solid "+T.border,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
                     {m.message_text}
                     {m.translated_text&&<div style={{marginTop:6,paddingTop:6,borderTop:isOut?"1px solid rgba(255,255,255,0.45)":"1px solid rgba(0,0,0,0.18)",fontSize:12,color:isOut?"rgba(255,255,255,0.95)":"rgba(0,0,0,0.78)",fontWeight:500}}>🔤 {m.translated_text}</div>}
                   </div>
-                  <div style={{fontSize:10,color:T.textMuted,marginTop:3,textAlign:isOut?"right":"left"}}>{m.is_ai&&<span style={{background:"#7C3AED",color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,marginRight:4}}>AI</span>}{fmtTime(m.created_at)}</div>
+                  <div style={{fontSize:10,color:T.textMuted,marginTop:3,textAlign:isOut?"right":"left"}}>
+                    {m.is_ai&&<span style={{background:"#7C3AED",color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,marginRight:4}}>AI</span>}
+                    {fmtTime(m.created_at)}
+                  </div>
                 </div>
               </div>;
             })}
             <div ref={convoEndRef}/>
           </div>
           <div style={{padding:"12px 16px",borderTop:"1px solid "+T.border,background:T.bgCard}}>
-            <div style={{display:"flex",gap:8,marginBottom:8}}>
-              <button onClick={genAI} disabled={aiLoading} style={{padding:"4px 10px",background:"#f0f4ff",color:"#4338ca",border:"1px solid #c7d2fe",borderRadius:6,fontSize:11,cursor:"pointer",fontWeight:600}}>{aiLoading?"⏳":"✨ AI"}</button>
+            <div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center",flexWrap:"wrap"}}>
+              <button onClick={genAI} disabled={aiLoading} title="AI 답변 생성" style={{padding:"4px 10px",background:"#f0f4ff",color:"#4338ca",border:"1px solid #c7d2fe",borderRadius:6,fontSize:11,cursor:"pointer",fontWeight:600}}>{aiLoading?"⏳":"✨ AI"}</button>
               <button onClick={()=>setAutoTranslate(v=>!v)} style={{padding:"4px 10px",background:autoTranslate?"#166534":"#f0fdf4",color:autoTranslate?"#fff":"#166534",border:"1px solid #bbf7d0",borderRadius:6,fontSize:11,cursor:"pointer",fontWeight:600}}>🌐 자동번역 {autoTranslate?"ON":"OFF"}</button>
+              <button onClick={aiBook} disabled={aiBookLoading} title="대화 분석하여 AI 예약 생성" style={{padding:"4px 10px",background:aiBookLoading?"#9CA3AF":"#7C3AED",color:"#fff",border:"1px solid "+(aiBookLoading?"#9CA3AF":"#6D28D9"),borderRadius:6,fontSize:11,cursor:aiBookLoading?"wait":"pointer",fontWeight:700}}>{aiBookLoading?"⏳ 분석 중…":"🤖 AI 예약생성"}</button>
+              {/* 직원 말머리 선택 */}
+              <select value={selStaff} onChange={e=>setSelStaff(e.target.value)}
+                title="답장 보낼 직원 (말머리에 표시)"
+                style={{padding:"4px 10px",background:"#EDE9FE",color:"#6D28D9",border:"1px solid #C4B5FD",borderRadius:6,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>
+                <option value="">👤 직원 선택</option>
+                {empList.map(e=><option key={e.id||e.name} value={e.id||e.name}>👤 {e.id||e.name}</option>)}
+              </select>
             </div>
             {aiKoDraft&&<div style={{fontSize:11,color:"#4338ca",padding:"3px 8px",background:"#eff6ff",borderRadius:6,marginBottom:4,borderLeft:"3px solid #818cf8"}}>🇰🇷 {aiKoDraft}</div>}
             <div style={{display:"flex",gap:8}}>
               <textarea id="bliss-reply-ta" value={reply} onChange={e=>{ setReply(e.target.value); }}
-                onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();autoTranslate?sendTranslated():sendMsg(reply.trim());}}}
+                onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();autoTranslate?sendTranslated():sendMsg(reply.trim(), aiKoDraft);}}}
                 placeholder="메시지 입력..."
                 style={{flex:1,padding:"10px 14px",border:"1px solid "+T.border,borderRadius:8,fontSize:15,resize:"none",minHeight:42,maxHeight:200,fontFamily:"inherit",outline:"none",background:"#fff",color:"#1f2937",lineHeight:"22px",overflowY:"auto"}}
               />
-              <button onClick={()=>autoTranslate?sendTranslated():sendMsg(reply.trim())} disabled={sending||!reply.trim()}
+              <button onClick={()=>autoTranslate?sendTranslated():sendMsg(reply.trim(), aiKoDraft)} disabled={sending||!reply.trim()}
                 style={{width:44,height:44,alignSelf:"flex-end",flexShrink:0,background:reply.trim()?"#7C3AED":"#e5e7eb",color:reply.trim()?"#fff":"#9ca3af",border:"none",borderRadius:"50%",cursor:reply.trim()?"pointer":"default",display:"flex",alignItems:"center",justifyContent:"center"}}>
                 {sending?<span>⏳</span>:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>}
               </button>
@@ -880,8 +1167,10 @@ function MessagesWithTeamTab(props) {
     return () => window.removeEventListener('resize', onResize);
   }, []);
   const teamChat = useTeamChat();
-  // 데스크탑은 기존 AdminInbox만
-  if (!isMobile) return <AdminInbox {...props} />;
+  // 사이드 패널 모드(forceCompact): 모바일 UI(좁은 폭, 리스트↔개별 토글) 강제
+  const compact = !!props.forceCompact;
+  // 데스크탑은 기존 AdminInbox만 (단, compact가 아닐 때)
+  if (!isMobile && !compact) return <AdminInbox {...props} />;
   const teamUnread = teamChat.unreadCount || 0;
   const tabBtn = (key, label, badge) => (
     <button onClick={()=>{ setTab(key); if (key==='team' && teamUnread>0) teamChat.markAllRead(); }} style={{
@@ -905,7 +1194,7 @@ function MessagesWithTeamTab(props) {
         <AdminInbox {...props} />
       </div>
       <div style={{flex:1, minHeight:0, display: tab==='team' ? 'flex' : 'none', flexDirection:'column'}}>
-        <TeamChat />
+        <TeamChat scrollTrigger={tab==='team'} />
       </div>
     </div>
   );

@@ -32,8 +32,11 @@ export default function SchedulePage({ employees: propEmps }) {
   const { data:empReqsTs, setData:setEmpReqsTs } = useScheduleData(DB_KEYS.empReqsTs, {})
   const { data:ownerRepeat, setData:setOwnerRepeat, save:saveOwnerRepeat } = useScheduleData(DB_KEYS.ownerRepeat, {})
   const { data:ruleConfigData, save:saveRuleConfig } = useScheduleData(DB_KEYS.ruleConfig, null)
-  const { data:supportOrderRaw, setData:setSupportOrder, save:saveSupportOrder } = useScheduleData(DB_KEYS.supportOrder, ['yongsan'])
-  const supportOrder = Array.isArray(supportOrderRaw) ? supportOrderRaw : ['yongsan']
+  const { data:supportOrderRaw, setData:setSupportOrder, save:saveSupportOrder } = useScheduleData(DB_KEYS.supportOrder, {})
+  // per-branch 객체({지점:[외부지점들]}) 또는 legacy flat array 모두 지원
+  const supportOrder = (supportOrderRaw && !Array.isArray(supportOrderRaw) && typeof supportOrderRaw === 'object')
+    ? supportOrderRaw
+    : (Array.isArray(supportOrderRaw) ? supportOrderRaw : {})
   const { data:maleRotation, save:saveMaleRotation } = useScheduleData(DB_KEYS.maleRotation, {})
   const { data:customEmployees, setData:setCustomEmployees, save:saveCustomEmployees } = useScheduleData(DB_KEYS.customEmployees, [])
   const { data:deletedEmpIdsArr, setData:setDeletedEmpIdsArr, save:saveDeletedEmpIds } = useScheduleData(DB_KEYS.deletedEmpIds, [])
@@ -102,45 +105,85 @@ export default function SchedulePage({ employees: propEmps }) {
 
   const todayDs = fmtDs(today.getFullYear(), today.getMonth(), today.getDate())
 
-  // schHistory: direct supabase load (needs month-based structure preserved)
+  // schHistory: direct supabase load (needs month-based structure preserved) + Realtime
   const [dataLoaded, setDataLoaded] = useState(false)
   useEffect(() => {
+    let cancelled = false
     supabase.from('schedule_data').select('value').eq('key', DB_KEYS.schHistory).single()
       .then(({ data }) => {
+        if (cancelled) return
         if (data?.value) {
           const val = typeof data.value === 'string' ? JSON.parse(data.value) : data.value
           setSchHistory(val)
         }
         setDataLoaded(true)
       })
+    const ch = supabase.channel('sch_history_realtime')
+      .on('postgres_changes', {
+        event: '*', schema: 'public',
+        table: 'schedule_data', filter: `key=eq.${DB_KEYS.schHistory}`
+      }, ({ new: n }) => {
+        if (cancelled || !n?.value) return
+        try {
+          const val = typeof n.value === 'string' ? JSON.parse(n.value) : n.value
+          setSchHistory(val)
+        } catch {}
+      }).subscribe()
+    return () => { cancelled = true; ch.unsubscribe() }
   }, [])
 
+  // 동시편집 race 방지: DB 최신값을 가져와 우리 변경분(history)을 deep-merge 후 저장
+  // history 구조: { "YYYY-MM-DD": { empId: status, ... }, ... } — 월/주별 키
   const saveSchHistory = async (history) => {
-    await supabase.from('schedule_data').upsert({
-      id: DB_KEYS.schHistory, key: DB_KEYS.schHistory,
-      value: JSON.stringify(history), updated_at: new Date().toISOString()
-    })
+    try {
+      const { data: row } = await supabase.from('schedule_data')
+        .select('value').eq('key', DB_KEYS.schHistory).single();
+      const latestRaw = row?.value
+        ? (typeof row.value === 'string' ? JSON.parse(row.value) : row.value)
+        : {};
+      // deep merge: history의 키가 latestRaw를 덮어쓰되, history에 없는 latestRaw 키는 보존
+      const merged = { ...latestRaw };
+      Object.entries(history || {}).forEach(([monthKey, monthData]) => {
+        if (typeof monthData !== 'object' || !monthData) return;
+        merged[monthKey] = { ...(latestRaw[monthKey] || {}), ...monthData };
+      });
+      await supabase.from('schedule_data').upsert({
+        id: DB_KEYS.schHistory, key: DB_KEYS.schHistory,
+        value: JSON.stringify(merged), updated_at: new Date().toISOString()
+      });
+    } catch (e) {
+      console.warn('[saveSchHistory] merge fail, fallback to direct save:', e);
+      await supabase.from('schedule_data').upsert({
+        id: DB_KEYS.schHistory, key: DB_KEYS.schHistory,
+        value: JSON.stringify(history), updated_at: new Date().toISOString()
+      });
+    }
   }
 
   // empSettings: stored inside customEmployees_v1 as object form
   const [empSettings, setEmpSettings] = useState({})
   useEffect(() => {
     // Initialize empSettings from baseEmployees + customEmployees
-    // 전 직원이 employees_v1에 통합되어 있음
+    // 프리랜서는 타임라인 컬럼 전용이므로 empSettings에 포함하지 않음
     const base = {}
     ;(baseEmployees || []).forEach(e => {
-      base[e.id] = { weeklyWork:7-(e.weeklyOff||2), altPattern:false, isFreelancer:e.isFreelancer||false }
+      if (e.isFreelancer) return
+      base[e.id] = { weeklyWork:7-(e.weeklyOff||2), altPattern:false, isFreelancer:false }
     })
     ;(customEmployees || []).forEach(e => {
-      if (!base[e.id]) base[e.id] = { weeklyWork:7-(e.weeklyOff||2), altPattern:false, isFreelancer:e.isFreelancer||false }
+      if (e.isFreelancer) return
+      if (!base[e.id]) base[e.id] = { weeklyWork:7-(e.weeklyOff||2), altPattern:false, isFreelancer:false }
     })
     setEmpSettings(prev => ({ ...base, ...prev }))
   }, [baseEmployees, customEmployees])
 
   // Load empSettings from DB — try empSettings_v1 first, fallback to customEmployees_v1 (legacy)
+  // + Realtime 구독: 다른 PC에서 변경 시 자동 반영
   useEffect(() => {
-    (async () => {
+    let cancelled = false
+    ;(async () => {
       const { data: d1 } = await supabase.from('schedule_data').select('value').eq('key', DB_KEYS.empSettings).single()
+      if (cancelled) return
       if (d1?.value) {
         const val = typeof d1.value === 'string' ? JSON.parse(d1.value) : d1.value
         if (typeof val === 'object' && !Array.isArray(val)) {
@@ -148,8 +191,8 @@ export default function SchedulePage({ employees: propEmps }) {
           return
         }
       }
-      // Legacy fallback: customEmployees_v1 might have empSettings as object
       const { data: d2 } = await supabase.from('schedule_data').select('value').eq('key', DB_KEYS.customEmployees).single()
+      if (cancelled) return
       if (d2?.value) {
         const val = typeof d2.value === 'string' ? JSON.parse(d2.value) : d2.value
         if (!Array.isArray(val) && typeof val === 'object') {
@@ -157,6 +200,24 @@ export default function SchedulePage({ employees: propEmps }) {
         }
       }
     })()
+
+    const ch = supabase.channel('emp_settings_realtime')
+      .on('postgres_changes', {
+        event: '*', schema: 'public',
+        table: 'schedule_data', filter: `key=eq.${DB_KEYS.empSettings}`
+      }, ({ new: n }) => {
+        if (cancelled) return
+        if (n?.value !== undefined && n?.value !== null) {
+          try {
+            const val = typeof n.value === 'string' ? JSON.parse(n.value) : n.value
+            if (typeof val === 'object' && !Array.isArray(val)) {
+              setEmpSettings(prev => ({ ...prev, ...val }))
+            }
+          } catch {}
+        }
+      }).subscribe()
+
+    return () => { cancelled = true; ch.unsubscribe() }
   }, [])
 
   // Rule config
@@ -218,6 +279,17 @@ export default function SchedulePage({ employees: propEmps }) {
 
   useEffect(() => { loadLockStatus() }, [year, month])
 
+  // Realtime: 다른 PC에서 lockStatus 변경 시 자동 반영
+  useEffect(() => {
+    const ch = supabase.channel('lock_status_realtime')
+      .on('postgres_changes', {
+        event: '*', schema: 'public',
+        table: 'schedule_data', filter: `key=eq.${DB_KEYS.lockStatus}`
+      }, () => { loadLockStatus() })
+      .subscribe()
+    return () => ch.unsubscribe()
+  }, [loadLockStatus])
+
   const saveLockStatus = (data) => {
     lockStatusRef.current = data
     const payload = {
@@ -253,6 +325,9 @@ export default function SchedulePage({ employees: propEmps }) {
   const [viewMode, setViewMode] = useState('table') // 'table' | 'daily'
   const [showSnapshots, setShowSnapshots] = useState(false)
   const { data:snapshots, save:saveSnapshots } = useScheduleData(DB_KEYS.schSnapshots, {})
+  // 자동 백업 — 설정 변경 시 debounced로 settings 스냅샷 저장
+  const settingsBackupTimerRef = useRef(null)
+  const settingsBackupInitRef = useRef(false)
   const [isAssigning, setIsAssigning] = useState(false)
   const [selectedCells, setSelectedCells] = useState(new Set())
   const [showBulkModal, setShowBulkModal] = useState(false)
@@ -261,16 +336,22 @@ export default function SchedulePage({ employees: propEmps }) {
 
   const toast_ = (msg, type='ok') => { setToast({ msg, type }); setTimeout(() => setToast(null), 2500) }
 
-  // ALL employees
+  // ALL employees — 프리랜서는 타임라인 컬럼 전용이므로 직원근무표 시스템에서 완전 제외
   const ALL_EMPLOYEES = useMemo(() => {
     const base = [...(baseEmployees || [])]
     const custom = Array.isArray(customEmployees) ? customEmployees : []
     const existing = new Set(base.map(e => e.id))
-    const merged = [...base, ...custom.filter(e => !existing.has(e.id))]
+    const merged = [...base, ...custom.filter(e => !existing.has(e.id) && !e.isFreelancer)]
     return merged
   }, [baseEmployees, customEmployees])
 
-  const ACTIVE_EMPLOYEES = useMemo(() => ALL_EMPLOYEES.filter(e => !deletedEmpIds.has(e.id) && !empSettings[e.id]?.excludeFromSchedule), [ALL_EMPLOYEES, deletedEmpIds, empSettings])
+  // 프리랜서는 직원근무표에서 아예 표시 제외 (autoAssign에서도 제외되므로 표에 둘 이유 없음)
+  const ACTIVE_EMPLOYEES = useMemo(() => ALL_EMPLOYEES.filter(e =>
+    !deletedEmpIds.has(e.id)
+    && !empSettings[e.id]?.excludeFromSchedule
+    && !e.isFreelancer
+    && !empSettings[e.id]?.isFreelancer
+  ), [ALL_EMPLOYEES, deletedEmpIds, empSettings])
 
   // Days
   const dim = getDim(year, month)
@@ -384,6 +465,7 @@ export default function SchedulePage({ employees: propEmps }) {
     setEmpSettings(p => {
       const next = { ...p, [eid]:{ ...p[eid], [key]:val } }
       supabase.from('schedule_data').upsert({ id:DB_KEYS.empSettings, key:DB_KEYS.empSettings, value:JSON.stringify(next), updated_at:new Date().toISOString() })
+        .then(({error}) => { if (error) console.error('empSettings 저장 실패:', error) })
       return next
     })
   }
@@ -391,12 +473,77 @@ export default function SchedulePage({ employees: propEmps }) {
   // Validation
   const violations = useMemo(() => validateSch(sch, ALL_EMPLOYEES, days, ruleConfig, empSettings), [sch, days, ruleConfig, ALL_EMPLOYEES, empSettings])
 
-  // Daily count
+  // 자동 설정 백업 — 설정값 변경 시 8초 디바운스 후 settings 스냅샷 저장
+  useEffect(() => {
+    // 초기 로드는 백업 안 함 (모든 데이터가 로드된 후 첫 변경부터)
+    if (!settingsBackupInitRef.current) {
+      if (baseEmployees && baseEmployees.length > 0) {
+        settingsBackupInitRef.current = true
+      }
+      return
+    }
+    if (settingsBackupTimerRef.current) clearTimeout(settingsBackupTimerRef.current)
+    settingsBackupTimerRef.current = setTimeout(() => {
+      try {
+        const settingsSnap = {
+          ts: new Date().toISOString(),
+          ruleConfig: ruleConfig,
+          empSettings: empSettings,
+          ownerReqs: ownerReqs,
+          empReqs: empReqs,
+          ownerRepeat: ownerRepeat,
+          maleRotation: maleRotation,
+          customEmployees: customEmployees,
+          deletedEmpIds: Array.from(deletedEmpIds || []),
+          employees: baseEmployees,
+        }
+        const prev = snapshots || {}
+        const history = (prev._settings || []).slice(-4) // 최신 5개만 유지 (정책)
+        const next = { ...prev, _settings: [...history, settingsSnap] }
+        saveSnapshots(next)
+      } catch (e) { console.warn('settings backup error:', e) }
+    }, 8000)
+    return () => clearTimeout(settingsBackupTimerRef.current)
+  }, [ruleConfig, empSettings, ownerReqs, empReqs, ownerRepeat, maleRotation, customEmployees, deletedEmpIds, baseEmployees])
+
+  // Daily count — 인턴은 카운트 제외
   const dailyCount = (ds) => ALL_EMPLOYEES.filter(e => {
     if (e.isMale || e.isFreelancer) return false
+    if (e.rank === '인턴') return false
     const s = getS(e.id, ds)
     return s === STATUS.WORK || isSupport(s) || s === STATUS.SHARE
   }).length
+
+  // 지점별 근무 인원 카운트 — 인턴/남자 제외 (경고 표시용)
+  const branchWorkerCount = (branchId, branchName, ds) => {
+    let n = 0
+    ACTIVE_EMPLOYEES.forEach(e => {
+      if (e.isMale || e.rank === '인턴' || e.isFreelancer) return
+      const s = getS(e.id, ds)
+      if (['휴무','휴무(꼭)','무급'].includes(s)) return
+      // 본 지점 직원 (타지점 지원 나감 제외)
+      if (e.branch === branchId) {
+        if (isSupport(s) && !s.includes(branchName)) return
+        if (s === STATUS.WORK || s === `지원(${branchName})` || s === STATUS.SHARE) n++
+      }
+      // 외부 지원
+      else if (s === `지원(${branchName})`) n++
+    })
+    return n
+  }
+  // (branchId, ds) → 부족 여부
+  const branchShortMap = useMemo(() => {
+    const map = new Map()
+    BRANCHES_SCH.forEach(br => {
+      const min = ruleConfig.branchMinStaff?.[br.id] ?? br.minStaff ?? 1
+      days.forEach(day => {
+        if (day.isNext) return
+        const cnt = branchWorkerCount(br.id, br.name, day.ds)
+        if (cnt < min) map.set(`${br.id}__${day.ds}`, { cnt, min })
+      })
+    })
+    return map
+  }, [sch, ruleConfig.branchMinStaff, days, ACTIVE_EMPLOYEES])
 
   // Male rotation helper
   const getMaleRotBranch = (empId, dateStr) => {
@@ -478,7 +625,7 @@ export default function SchedulePage({ employees: propEmps }) {
         const MAX_RETRY = 30
         let best = null, bestV = null
         for (let i = 0; i < MAX_RETRY; i++) {
-          const r = autoAssign(year, month, freshOwnerReqs||{}, prevSch, empSettings||{}, { order:supportOrder||{} }, ruleConfig||{}, ownerRepeat||{}, ACTIVE_EMPLOYEES, freshEmpReqs||{}, Date.now()+i*997, freshEmpReqsTs||{})
+          const r = autoAssign(year, month, freshOwnerReqs||{}, prevSch, empSettings||{}, { order:supportOrder||{} }, ruleConfig||{}, ownerRepeat||{}, ACTIVE_EMPLOYEES, freshEmpReqs||{}, Date.now()+i*997, freshEmpReqsTs||{}, maleRotation||{})
           const v = validateSch(r, ACTIVE_EMPLOYEES, days, ruleConfig, empSettings)
           if (v.length === 0) { best = r; bestV = []; break }
           if (!best || v.length < bestV.length) { best = r; bestV = v }
@@ -523,6 +670,14 @@ export default function SchedulePage({ employees: propEmps }) {
           if (!sd || !cleaned[emp.id]) return
           Object.keys(cleaned[emp.id]).forEach(ds => {
             if (ds < sd) delete cleaned[emp.id][ds]
+          })
+        })
+        // 전달 락 이월 날짜는 이번달 bucket에 저장하지 않음 — 전달 데이터로 fallback되도록
+        // (락된 spillover를 5월 bucket에 쓰면 4월 bucket과 분리되어 따로 놂)
+        ACTIVE_EMPLOYEES.forEach(emp => {
+          if (!cleaned[emp.id]) return
+          lockedDates.forEach(ds => {
+            delete cleaned[emp.id][ds]
           })
         })
         const toSave = { ...cleaned, __biweeklyNextPhase:biweeklyNextPhase }
@@ -579,10 +734,10 @@ export default function SchedulePage({ employees: propEmps }) {
       setIsConfirmed(true); setLockedDates(new Set(newLocked))
       lockStatusRef.current = { ...lockStatusRef.current, [curKey]:{ confirmed:true, lockedDates:newLocked } }
       saveLockStatus(lockStatusRef.current)
-      // 스냅샷 저장
+      // 스냅샷 저장 (월별 최신 5개만 유지)
       const snapshot = { ts:new Date().toISOString(), data:{ ...sch } }
       const prev = snapshots || {}
-      const monthSnapshots = [...(prev[curKey] || []), snapshot]
+      const monthSnapshots = [...(prev[curKey] || []), snapshot].slice(-5)
       const next = { ...prev, [curKey]:monthSnapshots }
       saveSnapshots(next)
       toast_('✅ 배치가 확정되었습니다')
@@ -660,7 +815,12 @@ export default function SchedulePage({ employees: propEmps }) {
       {showBulkModal && selectedCells.size > 0 && <BulkEditModal selectedCells={selectedCells} onSet={setS} onClose={(st) => { setShowBulkModal(false); setSelectedCells(new Set()); if (st) toast_(`✅ ${selectedCells.size}개 셀 → ${st}`) }}/>}
       {showRuleConfig && <RuleConfigModal ruleConfig={ruleConfig} allEmployees={ALL_EMPLOYEES} empSettings={empSettings} onSetRule={onSetRule} onClose={() => setShowRuleConfig(false)}/>}
       {showEmpSettings && <EmpSettingsModal allEmployees={ALL_EMPLOYEES} empSettings={empSettings} customEmployees={customEmployees} deletedEmpIds={deletedEmpIds} maleRotation={maleRotation||{}} onSetEmpSetting={onSetEmpSetting} onAddEmp={handleAddEmp} onDeleteEmp={handleDeleteEmp} onSaveMaleRotation={saveMaleRotation} onUpdateEmp={(empId, key, value) => {
-        const updated = baseEmployees.map(e => e.id===empId ? {...e, [key]:value, isOwner:key==='rank'?value==='원장':e.isOwner} : e);
+        const updated = baseEmployees.map(e => {
+          if (e.id !== empId) return e;
+          // 여러 필드 동시 업데이트 (예: 성별 → gender + isMale)
+          if (key === '__merge' && value && typeof value === 'object') return { ...e, ...value };
+          return { ...e, [key]:value, isOwner: key==='rank' ? value==='원장' : e.isOwner };
+        });
         saveEmployees(updated);
       }}
         ownerReqs={ownerReqs||{}} empReqs={empReqs||{}} ownerRepeat={ownerRepeat||{}} days={days} year={year} month={month}
@@ -677,6 +837,30 @@ export default function SchedulePage({ employees: propEmps }) {
           return next
         })
         toast_(`✅ ${monthKey} 근무표가 이력으로 복원되었습니다`)
+      }} onSettingsRollback={(snap) => {
+        // 설정값 전체 복원: 자동 백업 임시 중지(중복 저장 방지)
+        settingsBackupInitRef.current = false
+        try {
+          if (snap.ruleConfig) saveRuleConfig(snap.ruleConfig)
+          if (snap.empSettings) {
+            setEmpSettings(snap.empSettings)
+            supabase.from('schedule_data').upsert({ id:DB_KEYS.empSettings, key:DB_KEYS.empSettings, value:JSON.stringify(snap.empSettings), updated_at:new Date().toISOString() })
+              .then(({error}) => { if (error) console.error('empSettings 복원 실패:', error) })
+          }
+          if (snap.ownerReqs) { setOwnerReqs(snap.ownerReqs); saveOwnerReqs(snap.ownerReqs) }
+          if (snap.empReqs) { setEmpReqs(snap.empReqs); saveEmpReqs(snap.empReqs) }
+          if (snap.ownerRepeat) { setOwnerRepeat(snap.ownerRepeat); saveOwnerRepeat(snap.ownerRepeat) }
+          if (snap.maleRotation) saveMaleRotation(snap.maleRotation)
+          if (snap.customEmployees) { setCustomEmployees(snap.customEmployees); saveCustomEmployees(snap.customEmployees) }
+          if (snap.deletedEmpIds) { setDeletedEmpIdsArr(snap.deletedEmpIds); saveDeletedEmpIds(snap.deletedEmpIds) }
+          if (snap.employees) saveEmployees(snap.employees)
+          toast_('✅ 설정값이 백업 시점으로 복원되었습니다')
+        } catch (e) {
+          console.error('설정 복원 오류:', e)
+          toast_('❌ 설정 복원 중 오류: '+e.message, 'err')
+        }
+        // 5초 후 자동 백업 다시 활성화
+        setTimeout(() => { settingsBackupInitRef.current = true }, 5000)
       }} onClose={() => setShowSnapshots(false)}/>}
 
       {/* Header */}
@@ -748,7 +932,7 @@ export default function SchedulePage({ employees: propEmps }) {
                   // 원장 설정 → 직원 설정의 "휴무 설정" 탭으로 통합
                   { label:'직원 설정', icon:'users', action:() => { setShowEmpSettings(true); setShowSettings(false) } },
                   { label:'지점지원 설정', icon:'building', action:() => { setShowSupportSettings(true); setShowSettings(false) } },
-                  { label:'확정 이력', icon:'fileText', action:() => { setShowSnapshots(true); setShowSettings(false) } },
+                  { label:'백업', icon:'fileText', action:() => { setShowSnapshots(true); setShowSettings(false) } },
                 ].map(({ label, icon, action }, idx, arr) => (
                   <button key={label} onClick={action} style={{
                     display:'flex', alignItems:'center', gap:10, width:'100%', padding:'10px 14px', border:'none',
@@ -803,13 +987,35 @@ export default function SchedulePage({ employees: propEmps }) {
           <tbody>
             {shownBranches.map(branch => {
               const emps = ACTIVE_EMPLOYEES.filter(e => e.branch === branch.id)
+              const minS = ruleConfig.branchMinStaff?.[branch.id] ?? branch.minStaff ?? 1
               return [
                 <tr key={'bh-'+branch.id}>
-                  <td colSpan={days.length+1} style={{ padding:'6px 10px 3px', border:'none', position:'sticky', left:0, zIndex:10 }}>
+                  <td style={{ ...stickyCol, padding:'6px 10px 3px', border:'none' }}>
                     <div style={{ display:'inline-flex', alignItems:'center', gap:6, background:branch.color+'18', padding:'3px 12px 3px 8px', borderRadius:6, borderLeft:`4px solid ${branch.color}` }}>
                       <span style={{ fontSize:12, fontWeight:700, color:branch.color }}>{branch.name}</span>
+                      <span style={{ fontSize:10, color:T.textMuted, fontWeight:600 }}>최소 {minS}명</span>
                     </div>
                   </td>
+                  {days.map(day => {
+                    if (day.isNext) return <td key={day.ds} style={{ padding:0, border:'none' }}/>
+                    const cnt = branchWorkerCount(branch.id, branch.name, day.ds)
+                    const short = cnt < minS
+                    return <td key={day.ds} style={{ padding:'2px 1px', textAlign:'center', border:'none' }}>
+                      {short && (
+                        <div title={`${branch.name} 인원 부족: ${cnt}/${minS}명`}
+                          style={{
+                            background:'#FFE0E0',
+                            color:'#C62828',
+                            border:'1.5px solid #EF5350',
+                            borderRadius:4,
+                            padding:'1px 0',
+                            fontSize:9,
+                            fontWeight:800,
+                            lineHeight:1
+                          }}>⚠ {cnt}</div>
+                      )}
+                    </td>
+                  })}
                 </tr>,
                 ...emps.map((emp, ei) => (
                 <tr key={emp.id}>
@@ -830,39 +1036,7 @@ export default function SchedulePage({ employees: propEmps }) {
               ))]
             })}
 
-            {/* Male employees */}
-            {(() => {
-              const maleEmps = ACTIVE_EMPLOYEES.filter(e => e.isMale)
-              if (!maleEmps.length || (filterBranch !== 'all' && filterBranch !== 'male')) return null
-              return [
-                <tr key="bh-male">
-                  <td colSpan={days.length+1} style={{ padding:'6px 10px 3px', border:'none', position:'sticky', left:0, zIndex:10 }}>
-                    <div style={{ display:'inline-flex', alignItems:'center', gap:6, background:T.primary+'18', padding:'3px 12px 3px 8px', borderRadius:6, borderLeft:'4px solid '+T.primary }}>
-                      <span style={{ fontSize:12, fontWeight:700, color:T.primary }}>남자직원</span>
-                    </div>
-                  </td>
-                </tr>,
-                ...maleEmps.map((emp, ei) => (
-                <tr key={emp.id}>
-                  <td style={{ ...stickyCol, padding:'6px 10px', borderLeft:'3px solid '+T.primary, background:T.bgCard, borderRadius:'8px 0 0 8px', border:'none' }}>
-                    <MaleEmpLabel emp={emp} sch={sch} year={year} month={month} curMonthStr={curMonthStr}/>
-                  </td>
-                  {days.map((day, dayIdx) => {
-                    const empIdx = renderOrderEmps.findIndex(e => e.id === emp.id)
-                    const s = getS(emp.id, day.ds)
-                    const rotBranch = s === '근무' ? getMaleRotBranch(emp.id, day.ds) : null
-                    return <ScheduleCell key={day.ds} emp={emp} day={day} dayIdx={dayIdx} empIdx={empIdx}
-                      getS={getS} isConfirmed={isConfirmed} lockedDates={lockedDates} selectedCells={selectedCells}
-                      setSelectedCells={setSelectedCells} setEditCell={setEditCell} setShowBulkModal={setShowBulkModal}
-                      gridDragRef={gridDragRef} dragJustEndedRef={dragJustEndedRef} renderOrderEmps={renderOrderEmps}
-                      days={days} isWeekBoundary={isWeekBoundary} today={today} fmtDs={fmtDs}
-                      rotBranch={rotBranch} isMale
-                      cellTagDefs={cellTagDefs} cellTagIds={getCellTags(emp.id, day.ds)}
-                      empStartDate={empSettings[emp.id]?.startDate}/>
-                  })}
-                </tr>
-              ))]
-            })()}
+            {/* 남자직원 별도 섹션 제거 — 각 지점 그룹에 이미 표시되므로 중복 방지 */}
 
             <tr><td colSpan={dim+1} style={{ height:6 }}/></tr>
 
@@ -1008,13 +1182,14 @@ function ScheduleCell({ emp, day, dayIdx, empIdx, getS, isConfirmed, lockedDates
 
   return (
     <td className="cc" onClick={onClick} onMouseDown={onMouseDown} onMouseEnter={onMouseEnter}
-      style={{ padding:'2px', textAlign:'center', background:cellBg, border:'none', borderRadius:6, opacity:day.isNext ? 0.5 : beforeStart ? 0.35 : 1, cursor:locked ? 'not-allowed' : 'pointer', userSelect:'none', verticalAlign:'middle' }}>
+      style={{ padding:'2px', textAlign:'center', background:cellBg, border:'none', borderRadius:6, opacity:day.isNext ? 0.5 : beforeStart ? 0.35 : 1, cursor:locked ? 'not-allowed' : 'pointer', userSelect:'none', verticalAlign:'middle', position:'relative' }}>
       <div className="sch-box" style={{
         background:boxBg, color:boxColor, boxShadow,
         borderRadius:6, padding:'4px 2px', fontSize:11, fontWeight:s==='휴무'||s==='휴무(꼭)'||s==='무급' ? 700 : s ? 600 : 400,
         minWidth:40, minHeight:28, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column',
         position:'relative', border:'none', transition:'transform .1s, box-shadow .1s'
       }}>
+        {locked && !beforeStart && <span style={{ position:'absolute', top:-3, left:1, fontSize:9, lineHeight:1, zIndex:2 }}>🔒</span>}
         {s==='휴무(꼭)' && !emp.isOwner && <span style={{ position:'absolute', top:-5, right:1, fontSize:8, color:'#9060d0', fontWeight:900 }}>★</span>}
         {isSupport(s) ? <><span style={{ fontSize:10, fontWeight:700, lineHeight:1 }}>지원</span>{supportLabel && <span style={{ fontSize:9, color:sc.text, fontWeight:600, lineHeight:1 }}>→{supportLabel}</span>}</> : <span>{s || '—'}</span>}
         {rotBranch && <span style={{ fontSize:8, color:'#2a6099', fontWeight:700, lineHeight:1 }}>{BRANCH_LABEL[rotBranch]}</span>}

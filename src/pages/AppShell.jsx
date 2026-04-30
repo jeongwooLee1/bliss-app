@@ -18,10 +18,11 @@ import Sidebar from '../components/Navigation/Sidebar'
 import SchedulePage from '../components/Schedule/SchedulePage'
 import SetupWizard from '../components/SetupWizard/SetupWizard'
 import BlissAI from '../components/BlissAI/BlissAI'
+import FloatingAI from '../components/BlissAI/FloatingAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.92"
+const BLISS_V = "3.7.284"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -29,7 +30,7 @@ function ScrollArea({ storageKey, children }) {
   return <div ref={ref} className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}>{children}</div>
 }
 const BIZ_ID = 'biz_khvurgshb'
-const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", users:"/users", messages:"/messages", admin:"/settings", wizard:"/wizard", schedule:"/schedule", requests:"/requests", blissai:"/blissai" };
+const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", users:"/users", messages:"/messages", admin:"/settings", schedule:"/schedule", requests:"/requests", blissai:"/blissai" };
 // 과거 데이터 백그라운드 로드 (초기 14d/30d 이전 예약/매출) — UI 렌더 후 머지
 async function loadHistoricalInBackground(bizId, setData) {
   const resBefore = new Date(Date.now()-14*86400000).toISOString().slice(0,10);
@@ -52,7 +53,7 @@ async function loadHistoricalInBackground(bizId, setData) {
 }
 
 async function loadAllFromDb(bizId) {
-  const [branches, services, categories, tags, sources, users, rooms, customers, reservations, sales, products, branchGroups] = await Promise.all([
+  const [branches, services, categories, tags, sources, users, rooms, customers, snsCustomers, reservations, sales, products, branchGroups] = await Promise.all([
     sb.getByBiz("branches", bizId).catch(()=>[]),
     sb.getByBiz("services", bizId).catch(()=>[]),
     sb.getByBiz("service_categories", bizId).catch(()=>[]),
@@ -61,6 +62,8 @@ async function loadAllFromDb(bizId) {
     sb.getByBiz("app_users", bizId).catch(()=>[]),
     sb.getByBiz("rooms", bizId).catch(()=>[]),
     sb.get("customers", `&business_id=eq.${bizId}&is_hidden=eq.false&order=join_date.desc.nullslast,created_at.desc&limit=100`).catch(()=>[]),
+    // SNS 실제 연결된 고객만 (빈 배열 제외) — 부분 인덱스로 빠름
+    sb.get("customers", `&business_id=eq.${bizId}&is_hidden=eq.false&sns_accounts=neq.${encodeURIComponent('[]')}&limit=500`).catch(()=>[]),
     // 과거 6개월 이후 예약 + 미래 전체 로드 (이전: limit 3000으로 4/19 이전 데이터 누락 사고)
     sb.get("reservations", `&business_id=eq.${bizId}&date=gte.${new Date(Date.now()-180*86400000).toISOString().slice(0,10)}&order=date.desc,time.asc&limit=20000`).catch(()=>[]),
     sb.get("sales", `&business_id=eq.${bizId}&date=gte.${new Date(Date.now()-90*86400000).toISOString().slice(0,10)}&order=date.desc&limit=5000`).catch(()=>[]),
@@ -75,7 +78,14 @@ async function loadAllFromDb(bizId) {
     resSources: fromDb("reservation_sources", sources),
     users: fromDb("app_users", users),
     rooms,
-    customers: fromDb("customers", customers),
+    customers: (() => {
+      // 메인 100명 + SNS 연결된 고객 병합 (id 중복 제거)
+      const main = fromDb("customers", customers) || [];
+      const sns = fromDb("customers", snsCustomers) || [];
+      const seen = new Set(main.map(c => c.id));
+      const extras = sns.filter(c => !seen.has(c.id));
+      return [...main, ...extras];
+    })(),
     reservations: fromDb("reservations", reservations),
     sales: fromDb("sales", sales),
     products: fromDb("services", products),
@@ -683,6 +693,7 @@ function App() {
   const [unreadMsgCount, setUnreadMsgCount] = useState(0);
   const [unreadSample, setUnreadSample] = useState([]); // 배너용: [{user_id, channel, user_name, message_text, created_at, account_id}]
   const [pendingReqCount, setPendingReqCount] = useState(0);
+  const [unackNoticesPopup, setUnackNoticesPopup] = useState(null); // {count, ids}
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
@@ -786,6 +797,42 @@ function App() {
     const poll = setInterval(load, 60_000);
     return () => { try{rt?.unsubscribe();}catch(e){} clearInterval(poll); };
   }, []);
+  // 미확인 공지 팝업 — 본인 이름이 employees_v1에 있고 acks에 없는 공지가 있으면 팝업
+  useEffect(() => {
+    if (!currentUser?.name) return;
+    const DISMISS_KEY = 'bliss_unack_notices_dismissed_v1';
+    const getDismissed = () => { try { return new Set(JSON.parse(sessionStorage.getItem(DISMISS_KEY) || '[]')); } catch { return new Set(); } };
+    const check = async () => {
+      try {
+        const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=in.(bliss_notices_v1,employees_v1)&select=key,value`, {
+          headers: { apikey: SB_KEY, Authorization: "Bearer "+SB_KEY, "Cache-Control":"no-cache" },
+          cache: "no-store",
+        });
+        const rows = await r.json();
+        const ntcRow = rows.find(x=>x.key==='bliss_notices_v1');
+        const empRow = rows.find(x=>x.key==='employees_v1');
+        const ntc = (() => { const v=ntcRow?.value; return typeof v==='string'?JSON.parse(v):(Array.isArray(v)?v:[]); })();
+        const emp = (() => { const v=empRow?.value; return typeof v==='string'?JSON.parse(v):(Array.isArray(v)?v:[]); })();
+        // 본인이 employees_v1에 등록된 직원인 경우만 팝업 대상
+        const isEmp = (emp||[]).some(e => e.id === currentUser.name);
+        if (!isEmp) return;
+        const dismissed = getDismissed();
+        const unack = (ntc||[]).filter(n => !(n.acks?.[currentUser.name]) && !dismissed.has(n.id));
+        if (unack.length > 0) {
+          setUnackNoticesPopup({ count: unack.length, ids: unack.map(n=>n.id) });
+        } else {
+          setUnackNoticesPopup(null);
+        }
+      } catch (e) { /* ignore */ }
+    };
+    check();
+    const rt = window._sbClient?.channel("notices_popup")
+      ?.on("postgres_changes",{event:"UPDATE",schema:"public",table:"schedule_data",filter:"key=eq.bliss_notices_v1"}, check)
+      ?.on("postgres_changes",{event:"INSERT",schema:"public",table:"schedule_data",filter:"key=eq.bliss_notices_v1"}, check)
+      ?.subscribe();
+    const poll = setInterval(check, 120_000);
+    return () => { try{rt?.unsubscribe();}catch(e){} clearInterval(poll); };
+  }, [currentUser?.name]);
   // 팀채팅 공지(📣) Realtime — is_announce=true 신규 메시지 → 전체 화면 배너
   useEffect(() => {
     const supaClient = window._sbClient;
@@ -941,10 +988,25 @@ function App() {
       }
     }catch(e){}
   };
+  const [messagesPanelOpen, setMessagesPanelOpen] = useState(false);
   const setPage = useCallback((p) => {
+    // 받은메시지함은 라우트 이동 대신 우측 사이드 패널 (모바일은 기존 풀스크린 라우팅 유지)
+    const isMob = typeof window !== "undefined" && window.innerWidth < 768;
+    if (p === "messages" && !isMob) {
+      // 항상 오픈 (재클릭 토글 X). 닫기는 × 버튼으로 — race condition 방지
+      setMessagesPanelOpen(true);
+      return;
+    }
+    // 다른 페이지로 이동 — 패널은 그대로 유지 (사용자가 채팅하면서 페이지 작업)
     const url = PAGE_ROUTES[p] || "/timeline";
     navigate(url);
   }, [navigate]);
+  // pendingChat이 설정되면 사이드 패널 자동 오픈 (예약 모달 → 대화보기 등)
+  useEffect(() => {
+    if (pendingChat && typeof window !== "undefined" && window.innerWidth >= 768) {
+      setMessagesPanelOpen(true);
+    }
+  }, [pendingChat]);
 
   // 새 버전 감지 — 자동 새로고침 대신 배너 표시
   const [newVer, setNewVer] = useState(null);
@@ -1157,10 +1219,11 @@ function App() {
         setViewBranches([]);
         // page is derived from URL via useLocation()
         setPhase("app");
-        // 새 OAuth 유저 → 설정 마법사 자동 시작
+        // 새 OAuth 유저 → 블리스 AI 설정 마법사 자동 시작
         if (sessionStorage.getItem('bliss_new_oauth_user')) {
           sessionStorage.removeItem('bliss_new_oauth_user');
-          setTimeout(() => setPage("wizard"), 500);
+          sessionStorage.setItem('bliss_open_setup', '1');
+          setTimeout(() => setPage("blissai"), 500);
         }
       } catch(e) {
         console.error("Data load error:", e);
@@ -1377,7 +1440,8 @@ function App() {
   if (phase === "login") return <Login users={allUsers} onLogin={handleLogin} onSignup={async (newUser) => {
     setAllUsers(prev => [...prev, newUser]);
     await handleLogin(newUser);
-    setTimeout(() => setPage("wizard"), 500); // 가입 직후 설정 마법사 자동 시작
+    sessionStorage.setItem('bliss_open_setup', '1');
+    setTimeout(() => setPage("blissai"), 500); // 가입 직후 블리스 AI 설정 마법사 자동 진입
   }} />;
   if (phase === "super") return <SuperDashboard superData={superData} setSuperData={setSuperData} currentUser={currentUser} onLogout={handleLogout} onEnterBiz={handleEnterBiz} />;
 
@@ -1400,7 +1464,6 @@ function App() {
     { id:"customers", label:"고객관리", icon:<I name="users" size={16}/> },
     ...((role==="owner"||role==="super")?[{ id:"users", label:"사용자관리", icon:<I name="user" size={16}/> }]:[]),
     { id:"messages", label:"받은메시지함", icon:<I name="msgSq" size={16}/>, badge:unreadMsgCount },
-    { id:"blissai", label:"블리스 AI", icon:"🤖" },
     { id:"admin", label:"관리설정", icon:<I name="settings" size={16}/> },
     { id:"requests", label:"공지 & 요청", icon:"📢", badge:pendingReqCount },
   ];
@@ -1424,21 +1487,81 @@ function App() {
       {newVer && <div onClick={()=>{try{window.location.href=window.location.pathname+"?v="+newVer;}catch(e){window.location.reload();}}} style={{position:"fixed",top:10,right:10,zIndex:9999,background:T.primary,color:"#fff",padding:"10px 16px",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 12px rgba(0,0,0,.25)",animation:"ovFadeIn .3s"}}>
         🔄 새 버전 v{newVer} {reloadCountdown > 0 ? `(${reloadCountdown}초 후 자동 업데이트)` : "— 즉시 업데이트"}
       </div>}
-      <main className="main-c" style={S.main}>
+      {/* 플로팅 AI — 우하단 항상 표시 */}
+      <FloatingAI data={data} currentUser={currentUser} isMaster={isMaster} bizId={currentBizId}/>
+      {/* 받은메시지함 사이드 패널 — 좌측(사이드바 우측) 슬라이드, 다른 페이지 작업 가능 */}
+      {messagesPanelOpen && (
+        <div className="msg-panel" style={{position:"fixed",top:0,left:200,bottom:0,width:340,maxWidth:"95vw",background:"#fff",borderRight:"1px solid "+T.border,boxShadow:"4px 0 16px rgba(0,0,0,.08)",zIndex:400,display:"flex",flexDirection:"column",animation:"slideIn .3s cubic-bezier(.22,1,.36,1)"}}>
+          <div style={{padding:"8px 12px",borderBottom:"1px solid "+T.border,background:T.bgCard,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:T.fw.bolder}}>
+              <I name="msgSq" size={14}/> 받은메시지함
+              {unreadMsgCount > 0 && <span style={{background:T.danger,color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px"}}>{unreadMsgCount}</span>}
+            </div>
+            <button onClick={()=>setMessagesPanelOpen(false)} title="닫기" style={{width:24,height:24,borderRadius:12,border:"none",background:T.gray100,color:T.textSub,cursor:"pointer",fontSize:16,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>×</button>
+          </div>
+          <div style={{flex:1,minHeight:0,overflow:"hidden",position:"relative"}}>
+            <AdminInbox sb={sb} branches={data?.branches} data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} currentUser={currentUser} onRead={(cnt)=>setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)))} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage} forceCompact={true}/>
+          </div>
+        </div>
+      )}
+      {/* 미확인 공지 팝업 */}
+      {unackNoticesPopup && unackNoticesPopup.count > 0 && (
+        <div style={{position:"fixed",inset:0,zIndex:10000,background:"rgba(0,0,0,.55)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}
+          onClick={()=>{
+            try {
+              const cur = JSON.parse(sessionStorage.getItem('bliss_unack_notices_dismissed_v1') || '[]');
+              const next = Array.from(new Set([...cur, ...unackNoticesPopup.ids]));
+              sessionStorage.setItem('bliss_unack_notices_dismissed_v1', JSON.stringify(next));
+            } catch {}
+            setUnackNoticesPopup(null);
+          }}>
+          <div onClick={e=>e.stopPropagation()} style={{background:T.bgCard,borderRadius:16,maxWidth:360,width:"100%",padding:24,boxShadow:"0 20px 60px rgba(0,0,0,.4)",animation:"ovFadeIn .25s"}}>
+            <div style={{fontSize:34,marginBottom:8,textAlign:"center"}}>📢</div>
+            <div style={{fontSize:18,fontWeight:T.fw.black,color:T.text,textAlign:"center",marginBottom:8}}>
+              확인 안 한 공지가 {unackNoticesPopup.count}건 있어요
+            </div>
+            <div style={{fontSize:13,color:T.textMuted,textAlign:"center",lineHeight:1.5,marginBottom:18}}>
+              공지를 열어 본인 이름을 클릭해<br/>확인 완료 처리해주세요.
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>{
+                try {
+                  const cur = JSON.parse(sessionStorage.getItem('bliss_unack_notices_dismissed_v1') || '[]');
+                  const next = Array.from(new Set([...cur, ...unackNoticesPopup.ids]));
+                  sessionStorage.setItem('bliss_unack_notices_dismissed_v1', JSON.stringify(next));
+                } catch {}
+                setUnackNoticesPopup(null);
+              }}
+                style={{flex:1,padding:"11px 0",borderRadius:10,border:"1px solid "+T.border,background:"#fff",color:T.textSub,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                나중에
+              </button>
+              <button onClick={()=>{
+                setUnackNoticesPopup(null);
+                navigate("/requests");
+              }}
+                style={{flex:1.4,padding:"11px 0",borderRadius:10,border:"none",background:"#7C3AED",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                지금 확인하기 →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <main className="main-c" style={{...S.main, marginLeft: 200 + (messagesPanelOpen ? 340 : 0), transition:"margin-left .25s cubic-bezier(.22,1,.36,1)"}}>
         <div className="mob-hdr" style={{display:"none"}}></div>
         <div className="page-pad" style={{flex:1,padding:(page==="timeline"||page==="messages"||page==="schedule")?"0":"16px 20px 16px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
           <Routes>
             <Route path="/timeline" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust} unreadMsgCount={unreadMsgCount} unreadSample={unreadSample}/></div>}/>
+            <Route path="/timeline-preview" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust} unreadMsgCount={unreadMsgCount} unreadSample={unreadSample} previewBlockStyle={true}/></div>}/>
             <Route path="/reservations" element={<ScrollArea storageKey="page_reservations"><ReservationList data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} setNaverColShow={setNaverColShow}/></ScrollArea>}/>
             <Route path="/sales" element={<ScrollArea storageKey="page_sales"><SalesPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} role={role} setPendingOpenCust={setPendingOpenCust}/></ScrollArea>}/>
             <Route path="/customers" element={<ScrollArea storageKey="page_customers"><CustomersPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} pendingOpenCust={pendingOpenCust} setPendingOpenCust={setPendingOpenCust}/></ScrollArea>}/>
             <Route path="/users" element={<ScrollArea storageKey="page_users"><UsersPage data={data} setData={setData} bizId={currentBizId}/></ScrollArea>}/>
-            <Route path="/messages" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><AdminInbox sb={sb} branches={data?.branches} data={data} userBranches={userBranches} isMaster={isMaster} onRead={(cnt)=>setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)))} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage}/></div>}/>
+            <Route path="/messages" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><AdminInbox sb={sb} branches={data?.branches} data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} currentUser={currentUser} onRead={(cnt)=>setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)))} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage}/></div>}/>
             <Route path="/schedule" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}>{isMaster && <SchedulePage/>}</div>}/>
             <Route path="/settings/*" element={<ScrollArea storageKey="page_settings"><AdminPage data={data} setData={setData} bizId={currentBizId} serverV={serverV} onLogout={handleLogout} currentUser={currentUser} userBranches={userBranches} setPage={setPage}/></ScrollArea>}/>
-            <Route path="/wizard" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><SetupWizard bizId={currentBizId} bizName={bizName} geminiKey={(() => { try { return window.__systemGeminiKey || window.__geminiKey || JSON.parse(currentBiz?.settings||'{}').gemini_key || localStorage.getItem('bliss_gemini_key') || ''; } catch { return ''; } })()} sb={sb} data={data} setData={setData} onComplete={()=>setPage("timeline")} onClose={()=>setPage("timeline")}/></div>}/>
+            <Route path="/wizard" element={<Navigate to="/blissai" replace/>}/>
             <Route path="/requests" element={<ScrollArea storageKey="page_requests"><BlissRequests data={data} currentUser={currentUser} userBranches={userBranches} isMaster={isMaster}/></ScrollArea>}/>
-            <Route path="/blissai" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}><BlissAI data={data} currentUser={currentUser} userBranches={userBranches} isMaster={isMaster} bizId={currentBizId}/></div>}/>
+            <Route path="/blissai" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}><BlissAI data={data} setData={setData} currentUser={currentUser} userBranches={userBranches} isMaster={isMaster} bizId={currentBizId} bizName={bizName}/></div>}/>
             <Route path="*" element={<Navigate to="/timeline" replace/>}/>
           </Routes>
         </div>
