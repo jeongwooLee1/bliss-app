@@ -624,6 +624,9 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   const pointEarnManualRef = React.useRef(false); // 사용자가 수동 수정했는지
   // 📸 viewOnly 매출확인: 매출 등록 시점 스냅샷이 있으면 그걸 그대로 사용 (현재 잔액 조회 차단)
   const _snapshotData = viewOnly ? (reservation?._existingSale?.snapshotData || reservation?._existingSale?.snapshot_data) : null;
+  // 매출 등록 시점 input state (items/pkgUse/pointUse/payMethod/extraRows 등) 전체 재현용
+  // v3.7.358+ 매출에만 존재. 이전 매출은 sale_details fallback 매칭.
+  const _snapshotInput = (_snapshotData && _snapshotData.input) ? _snapshotData.input : null;
   useEffect(() => {
     if (_snapshotData) {
       setCustPkgs(_snapshotData.custPkgs || []);
@@ -971,11 +974,36 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     });
   }, [isMemberCustomer, gender]);
 
+  // 📸 viewOnly + inputSnapshot 있으면 매출 등록 시점 input state 그대로 복원 (sale_details 매칭 스킵)
+  const _restoredFromInputSnap = useRef(false);
+  useEffect(() => {
+    if (_restoredFromInputSnap.current) return;
+    if (!viewOnly || !_snapshotInput) return;
+    _restoredFromInputSnap.current = true;
+    try {
+      if (_snapshotInput.items && typeof _snapshotInput.items === 'object') {
+        // 저장된 항목만 복원 + 나머지는 기본 unchecked 상태 유지
+        setItems(prev => ({ ...prev, ..._snapshotInput.items }));
+      }
+      if (Array.isArray(_snapshotInput.extraRows)) setExtraRows(_snapshotInput.extraRows);
+      if (_snapshotInput.pkgUse) setPkgUse(_snapshotInput.pkgUse);
+      if (typeof _snapshotInput.pointUse === 'number') setPointUse(_snapshotInput.pointUse);
+      if (typeof _snapshotInput.pointEarn === 'number') setPointEarn(_snapshotInput.pointEarn);
+      if (_snapshotInput.payMethod) setPayMethod(_snapshotInput.payMethod);
+      if (typeof _snapshotInput.externalPrepaid === 'number') setExternalPrepaid(_snapshotInput.externalPrepaid);
+      if (typeof _snapshotInput.externalPlatform === 'string') setExternalPlatform(_snapshotInput.externalPlatform);
+      if (_snapshotInput.issueCouponIds) setIssueCouponIds(_snapshotInput.issueCouponIds);
+      if (typeof _snapshotInput.saleMemo === 'string') setSaleMemo(_snapshotInput.saleMemo);
+    } catch (e) { console.warn('[snapshotInput restore]', e); }
+  }, [viewOnly, _snapshotInput]);
+
   // 편집 모드: existingDetails에서 items 프리필 (시술/제품/추가/할인)
+  // ⚠️ inputSnapshot이 있으면 위 useEffect가 시점 그대로 복원하므로 이 매칭은 스킵
   const _prefilledFromDetails = useRef(false);
   useEffect(() => {
     if (_prefilledFromDetails.current) return;
     if (!_isEditOrView) return;
+    if (viewOnly && _snapshotInput) return; // inputSnapshot 우선
     const existingDetails = reservation?._prefill?.existingDetails;
     if (!Array.isArray(existingDetails) || existingDetails.length === 0) return;
     _prefilledFromDetails.current = true;
@@ -2246,6 +2274,21 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
         })),
         pointBalance: pointBalance,
         ts: new Date().toISOString(),
+        // 매출 등록 시점 input state — viewOnly 모달이 시점 그대로 재현용
+        // checked=true인 items만 저장 (95개 전체 저장 방지)
+        input: {
+          items: Object.fromEntries(Object.entries(items || {}).filter(([_, v]) => v && (v.checked || v.amount || v.comped))),
+          extraRows: Array.isArray(extraRows) ? extraRows : [],
+          pkgUse: pkgUse || {},
+          pointUse: pointUse || 0,
+          pointEarn: pointEarn || 0,
+          payMethod: payMethod || {},
+          externalPrepaid: externalPrepaid || 0,
+          externalPlatform: externalPlatform || "",
+          issueCouponIds: issueCouponIds || {},
+          saleMemo: saleMemo || "",
+          custId: cust?.id || null,
+        },
       },
     };
 
