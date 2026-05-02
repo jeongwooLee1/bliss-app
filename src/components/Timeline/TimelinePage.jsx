@@ -4740,9 +4740,9 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                         {effectiveNaverColShow["블록메모"] !== false && block.memo && (() => { const clean = block.memo.split("\n").filter(l => { const t=l.trim(); return !(/^\[등록:|^\[수정:/.test(t)) && !(/^\d+\.\d+\s+\d+:\d+\s*(예약)?(접수|변경|확정|취소|신청|확정완료)/.test(t)); }).join("\n").trim(); return clean ? <div style={{color:block.isSchedule?T.text:T.gray700,fontWeight:T.fw.normal,fontSize:Math.max(6,blockFs-1),marginTop:1,whiteSpace:"pre-line",wordBreak:"break-word"}}><I name="msgSq" size={10} color={T.gray600}/> {clean}</div> : null; })()}
                         {/* Resize handle — 넓은 히트 영역 */}
                         {isEditable && <div className="resize-handle" onMouseDown={e=>handleResizeStart(block,e)} onTouchStart={e=>handleResizeStart(block,e)}
-                          style={{position:"absolute",bottom:-10,left:"10%",right:"10%",height:20,cursor:"ns-resize",
+                          style={{position:"absolute",bottom:-8,left:"35%",right:"35%",height:16,cursor:"ns-resize",
                             display:"flex",alignItems:"center",justifyContent:"center",opacity:0.5,transition:"opacity .15s",zIndex:3,touchAction:"none"}}>
-                          <div style={{width:32,height:4,borderRadius:T.radius.sm,background:color,opacity:0.8}}/>
+                          <div style={{width:24,height:4,borderRadius:T.radius.sm,background:color,opacity:0.8}}/>
                         </div>}
                         {isBeingResized && <div style={{position:"absolute",bottom:2,right:4,fontSize:Math.max(6,blockFs-2),fontWeight:T.fw.bolder,color,background:T.bgCard,padding:"0 3px",borderRadius:T.radius.sm}}>
                           {blockDur}분
