@@ -887,6 +887,61 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     });
     return () => { cancelled = true; };
   }, [vb]);
+
+  // 기간별 매장/매니저/결제수단 합계 — RPC (90일 메모리 한계 회피)
+  const [periodSummary, setPeriodSummary] = useState({ totals: null, byBranch: [], byStaff: [], loading: true });
+  useEffect(() => {
+    let cancelled = false;
+    setPeriodSummary(p => ({...p, loading: true}));
+    const body = JSON.stringify({
+      p_biz_id: BUSINESS_ID,
+      p_start: (periodKey==="all" || !startDate) ? null : startDate,
+      p_end: (periodKey==="all" || !endDate) ? null : endDate,
+      p_bid: vb === "all" ? null : vb,
+    });
+    fetch(`${SB_URL}/rest/v1/rpc/get_sales_stats_summary`, {
+      method:'POST', headers:{...sbHeaders, 'Content-Type':'application/json'}, body
+    }).then(r => r.ok ? r.json() : null).catch(() => null).then(j => {
+      if (cancelled) return;
+      setPeriodSummary({
+        totals: j?.totals || null,
+        byBranch: j?.byBranch || [],
+        byStaff: j?.byStaff || [],
+        loading: false,
+      });
+    });
+    return () => { cancelled = true; };
+  }, [vb, periodKey, startDate, endDate]);
+
+  // 만 단위 한국식 간략 표시 (예: 22억4천, 5천8백만, 748만)
+  const fmtKMan = (n) => {
+    n = Math.round(Number(n)||0);
+    if (!n) return '0';
+    const sign = n < 0 ? '-' : ''; n = Math.abs(n);
+    const eok = Math.floor(n / 100000000);
+    const man = Math.floor((n % 100000000) / 10000);
+    if (eok > 0) {
+      const cheon = Math.floor(man / 1000);
+      if (cheon > 0) return `${sign}${eok}억${cheon}천`;
+      return `${sign}${eok}억`;
+    }
+    if (man >= 1000) {
+      const cheon = Math.floor(man / 1000);
+      const baek = Math.floor((man % 1000) / 100);
+      if (baek > 0) return `${sign}${cheon}천${baek}백만`;
+      return `${sign}${cheon}천만`;
+    }
+    if (man > 0) return `${sign}${man}만`;
+    return `${sign}${n.toLocaleString()}`;
+  };
+
+  // 매월/매년 차트 ref — mount/data 변경 시 끝(최신)으로 자동 스크롤
+  const monthlyScrollRef = React.useRef(null);
+  const yearlyScrollRef = React.useRef(null);
+  useEffect(() => {
+    if (monthlyScrollRef.current) monthlyScrollRef.current.scrollLeft = monthlyScrollRef.current.scrollWidth;
+    if (yearlyScrollRef.current) yearlyScrollRef.current.scrollLeft = yearlyScrollRef.current.scrollWidth;
+  }, [allTimeStats.monthly, allTimeStats.yearly]);
   // 기간 길이로 차트 단위 자동 결정 — 60일↓ 일별, 365일↓ 월별, 그 외 연도별
   // 전체(all) 선택 시 매출 데이터의 실제 범위(첫 매출 ~ 오늘)로 판단
   const statsPeriod = (() => {
@@ -919,52 +974,45 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     return inRange(s.date);
   });
 
-  // 외부선결제는 결제수단(시술용) — 시술 매출에 합산. 총매출 = 시술+제품+상품권 (정합)
-  const t = filtered.reduce((a,s)=>{
-    const ep = s.externalPrepaid||0;
-    return {
-      svcTotal:a.svcTotal+(s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint+ep),
-      prodTotal:a.prodTotal+(s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint),
-      gift:a.gift+s.gift,
-      extPrepaid:a.extPrepaid+ep,
-      total:a.total+(s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint+s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint+s.gift+ep),
-      count:a.count+1,
-      svcCash:a.svcCash+s.svcCash,svcTransfer:a.svcTransfer+s.svcTransfer,svcCard:a.svcCard+s.svcCard,svcPoint:a.svcPoint+s.svcPoint,
-      prodCash:a.prodCash+s.prodCash,prodTransfer:a.prodTransfer+s.prodTransfer,prodCard:a.prodCard+s.prodCard,prodPoint:a.prodPoint+s.prodPoint,
-    };
-  },{svcTotal:0,prodTotal:0,gift:0,extPrepaid:0,total:0,count:0,svcCash:0,svcTransfer:0,svcCard:0,svcPoint:0,prodCash:0,prodTransfer:0,prodCard:0,prodPoint:0});
+  // totals — RPC 기반 (전체 기간이라도 정확). RPC 응답 전엔 빈값.
+  const _ts = periodSummary.totals || {};
+  const t = {
+    svcTotal: Number(_ts.svc_total||0),
+    prodTotal: Number(_ts.prod_total||0),
+    gift: Number(_ts.gift_total||0),
+    extPrepaid: Number(_ts.ext_prepaid||0),
+    total: Number(_ts.svc_total||0)+Number(_ts.prod_total||0)+Number(_ts.gift_total||0),
+    count: Number(_ts.cnt||0),
+    svcCash: Number(_ts.svc_cash||0),
+    svcTransfer: Number(_ts.svc_transfer||0),
+    svcCard: Number(_ts.svc_card||0),
+    svcPoint: Number(_ts.svc_point||0),
+    prodCash: Number(_ts.prod_cash||0),
+    prodTransfer: Number(_ts.prod_transfer||0),
+    prodCard: Number(_ts.prod_card||0),
+    prodPoint: Number(_ts.prod_point||0),
+  };
 
-  // 선택된 기간의 일수 (일평균 계산용)
+  // 일수 (일평균) — RPC days(매출 발생 일수) 우선, 없으면 기간 길이
   const days = (()=>{
-    if (periodKey==="all" || !startDate || !endDate) {
-      // 전체면 실제 매출이 있는 일수 기준
-      const uniqueDates = new Set(filtered.map(s => s.date));
-      return Math.max(1, uniqueDates.size);
-    }
+    if (Number(_ts.days||0) > 0) return Math.max(1, Number(_ts.days));
+    if (periodKey==="all" || !startDate || !endDate) return 1;
     const s = new Date(startDate); const e = new Date(endDate);
     return Math.max(1, Math.round((e - s) / 86400000) + 1);
   })();
 
-  // By staff
-  const byStaff = {};
-  filtered.forEach(s => {
-    if(!byStaff[s.staffName]) byStaff[s.staffName]={count:0,total:0};
-    byStaff[s.staffName].count++;
-    byStaff[s.staffName].total+=(s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint+s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint+s.gift+(s.externalPrepaid||0));
-  });
-  const staffRank = Object.entries(byStaff).sort((a,b)=>b[1].total-a[1].total);
+  // By staff — RPC 기반 (90일 메모리 한계 회피, 기간 정확)
+  const staffRank = (periodSummary.byStaff || [])
+    .map(r => [r.staff_name, { count: Number(r.cnt||0), total: Number(r.total||0) }])
+    .sort((a,b) => b[1].total - a[1].total);
 
-  // By branch
-  const byBranch = {};
-  if (isMaster) {
-    filtered.forEach(s => {
-      const bn = (data.branches||[]).find(b=>b.id===s.bid)?.short||"";
-      if(!byBranch[bn]) byBranch[bn]={count:0,total:0};
-      byBranch[bn].count++;
-      byBranch[bn].total+=(s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint+s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint+s.gift+(s.externalPrepaid||0));
-    });
-  }
-  const branchRank = Object.entries(byBranch).sort((a,b)=>b[1].total-a[1].total);
+  // By branch — RPC 기반
+  const branchRank = isMaster ? (periodSummary.byBranch || [])
+    .map(r => {
+      const bn = (data.branches||[]).find(b=>b.id===r.bid)?.short || r.bid;
+      return [bn, { count: Number(r.cnt||0), total: Number(r.total||0) }];
+    })
+    .sort((a,b) => b[1].total - a[1].total) : [];
 
   // Chart data — statsPeriod에 따라 일별/월별/연도별 집계 (전체 매출 사용 — 기간 필터 무시)
   // 일별: 선택 기간 내 또는 최근 31일
@@ -1113,39 +1161,34 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
         <span style={{fontSize:T.fs.xs,display:"flex",alignItems:"center",gap:T.sp.xs}}><span style={{width:8,height:8,borderRadius:T.radius.sm,background:T.info}}/>제품</span>
       </div>
     </div>
-    {/* 전체 기간 매월 매출 — 지점 필터만 적용 */}
-    {monthlyAll.length > 0 && <div className="card" style={{padding:20,marginBottom:16}}>
-      <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:16}}>
+    {/* 전체 기간 매월 매출 — 단일 막대(총합), 우측이 최신, 자동 우측 스크롤 */}
+    {monthlyAll.length > 0 && <div className="card" style={{padding:"18px 20px 14px",marginBottom:16,overflow:"hidden"}}>
+      <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:14}}>
         전체 기간 매월 매출 ({monthlyAll.length}개월)
-        <span style={{marginLeft:8,fontSize:11,fontWeight:500,color:T.gray400}}>· 시작 매출월부터 현재까지</span>
+        <span style={{marginLeft:8,fontSize:11,fontWeight:500,color:T.gray400}}>· 시작 매출월부터 현재까지 · 우측이 최신</span>
       </div>
-      <div style={{display:"flex",alignItems:"flex-end",gap:4,height:130,overflowX:"auto"}}>
+      <div ref={monthlyScrollRef} style={{display:"flex",alignItems:"flex-end",gap:4,height:160,overflowX:"auto",overflowY:"hidden",paddingTop:18,paddingBottom:4}}>
         {monthlyAll.map((d,i)=>(
-          <div key={i} style={{flex:"0 0 auto",minWidth:32,display:"flex",flexDirection:"column",alignItems:"center",gap:T.sp.xs}}>
-            <span style={{fontSize:T.fs.nano,color:T.textSub,whiteSpace:"nowrap"}}>{d.total>0?`${fmt(Math.round(d.total/10000))}만`:""}</span>
-            <div style={{width:24,display:"flex",flexDirection:"column",gap:1}}>
-              <div style={{width:"100%",height:`${Math.max((d.prod/maxMonthly)*80,0)}px`,background:T.info,borderRadius:"4px 4px 0 0",transition:"height .3s"}}/>
-              <div style={{width:"100%",height:`${Math.max((d.svc/maxMonthly)*80,2)}px`,background:T.primary,borderRadius:"0 0 4px 4px",transition:"height .3s"}}/>
-            </div>
+          <div key={i} style={{flex:"0 0 auto",minWidth:36,display:"flex",flexDirection:"column",alignItems:"center",gap:T.sp.xs}}>
+            <span style={{fontSize:T.fs.nano,color:T.textSub,whiteSpace:"nowrap"}}>{d.total>0?fmtKMan(d.total):""}</span>
+            <div style={{width:28,height:`${Math.max((d.total/maxMonthly)*100,2)}px`,background:T.primary,borderRadius:"4px 4px 0 0",transition:"height .3s"}}/>
             <span style={{fontSize:T.fs.xs,color:T.gray500,whiteSpace:"nowrap"}}>{d.label}</span>
           </div>
         ))}
       </div>
     </div>}
-    {/* 전체 기간 매년 매출 */}
-    {yearlyAll.length > 0 && <div className="card" style={{padding:20,marginBottom:16}}>
-      <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:16}}>
+    {/* 전체 기간 매년 매출 — 단일 막대, 우측이 최신 */}
+    {yearlyAll.length > 0 && <div className="card" style={{padding:"18px 20px 14px",marginBottom:16,overflow:"hidden"}}>
+      <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:14}}>
         전체 기간 매년 매출 ({yearlyAll.length}년)
+        <span style={{marginLeft:8,fontSize:11,fontWeight:500,color:T.gray400}}>· 우측이 최신</span>
       </div>
-      <div style={{display:"flex",alignItems:"flex-end",gap:10,height:130}}>
+      <div ref={yearlyScrollRef} style={{display:"flex",alignItems:"flex-end",gap:10,height:170,overflowX:"auto",overflowY:"hidden",paddingTop:22,paddingBottom:4}}>
         {yearlyAll.map((d,i)=>(
-          <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:T.sp.xs}}>
-            <span style={{fontSize:T.fs.xs,color:T.textSub,fontWeight:T.fw.bold}}>{d.total>0?`${fmt(d.total)}원`:""}</span>
-            <div style={{width:"100%",maxWidth:80,display:"flex",flexDirection:"column",gap:1}}>
-              <div style={{width:"100%",height:`${Math.max((d.prod/maxYearly)*80,0)}px`,background:T.info,borderRadius:"4px 4px 0 0",transition:"height .3s"}}/>
-              <div style={{width:"100%",height:`${Math.max((d.svc/maxYearly)*80,2)}px`,background:T.primary,borderRadius:"0 0 4px 4px",transition:"height .3s"}}/>
-            </div>
-            <span style={{fontSize:T.fs.sm,color:T.text,fontWeight:T.fw.bold}}>{d.label}</span>
+          <div key={i} style={{flex:"0 0 auto",minWidth:64,display:"flex",flexDirection:"column",alignItems:"center",gap:T.sp.xs}}>
+            <span style={{fontSize:T.fs.xs,color:T.textSub,fontWeight:T.fw.bolder,whiteSpace:"nowrap"}}>{d.total>0?fmtKMan(d.total):""}</span>
+            <div style={{width:50,height:`${Math.max((d.total/maxYearly)*110,2)}px`,background:T.primary,borderRadius:"4px 4px 0 0",transition:"height .3s"}}/>
+            <span style={{fontSize:T.fs.sm,color:T.text,fontWeight:T.fw.bold,whiteSpace:"nowrap"}}>{d.label}</span>
           </div>
         ))}
       </div>
