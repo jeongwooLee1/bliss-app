@@ -867,6 +867,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
 // ═══════════════════════════════════════════
 function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, periodKey, setStartDate, setEndDate, setPeriodKey }) {
   const [vb, setVb] = useState("all");
+  const [statsPeriod, setStatsPeriod] = useState("day"); // "day" | "month" | "year"
   const dateAnchorRef = React.useRef(null);
   const [showSheet, setShowSheet] = useState(false);
   // 매출통계는 권한 무관 전 지점 표시 (userBranches 무시)
@@ -931,30 +932,74 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
   }
   const branchRank = Object.entries(byBranch).sort((a,b)=>b[1].total-a[1].total);
 
-  // Chart data — 선택 기간 내 일별 막대 (최대 31일까지만 렌더; 넘으면 최근 31일)
+  // Chart data — statsPeriod에 따라 일별/월별/연도별 집계 (전체 매출 사용 — 기간 필터 무시)
+  // 일별: 선택 기간 내 또는 최근 31일
+  // 월별: 선택 기간 또는 전체 매출의 월별 (최대 24개월)
+  // 연도별: 전체 매출의 연도별
   const chartDays = (() => {
-    const out = [];
-    let chartStart, chartEnd;
-    if (periodKey==="all" || !startDate || !endDate) {
-      // 전체면 최근 7일
-      chartEnd = new Date();
-      chartStart = new Date(); chartStart.setDate(chartStart.getDate()-6);
-    } else {
-      chartStart = new Date(startDate);
-      chartEnd = new Date(endDate);
-      const totalDays = Math.round((chartEnd - chartStart) / 86400000) + 1;
-      if (totalDays > 31) chartStart = new Date(chartEnd.getTime() - 30*86400000);
+    const allSales = (data?.sales || []).filter(s => (vb==="all" ? allBids.includes(s.bid) : s.bid===vb));
+    const sumOf = (arr) => arr.reduce((a,s) => ({
+      svc: a.svc + s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint+(s.externalPrepaid||0),
+      prod: a.prod + s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint,
+    }), {svc:0, prod:0});
+
+    if (statsPeriod === "day") {
+      const out = [];
+      let chartStart, chartEnd;
+      if (periodKey==="all" || !startDate || !endDate) {
+        chartEnd = new Date();
+        chartStart = new Date(); chartStart.setDate(chartStart.getDate()-6);
+      } else {
+        chartStart = new Date(startDate);
+        chartEnd = new Date(endDate);
+        const totalDays = Math.round((chartEnd - chartStart) / 86400000) + 1;
+        if (totalDays > 31) chartStart = new Date(chartEnd.getTime() - 30*86400000);
+      }
+      const cur = new Date(chartStart);
+      while (cur <= chartEnd) {
+        const ds = fmtLocal(cur);
+        const {svc, prod} = sumOf(allSales.filter(s => s.date === ds));
+        out.push({ label:`${cur.getMonth()+1}/${cur.getDate()}`, svc, prod, total: svc+prod });
+        cur.setDate(cur.getDate()+1);
+      }
+      return out;
     }
-    const cur = new Date(chartStart);
-    while (cur <= chartEnd) {
-      const ds = fmtLocal(cur);
-      const dayData = (data?.sales||[]).filter(s=>s.date===ds && ((vb==="all"?allBids.includes(s.bid):s.bid===vb)));
-      const svc = dayData.reduce((a,s)=>a+s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint,0);
-      const prod = dayData.reduce((a,s)=>a+s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint,0);
-      out.push({label:`${cur.getMonth()+1}/${cur.getDate()}`,svc,prod,total:svc+prod});
-      cur.setDate(cur.getDate()+1);
+
+    if (statsPeriod === "month") {
+      // 기간 지정 시 그 기간의 월들, 전체면 최근 12개월
+      let from, to;
+      if (periodKey==="all" || !startDate || !endDate) {
+        to = new Date(); from = new Date(to.getFullYear(), to.getMonth()-11, 1);
+      } else {
+        from = new Date(startDate); to = new Date(endDate);
+      }
+      const out = [];
+      const cur = new Date(from.getFullYear(), from.getMonth(), 1);
+      const endY = to.getFullYear(), endM = to.getMonth();
+      while (cur.getFullYear() < endY || (cur.getFullYear() === endY && cur.getMonth() <= endM)) {
+        const y = cur.getFullYear(); const m = cur.getMonth();
+        const ym = `${y}-${String(m+1).padStart(2,'0')}`;
+        const {svc, prod} = sumOf(allSales.filter(s => (s.date||"").startsWith(ym)));
+        out.push({ label: `${y%100}.${m+1}월`, svc, prod, total: svc+prod });
+        cur.setMonth(cur.getMonth()+1);
+      }
+      // 최근 24개월로 제한
+      return out.slice(-24);
     }
-    return out;
+
+    // year
+    const byYear = new Map();
+    allSales.forEach(s => {
+      const y = (s.date||"").slice(0,4);
+      if (!y) return;
+      if (!byYear.has(y)) byYear.set(y, {svc:0, prod:0});
+      const r = byYear.get(y);
+      r.svc += s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint+(s.externalPrepaid||0);
+      r.prod += s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint;
+    });
+    return Array.from(byYear.entries())
+      .sort((a,b) => a[0].localeCompare(b[0]))
+      .map(([y, v]) => ({ label: `${y}년`, svc:v.svc, prod:v.prod, total:v.svc+v.prod }));
   })();
   const maxChart = Math.max(...chartDays.map(d=>d.total),1);
   const fmtShortDate = (ds) => { if(!ds) return ""; const [,m,d] = ds.split("-"); return `${Number(m)}.${Number(d)}`; };
@@ -994,7 +1039,19 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     </GridLayout>
     {/* Chart */}
     <div className="card" style={{padding:20,marginBottom:16}}>
-      <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:16}}>{chartDays.length}일 매출 (시술 + 제품)</div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,gap:8,flexWrap:"wrap"}}>
+        <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub}}>
+          {statsPeriod==="day"?`${chartDays.length}일`:statsPeriod==="month"?`${chartDays.length}개월`:`${chartDays.length}년`} 매출 (시술 + 제품)
+        </div>
+        <div style={{display:"flex",border:"1px solid "+T.gray400,borderRadius:6,overflow:"hidden",height:28}}>
+          {[["day","일별"],["month","월별"],["year","연도별"]].map(([k,l])=>(
+            <button key={k} type="button" onClick={()=>setStatsPeriod(k)}
+              style={{padding:"0 12px",fontSize:12,fontWeight:statsPeriod===k?800:500,background:statsPeriod===k?T.primary:"#fff",color:statsPeriod===k?"#fff":T.gray600,border:"none",cursor:"pointer",fontFamily:"inherit"}}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
       <div style={{display:"flex",alignItems:"flex-end",gap:6,height:130}}>
         {chartDays.map((d,i)=>(
           <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:T.sp.xs}}>
@@ -1026,15 +1083,18 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
           </div>
         ))}
       </div>
-      {/* Staff Rank */}
+      {/* Staff Rank — 막대 그래프 */}
       <div className="card" style={{padding:20}}>
         <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:14}}>매니저별 매출</div>
-        {staffRank.slice(0,8).map(([n,v],i)=>(
+        {staffRank.slice(0,10).map(([n,v],i)=>(
           <div key={i} style={{display:"flex",alignItems:"center",gap:T.sp.sm,marginBottom:8,fontSize:T.fs.sm}}>
             <span style={{width:18,color:i<3?T.info:T.gray400,fontWeight:T.fw.bolder}}>{i+1}</span>
-            <span style={{flex:1,fontWeight:T.fw.medium}}>{n}</span>
-            <span style={{color:T.textSub,fontSize:T.fs.xxs}}>{v.count}건</span>
-            <span style={{fontWeight:T.fw.bolder,color:T.info,width:80,textAlign:"right"}}>{fmt(v.total)}원</span>
+            <span style={{width:60,fontWeight:T.fw.bold,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{n||"-"}</span>
+            <div style={{flex:1,height:6,background:T.gray300,borderRadius:T.radius.sm,overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${staffRank[0][1].total>0?(v.total/staffRank[0][1].total)*100:0}%`,background:"linear-gradient(90deg,#5cb5c5,#3b82f6)",borderRadius:T.radius.sm}}/>
+            </div>
+            <span style={{color:T.textSub,fontSize:T.fs.xxs,width:32,textAlign:"right"}}>{v.count}건</span>
+            <span style={{fontWeight:T.fw.bolder,color:T.info,width:85,textAlign:"right",whiteSpace:"nowrap"}}>{fmt(v.total)}원</span>
           </div>
         ))}
       </div>
