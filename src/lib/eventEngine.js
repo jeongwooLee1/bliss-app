@@ -418,7 +418,9 @@ export function applyEvents(events, ctx) {
     if (!evaluateTrigger(evt, ctx)) return
     if (!evaluateConditions(evt, ctx)) return
 
-    result.appliedEvents.push(evt)
+    // 통과한 자격 사유(라벨) 부착 — UI에서 "왜 적용됐는지" 표시용
+    const qualifyReason = getQualifyReason(evt, ctx)
+    result.appliedEvents.push(qualifyReason ? { ...evt, _qualifyReason: qualifyReason } : evt)
     const rewards = Array.isArray(evt.rewards) ? evt.rewards : []
     rewards.forEach((reward, idx) => {
       if (reward.type === 'point_earn') return
@@ -453,4 +455,53 @@ export function applyEvents(events, ctx) {
   return result
 }
 
-export default { evaluateTrigger, evaluateConditions, applyEvents }
+// 적용 자격 사유 추출 — '고객 자격' 섹션에서 어떤 qualifier로 통과했는지 사람이 읽을 라벨
+const QUAL_LABEL = { new:'신규고객', prepaid:'다담권 보유', barf:'바프권 보유', pkg:'패키지 보유', annual:'연간권 보유' }
+export function getQualifyReason(evt, ctx) {
+  try {
+    const c = (evt && evt.conditions) || {}
+    const cq = c.customerQualify || { any:[], M:[], F:[] }
+    const qAny = Array.isArray(cq.any) ? cq.any : []
+    const qM = Array.isArray(cq.M) ? cq.M : []
+    const qF = Array.isArray(cq.F) ? cq.F : []
+    if (!qAny.length && !qM.length && !qF.length) return null
+    const pairs = []
+    qAny.forEach(q => pairs.push(['any', q]))
+    if (ctx.customerGender === 'M') qM.forEach(q => pairs.push(['M', q]))
+    else if (ctx.customerGender === 'F') qF.forEach(q => pairs.push(['F', q]))
+    if (!pairs.length) return null
+    const getPct = (col) => Number((c.prepaidMinRatioPct||{})[col] || 0)
+    const getBal = (col) => Number((c.prepaidMinBalance||{})[col] || 0)
+    const passes = (col, qual) => {
+      if (qual === 'new') return !!ctx.isNewCustomer
+      if (qual === 'prepaid') {
+        if (!ctx.hasActivePrepaid) return false
+        const pctT = getPct(col), balT = getBal(col)
+        if (pctT > 0 && Number(ctx.prepaidBalanceRatioPct || 0) < pctT) return false
+        if (balT > 0 && Number(ctx.prepaidMaxBalance || 0) < balT) return false
+        return true
+      }
+      if (qual === 'barf') {
+        if (!ctx.hasActiveBarf) return false
+        const pctT = Number((c.barfMinRatioPct||{})[col] || 0)
+        const balT = Number((c.barfMinBalance||{})[col] || 0)
+        if (pctT > 0 && Number(ctx.barfBalanceRatioPct || 0) < pctT) return false
+        if (balT > 0 && Number(ctx.barfMaxBalance || 0) < balT) return false
+        return true
+      }
+      if (qual === 'pkg') return !!ctx.hasActivePkg
+      if (qual === 'annual') return !!ctx.hasActiveAnnual
+      return false
+    }
+    const matched = []
+    const seen = new Set()
+    pairs.forEach(([col, q]) => {
+      if (!passes(col, q)) return
+      const label = QUAL_LABEL[q] || q
+      if (!seen.has(label)) { matched.push(label); seen.add(label) }
+    })
+    return matched.length ? matched.join(' / ') : null
+  } catch (_) { return null }
+}
+
+export default { evaluateTrigger, evaluateConditions, applyEvents, getQualifyReason }

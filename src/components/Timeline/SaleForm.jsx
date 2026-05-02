@@ -3485,6 +3485,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
               const linesNoPoint = lines.filter(l => !l.includes('포인트 적립') && !l.includes('적립'));
               return <div key={evt.id||i} style={{fontSize:11,color:"#581C87",lineHeight:1.5,marginBottom:i===eventResult.appliedEvents.length-1?0:4}}>
                 <span style={{fontWeight:800}}>· {evt.name||"이벤트"}</span>
+                {evt._qualifyReason && <span style={{marginLeft:6,fontSize:10,color:"#6B21A8",fontWeight:700,background:"#EDE9FE",padding:"1px 6px",borderRadius:4}}>{evt._qualifyReason}</span>}
                 {linesNoPoint.length>0 && <div style={{paddingLeft:10,fontSize:10,color:"#6B21A8",fontWeight:600}}>{linesNoPoint.map((l,j)=><div key={j}>{l}</div>)}</div>}
               </div>;
             })}
