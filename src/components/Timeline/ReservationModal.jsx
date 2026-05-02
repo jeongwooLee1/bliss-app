@@ -1450,146 +1450,163 @@ ${naverText}
           {!isSchedule && <>
             {/* 고객 정보 — 컴팩트 인라인 */}
             <div style={{position:"relative"}}>
-              {/* 고객 선택됨: Contact Chip 카드 */}
+              {/* 고객 선택됨: D안 — 정보 영역 + 분리된 액션바 */}
               {f.custName ? (
-                <div style={{display:"flex",alignItems:"flex-start",gap:8,padding:"8px 12px",background:"linear-gradient(135deg,#f8f9fb,#f0f2f5)",borderRadius:10,border:"1px solid #e2e5ea"}}>
-                  {/* 아바타 — 성별 표시 (클릭: 남↔여↔미지정 순환) */}
-                  <button onClick={()=>set("custGender",f.custGender==="F"?"M":f.custGender==="M"?"":"F")}
-                    title="클릭해서 성별 변경"
-                    style={{width:24,height:24,borderRadius:"50%",border:"1.5px solid "+(f.custGender==="F"?"#e91e6320":f.custGender==="M"?"#3f51b520":"#0000"),cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:800,flexShrink:0,marginTop:2,padding:0,
-                      background:f.custGender==="F"?"linear-gradient(135deg,#fce4ec,#f8bbd0)":f.custGender==="M"?"linear-gradient(135deg,#e8eaf6,#c5cae9)":"linear-gradient(135deg,#f5f5f5,#e0e0e0)",
-                      color:f.custGender==="F"?"#c2185b":f.custGender==="M"?"#283593":"#999",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>
-                    {f.custGender==="F"?"여":f.custGender==="M"?"남":"?"}
-                  </button>
-                  {/* 정보 */}
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                      {/* 현재 등록된 고객 정보 — 변경 모드여도 그대로 보여주기 (비교용) */}
-                      <CopySpan text={f.custName} style={{fontSize:14,fontWeight:700,color:"#1a1a2e",whiteSpace:"nowrap"}}>{f.custName}</CopySpan>
-                      {f.custName2 && <span style={{fontSize:12,color:"#888",fontWeight:500,whiteSpace:"nowrap"}}>({f.custName2})</span>}
-                      <span style={{fontSize:11,color:"#888"}}>·</span>
-                      <CopySpan text={f.custPhone} style={{fontSize:13,color:T.primary,fontWeight:500,whiteSpace:"nowrap"}}>{f.custPhone||"연락처 없음"}</CopySpan>
-                      {custNum && <CopySpan text={custNum} style={{fontSize:13,color:"#999",fontFamily:"monospace",whiteSpace:"nowrap"}}>{custNum}</CopySpan>}
-                      {shareCusts.length > 0 && <span title={`쉐어: ${shareCusts.map(s=>s.name).join(", ")}`}
-                        style={{fontSize:10,padding:"2px 7px",borderRadius:10,background:"#F5F3FF",color:"#5B21B6",border:"1px solid #C4B5FD",fontWeight:700,whiteSpace:"nowrap"}}>
-                        🤝 쉐어 {shareCusts.length}명 · {shareCusts.map(s=>s.name).join(", ")}
-                      </span>}
-                      {/* 주의 배지 — 페널티 취소 3회+ 또는 노쇼 1회+ */}
-                      {(() => {
-                        const _cust = (data?.customers||[]).find(c => c.id === f.custId);
-                        if (!_cust) return null;
-                        const _grade = customerGrade(_cust);
-                        if (_grade !== 'caution') return null;
-                        const _cp = Number(_cust.cancelPenaltyCount || 0);
-                        const _ns = Number(_cust.noShowCount || 0);
-                        return <span title={`페널티 취소 ${_cp}회 / 노쇼 ${_ns}회`}
-                          style={{fontSize:10,padding:"2px 7px",borderRadius:10,background:"#FFF3E0",color:"#E65100",border:"1px solid #FFB74D",fontWeight:800,whiteSpace:"nowrap"}}>
-                          ⚠️ 주의 (취소{_cp}/노쇼{_ns})
-                        </span>;
-                      })()}
-                    </div>
-                    {/* 변경 모드 — 현재 정보 아래에 검색창 추가 (다른 고객으로 교체용) */}
-                    {editingCust && (
-                      <div style={{marginTop:8,padding:"8px 10px",background:"#F5F3FF",border:"1px dashed "+T.primary+"60",borderRadius:T.radius.md}}>
-                        <div style={{fontSize:10,color:T.primary,fontWeight:700,marginBottom:5}}>🔍 다른 고객으로 교체 (검색 후 선택)</div>
-                        <div style={{position:"relative",display:"flex",alignItems:"center"}}>
-                          <span style={{position:"absolute",left:10,color:T.gray500,display:"flex",alignItems:"center",pointerEvents:"none"}}><I name="search" size={14}/></span>
-                          <input className="inp inp-search" style={{flex:1,minHeight:32,borderRadius:T.radius.md,paddingLeft:32,fontSize:13,border:"1px solid "+T.border}}
-                            value={custSearch}
-                            onChange={e=>{ setCustSearch(e.target.value); setShowCustDropdown(true); }}
-                            onFocus={()=>setShowCustDropdown(true)}
-                            placeholder="이름·전화 (예: 정우 8008)"
-                            autoFocus/>
+                <div style={{background:"linear-gradient(135deg,#f8f9fb,#f0f2f5)",borderRadius:10,border:"1px solid #e2e5ea",overflow:"hidden"}}>
+                  {/* ── 정보 영역 ── */}
+                  <div style={{display:"flex",alignItems:"flex-start",gap:8,padding:"8px 12px"}}>
+                    {/* 아바타 — 성별 표시 (클릭: 남↔여↔미지정 순환) */}
+                    <button onClick={()=>set("custGender",f.custGender==="F"?"M":f.custGender==="M"?"":"F")}
+                      title="클릭해서 성별 변경"
+                      style={{width:24,height:24,borderRadius:"50%",border:"1.5px solid "+(f.custGender==="F"?"#e91e6320":f.custGender==="M"?"#3f51b520":"#0000"),cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:800,flexShrink:0,marginTop:2,padding:0,
+                        background:f.custGender==="F"?"linear-gradient(135deg,#fce4ec,#f8bbd0)":f.custGender==="M"?"linear-gradient(135deg,#e8eaf6,#c5cae9)":"linear-gradient(135deg,#f5f5f5,#e0e0e0)",
+                        color:f.custGender==="F"?"#c2185b":f.custGender==="M"?"#283593":"#999",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>
+                      {f.custGender==="F"?"여":f.custGender==="M"?"남":"?"}
+                    </button>
+                    {/* 정보 */}
+                    <div style={{flex:1,minWidth:0}}>
+                      {/* 1줄: 이름 #번호 + 배지 (모두 클릭 복사) */}
+                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                        <CopySpan text={f.custName} style={{fontSize:14,fontWeight:700,color:"#1a1a2e",whiteSpace:"nowrap"}}>{f.custName}</CopySpan>
+                        {f.custName2 && <span style={{fontSize:12,color:"#888",fontWeight:500,whiteSpace:"nowrap"}}>({f.custName2})</span>}
+                        {custNum && <CopySpan text={custNum} style={{fontSize:13,color:"#999",fontFamily:"monospace",whiteSpace:"nowrap"}}>#{custNum}</CopySpan>}
+                        {shareCusts.length > 0 && <span title={`쉐어: ${shareCusts.map(s=>s.name).join(", ")}`}
+                          style={{fontSize:10,padding:"2px 7px",borderRadius:10,background:"#F5F3FF",color:"#5B21B6",border:"1px solid #C4B5FD",fontWeight:700,whiteSpace:"nowrap"}}>
+                          🤝 쉐어 {shareCusts.length}명
+                        </span>}
+                        {/* 주의 배지 */}
+                        {(() => {
+                          const _cust = (data?.customers||[]).find(c => c.id === f.custId);
+                          if (!_cust) return null;
+                          const _grade = customerGrade(_cust);
+                          if (_grade !== 'caution') return null;
+                          const _cp = Number(_cust.cancelPenaltyCount || 0);
+                          const _ns = Number(_cust.noShowCount || 0);
+                          return <span title={`페널티 취소 ${_cp}회 / 노쇼 ${_ns}회`}
+                            style={{fontSize:10,padding:"2px 7px",borderRadius:10,background:"#FFF3E0",color:"#E65100",border:"1px solid #FFB74D",fontWeight:800,whiteSpace:"nowrap"}}>
+                            ⚠️ 주의 (취소{_cp}/노쇼{_ns})
+                          </span>;
+                        })()}
+                      </div>
+                      {/* 2줄: 전화 (클릭 복사) */}
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginTop:3}}>
+                        <span style={{fontSize:11,color:"#aaa",width:14,textAlign:"center"}}>📞</span>
+                        <CopySpan text={f.custPhone} style={{fontSize:13,color:T.primary,fontWeight:500,whiteSpace:"nowrap"}}>{f.custPhone||"연락처 없음"}</CopySpan>
+                      </div>
+                      {/* 3줄: 이메일 — 변경 모드만 input, 평소엔 클릭 복사 텍스트 */}
+                      {(editingCust || f.custEmail) && (
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginTop:3}}>
+                          <span style={{fontSize:11,color:"#aaa",width:14,textAlign:"center"}}>✉</span>
+                          {editingCust ? (
+                            <input type="email" value={f.custEmail||""} onChange={e=>set("custEmail",e.target.value)}
+                              placeholder="이메일 (외국인 고객 등)"
+                              style={{flex:1,fontSize:12,padding:"3px 8px",border:"1px solid #e0e0e0",borderRadius:6,fontFamily:"inherit",outline:"none",background:"#fff",color:"#444"}}/>
+                          ) : (
+                            <CopySpan text={f.custEmail} style={{fontSize:12,color:"#666",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{f.custEmail}</CopySpan>
+                          )}
                         </div>
-                      </div>
-                    )}
-                    {/* 이메일 — 항상 노출 (외국인 고객 신규 등록·수정 가능). 기존값 prefill */}
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginTop:3}}>
-                      <span style={{fontSize:11,color:"#aaa"}}>✉</span>
-                      <input type="email" value={f.custEmail||""} onChange={e=>set("custEmail",e.target.value)}
-                        placeholder="이메일 (외국인 고객 등)"
-                        style={{flex:1,fontSize:12,padding:"3px 8px",border:"1px solid #e0e0e0",borderRadius:6,fontFamily:"inherit",outline:"none",background:f.custEmail?"#fff":"#fafafa",color:"#444"}}/>
-                      {f.custEmail && <CopySpan text={f.custEmail} title="이메일 복사" style={{fontSize:10,color:"#aaa",cursor:"pointer",padding:"2px 4px"}}>📋</CopySpan>}
+                      )}
+                      {/* 변경 모드 — 다른 고객으로 교체 검색창 */}
+                      {editingCust && (
+                        <div style={{marginTop:8,padding:"8px 10px",background:"#F5F3FF",border:"1px dashed "+T.primary+"60",borderRadius:T.radius.md}}>
+                          <div style={{fontSize:10,color:T.primary,fontWeight:700,marginBottom:5}}>🔍 다른 고객으로 교체 (검색 후 선택)</div>
+                          <div style={{position:"relative",display:"flex",alignItems:"center"}}>
+                            <span style={{position:"absolute",left:10,color:T.gray500,display:"flex",alignItems:"center",pointerEvents:"none"}}><I name="search" size={14}/></span>
+                            <input className="inp inp-search" style={{flex:1,minHeight:32,borderRadius:T.radius.md,paddingLeft:32,fontSize:13,border:"1px solid "+T.border}}
+                              value={custSearch}
+                              onChange={e=>{ setCustSearch(e.target.value); setShowCustDropdown(true); }}
+                              onFocus={()=>setShowCustDropdown(true)}
+                              placeholder="이름·전화 (예: 정우 8008)"
+                              autoFocus/>
+                          </div>
+                        </div>
+                      )}
+                      {/* 성별 선택 — 신규 고객 또는 미지정 고객만 */}
+                      {!editingCust && (f.isNewCust || !f.custGender) && (
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6}}>
+                          <span style={{fontSize:11,color:"#aaa"}}>성별</span>
+                          {[["F","여","#e91e63","#fce4ec"],["M","남","#283593","#e8eaf6"],["","미지정","#999","#f5f5f5"]].map(([v,lv,clr,bg])=>(
+                            <button key={v||"none"} onClick={()=>set("custGender",v)}
+                              style={{padding:"2px 10px",borderRadius:12,border:f.custGender===v?`1px solid ${clr}`:"1px solid #ddd",
+                                background:f.custGender===v?bg:"#fff",
+                                color:f.custGender===v?clr:"#999",
+                                fontSize:11,fontWeight:f.custGender===v?700:500,cursor:"pointer",fontFamily:"inherit"}}>{lv}</button>
+                          ))}
+                        </div>
+                      )}
+                      {/* PKG 칩 */}
+                      {activePkgSummary.length > 0 && <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:5}}>
+                        {activePkgSummary.map((pkg,i) => {
+                          const activeBg = pkg.type==="prepaid"?"linear-gradient(135deg,#FFE0B2,#FFCC80)":pkg.type==="annual"?"linear-gradient(135deg,#E1BEE7,#CE93D8)":"linear-gradient(135deg,#FFF3E0,#FFE0B2)";
+                          const activeClr = pkg.type==="annual"?"#6A1B9A":"#E65100";
+                          const activeBdr = pkg.type==="annual"?"1px solid #BA68C8":"1px solid #FFB74D";
+                          return (
+                            <span key={i} title={pkg.active?"유효":"소진/만료"}
+                              style={{fontSize:10,fontWeight:800,padding:"2px 6px",borderRadius:10,
+                                background:pkg.active?activeBg:"#EEEEEE",
+                                color:pkg.active?activeClr:"#9E9E9E",
+                                border:pkg.active?activeBdr:"1px solid #E0E0E0",
+                                textDecoration:pkg.active?"none":"line-through",
+                                whiteSpace:"nowrap"}}>{pkg.label}</span>
+                          );
+                        })}
+                      </div>}
                     </div>
-                    {/* 성별 선택 — 신규 고객 또는 미지정 고객만 */}
-                    {!editingCust && (f.isNewCust || !f.custGender) && (
-                      <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6}}>
-                        <span style={{fontSize:11,color:"#aaa"}}>성별</span>
-                        {[["F","여","#e91e63","#fce4ec"],["M","남","#283593","#e8eaf6"],["","미지정","#999","#f5f5f5"]].map(([v,lv,clr,bg])=>(
-                          <button key={v||"none"} onClick={()=>set("custGender",v)}
-                            style={{padding:"2px 10px",borderRadius:12,border:f.custGender===v?`1px solid ${clr}`:"1px solid #ddd",
-                              background:f.custGender===v?bg:"#fff",
-                              color:f.custGender===v?clr:"#999",
-                              fontSize:11,fontWeight:f.custGender===v?700:500,cursor:"pointer",fontFamily:"inherit"}}>{lv}</button>
-                        ))}
-                      </div>
-                    )}
-                    {activePkgSummary.length > 0 && <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:3}}>
-                      {activePkgSummary.map((pkg,i) => {
-                        const activeBg = pkg.type==="prepaid"?"linear-gradient(135deg,#FFE0B2,#FFCC80)":pkg.type==="annual"?"linear-gradient(135deg,#E1BEE7,#CE93D8)":"linear-gradient(135deg,#FFF3E0,#FFE0B2)";
-                        const activeClr = pkg.type==="annual"?"#6A1B9A":"#E65100";
-                        const activeBdr = pkg.type==="annual"?"1px solid #BA68C8":"1px solid #FFB74D";
-                        return (
-                          <span key={i} title={pkg.active?"유효":"소진/만료"}
-                            style={{fontSize:10,fontWeight:800,padding:"2px 6px",borderRadius:10,
-                              background:pkg.active?activeBg:"#EEEEEE",
-                              color:pkg.active?activeClr:"#9E9E9E",
-                              border:pkg.active?activeBdr:"1px solid #E0E0E0",
-                              textDecoration:pkg.active?"none":"line-through",
-                              whiteSpace:"nowrap"}}>{pkg.label}</span>
-                        );
-                      })}
-                    </div>}
                   </div>
-                  {/* 변경/취소 + 고객관리 — 가로 wrap (좁은 화면에서도 자연스럽게 줄바꿈) */}
-                  {editingCust ? (
-                    <div style={{display:"flex",flexWrap:"wrap",gap:3,alignSelf:"flex-start",flexShrink:0,justifyContent:"flex-end",maxWidth:"40%"}}>
+                  {/* ── 액션바 — 카드 아래 분리 ── */}
+                  <div style={{display:"flex",borderTop:"1px solid #e2e5ea",background:"rgba(255,255,255,.5)"}}>
+                    {editingCust ? (
                       <button onClick={()=>{ setEditingCust(false); setCustSearch(""); setShowCustDropdown(false); }}
-                        style={{padding:"3px 8px",borderRadius:5,border:"1px solid #ddd",background:"#fff",color:"#999",fontSize:10,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>취소</button>
-                    </div>
-                  ) : (
-                    <div style={{display:"flex",flexWrap:"wrap",gap:3,alignSelf:"flex-start",flexShrink:0,justifyContent:"flex-end",maxWidth:"40%"}}>
-                      <button onClick={()=>{
-                          setEditingCust(true);
-                          // 변경 모드 진입 시 현재 phone(또는 name)으로 즉시 기존고객 검색 트리거
-                          const phone = (f.custPhone||"").replace(/[^0-9]/g,"");
-                          const q = phone || (f.custName||"").trim();
-                          if (q.length >= 2) { setCustSearch(q); setShowCustDropdown(true); }
-                        }}
-                        style={{padding:"3px 8px",borderRadius:5,border:"1px solid #ddd",background:"#fff",color:"#999",fontSize:10,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>변경</button>
-                      {!f.custId && f.custPhone && <button onClick={()=>{
-                          // 기존 고객 자동 매칭 시도 — phone 정확 일치 또는 phone(끝 4자리)+name
-                          const phone = (f.custPhone||"").replace(/[^0-9]/g,"");
-                          const name = (f.custName||"").trim();
-                          if (!phone && !name) return;
-                          // 1) 로컬 캐시에서 phone 정확 일치
-                          let cand = (data?.customers||[]).find(c => (c.phone||"").replace(/-/g,"") === phone);
-                          // 2) 로컬에서 phone 끝 4자리 + name 매칭
-                          if (!cand && phone.length>=4) {
-                            const last4 = phone.slice(-4);
-                            cand = (data?.customers||[]).find(c => name && c.name===name && (c.phone||"").endsWith(last4));
-                          }
-                          if (cand) {
-                            if (confirm(`기존 고객 매칭됨:\n\n${cand.name}${cand.custNum?` #${cand.custNum}`:''}  ${cand.phone}\n\n이 고객으로 연결할까요?`)) {
-                              selectCust(cand); setEditingCust(false);
-                              return;
+                        style={{flex:1,padding:"8px 0",border:"none",background:"transparent",color:"#666",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                        취소
+                      </button>
+                    ) : (
+                      <>
+                        <button onClick={()=>{
+                            setEditingCust(true);
+                            const phone = (f.custPhone||"").replace(/[^0-9]/g,"");
+                            const q = phone || (f.custName||"").trim();
+                            if (q.length >= 2) { setCustSearch(q); setShowCustDropdown(true); }
+                          }}
+                          style={{flex:1,padding:"8px 0",border:"none",borderRight:"1px solid #e2e5ea",background:"transparent",color:"#666",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                          변경
+                        </button>
+                        {!f.custId && f.custPhone && <button onClick={()=>{
+                            const phone = (f.custPhone||"").replace(/[^0-9]/g,"");
+                            const name = (f.custName||"").trim();
+                            if (!phone && !name) return;
+                            let cand = (data?.customers||[]).find(c => (c.phone||"").replace(/-/g,"") === phone);
+                            if (!cand && phone.length>=4) {
+                              const last4 = phone.slice(-4);
+                              cand = (data?.customers||[]).find(c => name && c.name===name && (c.phone||"").endsWith(last4));
                             }
-                          }
-                          // 3) 서버 검색 — 편집 모드 진입 + 검색어 자동 입력
-                          setEditingCust(true);
-                          const q = phone || name;
-                          if (q.length >= 2) { setCustSearch(q); setShowCustDropdown(true); }
-                        }}
-                        title="이 전화번호로 기존 고객 찾기"
-                        style={{padding:"3px 8px",borderRadius:5,border:"1px solid "+T.success,background:"#ecfdf5",color:T.success,fontSize:10,cursor:"pointer",fontFamily:"inherit",fontWeight:700,whiteSpace:"nowrap"}}>🔍 기존고객</button>}
-                      {f.custId && <button onClick={()=>setCustPopupOpen(true)}
-                        title="고객정보 빠른 보기"
-                        style={{padding:"3px 8px",borderRadius:5,border:"1px solid "+T.primary,background:T.primaryLt||"#fff0ec",color:T.primary,fontSize:10,cursor:"pointer",fontFamily:"inherit",fontWeight:600,whiteSpace:"nowrap"}}>고객정보 ↗</button>}
-                      {f.custPhone && <button onClick={()=>setShowSmsModal(true)}
-                        title="이 고객에게 문자 발송"
-                        style={{padding:"3px 8px",borderRadius:5,border:"1px solid #7C3AED",background:"#7C3AED",color:"#fff",fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:800,whiteSpace:"nowrap",lineHeight:1}}>✉</button>}
-                    </div>
-                  )}
+                            if (cand) {
+                              if (confirm(`기존 고객 매칭됨:\n\n${cand.name}${cand.custNum?` #${cand.custNum}`:''}  ${cand.phone}\n\n이 고객으로 연결할까요?`)) {
+                                selectCust(cand); setEditingCust(false);
+                                return;
+                              }
+                            }
+                            setEditingCust(true);
+                            const q = phone || name;
+                            if (q.length >= 2) { setCustSearch(q); setShowCustDropdown(true); }
+                          }}
+                          title="이 전화번호로 기존 고객 찾기"
+                          style={{flex:1,padding:"8px 0",border:"none",borderRight:"1px solid #e2e5ea",background:"transparent",color:T.success,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                          🔍 기존고객
+                        </button>}
+                        {f.custId && <button onClick={()=>setCustPopupOpen(true)}
+                          title="고객정보 빠른 보기"
+                          style={{flex:1,padding:"8px 0",border:"none",borderRight:"1px solid #e2e5ea",background:"transparent",color:T.primary,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                          고객정보 ↗
+                        </button>}
+                        {f.custPhone && <button onClick={()=>setShowSmsModal(true)}
+                          title="이 고객에게 문자 발송"
+                          style={{flex:1,padding:"8px 0",border:"none",background:"transparent",color:"#7C3AED",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                          ✉ 메시지
+                        </button>}
+                      </>
+                    )}
+                  </div>
                 </div>
               ) : (
                 /* 고객 미선택: 검색바 */
