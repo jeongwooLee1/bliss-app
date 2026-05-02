@@ -347,18 +347,28 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     });
     let list = Object.values(map).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
     if(msgSearch.trim()){
-      // 다토큰 AND: 각 토큰이 이름/메시지/전화 중 어느 필드에든 포함되면 매칭
+      // 다토큰 AND: user_name/메시지/전화/매칭된 Bliss 고객 실명·전화 중 어디든 포함되면 매칭
       const matchUids=new Set();
       msgs.forEach(m=>{
-        const hay = [m.user_name, m.message_text, m.cust_phone].filter(Boolean).join(" ");
-        if (matchAllTokens(hay, msgSearch)) matchUids.add((m.channel||"naver")+"_"+m.user_id);
+        const ch = m.channel || "naver";
+        const cust = chatCustMapFull[`${ch}_${m.user_id}`];
+        const hay = [
+          m.user_name,
+          m.message_text,
+          m.cust_phone,
+          cust?.name,
+          cust?.name2,
+          cust?.phone,
+          cust?.phone2,
+        ].filter(Boolean).join(" ");
+        if (matchAllTokens(hay, msgSearch)) matchUids.add(ch+"_"+m.user_id);
       });
       list=list.filter(m=>matchUids.has((m.channel||"naver")+"_"+m.user_id));
     }
     // ai_test 채널 노출 제거 (요청)
     list = list.filter(m => (m.channel||"") !== "ai_test");
     return list;
-  },[msgs, allowedIds.length, msgSearch]);
+  },[msgs, allowedIds.length, msgSearch, chatCustMapFull]);
 
   const convo = useMemo(()=>{
     if(!sel) return [];
@@ -408,9 +418,16 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   const getDisplayName = (m) => {
     if(!m) return "고객";
     const uid = m.user_id;
+    const ch = m.channel || "naver";
+    // 1순위: Bliss 고객 매칭 (customer 실명)
+    const matchedCust = chatCustMapFull[`${ch}_${uid}`];
+    if (matchedCust?.name) return matchedCust.name;
+    // 2순위: names dict (메시지에서 캐시된 user_name)
     if(names[uid]) return names[uid];
+    // 3순위: msgs에서 user_name 채워진 메시지 찾기
     const withName = msgs.find(x=>x.user_id===uid&&x.user_name&&x.user_name.trim());
     if(withName) return withName.user_name;
+    // 4순위: fallback "고객N"
     const uids=[...new Set(threads.map(t=>t.user_id))];
     return "고객"+(uids.indexOf(uid)+1||"");
   };
