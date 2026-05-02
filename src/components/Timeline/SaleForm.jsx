@@ -2889,8 +2889,12 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
 
         {/* Main Body - 2단 레이아웃 */}
         <div style={{display:_m?"block":"flex",flex:1,overflow:"hidden"}}>
-        {/* 왼쪽: 시술/제품 */}
-        <GridLayout className="sale-grid" cols={2} gap={12} style={{flex:1,overflow:"auto",padding:"10px 14px",alignContent:"start",maxHeight:_m?"none":"70vh",borderRight:_m?"none":"1px solid "+T.border}}>
+        {/* 왼쪽: 시술/제품 — editMode일 때 readonly (결제수단 교정 only)
+            클릭/체크 차단을 위해 pointerEvents:none + 스크롤 가능하도록 overflow는 유지 */}
+        <GridLayout className="sale-grid" cols={2} gap={12}
+          style={{flex:1,overflow:"auto",padding:"10px 14px",alignContent:"start",maxHeight:_m?"none":"70vh",borderRight:_m?"none":"1px solid "+T.border,
+            ...(editMode ? {pointerEvents:"none", opacity:0.55, position:"relative"} : {})
+          }}>
 
           {/* Col 1+2: Services by category (span 2 columns) */}
           <div style={{gridColumn:"span 2"}}>
