@@ -875,13 +875,17 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   // State: { [id]: { checked, amount } }
   const [items, setItems] = useState(() => {
     const init = {};
+    // 편집/매출확인 모드에서는 sale_details(existingDetails)가 진실의 소스이므로
+    // 예약의 selectedServices 자동 체크는 스킵 (sale_details 매칭은 별도 useEffect에서 처리).
     // selectedServices(신) 우선. 배열이 아예 없는(레거시 예약) 경우에만 serviceId fallback.
     // 빈 배열 []은 "아무것도 선택 안 함"이므로 fallback 금지.
-    let selSvcs;
-    if (Array.isArray(reservation?.selectedServices)) {
-      selSvcs = reservation.selectedServices;
-    } else {
-      selSvcs = reservation?.serviceId ? [reservation.serviceId] : [];
+    let selSvcs = [];
+    if (!editMode && !viewOnly) {
+      if (Array.isArray(reservation?.selectedServices)) {
+        selSvcs = reservation.selectedServices;
+      } else {
+        selSvcs = reservation?.serviceId ? [reservation.serviceId] : [];
+      }
     }
     SVC_LIST.forEach(svc => {
       const preSelected = selSvcs.includes(svc.id);
