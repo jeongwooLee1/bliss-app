@@ -217,7 +217,7 @@ const SaleDiscountRow = React.memo(function SaleDiscountRow({ id, checked, amoun
 
 // DETAILED SALE FORM (매출 입력 - 시술상품/제품 연동)
 // ═══════════════════════════════════════════
-export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit, onClose, data, setData, editMode, existingSaleId, viewOnly }) {
+export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit, onClose, data, setData, editMode, existingSaleId, viewOnly, onCancelSale }) {
   const fmt = (v) => v==null?"":Number(v).toLocaleString();
   // 더블클릭/중복 저장 방지 락 (신규 매출 저장 경로에서 사용)
   const _submitLock = useRef(false);
@@ -1150,21 +1150,36 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   const hasPkgChecked = () => Object.values(pkgItems).some(v => (v?.qty||0) > 0);
   const totalPkgQty = () => Object.values(pkgItems).reduce((s,v) => s + (v?.qty||0), 0);
 
+  // editMode/viewOnly: 시술/제품 체크 변경 차단 — 결제수단 금액만 교정. 본질 수정은 '매출 취소 후 재등록'.
+  const _editLockedMsg = "매출수정 모드에서는 결제수단 금액만 교정 가능합니다.\n시술/보유권 변경은 '매출 취소 후 재등록'을 사용하세요.";
   const toggle = useCallback((id, defPrice) => {
+    if (editMode || viewOnly) { if (editMode) alert(_editLockedMsg); return; }
     setItems(prev => {
       const cur = prev[id] || { checked: false, amount: 0 };
       const newChecked = !cur.checked;
       return { ...prev, [id]: { ...cur, checked: newChecked, amount: newChecked ? (cur.amount || defPrice || 0) : 0 } };
     });
-  }, []);
-  const setAmt = useCallback((id, v) => setItems(prev => ({ ...prev, [id]: { ...prev[id], amount: Number(v) || 0 } })), []);
-  const setQty = useCallback((id, q) => setItems(prev => ({ ...prev, [id]: { ...prev[id], qty: Math.max(1, Number(q) || 1) } })), []);
-  const setLabel = useCallback((id, v) => setItems(prev => ({ ...prev, [id]: { ...prev[id], label: v } })), []);
+  }, [editMode, viewOnly]);
+  const setAmt = useCallback((id, v) => {
+    if (editMode || viewOnly) return;
+    setItems(prev => ({ ...prev, [id]: { ...prev[id], amount: Number(v) || 0 } }));
+  }, [editMode, viewOnly]);
+  const setQty = useCallback((id, q) => {
+    if (editMode || viewOnly) { if (editMode) alert(_editLockedMsg); return; }
+    setItems(prev => ({ ...prev, [id]: { ...prev[id], qty: Math.max(1, Number(q) || 1) } }));
+  }, [editMode, viewOnly]);
+  const setLabel = useCallback((id, v) => {
+    if (editMode || viewOnly) return;
+    setItems(prev => ({ ...prev, [id]: { ...prev[id], label: v } }));
+  }, [editMode, viewOnly]);
   // 🎁 체험단 토글 — 체크된 항목에만 적용. 체험이면 결제대상에서 제외하고 svcComped/prodComped로 집계
-  const toggleComped = useCallback((id) => setItems(prev => {
-    const cur = prev[id]; if (!cur?.checked) return prev;
-    return { ...prev, [id]: { ...cur, comped: !cur.comped } };
-  }), []);
+  const toggleComped = useCallback((id) => {
+    if (editMode || viewOnly) return;
+    setItems(prev => {
+      const cur = prev[id]; if (!cur?.checked) return prev;
+      return { ...prev, [id]: { ...cur, comped: !cur.comped } };
+    });
+  }, [editMode, viewOnly]);
 
   // 신규고객 등록 모드
   const [newCustMode, setNewCustMode] = useState(false);
@@ -3627,13 +3642,25 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
 
         {/* Footer */}
         <div style={{ padding: "10px 16px", borderTop: "1px solid #e0e0e0", display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", background: T.gray100, flexWrap: "wrap", borderRadius: "0 0 12px 12px" }}>
-          <div style={{ fontSize: 10, color: viewOnly ? "#C62828" : T.gray400, flex: "1 1 200px", fontWeight: viewOnly ? 700 : 400 }}>
+          <div style={{ fontSize: 10, color: (viewOnly || editMode) ? "#C62828" : T.gray400, flex: "1 1 200px", fontWeight: (viewOnly || editMode) ? 700 : 400 }}>
             {viewOnly
               ? "👁 매출확인 모드 — 수정은 매출관리 페이지에서만 가능합니다"
+              : editMode
+              ? "✏️ 매출수정 — 결제수단 금액만 교정. 시술/보유권 변경은 '매출 취소 후 재등록' 사용"
               : ((gender ? (gender === "F" ? "여성" : "남성") + " 가격 적용" : "성별 미선택") + " · 체크한 항목만 매출 반영")}
           </div>
           <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
             <Btn variant="secondary" onClick={onClose}>{viewOnly ? "닫기" : "취소"}</Btn>
+            {editMode && onCancelSale && (
+              <Btn variant="ghost" style={{ padding: "10px 14px", fontSize: 12, fontWeight: 700, color: "#C62828", borderColor: "#C62828" }}
+                onClick={async () => {
+                  if (!confirm("이 매출을 취소하고 보유권/포인트/방문횟수를 모두 롤백합니다.\n\n• 다담권/다회권 차감 자동 복구\n• 이 매출로 신규 구매한 보유권 제거\n• 포인트 사용/적립 자동 복구\n• 방문 횟수 -1\n\n취소 후 새로 매출등록하셔야 합니다.\n되돌릴 수 없습니다.")) return;
+                  try { await onCancelSale(); } catch (e) { alert("취소 실패: " + (e?.message || e)); }
+                }}
+                title="이 매출을 취소하고 보유권·포인트를 롤백합니다. 그 후 새로 매출등록 하세요.">
+                🔄 매출 취소 후 재등록
+              </Btn>
+            )}
             {!editMode && !viewOnly && (
               <Btn variant="ghost" style={{ padding: "10px 14px", fontSize: 12, fontWeight: 700 }} onClick={()=>handleSubmit(true)} title="저장한 뒤 입력폼이 초기화되어 연속으로 매출을 등록할 수 있습니다">
                 <I name="plus" size={12}/> 저장 후 계속
@@ -3641,7 +3668,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
             )}
             {!viewOnly && (
               <Btn variant="primary" style={{ padding: "10px 20px", fontSize: 13, fontWeight: 800 }} onClick={()=>handleSubmit(false)}>
-                <I name="wallet" size={12}/> 매출 등록 ({fmt(grandTotal)}원){hasPkgChecked() && ` +📦${totalPkgQty()}회`}
+                <I name="wallet" size={12}/> {editMode ? "결제수단 저장" : "매출 등록"} ({fmt(grandTotal)}원){hasPkgChecked() && !editMode && ` +📦${totalPkgQty()}회`}
               </Btn>
             )}
           </div>

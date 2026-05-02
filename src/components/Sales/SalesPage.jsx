@@ -855,7 +855,11 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
       branchId={editSale.bid}
       onSubmit={handleEditSave}
       onClose={()=>_mc(()=>setEditSale(null))} data={data} setData={setData}
-      editMode={true} existingSaleId={editSale.id}/>}
+      editMode={true} existingSaleId={editSale.id}
+      onCancelSale={async () => {
+        await handleDelete(editSale.id);
+        _mc(()=>setEditSale(null));
+      }}/>}
     <SmartDatePicker open={showSheet} onClose={()=>setShowSheet(false)} anchorEl={dateAnchorRef.current}
       startDate={startDate} endDate={endDate} mode="sales"
       onApply={(s,e,p)=>{ setStartDate(s); setEndDate(e); setPeriodKey(p); setShowSheet(false); }}/>
