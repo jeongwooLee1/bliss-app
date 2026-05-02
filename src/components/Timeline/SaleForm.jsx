@@ -1366,10 +1366,12 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   }, [custPkgs, data?.services, items]);
   const activeCoupons = couponResults.filter(c => !couponOff[c.pkgId]);
   // 쿠폰 할인을 대상별로 분리 (제품/시술 결제수단 각각 차감용)
-  const couponDiscountOnProd = activeCoupons
+  // viewOnly/editMode + snapshot 없는 이전 매출은 쿠폰 재평가 차단 (실제 매출과 표시 일치)
+  const _suppressEngineDiscount = (viewOnly || editMode) && !_snapshotInput;
+  const couponDiscountOnProd = _suppressEngineDiscount ? 0 : activeCoupons
     .filter(c => c.applyTo === 'products')
     .reduce((s,c)=>s+(c.discount||0), 0);
-  const couponDiscountOnSvc = activeCoupons
+  const couponDiscountOnSvc = _suppressEngineDiscount ? 0 : activeCoupons
     .filter(c => c.applyTo === 'services' || c.applyTo === 'category' || c.applyTo === 'specific_service' || c.applyTo === 'all')
     .reduce((s,c)=>s+(c.discount||0), 0);
   const couponDiscountTotal = couponDiscountOnProd + couponDiscountOnSvc;
@@ -1378,9 +1380,16 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   const _promoAppliedRef = React.useRef({total:0, userOverride:false});
   // ─── 범용 이벤트 엔진 평가 (관리설정 > 이벤트 관리 > 이벤트 등록) ───
   // viewOnly/editMode + snapshot.eventResult 있으면 매출 시점 결과 그대로 반환 (재평가 차단)
+  // viewOnly/editMode + snapshot.eventResult 없는 이전 매출은 빈값 반환 (재평가 차단)
+  // → 시술합계/현장결제금액 표시가 실제 sale_details 합과 일치
+  const _emptyEventResult = { pointEarn:0, pointExpiresAt:null, discountFlat:0, discountFlatPkg:0, discountFlatPrepaid:0, discountFlatAnnual:0, discountPct:0, prepaidBonus:0, issueCoupons:[], virtualCoupons:[], appliedEvents:[] };
   const eventResult = React.useMemo(() => {
     if ((viewOnly || editMode) && _snapshotInput && _snapshotInput.eventResult) {
       return _snapshotInput.eventResult;
+    }
+    if (viewOnly || editMode) {
+      // snapshot.eventResult 없는 이전 매출 — 재평가 차단
+      return _emptyEventResult;
     }
     try {
       const biz = (data?.businesses||[])[0];
