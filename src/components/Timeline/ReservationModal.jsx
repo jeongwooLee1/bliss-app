@@ -628,14 +628,29 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
     if (isSchedule) return;
     const tagsCfg = data?.serviceTags || [];
     if (!tagsCfg.some(t => t?.autoTrigger?.type)) return;
-    // 매칭되는 고객 찾기 (custId 우선, 없으면 phone 매칭)
+    // 매칭되는 고객 찾기 (custId 우선, 없으면 phone 매칭). data.customers는 100건만 초기 로드되므로
+    // 못 찾으면 sb.get으로 직접 조회 — Supabase max-rows=1000 cap 영향 회피.
     const phoneNorm = (f.custPhone||"").replace(/[^0-9]/g,"");
-    const matchedCust = f.custId
+    let matchedCust = f.custId
       ? (data?.customers||[]).find(c => c.id === f.custId)
       : (phoneNorm.length >= 10 ? (data?.customers||[]).find(c => (c.phone||"").replace(/[^0-9]/g,"") === phoneNorm) : null);
     // 매칭 고객의 customer_packages 비동기 조회 후 트리거 평가 (race-condition 방지용 cancel ref)
     let cancelled = false;
     (async () => {
+      // 캐시에 없으면 직접 조회 — visits 정확도 보장
+      if (!matchedCust && f.custId) {
+        try {
+          const rows = await sb.get("customers", `&id=eq.${f.custId}&select=id,name,phone,visits,last_date&limit=1`);
+          if (rows?.[0]) matchedCust = rows[0];
+        } catch (_) {}
+      }
+      if (!matchedCust && phoneNorm.length >= 10) {
+        try {
+          const rows = await sb.get("customers", `&phone=eq.${phoneNorm}&select=id,name,phone,visits,last_date&limit=1`);
+          if (rows?.[0]) matchedCust = rows[0];
+        } catch (_) {}
+      }
+      if (cancelled) return;
       let custPkgs = [];
       if (matchedCust?.id) {
         try { custPkgs = await sb.get("customer_packages", `&customer_id=eq.${matchedCust.id}`) || []; }
