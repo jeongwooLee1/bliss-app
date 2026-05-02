@@ -2314,12 +2314,22 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       setModalData(null);
       return;
     }
+    // 매출 등록된 예약은 삭제 차단 (매출관리에서 매출 취소 후 삭제 가능)
+    if (!block.isSchedule) {
+      const hasSale = (data?.sales || []).some(s => s.reservationId === block.id);
+      if (hasSale) {
+        alert("이 예약은 매출이 등록되어 있어 삭제할 수 없습니다.\n매출관리에서 매출을 먼저 취소해주세요.");
+        return;
+      }
+    }
     const sourceId = block.repeatSourceId || block.id;
     const hasRepeat = (data.reservations || []).some(r => r.repeatSourceId === sourceId || (r.id === sourceId && r.repeat && r.repeat !== "none"));
     // 내부일정(isSchedule)은 반복이어도 묻지 않고 바로 삭제
     if (hasRepeat && !block.isSchedule) {
       setDeletePopup(block);
     } else {
+      // 일반 예약 삭제는 확인창 1회 (내부일정은 묻지 않고 바로 — 기존 정책 유지)
+      if (!block.isSchedule && !confirm("이 예약을 삭제하시겠습니까?")) return;
       handleDelete(block.id);
     }
   };
