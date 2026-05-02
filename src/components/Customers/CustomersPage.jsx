@@ -1416,10 +1416,6 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                                   <span style={{fontSize:T.fs.sm,fontWeight:T.fw.black,color:T.text}}>{s.date}</span>
                                   <span style={{fontSize:T.fs.nano,background:T.gray200,borderRadius:T.radius.sm,padding:"2px 6px"}}>{brName}</span>
                                   <span style={{fontSize:T.fs.xxs,color:T.textSub,fontWeight:T.fw.bold}}>{s.staffName}</span>
-                                  <button onClick={()=>openSaleFullEdit(s)}
-                                    style={{marginLeft:"auto",padding:"3px 10px",fontSize:T.fs.nano,fontWeight:T.fw.bold,borderRadius:6,border:"1px solid "+T.primary,background:T.primaryLt||T.bgCard,color:T.primary,cursor:"pointer",fontFamily:"inherit"}}>
-                                    ✏️ 매출 상세
-                                  </button>
                                 </div>
                                 <div style={{display:"flex",gap:12,marginBottom:6,padding:"6px 10px",background:"linear-gradient(90deg,"+T.primaryHover+",transparent)",borderRadius:T.radius.sm}}>
                                   <span style={{fontSize:T.fs.xs}}>시술 <b style={{color:T.primary}}>{fmt(sv)}</b></span>
