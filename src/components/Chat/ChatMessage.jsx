@@ -19,7 +19,26 @@ export function fmtDateHeader(iso) {
 // 개별 메시지 row
 function ChatMessage({ msg, user, isOwn, showHeader, pending }) {
   const [hover, setHover] = useState(false)
+  const [copied, setCopied] = useState(false)
   const time = fmtTime(msg.created_at)
+  const handleCopy = (e) => {
+    e.stopPropagation()
+    const txt = String(msg.body || '')
+    if (!txt) return
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(txt).then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1200)
+      }).catch(() => {})
+    } else {
+      // fallback
+      const ta = document.createElement('textarea')
+      ta.value = txt; document.body.appendChild(ta); ta.select()
+      try { document.execCommand('copy') } catch {}
+      document.body.removeChild(ta)
+      setCopied(true); setTimeout(() => setCopied(false), 1200)
+    }
+  }
 
   return (
     <div
@@ -32,6 +51,18 @@ function ChatMessage({ msg, user, isOwn, showHeader, pending }) {
         transition:'background .1s',
       }}
     >
+      {/* 복사 버튼 — hover 시 또는 모바일 항상 노출 (selection 의존 없이 확실히 복사) */}
+      <button onClick={handleCopy} title={copied ? "복사됨!" : "메시지 복사"}
+        style={{
+          position:'absolute', top:4, right:6, zIndex:2,
+          padding:'2px 6px', fontSize:10, fontWeight:600, cursor:'pointer',
+          border:'1px solid '+(copied ? T.success : T.gray300),
+          background: copied ? T.successLt : '#fff',
+          color: copied ? T.success : T.textSub,
+          borderRadius:4, fontFamily:'inherit',
+          opacity: hover || copied ? 1 : 0,
+          transition:'opacity .15s',
+        }}>{copied ? '✓ 복사됨' : '📋 복사'}</button>
       {showHeader && (
         <div style={{display:'flex', alignItems:'baseline', gap:6, marginBottom:1, flexWrap:'nowrap'}}>
           <span style={{
