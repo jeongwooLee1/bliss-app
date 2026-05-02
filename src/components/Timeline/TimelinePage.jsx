@@ -3150,31 +3150,6 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
             </span>
           </div>
           <span style={{fontSize:T.fs.xxs,color:T.orange,fontWeight:T.fw.bold,flexShrink:0}}>확인 <I name="chevR" size={11} color={T.orange}/></span>
-          {(() => {
-            // 네이버 예약(source=naver + pending)인 경우만 "✓ 네이버 확정" 버튼 노출 (API 호출)
-            const naverPending = pendingList.find(r => (r.source==="naver"||r.source==="네이버") && r.status==="pending");
-            if (!naverPending) return null;
-            const br = allBranchList.find(b=>b.id===naverPending.bid);
-            const bizId = br?.naverBizId;
-            const resId = naverPending?.reservationId;
-            if (!bizId || !resId) return null;
-            const onConfirm = async (e) => {
-              e.stopPropagation();
-              const btn = e.currentTarget; const orig = btn.textContent;
-              btn.textContent = '확정 중…'; btn.disabled = true;
-              const r = await naverConfirmBooking(bizId, resId);
-              if (r.ok) {
-                btn.textContent = '✓ 완료';
-                // 로컬 상태 reserved로 즉시 반영
-                setData(p => ({...p, reservations: (p.reservations||[]).map(x => x.id === naverPending.id ? {...x, status:'reserved'} : x)}));
-              } else {
-                btn.textContent = orig; btn.disabled = false;
-                alert('네이버 확정 실패: ' + (r.msg || r.error || ''));
-              }
-            };
-            return <button onClick={onConfirm}
-              style={{fontSize:T.fs.xxs,color:T.bgCard,fontWeight:T.fw.bolder,background:T.naver,padding:"4px 10px",borderRadius:T.radius.md,border:'none',cursor:'pointer',flexShrink:0,whiteSpace:"nowrap",fontFamily:'inherit'}}>✓ 네이버 확정</button>;
-          })()}
         </div>;
       })()}
       {/* Single scroll container */}
