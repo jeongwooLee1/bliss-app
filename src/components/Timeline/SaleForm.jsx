@@ -996,13 +996,15 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       // 체험단 프리픽스 제거 후 매칭
       const isComped = /^\[체험단\]\s*/.test(nmRaw);
       const nm = isComped ? nmRaw.replace(/^\[체험단\]\s*/, "") : nmRaw;
-      // 할인 (kind 분기 — 신규: [할인 시술]/[할인 제품], 레거시: [할인])
+      // 할인 (kind 분기 — 신규: [할인 시술]/[할인 제품] [+사유], 레거시: [할인])
       if (/^\[할인 제품\]/.test(nm)) {
-        discountProdRows.push({ amount: d.unit_price || 0 });
+        const reason = nm.replace(/^\[할인 제품\]\s*/, '').trim();
+        discountProdRows.push({ amount: d.unit_price || 0, reason });
         return;
       }
       if (/^\[할인 시술\]/.test(nm) || nm === "할인" || nm === "[할인]" || /^\[할인\]/.test(nm)) {
-        discountSvcRows.push({ amount: d.unit_price || 0 });
+        const reason = nm.replace(/^\[할인 시술\]\s*|^\[할인\]\s*|^할인\s*/, '').trim();
+        discountSvcRows.push({ amount: d.unit_price || 0, reason });
         return;
       }
       // 정규 시술 매칭
@@ -1035,8 +1037,8 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     const restored = [];
     extraSvcRows.forEach(r => restored.push({ id:'er_'+uid(), kind:'svc', action:'add', name:r.name||'', amount:r.amount||0 }));
     extraProdRows.forEach(r => restored.push({ id:'er_'+uid(), kind:'prod', action:'add', name:r.name||'', amount:r.amount||0 }));
-    discountSvcRows.forEach(r => restored.push({ id:'er_'+uid(), kind:'svc', action:'discount', name:'', amount:r.amount||0 }));
-    discountProdRows.forEach(r => restored.push({ id:'er_'+uid(), kind:'prod', action:'discount', name:'', amount:r.amount||0 }));
+    discountSvcRows.forEach(r => restored.push({ id:'er_'+uid(), kind:'svc', action:'discount', name:r.reason||'', amount:r.amount||0 }));
+    discountProdRows.forEach(r => restored.push({ id:'er_'+uid(), kind:'prod', action:'discount', name:r.reason||'', amount:r.amount||0 }));
     if (restored.length > 0) setExtraRows(restored);
   }, [editMode, reservation, SVC_LIST.length, PROD_LIST.length]);
 
@@ -1575,11 +1577,12 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
         push(r.name || "추가 제품", r.amount);
       }
     });
-    // 2.5) 할인 — extraRows의 discount 행, kind별로 라벨 분기
+    // 2.5) 할인 — extraRows의 discount 행, kind별로 라벨 분기 + 사유 합침
     extraRows.forEach(r => {
       if (r.action==='discount' && (r.amount||0) > 0) {
-        const lbl = r.kind==='prod' ? "[할인 제품]" : "[할인 시술]";
-        push(lbl, r.amount);
+        const lblBase = r.kind==='prod' ? "[할인 제품]" : "[할인 시술]";
+        const reason = (r.name||"").trim();
+        push(reason ? `${lblBase} ${reason}` : lblBase, r.amount);
       }
     });
     // 3) 보유 패키지 사용 이력 — 기록만 (고객 보유권은 변경 안 함)
@@ -2280,11 +2283,12 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
         pushDetail(r.name || "추가 제품", r.amount, 1, 'prod');
       }
     });
-    // 할인 (extraRows) — kind별 라벨 분기
+    // 할인 (extraRows) — kind별 라벨 분기 + 사유 합침
     extraRows.forEach(r => {
       if (r.action==='discount' && (r.amount||0) > 0) {
-        const lbl = r.kind==='prod' ? "[할인 제품]" : "[할인 시술]";
-        pushDetail(lbl, r.amount, 1, 'discount');
+        const lblBase = r.kind==='prod' ? "[할인 제품]" : "[할인 시술]";
+        const reason = (r.name||"").trim();
+        pushDetail(reason ? `${lblBase} ${reason}` : lblBase, r.amount, 1, 'discount');
       }
     });
     // 이벤트 할인·적립 기록 (promoResults 기반)
@@ -3115,15 +3119,10 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
                       </button>
                     ))}
                   </div>
-                  {/* name */}
-                  {isAdd ? (
-                    <input value={row.name} onChange={e=>updExtraRow(row.id, {name:e.target.value})}
-                      placeholder={row.kind==='svc' ? "추가 시술명" : "추가 제품명"}
-                      style={{flex:1,padding:"0 6px",fontSize:12,height:24,boxSizing:"border-box",background:T.bgCard,border:"1px solid "+T.border,borderRadius:5,fontFamily:"inherit",outline:"none",minWidth:0}}/>
-                  ) : (
-                    <input value="" disabled placeholder="(할인 사유 — 메모에 기록)"
-                      style={{flex:1,padding:"0 6px",fontSize:12,height:24,boxSizing:"border-box",background:"#f5f5f5",border:"1px solid "+T.border,borderRadius:5,fontFamily:"inherit",outline:"none",color:T.gray400,minWidth:0}}/>
-                  )}
+                  {/* name (추가: 항목명, 할인: 사유) */}
+                  <input value={row.name} onChange={e=>updExtraRow(row.id, {name:e.target.value})}
+                    placeholder={isAdd ? (row.kind==='svc' ? "추가 시술명" : "추가 제품명") : "할인 사유 (선택)"}
+                    style={{flex:1,padding:"0 6px",fontSize:12,height:24,boxSizing:"border-box",background:T.bgCard,border:"1px solid "+T.border,borderRadius:5,fontFamily:"inherit",outline:"none",minWidth:0}}/>
                   {/* amount */}
                   <input type="text" inputMode="numeric" value={row.amount ? Number(row.amount).toLocaleString() : ""} placeholder="0"
                     onChange={e=>{ const raw=e.target.value.replace(/[^0-9]/g,""); updExtraRow(row.id, {amount: raw ? Number(raw) : 0}); }}
