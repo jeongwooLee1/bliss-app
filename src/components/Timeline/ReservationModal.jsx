@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { T, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, SYSTEM_TAG_NAME_NEW_CUST, SYSTEM_TAG_NAME_PREPAID, SYSTEM_SRC_NAME_NAVER } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY, queueAlimtalk, buildTokenSearch } from '../../lib/sb'
 import { fromDb, toDb, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS, _activeBizId } from '../../lib/db'
-import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, getDow, genId, fmtLocal, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, getCustPkgBranchInitial, naverConfirmBooking } from '../../lib/utils'
+import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, getDow, genId, fmtLocal, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, getCustPkgBranchInitial, naverConfirmBooking, judgePenaltyType, customerGrade } from '../../lib/utils'
 import I from '../common/I'
 import SendSmsModal from '../common/SendSmsModal'
 import { DetailedSaleForm } from './SaleForm'
@@ -371,10 +371,19 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
     naverCancelledDt: item?.naverCancelledDt || "",
     naverRegDt: item?.naverRegDt || "",
   });
-  const [historyOpen, setHistoryOpen] = useState(false);
+  // 매출 히스토리: PC에서 디폴트 열림 (cust 정보 있을 때만, 모바일은 X)
+  const [historyOpen, setHistoryOpen] = useState(() => {
+    const isMob = typeof window !== 'undefined' && window.innerWidth < 768;
+    if (isMob) return false;
+    // 고객 정보 있을 때만 자동 펼침 (item.custId/custName 또는 신규 입력)
+    return !!(item?.custId || item?.custName);
+  });
   const [custPopupOpen, setCustPopupOpen] = useState(false);
   const [salesHistory, setSalesHistory] = useState([]);
   const [custMemo, setCustMemo] = useState("");
+  const [editingCustMemo, setEditingCustMemo] = useState(false);
+  const [custMemoDraft, setCustMemoDraft] = useState("");
+  const [savingCustMemo, setSavingCustMemo] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const modalRef = useRef(null);
   const tags = (data?.serviceTags || []).slice().sort((a,b)=>a.sort-b.sort);
@@ -1455,38 +1464,54 @@ ${naverText}
                   {/* 정보 */}
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                      {editingCust ? (
-                        /* 변경 모드 — 초기 등록과 동일한 통합 검색 필드 (이름·전화 부분일치 다토큰 검색) */
-                        <div style={{position:"relative",display:"flex",alignItems:"center",flex:1,minWidth:200}}>
+                      {/* 현재 등록된 고객 정보 — 변경 모드여도 그대로 보여주기 (비교용) */}
+                      <CopySpan text={f.custName} style={{fontSize:14,fontWeight:700,color:"#1a1a2e",whiteSpace:"nowrap"}}>{f.custName}</CopySpan>
+                      {f.custName2 && <span style={{fontSize:12,color:"#888",fontWeight:500,whiteSpace:"nowrap"}}>({f.custName2})</span>}
+                      <span style={{fontSize:11,color:"#888"}}>·</span>
+                      <CopySpan text={f.custPhone} style={{fontSize:13,color:T.primary,fontWeight:500,whiteSpace:"nowrap"}}>{f.custPhone||"연락처 없음"}</CopySpan>
+                      {custNum && <CopySpan text={custNum} style={{fontSize:13,color:"#999",fontFamily:"monospace",whiteSpace:"nowrap"}}>{custNum}</CopySpan>}
+                      {shareCusts.length > 0 && <span title={`쉐어: ${shareCusts.map(s=>s.name).join(", ")}`}
+                        style={{fontSize:10,padding:"2px 7px",borderRadius:10,background:"#F5F3FF",color:"#5B21B6",border:"1px solid #C4B5FD",fontWeight:700,whiteSpace:"nowrap"}}>
+                        🤝 쉐어 {shareCusts.length}명 · {shareCusts.map(s=>s.name).join(", ")}
+                      </span>}
+                      {/* 주의 배지 — 페널티 취소 3회+ 또는 노쇼 1회+ */}
+                      {(() => {
+                        const _cust = (data?.customers||[]).find(c => c.id === f.custId);
+                        if (!_cust) return null;
+                        const _grade = customerGrade(_cust);
+                        if (_grade !== 'caution') return null;
+                        const _cp = Number(_cust.cancelPenaltyCount || 0);
+                        const _ns = Number(_cust.noShowCount || 0);
+                        return <span title={`페널티 취소 ${_cp}회 / 노쇼 ${_ns}회`}
+                          style={{fontSize:10,padding:"2px 7px",borderRadius:10,background:"#FFF3E0",color:"#E65100",border:"1px solid #FFB74D",fontWeight:800,whiteSpace:"nowrap"}}>
+                          ⚠️ 주의 (취소{_cp}/노쇼{_ns})
+                        </span>;
+                      })()}
+                    </div>
+                    {/* 변경 모드 — 현재 정보 아래에 검색창 추가 (다른 고객으로 교체용) */}
+                    {editingCust && (
+                      <div style={{marginTop:8,padding:"8px 10px",background:"#F5F3FF",border:"1px dashed "+T.primary+"60",borderRadius:T.radius.md}}>
+                        <div style={{fontSize:10,color:T.primary,fontWeight:700,marginBottom:5}}>🔍 다른 고객으로 교체 (검색 후 선택)</div>
+                        <div style={{position:"relative",display:"flex",alignItems:"center"}}>
                           <span style={{position:"absolute",left:10,color:T.gray500,display:"flex",alignItems:"center",pointerEvents:"none"}}><I name="search" size={14}/></span>
-                          <input className="inp inp-search" style={{flex:1,minHeight:32,borderRadius:T.radius.md,paddingLeft:32,fontSize:13}}
+                          <input className="inp inp-search" style={{flex:1,minHeight:32,borderRadius:T.radius.md,paddingLeft:32,fontSize:13,border:"1px solid "+T.border}}
                             value={custSearch}
                             onChange={e=>{ setCustSearch(e.target.value); setShowCustDropdown(true); }}
                             onFocus={()=>setShowCustDropdown(true)}
                             placeholder="이름·전화 (예: 정우 8008)"
                             autoFocus/>
                         </div>
-                      ) : (
-                        <>
-                          <CopySpan text={f.custName} style={{fontSize:14,fontWeight:700,color:"#1a1a2e",whiteSpace:"nowrap"}}>{f.custName}</CopySpan>
-                          {f.custName2 && <span style={{fontSize:12,color:"#888",fontWeight:500,whiteSpace:"nowrap"}}>({f.custName2})</span>}
-                          <span style={{fontSize:11,color:"#888"}}>·</span>
-                          <CopySpan text={f.custPhone} style={{fontSize:13,color:T.primary,fontWeight:500,whiteSpace:"nowrap"}}>{f.custPhone||"연락처 없음"}</CopySpan>
-                          {custNum && <CopySpan text={custNum} style={{fontSize:13,color:"#999",fontFamily:"monospace",whiteSpace:"nowrap"}}>{custNum}</CopySpan>}
-                          {shareCusts.length > 0 && <span title={`쉐어: ${shareCusts.map(s=>s.name).join(", ")}`}
-                            style={{fontSize:10,padding:"2px 7px",borderRadius:10,background:"#F5F3FF",color:"#5B21B6",border:"1px solid #C4B5FD",fontWeight:700,whiteSpace:"nowrap"}}>
-                            🤝 쉐어 {shareCusts.length}명 · {shareCusts.map(s=>s.name).join(", ")}
-                          </span>}
-                        </>
-                      )}
-                    </div>
-                    {!editingCust && f.custEmail && (
-                      <div style={{display:"flex",alignItems:"center",gap:8,marginTop:3}}>
-                        <span style={{fontSize:11,color:"#aaa"}}>✉</span>
-                        <CopySpan text={f.custEmail} style={{fontSize:12,color:"#777"}}>{f.custEmail}</CopySpan>
                       </div>
                     )}
-                    {/* 성별 선택 — 신규 고객 또는 미지정 고객만 (변경 모드 X) */}
+                    {/* 이메일 — 항상 노출 (외국인 고객 신규 등록·수정 가능). 기존값 prefill */}
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginTop:3}}>
+                      <span style={{fontSize:11,color:"#aaa"}}>✉</span>
+                      <input type="email" value={f.custEmail||""} onChange={e=>set("custEmail",e.target.value)}
+                        placeholder="이메일 (외국인 고객 등)"
+                        style={{flex:1,fontSize:12,padding:"3px 8px",border:"1px solid #e0e0e0",borderRadius:6,fontFamily:"inherit",outline:"none",background:f.custEmail?"#fff":"#fafafa",color:"#444"}}/>
+                      {f.custEmail && <CopySpan text={f.custEmail} title="이메일 복사" style={{fontSize:10,color:"#aaa",cursor:"pointer",padding:"2px 4px"}}>📋</CopySpan>}
+                    </div>
+                    {/* 성별 선택 — 신규 고객 또는 미지정 고객만 */}
                     {!editingCust && (f.isNewCust || !f.custGender) && (
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6}}>
                         <span style={{fontSize:11,color:"#aaa"}}>성별</span>
@@ -1946,11 +1971,26 @@ ${naverText}
                   if (f.requestMsg.trim().startsWith("[")) {
                     try {
                       const items = JSON.parse(f.requestMsg);
-                      return items.filter(it=>it.value).map((it,idx)=>{
+                      // value="N/a" 또는 빈값 필터 제외
+                      const valid = items.filter(it => {
+                        const v = String(it.value||'').trim();
+                        if (!v) return false;
+                        if (/^n\/?a$/i.test(v)) return false; // "N/a" "NA"
+                        return true;
+                      });
+                      return valid.map((it,idx)=>{
                         if (it.label==="시술메뉴") return <NRow key={idx} label="시술메뉴" value={it.value} />;
-                        return <div key={idx} style={{display:"flex",alignItems:"flex-start",gap:6,padding:"4px 0",borderBottom:"1px solid #E8F5E9"}}>
+                        // 라벨이 너무 길면 (12자 초과) 별도 단락으로: label 위·value 아래 (안내문구형 라벨)
+                        const labelLen = String(it.label||'').length;
+                        if (labelLen > 12) {
+                          return <div key={idx} style={{padding:"4px 0",borderBottom:"1px solid #E8F5E9"}}>
+                            <div style={{fontSize:11,color:T.textMuted,fontWeight:500,lineHeight:1.5,wordBreak:"break-word",marginBottom:3}}>{it.label}</div>
+                            <div style={{fontSize:T.fs.sm,fontWeight:T.fw.medium,color:T.successDk,lineHeight:1.45,wordBreak:"break-word",paddingLeft:8}}>↳ {it.value}</div>
+                          </div>;
+                        }
+                        return <div key={idx} style={{display:"flex",alignItems:"flex-start",gap:6,padding:"4px 0",borderBottom:"1px solid #E8F5E9",minWidth:0}}>
                           <span style={{fontSize:11,color:T.textMuted,fontWeight:500,minWidth:48,flexShrink:0,paddingTop:2}}>{it.label}</span>
-                          <span style={{fontSize:T.fs.sm,fontWeight:T.fw.medium,color:T.successDk,lineHeight:1.45,wordBreak:"break-word",flex:1}}>{it.value}</span>
+                          <span style={{fontSize:T.fs.sm,fontWeight:T.fw.medium,color:T.successDk,lineHeight:1.45,wordBreak:"break-word",flex:1,minWidth:0}}>{it.value}</span>
                         </div>;
                       });
                     } catch(e) {}
@@ -2193,12 +2233,16 @@ ${naverText}
                   });
                 }
                 // 취소·노쇼 페널티 결정 — 모달이 결정 책임 (v3.7.210 리팩토링)
+                // 페널티 정의 (v3.7.289): 예약일 전일 21:00 ~ 예약시각 사이 취소만 페널티
+                // 예외: 당일 예약 + 생성 후 1시간 이내 취소·변경 = grace (실수 보호)
                 // (네이버 고객 직접 취소는 status='naver_cancelled'로 들어와 배너의 "취소확정" 버튼으로 별도 처리)
                 const _isNewCancel = f.status==="cancelled" && item?.status!=="cancelled";
                 const _isNewNoShow = f.status==="no_show" && item?.status!=="no_show";
-                const _penaltyTrigger = (_isNewCancel || _isNewNoShow) && f.custId && !isSchedule && !penaltyAlreadyDone;
+                const _penaltyType = _isNewCancel ? judgePenaltyType(f.date, f.time, item?.createdAt || item?.created_at, new Date()) : 'normal';
+                const _shouldShowPenaltyDialog = (_isNewCancel && _penaltyType === 'penalty') || _isNewNoShow;
+                const _penaltyTrigger = _shouldShowPenaltyDialog && f.custId && !isSchedule && !penaltyAlreadyDone;
                 if(_penaltyTrigger){
-                  const _reason = _isNewNoShow ? '노쇼' : '당일취소';
+                  const _reason = _isNewNoShow ? '노쇼' : '페널티 취소';
                   const _decision = await openCancelDecision(_reason);
                   if (_decision === 'close') {
                     // 취소 행위 자체 중단 — status 원복 + 저장 X
@@ -2209,6 +2253,51 @@ ${naverText}
                     await runPenaltyDeduction(_reason);
                   }
                   // 'skip' → 차감 없이 진행
+                }
+                // ── 행동 이력 기록 (customer_behavior_log) — 비동기, 실패해도 저장 진행 ──
+                if (f.custId && !isSchedule) {
+                  const _bizIdForLog = (data?.businesses||[])[0]?.id;
+                  const _logBase = {
+                    id: 'cbl_' + uid(),
+                    business_id: _bizIdForLog,
+                    cust_id: f.custId,
+                    reservation_id: item?.id || null,
+                  };
+                  const _meta = { date: f.date, time: f.time, bid: f.bid, prev_status: item?.status, new_status: f.status };
+                  let _logEntries = [];
+                  // 신규 예약 (item?.id 없음 = 등록)
+                  if (!item?.id) {
+                    _logEntries.push({ ..._logBase, type: 'book', meta: _meta });
+                  }
+                  // 취소
+                  else if (_isNewCancel) {
+                    if (_penaltyType === 'penalty') {
+                      _logEntries.push({ ..._logBase, type: 'cancel_penalty', meta: _meta });
+                      // customers.cancel_penalty_count++
+                      try {
+                        const _cur = (data?.customers||[]).find(c => c.id === f.custId)?.cancelPenaltyCount || 0;
+                        await sb.update('customers', f.custId, { cancel_penalty_count: _cur + 1 }).catch(()=>{});
+                      } catch {}
+                    } else {
+                      _logEntries.push({ ..._logBase, type: 'cancel_normal', meta: { ..._meta, grace: _penaltyType === 'grace' } });
+                    }
+                  }
+                  // 노쇼
+                  else if (_isNewNoShow) {
+                    _logEntries.push({ ..._logBase, type: 'no_show', meta: _meta });
+                    try {
+                      const _cur = (data?.customers||[]).find(c => c.id === f.custId)?.noShowCount || 0;
+                      await sb.update('customers', f.custId, { no_show_count: _cur + 1 }).catch(()=>{});
+                    } catch {}
+                  }
+                  // 시간/지점 변경 (날짜 또는 시간 변경 감지)
+                  else if (item?.id && (item.date !== f.date || item.time !== f.time || item.bid !== f.bid)) {
+                    _logEntries.push({ ..._logBase, type: 'change', meta: { ..._meta, prev_date: item.date, prev_time: item.time, prev_bid: item.bid } });
+                  }
+                  // INSERT
+                  for (const _entry of _logEntries) {
+                    sb.insert('customer_behavior_log', _entry).catch(e => console.warn('[behavior_log] insert err:', e?.message));
+                  }
                 }
                 onSave({...f, memo: memoToSave, scheduleLog: scheduleLogToSave, tsLog: newLog, selectedTags: autoTags, isSchedule, _isColTemplate: item?._isColTemplate, _templateId: item?._templateId, _initialServerSnap: initialServerSnap});
               }}>{item?.id?"저장":"등록"}</button>
@@ -2283,18 +2372,17 @@ ${naverText}
         </div>
 
       </div>
-      {/* ── 확장 버튼 (모달과 패널 사이) ── */}
-      {!_isMob && !isSchedule && (f.custId || item?.custId || f.custName || item?.custName) && (
-        <div style={{display:"flex",alignItems:"center",alignSelf:"center",flexShrink:0}}>
-          <button onClick={e=>{e.stopPropagation();setHistoryOpen(p=>!p)}} title={historyOpen?"닫기":"매출 히스토리"}
-            style={{width:28,height:28,borderRadius:"50%",
-              background:historyOpen?T.primary:"#fff",
-              color:historyOpen?"#fff":T.gray500,
-              border:`1px solid ${historyOpen?T.primary:T.border}`,
-              cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
-              fontSize:12,
-              boxShadow:"0 1px 4px rgba(0,0,0,.1)"}}>
-            {historyOpen ? "✕" : "≡"}
+      {/* ── 매출 히스토리 패널 토글 (닫혀있을 때 다시 열기) ── */}
+      {!_isMob && !isSchedule && (f.custId || item?.custId || f.custName || item?.custName) && !historyOpen && (
+        <div style={{display:"flex",alignItems:"flex-start",alignSelf:"flex-start",flexShrink:0,marginLeft:8,marginTop:12}}>
+          <button onClick={e=>{e.stopPropagation();setHistoryOpen(true)}} title="매출 히스토리 열기"
+            style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"10px 8px",borderRadius:T.radius.md,
+              background:T.bgCard,border:`1px solid ${T.border}`,cursor:"pointer",
+              boxShadow:"0 1px 4px rgba(0,0,0,.05)"}}
+            onMouseOver={e=>{e.currentTarget.style.background=T.primaryLt||"#EEF2FF"}}
+            onMouseOut={e=>{e.currentTarget.style.background=T.bgCard}}>
+            <I name="clock" size={16} color={T.primary}/>
+            <span style={{fontSize:10,color:T.textSub,fontWeight:700,writingMode:"vertical-rl",letterSpacing:1}}>매출 히스토리</span>
           </button>
         </div>
       )}
@@ -2310,19 +2398,90 @@ ${naverText}
           display:"flex",flexDirection:"column",
           overflow:"hidden",
           maxHeight: modalRef.current ? modalRef.current.offsetHeight : "80vh",
-          animation:"slideRight .3s cubic-bezier(.22,1,.36,1)"}}>
-          <div style={{padding:"16px 20px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+          animation:"slideRight .3s cubic-bezier(.22,1,.36,1)",
+          position:"relative"}}>
+          {/* 매출 히스토리 헤더 — 예약모달 X와 동일 스타일 */}
+          <div style={{padding:"16px 20px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8,flexShrink:0,flexWrap:"wrap"}}>
             <I name="clock" size={16} color={T.primary}/>
             <span style={{fontSize:T.fs.md,fontWeight:T.fw.bolder,color:T.text}}>매출 히스토리</span>
-            <span style={{fontSize:T.fs.xs,color:T.textSub,marginLeft:"auto"}}>{f.custName||item?.custName} ({salesHistory.length}건)</span>
+            {(() => {
+              const _cust = (data?.customers||[]).find(c => c.id === f.custId);
+              if (!_cust) return null;
+              if (customerGrade(_cust) !== 'caution') return null;
+              const _cp = Number(_cust.cancelPenaltyCount || 0);
+              const _ns = Number(_cust.noShowCount || 0);
+              return <span title={`페널티 취소 ${_cp}회 / 노쇼 ${_ns}회`}
+                style={{fontSize:10,padding:"2px 7px",borderRadius:10,background:"#FFF3E0",color:"#E65100",border:"1px solid #FFB74D",fontWeight:800,whiteSpace:"nowrap"}}>
+                ⚠️ 주의
+              </span>;
+            })()}
+            <span style={{fontSize:T.fs.xs,color:T.textSub,marginLeft:"auto",marginRight:8}}>{f.custName||item?.custName} ({salesHistory.length}건)</span>
+            {/* 닫기 X 버튼 — 예약모달 X 와 동일 디자인 */}
+            <button onClick={e=>{e.stopPropagation();setHistoryOpen(false)}} aria-label="매출 히스토리 닫기"
+              style={{width:30,height:30,borderRadius:"50%",
+                background:T.gray200,border:"none",color:T.gray500,cursor:"pointer",
+                fontSize:T.fs.md,display:"flex",alignItems:"center",justifyContent:"center",
+                transition:"background .15s,color .15s",flexShrink:0}}
+              onMouseOver={e=>{e.currentTarget.style.background=T.dangerLt;e.currentTarget.style.color=T.danger}}
+              onMouseOut={e=>{e.currentTarget.style.background=T.gray200;e.currentTarget.style.color=T.gray500}}>✕</button>
           </div>
           <div style={{padding:"12px 16px",overflowY:"auto",flex:1}}>
-            {/* 고객 메모 */}
-            {custMemo && <div style={{padding:"12px 14px",marginBottom:10,background:"#FFFDE7",
-              borderRadius:T.radius.md,border:`1px solid #FFF176`}}>
-              <div style={{fontSize:T.fs.xxs,fontWeight:T.fw.bolder,color:"#F57F17",marginBottom:6}}>📋 고객 메모</div>
-              <div style={{fontSize:T.fs.xs,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{custMemo}</div>
-            </div>}
+            {/* 고객 메모 — 클릭 시 수정 모드 */}
+            {(custMemo || f.custId) && (
+              <div style={{padding:"12px 14px",marginBottom:10,background:"#FFFDE7",
+                borderRadius:T.radius.md,border:`1px solid #FFF176`}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                  <span style={{fontSize:T.fs.xxs,fontWeight:T.fw.bolder,color:"#F57F17"}}>📋 고객 메모</span>
+                  {!editingCustMemo && f.custId && (
+                    <button onClick={()=>{ setCustMemoDraft(custMemo||""); setEditingCustMemo(true); }}
+                      style={{fontSize:10,color:"#F57F17",background:"#fff",border:"1px solid #FFD54F",borderRadius:6,padding:"2px 8px",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>
+                      ✏️ {custMemo ? "수정" : "메모 추가"}
+                    </button>
+                  )}
+                </div>
+                {editingCustMemo ? (
+                  <>
+                    <textarea value={custMemoDraft} onChange={e=>setCustMemoDraft(e.target.value)}
+                      placeholder="고객 메모 입력 (특이사항·선호·주의)"
+                      style={{width:"100%",minHeight:120,padding:"8px 10px",fontSize:T.fs.xs,
+                        border:"1px solid #FFD54F",borderRadius:6,fontFamily:"inherit",
+                        lineHeight:1.6,resize:"vertical",boxSizing:"border-box",background:"#fff"}}/>
+                    <div style={{display:"flex",gap:6,marginTop:6,justifyContent:"flex-end"}}>
+                      <button onClick={()=>{ setEditingCustMemo(false); setCustMemoDraft(""); }} disabled={savingCustMemo}
+                        style={{fontSize:11,padding:"4px 10px",borderRadius:6,border:"1px solid "+T.border,background:"#fff",color:T.textSub,cursor:savingCustMemo?"not-allowed":"pointer",fontFamily:"inherit",fontWeight:600}}>
+                        취소
+                      </button>
+                      <button disabled={savingCustMemo} onClick={async()=>{
+                        if (!f.custId) { alert("고객 정보가 연결되지 않아 메모 저장 불가"); return; }
+                        setSavingCustMemo(true);
+                        try {
+                          await sb.update('customers', f.custId, { memo: custMemoDraft });
+                          setCustMemo(custMemoDraft);
+                          setEditingCustMemo(false);
+                          setCustMemoDraft("");
+                        } catch(e) {
+                          alert("메모 저장 실패: " + (e?.message || e));
+                        } finally {
+                          setSavingCustMemo(false);
+                        }
+                      }} style={{fontSize:11,padding:"4px 12px",borderRadius:6,border:"none",background:"#F57F17",color:"#fff",cursor:savingCustMemo?"not-allowed":"pointer",fontFamily:"inherit",fontWeight:700,opacity:savingCustMemo?0.6:1}}>
+                        {savingCustMemo ? "저장 중..." : "💾 저장"}
+                      </button>
+                    </div>
+                  </>
+                ) : custMemo ? (
+                  <div onClick={()=>{ if (f.custId) { setCustMemoDraft(custMemo||""); setEditingCustMemo(true); } }}
+                    title={f.custId ? "클릭해서 수정" : ""}
+                    style={{fontSize:T.fs.xs,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word",cursor:f.custId?"pointer":"default",borderRadius:4,padding:"2px 4px",margin:"-2px -4px",transition:"background .15s"}}
+                    onMouseOver={e=>{ if (f.custId) e.currentTarget.style.background="#FFF59D40"; }}
+                    onMouseOut={e=>{ e.currentTarget.style.background="transparent"; }}>
+                    {custMemo}
+                  </div>
+                ) : (
+                  <div style={{fontSize:T.fs.xs,color:T.gray500,fontStyle:"italic"}}>메모 없음 — 위 "메모 추가" 버튼으로 작성</div>
+                )}
+              </div>
+            )}
             {historyLoading ? (
               <div style={{textAlign:"center",padding:40,color:T.textSub}}>로딩중...</div>
             ) : salesHistory.length === 0 && !custMemo ? (

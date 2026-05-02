@@ -145,6 +145,74 @@ function AlarmModal({ initial, brName, onSave, onDelete, onClose }) {
   </div>;
 }
 
+// ── Topbar 공지 말풍선 위젯 — 팀채팅 is_announce=true 최신 1개 ──
+function TopAnnounceBubble() {
+  const [announce, setAnnounce] = useState(null); // {id, user_id, body, created_at}
+  const DISMISS_KEY = 'bliss_dismissed_announces';
+  const AUTO_MS = 60 * 60 * 1000;
+  const getDismissed = () => { try { return new Set(JSON.parse(localStorage.getItem(DISMISS_KEY) || '[]')); } catch { return new Set(); } };
+  const addDismissed = (id) => { const s = getDismissed(); s.add(id); try { localStorage.setItem(DISMISS_KEY, JSON.stringify([...s].slice(-200))); } catch {} };
+  const loadLatest = async () => {
+    try {
+      const supa = window._sbClient;
+      if (!supa) return;
+      const since = new Date(Date.now() - AUTO_MS).toISOString();
+      const { data: rows } = await supa.from('team_chat_messages')
+        .select('id,user_id,body,created_at,is_announce')
+        .eq('is_announce', true).gte('created_at', since)
+        .order('created_at', { ascending: false }).limit(10);
+      const dis = getDismissed();
+      const latest = (rows || []).find(r => !dis.has(r.id));
+      setAnnounce(latest || null);
+    } catch {}
+  };
+  useEffect(() => {
+    loadLatest();
+    const supa = window._sbClient;
+    if (!supa) return;
+    const ch = supa.channel('rt_topbar_announce_' + Date.now())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'team_chat_messages' },
+        (payload) => { if (payload?.new?.is_announce) loadLatest(); })
+      .subscribe();
+    return () => { try { supa.removeChannel(ch); } catch {} };
+  }, []);
+  if (!announce) return null;
+  const dismiss = (e) => { e?.stopPropagation?.(); addDismissed(announce.id); setAnnounce(null); };
+  return (
+    <div title={`${announce.user_id} 공지 · ${new Date(announce.created_at).toLocaleString()}`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        background: 'linear-gradient(135deg,#FFF8E1,#FFECB3)',
+        border: '1.5px solid #FFB74D',
+        borderRadius: 14,
+        padding: '4px 10px 4px 12px',
+        fontSize: 12, fontWeight: 700, color: '#E65100',
+        position: 'relative',
+        animation: 'announcePulse 2.4s ease-in-out infinite',
+        boxShadow: '0 1px 4px rgba(230,81,0,.18)',
+        flexShrink: 1, minWidth: 0, maxWidth: 380,
+        cursor: 'default',
+      }}>
+      <span style={{flexShrink: 0}}>📣</span>
+      <span style={{overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600, color: '#5D4037', minWidth: 0}}>
+        <b style={{color:'#E65100',marginRight:4}}>{String(announce.user_id || '').slice(0, 6)}:</b>
+        {String(announce.body || '').replace(/\s+/g, ' ').slice(0, 80)}
+      </span>
+      <button onClick={dismiss} aria-label="공지 닫기"
+        style={{
+          flexShrink: 0, width: 18, height: 18, borderRadius: '50%',
+          border: 'none', background: 'rgba(230,81,0,.15)', color: '#E65100',
+          fontSize: 12, fontWeight: 900, lineHeight: 1, cursor: 'pointer', fontFamily: 'inherit',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+        }}
+        onMouseOver={e=>{e.currentTarget.style.background='rgba(230,81,0,.3)'}}
+        onMouseOut={e=>{e.currentTarget.style.background='rgba(230,81,0,.15)'}}>
+        ×
+      </button>
+    </div>
+  );
+}
+
 function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, currentUser, setPage, bizId, onMenuClick, bizName, pendingOpenRes, setPendingOpenRes, naverColShow={}, scraperStatus=null, setPendingChat, setPendingOpenCust, unreadMsgCount=0, unreadSample=[], previewBlockStyle=false }) {
   // 타임라인 블록 표시 항목 — App에서 prop으로 받음
   const effectiveNaverColShow = naverColShow;
@@ -252,42 +320,33 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   const [empSettings, setEmpSettings] = useState({});
   useEffect(() => {
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
-    const mergeEmps = (empVal, customVal) => {
+    const parseEmps = (empVal) => {
       const base = typeof empVal === 'string' ? JSON.parse(empVal) : (Array.isArray(empVal) ? empVal : []);
-      const custom = typeof customVal === 'string' ? JSON.parse(customVal) : (Array.isArray(customVal) ? customVal : []);
-      const ids = new Set(base.map(e => e.id));
-      const merged = [...base];
-      custom.forEach(e => { if (!ids.has(e.id)) { merged.push(e); ids.add(e.id); } });
-      // MALE_EMPLOYEES 하드코딩 제거 — 전 직원 employees_v1에 통합
-      return merged;
+      return base;
     };
     const parseSettings = (val) => {
       if (!val) return {};
       const v = typeof val === 'string' ? JSON.parse(val) : val;
       return (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
     };
-    // employees_v1 + customEmployees_v1 + empSettings_v1 동시 로드
+    // employees_v1 + empSettings_v1 동시 로드 (customEmployees_v1 폐기됨, 2026-05-01)
     Promise.all([
       fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.employees_v1&select=value`, { headers: H }).then(r => r.json()),
-      fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.customEmployees_v1&select=value`, { headers: H }).then(r => r.json()),
       fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.empSettings_v1&select=value`, { headers: H }).then(r => r.json()),
-    ]).then(([empRows, custRows, setRows]) => {
-      const empVal = empRows?.[0]?.value || [];
-      const custVal = custRows?.[0]?.value || [];
-      setEmpList(mergeEmps(empVal, custVal));
+    ]).then(([empRows, setRows]) => {
+      setEmpList(parseEmps(empRows?.[0]?.value || []));
       setEmpSettings(parseSettings(setRows?.[0]?.value));
     }).catch(() => {});
-    // Realtime 구독 (employees_v1 + customEmployees_v1 + empSettings_v1)
+    // Realtime 구독 (employees_v1 + empSettings_v1)
     let empCh = null;
     let empLastRt = 0;
     const reload = () => {
       Promise.all([
         fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.employees_v1&select=value`, { headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY } }).then(r => r.json()),
-        fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.customEmployees_v1&select=value`, { headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY } }).then(r => r.json()),
         fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.empSettings_v1&select=value`, { headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY } }).then(r => r.json()),
-      ]).then(([empRows, custRows, setRows]) => {
+      ]).then(([empRows, setRows]) => {
         empLastRt = Date.now();
-        setEmpList(mergeEmps(empRows?.[0]?.value || [], custRows?.[0]?.value || []));
+        setEmpList(parseEmps(empRows?.[0]?.value || []));
         setEmpSettings(parseSettings(setRows?.[0]?.value));
       }).catch(() => {});
     };
@@ -295,8 +354,6 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       empCh = window._sbClient.channel("employees_all_rt")
         .on("postgres_changes", { event:"UPDATE", schema:"public", table:"schedule_data", filter:"key=eq.employees_v1" }, reload)
         .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.employees_v1" }, reload)
-        .on("postgres_changes", { event:"UPDATE", schema:"public", table:"schedule_data", filter:"key=eq.customEmployees_v1" }, reload)
-        .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.customEmployees_v1" }, reload)
         .on("postgres_changes", { event:"UPDATE", schema:"public", table:"schedule_data", filter:"key=eq.empSettings_v1" }, reload)
         .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.empSettings_v1" }, reload)
         .subscribe();
@@ -567,6 +624,12 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     if (!ov || !ov.segments.length) return false;
     const emp = BASE_EMP_LIST.find(e=>e.id===empId);
     const baseBid = emp?.branch_id;
+    // ★ 종일 이동(from/until 모두 null) segment가 base가 아닌 지점에 있으면 home 전체 cover로 간주
+    // (segment의 normalize 시 wh가 그 지점 운영시간 기준이라 home 잔업시간과 안 맞을 수 있음 — 방어)
+    const hasFullDayMove = ov.segments.some(s =>
+      s.branchId !== baseBid && (s.from == null || s.from === '') && (s.until == null || s.until === '')
+    );
+    if (hasFullDayMove) return true;
     const baseHours = getEmpBaseHours(empId, date, baseBid);
     const segs = normalizeSegments(empId, date, ov.segments);
     // segs 중 baseBid에 해당하는 건 제외하고 나머지가 baseHours를 전부 커버?
@@ -760,6 +823,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       }
 
       // 원래 소속 지점이면 표시
+      // 자동이동(추측 기반) 로직 제거 — user 의도는 명시적 이동(지원(X) / empOverride exclusive)만 처리
+      // 단순히 다른 지점에 예약/메모 1건 있다고 home 칼럼 자동 제거하지 않음
       if (empInBranch(e.id, date, branchId)) {
         working.push(e);
       }
@@ -767,7 +832,11 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
 
     // 부분 미작성 병합: 이 지점 base emp 중 dayStatus도 오버라이드도 없는 직원은 빈 칼럼으로 표시
     // (오버라이드 있는 날 fallback이 스킵되면서 나머지 base emp가 사라지던 문제 보완)
+    // ★ 프리랜서/일회성 직원(isFreelancer=true)은 제외 — 명시적 schHistory entry 있을 때만 표시
     branchBaseEmps.forEach(e => {
+      if (e.isFreelancer) return; // 프리랜서는 그 날짜 schHistory entry 있을 때만
+      const empInfo = empList.find(x => x.id === e.id);
+      if (empInfo?.isFreelancer) return; // employees_v1 lookup도 체크
       const s = schHistory[e.id]?.[date];
       const ov = getEmpOverride(e.id, date);
       const hasSchedule = (s && s !== "") || (ov && ov.segments?.length);
@@ -788,8 +857,16 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     const branchTs = (data?.branches||[]).find(b=>b.id===branchId)?.timelineSettings;
     const branchHours = branchTs?.defaultWorkStart ? {start:branchTs.defaultWorkStart, end:branchTs.defaultWorkEnd||"21:00"}
       : branchTs?.openTime ? {start:branchTs.openTime, end:branchTs.closeTime||"21:00"} : null;
-    const wh = empWorkHours[empId+"_"+branchId+"_"+date] || empWorkHours[empId+"_"+branchId] || empWorkHours[empId+"_"+date] || empWorkHours[empId]
-      || branchHours;
+    const empWh = empWorkHours[empId+"_"+branchId+"_"+date] || empWorkHours[empId+"_"+branchId] || empWorkHours[empId+"_"+date] || empWorkHours[empId];
+    // 직원 근무시간 × 해당 지점 운영시간 교집합 (다른 지점에 컬럼 생긴 경우 그 지점 시간 우선)
+    let wh = empWh || branchHours;
+    if (empWh && branchHours && branchId !== baseBid) {
+      // 비-base 지점: 지점 운영시간으로 클립 (예: 다해 base=위례 06~21 → 잠실 컬럼은 11~21)
+      const start = empWh.start > branchHours.start ? empWh.start : branchHours.start;
+      const end   = empWh.end   < branchHours.end   ? empWh.end   : branchHours.end;
+      if (start < end) wh = { start, end };
+      else wh = branchHours; // 교집합 비면 지점 운영시간 사용
+    }
 
     if (!segs || !segs.length) return wh ? [{from: wh.start, until: wh.end}] : [{from: null, until: null}];
 
@@ -1418,16 +1495,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                 if (missing.length) recovered = true;
                 merged[bid] = [...newList, ...missing];
               });
-              // 복구가 있었으면 DB에 재저장 (다른 탭도 복구되게 전파)
-              if (recovered) {
-                try {
-                  const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
-                  fetch(`${SB_URL}/rest/v1/schedule_data`, {
-                    method: "POST", headers: H,
-                    body: JSON.stringify({ id: "empColOrder_v1", key: "empColOrder_v1", value: JSON.stringify(merged) })
-                  }).catch(()=>{});
-                } catch(e) {}
-              }
+              // 자동 복구 DB 재저장 제거 — empColOrder는 user 수동 변경만 (룰 변경)
               return merged;
             });
             empColOrderLoaded.current = true;
@@ -1523,17 +1591,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   // render 중 setState 금지 → 미시딩 대상은 모아뒀다가 effect에서 일괄 반영
   const pendingSeedRef = React.useRef({});
   const sortStaffByOrder = (staffList, branchId) => {
-    // 새 직원 id를 모아둔다 (기존 order 뒤에 append 예정)
-    if (staffList.length > 0) {
-      const existing = empColOrder[branchId] || [];
-      const existingSet = new Set(existing);
-      const newIds = staffList.map(e => e.id).filter(id => !existingSet.has(id));
-      if (newIds.length > 0) {
-        const bucket = pendingSeedRef.current[branchId] || new Set();
-        newIds.forEach(id => bucket.add(id));
-        pendingSeedRef.current[branchId] = bucket;
-      }
-    }
+    // empColOrder 자동 추가 제거 — user 수동 변경만 (룰: 코드는 순서 안 건드림)
+    // empColOrder에 없는 직원은 끝에 임시 표시 (그 일자만, DB는 변경 안 함)
     const order = empColOrder[branchId];
     if (!order || order.length === 0) return staffList;
     const sorted = [];
@@ -1541,32 +1600,13 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       const e = staffList.find(s => s.id === id);
       if (e) sorted.push(e);
     }
+    // empColOrder에 없는 직원 (예: 신규 타지점이동) — 끝에 추가
     for (const e of staffList) {
       if (!sorted.find(s => s.id === e.id)) sorted.push(e);
     }
     return sorted;
   };
-  // 렌더 완료 후 pending seed를 empColOrder에 반영
-  React.useEffect(() => {
-    const pending = pendingSeedRef.current;
-    const branches = Object.keys(pending);
-    if (!branches.length) return;
-    setEmpColOrder(prev => {
-      let changed = false;
-      const next = { ...prev };
-      branches.forEach(bid => {
-        const existing = next[bid] || [];
-        const existingSet = new Set(existing);
-        const toAdd = [...pending[bid]].filter(id => !existingSet.has(id));
-        if (toAdd.length) {
-          next[bid] = [...existing, ...toAdd];
-          changed = true;
-        }
-      });
-      pendingSeedRef.current = {};
-      return changed ? next : prev;
-    });
-  });
+  // pendingSeedRef effect 제거 — empColOrder 자동 갱신 X (룰)
 
   const allRooms = branchesToShow.flatMap((br, brIdx) => {
     const baseNaver = br.naverEmail ? (br.naverColCount || 1) : 0;
@@ -1588,11 +1628,11 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     const workingStaff = rawStaff ? sortStaffByOrder(rawStaff, br.id) : null;
     let staffRooms;
     if (workingStaff !== null) {
-      // 근무표 기반 — 휴무 필터
+      // 근무표 기반 — 휴무 필터만 (자동이동 추측 로직 제거 — 명시적 이동만 처리)
       const filteredStaff = workingStaff.filter(e => {
-        if (!schHistory) return true;
-        const ds = schHistory[e.id]?.[selDate];
-        return ds !== "휴무" && ds !== "휴무(꼭)" && ds !== "무급";
+        const ds = schHistory ? schHistory[e.id]?.[selDate] : null;
+        if (ds === "휴무" || ds === "휴무(꼭)" || ds === "무급") return false;
+        return true;
       });
       // 커스텀 순서가 있으면 그대로, 없으면 base→guest 순서
       const hasCustomOrder = empColOrder[br.id]?.length > 0;
@@ -1610,26 +1650,17 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         });
         orderedStaff = [...baseStaff, ...guestStaff];
       }
-      // 🧔 남자직원 항상 맨 뒤로 (DB empColOrder 무관) — 단, 그 날짜만 적용된 세션 override(sessionStorage)가 있으면 그것 우선
+      // 일자별 override (sessionStorage) — user가 그 날짜만 순서 변경한 경우 우선 적용
+      // 남직원 자동 정렬 제거 (룰: 타임라인 순서는 코드가 자동 변경 안 함)
       try {
         const dayKey = `bliss_day_order_${selDate}_${br.id}`;
         const raw = sessionStorage.getItem(dayKey);
         const dayOrder = raw ? JSON.parse(raw) : null;
         if (Array.isArray(dayOrder) && dayOrder.length > 0) {
-          // 세션 override 순서 우선 + order에 없는 직원은 뒤에
           const byId = new Map(orderedStaff.map(e => [e.id, e]));
           const pinned = dayOrder.map(id => byId.get(id)).filter(Boolean);
           const rest = orderedStaff.filter(e => !dayOrder.includes(e.id));
           orderedStaff = [...pinned, ...rest];
-        } else {
-          // 기본: 남직원 isMale → 맨 뒤
-          const isMaleEmp = (id) => {
-            const raw = empList.find(x => x.id === id);
-            return !!(raw?.isMale || raw?.gender === "M");
-          };
-          const nonMale = orderedStaff.filter(e => !isMaleEmp(e.id));
-          const male    = orderedStaff.filter(e =>  isMaleEmp(e.id));
-          orderedStaff = [...nonMale, ...male];
         }
       } catch(e) {}
       staffRooms = orderedStaff.map(e => {
@@ -2607,21 +2638,32 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           }
           // 🆕 자동 네이버 확정: 네이버 pending 예약을 직원 칼럼으로 이동 시 → API로 확정
           (() => {
-            const isPending = block.status === "pending" && !(block.memo && block.memo.includes("확정완료"));
-            const isNaverRes = !!block.reservationId && !String(block.reservationId).startsWith("ai_") && !String(block.reservationId).startsWith("manual_");
+            // 미배정 → 직원칸 이동 시 자동 reserved 처리
+            // - 네이버 예약 (status=pending/request, reservationId 일반): naverConfirmBooking + status=reserved
+            // - AI 예약 (status=request, reservationId가 ai*로 시작): API 호출 없이 status=reserved
+            const isPending = (block.status === "pending" || block.status === "request") && !(block.memo && block.memo.includes("확정완료"));
+            const ridStr = String(block.reservationId || "");
+            const isNaverRes = !!block.reservationId && !ridStr.startsWith("ai") && !ridStr.startsWith("manual_");
+            const isAiRes = ridStr.startsWith("ai_") || ridStr.startsWith("aibook_") || ridStr.startsWith("ai");
             const movedToStaff = !toNaverCol2 && !!movedStaffId;
-            if (!isPending || !isNaverRes || !movedToStaff) return;
-            const targetBranch = (data?.branches||[]).find(b => b.id === movedBid);
-            const bizId = targetBranch?.naverBizId;
-            if (!bizId) return;
-            naverConfirmBooking(bizId, block.reservationId).then(rr => {
-              if (rr.ok) {
-                setData(prev => ({...prev, reservations:(prev?.reservations||[]).map(x => x.id === block.id ? {...x, status:'reserved'} : x)}));
-                sb.update("reservations", block.id, {status:'reserved'}).catch(console.error);
-              } else {
-                console.warn('[auto naver-confirm] fail:', rr.msg || rr.error);
-              }
-            });
+            if (!isPending || !movedToStaff) return;
+            if (isNaverRes) {
+              const targetBranch = (data?.branches||[]).find(b => b.id === movedBid);
+              const bizId = targetBranch?.naverBizId;
+              if (!bizId) return;
+              naverConfirmBooking(bizId, block.reservationId).then(rr => {
+                if (rr.ok) {
+                  setData(prev => ({...prev, reservations:(prev?.reservations||[]).map(x => x.id === block.id ? {...x, status:'reserved'} : x)}));
+                  sb.update("reservations", block.id, {status:'reserved'}).catch(console.error);
+                } else {
+                  console.warn('[auto naver-confirm] fail:', rr.msg || rr.error);
+                }
+              });
+            } else if (isAiRes) {
+              // AI 예약: 외부 API 호출 없이 바로 reserved 변경
+              setData(prev => ({...prev, reservations:(prev?.reservations||[]).map(x => x.id === block.id ? {...x, status:'reserved'} : x)}));
+              sb.update("reservations", block.id, {status:'reserved'}).catch(console.error);
+            }
           })();
         }
       }
@@ -3116,6 +3158,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
             </button>;
           })}
         </div>
+        {/* 📣 팀채팅 공지 말풍선 — 7-day 버튼 오른쪽 빈 공간에 배치 */}
+        <TopAnnounceBubble/>
       </div>
 
 
@@ -3316,17 +3360,37 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                 // 항상 고유 id 생성 — 직원과 이름이 같아도 충돌 없게 (직원근무표/empSettings 격리)
                                 const newId = `fl_${nm}_${Date.now().toString(36)}`;
                                 const newEmp = {id: newId, name: nm, branch: schKey, isMale: false, isFreelancer: true};
-                                // customEmployees_v1에 추가
+                                // employees_v1에 추가 (customEmployees_v1 폐기됨)
                                 const H = {apikey:SB_KEY, Authorization:"Bearer "+SB_KEY, "Content-Type":"application/json", "Prefer":"resolution=merge-duplicates"};
                                 try {
-                                  const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.customEmployees_v1&select=value`, {headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY}});
+                                  const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.employees_v1&select=value`, {headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY}});
                                   const rows = await r.json();
-                                  const existing = typeof rows?.[0]?.value === 'string' ? JSON.parse(rows[0].value) : (Array.isArray(rows?.[0]?.value) ? rows[0].value : []);
+                                  const raw = rows?.[0]?.value;
+                                  const existing = typeof raw === 'string' ? JSON.parse(raw) : (Array.isArray(raw) ? raw : []);
                                   // 같은 이름의 프리랜서가 이미 같은 지점에 있으면 차단 (UI 혼란 방지)
                                   if (existing.some(e => e.isFreelancer && (e.name||e.id) === nm && e.branch === schKey)) { alert("같은 지점에 같은 이름의 프리랜서가 이미 있습니다."); return; }
                                   const updated = [...existing, newEmp];
-                                  await fetch(`${SB_URL}/rest/v1/schedule_data`, {method:"POST", headers:H, body:JSON.stringify({id:"customEmployees_v1",key:"customEmployees_v1",value:JSON.stringify(updated)})});
+                                  await fetch(`${SB_URL}/rest/v1/schedule_data`, {method:"POST", headers:H, body:JSON.stringify({id:"employees_v1",key:"employees_v1",value:JSON.stringify(updated)})});
                                   setEmpList(prev=>[...prev.filter(e=>e.id!==newEmp.id), newEmp]);
+                                  // ★ 그 날짜만 출근으로 schHistory에 등록 (다른 날짜는 표시 안 됨)
+                                  setSchHistory(prev => {
+                                    const next = {...(prev||{})};
+                                    if (!next[newId]) next[newId] = {};
+                                    next[newId] = {...next[newId], [selDate]: "근무"};
+                                    return next;
+                                  });
+                                  // schHistory_v1 DB 동기화 (월별 키 구조 유지)
+                                  try {
+                                    const monthKey = selDate.slice(0,7);
+                                    const schR = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.schHistory_v1&select=value`, {headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY}});
+                                    const schRows = await schR.json();
+                                    const schRaw = schRows?.[0]?.value;
+                                    const schObj = typeof schRaw === 'string' ? JSON.parse(schRaw) : (schRaw || {});
+                                    if (!schObj[monthKey]) schObj[monthKey] = {};
+                                    if (!schObj[monthKey][newId]) schObj[monthKey][newId] = {};
+                                    schObj[monthKey][newId][selDate] = "근무";
+                                    await fetch(`${SB_URL}/rest/v1/schedule_data`, {method:"POST", headers:H, body:JSON.stringify({id:"schHistory_v1",key:"schHistory_v1",value:JSON.stringify(schObj)})});
+                                  } catch(_e) { console.warn("schHistory 등록 실패:", _e); }
                                   setAddStaffPopup(null);
                                 } catch(e){console.error("프리랜서 추가 실패:",e);}
                               };
@@ -3419,10 +3483,14 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                         style={{width:16,height:16,padding:0,border:"none",background:"transparent",color:T.gray500,cursor:"pointer",fontSize:11,lineHeight:1,fontWeight:700,opacity:.55}}
                         onMouseEnter={e=>{e.currentTarget.style.opacity="1";e.currentTarget.style.color=T.primary;}}
                         onMouseLeave={e=>{e.currentTarget.style.opacity=".55";e.currentTarget.style.color=T.gray500;}}>◀</button>}
-                      <span className="tl-room-sub" style={{fontSize:14,fontWeight:800,color:room.hideName?T.gray400:T.text,fontStyle:room.hideName?"italic":"normal",cursor:"pointer"}}
-                        onClick={e=>{e.stopPropagation();setEmpMovePopup(p=>(p?.empId===room.staffId && p?.branchId===room.branch_id)?null:{empId:room.staffId,branchId:room.branch_id,date:selDate,x:e.clientX,y:e.clientY});}}>
-                        {room.hideName ? "(이동)" : room.name}
-                      </span>
+                      {(() => {
+                        const _isFreelancer = !!empList.find(e => e.id === room.staffId)?.isFreelancer;
+                        const _nameColor = room.hideName ? T.gray400 : (_isFreelancer ? "#4CAF50" : T.text);
+                        return <span className="tl-room-sub" style={{fontSize:14,fontWeight:800,color:_nameColor,fontStyle:room.hideName?"italic":"normal",cursor:"pointer"}}
+                          onClick={e=>{e.stopPropagation();setEmpMovePopup(p=>(p?.empId===room.staffId && p?.branchId===room.branch_id)?null:{empId:room.staffId,branchId:room.branch_id,date:selDate,x:e.clientX,y:e.clientY});}}>
+                          {room.hideName ? "(이동)" : room.name}
+                        </span>;
+                      })()}
                       {!room.hideName && <button title="오른쪽으로" onClick={e=>{e.stopPropagation();moveEmpCol(room.branch_id,room.staffId,1);}}
                         style={{width:16,height:16,padding:0,border:"none",background:"transparent",color:T.gray500,cursor:"pointer",fontSize:11,lineHeight:1,fontWeight:700,opacity:.55}}
                         onMouseEnter={e=>{e.currentTarget.style.opacity="1";e.currentTarget.style.color=T.primary;}}
@@ -3438,9 +3506,35 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             <div style={{fontSize:10,color:T.textMuted,marginBottom:4,fontWeight:700}}>근무시간</div>
                             {(()=>{
                               const whKey = room.staffId+"_"+room.branch_id+"_"+selDate;
-                              const savedWh = empWorkHours[whKey] || empWorkHours[room.staffId+"_"+room.branch_id] || (()=>{const bts=(data?.branches||[]).find(b=>b.id===room.branch_id)?.timelineSettings;return bts?.defaultWorkStart?{start:bts.defaultWorkStart,end:bts.defaultWorkEnd||"21:00"}:bts?.openTime?{start:bts.openTime,end:bts.closeTime||"21:00"}:null;})() || {start:"10:00",end:"21:00"};
+                              // 현재 컬럼 지점의 운영시간 (fallback용)
+                              const _bts = (data?.branches||[]).find(b=>b.id===room.branch_id)?.timelineSettings;
+                              const branchHours = _bts?.defaultWorkStart ? {start:_bts.defaultWorkStart, end:_bts.defaultWorkEnd||"21:00"}
+                                : _bts?.openTime ? {start:_bts.openTime, end:_bts.closeTime||"21:00"} : null;
+                              const _baseBid = BASE_EMP_LIST.find(e=>e.id===room.staffId)?.branch_id;
+                              // 1순위: 해당 직원+해당 지점에 직접 저장된 값 (그대로 사용)
+                              const explicitWh = empWorkHours[whKey] || empWorkHours[room.staffId+"_"+room.branch_id];
+                              // 2순위: 직원 base hours (날짜별 → 직원 default)
+                              const empBaseWh = empWorkHours[room.staffId+"_"+selDate] || empWorkHours[room.staffId];
+                              let savedWh;
+                              if (explicitWh) {
+                                savedWh = explicitWh;
+                              } else if (empBaseWh && branchHours && room.branch_id !== _baseBid) {
+                                // 비-base 지점이면 base hours를 지점 운영시간으로 클립
+                                const start = empBaseWh.start > branchHours.start ? empBaseWh.start : branchHours.start;
+                                const end   = empBaseWh.end   < branchHours.end   ? empBaseWh.end   : branchHours.end;
+                                savedWh = (start < end) ? { start, end } : branchHours;
+                              } else {
+                                savedWh = empBaseWh || branchHours || {start:"10:00",end:"21:00"};
+                              }
                               const wh = empMovePopup.draftWh || savedWh;
-                              const hours = Array.from({length:18*6},(_,i)=>{const h=Math.floor(i/6)+6,m=(i%6)*10;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;});
+                              // 드롭다운 범위: 영업시간(openTime/closeTime) 기준 — defaultWorkEnd가 아닌 closeTime을 상한선으로 (직원 잔업 가능)
+                              const _opTimes = (data?.branches||[]).find(b=>b.id===room.branch_id)?.timelineSettings;
+                              const _opStart = _opTimes?.openTime || branchHours?.start || "06:00";
+                              const _opEnd   = _opTimes?.closeTime || branchHours?.end || "23:00";
+                              const _openH = parseInt(_opStart.split(":")[0]);
+                              const _closeH = parseInt(_opEnd.split(":")[0]);
+                              const _spanH = Math.max(1, _closeH - _openH + 1); // closeH 정시까지 포함
+                              const hours = Array.from({length:_spanH*12},(_,i)=>{const h=Math.floor(i/12)+_openH,m=(i%12)*5;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;});
                               const selSt = {flex:1,fontSize:11,padding:"4px 3px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"};
 
                               // 종일 근무지 변경 — 체크박스 + 지점 select
@@ -3579,7 +3673,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             };
 
                             // 직원 이동 시간 단위: 10분
-                            const TIME_OPTS = Array.from({length:24*6},(_,i)=>{const h=Math.floor(i/6),m=(i%6)*10;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;}).filter(t=>{const hh=parseInt(t);return hh>=startHour&&hh<=endHour;});
+                            const TIME_OPTS = Array.from({length:24*12},(_,i)=>{const h=Math.floor(i/12),m=(i%12)*5;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;}).filter(t=>{const hh=parseInt(t);return hh>=startHour&&hh<=endHour;});
                             // segment 변경 → 시간순 정렬 후 다음 segment의 from을 until로 자동 chain (드래프트만)
                             const updateSeg = (branchId, field, value) => {
                               let newSegs = segs.map(s => s.branchId === branchId ? {...s, [field]: value || null} : s);
@@ -4017,13 +4111,14 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                 if (!confirm(`"${room.staffId}" 프리랜서 컬럼을 삭제할까요?\n(모든 지점/날짜에서 제거됩니다)`)) return;
                                 const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
                                 try {
-                                  const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.customEmployees_v1&select=value`, { headers: H });
+                                  const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.employees_v1&select=value`, { headers: H });
                                   const rows = await r.json();
-                                  const existing = typeof rows?.[0]?.value === "string" ? JSON.parse(rows[0].value) : (Array.isArray(rows?.[0]?.value) ? rows[0].value : []);
+                                  const raw = rows?.[0]?.value;
+                                  const existing = typeof raw === "string" ? JSON.parse(raw) : (Array.isArray(raw) ? raw : []);
                                   const filtered = existing.filter(x => x.id !== room.staffId);
                                   await fetch(`${SB_URL}/rest/v1/schedule_data`, {
                                     method: "POST", headers: H,
-                                    body: JSON.stringify({ id: "customEmployees_v1", key: "customEmployees_v1", value: JSON.stringify(filtered) })
+                                    body: JSON.stringify({ id: "employees_v1", key: "employees_v1", value: JSON.stringify(filtered) })
                                   });
                                   setEmpList(prev => prev.filter(x => x.id !== room.staffId));
                                   setEmpMovePopup(null);
@@ -4067,13 +4162,14 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             if (!confirm(`"${room.staffId}" 컬럼을 삭제할까요?\n(이 지점의 모든 날짜에서 제거됩니다)`)) return;
                             const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
                             try {
-                              const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.customEmployees_v1&select=value`, { headers: H });
+                              const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.employees_v1&select=value`, { headers: H });
                               const rows = await r.json();
-                              const existing = typeof rows?.[0]?.value === "string" ? JSON.parse(rows[0].value) : (Array.isArray(rows?.[0]?.value) ? rows[0].value : []);
+                              const raw = rows?.[0]?.value;
+                              const existing = typeof raw === "string" ? JSON.parse(raw) : (Array.isArray(raw) ? raw : []);
                               const filtered = existing.filter(x => x.id !== room.staffId);
                               await fetch(`${SB_URL}/rest/v1/schedule_data`, {
                                 method: "POST", headers: H,
-                                body: JSON.stringify({ id: "customEmployees_v1", key: "customEmployees_v1", value: JSON.stringify(filtered) })
+                                body: JSON.stringify({ id: "employees_v1", key: "employees_v1", value: JSON.stringify(filtered) })
                               });
                               setEmpList(prev => prev.filter(x => x.id !== room.staffId));
                             } catch (err) { console.error("삭제 실패:", err); alert("삭제 실패: " + err.message); }
@@ -4507,9 +4603,13 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                                 const g = block.custGender || liveCust?.gender || "";
                                 const displayName = liveCust?.name || block.custName;
                                 const custNum = liveCust?.custNum || liveCust?.cust_num || "";
+                                const _cp = Number(liveCust?.cancelPenaltyCount || 0);
+                                const _ns = Number(liveCust?.noShowCount || 0);
+                                const isCaution = _cp >= 3 || _ns >= 1;
                                 return <>
                                   {g ? <span style={{color:g==="M"?T.male:T.female}}>{g==="M"?"남":"여"}</span> : null} {displayName}
                                   {custNum && <span style={{marginLeft:3,fontSize:Math.max(7,blockFs-2),color:T.text,fontWeight:T.fw.bold,fontFamily:"monospace"}}>#{custNum}</span>}
+                                  {isCaution && <span title={`페널티 취소 ${_cp}회 / 노쇼 ${_ns}회`} style={{marginLeft:3,fontSize:Math.max(8,blockFs-1)}}>⚠️</span>}
                                 </>;
                               })()}
                             </span>

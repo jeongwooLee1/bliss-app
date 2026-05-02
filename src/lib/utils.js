@@ -35,6 +35,47 @@ export const TTL = {
   TAB: 24 * 60 * 60 * 1000,       // 24시간 — 탭 선택, 확장 상태
 }
 
+// ── 고객 행동 페널티 판정 ─────────────────────────────────────
+// 페널티 = 예약일 전일 21:00 ~ 예약 시각까지 사이에 취소·변경
+// 예외: 당일 예약 + 예약 생성 후 1시간 이내 취소·변경은 카운트 안 함 (실수 보호)
+//
+// resvDate: "YYYY-MM-DD", resvTime: "HH:MM" (예약 일시)
+// resvCreatedAt: ISO string (예약 row의 created_at)
+// nowDate: Date (취소·변경 시점, 보통 new Date())
+// 반환: 'penalty' | 'normal' | 'grace' (1시간 이내 면제)
+export function judgePenaltyType(resvDate, resvTime, resvCreatedAt, nowDate) {
+  if (!resvDate || !resvTime) return 'normal'
+  const now = nowDate || new Date()
+  // 예약 시각 (KST 기준)
+  const [yy, mm, dd] = String(resvDate).split('-').map(Number)
+  const [hh, mi] = String(resvTime).split(':').map(Number)
+  const resvAt = new Date(yy, mm - 1, dd, hh || 0, mi || 0)
+  // 예약일 전일 21:00 (KST)
+  const penaltyStart = new Date(yy, mm - 1, dd, 21, 0)
+  penaltyStart.setDate(penaltyStart.getDate() - 1)
+  // 1시간 이내 면제 — 예약 생성 후 1시간 이내 취소·변경
+  if (resvCreatedAt) {
+    const created = new Date(resvCreatedAt)
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
+    const isSameDayBooking = todayStr === resvDate
+    const within1h = (now.getTime() - created.getTime()) < 60 * 60 * 1000
+    if (isSameDayBooking && within1h) return 'grace'
+  }
+  // 페널티 구간: 전일 21:00 ~ 예약 시각
+  if (now >= penaltyStart && now < resvAt) return 'penalty'
+  return 'normal'
+}
+
+// 고객 등급 판정 — 페널티 취소 3+ 또는 노쇼 1+ → 주의
+// 반환: 'caution' | 'normal'
+export function customerGrade(custOrCounts) {
+  if (!custOrCounts) return 'normal'
+  const cancelCnt = Number(custOrCounts.cancelPenaltyCount || custOrCounts.cancel_penalty_count || 0)
+  const noShowCnt = Number(custOrCounts.noShowCount || custOrCounts.no_show_count || 0)
+  if (cancelCnt >= 3 || noShowCnt >= 1) return 'caution'
+  return 'normal'
+}
+
 // ── 스크롤 위치 자동 저장/복원 ──
 // key만 주면 새 ref 리턴. externalRef 주면 기존 ref에 훅 부착만 (ref 그대로 리턴)
 export function useScrollRestore(key, externalRef) {

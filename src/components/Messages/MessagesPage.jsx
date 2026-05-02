@@ -255,6 +255,43 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     return m;
   },[chatResMap, data?.customers]);
 
+  // 채팅방 열렸을 때 lazy fetch — chatCustMap에 없는 (channel,user_id)는 서버에서 sns_accounts 기준 직접 조회
+  // 페이지네이션 limit=100에 안 걸린 신규 고객도 자동 연결됨
+  const [lazyCustMap, setLazyCustMap] = useState({}); // {`${channel}_${user_id}`: customer}
+  useEffect(() => {
+    if (!sel) return;
+    const key = `${sel.channel}_${sel.user_id}`;
+    if (chatCustMap[key]) return; // 이미 매칭됨
+    if (lazyCustMap[key]) return; // 이미 lazy fetch 시도됨
+    let cancelled = false;
+    (async () => {
+      try {
+        // sns_accounts에 channel + user_id 들어있는 고객 검색 (jsonb @> 연산자)
+        const filter = encodeURIComponent(`[{"channel":"${sel.channel}","user_id":"${sel.user_id}"}]`);
+        const rows = await sb.get('customers', `&business_id=eq.${data?.business?.id||'biz_khvurgshb'}&sns_accounts=cs.${filter}&limit=1`);
+        if (cancelled) return;
+        if (Array.isArray(rows) && rows.length > 0) {
+          const c = fromDb('customers', rows)[0];
+          if (c) {
+            setLazyCustMap(prev => ({ ...prev, [key]: c }));
+            // data.customers에도 추가 (모달·예약 매칭에서 활용)
+            if (typeof setData === 'function') {
+              setData(prev => {
+                if (!prev) return prev;
+                const list = prev.customers || [];
+                if (list.find(x => x.id === c.id)) return prev;
+                return { ...prev, customers: [...list, c] };
+              });
+            }
+          }
+        }
+      } catch (e) { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [sel?.channel, sel?.user_id]);
+  // chatCustMap에 lazy 매칭 결과 합치기
+  const chatCustMapFull = useMemo(() => ({ ...chatCustMap, ...lazyCustMap }), [chatCustMap, lazyCustMap]);
+
   // 채팅 → 가장 최근 예약 (chatResMap 우선 → 없으면 고객 cust_id로 최근 active 예약)
   const chatLatestRes = useMemo(()=>{
     const m={};
@@ -262,14 +299,14 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     // 1순위: chatResMap (chat 정보가 직접 박힌 예약)
     Object.entries(chatResMap).forEach(([k, r]) => { m[k] = r; });
     // 2순위: 고객 매칭으로 최근 예약 찾기
-    Object.entries(chatCustMap).forEach(([k, cust])=>{
+    Object.entries(chatCustMapFull).forEach(([k, cust])=>{
       if (m[k]) return;
       const list = (data?.reservations||[]).filter(r => r.custId === cust.id && !SKIP.includes(r.status))
         .sort((a,b) => ((b.date||"")+(b.time||"")).localeCompare((a.date||"")+(a.time||"")));
       if (list[0]) m[k] = list[0];
     });
     return m;
-  },[chatResMap, chatCustMap, data?.reservations]);
+  },[chatResMap, chatCustMapFull, data?.reservations]);
 
   const threads = useMemo(()=>{
     const map = {};
@@ -495,7 +532,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   // 고객 연결 해제 — sns_accounts에서 현재 채팅방의 (channel, user_id) 항목 제거
   const unlinkCustomer = async () => {
     if (!sel) return;
-    const cust = chatCustMap[sel.channel + "_" + sel.user_id];
+    const cust = chatCustMapFull[sel.channel + "_" + sel.user_id];
     if (!cust?.id) return;
     if (!confirm(`이 대화방에서 [${cust.name}] 고객 연결을 해제할까요?\n\n해제 후 다른 고객으로 다시 연결할 수 있습니다.`)) return;
     const ch = sel.channel || "naver";
@@ -626,10 +663,16 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     if(!key){alert("AI API 키가 설정되지 않았습니다. 관리설정에서 Gemini 키를 입력하세요.");return;}
     setAiLoading(true); setAiKoDraft("");
     try{
-      const lastIn=[...convo].reverse().find(m=>m.direction==="in");
-      const hasKo=lastIn?/[가-힣]/.test(lastIn.message_text):true;
-      const langName=hasKo?"한국어":"영어";
-      const lastMsgs=convo.slice(-6).map(m=>(m.direction==="in"?"고객":"직원")+": "+m.message_text).join("\n");
+      // 첫 고객 메시지 언어 기준 고정 — 대화 도중 한국어 단어 섞여도 첫 메시지 언어 유지
+      const inMsgs = convo.filter(m=>m.direction==="in"&&m.message_text&&!String(m.message_text).startsWith("[미디어]"));
+      const firstIn = inMsgs[0];
+      const sampleText = (firstIn?.message_text || "").slice(0, 200);
+      const koChars = (sampleText.match(/[가-힣]/g)||[]).length;
+      const enChars = (sampleText.match(/[a-zA-Z]/g)||[]).length;
+      const langName = koChars >= enChars ? "한국어" : "영어";
+      // [미디어]·reaction 제외하고 최근 6개
+      const lastMsgs=convo.filter(m=>m.message_text&&!String(m.message_text).startsWith("[미디어]")&&!String(m.message_text).startsWith("[reaction]"))
+        .slice(-6).map(m=>(m.direction==="in"?"고객":"직원")+": "+m.message_text).join("\n");
 
       // 사용자가 AI 설정에 등록한 프롬프트
       const chatPrompt = window.__aiChatPrompt || localStorage.getItem("bliss_ai_chat_prompt") || "";
@@ -713,6 +756,25 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         return;
       }
       if(dd.booked){
+        // 신규 고객 즉시 캐시 반영 — 새로고침 없이 👤 배지가 바로 뜨도록
+        // (직원 수동 [🤖 예약]은 status=reserved로 저장됨, AI 자동응대는 status=request 유지)
+        if (dd.cust_id && setData) {
+          try {
+            const newCust = await sb.get('customers', dd.cust_id);
+            if (newCust && newCust.id) {
+              setData(prev => {
+                const list = prev?.customers || [];
+                const exists = list.some(c => c.id === newCust.id);
+                return {
+                  ...prev,
+                  customers: exists
+                    ? list.map(c => c.id === newCust.id ? newCust : c)
+                    : [...list, newCust]
+                };
+              });
+            }
+          } catch(e) { console.warn("[aiBook] cust refresh err", e); }
+        }
         alert("✅ 예약이 미배정으로 생성됐습니다.\n\n대화 헤더의 📅 버튼으로 확인/배정하세요.");
       }else{
         // AI가 ask_info로 반환 — AI가 어떤 정보를 더 필요하다고 판단했는지 그대로 노출
@@ -887,10 +949,10 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         <div style={{flex:1,minWidth:0,position:"relative"}}>
           <div style={{fontWeight:T.fw.bolder,fontSize:forceCompact?12:16,display:"flex",alignItems:"center",gap:4,flexWrap:"nowrap",overflow:"hidden"}}>
             <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{(sel?.channel!=="whatsapp"&&branchName(convo[0]))?branchName(convo[0])+" · ":""}{getDisplayName(convo[0]||{user_id:sel.user_id})}</span>
-            {(()=>{ const cust = chatCustMap[sel.channel+"_"+sel.user_id]; if(cust) return <span style={{display:"inline-flex",alignItems:"center",gap:2,fontSize:forceCompact?9:11,fontWeight:700,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary+"40",borderRadius:6,padding:"1px 5px",whiteSpace:"nowrap",flexShrink:0}}>👤 {cust.name}{cust.custNum?` #${cust.custNum}`:""}<button onClick={unlinkCustomer} title="고객 연결 해제" style={{marginLeft:2,background:"none",border:"none",padding:"0 2px",fontSize:11,fontWeight:900,color:T.textMuted,cursor:"pointer",lineHeight:1,fontFamily:"inherit"}}>×</button></span>; return <button onClick={()=>setLinkPickerOpen(v=>!v)} style={{fontSize:forceCompact?9:10,fontWeight:800,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary,borderRadius:6,padding:"2px 7px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0}}>🔗 연결</button>; })()}
+            {(()=>{ const cust = chatCustMapFull[sel.channel+"_"+sel.user_id]; if(cust) return <span style={{display:"inline-flex",alignItems:"center",gap:2,fontSize:forceCompact?9:11,fontWeight:700,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary+"40",borderRadius:6,padding:"1px 5px",whiteSpace:"nowrap",flexShrink:0}}>👤 {cust.name}{cust.custNum?` #${cust.custNum}`:""}<button onClick={unlinkCustomer} title="고객 연결 해제" style={{marginLeft:2,background:"none",border:"none",padding:"0 2px",fontSize:11,fontWeight:900,color:T.textMuted,cursor:"pointer",lineHeight:1,fontFamily:"inherit"}}>×</button></span>; return <button onClick={()=>setLinkPickerOpen(v=>!v)} style={{fontSize:forceCompact?9:10,fontWeight:800,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary,borderRadius:6,padding:"2px 7px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0}}>🔗 연결</button>; })()}
           </div>
-          <div style={{fontSize:forceCompact?10:12,color:T.textSub,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{CH_NAME[sel.channel]||sel.channel}{(()=>{ const ph=convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone||(sel.channel==="whatsapp"&&sel.user_id?(sel.user_id.startsWith("82")?"0"+sel.user_id.slice(2):sel.user_id):""); return ph?" · "+ph:""; })()}{(()=>{ const cust = chatCustMap[sel.channel+"_"+sel.user_id]; if(!cust?.phone) return null; return " · "+cust.phone; })()}</div>
-          {linkPickerOpen && !chatCustMap[sel.channel+"_"+sel.user_id] && (
+          <div style={{fontSize:forceCompact?10:12,color:T.textSub,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{CH_NAME[sel.channel]||sel.channel}{(()=>{ const ph=convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone||(sel.channel==="whatsapp"&&sel.user_id?(sel.user_id.startsWith("82")?"0"+sel.user_id.slice(2):sel.user_id):""); return ph?" · "+ph:""; })()}{(()=>{ const cust = chatCustMapFull[sel.channel+"_"+sel.user_id]; if(!cust?.phone) return null; return " · "+cust.phone; })()}</div>
+          {linkPickerOpen && !chatCustMapFull[sel.channel+"_"+sel.user_id] && (
             <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:50,background:"#fff",border:"1px solid "+T.border,borderRadius:8,boxShadow:"0 4px 20px rgba(0,0,0,.15)",padding:8,width:280}}>
               <input autoFocus value={linkSearch} onChange={e=>setLinkSearch(e.target.value)} placeholder="이름·전화·이메일·번호 검색"
                 style={{width:"100%",padding:"6px 10px",fontSize:12,border:"1px solid "+T.border,borderRadius:6,fontFamily:"inherit",boxSizing:"border-box"}}/>
@@ -1072,10 +1134,10 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             <div style={{flex:1,minWidth:0,position:"relative"}}>
               <div style={{fontWeight:T.fw.bolder,fontSize:T.fs.sm,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                 <span>{(sel?.channel!=="whatsapp"&&branchName(convo[0]))?branchName(convo[0])+" · ":""}{getDisplayName(convo[0]||{user_id:sel.user_id})}</span>
-                {(()=>{ const cust = chatCustMap[sel.channel+"_"+sel.user_id]; if(cust) return <span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:11,fontWeight:700,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary+"40",borderRadius:6,padding:"2px 6px",whiteSpace:"nowrap"}} title={cust.phone||""}>👤 {cust.name}{cust.custNum?` #${cust.custNum}`:""}<button onClick={unlinkCustomer} title="고객 연결 해제" style={{marginLeft:2,background:"none",border:"none",padding:"0 2px",fontSize:12,fontWeight:900,color:T.textMuted,cursor:"pointer",lineHeight:1,fontFamily:"inherit"}}>×</button></span>; return <button onClick={()=>setLinkPickerOpen(v=>!v)} style={{fontSize:10,fontWeight:700,color:T.textMuted,background:"#fff",border:"1px dashed "+T.gray400,borderRadius:6,padding:"2px 6px",cursor:"pointer",fontFamily:"inherit"}}>🔗 고객 연결</button>; })()}
+                {(()=>{ const cust = chatCustMapFull[sel.channel+"_"+sel.user_id]; if(cust) return <span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:11,fontWeight:700,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary+"40",borderRadius:6,padding:"2px 6px",whiteSpace:"nowrap"}} title={cust.phone||""}>👤 {cust.name}{cust.custNum?` #${cust.custNum}`:""}<button onClick={unlinkCustomer} title="고객 연결 해제" style={{marginLeft:2,background:"none",border:"none",padding:"0 2px",fontSize:12,fontWeight:900,color:T.textMuted,cursor:"pointer",lineHeight:1,fontFamily:"inherit"}}>×</button></span>; return <button onClick={()=>setLinkPickerOpen(v=>!v)} style={{fontSize:10,fontWeight:700,color:T.textMuted,background:"#fff",border:"1px dashed "+T.gray400,borderRadius:6,padding:"2px 6px",cursor:"pointer",fontFamily:"inherit"}}>🔗 고객 연결</button>; })()}
               </div>
-              <div style={{fontSize:T.fs.xs,color:T.textMuted}}>{CH_NAME[sel.channel]||sel.channel}{(()=>{ const ph=convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone||(sel.channel==="whatsapp"&&sel.user_id?(sel.user_id.startsWith("82")?"0"+sel.user_id.slice(2):sel.user_id):""); return ph?" · "+ph:""; })()}{(()=>{ const cust = chatCustMap[sel.channel+"_"+sel.user_id]; if(!cust?.phone) return null; return " · "+cust.phone; })()}</div>
-              {linkPickerOpen && !chatCustMap[sel.channel+"_"+sel.user_id] && (
+              <div style={{fontSize:T.fs.xs,color:T.textMuted}}>{CH_NAME[sel.channel]||sel.channel}{(()=>{ const ph=convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone||(sel.channel==="whatsapp"&&sel.user_id?(sel.user_id.startsWith("82")?"0"+sel.user_id.slice(2):sel.user_id):""); return ph?" · "+ph:""; })()}{(()=>{ const cust = chatCustMapFull[sel.channel+"_"+sel.user_id]; if(!cust?.phone) return null; return " · "+cust.phone; })()}</div>
+              {linkPickerOpen && !chatCustMapFull[sel.channel+"_"+sel.user_id] && (
                 <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:50,background:"#fff",border:"1px solid "+T.border,borderRadius:8,boxShadow:"0 4px 20px rgba(0,0,0,.15)",padding:8,width:300}}>
                   <input autoFocus value={linkSearch} onChange={e=>setLinkSearch(e.target.value)} placeholder="이름·전화·이메일·번호 검색"
                     style={{width:"100%",padding:"6px 10px",fontSize:12,border:"1px solid "+T.border,borderRadius:6,fontFamily:"inherit",boxSizing:"border-box"}}/>

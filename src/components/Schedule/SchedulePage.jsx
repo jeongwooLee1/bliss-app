@@ -38,7 +38,7 @@ export default function SchedulePage({ employees: propEmps }) {
     ? supportOrderRaw
     : (Array.isArray(supportOrderRaw) ? supportOrderRaw : {})
   const { data:maleRotation, save:saveMaleRotation } = useScheduleData(DB_KEYS.maleRotation, {})
-  const { data:customEmployees, setData:setCustomEmployees, save:saveCustomEmployees } = useScheduleData(DB_KEYS.customEmployees, [])
+  // customEmployees_v1 폐기됨 (2026-05-01) — employees_v1로 통합
   const { data:deletedEmpIdsArr, setData:setDeletedEmpIdsArr, save:saveDeletedEmpIds } = useScheduleData(DB_KEYS.deletedEmpIds, [])
 
   const deletedEmpIds = useMemo(() => new Set(deletedEmpIdsArr || []), [deletedEmpIdsArr])
@@ -160,24 +160,19 @@ export default function SchedulePage({ employees: propEmps }) {
     }
   }
 
-  // empSettings: stored inside customEmployees_v1 as object form
+  // empSettings: 직원별 근무 설정 (employees_v1 기반)
   const [empSettings, setEmpSettings] = useState({})
   useEffect(() => {
-    // Initialize empSettings from baseEmployees + customEmployees
     // 프리랜서는 타임라인 컬럼 전용이므로 empSettings에 포함하지 않음
     const base = {}
     ;(baseEmployees || []).forEach(e => {
       if (e.isFreelancer) return
       base[e.id] = { weeklyWork:7-(e.weeklyOff||2), altPattern:false, isFreelancer:false }
     })
-    ;(customEmployees || []).forEach(e => {
-      if (e.isFreelancer) return
-      if (!base[e.id]) base[e.id] = { weeklyWork:7-(e.weeklyOff||2), altPattern:false, isFreelancer:false }
-    })
     setEmpSettings(prev => ({ ...base, ...prev }))
-  }, [baseEmployees, customEmployees])
+  }, [baseEmployees])
 
-  // Load empSettings from DB — try empSettings_v1 first, fallback to customEmployees_v1 (legacy)
+  // Load empSettings from DB (empSettings_v1)
   // + Realtime 구독: 다른 PC에서 변경 시 자동 반영
   useEffect(() => {
     let cancelled = false
@@ -187,15 +182,6 @@ export default function SchedulePage({ employees: propEmps }) {
       if (d1?.value) {
         const val = typeof d1.value === 'string' ? JSON.parse(d1.value) : d1.value
         if (typeof val === 'object' && !Array.isArray(val)) {
-          setEmpSettings(prev => ({ ...prev, ...val }))
-          return
-        }
-      }
-      const { data: d2 } = await supabase.from('schedule_data').select('value').eq('key', DB_KEYS.customEmployees).single()
-      if (cancelled) return
-      if (d2?.value) {
-        const val = typeof d2.value === 'string' ? JSON.parse(d2.value) : d2.value
-        if (!Array.isArray(val) && typeof val === 'object') {
           setEmpSettings(prev => ({ ...prev, ...val }))
         }
       }
@@ -336,14 +322,8 @@ export default function SchedulePage({ employees: propEmps }) {
 
   const toast_ = (msg, type='ok') => { setToast({ msg, type }); setTimeout(() => setToast(null), 2500) }
 
-  // ALL employees — 프리랜서는 타임라인 컬럼 전용이므로 직원근무표 시스템에서 완전 제외
-  const ALL_EMPLOYEES = useMemo(() => {
-    const base = [...(baseEmployees || [])]
-    const custom = Array.isArray(customEmployees) ? customEmployees : []
-    const existing = new Set(base.map(e => e.id))
-    const merged = [...base, ...custom.filter(e => !existing.has(e.id) && !e.isFreelancer)]
-    return merged
-  }, [baseEmployees, customEmployees])
+  // ALL employees — employees_v1 단일 소스 (customEmployees_v1 폐기됨)
+  const ALL_EMPLOYEES = useMemo(() => baseEmployees || [], [baseEmployees])
 
   // 프리랜서는 직원근무표에서 아예 표시 제외 (autoAssign에서도 제외되므로 표에 둘 이유 없음)
   const ACTIVE_EMPLOYEES = useMemo(() => ALL_EMPLOYEES.filter(e =>
@@ -493,18 +473,19 @@ export default function SchedulePage({ employees: propEmps }) {
           empReqs: empReqs,
           ownerRepeat: ownerRepeat,
           maleRotation: maleRotation,
-          customEmployees: customEmployees,
           deletedEmpIds: Array.from(deletedEmpIds || []),
           employees: baseEmployees,
         }
-        const prev = snapshots || {}
-        const history = (prev._settings || []).slice(-4) // 최신 5개만 유지 (정책)
-        const next = { ...prev, _settings: [...history, settingsSnap] }
-        saveSnapshots(next)
+        // functional updater — stale closure 방지 (항상 최신 snapshots 위에 누적)
+        saveSnapshots(prev => {
+          const base = prev || {}
+          const history = (base._settings || []).slice(-19)  // 최신 20개 유지
+          return { ...base, _settings: [...history, settingsSnap] }
+        })
       } catch (e) { console.warn('settings backup error:', e) }
     }, 8000)
     return () => clearTimeout(settingsBackupTimerRef.current)
-  }, [ruleConfig, empSettings, ownerReqs, empReqs, ownerRepeat, maleRotation, customEmployees, deletedEmpIds, baseEmployees])
+  }, [ruleConfig, empSettings, ownerReqs, empReqs, ownerRepeat, maleRotation, deletedEmpIds, baseEmployees])
 
   // Daily count — 인턴은 카운트 제외
   const dailyCount = (ds) => ALL_EMPLOYEES.filter(e => {
@@ -603,6 +584,16 @@ export default function SchedulePage({ employees: propEmps }) {
   // Auto assign
   const handleAutoAssign = async () => {
     if (isAssigning || isConfirmed) return
+    // 🛡 자동 배치 직전 schHistory 백업 — 실수로 누른 경우 복구 가능
+    try {
+      const beforeSnap = { ts: new Date().toISOString(), data: { ...(schHistory[curKey]||{}) }, type: 'before_auto_assign' }
+      // functional updater — stale closure 방지
+      saveSnapshots(prev => {
+        const base = prev || {}
+        const monthSnaps = [...(base[curKey] || []), beforeSnap].slice(-20)  // 확정 + 자동배치 직전 합산 20개
+        return { ...base, [curKey]: monthSnaps }
+      })
+    } catch(e) { console.warn('자동배치 백업 실패:', e) }
     setIsAssigning(true)
 
     // Refresh reqs from DB
@@ -734,36 +725,28 @@ export default function SchedulePage({ employees: propEmps }) {
       setIsConfirmed(true); setLockedDates(new Set(newLocked))
       lockStatusRef.current = { ...lockStatusRef.current, [curKey]:{ confirmed:true, lockedDates:newLocked } }
       saveLockStatus(lockStatusRef.current)
-      // 스냅샷 저장 (월별 최신 5개만 유지)
-      const snapshot = { ts:new Date().toISOString(), data:{ ...sch } }
-      const prev = snapshots || {}
-      const monthSnapshots = [...(prev[curKey] || []), snapshot].slice(-5)
-      const next = { ...prev, [curKey]:monthSnapshots }
-      saveSnapshots(next)
+      // 스냅샷 저장 — functional updater + 월별 최신 20개 유지 (확정 + 자동배치 직전 합산)
+      const snapshot = { ts:new Date().toISOString(), data:{ ...sch }, type:'confirm' }
+      saveSnapshots(prev => {
+        const base = prev || {}
+        const monthSnapshots = [...(base[curKey] || []), snapshot].slice(-20)
+        return { ...base, [curKey]:monthSnapshots }
+      })
       toast_('✅ 배치가 확정되었습니다')
     }
   }
 
-  // Delete employee
+  // Delete employee — soft delete via deletedEmpIds (ALL_EMPLOYEES filter에서 제외됨)
   const handleDeleteEmp = (empId) => {
-    const custom = Array.isArray(customEmployees) ? customEmployees : []
-    if (custom.some(ce => ce.id === empId)) {
-      const next = custom.filter(ce => ce.id !== empId)
-      setCustomEmployees(next)
-      saveCustomEmployees(next)
-    } else {
-      const next = [...(deletedEmpIdsArr||[]), empId]
-      setDeletedEmpIdsArr(next)
-      saveDeletedEmpIds(next)
-    }
+    const next = [...(deletedEmpIdsArr||[]), empId]
+    setDeletedEmpIdsArr(next)
+    saveDeletedEmpIds(next)
   }
 
-  // Add employee
+  // Add employee — employees_v1 (baseEmployees)에 직접 추가
   const handleAddEmp = (emp) => {
-    const custom = Array.isArray(customEmployees) ? customEmployees : []
-    const next = [...custom, emp]
-    setCustomEmployees(next)
-    saveCustomEmployees(next)
+    const updated = [...(baseEmployees || []), emp]
+    saveEmployees(updated)
     onSetEmpSetting(emp.id, 'weeklyWork', 7-emp.weeklyOff)
     onSetEmpSetting(emp.id, 'altPattern', false)
     onSetEmpSetting(emp.id, 'isFreelancer', emp.isFreelancer||false)
@@ -814,7 +797,7 @@ export default function SchedulePage({ employees: propEmps }) {
         onDeleteTagDef={deleteCellTagDef}/>}
       {showBulkModal && selectedCells.size > 0 && <BulkEditModal selectedCells={selectedCells} onSet={setS} onClose={(st) => { setShowBulkModal(false); setSelectedCells(new Set()); if (st) toast_(`✅ ${selectedCells.size}개 셀 → ${st}`) }}/>}
       {showRuleConfig && <RuleConfigModal ruleConfig={ruleConfig} allEmployees={ALL_EMPLOYEES} empSettings={empSettings} onSetRule={onSetRule} onClose={() => setShowRuleConfig(false)}/>}
-      {showEmpSettings && <EmpSettingsModal allEmployees={ALL_EMPLOYEES} empSettings={empSettings} customEmployees={customEmployees} deletedEmpIds={deletedEmpIds} maleRotation={maleRotation||{}} onSetEmpSetting={onSetEmpSetting} onAddEmp={handleAddEmp} onDeleteEmp={handleDeleteEmp} onSaveMaleRotation={saveMaleRotation} onUpdateEmp={(empId, key, value) => {
+      {showEmpSettings && <EmpSettingsModal allEmployees={ALL_EMPLOYEES} empSettings={empSettings} deletedEmpIds={deletedEmpIds} maleRotation={maleRotation||{}} onSetEmpSetting={onSetEmpSetting} onAddEmp={handleAddEmp} onDeleteEmp={handleDeleteEmp} onSaveMaleRotation={saveMaleRotation} onUpdateEmp={(empId, key, value) => {
         const updated = baseEmployees.map(e => {
           if (e.id !== empId) return e;
           // 여러 필드 동시 업데이트 (예: 성별 → gender + isMale)
@@ -851,9 +834,16 @@ export default function SchedulePage({ employees: propEmps }) {
           if (snap.empReqs) { setEmpReqs(snap.empReqs); saveEmpReqs(snap.empReqs) }
           if (snap.ownerRepeat) { setOwnerRepeat(snap.ownerRepeat); saveOwnerRepeat(snap.ownerRepeat) }
           if (snap.maleRotation) saveMaleRotation(snap.maleRotation)
-          if (snap.customEmployees) { setCustomEmployees(snap.customEmployees); saveCustomEmployees(snap.customEmployees) }
+          // 레거시 호환: 옛 스냅샷의 customEmployees는 employees_v1로 합쳐서 복원
+          if (snap.customEmployees && Array.isArray(snap.customEmployees) && snap.customEmployees.length > 0) {
+            const baseList = Array.isArray(snap.employees) ? snap.employees : (baseEmployees || [])
+            const baseIds = new Set(baseList.map(e => e.id))
+            const merged = [...baseList, ...snap.customEmployees.filter(e => !baseIds.has(e.id))]
+            saveEmployees(merged)
+          } else if (snap.employees) {
+            saveEmployees(snap.employees)
+          }
           if (snap.deletedEmpIds) { setDeletedEmpIdsArr(snap.deletedEmpIds); saveDeletedEmpIds(snap.deletedEmpIds) }
-          if (snap.employees) saveEmployees(snap.employees)
           toast_('✅ 설정값이 백업 시점으로 복원되었습니다')
         } catch (e) {
           console.error('설정 복원 오류:', e)

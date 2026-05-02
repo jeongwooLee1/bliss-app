@@ -332,7 +332,31 @@ export default function SendSmsModal({ open, onClose, customers = [], branches =
           <div>✅ 발송 가능: <b style={{color:T.success}}>{partition.valid.length}명</b>
             {manualParsed.length>0 && <span style={{color:T.gray500,marginLeft:6}}>(직접입력 {manualParsed.length}명 포함)</span>}
           </div>
-          {partition.blocked.length>0 && <div>🚫 수신거부 자동 제외: <b style={{color:'#dc2626'}}>{partition.blocked.length}명</b></div>}
+          {/* 발송 대상 리스트 — 누가 받는지 명확히 */}
+          {partition.valid.length > 0 && (
+            <div style={{marginTop:6,paddingTop:6,borderTop:'1px solid '+T.border,maxHeight:120,overflowY:'auto'}}>
+              {partition.valid.slice(0, 10).map((c, i) => (
+                <div key={c.id || i} style={{display:'flex',alignItems:'center',gap:6,padding:'2px 0',fontSize:11}}>
+                  <span style={{color:T.text,fontWeight:600,minWidth:80,maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                    {c._manual ? '✏️ ' : '👤 '}{c.name || '(이름 없음)'}
+                  </span>
+                  <span style={{color:T.textSub,fontFamily:'monospace'}}>
+                    {(() => {
+                      const ph = c.phone || c._ph || '';
+                      const d = String(ph).replace(/[^0-9]/g, '');
+                      if (d.length === 11) return `${d.slice(0,3)}-${d.slice(3,7)}-${d.slice(7)}`;
+                      if (d.length === 10) return `${d.slice(0,3)}-${d.slice(3,6)}-${d.slice(6)}`;
+                      return ph;
+                    })()}
+                  </span>
+                </div>
+              ))}
+              {partition.valid.length > 10 && (
+                <div style={{fontSize:11,color:T.gray500,marginTop:3}}>... 외 {partition.valid.length - 10}명</div>
+              )}
+            </div>
+          )}
+          {partition.blocked.length>0 && <div style={{marginTop:4}}>🚫 수신거부 자동 제외: <b style={{color:'#dc2626'}}>{partition.blocked.length}명</b></div>}
           {partition.invalidPhone.length>0 && <div>📵 휴대폰 번호 아님 제외: <b style={{color:T.gray500}}>{partition.invalidPhone.length}명</b></div>}
         </div>
 

@@ -11,7 +11,33 @@ const uid = genId;
 
 function AdminPlaces({ data, setData, bizId, userBranches=[], isMaster=false }) {
   const allBranches=data.branchSettings||(data.branches||[]).map(b=>({...b,color:"",useYn:true}));
-  const branches=isMaster ? allBranches : allBranches.filter(b=>userBranches.includes(b.id));
+  // sort 기준 정렬 (sort 없으면 끝으로). 화살표로 변경 시 즉시 반영되게 명시적 정렬
+  const branches=(isMaster ? allBranches : allBranches.filter(b=>userBranches.includes(b.id)))
+    .slice()
+    .sort((a,b)=>{
+      const sa=(a.sort??999), sb=(b.sort??999);
+      if (sa!==sb) return sa-sb;
+      return (a.name||"").localeCompare(b.name||"");
+    });
+
+  // 지점 순서 변경 (화살표 ▲▼) — 인접 swap + 전체 reindex
+  const moveBranch = async (idx, dir) => {
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= branches.length) return;
+    const reordered = [...branches];
+    [reordered[idx], reordered[newIdx]] = [reordered[newIdx], reordered[idx]];
+    // 전체 0~n-1로 reindex (옛 데이터의 null/중복 sort 정리)
+    const updates = reordered.map((b, i) => ({ id: b.id, sort: i }));
+    // DB 업데이트 (병렬)
+    await Promise.all(updates.map(u => sb.update("branches", u.id, { sort: u.sort }).catch(console.error)));
+    // local state 즉시 반영
+    const sortMap = new Map(updates.map(u => [u.id, u.sort]));
+    setData(p => ({
+      ...p,
+      branches: (p.branches||[]).map(b => sortMap.has(b.id) ? {...b, sort: sortMap.get(b.id)} : b),
+      branchSettings: (p.branchSettings||[]).map(b => sortMap.has(b.id) ? {...b, sort: sortMap.get(b.id)} : b),
+    }));
+  };
   const [sheet,setSheet]=useState(false);
   const [edit,setEdit]=useState(null);
   const [form,setForm]=useState({name:"",short:"",phone:"",address:"",color:"",useYn:true});
@@ -54,6 +80,12 @@ function AdminPlaces({ data, setData, bizId, userBranches=[], isMaster=false }) 
         sub={[b.short&&("약칭: "+b.short),(b.timelineSettings?.openTime||"11:00")+"~"+(b.timelineSettings?.closeTime||"21:00"),b.phone,b.address].filter(Boolean).join(" · ")||"정보 없음"}
         borderBottom={i<branches.length-1}
         right={<div style={{display:"flex",alignItems:"center",gap:8}}>
+          {isMaster && <div style={{display:"flex",flexDirection:"column",gap:2}}>
+            <button title="위로" disabled={i===0} onClick={e=>{e.stopPropagation();moveBranch(i,-1);}}
+              style={{width:24,height:14,padding:0,borderRadius:4,border:"1px solid "+T.border,background:i===0?T.gray100:"#fff",cursor:i===0?"default":"pointer",fontSize:9,lineHeight:1,color:i===0?T.gray400:T.gray700,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center"}}>▲</button>
+            <button title="아래로" disabled={i===branches.length-1} onClick={e=>{e.stopPropagation();moveBranch(i,1);}}
+              style={{width:24,height:14,padding:0,borderRadius:4,border:"1px solid "+T.border,background:i===branches.length-1?T.gray100:"#fff",cursor:i===branches.length-1?"default":"pointer",fontSize:9,lineHeight:1,color:i===branches.length-1?T.gray400:T.gray700,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center"}}>▼</button>
+          </div>}
           <ABadge color={b.useYn!==false?T.success:T.gray400}>{b.useYn!==false?"운영":"중지"}</ABadge>
           <button onClick={e=>{e.stopPropagation();openEdit(b);}} style={{width:28,height:28,borderRadius:7,border:"1px solid "+T.border,background:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><I name="edit" size={13} style={{color:T.gray500}}/></button>
           {isMaster && <button onClick={e=>{e.stopPropagation();setDel(b.id);}} style={{width:28,height:28,borderRadius:7,border:"1px solid #fecaca",background:"#fff5f5",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><I name="trash" size={13} style={{color:T.danger}}/></button>}

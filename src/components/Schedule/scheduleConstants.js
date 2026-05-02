@@ -53,7 +53,7 @@ export const DB_KEYS = {
   supportOrder:    'supportOrder_v1',
   lockStatus:      'lockStatus_v1',
   maleRotation:    'maleRotation_v1',
-  customEmployees: 'customEmployees_v1',
+  // customEmployees: 폐기됨 (2026-05-01) — employees_v1로 통합
   empSettings:     'empSettings_v1',
   deletedEmpIds:   'deletedEmpIds_v1',
   customRules:     'customRules_v1',

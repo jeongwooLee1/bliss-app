@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react'
 import { T } from '../../lib/constants'
 import { sb, buildTokenSearch, matchAllTokens } from '../../lib/sb'
-import { toDb } from '../../lib/db'
+import { toDb, fromDb } from '../../lib/db'
 import { todayStr, genId, fmtLocal, useSessionState, TTL } from '../../lib/utils'
 import { Btn, StatCard, GridLayout, fmt, Empty, DataTable, FLD } from '../common'
 import I from '../common/I'
@@ -154,6 +154,85 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
     return (b.id||"").localeCompare(a.id||"");
   });
 
+  // ── 날짜 범위 lazy-load: PostgREST max-rows=1000 제한 때문에 AppShell 초기 로드도 일부 누락
+  // → startDate 변경 시 항상 그 범위 서버 조회 (sb.getAll 페이지네이션). 중복은 _lazyLoadedRanges로 차단
+  const _lazyLoadedRanges = React.useRef(new Set());
+  React.useEffect(() => {
+    if (!startDate || !endDate || periodKey === 'all') return;
+    const bizId = data?.business?.id || data?.businesses?.[0]?.id;
+    if (!bizId) return;
+    const rangeKey = `${startDate}_${endDate}`;
+    if (_lazyLoadedRanges.current.has(rangeKey)) return;
+    _lazyLoadedRanges.current.add(rangeKey);
+    (async () => {
+      try {
+        // sb.getAll: PostgREST max-rows 제한 우회 (페이지네이션으로 전체 fetch)
+        const filter = `&business_id=eq.${bizId}&date=gte.${startDate}&date=lte.${endDate}&order=date.desc`;
+        const rows = await sb.getAll('sales', filter);
+        if (!rows?.length) return;
+        const mapped = fromDb('sales', rows);
+        setData(prev => {
+          const list = prev?.sales || [];
+          const ids = new Set(list.map(s => s.id));
+          const additions = mapped.filter(s => !ids.has(s.id));
+          if (!additions.length) return prev;
+          return {...prev, sales: [...list, ...additions]};
+        });
+      } catch(e) { console.warn('[sales lazy-load]', e); }
+    })();
+  }, [startDate, endDate, periodKey]);
+
+  // ── 일별 그룹화 (날짜별 헤더 + 매출 합계) ──
+  const salesByDate = React.useMemo(() => {
+    const map = new Map();
+    sales.forEach(s => {
+      const dk = s.date || "";
+      if (!map.has(dk)) map.set(dk, {
+        sales: [], svc: 0, prod: 0, ep: 0, gift: 0, total: 0, count: 0,
+        cash: 0, card: 0, transfer: 0, point: 0,
+      });
+      const g = map.get(dk);
+      g.sales.push(s);
+      const svRaw = (s.svcCash||0)+(s.svcTransfer||0)+(s.svcCard||0)+(s.svcPoint||0);
+      const pr = (s.prodCash||0)+(s.prodTransfer||0)+(s.prodCard||0)+(s.prodPoint||0);
+      const ep = s.externalPrepaid || 0;
+      const gift = s.gift || 0;
+      const _split = splitSvcProd(s);
+      g.svc += _split.svc + ep; // 외부선결제는 시술에 포함 (운영 규칙)
+      g.prod += _split.prod;
+      g.ep += ep;
+      g.gift += gift;
+      g.total += svRaw + pr + gift + ep;
+      g.count += 1;
+      // 결제수단별 합계 (시술+제품)
+      g.cash     += (s.svcCash||0)     + (s.prodCash||0);
+      g.card     += (s.svcCard||0)     + (s.prodCard||0);
+      g.transfer += (s.svcTransfer||0) + (s.prodTransfer||0);
+      g.point    += (s.svcPoint||0)    + (s.prodPoint||0);
+    });
+    return Array.from(map.entries()).sort((a,b) => (b[0]||"").localeCompare(a[0]||""));
+  }, [sales]);
+  const [collapsedDates, setCollapsedDates] = useState(() => new Set());
+  // 디폴트 접힘 — 새로 등장하는 날짜는 자동 접힘. 사용자가 펼친 날짜는 그대로 유지
+  const _seenDatesRef = React.useRef(new Set());
+  React.useEffect(() => {
+    const newDates = salesByDate.map(([d]) => d).filter(d => d && !_seenDatesRef.current.has(d));
+    if (newDates.length === 0) return;
+    newDates.forEach(d => _seenDatesRef.current.add(d));
+    setCollapsedDates(prev => {
+      const next = new Set(prev);
+      newDates.forEach(d => next.add(d));
+      return next;
+    });
+  }, [salesByDate]);
+  const toggleDate = (d) => setCollapsedDates(prev => {
+    const next = new Set(prev);
+    if (next.has(d)) next.delete(d); else next.add(d);
+    return next;
+  });
+  const collapseAll = () => setCollapsedDates(new Set(salesByDate.map(([d]) => d)));
+  const expandAll = () => setCollapsedDates(new Set());
+
   // ── 검색어 입력 시 DB 전체 검색 (날짜 범위·숫자 제한 없이) ──
   const [serverSalesSearching, setServerSalesSearching] = useState(false);
   React.useEffect(() => {
@@ -196,8 +275,8 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
   const totals = sales.reduce((a,s) => {
     const svRaw = s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint;
     const pr = s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint;
-    // 외부선결제는 결제수단이지만 시술에 대한 금액이므로 제품이 없는 매출에서는 시술합계에 포함
-    const extToSvc = pr === 0 ? (s.externalPrepaid||0) : 0;
+    // 외부선결제는 결제수단(시술용) — 항상 시술 합계에 포함 (운영 규칙: 외부선결제는 모두 시술)
+    const extToSvc = (s.externalPrepaid||0);
     // 시술/제품 합계는 sale_details 기반 정확 분리 (구버전 데이터는 svc_*/prod_* fallback)
     const split = splitSvcProd(s);
     const svDisp = split.svc + extToSvc;
@@ -459,6 +538,18 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
           background:"none",border:"none",cursor:"pointer",color:T.gray400,fontSize:T.fs.lg,lineHeight:1,padding:0}}>×</button>}
       </div>
       <span style={{fontSize:T.fs.sm,color:T.textSub,whiteSpace:"nowrap",flexShrink:0}}>{sales.length}건</span>
+      {salesByDate.length > 1 && (
+        <div style={{display:"flex",gap:4,marginLeft:"auto",flexShrink:0}}>
+          <button onClick={collapseAll} style={{height:28,padding:"0 10px",fontSize:T.fs.xxs,fontWeight:T.fw.bold,
+            background:T.bgCard,border:"1px solid "+T.border,borderRadius:T.radius.sm,cursor:"pointer",color:T.textSub,fontFamily:"inherit"}}>
+            ▶ 모두 접기
+          </button>
+          <button onClick={expandAll} style={{height:28,padding:"0 10px",fontSize:T.fs.xxs,fontWeight:T.fw.bold,
+            background:T.bgCard,border:"1px solid "+T.border,borderRadius:T.radius.sm,cursor:"pointer",color:T.textSub,fontFamily:"inherit"}}>
+            ▼ 모두 펼치기
+          </button>
+        </div>
+      )}
     </div>
 
     {/* 요약 합계 바 — 결제수단 분리 표시 (마감 시 편의) */}
@@ -519,24 +610,54 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
         <th style={{width:80}}>고객번호</th>
         <th>이름</th>
         <th>담당자</th>
-        <th>시술합계</th>
-        <th>제품합계</th>
-        <th style={{color:"#16a34a"}}>현금</th>
-        <th style={{color:T.primary}}>카드</th>
-        <th style={{color:T.info}}>입금</th>
-        <th style={{color:T.orange}}>포인트</th>
-        <th style={{color:"#8E24AA"}}>외부선결제</th>
-        <th>총합계</th>
+        <th style={{textAlign:"right"}}>시술합계</th>
+        <th style={{textAlign:"right"}}>제품합계</th>
+        <th style={{color:"#16a34a",textAlign:"right"}}>현금</th>
+        <th style={{color:T.primary,textAlign:"right"}}>카드</th>
+        <th style={{color:T.info,textAlign:"right"}}>입금</th>
+        <th style={{color:T.orange,textAlign:"right"}}>포인트</th>
+        <th style={{color:"#8E24AA",textAlign:"right"}}>외부선결제</th>
+        <th style={{textAlign:"right"}}>총합계</th>
         <th style={{width:60}}></th>
       </tr></thead>
       <tbody>
         {sales.length===0
           ? <tr><td colSpan={15}><Empty msg="매출 기록 없음" icon="wallet"/></td></tr>
-          : sales.map((s,i) => {
-              const svRaw = s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint;
-              const pr = s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint;
-              // 외부선결제는 시술에 대한 결제수단 — 제품이 없으면 시술합계에 포함
-              const extToSvc = pr === 0 ? (s.externalPrepaid||0) : 0;
+          : (() => {
+              const _DOW = ['일','월','화','수','목','금','토'];
+              let _gIdx = 0;
+              return salesByDate.map(([dateKey, g]) => {
+                const isCollapsed = collapsedDates.has(dateKey);
+                const startIdx = _gIdx;
+                _gIdx += g.sales.length;
+                const dow = (() => { try { return _DOW[new Date(dateKey).getDay()]; } catch { return ''; } })();
+                return <React.Fragment key={`grp_${dateKey}`}>
+                  {/* 날짜 그룹 헤더 */}
+                  <tr onClick={()=>toggleDate(dateKey)}
+                    style={{cursor:"pointer",background:"#F3F4F6",borderTop:"2px solid "+T.border,borderBottom:"1px solid "+T.border,fontWeight:T.fw.bold,fontSize:T.fs.xs}}>
+                    <td colSpan={6} style={{padding:"7px 10px",color:T.textDk||T.text}}>
+                      <span style={{marginRight:6,fontSize:9,color:T.textMuted}}>{isCollapsed?'▶':'▼'}</span>
+                      <span style={{fontWeight:T.fw.bolder,fontSize:T.fs.sm}}>{dateKey}</span>
+                      <span style={{marginLeft:4,color:dow==='일'?'#dc2626':dow==='토'?'#2563eb':T.textMuted}}>({dow})</span>
+                      <span style={{marginLeft:10,fontSize:T.fs.xxs,color:T.textMuted,fontWeight:T.fw.medium}}>{g.count}건</span>
+                    </td>
+                    <td style={{textAlign:"right",color:T.primary,fontWeight:T.fw.bolder}}>{g.svc>0?fmt(g.svc):'-'}</td>
+                    <td style={{textAlign:"right",color:T.info,fontWeight:T.fw.bolder}}>{g.prod>0?fmt(g.prod):'-'}</td>
+                    <td style={{textAlign:"right",color:g.cash>0?"#16a34a":T.gray400,fontWeight:T.fw.bolder}}>{g.cash>0?fmt(g.cash):'-'}</td>
+                    <td style={{textAlign:"right",color:g.card>0?T.primary:T.gray400,fontWeight:T.fw.bolder}}>{g.card>0?fmt(g.card):'-'}</td>
+                    <td style={{textAlign:"right",color:g.transfer>0?T.info:T.gray400,fontWeight:T.fw.bolder}}>{g.transfer>0?fmt(g.transfer):'-'}</td>
+                    <td style={{textAlign:"right",color:g.point>0?T.orange:T.gray400,fontWeight:T.fw.bolder}}>{g.point>0?fmt(g.point):'-'}</td>
+                    <td style={{textAlign:"right",color:g.ep>0?"#8E24AA":T.gray400,fontWeight:T.fw.bolder}}>{g.ep>0?fmt(g.ep):'-'}</td>
+                    <td style={{textAlign:"right",color:T.text,fontWeight:T.fw.black,fontSize:T.fs.sm}}>{fmt(g.total)}</td>
+                    <td></td>
+                  </tr>
+                  {/* 그날 거래 행 (접힘 X) */}
+                  {!isCollapsed && g.sales.map((s, _localI) => {
+                    const i = startIdx + _localI;
+                    const svRaw = s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint;
+                    const pr = s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint;
+              // 외부선결제는 결제수단(시술용) — 항상 시술합계에 포함 (운영 규칙)
+              const extToSvc = (s.externalPrepaid||0);
               // 시술/제품 분리 — sale_details 기반 (구버전 데이터는 svc_*/prod_* fallback)
               const _split = splitSvcProd(s);
               const sv = _split.svc + extToSvc;
@@ -568,8 +689,8 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
                       style={s.custId ? {color:T.primary,textDecoration:"underline",textDecorationColor:T.primary+"55",cursor:"pointer"} : undefined}>{s.custName||"-"}</span>
                   </td>
                   <td style={{color:T.textSub,fontSize:T.fs.xxs}}>{s.staffName||"-"}</td>
-                  <td style={{fontWeight:T.fw.bold,color:T.primary}}>{sv>0?fmt(sv):<Z/>}</td>
-                  <td style={{fontWeight:T.fw.bold,color:T.info}}>{prDisp>0?fmt(prDisp):<Z/>}</td>
+                  <td style={{fontWeight:T.fw.bold,color:T.primary,textAlign:"right"}}>{sv>0?fmt(sv):<Z/>}</td>
+                  <td style={{fontWeight:T.fw.bold,color:T.info,textAlign:"right"}}>{prDisp>0?fmt(prDisp):<Z/>}</td>
                   <td style={{fontWeight:T.fw.bold,color:rowCash>0?"#16a34a":T.gray400,textAlign:"right"}}>{rowCash>0?fmt(rowCash):"-"}</td>
                   <td style={{fontWeight:T.fw.bold,color:rowCard>0?T.primary:T.gray400,textAlign:"right"}}>{rowCard>0?fmt(rowCard):"-"}</td>
                   <td style={{fontWeight:T.fw.bold,color:rowTransfer>0?T.info:T.gray400,textAlign:"right"}}>{rowTransfer>0?fmt(rowTransfer):"-"}</td>
@@ -577,7 +698,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
                   <td style={{fontWeight:T.fw.bold,color:(s.externalPrepaid||0)>0?"#8E24AA":T.gray400,textAlign:"right"}} title={s.externalPlatform||""}>
                     {(s.externalPrepaid||0)>0 ? fmt(s.externalPrepaid) : "-"}
                   </td>
-                  <td style={{fontWeight:T.fw.black,color:T.info}}>{fmt(total)}</td>
+                  <td style={{fontWeight:T.fw.black,color:T.info,textAlign:"right"}}>{fmt(total)}</td>
                   <td onClick={e=>e.stopPropagation()}>
                     <div style={{display:"flex",gap:3}}>
                       <Btn variant="secondary" size="sm" style={{padding:"2px 5px"}} onClick={()=>openFullEdit(s)}><I name="edit" size={12}/></Btn>
@@ -695,31 +816,40 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
                   </div>
                 </td></tr>}
               </React.Fragment>;
-            })
+            })}
+            </React.Fragment>;
+          });
+        })()
         }
         {/* 합계 행 */}
         {sales.length>0 && <tr style={{background:T.gray200,fontWeight:T.fw.bolder}}>
           <td colSpan={6} style={{textAlign:"right",color:T.textSub,fontSize:T.fs.xxs}}>합 계</td>
-          <td style={{color:T.primary}}>{fmt(totals.svc)}</td>
-          <td style={{color:T.info}}>{fmt(totals.prod)}</td>
+          <td style={{color:T.primary,textAlign:"right"}}>{fmt(totals.svc)}</td>
+          <td style={{color:T.info,textAlign:"right"}}>{fmt(totals.prod)}</td>
           <td style={{color:"#16a34a",textAlign:"right"}}>{fmt(totals.svcCash+totals.prodCash)}</td>
           <td style={{color:T.primary,textAlign:"right"}}>{fmt(totals.svcCard+totals.prodCard)}</td>
           <td style={{color:T.info,textAlign:"right"}}>{fmt(totals.svcTransfer+totals.prodTransfer)}</td>
           <td style={{color:T.orange,textAlign:"right"}}>{fmt(totals.svcPoint+totals.prodPoint)}</td>
           <td style={{color:"#8E24AA",textAlign:"right"}}>{fmt(totals.extPrepaid)}</td>
-          <td style={{color:T.info}}>{fmt(totals.total)}</td>
+          <td style={{color:T.info,textAlign:"right"}}>{fmt(totals.total)}</td>
           <td/>
         </tr>}
       </tbody>
     </DataTable>
 
-    {showModal && <DetailedSaleForm
-      key={`sale-form-${formKey}`}
-      reservation={{id:genId(),bid:userBranches[0],custId:null,custName:"",custPhone:"",custGender:"",
-        staffId:"",serviceId:null,date:todayStr()}}
-      branchId={userBranches[0]}
-      onSubmit={handleSave}
-      onClose={()=>_mc(()=>setShowModal(false))} data={data} setData={setData}/>}
+    {showModal && (() => {
+      // 권한이 1개 지점만 있으면 자동 디폴트 (지점 manager 케이스)
+      // 다수 지점(owner/admin)이면 공백 — 사용자가 직접 선택해야 함
+      const _defaultBid = (userBranches?.length === 1) ? userBranches[0] : "";
+      return <DetailedSaleForm
+        key={`sale-form-${formKey}`}
+        reservation={{id:genId(),bid:_defaultBid,custId:null,custName:"",custPhone:"",custGender:"",
+          staffId:"",serviceId:null,date:todayStr()}}
+        branchId={_defaultBid}
+        userBranches={userBranches}
+        onSubmit={handleSave}
+        onClose={()=>_mc(()=>setShowModal(false))} data={data} setData={setData}/>;
+    })()}
     {editSale && <DetailedSaleForm
       reservation={{...editSale, saleMemo:editSale.memo||""}}
       branchId={editSale.bid}
@@ -754,16 +884,20 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     return inRange(s.date);
   });
 
-  const t = filtered.reduce((a,s)=>({
-    svcTotal:a.svcTotal+(s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint),
-    prodTotal:a.prodTotal+(s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint),
-    gift:a.gift+s.gift,
-    extPrepaid:a.extPrepaid+(s.externalPrepaid||0),
-    total:a.total+(s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint+s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint+s.gift+(s.externalPrepaid||0)),
-    count:a.count+1,
-    svcCash:a.svcCash+s.svcCash,svcTransfer:a.svcTransfer+s.svcTransfer,svcCard:a.svcCard+s.svcCard,svcPoint:a.svcPoint+s.svcPoint,
-    prodCash:a.prodCash+s.prodCash,prodTransfer:a.prodTransfer+s.prodTransfer,prodCard:a.prodCard+s.prodCard,prodPoint:a.prodPoint+s.prodPoint,
-  }),{svcTotal:0,prodTotal:0,gift:0,extPrepaid:0,total:0,count:0,svcCash:0,svcTransfer:0,svcCard:0,svcPoint:0,prodCash:0,prodTransfer:0,prodCard:0,prodPoint:0});
+  // 외부선결제는 결제수단(시술용) — 시술 매출에 합산. 총매출 = 시술+제품+상품권 (정합)
+  const t = filtered.reduce((a,s)=>{
+    const ep = s.externalPrepaid||0;
+    return {
+      svcTotal:a.svcTotal+(s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint+ep),
+      prodTotal:a.prodTotal+(s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint),
+      gift:a.gift+s.gift,
+      extPrepaid:a.extPrepaid+ep,
+      total:a.total+(s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint+s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint+s.gift+ep),
+      count:a.count+1,
+      svcCash:a.svcCash+s.svcCash,svcTransfer:a.svcTransfer+s.svcTransfer,svcCard:a.svcCard+s.svcCard,svcPoint:a.svcPoint+s.svcPoint,
+      prodCash:a.prodCash+s.prodCash,prodTransfer:a.prodTransfer+s.prodTransfer,prodCard:a.prodCard+s.prodCard,prodPoint:a.prodPoint+s.prodPoint,
+    };
+  },{svcTotal:0,prodTotal:0,gift:0,extPrepaid:0,total:0,count:0,svcCash:0,svcTransfer:0,svcCard:0,svcPoint:0,prodCash:0,prodTransfer:0,prodCard:0,prodPoint:0});
 
   // 선택된 기간의 일수 (일평균 계산용)
   const days = (()=>{
@@ -882,9 +1016,9 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
       {/* Payment Breakdown */}
       <div className="card" style={{padding:20}}>
         <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:14}}>결제수단별 시술 매출</div>
-        {[["현금",t.svcCash,T.info],["입금",t.svcTransfer,T.danger],["카드",t.svcCard,T.primary],["포인트",t.svcPoint,T.gray400]].map(([l,v,c])=>(
+        {[["현금",t.svcCash,T.info],["입금",t.svcTransfer,T.danger],["카드",t.svcCard,T.primary],["포인트",t.svcPoint,T.gray400],["외부선결제",t.extPrepaid,"#8E24AA"]].map(([l,v,c])=>(
           <div key={l} style={{display:"flex",alignItems:"center",gap:T.sp.sm,marginBottom:8,fontSize:T.fs.sm}}>
-            <span style={{width:45,color:c,fontWeight:T.fw.bold}}>{l}</span>
+            <span style={{width:64,color:c,fontWeight:T.fw.bold,whiteSpace:"nowrap"}}>{l}</span>
             <div style={{flex:1,height:6,background:T.gray300,borderRadius:T.radius.sm,overflow:"hidden"}}>
               <div style={{height:"100%",width:`${t.svcTotal>0?(v/t.svcTotal)*100:0}%`,background:c,borderRadius:T.radius.sm}}/>
             </div>

@@ -5,7 +5,7 @@ import { BRANCHES_SCH, BRANCH_LABEL, STATUS, getDow0Mon, fmtDs } from './schedul
 const RANKS = ['원장','마스터','시니어','인턴'];
 const RANK_COLOR = {원장:'#8B4513',마스터:'#2a6099',시니어:'#4CAF50',인턴:'#999'};
 
-export default function EmpSettingsModal({ allEmployees, empSettings, customEmployees, deletedEmpIds, maleRotation, onSetEmpSetting, onAddEmp, onDeleteEmp, onSaveMaleRotation, onUpdateEmp, onClose,
+export default function EmpSettingsModal({ allEmployees, empSettings, deletedEmpIds, maleRotation, onSetEmpSetting, onAddEmp, onDeleteEmp, onSaveMaleRotation, onUpdateEmp, onClose,
   ownerReqs, empReqs, ownerRepeat, days, year, month, curMonthStr, nextMonthStr, onSetOwnerReqs, onSetEmpReqs, onSaveOwnerReqs, onSaveEmpReqs, onSetOwnerRepeat }) {
   const [showAddEmp, setShowAddEmp] = useState(false)
   const todayStr = new Date().toISOString().slice(0, 10)

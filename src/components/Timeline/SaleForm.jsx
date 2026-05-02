@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { T } from '../../lib/constants'
+import { T, SCH_BRANCH_MAP } from '../../lib/constants'
 import { sb, buildTokenSearch, SB_URL, SB_KEY, sbHeaders } from '../../lib/sb'
 import { fromDb, toDb, _activeBizId } from '../../lib/db'
 import { todayStr, genId, getPkgPurchaseBranchShort, canUsePkgAtBranch } from '../../lib/utils'
@@ -214,7 +214,7 @@ const SaleDiscountRow = React.memo(function SaleDiscountRow({ id, checked, amoun
 
 // DETAILED SALE FORM (매출 입력 - 시술상품/제품 연동)
 // ═══════════════════════════════════════════
-export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, data, setData, editMode, existingSaleId, viewOnly }) {
+export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit, onClose, data, setData, editMode, existingSaleId, viewOnly }) {
   const fmt = (v) => v==null?"":Number(v).toLocaleString();
   // 더블클릭/중복 저장 방지 락 (신규 매출 저장 경로에서 사용)
   const _submitLock = useRef(false);
@@ -235,6 +235,9 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   // ── 직원의 매출 날짜 실제 근무지점 (schHistory의 "지원(X)" 상태 반영) ──
   const saleDate = reservation?.date || todayStr();
   const [schHistory, setSchHistory] = useState(null);
+  const [empOverride, setEmpOverride] = useState({});
+  const [employeesV1, setEmployeesV1] = useState({});  // {empName: {branch, isMale, ...}}
+  const [maleRotation, setMaleRotation] = useState({}); // {empId: {branches:[], startDate}}
   // ESC 키로 닫기 (id_dh0tp9v5ue 수정요청)
   useEffect(() => {
     const handler = (e) => { if (e.key === 'Escape' && !e.isComposing) onClose?.(); };
@@ -243,25 +246,65 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
   }, [onClose]);
   useEffect(() => {
     // schedule_data는 created_at 컬럼이 없어 sb.get 기본 정렬이 400 에러 → 직접 fetch
-    fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.schHistory_v1&select=value`, {
+    fetch(`${SB_URL}/rest/v1/schedule_data?key=in.(schHistory_v1,empOverride_v1,employees_v1,maleRotation_v1)&select=key,value`, {
       headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
     }).then(r => r.ok ? r.json() : []).then(rows => {
       try {
-        const raw = rows?.[0]?.value;
-        const obj = typeof raw === "string" ? JSON.parse(raw) : raw;
-        if (!obj) return;
-        const merged = {};
-        Object.values(obj).forEach(month => {
-          if (typeof month !== "object" || !month) return;
-          Object.entries(month).forEach(([emp, days]) => {
-            if (!merged[emp]) merged[emp] = {};
-            Object.assign(merged[emp], days);
-          });
-        });
-        setSchHistory(merged);
+        const parseVal = (raw) => typeof raw === "string" ? JSON.parse(raw) : raw;
+        const schRow = rows.find(r => r.key === 'schHistory_v1');
+        const ovRow = rows.find(r => r.key === 'empOverride_v1');
+        const empRow = rows.find(r => r.key === 'employees_v1');
+        const rotRow = rows.find(r => r.key === 'maleRotation_v1');
+        if (schRow) {
+          const obj = parseVal(schRow.value);
+          if (obj) {
+            const merged = {};
+            Object.values(obj).forEach(month => {
+              if (typeof month !== "object" || !month) return;
+              Object.entries(month).forEach(([emp, days]) => {
+                if (!merged[emp]) merged[emp] = {};
+                Object.assign(merged[emp], days);
+              });
+            });
+            setSchHistory(merged);
+          }
+        }
+        if (ovRow) {
+          const obj = parseVal(ovRow.value);
+          if (obj && typeof obj === 'object') setEmpOverride(obj);
+        }
+        if (empRow) {
+          const obj = parseVal(empRow.value);
+          // employees_v1 은 array 형태: [{id, name, branch, isMale, ...}, ...]
+          // 이름 → 정보 dict로 변환해 lookup 편하게
+          const dict = {};
+          if (Array.isArray(obj)) {
+            obj.forEach(e => { if (e?.name || e?.id) dict[e.name || e.id] = e; });
+          } else if (obj && typeof obj === 'object') {
+            Object.assign(dict, obj);
+          }
+          setEmployeesV1(dict);
+        }
+        if (rotRow) {
+          const obj = parseVal(rotRow.value);
+          if (obj && typeof obj === 'object') setMaleRotation(obj);
+        }
       } catch(e) {}
     }).catch(() => {});
   }, []);
+
+  // 남자직원 주간 로테이션: 이번 주 어느 지점인지 계산
+  const getRotationBranchId = (empName, dateStr) => {
+    const rot = maleRotation[empName];
+    if (!rot?.branches?.length || !rot.startDate) return null;
+    const start = new Date(rot.startDate);
+    const target = new Date(dateStr);
+    const diffDays = Math.floor((target - start) / (1000*60*60*24));
+    const weekIdx = Math.floor(diffDays / 7);
+    const idx = ((weekIdx % rot.branches.length) + rot.branches.length) % rot.branches.length;
+    const brKey = rot.branches[idx];
+    return SCH_BRANCH_MAP[brKey] || null;
+  };
   // 직원의 해당 날짜 실제 근무지점 (지원갔으면 그 지점 id, 아니면 홈 지점)
   const getEffectiveBranch = (staff) => {
     if (!staff?.dn) return staff?.bid;
@@ -276,7 +319,22 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     }
     return staff.bid;
   };
-  const allStaff = (data.staff||[]).filter(s => s.bid); // 전체 직원
+  // augmentedStaff: data.staff(=db.rooms 기반)에 employees_v1의 남자 로테이션 직원 합치기
+  // db.rooms에 없는 재윤/주용 같은 케이스를 시술자 드롭다운/저장 lookup에서 사용 가능하게 함
+  const augmentedStaff = React.useMemo(() => {
+    const base = data.staff || [];
+    const existingNames = new Set(base.map(s => s.dn).filter(Boolean));
+    const extras = [];
+    Object.entries(employeesV1 || {}).forEach(([empName, info]) => {
+      if (!info?.isMale) return;
+      if (existingNames.has(empName)) return;
+      const rotBid = getRotationBranchId(empName, saleDate);
+      const fallbackBid = info.branch ? (SCH_BRANCH_MAP[info.branch] || info.branch) : "";
+      extras.push({ id: empName, dn: empName, bid: rotBid || fallbackBid || "" });
+    });
+    return [...base, ...extras];
+  }, [data.staff, employeesV1, maleRotation, saleDate]);
+  const allStaff = augmentedStaff.filter(s => s.bid); // 전체 직원
   const [selBranch, setSelBranch] = useState(branchId);
   const [gender, setGender] = useState(reservation?.custGender || "");
   const [openCats, setOpenCats] = useState({}); // catId → true/false (null=auto)
@@ -924,10 +982,13 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       // 정규 제품 매칭
       const prod = PROD_LIST.find(x => x.name === nm);
       if (prod) { matchedProdIds[prod.id] = (d.unit_price || 0); if (isComped) compedProdIds.add(prod.id); return; }
-      // 추가 시술 (이름에 "시술" 들어가거나 기타)
+      // ★ item_kind 우선 — DB 저장값으로 정확 분류 (라벨 추측 fallback 제거)
+      const ik = d.item_kind;
+      if (ik === 'prod') { extraProdRows.push({name:nm, amount: d.unit_price||0}); return; }
+      if (ik === 'svc')  { extraSvcRows.push({name:nm, amount: d.unit_price||0}); return; }
+      // 레거시 fallback (item_kind null인 옛 데이터): 이름 키워드 추측
       if (nm === "추가 시술" || /시술/.test(nm)) { extraSvcRows.push({name:nm, amount: d.unit_price||0}); return; }
       if (nm === "추가 제품" || /제품/.test(nm)) { extraProdRows.push({name:nm, amount: d.unit_price||0}); return; }
-      // 기본 fallback: 시술로 간주
       extraSvcRows.push({name:nm, amount: d.unit_price||0});
     });
 
@@ -1689,6 +1750,11 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       return;
     }
     // grandTotal=0 허용 (보유권 전액 차감 시에도 매출등록 + 패키지 차감 진행)
+    if (!selBranch) {
+      showAlert("지점을 선택해주세요.");
+      _submitLock.current = false;
+      return;
+    }
     if (!manager) {
       showAlert("시술자를 선택해주세요.");
       _submitLock.current = false;
@@ -1717,7 +1783,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
       _submitLock.current = false;
       return;
     }
-    const staff = (data.staff||[]).find(s => s.id === manager);
+    const staff = augmentedStaff.find(s => s.id === manager);
 
     // (참고: 동일 금액 기반 중복 판정은 다른 고객이 우연히 같은 금액일 때 오검지 위험이 커서 쓰지 않음.
     //  실제 원인인 "처리 중 두 번 클릭"은 위의 _submitLock + 아래 버튼 disable로 차단.)
@@ -2134,48 +2200,49 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
     const _saleDetails = [];
     let _detailNo = 0;
     const nowIso = new Date().toISOString();
-    const pushDetail = (name, price, qty) => _saleDetails.push({
+    // pushDetail(name, price, qty, item_kind) — item_kind 명시 저장 (svc/prod/discount/event_*/coupon_*/pkg_*/share_surcharge)
+    const pushDetail = (name, price, qty, item_kind) => _saleDetails.push({
       id: "sd_" + uid(), business_id: _activeBizId, sale_id: sale.id, order_num: sale.orderNum,
       service_no: ++_detailNo, service_name: name, unit_price: price, qty: Math.max(1, Number(qty) || 1),
       cash: 0, card: 0, bank: 0, point: 0,
-      sex_div: gender || "", created_at: nowIso,
+      sex_div: gender || "", item_kind: item_kind || null, created_at: nowIso,
     });
     // 시술
     SVC_LIST.forEach(svc => {
       const it = items[svc.id];
       if (it?.checked && (it.amount || 0) > 0) {
         // 체험단으로 제공된 시술은 [체험단] 프리픽스로 기록 (매출 상세에서 구분)
-        pushDetail(it.comped ? `[체험단] ${svc.name}` : svc.name, it.amount);
+        pushDetail(it.comped ? `[체험단] ${svc.name}` : svc.name, it.amount, 1, 'svc');
       }
     });
     // 추가 시술
     if (items.extra_svc?.checked && (items.extra_svc.amount || 0) > 0) {
-      pushDetail(items.extra_svc.label || items.extra_svc.name || "추가 시술", items.extra_svc.amount);
+      pushDetail(items.extra_svc.label || items.extra_svc.name || "추가 시술", items.extra_svc.amount, 1, 'svc');
     }
     // 제품 (수량 반영)
     PROD_LIST.forEach(p => {
       const it = items[p.id];
       if (it?.checked && (it.amount || 0) > 0) {
-        pushDetail(it.comped ? `[체험단] ${p.name}` : p.name, it.amount, it.qty || 1);
+        pushDetail(it.comped ? `[체험단] ${p.name}` : p.name, it.amount, it.qty || 1, 'prod');
       }
     });
     // 추가 제품
     if (items.extra_prod?.checked && (items.extra_prod.amount || 0) > 0) {
-      pushDetail(items.extra_prod.label || items.extra_prod.name || "추가 제품", items.extra_prod.amount);
+      pushDetail(items.extra_prod.label || items.extra_prod.name || "추가 제품", items.extra_prod.amount, 1, 'prod');
     }
     // 할인
     if (items.discount?.checked && (items.discount.amount || 0) > 0) {
-      pushDetail("[할인]", items.discount.amount);
+      pushDetail("[할인]", items.discount.amount, 1, 'discount');
     }
     // 이벤트 할인·적립 기록 (promoResults 기반)
     promoResults.forEach(r => {
-      if (r.discount > 0) pushDetail(`[이벤트 할인] ${r.name}${r.reason?` (${r.reason})`:""}`, r.discount);
-      if (r.earn > 0) pushDetail(`[이벤트 적립] ${r.name}${r.reason?` (${r.reason})`:""}`, r.earn);
+      if (r.discount > 0) pushDetail(`[이벤트 할인] ${r.name}${r.reason?` (${r.reason})`:""}`, r.discount, 1, 'event_discount');
+      if (r.earn > 0) pushDetail(`[이벤트 적립] ${r.name}${r.reason?` (${r.reason})`:""}`, r.earn, 1, 'event_earn');
     });
     // 쿠폰 자동적용 기록 (activeCoupons 기반)
     activeCoupons.forEach(c => {
-      if (c.discount > 0) pushDetail(`[쿠폰 할인] ${c.name}`, c.discount);
-      if (c.earn > 0) pushDetail(`[쿠폰 적립] ${c.name}`, c.earn);
+      if (c.discount > 0) pushDetail(`[쿠폰 할인] ${c.name}`, c.discount, 1, 'coupon_discount');
+      if (c.earn > 0) pushDetail(`[쿠폰 적립] ${c.name}`, c.earn, 1, 'coupon_earn');
     });
     // 보유권 사용 (다회권 차감 횟수 및 다담권 차감 금액) — 수동 등록 툴 포맷과 통일
     // pkgItems: { "pkg__{pkgId}": {qty} }, pkgUse: {pkgId: number|true}
@@ -2186,7 +2253,7 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
         const pkgId = pkgKey.replace(/^pkg__/, "");
         const pkg = custPkgs.find(p => p.id === pkgId);
         const baseName = (pkg?.service_name||"").split("(")[0].replace(/\s*\d+회$/,"").trim() || "다회권";
-        pushDetail(`[보유권 사용] ${baseName}`, 0);
+        pushDetail(`[보유권 사용] ${baseName}`, 0, 1, 'pkg_use');
       });
       // 다담권 (잔액 차감)
       Object.entries(pkgUse||{}).forEach(([pkgId, v]) => {
@@ -2196,12 +2263,12 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
         const t = _pkgType(pkg);
         if (t !== "prepaid") return; // 다회권은 위에서 처리됨
         const baseName = (pkg?.service_name||"").split("(")[0].trim() || "다담권";
-        pushDetail(`[보유권 차감] ${baseName}`, v);
+        pushDetail(`[보유권 차감] ${baseName}`, v, 1, 'pkg_deduct');
       });
     } catch(e) { console.warn("[sale_details pkgUse]", e); }
     // 쉐어 남녀 보정금 기록 (id_nfv71exl14 수정요청)
     if (shareSurchargeTotal > 0) {
-      pushDetail("[쉐어 보정금] 여→남 추가금", shareSurchargeTotal);
+      pushDetail("[쉐어 보정금] 여→남 추가금", shareSurchargeTotal, 1, 'share_surcharge');
     }
     // ── sales → sale_details 순차 insert (FK 의존) ──
     // 부모(ReservationModal/SalesPage)가 중복 insert 하지 않도록 sale 객체에 _alreadySaved 플래그
@@ -2597,21 +2664,57 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
             <select style={{ width:100, height:22, padding:"0 4px", fontSize:11, lineHeight:"1", border:`1px solid ${manager ? T.gray400 : T.danger}`, background: manager ? T.bgCard : T.dangerLt, borderRadius:4, fontFamily:"inherit", outline:"none", boxSizing:"border-box", minHeight:0 }} value={manager} onChange={e => setManager(e.target.value)}>
               <option value="">시술자 선택</option>
               {(() => {
-                // 타임라인 기준 그룹핑: 오늘 해당 지점 근무자 상단, 타지점 직원 아래 지점별로
-                const staffByBranch = {}; // effBid → [staff,...]
-                const offStaff = [];
-                (data.staff||[]).forEach(s => {
+                // 타임라인과 동일한 로직: schHistory + empOverride + 자동이동(예약 기반) 반영
+                // 실제로 오늘 타임라인에 노출되는 직원만 표시
+                const isActiveRes = (r) => r && r.status !== 'naver_changed' && r.status !== 'cancelled' && r.status !== 'naver_cancelled';
+                const reservations = data?.reservations || [];
+
+                const getEffBranch = (staff) => {
+                  if (!staff?.dn) return null;
+                  const st = schHistory?.[staff.dn]?.[saleDate];
+                  // 휴무/무급 → 표시 안 함
+                  if (st === "휴무" || st === "휴무(꼭)" || st === "무급") return null;
+                  // 지원(X) → 그 지점
+                  if (typeof st === "string" && st.startsWith("지원(")) {
+                    const brName = st.slice(3, -1).trim();
+                    const br = (data?.branches||[]).find(b =>
+                      (b.short||"").replace("점","") === brName || (b.name||"").includes(brName)
+                    );
+                    if (br) return br.id;
+                  }
+                  // empOverride exclusive → override 지점
+                  const ov = empOverride?.[`${staff.dn}_${saleDate}`];
+                  if (ov?.exclusive && ov.segments?.[0]?.branchId) return ov.segments[0].branchId;
+                  // home branch 결정: 남자직원이면 주간 로테이션, 아니면 staff.bid
+                  const empInfo = employeesV1?.[staff.dn];
+                  let homeBid = staff.bid;
+                  if (empInfo?.isMale) {
+                    const rotBid = getRotationBranchId(staff.dn, saleDate);
+                    if (rotBid) homeBid = rotBid;
+                  }
+                  // 자동이동: 다른 지점에 활성 예약 있고 home에 없으면 → 그 지점
+                  const otherRes = reservations.find(r => r.date === saleDate && r.staffId === staff.dn && r.bid && r.bid !== homeBid && isActiveRes(r));
+                  const homeRes = reservations.find(r => r.date === saleDate && r.staffId === staff.dn && r.bid === homeBid && isActiveRes(r));
+                  if (otherRes && !homeRes) return otherRes.bid;
+                  // schHistory에 등록된 직원 (근무, 지원 등 비휴무 entry)
+                  if (typeof st === "string" && st.length > 0) return homeBid;
+                  // schHistory 미등록이지만 남자직원이면 로테이션 지점에 노출 (타임라인과 동일)
+                  if (empInfo?.isMale) return homeBid;
+                  return null;
+                };
+
+                const staffByBranch = {};
+                augmentedStaff.forEach(s => {
                   if (!s.dn) return;
-                  const st = schHistory?.[s.dn]?.[saleDate];
-                  if (st === "휴무" || st === "휴무(꼭)" || st === "무급") { offStaff.push(s); return; }
-                  const effBid = getEffectiveBranch(s);
-                  if (!staffByBranch[effBid]) staffByBranch[effBid] = [];
-                  staffByBranch[effBid].push(s);
+                  const eff = getEffBranch(s);
+                  if (!eff) return; // 휴무/미등록 → 표시 안 함
+                  if (!staffByBranch[eff]) staffByBranch[eff] = [];
+                  staffByBranch[eff].push(s);
                 });
-                // 옵션 텍스트는 항상 직원명만 (지점은 optgroup으로 구분)
+
                 const renderStaff = (s) => <option key={s.id} value={s.id}>{s.dn}</option>;
                 const currentGroup = staffByBranch[selBranch] || [];
-                const otherBranches = (data.branches||[]).filter(b => b.id !== selBranch && staffByBranch[b.id]);
+                const otherBranches = (data.branches||[]).filter(b => b.id !== selBranch && staffByBranch[b.id]?.length);
                 return <>
                   {currentGroup.length > 0 && <optgroup label={`현재 지점 근무`}>
                     {currentGroup.map(s => renderStaff(s))}
@@ -2621,20 +2724,17 @@ export function DetailedSaleForm({ reservation, branchId, onSubmit, onClose, dat
                       {staffByBranch[br.id].map(s => renderStaff(s))}
                     </optgroup>
                   ))}
-                  {offStaff.length > 0 && <optgroup label="휴무">
-                    {offStaff.map(s => {
-                      const br = (data.branches||[]).find(b=>b.id===s.bid);
-                      return <option key={s.id} value={s.id}>{s.dn} (휴무{br?`·${br.short||br.name}`:''})</option>;
-                    })}
-                  </optgroup>}
                 </>;
               })()}
             </select>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11 }}>
-            <span style={{ color:T.textSub, fontSize:11 }}>지점</span>
-            <select style={{ flex:1, minWidth:80, maxWidth:130, height:22, padding:"0 4px", fontSize:11, lineHeight:"1", border:`1px solid ${T.gray400}`, background:T.bgCard, borderRadius:4, fontFamily:"inherit", outline:"none", boxSizing:"border-box", minHeight:0 }} value={selBranch} onChange={e => setSelBranch(e.target.value)}>
-              {(data.branches||[]).map(b => <option key={b.id} value={b.id}>{b.short || b.name}</option>)}
+            <span style={{ color:T.textSub, fontSize:11 }}>지점 <span style={{color:T.danger}}>*</span></span>
+            <select style={{ flex:1, minWidth:80, maxWidth:130, height:22, padding:"0 4px", fontSize:11, lineHeight:"1", border:`1px solid ${selBranch ? T.gray400 : T.danger}`, background:selBranch ? T.bgCard : T.dangerLt, borderRadius:4, fontFamily:"inherit", outline:"none", boxSizing:"border-box", minHeight:0 }} value={selBranch} onChange={e => setSelBranch(e.target.value)}>
+              <option value="">지점 선택</option>
+              {(data.branches||[])
+                .filter(b => !userBranches || userBranches.length === 0 || userBranches.includes(b.id))
+                .map(b => <option key={b.id} value={b.id}>{b.short || b.name}</option>)}
             </select>
           </div>
           {/* (Totals 제거 — 우측 패널에 중복 표시되어 있음) */}

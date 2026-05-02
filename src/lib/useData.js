@@ -168,11 +168,19 @@ export function useScheduleData(key, defaultValue = null) {
     return () => { cancelled = true; ch.unsubscribe() }
   }, [key])
 
-  const save = async (val) => {
-    setData(val)
+  // val이 함수면 항상 fresh state 기반 (stale closure 방지). 객체면 기존 동작 유지.
+  const save = async (valOrFn) => {
+    const isFn = typeof valOrFn === 'function'
+    let next
+    if (isFn) {
+      setData(prev => { next = valOrFn(prev); return next })
+    } else {
+      next = valOrFn
+      setData(next)
+    }
     await supabase.from('schedule_data').upsert({
       id: key, key,
-      value: JSON.stringify(val),
+      value: JSON.stringify(next),
       updated_at: new Date().toISOString()
     })
   }

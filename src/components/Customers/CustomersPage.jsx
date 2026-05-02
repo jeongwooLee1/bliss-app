@@ -825,24 +825,44 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,padding:"4px 8px",borderRadius:T.radius.sm,
         background:isExpired?T.dangerLt:T.gray100}}>
         <span style={{fontSize:T.fs.nano,fontWeight:T.fw.bolder,color:isExpired?T.danger:expiry?T.textSub:T.textMuted,flex:1}}>
-          {expiry ? `유효 ~${expiry} ${isExpired?"(만료)":""}` : "유효기간 미설정"}
+          {expiry ? `유효 ~${expiry} ${isExpired?"(만료)":""}` : "유효기간 미설정 (무제한)"}
         </span>
         <button onClick={(e)=>{
           e.stopPropagation();
           const def = expiry || (()=>{const d=new Date();d.setFullYear(d.getFullYear()+1);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;})();
-          const newExp = prompt(expiry?"새 유효기간 (YYYY-MM-DD):":"유효기간 설정 (YYYY-MM-DD):", def);
-          if(!newExp) return;
-          if(!/^\d{4}-\d{2}-\d{2}$/.test(newExp)){ alert("YYYY-MM-DD 형식으로 입력해주세요"); return; }
+          const newExp = prompt(expiry?"새 유효기간 (YYYY-MM-DD, 비우면 무제한):":"유효기간 설정 (YYYY-MM-DD, 비우면 무제한):", def);
+          if(newExp === null) return; // 취소
+          const trimmed = newExp.trim();
+          // 빈 입력 = 유효기간 삭제 (무제한)
+          if (trimmed === "") {
+            if (!expiry) return; // 원래도 없으면 변경 없음
+            if (!confirm("유효기간을 삭제합니다.\n무제한으로 변경됩니다.")) return;
+            const parts = (p.note || "").split(" | ").map(s=>s.trim()).filter(s=>s && !/^유효:/.test(s));
+            const newNote = parts.length > 0 ? parts.join(" | ") : null;
+            sb.update("customer_packages",p.id,{note:newNote}).catch(console.error);
+            setCustPkgsServer(prev=>prev.map(x=>x.id===p.id?{...x,note:newNote}:x));
+            return;
+          }
+          if(!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)){ alert("YYYY-MM-DD 형식으로 입력해주세요"); return; }
           const curNote = p.note || "";
           const newNote = expiry
-            ? curNote.replace(/유효:\d{4}-\d{2}-\d{2}/, `유효:${newExp}`)
-            : (curNote ? `${curNote} | 유효:${newExp}` : `유효:${newExp}`);
+            ? curNote.replace(/유효:\d{4}-\d{2}-\d{2}/, `유효:${trimmed}`)
+            : (curNote ? `${curNote} | 유효:${trimmed}` : `유효:${trimmed}`);
           sb.update("customer_packages",p.id,{note:newNote}).catch(console.error);
           setCustPkgsServer(prev=>prev.map(x=>x.id===p.id?{...x,note:newNote}:x));
         }} style={{fontSize:9,padding:"1px 6px",borderRadius:T.radius.sm,border:"1px solid "+T.border,
           background:T.bgCard,color:T.primary,cursor:"pointer",fontFamily:"inherit",fontWeight:T.fw.bold,whiteSpace:"nowrap"}}>
           {expiry ? "연장" : "설정"}
         </button>
+        {expiry && <button onClick={(e)=>{
+          e.stopPropagation();
+          if (!confirm("유효기간을 삭제합니다.\n무제한으로 변경됩니다.")) return;
+          const parts = (p.note || "").split(" | ").map(s=>s.trim()).filter(s=>s && !/^유효:/.test(s));
+          const newNote = parts.length > 0 ? parts.join(" | ") : null;
+          sb.update("customer_packages",p.id,{note:newNote}).catch(console.error);
+          setCustPkgsServer(prev=>prev.map(x=>x.id===p.id?{...x,note:newNote}:x));
+        }} title="유효기간 삭제 (무제한으로 변경)" style={{fontSize:11,padding:"1px 6px",borderRadius:T.radius.sm,border:"1px solid "+T.border,
+          background:T.bgCard,color:T.danger,cursor:"pointer",fontFamily:"inherit",fontWeight:T.fw.bolder,whiteSpace:"nowrap",lineHeight:1}}>×</button>}
       </div>
 
       {/* 🏪 구매지점 (id_ebgbebctt3) — 같은 그룹 지점에서만 사용 가능 */}
@@ -1254,14 +1274,26 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                       )}
                       {memoSaving && <span style={{marginLeft:8,fontSize:T.fs.xxs,color:T.textMuted}}>저장중...</span>}
                     </div>
-                    {/* 예약 통계 (id_imgr471swt-5 수정요청: 당일취소/당일변경 분리) */}
-                    <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:T.bgCard,borderBottom:"1px solid "+T.border}}>
+                    {/* 예약 통계 (페널티 카운트는 customer_behavior_log 기반 — customers.cancel_penalty_count) */}
+                    <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:T.bgCard,borderBottom:"1px solid "+T.border,flexWrap:"wrap"}}>
+                      {(() => {
+                        const _cp = Number(c.cancelPenaltyCount || 0);
+                        const _ns = Number(c.noShowCount || 0);
+                        if (_cp >= 3 || _ns >= 1) {
+                          return <span title={`페널티 취소 ${_cp}회 / 노쇼 ${_ns}회`}
+                            style={{fontSize:11,padding:"3px 9px",borderRadius:10,background:"#FFF3E0",color:"#E65100",border:"1px solid #FFB74D",fontWeight:800,whiteSpace:"nowrap",marginRight:6}}>
+                            ⚠️ 주의 고객
+                          </span>;
+                        }
+                        return null;
+                      })()}
                       {[
                         {label:"예약",val:custResStats.total,color:T.primary},
-                        {label:"노쇼",val:custResStats.noshow,color:custResStats.noshow>0?"#e53e3e":T.gray500},
+                        {label:"노쇼",val:Number(c.noShowCount||0)||custResStats.noshow,color:(Number(c.noShowCount||0)||custResStats.noshow)>0?"#e53e3e":T.gray500},
+                        {label:"페널티취소",val:Number(c.cancelPenaltyCount||0),color:Number(c.cancelPenaltyCount||0)>=3?"#e53e3e":Number(c.cancelPenaltyCount||0)>0?"#dd6b20":T.gray500,title:"전일 21시 이후~예약시각 사이 취소 (당일 예약+1시간 이내 제외)"},
                         {label:"당일취소",val:custResStats.samedayCancel,color:custResStats.samedayCancel>0?"#dd6b20":T.gray500},
                         {label:"당일변경",val:custResStats.samedayChange,color:custResStats.samedayChange>0?"#d97706":T.gray500}
-                      ].map(s=><div key={s.label} style={{display:"flex",alignItems:"center",gap:4}}>
+                      ].map(s=><div key={s.label} title={s.title||""} style={{display:"flex",alignItems:"center",gap:4}}>
                         <span style={{fontSize:T.fs.xs,color:T.textMuted}}>{s.label}</span>
                         <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:s.color}}>{s.val}</span>
                       </div>)}

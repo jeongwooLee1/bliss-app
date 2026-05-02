@@ -77,6 +77,11 @@ export default function SnapshotModal({ snapshots, allEmployees, curKey, onRollb
                 const empCount = isSettingsTab
                   ? Object.keys(snap.empSettings || {}).length
                   : Object.keys(snap.data || {}).length
+                const typeLabel = isSettingsTab ? '⚙️ 설정' :
+                  snap.type === 'before_auto_assign' ? '🤖 자동배치 직전' :
+                  snap.type === 'confirm' ? '✅ 확정' : '📌 백업'
+                const typeColor = snap.type === 'before_auto_assign' ? T.danger :
+                  snap.type === 'confirm' ? T.primary : T.textMuted
                 return (
                   <button key={i} onClick={() => { setSelIdx(i); setConfirmRollback(false) }}
                     style={{ padding:'8px 10px', borderRadius:8, fontSize:12, fontFamily:'inherit', cursor:'pointer', textAlign:'left',
@@ -84,7 +89,8 @@ export default function SnapshotModal({ snapshots, allEmployees, curKey, onRollb
                       background:selIdx===i ? T.primaryLt : T.bgCard,
                       color:T.text }}>
                     <div style={{ fontWeight:700, fontSize:13 }}>{dateStr} {timeStr}</div>
-                    <div style={{ fontSize:10, color:T.textMuted, marginTop:2 }}>{isSettingsTab ? `설정 (${empCount}명)` : `직원 ${empCount}명`}</div>
+                    <div style={{ fontSize:10, color:typeColor, marginTop:2, fontWeight:600 }}>{typeLabel}</div>
+                    <div style={{ fontSize:10, color:T.textMuted, marginTop:1 }}>{isSettingsTab ? `설정 (${empCount}명)` : `직원 ${empCount}명`}</div>
                   </button>
                 )
               })}
