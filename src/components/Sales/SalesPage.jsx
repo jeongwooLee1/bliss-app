@@ -1,6 +1,6 @@
-import React, { useState, useRef, useCallback } from 'react'
-import { T } from '../../lib/constants'
-import { sb, buildTokenSearch, matchAllTokens } from '../../lib/sb'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
+import { T, BUSINESS_ID } from '../../lib/constants'
+import { sb, buildTokenSearch, matchAllTokens, SB_URL, sbHeaders } from '../../lib/sb'
 import { toDb, fromDb } from '../../lib/db'
 import { todayStr, genId, fmtLocal, useSessionState, TTL } from '../../lib/utils'
 import { Btn, StatCard, GridLayout, fmt, Empty, DataTable, FLD } from '../common'
@@ -871,6 +871,22 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
   const [showSheet, setShowSheet] = useState(false);
   // 매출통계는 권한 무관 전 지점 표시 (userBranches 무시)
   const allBids = (data?.branches || []).map(b => b.id);
+  // 전체 기간 매월/매년 — RPC로 DB에서 직접 집계 (메모리의 90일 한계 회피)
+  const [allTimeStats, setAllTimeStats] = useState({ monthly: [], yearly: [], loading: true });
+  useEffect(() => {
+    let cancelled = false;
+    setAllTimeStats(p => ({...p, loading: true}));
+    const body = JSON.stringify({ p_biz_id: BUSINESS_ID, p_bid: vb === "all" ? null : vb });
+    const opt = { method:'POST', headers:{...sbHeaders, 'Content-Type':'application/json'}, body };
+    Promise.all([
+      fetch(`${SB_URL}/rest/v1/rpc/get_sales_monthly`, opt).then(r => r.ok ? r.json() : []).catch(() => []),
+      fetch(`${SB_URL}/rest/v1/rpc/get_sales_yearly`, opt).then(r => r.ok ? r.json() : []).catch(() => []),
+    ]).then(([mj, yj]) => {
+      if (cancelled) return;
+      setAllTimeStats({ monthly: Array.isArray(mj) ? mj : [], yearly: Array.isArray(yj) ? yj : [], loading: false });
+    });
+    return () => { cancelled = true; };
+  }, [vb]);
   // 기간 길이로 차트 단위 자동 결정 — 60일↓ 일별, 365일↓ 월별, 그 외 연도별
   // 전체(all) 선택 시 매출 데이터의 실제 범위(첫 매출 ~ 오늘)로 판단
   const statsPeriod = (() => {
@@ -1021,34 +1037,19 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
   })();
   const maxChart = Math.max(...chartDays.map(d=>d.total),1);
 
-  // 전체 기간 매월/매년 차트 (지점 필터만 적용, 기간 필터 무시)
-  const _allBranchSales = (data?.sales||[]).filter(s => (vb==="all" ? allBids.includes(s.bid) : s.bid===vb));
-  const monthlyAll = (() => {
-    const m = new Map();
-    _allBranchSales.forEach(s => {
-      const ym = (s.date||"").slice(0,7);
-      if (!ym) return;
-      if (!m.has(ym)) m.set(ym, {svc:0, prod:0});
-      const r = m.get(ym);
-      r.svc += s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint+(s.externalPrepaid||0);
-      r.prod += s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint;
-    });
-    return Array.from(m.entries()).sort((a,b)=>a[0].localeCompare(b[0]))
-      .map(([ym,v]) => ({label:`${ym.slice(2,4)}.${Number(ym.slice(5))}월`, svc:v.svc, prod:v.prod, total:v.svc+v.prod}));
-  })();
-  const yearlyAll = (() => {
-    const m = new Map();
-    _allBranchSales.forEach(s => {
-      const y = (s.date||"").slice(0,4);
-      if (!y) return;
-      if (!m.has(y)) m.set(y, {svc:0, prod:0});
-      const r = m.get(y);
-      r.svc += s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint+(s.externalPrepaid||0);
-      r.prod += s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint;
-    });
-    return Array.from(m.entries()).sort((a,b)=>a[0].localeCompare(b[0]))
-      .map(([y,v]) => ({label:`${y}년`, svc:v.svc, prod:v.prod, total:v.svc+v.prod}));
-  })();
+  // 전체 기간 매월/매년 차트 — RPC 응답 기반 (DB GROUP BY)
+  const monthlyAll = (allTimeStats.monthly || []).map(r => ({
+    label: `${String(r.ym).slice(2,4)}.${Number(String(r.ym).slice(5))}월`,
+    svc: Number(r.svc_total||0),
+    prod: Number(r.prod_total||0),
+    total: Number(r.total||0),
+  }));
+  const yearlyAll = (allTimeStats.yearly || []).map(r => ({
+    label: `${r.year}년`,
+    svc: Number(r.svc_total||0),
+    prod: Number(r.prod_total||0),
+    total: Number(r.total||0),
+  }));
   const maxMonthly = Math.max(...monthlyAll.map(d=>d.total),1);
   const maxYearly = Math.max(...yearlyAll.map(d=>d.total),1);
 
