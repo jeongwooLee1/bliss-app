@@ -227,6 +227,20 @@ export async function naverConfirmBooking(bizId, rid) {
   }
 }
 
+// 네이버 list polling 즉시 트리거. bizId 빈값이면 모든 매장. 응답: {ok, fetched, inserted, prev_cancelled, list_cancelled, errors}
+export async function naverPollNow(bizId) {
+  try {
+    const r = await fetch('https://blissme.ai/naver-poll-now', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ biz_id: bizId ? String(bizId) : '' })
+    });
+    const j = await r.json().catch(() => ({}));
+    return j;
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
 export const fmtLocal = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`
 export const dateFromStr = (s) => { if (!s) return null; const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); }
 export const isoDate = (d) => d ? fmtLocal(new Date(d)) : ''

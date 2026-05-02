@@ -4,7 +4,7 @@ import { sb, SB_URL, SB_KEY, sbHeaders, queueAlimtalk } from '../../lib/sb'
 import { useMaleRotation, useScheduleData } from '../../lib/useData'
 import { DEFAULT_CELL_TAGS } from '../Schedule/scheduleConstants'
 import { fromDb, toDb, resolveSystemIds, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS } from '../../lib/db'
-import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, useSessionState, getCustPkgBranchInitial, naverConfirmBooking } from '../../lib/utils'
+import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, useSessionState, getCustPkgBranchInitial, naverConfirmBooking, naverPollNow } from '../../lib/utils'
 import I from '../common/I'
 import TimelineModal from './ReservationModal'
 import QuickBookModal from './QuickBookModal'
@@ -3194,6 +3194,31 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           <button onClick={()=>setSelDate(todayStr())} style={{padding:"0 10px",height:32,fontSize:T.fs.sm,border:"1px solid #d0d0d0",borderRadius:T.radius.md,background:T.bgCard,color:T.gray600,cursor:"pointer",fontFamily:"inherit",flexShrink:0,display:"flex",alignItems:"center"}} className="hide-mobile">오늘</button>
           <button onClick={()=>setShowQuickBook(true)} style={{padding:"0 12px",height:32,fontSize:T.fs.sm,border:"none",borderRadius:T.radius.xl,background:"linear-gradient(135deg,#4285f4,#9b72cb,#d96570)",color:T.bgCard,cursor:"pointer",fontFamily:"inherit",flexShrink:0,display:"flex",alignItems:"center",gap:5,fontWeight:T.fw.bolder,boxShadow:"0 2px 8px rgba(66,133,244,.25)"}}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill={T.bgCard} style={{flexShrink:0}}><path d="M12 2L13.09 8.26L18 6L14.74 10.91L21 12L14.74 13.09L18 18L13.09 15.74L12 22L10.91 15.74L6 18L9.26 13.09L3 12L9.26 10.91L6 6L10.91 8.26L12 2Z"/></svg> AI Book
+          </button>
+          {/* 네이버 갱신 — 현재 보고 있는 지점의 list polling 즉시 실행 */}
+          <button onClick={async (e)=>{
+            const btn = e.currentTarget; const orig = btn.textContent;
+            btn.disabled = true; btn.textContent = "갱신중…";
+            try {
+              // 현재 보는 지점들 (selBranch 또는 viewBranches)
+              const currentBranches = (data?.branches||[]).filter(b => userBranches.includes(b.id) && b.naverBizId);
+              const targets = currentBranches.length ? currentBranches : (data?.branches||[]).filter(b => b.naverBizId);
+              let totalNew = 0, totalCancel = 0;
+              for (const br of targets) {
+                const r = await naverPollNow(br.naverBizId);
+                if (r?.ok) {
+                  totalNew += (r.inserted||0);
+                  totalCancel += (r.prev_cancelled||0) + (r.list_cancelled||0);
+                }
+              }
+              btn.textContent = totalNew||totalCancel ? `✓ +${totalNew} -${totalCancel}` : "✓ 최신";
+              setTimeout(()=>{ btn.textContent = orig; btn.disabled = false; }, 2500);
+            } catch(err) {
+              btn.textContent = "실패"; setTimeout(()=>{ btn.textContent = orig; btn.disabled = false; }, 2000);
+            }
+          }} title="네이버 예약 list 즉시 갱신 (변경/취소/누락 동기화)"
+          style={{padding:"0 10px",height:32,fontSize:T.fs.xs,border:"1px solid "+T.naver,borderRadius:T.radius.md,background:"#fff",color:T.naver,cursor:"pointer",fontFamily:"inherit",flexShrink:0,display:"flex",alignItems:"center",gap:4,fontWeight:T.fw.bold}}>
+            <I name="naver" size={11} color={T.naver}/> 갱신
           </button>
           <div style={{marginLeft:"auto",position:"relative",flexShrink:0}} ref={el => { if(el) el._settingsBtn = el; }}>
             <button onClick={(e)=>{const next=!showSettings;setShowSettings(next);if(next&&scrollRef.current)scrollRef.current.scrollLeft=0;}} id="settings-btn"
