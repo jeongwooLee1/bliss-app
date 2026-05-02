@@ -2820,12 +2820,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           if (r.id !== block.id) return r;
           return {...r, dur: finalDur, endTime};
         })}));
-        // 내부일정은 팝업 없이 바로 DB 저장
-        if (block.isSchedule) {
-          sb.update("reservations", block.id, { dur: finalDur, end_time: endTime }).catch(console.error);
-        } else {
-          setPendingChange({ type: "resize", block, data: { dur: finalDur }, orig: { dur: origDur } });
-        }
+        // 리사이즈는 시작 시간 안 바뀌므로 알림톡 불필요 — 즉시 DB 저장 (dur+end_time 동기화)
+        sb.update("reservations", block.id, { dur: finalDur, end_time: endTime }).catch(console.error);
       }
       setResizeBlock(null); setResizeDur(0);
       setTimeout(() => { isResizing.current = false; longPressActive.current = false; }, 300);
