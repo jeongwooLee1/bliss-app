@@ -869,17 +869,27 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
   const [vb, setVb] = useState("all");
   const dateAnchorRef = React.useRef(null);
   const [showSheet, setShowSheet] = useState(false);
+  // 매출통계는 권한 무관 전 지점 표시 (userBranches 무시)
+  const allBids = (data?.branches || []).map(b => b.id);
   // 기간 길이로 차트 단위 자동 결정 — 60일↓ 일별, 365일↓ 월별, 그 외 연도별
+  // 전체(all) 선택 시 매출 데이터의 실제 범위(첫 매출 ~ 오늘)로 판단
   const statsPeriod = (() => {
-    if (periodKey === "all" || !startDate || !endDate) return "day";
-    const ds = new Date(startDate); const de = new Date(endDate);
-    const totalDays = Math.round((de - ds) / 86400000) + 1;
+    let totalDays;
+    if (periodKey === "all" || !startDate || !endDate) {
+      const allSales = (data?.sales || []).filter(s => (vb==="all" ? allBids.includes(s.bid) : s.bid===vb));
+      const dates = allSales.map(s => s.date).filter(Boolean).sort();
+      if (dates.length < 2) return "day";
+      const first = new Date(dates[0]);
+      const last = new Date(dates[dates.length-1]);
+      totalDays = Math.round((last - first) / 86400000) + 1;
+    } else {
+      const ds = new Date(startDate); const de = new Date(endDate);
+      totalDays = Math.round((de - ds) / 86400000) + 1;
+    }
     if (totalDays > 365) return "year";
     if (totalDays > 60) return "month";
     return "day";
   })();
-  // 매출통계는 권한 무관 전 지점 표시 (userBranches 무시)
-  const allBids = (data?.branches || []).map(b => b.id);
 
   // 기간 범위 계산 (매출관리와 동일한 로직)
   const inRange = (date) => {
