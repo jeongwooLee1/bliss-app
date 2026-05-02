@@ -617,6 +617,23 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
       setCustPkgsInfo(Array.isArray(rows) ? rows : []);
     }).catch(() => setCustPkgsInfo([]));
   }, [f.custId]);
+
+  // 신규고객 자동 태그 — 새 예약 + 미등록 고객(custId 없음 + DB phone 매칭 X)일 때 '신규' 태그 자동 추가
+  // 매칭되는 고객으로 변경되면 '신규' 태그 자동 제거. 내부일정/네이버 예약은 영향 없음.
+  useEffect(() => {
+    if (item?.id) return; // 기존 예약(네이버 포함)은 별도 흐름
+    if (isSchedule) return; // 내부일정 X
+    if (!NEW_CUST_TAG_ID_GLOBAL) return;
+    const phoneNorm = (f.custPhone||"").replace(/[^0-9]/g,"");
+    const custLinked = !!(f.custId) || (phoneNorm.length >= 10 && !!(data?.customers||[]).find(c => (c.phone||"").replace(/[^0-9]/g,"") === phoneNorm));
+    setF(p => {
+      const tags = Array.isArray(p.selectedTags) ? p.selectedTags : [];
+      const has = tags.includes(NEW_CUST_TAG_ID_GLOBAL);
+      if (!custLinked && !has) return {...p, selectedTags: [...tags, NEW_CUST_TAG_ID_GLOBAL]};
+      if (custLinked && has) return {...p, selectedTags: tags.filter(t => t !== NEW_CUST_TAG_ID_GLOBAL)};
+      return p;
+    });
+  }, [f.custId, f.custPhone, isSchedule, data?.customers, item?.id]);
   // 보유권 요약: 유효권(잔액>0/회차>0) + 소진권 모두 표시 (소진은 흐리게)
   const activePkgSummary = (() => {
     const out = [];
