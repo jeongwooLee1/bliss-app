@@ -126,8 +126,41 @@ export function buildServicesContext(data, filterKeyword = '') {
 }
 
 // ─── Tier 2: FAQ 검색 주입 ─────────────────────────────────────────────────
-// 키워드 기반 매칭 (한국어 조사 제거 + 양방향 부분일치).
-// 점수: 토큰이 FAQ q/a에 포함되면 +1, 질문에 있으면 +0.5, 카테고리 일치 +2.
+// 키워드 기반 매칭 (한국어 조사 제거 + 양방향 부분일치 + 동의어 + 카테고리 자동 주입).
+// 점수: 토큰이 FAQ q/a에 포함되면 +1, 질문에 있으면 +0.5, 카테고리 일치 +2, 동의어 매칭 +1.
+
+// 동의어/유사어 — 다른 표현으로 물어도 FAQ에 매칭되도록 토큰 확장
+const FAQ_SYNONYMS = {
+  '스킨탈락':['벗겨','탈각','각질','피부','벗겨짐'],
+  '탈각':['벗겨','각질','피부'],
+  '탈피':['벗겨','각질','피부'],
+  '벗겨짐':['벗겨','각질','피부'],
+  '각질':['스크럽','벗겨','인그로운'],
+  '인그로운':['털','각질','벗겨'],
+  '음모왁싱':['브라질리언','음부','음모'],
+  '음부':['브라질리언','음모'],
+  '비키니왁싱':['비키니','브라질리언'],
+  '겨드랑이':['겨드','암핏'],
+  '음경':['남성','풀바디남','음모'],
+  '클레임':['트러블','민원','불만'],
+  '아파요':['아픔','통증','자극','얼얼'],
+  '간지러움':['가려움','간지','가렵'],
+  '뾰루지':['여드름','트러블','뾰드'],
+  '울긋불긋':['붉은기','홍반','발적'],
+  '주기':['얼마나 자주','자주','텀','간격'],
+  '얼만큼':['주기','얼마나','자주'],
+};
+
+// 카테고리 자동 주입 — 질문에 이 키워드 있으면 해당 카테고리 FAQ 전체를 컨텍스트에 추가
+const CATEGORY_KEYWORDS = {
+  '사후관리&트러블': ['트러블','붉은기','홍반','가려움','간지','여드름','뾰루지','피부','벗겨','탈락','탈각','탈피','각질','인그로운','사우나','목욕','찜질','수영','운동','성관계','샤워','자극','진정','보습','케어','클레임','민원','발적'],
+  '남성고객': ['남성','남자','남편','음모','음부','아폴로','파라쏘','풀바디남'],
+  '매장편의': ['주차','파킹','오시는길','대기','탈의','준비물','샤워실'],
+  '위생안전': ['위생','감염','소독','일회용','피부질환'],
+  '임산부': ['임신','임산부','출산','수유','젖','태아'],
+  '주기효과': ['주기','얼마나 자주','효과','왁싱효과','텀','간격','계속'],
+};
+
 const _STRIP_RE = /(이|가|은|는|을|를|의|에|에서|에게|한테|로|으로|와|과|랑|이랑|하고|도|만|야|요|입니다|입니까|인가요|이에요|예요|있어요|있나요|있다고|있는데|되나요|되요|돼요|되었어요|해요|해야|해야하나요|해야해|해주세요|해줘|왔어|왔어요|왔는데|클레임|어떻게|어떡해|어떡해야|있음|있나)$/;
 function _stripParticle(t) {
   let cur = t;
@@ -139,17 +172,28 @@ function _stripParticle(t) {
   return cur;
 }
 
-export function searchFAQ(question, faqItems, topN = 8) {
+export function searchFAQ(question, faqItems, topN = 15) {
   const active = (faqItems || []).filter(f => f?.active !== false && f?.q && f?.a);
   if (!active.length) return [];
   const q = question.toLowerCase().trim();
   if (!q) return [];
   const rawTokens = q.split(/[\s?!.,~()]+/).filter(t => t.length >= 2);
-  // 원형 + 조사 제거형 모두 후보로
-  const tokens = Array.from(new Set(rawTokens.flatMap(t => {
+  // 원형 + 조사 제거형 + 동의어 모두 토큰으로 확장
+  const expanded = new Set();
+  rawTokens.forEach(t => {
+    expanded.add(t);
     const s = _stripParticle(t);
-    return s !== t && s.length >= 2 ? [t, s] : [t];
-  })));
+    if (s !== t && s.length >= 2) expanded.add(s);
+    // 동의어 매핑 — 사용자 표현이 FAQ q/a에 없는 단어면 동의어로 보강
+    Object.entries(FAQ_SYNONYMS).forEach(([key, syns]) => {
+      if (t.includes(key) || s.includes(key)) syns.forEach(syn => expanded.add(syn));
+    });
+  });
+  // 질문 전체에 카테고리 키워드가 들어있으면 그 카테고리도 토큰에 추가 (점수 부여용)
+  Object.entries(CATEGORY_KEYWORDS).forEach(([cat, kws]) => {
+    if (kws.some(kw => q.includes(kw))) expanded.add(cat.toLowerCase());
+  });
+  const tokens = Array.from(expanded);
   if (!tokens.length) return [];
 
   const scored = active.map(f => {
@@ -157,17 +201,14 @@ export function searchFAQ(question, faqItems, topN = 8) {
     const text = (f.q + ' ' + f.a).toLowerCase();
     const qLow = f.q.toLowerCase();
     tokens.forEach(tok => {
-      // 양방향 부분 일치: tok가 text에 있거나, text의 단어가 tok에 포함되어도 부분 점수
       if (text.includes(tok)) {
         score += 1;
         if (qLow.includes(tok)) score += 0.5;
       } else if (tok.length >= 3) {
-        // tok의 앞 2~3글자라도 FAQ q에 있으면 약한 매칭 (조사 패턴 미커버 케이스)
         const pref = tok.slice(0, Math.min(3, tok.length - 1));
         if (pref.length >= 2 && qLow.includes(pref)) score += 0.4;
       }
     });
-    // 카테고리 힌트 (남자/임산부/위생 등 명시적 언급)
     const cat = (f.category || '').toLowerCase();
     if (cat && tokens.some(t => cat.includes(t) || t.includes(cat))) score += 2;
     return { faq: f, score };
@@ -176,11 +217,30 @@ export function searchFAQ(question, faqItems, topN = 8) {
   return scored.filter(s => s.score > 0).slice(0, topN).map(s => s.faq);
 }
 
-export function buildFAQContext(question, faqItems, topN = 8) {
+// 질문에 카테고리 키워드 매칭 시 그 카테고리 전체 FAQ 반환
+function getAutoInjectCategories(question, faqItems) {
+  const q = question.toLowerCase();
+  const matched = new Set();
+  Object.entries(CATEGORY_KEYWORDS).forEach(([cat, kws]) => {
+    if (kws.some(kw => q.includes(kw))) matched.add(cat);
+  });
+  if (!matched.size) return [];
+  return (faqItems || []).filter(f => f?.active !== false && f?.q && f?.a && matched.has(f.category));
+}
+
+export function buildFAQContext(question, faqItems, topN = 15) {
+  // 1) 카테고리 자동 주입 — 사용자 질문이 트러블/사후관리/남성/임산부 등 카테고리 키워드에 매칭되면 그 카테고리 전체 주입
+  const catFAQs = getAutoInjectCategories(question, faqItems);
+  // 2) 토큰/동의어 매칭 검색
   const hits = searchFAQ(question, faqItems, topN);
-  if (!hits.length) return '';
-  const lines = hits.map((f, i) => `[FAQ ${i + 1}] Q: ${f.q}\nA: ${f.a}${f.category ? `\n(카테고리: ${f.category})` : ''}`);
-  return `[관련 FAQ — 답변 작성 시 참고]\n${lines.join('\n\n')}`;
+  // 3) 합치기 (카테고리 우선, 중복 제거)
+  const merged = [];
+  const seen = new Set();
+  catFAQs.forEach(f => { const k = f.q + '|' + f.a; if (!seen.has(k)) { merged.push(f); seen.add(k); } });
+  hits.forEach(f => { const k = f.q + '|' + f.a; if (!seen.has(k)) { merged.push(f); seen.add(k); } });
+  if (!merged.length) return '';
+  const lines = merged.map((f, i) => `[FAQ ${i + 1}] Q: ${f.q}\nA: ${f.a}${f.category ? `\n(카테고리: ${f.category})` : ''}`);
+  return `[하우스왁싱 FAQ — 왁싱 관련 답변은 반드시 이 FAQ에 근거. 일반 지식 사용 금지]\n${lines.join('\n\n')}`;
 }
 
 // ─── 이벤트/쿠폰 컨텍스트 (조건부 주입) ─────────────────────────────────────
@@ -348,11 +408,13 @@ export function buildFullPrompt({ question, data, faqItems, role = 'master', ext
   parts.push(`[현재 사용자 질문]\n${question}`);
   parts.push(
     '[답변 지침]\n' +
-    '1) 매장 정책·가격·운영시간·예약/매출/고객 데이터처럼 "이 매장만의 사실"은 반드시 제공된 FAQ/데이터/컨텍스트에 근거해 답하세요. 근거가 없으면 추측하지 말고 "FAQ에 등록된 내용이 없어 정확히 안내드리기 어렵습니다"라고 답하고 대표에게 확인 권유하세요.\n' +
-    '2) 그 외 일반 지식(왁싱 시술 후 케어, 붉은기·트러블 대처, 피부 관리 상식, 고객 클레임 응대 톤, 인그로운/제모 일반 정보 등)은 전문 왁싱 살롱의 시니어 직원처럼 신뢰할 수 있는 일반 지식으로 답해주세요. "FAQ에 없어서 모른다"고만 하지 마세요.\n' +
-    '3) 고객 응대 문장을 요청받으면 따뜻하고 격식 있는 톤으로 즉시 작성해 제시하세요.\n' +
-    '4) 의학적 진단·처방은 피하고, 심한 통증/지속되는 발진/감염 의심 등은 의료 상담 권유로 마무리하세요.\n' +
-    '5) 친근하고 간결하게.'
+    '1) 🚨 왁싱 관련 모든 질문(시술·사후관리·트러블·붉은기·인그로운·각질·피부 벗겨짐·통증·가려움·여드름·임산부·주기·효과·위생·남성고객·매장편의·클레임 응대 등)은 반드시 위 [하우스왁싱 FAQ]에 근거해서만 답변하세요. 일반 지식·웹검색·추측·자체 추론 절대 금지. FAQ가 곧 하우스왁싱의 노하우이며 정답입니다.\n' +
+    '2) 매장 정책·가격·운영시간·예약/매출/고객 데이터도 위 컨텍스트에 근거해서만 답하세요.\n' +
+    '3) FAQ에 답이 없으면: "하우스왁싱 FAQ에 등록된 답변이 없어 정확히 안내드리기 어렵습니다. 대표에게 확인 후 답변드리겠습니다." 라고 답하세요. 일반 지식으로 채우지 마세요.\n' +
+    '4) 답변 시 가능하면 어느 FAQ를 근거로 했는지 짧게 인용 가능 (예: "FAQ상 ~합니다").\n' +
+    '5) 고객 응대 문장을 요청받으면 FAQ 답변을 바탕으로 따뜻하고 격식 있는 톤으로 작성하세요.\n' +
+    '6) 의학적 진단·처방은 피하고, 심한 통증/지속되는 발진/감염 의심 등은 "의료 상담 권유"로 마무리하세요.\n' +
+    '7) 친근하고 간결하게. 한국어 존댓말.'
   );
   return parts.join('\n\n');
 }
