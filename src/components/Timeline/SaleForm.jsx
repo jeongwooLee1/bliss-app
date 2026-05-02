@@ -1745,12 +1745,10 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       }
 
       try {
-        // 1) 기존 sale_details 삭제 + 새로 생성
-        await sb.delWhere("sale_details", "sale_id", existingSaleId);
-        const newDetails = buildSaleDetails(existingSaleId, reservation?.orderNum || "");
-        if (newDetails.length > 0) {
-          await sb.upsert("sale_details", newDetails);
-        }
+        // 1) 편집 모드 = 결제수단 교정 only — sale_details는 그대로 유지 (재생성 X)
+        //    이유: editMode + 이전 매출(snapshot 없음)에서 eventResult 재평가로 svcPayTotal이
+        //    실제 sale_details 합과 달라져 sale_details 재생성 시 매출이 변경되는 사고 방지.
+        //    시술/할인 변경은 '매출 취소 후 재등록' 사용 (handleDelete 롤백 후 신규 등록).
         // 2) sales 본체 업데이트 — 편집 모드:
         //    - 결제수단 금액(svc_cash/card/transfer/point, prod_*) 유저 입력대로 갱신 (원래 누락/오류 교정용)
         //    - 외부선결제, 메모 갱신
@@ -1759,8 +1757,10 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
         // 수정 사유 prefix를 memo 맨 앞에 붙임 (당일건은 _editReasonPrefix=""라 영향 없음)
         const newMemo = _editReasonPrefix + (externalPrepaid > 0 && externalPlatform ? `[${externalPlatform} 선결제 ${externalPrepaid.toLocaleString()}원] ` : "") + (saleMemo || "");
         const editStaff = (data.staff||[]).find(s => s.id === manager);
-        // 결제수단 svc/prod 분할 — 신규 저장과 동일 로직 (시술액 우선 충당)
-        let _editSvcRem = svcPayTotal;
+        // 결제수단 svc/prod 분할 — 매출 원본 svc 결제 합계 기준 (재평가된 svcPayTotal 사용 금지)
+        // 사용자가 svcCash/Card 등을 수정해도 시술/제품 비율은 매출 원본 그대로 유지
+        const _origSvcPayTotal = (reservation?.svcCash||0) + (reservation?.svcCard||0) + (reservation?.svcTransfer||0) + (reservation?.svcPoint||0);
+        let _editSvcRem = _origSvcPayTotal;
         const _editSplit = (totalAmt) => {
           const toSvc = Math.min(_editSvcRem, totalAmt || 0);
           _editSvcRem -= toSvc;
@@ -1807,7 +1807,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
           } catch(e) { console.warn("[edit TG build]", e); }
         }
         onSubmit({
-          id: existingSaleId, _editOnly: true, _newDetails: newDetails,
+          id: existingSaleId, _editOnly: true, _newDetails: null,
           _updatedSale: {
             svcCash: salesUpdate.svc_cash, svcTransfer: salesUpdate.svc_transfer,
             svcCard: salesUpdate.svc_card, svcPoint: salesUpdate.svc_point, svcComped: salesUpdate.svc_comped,

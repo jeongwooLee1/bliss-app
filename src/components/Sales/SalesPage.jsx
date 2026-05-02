@@ -430,7 +430,10 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
     // 편집 모드: SaleForm이 sale_details + sales 본체(결제수단 금액·외부선결제·메모)만 업데이트
     // (보유권 / 포인트 잔액 / package_transactions 는 변경 없음 — 순수 기록 보정 용도)
     if (item?._editOnly && item?.id) {
-      setDetailMap(prev => ({...prev, [item.id]: item._newDetails || []}));
+      // _newDetails: null이면 sale_details 재생성 안 함 (editMode = 결제수단 교정 only) → detailMap 그대로 유지
+      if (item._newDetails != null) {
+        setDetailMap(prev => ({...prev, [item.id]: item._newDetails}));
+      }
       if (item._updatedSale) {
         const u = item._updatedSale;
         setData(prev => ({
