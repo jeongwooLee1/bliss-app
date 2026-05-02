@@ -755,7 +755,8 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
           if (isHidden) {
             setListModalData(r);
           } else {
-            if(setPendingOpenRes) setPendingOpenRes(r);
+            // 모달 안 열고 타임라인 센터 스크롤 + 빨강 테두리 (확정대기 배너 클릭과 동일)
+            if(setPendingOpenRes) setPendingOpenRes({...r, _highlightOnly: true});
             if(setPage) setPage("timeline");
           }
         };

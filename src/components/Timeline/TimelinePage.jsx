@@ -924,25 +924,60 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   // 🔴 빨강 테두리 깜빡임 하이라이트 (메시지함 예약버튼/확정대기 배너 클릭 시)
   const [highlightedBlockId, setHighlightedBlockId] = useState(null);
 
-  // ReservationList에서 넘어온 예약 자동 오픈 + 스크롤 중앙 정렬
+  // ReservationList/메시지함에서 넘어온 예약 자동 오픈 + 스크롤 중앙 정렬
   useEffect(()=>{
     if (!pendingOpenRes) return;
 
     // 1. 날짜 이동
     setSelDate(pendingOpenRes.date || todayStr());
 
+    const isHighlightOnly = !!pendingOpenRes._highlightOnly;
+    // _highlightOnly: 페이지 전환 + DOM 렌더 시간 확보 위해 300ms (확정대기 배너와 동일)
+    const delay = isHighlightOnly ? 300 : 120;
+
     const timer = setTimeout(()=>{
+      const rid = pendingOpenRes.reservationId || pendingOpenRes.id;
+
+      // 🔴 _highlightOnly: 모달 안 열고 정밀 센터 스크롤 + 빨강 테두리 (확정대기 배너와 동일 로직)
+      if (isHighlightOnly) {
+        if (rid) setHighlightedBlockId(rid);
+        try {
+          const sr = scrollRef.current;
+          if (sr) {
+            const el = rid ? sr.querySelector(`[data-rid="${rid}"]`) : null;
+            if (el) {
+              const rect = el.getBoundingClientRect();
+              const srRect = sr.getBoundingClientRect();
+              const elTop = rect.top - srRect.top + sr.scrollTop;
+              const elLeft = rect.left - srRect.left + sr.scrollLeft;
+              const stickyH = topbarH + headerH;
+              const stickyW = window.innerWidth <= 768 ? 52 : 88;
+              const visibleH = sr.clientHeight - stickyH;
+              const visibleW = sr.clientWidth - stickyW;
+              sr.scrollTo({
+                top: Math.max(0, elTop - stickyH - visibleH / 2 + rect.height / 2),
+                left: Math.max(0, elLeft - stickyW - visibleW / 2 + rect.width / 2),
+                behavior: "smooth"
+              });
+            } else {
+              // fallback: 블록을 못 찾으면 시간 기반 센터 스크롤
+              const yPos = timeToY(pendingOpenRes.time || "10:00");
+              sr.scrollTop = Math.max(0, yPos - sr.clientHeight / 2);
+            }
+          }
+        } catch(e) { console.warn("scroll err:", e); }
+        setPendingOpenRes && setPendingOpenRes(null);
+        return;
+      }
+
+      // 모달 케이스 (메시지함 등) — 기존 스크롤 + 모달 오픈
       try {
         const sr = scrollRef.current;
         if (sr) {
-          // 2. 세로 스크롤 - 예약 시간 위치 중앙 (실제 설정값 사용)
           const timeStr = pendingOpenRes.time || "10:00";
           const yPos = timeToY(timeStr);
           const srH = sr.clientHeight;
           sr.scrollTop = Math.max(0, yPos - srH / 3);
-
-          // 3. 가로 스크롤 - 해당 지점 컬럼 중앙
-          const rid = pendingOpenRes.reservationId || pendingOpenRes.id;
           const el = rid ? sr.querySelector(`[data-rid="${rid}"]`) : null;
           if (el) {
             const elRect = el.getBoundingClientRect();
@@ -951,7 +986,6 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
             const elW = elRect.width || 160;
             sr.scrollLeft = Math.max(0, elLeft - sr.clientWidth / 2 + elW / 2);
           } else {
-            // rid로 못 찾으면 bid 기준으로 컬럼 인덱스 계산
             const bid = pendingOpenRes.bid;
             if (bid) {
               const tlW = window.innerWidth <= 768 ? 52 : 88;
@@ -971,12 +1005,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         }
       } catch(e) { console.warn("scroll err:", e); }
 
-      // 4. 모달 오픈 (DB에서 fresh 데이터 fetch) — 단, _highlightOnly=true면 모달 안 열고 빨강 테두리만
-      if (pendingOpenRes._highlightOnly) {
-        const rid = pendingOpenRes.reservationId || pendingOpenRes.id;
-        if (rid) setHighlightedBlockId(rid);
-        setPendingOpenRes && setPendingOpenRes(null);
-      } else {
+      {
         const openWithFresh = async () => {
           let freshData = pendingOpenRes;
           try {
@@ -996,7 +1025,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         };
         openWithFresh();
       }
-    }, 120);
+    }, delay);
     return ()=>clearTimeout(timer);
   },[pendingOpenRes]);
   // ── RT 보류 큐 flush: 모달 닫힐 때 일괄 적용 ──
