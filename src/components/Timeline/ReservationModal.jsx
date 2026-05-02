@@ -952,7 +952,7 @@ ${naverText}
       sb.update("reservations", f.id, {status:"completed"}).catch(console.error);
     }
     setShowSaleForm(false);
-    if (setPage) { onClose(); setPage("sales"); }
+    // 매출 등록 후 예약 모달 그대로 유지 (매출 정보 확인 가능). 매출관리 페이지로 강제 이동 X
   };
 
   // 기존 매출 확인
