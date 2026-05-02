@@ -2493,31 +2493,6 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       }
     } catch(e) { console.warn("[reservation dur auto-adjust]", e); }
 
-    // 재생케어 체험 할인 쿠폰 자동 발행 — 첫 매출 고객에게만 1회 (재발행 금지)
-    (async () => {
-      if (!cust.id) return;
-      try {
-        const couponSvc = (data?.services||[]).find(s => s.name === '재생케어 체험 할인');
-        if (!couponSvc) return;
-        const existing = await sb.get("customer_packages", `&customer_id=eq.${cust.id}&service_id=eq.${couponSvc.id}&limit=1`);
-        if (existing?.length) return;
-        // 첫 매출 여부 — 방금 insert한 매출 포함 sales 1건이면 첫 매출
-        const salesList = await sb.get("sales", `&cust_id=eq.${cust.id}&select=id&limit=2`);
-        if (!salesList || salesList.length !== 1) return;
-        await sb.insert("customer_packages", {
-          id: "cpn_regen30k_" + uid(),
-          business_id: _activeBizId,
-          customer_id: cust.id,
-          service_id: couponSvc.id,
-          service_name: couponSvc.name,
-          total_count: 1, used_count: 0,
-          purchased_at: new Date().toISOString(),
-          note: '재생케어 체험 할인 자동 발행 (첫 매출)',
-          branch_id: branchId || null,
-        });
-      } catch (e) { console.warn("[regen30k coupon auto-issue]", e); }
-    })();
-
     // 이벤트 자동 쿠폰 발행 (trigger 충족 시)
     // 트리거가 prepaid/pkg/annual_purchase면 → 발행된 보유권에 연결, 첫 사용일에 유효기간 시작
     if (cust.id && eventResult?.issueCoupons?.length) {
