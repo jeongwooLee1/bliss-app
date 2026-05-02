@@ -622,8 +622,8 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   const [issueCouponIds, setIssueCouponIds] = useState({}); // 매출과 함께 수동 발행할 쿠폰 {svcId: count}
   const [couponsOpen, setCouponsOpen] = useState(false); // 쿠폰 발행 아코디언 — 기본 접힘
   const pointEarnManualRef = React.useRef(false); // 사용자가 수동 수정했는지
-  // 📸 viewOnly 매출확인: 매출 등록 시점 스냅샷이 있으면 그걸 그대로 사용 (현재 잔액 조회 차단)
-  const _snapshotData = viewOnly ? (reservation?._existingSale?.snapshotData || reservation?._existingSale?.snapshot_data) : null;
+  // 📸 viewOnly/editMode 매출확인·수정: 매출 등록 시점 스냅샷이 있으면 그걸 그대로 사용 (현재 잔액 조회 차단)
+  const _snapshotData = (viewOnly || editMode) ? (reservation?._existingSale?.snapshotData || reservation?._existingSale?.snapshot_data) : null;
   // 매출 등록 시점 input state (items/pkgUse/pointUse/payMethod/extraRows 등) 전체 재현용
   // v3.7.358+ 매출에만 존재. 이전 매출은 sale_details fallback 매칭.
   const _snapshotInput = (_snapshotData && _snapshotData.input) ? _snapshotData.input : null;
@@ -974,11 +974,12 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     });
   }, [isMemberCustomer, gender]);
 
-  // 📸 viewOnly + inputSnapshot 있으면 매출 등록 시점 input state 그대로 복원 (sale_details 매칭 스킵)
+  // 📸 viewOnly/editMode + inputSnapshot 있으면 매출 등록 시점 input state 그대로 복원
+  // sale_details 매칭(_prefilledFromDetails)은 스킵
   const _restoredFromInputSnap = useRef(false);
   useEffect(() => {
     if (_restoredFromInputSnap.current) return;
-    if (!viewOnly || !_snapshotInput) return;
+    if (!(viewOnly || editMode) || !_snapshotInput) return;
     _restoredFromInputSnap.current = true;
     try {
       if (_snapshotInput.items && typeof _snapshotInput.items === 'object') {
@@ -1003,7 +1004,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   useEffect(() => {
     if (_prefilledFromDetails.current) return;
     if (!_isEditOrView) return;
-    if (viewOnly && _snapshotInput) return; // inputSnapshot 우선
+    if ((viewOnly || editMode) && _snapshotInput) return; // inputSnapshot 우선
     const existingDetails = reservation?._prefill?.existingDetails;
     if (!Array.isArray(existingDetails) || existingDetails.length === 0) return;
     _prefilledFromDetails.current = true;
