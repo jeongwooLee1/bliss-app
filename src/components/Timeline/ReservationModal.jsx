@@ -1913,9 +1913,10 @@ ${naverText}
 
           </>}
 
-          {/* ═══ 수동 예약 등록정보 + 일정변경 로그 (기존 예약만) ═══ */}
-          {!isNaverItem && item?.id && !isSchedule && (()=>{
-            const c = item?.createdAt ? new Date(item.createdAt) : null;
+          {/* ═══ 수동 예약 등록정보 + 일정변경 로그 ═══
+             네이버 예약도 schedule_log는 표시 (등록 시각만 네이버 예약정보 박스와 중복되니 비-네이버에서만) */}
+          {item?.id && !isSchedule && (()=>{
+            const c = (!isNaverItem && item?.createdAt) ? new Date(item.createdAt) : null;
             const regFmt = c && !isNaN(c)
               ? `${String(c.getMonth()+1).padStart(2,"0")}-${String(c.getDate()).padStart(2,"0")} ${String(c.getHours()).padStart(2,"0")}:${String(c.getMinutes()).padStart(2,"0")}`
               : "";
