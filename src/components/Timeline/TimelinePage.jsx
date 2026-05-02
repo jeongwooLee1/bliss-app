@@ -2791,8 +2791,9 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     const isTouch = e.type === "touchstart";
     if (!isTouch) e.preventDefault();
     const startY = isTouch ? e.touches[0].clientY : e.clientY;
-    const startDur = block.dur;
-    const origDur = block.dur;
+    // end_time 우선 — DB의 dur이 잘못되어 있어도 화면에 보이는 길이로 시작 (블록 점프 방지)
+    const startDur = blockDurMin(block);
+    const origDur = startDur;
 
     const onResizeMove = (ev) => {
       const pt = isTouch ? ev.touches[0] : ev;
@@ -2834,8 +2835,9 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       longPressActive.current = true;
       isResizing.current = true;
       setResizeBlock(block);
-      setResizeDur(block.dur);
-      resizeDurRef.current = block.dur;
+      // end_time 우선 — DB dur 오염 영향 없이 화면 길이로 시작
+      setResizeDur(startDur);
+      resizeDurRef.current = startDur;
       try { navigator.vibrate && navigator.vibrate(30); } catch(ex){}
       document.addEventListener(isTouch ? "touchmove" : "mousemove", onResizeMove, isTouch ? {passive:false} : undefined);
       document.addEventListener(isTouch ? "touchend" : "mouseup", onResizeUp);
