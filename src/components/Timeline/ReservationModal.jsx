@@ -1488,24 +1488,25 @@ ${naverText}
                           </span>;
                         })()}
                       </div>
-                      {/* 2줄: 전화 (클릭 복사) */}
-                      <div style={{display:"flex",alignItems:"center",gap:6,marginTop:3}}>
-                        <span style={{fontSize:11,color:"#aaa",width:14,textAlign:"center"}}>📞</span>
-                        <CopySpan text={f.custPhone} style={{fontSize:13,color:T.primary,fontWeight:500,whiteSpace:"nowrap"}}>{f.custPhone||"연락처 없음"}</CopySpan>
+                      {/* 2줄: 전화 + 이메일 한 줄 (변경 모드만 이메일 input) */}
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginTop:3,flexWrap:"wrap",minWidth:0}}>
+                        <span style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                          <span style={{fontSize:11,color:"#aaa"}}>📞</span>
+                          <CopySpan text={f.custPhone} style={{fontSize:13,color:T.primary,fontWeight:500,whiteSpace:"nowrap"}}>{f.custPhone||"연락처 없음"}</CopySpan>
+                        </span>
+                        {(editingCust || f.custEmail) && (
+                          <span style={{display:"flex",alignItems:"center",gap:6,flex:editingCust?1:"0 1 auto",minWidth:0}}>
+                            <span style={{fontSize:11,color:"#aaa"}}>✉</span>
+                            {editingCust ? (
+                              <input type="email" value={f.custEmail||""} onChange={e=>set("custEmail",e.target.value)}
+                                placeholder="이메일 (외국인 고객 등)"
+                                style={{flex:1,fontSize:12,padding:"3px 8px",border:"1px solid #e0e0e0",borderRadius:6,fontFamily:"inherit",outline:"none",background:"#fff",color:"#444",minWidth:120}}/>
+                            ) : (
+                              <CopySpan text={f.custEmail} style={{fontSize:12,color:"#666",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{f.custEmail}</CopySpan>
+                            )}
+                          </span>
+                        )}
                       </div>
-                      {/* 3줄: 이메일 — 변경 모드만 input, 평소엔 클릭 복사 텍스트 */}
-                      {(editingCust || f.custEmail) && (
-                        <div style={{display:"flex",alignItems:"center",gap:6,marginTop:3}}>
-                          <span style={{fontSize:11,color:"#aaa",width:14,textAlign:"center"}}>✉</span>
-                          {editingCust ? (
-                            <input type="email" value={f.custEmail||""} onChange={e=>set("custEmail",e.target.value)}
-                              placeholder="이메일 (외국인 고객 등)"
-                              style={{flex:1,fontSize:12,padding:"3px 8px",border:"1px solid #e0e0e0",borderRadius:6,fontFamily:"inherit",outline:"none",background:"#fff",color:"#444"}}/>
-                          ) : (
-                            <CopySpan text={f.custEmail} style={{fontSize:12,color:"#666",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{f.custEmail}</CopySpan>
-                          )}
-                        </div>
-                      )}
                       {/* 변경 모드 — 다른 고객으로 교체 검색창 */}
                       {editingCust && (
                         <div style={{marginTop:8,padding:"8px 10px",background:"#F5F3FF",border:"1px dashed "+T.primary+"60",borderRadius:T.radius.md}}>
