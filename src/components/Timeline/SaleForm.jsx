@@ -1362,7 +1362,11 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   // promo + 쿠폰 포인트 적립을 pointEarn에 자동 반영 (유저가 직접 적은 값이 있으면 건드리지 않음)
   const _promoAppliedRef = React.useRef({total:0, userOverride:false});
   // ─── 범용 이벤트 엔진 평가 (관리설정 > 이벤트 관리 > 이벤트 등록) ───
+  // viewOnly/editMode + snapshot.eventResult 있으면 매출 시점 결과 그대로 반환 (재평가 차단)
   const eventResult = React.useMemo(() => {
+    if ((viewOnly || editMode) && _snapshotInput && _snapshotInput.eventResult) {
+      return _snapshotInput.eventResult;
+    }
     try {
       const biz = (data?.businesses||[])[0];
       const s = typeof biz?.settings === 'string' ? JSON.parse(biz.settings) : (biz?.settings||{});
@@ -2289,6 +2293,20 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
           issueCouponIds: issueCouponIds || {},
           saleMemo: saleMemo || "",
           custId: cust?.id || null,
+          // 매출 시점 이벤트 엔진 결과 — viewOnly/editMode 재평가 차단용
+          eventResult: eventResult ? {
+            pointEarn: eventResult.pointEarn || 0,
+            pointExpiresAt: eventResult.pointExpiresAt || null,
+            discountFlat: eventResult.discountFlat || 0,
+            discountFlatPkg: eventResult.discountFlatPkg || 0,
+            discountFlatPrepaid: eventResult.discountFlatPrepaid || 0,
+            discountFlatAnnual: eventResult.discountFlatAnnual || 0,
+            discountPct: eventResult.discountPct || 0,
+            prepaidBonus: eventResult.prepaidBonus || 0,
+            issueCoupons: Array.isArray(eventResult.issueCoupons) ? eventResult.issueCoupons : [],
+            virtualCoupons: Array.isArray(eventResult.virtualCoupons) ? eventResult.virtualCoupons : [],
+            appliedEvents: Array.isArray(eventResult.appliedEvents) ? eventResult.appliedEvents : [],
+          } : null,
         },
       },
     };
