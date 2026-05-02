@@ -30,9 +30,8 @@ const StatCard = ({ label, value, sub, color }) => (
 );
 
 const resGridCols = (cols={}) => {
-  // 날짜(82), 매장(52), 고객번호(56), 고객이름(120), 시술+네이버(1fr)
-  const c = ["82px","52px","56px","120px","1fr"];
-  if(cols.phone!==false) c.push("110px");
+  // 날짜(82), 매장(52), 고객번호(56), 고객(이름+연락처 2줄, 150), 시술+네이버(1fr)
+  const c = ["82px","52px","56px","150px","1fr"];
   if(cols.memo!==false) c.push("minmax(120px,1fr)");
   c.push("68px","52px"); // 상태, 액션
   return c.join(" ");
@@ -725,7 +724,6 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
       {/* 그리드 헤더 - 데스크톱만 */}
       {!isMobile && <div style={{display:"grid",gridTemplateColumns:resGridCols(showCols),gap:8,padding:"6px 14px",borderRadius:T.radius.md,background:T.gray200}}>
         {["날짜·시간","매장","번호","고객","시술 / 네이버정보",
-          ...(showCols.phone!==false?["연락처"]:[]),
           ...(showCols.memo!==false?["메모"]:[]),
           "상태",""].map(h=>
           <span key={h} style={{fontSize:12,fontWeight:700,color:T.textSub}}>{h}</span>
@@ -879,11 +877,14 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
             const num = cust?.custNum;
             return <div style={{fontSize:12,color:num?T.textSub:T.gray300,fontFamily:"monospace",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{num?`#${num}`:"-"}</div>;
           })()}
-          {/* 고객 */}
-          <div style={{display:"flex",alignItems:"center",gap:5,minWidth:0}}>
-            {g && <span style={{fontSize:10,fontWeight:700,borderRadius:3,padding:"1px 4px",background:g==="M"?T.maleLt:T.femaleLt,color:g==="M"?T.male:T.female,flexShrink:0}}>{g==="M"?"남":"여"}</span>}
-            <span style={{fontSize:14,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.custName||"-"}</span>
-            {isNaver && <I name="naver" size={11} color={T.naver} style={{flexShrink:0}}/>}
+          {/* 고객 — 1줄: 성별·이름·네이버 / 2줄: 연락처 */}
+          <div style={{display:"flex",flexDirection:"column",gap:1,minWidth:0,lineHeight:1.2}}>
+            <div style={{display:"flex",alignItems:"center",gap:5,minWidth:0}}>
+              {g && <span style={{fontSize:10,fontWeight:700,borderRadius:3,padding:"1px 4px",background:g==="M"?T.maleLt:T.femaleLt,color:g==="M"?T.male:T.female,flexShrink:0}}>{g==="M"?"남":"여"}</span>}
+              <span style={{fontSize:14,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.custName||"-"}</span>
+              {isNaver && <I name="naver" size={11} color={T.naver} style={{flexShrink:0}}/>}
+            </div>
+            <div style={{fontSize:12,color:T.primary,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} onClick={e=>e.stopPropagation()}>{r.custPhone||"-"}</div>
           </div>
           {/* 시술 + 네이버정보 (합쳐서) */}
           <div style={{minWidth:0,display:"flex",alignItems:"center",gap:6}}>
@@ -896,8 +897,7 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
               style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:T.naver+"22",color:T.naver,fontWeight:700,whiteSpace:"nowrap",flexShrink:0,textDecoration:"none"}}
             >📋 #{r.reservationId}{naverInfoItems.length>0?` · ${naverInfoItems.length}`:""}</a>}
           </div>
-          {/* 연락처 */}
-          {showCols.phone!==false && <div style={{fontSize:13,color:T.primary,whiteSpace:"nowrap"}} onClick={e=>e.stopPropagation()}>{r.custPhone||"-"}</div>}
+          {/* 연락처 — 고객 셀에 통합됨 (별도 컬럼 제거) */}
           {/* 메모 */}
           {showCols.memo!==false && <div style={{fontSize:12,color:T.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.ownerComment||r.memo||"-"}</div>}
           {/* 상태 */}

@@ -17,7 +17,7 @@ function TeamChat({ style, extraHeaderRight, scrollTrigger }) {
   }
 
   return (
-    <div style={{
+    <div data-allow-select="true" style={{
       display:'flex', flexDirection:'column',
       height:'100%', width:'100%',
       background: T.bgCard,
