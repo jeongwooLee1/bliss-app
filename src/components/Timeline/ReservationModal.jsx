@@ -91,7 +91,7 @@ function DatePick({ value, onChange, style, min }) {
     <I name="calPick" size={12} color={T.gray500}/>
     <span style={{fontSize:T.fs.sm,fontWeight:T.fw.normal,whiteSpace:"nowrap",color:T.gray700,fontFamily:"inherit"}}>{fmt(value)}</span>
     <input ref={inputRef} type="date" value={value} onChange={e=>onChange(e.target.value)} min={min}
-      style={{position:"absolute",inset:0,opacity:0,width:"100%",height:"100%",pointerEvents:"none",fontSize:T.fs.lg}}/>
+      style={{position:"absolute",inset:0,opacity:0,width:"100%",height:"100%",fontSize:T.fs.lg,cursor:"pointer"}}/>
   </label>;
 }
 const STATUS_KEYS = ["reserved","confirmed","completed","cancelled","no_show"];
