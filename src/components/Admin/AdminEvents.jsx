@@ -465,7 +465,7 @@ function ConditionsSection({ data, draft, setDraft }) {
       </Collapsible>
 
       {/* 고객 자격 (성별별 · OR 그룹) */}
-      <Collapsible title="🎯 고객 자격 (성별별 설정 가능)" open={open.qualify} setOpen={v=>setOpen(o=>({...o,qualify:v}))}>
+      <Collapsible title="🎯 고객 자격 (OR — 하나만 충족하면 통과 · 성별별 설정 가능)" open={open.qualify} setOpen={v=>setOpen(o=>({...o,qualify:v}))}>
         {(() => {
           const cq = c.customerQualify || { any:[], M:[], F:[] }
           const cols = [{k:'any',label:'무관'},{k:'M',label:'남자'},{k:'F',label:'여자'}]
@@ -544,9 +544,10 @@ function ConditionsSection({ data, draft, setDraft }) {
               })()}
             </React.Fragment>)}
             <div style={{fontSize:10,color:T.textMuted,marginTop:8,lineHeight:1.5,paddingTop:6,borderTop:`1px solid ${T.border}`}}>
+              • <b style={{color:T.danger}}>이 섹션 전체가 OR 평가</b>: 어느 행/컬럼이든 하나만 충족하면 통과<br/>
               • <b>무관</b> 컬럼: 남녀 구분 없이 적용<br/>
               • <b>남자 / 여자</b> 컬럼: 해당 성별만 적용<br/>
-              • 한 컬럼 내 여러 체크 = OR (하나만 충족하면 통과)<br/>
+              • 예) 신규 ☑ + 다담권 잔액 110만 → "신규고객" OR "다담권 110만+ 보유" 둘 중 하나면 통과<br/>
               • 전부 비어있으면 조건 무시 (모든 고객 통과)
             </div>
           </div>
