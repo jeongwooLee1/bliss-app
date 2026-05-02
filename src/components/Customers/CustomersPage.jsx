@@ -1216,13 +1216,13 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                     {c.name2 && <span style={{color:T.textSub,fontWeight:T.fw.normal,marginLeft:4,fontSize:T.fs.xxs}}>({c.name2})</span>}
                     {c.smsConsent===false && <span style={{fontSize:9,color:T.danger,fontWeight:T.fw.bold,marginLeft:4}}>수신거부</span>}
                   </td>
-                  <td style={{fontSize:T.fs.xxs,color:T.primary,whiteSpace:"nowrap"}} onClick={e=>e.stopPropagation()}>
+                  <td style={{fontSize:T.fs.xxs,color:T.primary,whiteSpace:"nowrap"}}>
                     {c.phone ? <span style={{cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}
                       title="클릭하면 번호 복사"
-                      onClick={async ()=>{ try{ await navigator.clipboard.writeText(c.phone); alert(`복사됨: ${c.phone}`);}catch(e){ alert("복사 실패");}}}>{c.phone}</span> : "-"}
+                      onClick={async (e)=>{ e.stopPropagation(); try{ await navigator.clipboard.writeText(c.phone); alert(`복사됨: ${c.phone}`);}catch(e){ alert("복사 실패");}}}>{c.phone}</span> : "-"}
                     {c.phone2 && <div style={{color:T.textSub,fontSize:9}}>
                       <span style={{cursor:"pointer"}} title="클릭하면 번호 복사"
-                        onClick={async ()=>{ try{ await navigator.clipboard.writeText(c.phone2); alert(`복사됨: ${c.phone2}`);}catch(e){}}}>{c.phone2}</span>
+                        onClick={async (e)=>{ e.stopPropagation(); try{ await navigator.clipboard.writeText(c.phone2); alert(`복사됨: ${c.phone2}`);}catch(e){}}}>{c.phone2}</span>
                     </div>}
                   </td>
                   <td style={{fontSize:T.fs.xxs,color:T.textSub,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:160}}>{c.email||"-"}</td>
