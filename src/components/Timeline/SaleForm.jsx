@@ -607,7 +607,17 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   const [issueCouponIds, setIssueCouponIds] = useState({}); // 매출과 함께 수동 발행할 쿠폰 {svcId: count}
   const [couponsOpen, setCouponsOpen] = useState(false); // 쿠폰 발행 아코디언 — 기본 접힘
   const pointEarnManualRef = React.useRef(false); // 사용자가 수동 수정했는지
+  // 📸 viewOnly 매출확인: 매출 등록 시점 스냅샷이 있으면 그걸 그대로 사용 (현재 잔액 조회 차단)
+  const _snapshotData = viewOnly ? (reservation?._existingSale?.snapshotData || reservation?._existingSale?.snapshot_data) : null;
   useEffect(() => {
+    if (_snapshotData) {
+      setCustPkgs(_snapshotData.custPkgs || []);
+      setPointBalance(typeof _snapshotData.pointBalance === 'number' ? _snapshotData.pointBalance : 0);
+    }
+  }, [viewOnly, _snapshotData]);
+
+  useEffect(() => {
+    if (_snapshotData) return; // 스냅샷 우선
     if (!cust?.id) { setPointBalance(0); return; }
     sb.get("point_transactions", `&customer_id=eq.${cust.id}&limit=500`)
       .then(rows => {
@@ -622,9 +632,10 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
         }, 0);
         setPointBalance(bal);
       }).catch(()=>setPointBalance(0));
-  }, [cust?.id]);
-  // cust가 바뀌면(예약자↔방문자 토글 등) 다시 로드
+  }, [cust?.id, _snapshotData]);
+  // cust가 바뀌면(예약자↔방문자 토글 등) 다시 로드 — 단 viewOnly + snapshot 있으면 스킵
   useEffect(() => {
+    if (_snapshotData) return; // 스냅샷 우선
     if (cust?.id) {
       _loadPkgsWithShares(cust.id);
     } else if (cust?.phone) {
@@ -641,7 +652,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     } else {
       setCustPkgs([]);
     }
-  }, [cust?.id, cust?.phone]);
+  }, [cust?.id, cust?.phone, _snapshotData]);
   const _pkgType = (p) => {
     const svc = (data?.services||[]).find(s => s.name === p.service_name);
     if (svc) {
@@ -2194,6 +2205,18 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       externalPlatform: externalPrepaid > 0 ? (externalPlatform || "") : null,
       memo: (isPkgUseSubmit ? "[패키지 사용] " : "") + (externalPrepaid > 0 && externalPlatform ? `[${externalPlatform} 선결제 ${externalPrepaid.toLocaleString()}원] ` : "") + (saleMemo || ""),
       createdAt: new Date().toISOString(),
+      // 📸 매출 등록 시점 스냅샷 — 매출확인 모달이 그 시점 잔액·보유권을 그대로 보여주기 위함
+      // (customer_packages·point는 매출 후 차감되어 잔액이 변하므로 시점값 보존 필요)
+      snapshotData: {
+        custPkgs: (custPkgs || []).map(p => ({
+          id: p.id, customer_id: p.customer_id, service_name: p.service_name,
+          total_count: p.total_count, used_count: p.used_count, note: p.note,
+          purchase_date: p.purchase_date, _shared_from: p._shared_from || null,
+          _owner_gender: p._owner_gender || null,
+        })),
+        pointBalance: pointBalance,
+        ts: new Date().toISOString(),
+      },
     };
 
     // ── sale_details 생성: 수동 등록 툴과 동일한 포맷 (cash/card/bank/point 분배 없음, 결제수단 합계는 sales 테이블에만) ──
