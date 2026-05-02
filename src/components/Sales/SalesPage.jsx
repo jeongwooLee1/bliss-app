@@ -1020,6 +1020,38 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
       .map(([y, v]) => ({ label: `${y}년`, svc:v.svc, prod:v.prod, total:v.svc+v.prod }));
   })();
   const maxChart = Math.max(...chartDays.map(d=>d.total),1);
+
+  // 전체 기간 매월/매년 차트 (지점 필터만 적용, 기간 필터 무시)
+  const _allBranchSales = (data?.sales||[]).filter(s => (vb==="all" ? allBids.includes(s.bid) : s.bid===vb));
+  const monthlyAll = (() => {
+    const m = new Map();
+    _allBranchSales.forEach(s => {
+      const ym = (s.date||"").slice(0,7);
+      if (!ym) return;
+      if (!m.has(ym)) m.set(ym, {svc:0, prod:0});
+      const r = m.get(ym);
+      r.svc += s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint+(s.externalPrepaid||0);
+      r.prod += s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint;
+    });
+    return Array.from(m.entries()).sort((a,b)=>a[0].localeCompare(b[0]))
+      .map(([ym,v]) => ({label:`${ym.slice(2,4)}.${Number(ym.slice(5))}월`, svc:v.svc, prod:v.prod, total:v.svc+v.prod}));
+  })();
+  const yearlyAll = (() => {
+    const m = new Map();
+    _allBranchSales.forEach(s => {
+      const y = (s.date||"").slice(0,4);
+      if (!y) return;
+      if (!m.has(y)) m.set(y, {svc:0, prod:0});
+      const r = m.get(y);
+      r.svc += s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint+(s.externalPrepaid||0);
+      r.prod += s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint;
+    });
+    return Array.from(m.entries()).sort((a,b)=>a[0].localeCompare(b[0]))
+      .map(([y,v]) => ({label:`${y}년`, svc:v.svc, prod:v.prod, total:v.svc+v.prod}));
+  })();
+  const maxMonthly = Math.max(...monthlyAll.map(d=>d.total),1);
+  const maxYearly = Math.max(...yearlyAll.map(d=>d.total),1);
+
   const fmtShortDate = (ds) => { if(!ds) return ""; const [,m,d] = ds.split("-"); return `${Number(m)}.${Number(d)}`; };
   const dateLabel = periodKey==="all" ? "전체"
     : (periodKey==="1day"||startDate===endDate) ? fmtShortDate(startDate)
@@ -1080,6 +1112,43 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
         <span style={{fontSize:T.fs.xs,display:"flex",alignItems:"center",gap:T.sp.xs}}><span style={{width:8,height:8,borderRadius:T.radius.sm,background:T.info}}/>제품</span>
       </div>
     </div>
+    {/* 전체 기간 매월 매출 — 지점 필터만 적용 */}
+    {monthlyAll.length > 0 && <div className="card" style={{padding:20,marginBottom:16}}>
+      <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:16}}>
+        전체 기간 매월 매출 ({monthlyAll.length}개월)
+        <span style={{marginLeft:8,fontSize:11,fontWeight:500,color:T.gray400}}>· 시작 매출월부터 현재까지</span>
+      </div>
+      <div style={{display:"flex",alignItems:"flex-end",gap:4,height:130,overflowX:"auto"}}>
+        {monthlyAll.map((d,i)=>(
+          <div key={i} style={{flex:"0 0 auto",minWidth:32,display:"flex",flexDirection:"column",alignItems:"center",gap:T.sp.xs}}>
+            <span style={{fontSize:T.fs.nano,color:T.textSub,whiteSpace:"nowrap"}}>{d.total>0?`${fmt(Math.round(d.total/10000))}만`:""}</span>
+            <div style={{width:24,display:"flex",flexDirection:"column",gap:1}}>
+              <div style={{width:"100%",height:`${Math.max((d.prod/maxMonthly)*80,0)}px`,background:T.info,borderRadius:"4px 4px 0 0",transition:"height .3s"}}/>
+              <div style={{width:"100%",height:`${Math.max((d.svc/maxMonthly)*80,2)}px`,background:T.primary,borderRadius:"0 0 4px 4px",transition:"height .3s"}}/>
+            </div>
+            <span style={{fontSize:T.fs.xs,color:T.gray500,whiteSpace:"nowrap"}}>{d.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>}
+    {/* 전체 기간 매년 매출 */}
+    {yearlyAll.length > 0 && <div className="card" style={{padding:20,marginBottom:16}}>
+      <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:16}}>
+        전체 기간 매년 매출 ({yearlyAll.length}년)
+      </div>
+      <div style={{display:"flex",alignItems:"flex-end",gap:10,height:130}}>
+        {yearlyAll.map((d,i)=>(
+          <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:T.sp.xs}}>
+            <span style={{fontSize:T.fs.xs,color:T.textSub,fontWeight:T.fw.bold}}>{d.total>0?`${fmt(d.total)}원`:""}</span>
+            <div style={{width:"100%",maxWidth:80,display:"flex",flexDirection:"column",gap:1}}>
+              <div style={{width:"100%",height:`${Math.max((d.prod/maxYearly)*80,0)}px`,background:T.info,borderRadius:"4px 4px 0 0",transition:"height .3s"}}/>
+              <div style={{width:"100%",height:`${Math.max((d.svc/maxYearly)*80,2)}px`,background:T.primary,borderRadius:"0 0 4px 4px",transition:"height .3s"}}/>
+            </div>
+            <span style={{fontSize:T.fs.sm,color:T.text,fontWeight:T.fw.bold}}>{d.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>}
     <GridLayout className="stat-charts" cols="repeat(auto-fit,minmax(300px,1fr))" gap={16}>
       {/* Payment Breakdown */}
       <div className="card" style={{padding:20}}>
