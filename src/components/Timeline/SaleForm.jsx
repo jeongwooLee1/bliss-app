@@ -187,15 +187,18 @@ const SaleExtraRow = React.memo(function SaleExtraRow({ id, color, placeholder, 
 const SaleDiscountRow = React.memo(function SaleDiscountRow({ id, checked, amount, toggle, setAmt }) {
   const [localAmt, setLocalAmt] = useState(fmtAmt(amount));
   useEffect(() => { setLocalAmt(fmtAmt(amount)); }, [amount, checked]);
-  // 모바일 컴팩트: 가로 잘림 방지를 위해 빈 placeholder input 제거 + 금액 input 더 작게
+  // SaleExtraRow와 동일한 폭/사이즈 — 시각 일관성 (이름 자리에 비활성 안내 input)
   return <div
-    style={{ display: "flex", alignItems: "center", gap: 4, padding: "0 4px", flex:1, minWidth: 0,
+    style={{ display: "flex", alignItems: "center", gap: 5, padding: "0 4px", flex:1, minWidth: 0,
       background: checked ? "#e8a0a010" : "transparent", transition: "background .15s", borderRadius: 5 }}>
     <span onClick={() => toggle(id, 0)}
       style={{ fontSize: 12, color: checked ? T.female : T.gray500, fontWeight: 700, flexShrink: 0, cursor: "pointer", width:42 }}>
       {checked ? "✓ 할인" : "− 할인"}
     </span>
-    <span style={{ flex: 1 }}/>
+    <input value="" disabled placeholder="(할인 사유 — 메모에 기록)"
+      style={{ flex: 1, padding: "0 6px", fontSize: 12, height:24, boxSizing:"border-box",
+        background:"#f5f5f5", border:"1px solid "+T.border, borderRadius: 5, fontFamily:"inherit", outline:"none",
+        color: T.gray400 }} />
     <input type="text" inputMode="numeric" value={localAmt} placeholder="0"
       onChange={e => {
         const raw = e.target.value.replace(/[^0-9]/g, "");
@@ -206,9 +209,9 @@ const SaleDiscountRow = React.memo(function SaleDiscountRow({ id, checked, amoun
         if (n > 0 && !checked) toggle(id, n);
         else if (n === 0 && checked) toggle(id, 0);
       }}
-      style={{ width: 84, minWidth:60, padding: "0 6px", fontSize: 12, height:26, boxSizing:"border-box", textAlign: "right", borderRadius: 5, flexShrink: 0,
-        background: T.bgCard, border: `1px solid ${checked ? T.female : T.gray400}`, fontFamily:"inherit", outline:"none",
-        color: checked ? T.danger : T.text, fontWeight: checked ? 700 : 500 }} />
+      style={{ width: 95, padding: "0 6px", fontSize: 12, height:24, boxSizing:"border-box", textAlign: "right", borderRadius: 5, flexShrink: 0,
+        border: `1px solid ${checked ? T.female : T.border}`, fontFamily:"inherit", outline:"none",
+        color: checked ? T.danger : T.gray500, fontWeight: checked ? 700 : 400 }} />
   </div>;
 });
 
