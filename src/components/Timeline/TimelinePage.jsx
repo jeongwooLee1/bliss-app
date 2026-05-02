@@ -15,6 +15,22 @@ import useTouchDragSort from '../../hooks/useTouchDragSort'
 const _mc = (fn) => { if(fn) fn(); };
 const uid = genId;
 
+// 블록의 실 소요시간(분) — end_time이 있으면 그 차이를 진실로 본다.
+// dur 컬럼이 잘못 저장된 케이스(네이버 스크래퍼 매핑 오류 등)에서도 화면이 정상 길이로 표시되고
+// 이동 시에도 길이가 보존됨.
+const blockDurMin = (b) => {
+  if (!b) return 30;
+  const t = b.time;
+  const et = b.endTime || b.end_time;
+  if (t && et) {
+    const [sh, sm] = t.split(":").map(Number);
+    const [eh, em] = et.split(":").map(Number);
+    const d = (eh*60+em) - (sh*60+sm);
+    if (d > 0) return d;
+  }
+  return b.dur || 30;
+};
+
 // 타임라인 컬럼 바탕색 — 전 지점 공통 단일 톤(기본 흰색), 지점 구분은 세로선으로만
 const SOFT_BG = '#ffffff';
 
@@ -2599,10 +2615,12 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           }
         }
         if (snap.time !== orig.time || snap.roomId !== orig.roomId) {
+          // ✨ end_time 우선으로 길이 계산. dur 컬럼이 잘못 저장된 케이스에서도 길이 보존됨.
+          const trueDur = blockDurMin(block);
           setData(prev => ({...prev, reservations: (prev?.reservations||[]).map(r => {
             if (r.id !== block.id) return r;
             const [sh,sm] = snap.time.split(":").map(Number);
-            const endMin = sh*60+sm+(r.dur||60);
+            const endMin = sh*60+sm+trueDur;
             const endTime = `${String(Math.floor(endMin/60)).padStart(2,"0")}:${String(endMin%60).padStart(2,"0")}`;
             const toNaverCol = snap.roomId?.startsWith("nv_");
             const targetRoom = allRooms.find(rm => rm.id === snap.roomId);
@@ -2611,7 +2629,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
               : targetRoom?.isStaffCol
                 ? { staffId: targetRoom.staffId, roomId: snap.roomId }
                 : snap.roomId ? { roomId: snap.roomId } : {};
-            return {...r, time: snap.time, endTime, roomId: snap.roomId||r.roomId, bid: snap.bid||r.bid, ...staffUpdate};
+            return {...r, time: snap.time, endTime, dur: trueDur, roomId: snap.roomId||r.roomId, bid: snap.bid||r.bid, ...staffUpdate};
           })}));
           // 이동된 값을 snap 기준으로 직접 계산 (setData는 비동기라 data가 아직 갱신 안 됨)
           const toNaverCol2 = snap.roomId?.startsWith("nv_");
@@ -2620,7 +2638,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           const movedRoomId = snap.roomId || "";
           const movedBid = snap.bid || block.bid;
           const [mh,mm] = snap.time.split(":").map(Number);
-          const mEndMin = mh*60+mm+(block.dur||60);
+          const mEndMin = mh*60+mm+trueDur;
           const movedEndTime = `${String(Math.floor(mEndMin/60)).padStart(2,"0")}:${String(mEndMin%60).padStart(2,"0")}`;
 
           const validPhone = block.custPhone && block.custPhone.startsWith("010");
@@ -2631,8 +2649,9 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           if (needsPopup) {
             setPendingChange({ type: "move", block, data: snap, orig, branchChanged });
           } else {
+            // dur도 함께 동기화 → DB의 dur과 end_time 정합 유지
             sb.update("reservations", block.id, {
-              room_id: movedRoomId, time: snap.time, end_time: movedEndTime,
+              room_id: movedRoomId, time: snap.time, end_time: movedEndTime, dur: trueDur,
               bid: movedBid, staff_id: movedStaffId || null
             }).catch(console.error);
           }
@@ -2824,8 +2843,13 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       if (r) {
         const _newTime = r.time || d?.time;
         const _log = block.isSchedule ? null : buildScheduleChangeLog(block.date, block.time, block.date, _newTime);
+        // end_time/dur도 함께 저장 (state엔 미리보기로 반영됐지만 DB엔 보내야 함)
+        const _trueDur = blockDurMin(r);
+        const [_sh,_sm] = _newTime.split(":").map(Number);
+        const _eMin = _sh*60+_sm+_trueDur;
+        const _endTime = `${String(Math.floor(_eMin/60)).padStart(2,"0")}:${String(_eMin%60).padStart(2,"0")}`;
         const _upd = {
-          room_id: r.roomId || d?.roomId || "", time: _newTime,
+          room_id: r.roomId || d?.roomId || "", time: _newTime, end_time: _endTime, dur: _trueDur,
           bid: r.bid || d?.bid, staff_id: r.staffId || fallbackStaff || null
         };
         // 일정변경 로그는 schedule_log 컬럼에 누적 (memo는 건드리지 않음)
@@ -2864,9 +2888,10 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       setData(prev => ({...prev, reservations: (prev?.reservations||[]).map(r => {
         if (r.id !== block.id) return r;
         const [sh,sm] = orig.time.split(":").map(Number);
-        const endMin = sh*60+sm+(r.dur||60);
+        const trueDur = blockDurMin(block);
+        const endMin = sh*60+sm+trueDur;
         const endTime = `${String(Math.floor(endMin/60)).padStart(2,"0")}:${String(endMin%60).padStart(2,"0")}`;
-        return {...r, time: orig.time, endTime, roomId: orig.roomId || "", bid: orig.bid, staffId: orig.staffId || r.staffId};
+        return {...r, time: orig.time, endTime, dur: trueDur, roomId: orig.roomId || "", bid: orig.bid, staffId: orig.staffId || r.staffId};
       })}));
     }
     if (type === "resize") {
@@ -4490,7 +4515,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                     return layoutBlocks(roomBlocks).map(block => {
                     const y = timeToY(block.time);
                     const isBeingResized = resizeBlock?.id === block.id;
-                    const blockDur = isBeingResized ? resizeDur : block.dur;
+                    const blockDur = isBeingResized ? resizeDur : blockDurMin(block);
                     const h = (blockDur / timeUnit) * rowH;
                     // 서비스태그 색상 우선 적용
                     const tags = data?.serviceTags || [];
