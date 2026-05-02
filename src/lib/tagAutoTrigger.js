@@ -53,6 +53,15 @@ function _remainingCount(pkg) {
   return Math.max(0, t - u);
 }
 
+// 다담권(잔액제) 식별 — note에 "잔액:NNN" 패턴이 있거나 service_name에 다담권/바프권 키워드
+function _isPrepaid(pkg) {
+  const note = String(pkg?.note || '');
+  if (/잔액\s*[:：]\s*[0-9]/.test(note)) return true;
+  const name = String(pkg?.service_name || '');
+  if (/다담권|바프권/.test(name)) return true;
+  return false;
+}
+
 /**
  * 단일 트리거 평가
  * @returns boolean
@@ -69,12 +78,13 @@ export function evaluateTrigger(trigger, ctx) {
     }
     case 'package_low_count': {
       const threshold = Number(trigger.threshold ?? 1);
-      // 다회권(total_count > 0)만 대상. 잔여 ≤ threshold + 0이 아닌 경우 (사용 가능한 보유권에 한함)
+      // 다회권(회수 차감)만 대상 — 다담권/바프권(잔액제)은 제외.
       return custPkgs.some(p => {
+        if (_isPrepaid(p)) return false; // 다담권/바프권 잔액제 제외
         if (Number(p.total_count || 0) <= 0) return false;
         const rem = _remainingCount(p);
-        if (rem <= 0) return false; // 이미 다 쓴 건 제외
-        if (_isExpired(p, todayStr)) return false; // 만료된 건 제외
+        if (rem <= 0) return false;
+        if (_isExpired(p, todayStr)) return false;
         return rem <= threshold;
       });
     }
@@ -85,6 +95,7 @@ export function evaluateTrigger(trigger, ctx) {
     case 'coupon_expiring_days': {
       const days = Number(trigger.days ?? 7);
       return custPkgs.some(p => {
+        if (_isPrepaid(p)) return false; // 다담권/바프권은 회수 개념 없음
         const rem = _remainingCount(p);
         if (rem <= 0) return false;
         if (_isExpired(p, todayStr)) return false;
