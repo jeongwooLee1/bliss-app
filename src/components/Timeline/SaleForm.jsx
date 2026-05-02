@@ -1364,7 +1364,17 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     list.sort((a,b) => (a.priority||100) - (b.priority||100));
     return list;
   }, [custPkgs, data?.services, items]);
-  const activeCoupons = couponResults.filter(c => !couponOff[c.pkgId]);
+  // 같은 종류 쿠폰(같은 service_name) 1매출에 1장만 적용 — 중복 보유해도 할인 1회
+  const activeCoupons = (() => {
+    const seen = new Set();
+    return couponResults.filter(c => {
+      if (couponOff[c.pkgId]) return false;
+      const key = c.name || c.svcId;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  })();
   // 쿠폰 할인을 대상별로 분리 (제품/시술 결제수단 각각 차감용)
   // viewOnly/editMode + snapshot 없는 이전 매출은 쿠폰 재평가 차단 (실제 매출과 표시 일치)
   const _suppressEngineDiscount = (viewOnly || editMode) && !_snapshotInput;
