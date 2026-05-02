@@ -224,9 +224,21 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   // 커스텀 alert (브라우저 alert 대체) — Bliss UI 통일
   const [alertMsg, setAlertMsg] = useState(null);
   const showAlert = (msg) => setAlertMsg(msg);
-  // 통합 추가/할인 타입 토글 (시술 or 제품)
-  const [extraType, setExtraType] = useState("svc");
-  const [discountType, setDiscountType] = useState("svc");
+  // 통합 추가/할인 행 — 동적 row. 각 row: { id, kind:'svc'|'prod', action:'add'|'discount', name, amount }
+  const [extraRows, setExtraRows] = useState([
+    { id: 'er_'+uid(), kind: 'svc', action: 'add', name: '', amount: 0 }
+  ]);
+  const updExtraRow = (id, patch) => setExtraRows(prev => prev.map(r => r.id===id ? {...r, ...patch} : r));
+  const addExtraRow = () => setExtraRows(prev => [...prev, { id: 'er_'+uid(), kind: 'svc', action: 'add', name: '', amount: 0 }]);
+  const delExtraRow = (id) => setExtraRows(prev => prev.length<=1 ? prev.map(r => ({...r, name:'', amount:0})) : prev.filter(r => r.id !== id));
+  // 파생 합계 — 기존 items.extra_svc/extra_prod/discount 자리 대체
+  const _extraSvcAddTotal = extraRows.reduce((s, r) => s + (r.kind==='svc' && r.action==='add' && (r.amount||0)>0 ? r.amount : 0), 0);
+  const _extraProdAddTotal = extraRows.reduce((s, r) => s + (r.kind==='prod' && r.action==='add' && (r.amount||0)>0 ? r.amount : 0), 0);
+  const _discountSvcTotal = extraRows.reduce((s, r) => s + (r.kind==='svc' && r.action==='discount' && (r.amount||0)>0 ? r.amount : 0), 0);
+  const _discountProdTotal = extraRows.reduce((s, r) => s + (r.kind==='prod' && r.action==='discount' && (r.amount||0)>0 ? r.amount : 0), 0);
+  const _discountTotal = _discountSvcTotal + _discountProdTotal;
+  const _extraSvcAddCount = extraRows.filter(r => r.kind==='svc' && r.action==='add' && (r.amount||0)>0).length;
+  const _extraProdAddCount = extraRows.filter(r => r.kind==='prod' && r.action==='add' && (r.amount||0)>0).length;
   // 판매중단(isActive=false) 상품은 숨김, 단 편집모드에서 기존 등록된 항목은 유지
   // 쿠폰·포인트 카테고리 ID 목록 (매출등록 구매대상에서 제외 — 증정/사용 대상이지 구매 대상이 아님)
   const _excludedCatIds = (data?.categories || []).filter(c => c.name === '쿠폰' || c.name === '포인트').map(c => c.id);
@@ -877,9 +889,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       init[svc.id] = { checked: preSelected, amount: preSelected ? defPrice : 0, comped: false };
     });
     PROD_LIST.forEach(p => { init[p.id] = { checked: false, amount: 0, comped: false }; });
-    init["discount"] = { checked: false, amount: 0 };
-    init["extra_svc"] = { checked: false, amount: 0, label: "" };
-    init["extra_prod"] = { checked: false, amount: 0, label: "" };
+    // extra_svc/extra_prod/discount는 extraRows state로 통합됨 (init 불필요)
     return init;
   });
 
@@ -966,9 +976,10 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     if (!Array.isArray(existingDetails) || existingDetails.length === 0) return;
     _prefilledFromDetails.current = true;
 
-    const extraSvcRows = [];
-    const extraProdRows = [];
-    let discountAmt = 0;
+    const extraSvcRows = []; // 추가 시술 row 후보
+    const extraProdRows = []; // 추가 제품 row 후보
+    const discountSvcRows = []; // 할인(시술) row
+    const discountProdRows = []; // 할인(제품) row
     const matchedSvcIds = {};  // id → amount
     const matchedProdIds = {};
 
@@ -985,9 +996,13 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       // 체험단 프리픽스 제거 후 매칭
       const isComped = /^\[체험단\]\s*/.test(nmRaw);
       const nm = isComped ? nmRaw.replace(/^\[체험단\]\s*/, "") : nmRaw;
-      // 할인
-      if (nm === "할인" || nm === "[할인]" || /^\[할인\]/.test(nm)) {
-        discountAmt += (d.unit_price || 0);
+      // 할인 (kind 분기 — 신규: [할인 시술]/[할인 제품], 레거시: [할인])
+      if (/^\[할인 제품\]/.test(nm)) {
+        discountProdRows.push({ amount: d.unit_price || 0 });
+        return;
+      }
+      if (/^\[할인 시술\]/.test(nm) || nm === "할인" || nm === "[할인]" || /^\[할인\]/.test(nm)) {
+        discountSvcRows.push({ amount: d.unit_price || 0 });
         return;
       }
       // 정규 시술 매칭
@@ -1014,19 +1029,15 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       Object.entries(matchedProdIds).forEach(([id, amt]) => {
         next[id] = { ...next[id], checked: true, amount: amt, comped: compedProdIds.has(id) };
       });
-      if (extraSvcRows.length > 0) {
-        const joined = extraSvcRows.map(r=>r.name).join(" + ");
-        const sum = extraSvcRows.reduce((s,r)=>s+(r.amount||0),0);
-        next.extra_svc = { checked: true, amount: sum, label: joined };
-      }
-      if (extraProdRows.length > 0) {
-        const joined = extraProdRows.map(r=>r.name).join(" + ");
-        const sum = extraProdRows.reduce((s,r)=>s+(r.amount||0),0);
-        next.extra_prod = { checked: true, amount: sum, label: joined };
-      }
-      if (discountAmt > 0) next.discount = { checked: true, amount: discountAmt };
       return next;
     });
+    // extraRows 복원: 추가/할인 행을 각 동적 row로
+    const restored = [];
+    extraSvcRows.forEach(r => restored.push({ id:'er_'+uid(), kind:'svc', action:'add', name:r.name||'', amount:r.amount||0 }));
+    extraProdRows.forEach(r => restored.push({ id:'er_'+uid(), kind:'prod', action:'add', name:r.name||'', amount:r.amount||0 }));
+    discountSvcRows.forEach(r => restored.push({ id:'er_'+uid(), kind:'svc', action:'discount', name:'', amount:r.amount||0 }));
+    discountProdRows.forEach(r => restored.push({ id:'er_'+uid(), kind:'prod', action:'discount', name:'', amount:r.amount||0 }));
+    if (restored.length > 0) setExtraRows(restored);
   }, [editMode, reservation, SVC_LIST.length, PROD_LIST.length]);
 
   // 다회권 → 시술 목록 최상단에 증감 버튼으로 표시
@@ -1154,7 +1165,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   const todayUseSvcTotal = SVC_LIST.reduce((sum, svc) => {
     if (svc.cat === PREPAID_CAT_ID) return sum; // 다담권 자체는 제외
     return sum + (items[svc.id]?.checked ? items[svc.id].amount : 0);
-  }, 0) + (items.extra_svc?.checked ? items.extra_svc.amount : 0);
+  }, 0) + _extraSvcAddTotal;
   // 새 다담권 즉시 차감액 — "할인·보유권 차감 후 시술잔액" 한도로 아래에서 재계산됨 (placeholder)
   let newPkgInstantDeduct = newPrepaidActiveTotal > 0 ? Math.min(todayUseSvcTotal, newPrepaidActiveTotal) : 0;
 
@@ -1178,10 +1189,10 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
 
   // Totals
   const svcTotal = SVC_LIST.reduce((sum, svc) => sum + (items[svc.id]?.checked ? items[svc.id].amount : 0), 0)
-    + (items.extra_svc?.checked ? items.extra_svc.amount : 0)
+    + _extraSvcAddTotal
     + shareSurchargeTotal;
   const prodTotal = PROD_LIST.reduce((sum, p) => sum + (items[p.id]?.checked ? items[p.id].amount : 0), 0)
-    + (items.extra_prod?.checked ? items.extra_prod.amount : 0);
+    + _extraProdAddTotal;
   // 🎁 체험단 제공분 — 결제대상에서 제외
   const svcCompedTotal = SVC_LIST.reduce((sum, svc) => {
     const it = items[svc.id]; return sum + (it?.checked && it.comped ? (it.amount||0) : 0);
@@ -1189,7 +1200,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   const prodCompedTotal = PROD_LIST.reduce((sum, p) => {
     const it = items[p.id]; return sum + (it?.checked && it.comped ? (it.amount||0) : 0);
   }, 0);
-  const discount = items.discount?.checked ? items.discount.amount : 0;
+  const discount = _discountTotal;
   const naverDeduct = 0; // 통합됨 → externalDeduct에서 처리
   const externalDeduct = externalPrepaid > 0 ? externalPrepaid : 0;
   // 보유권 차감 합산 (다담권만 금액 차감, 다회권은 횟수만 차감 — 금액 영향 없음)
@@ -1249,8 +1260,8 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       (data?.services||[]).filter(s => s.cat === _couponCatId).map(s => [s.name, s])
     );
     const list = [];
-    const extraSvcAmt = (items.extra_svc?.checked) ? (items.extra_svc.amount||0) : 0;
-    const extraProdAmt = (items.extra_prod?.checked) ? (items.extra_prod.amount||0) : 0;
+    const extraSvcAmt = _extraSvcAddTotal;
+    const extraProdAmt = _extraProdAddTotal;
     (custPkgs||[]).forEach(pkg => {
       if (pkg.total_count && pkg.used_count >= pkg.total_count) return;
       const svc = svcByName.get(pkg.service_name);
@@ -1439,15 +1450,15 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
         // 고객 보유권 (servicesNone 평가 시 보유권 이름 매칭에 사용)
         customerPkgs: ownPkgs,
         // 엔진 외부 할인·체험단 (netAmount 계산에 차감)
-        externalDiscount: (items.discount?.checked ? (items.discount.amount||0) : 0)
+        externalDiscount: _discountTotal
           + couponDiscountTotal + promoDiscountTotal + svcCompedTotal + prodCompedTotal,
         // 시술 단독 적립 계산용: 시술에만 적용된 할인 (수동·promo·svc쿠폰·체험단)
-        externalSvcDiscount: (items.discount?.checked ? (items.discount.amount||0) : 0)
+        externalSvcDiscount: _discountSvcTotal
           + (couponDiscountOnSvc||0) + (promoDiscountTotal||0) + (svcCompedTotal||0),
       };
       return applyEvents(events, ctx);
     } catch (e) { console.warn('[eventEngine]', e); return { pointEarn:0, pointExpiresAt:null, discountFlat:0, discountFlatPkg:0, discountFlatPrepaid:0, discountFlatAnnual:0, discountPct:0, prepaidBonus:0, issueCoupons:[], virtualCoupons:[], appliedEvents:[] }; }
-  }, [data?.businesses, cust.id, custHasSale, custPkgs, newPrepaidPurchases, newPkgPurchases, newAnnualPurchases, svcTotal, prodTotal, items, payMethod.svcCash, payMethod.svcCard, payMethod.prodCash, payMethod.prodCard, gender]);
+  }, [data?.businesses, cust.id, custHasSale, custPkgs, newPrepaidPurchases, newPkgPurchases, newAnnualPurchases, svcTotal, prodTotal, items, extraRows, payMethod.svcCash, payMethod.svcCard, payMethod.prodCash, payMethod.prodCard, gender]);
 
   // 레거시 호환: 기존 UI/로직에서 참조하던 newCustEventEarn 형태 유지
   // 신규 스키마(rewards[])와 레거시(rewardType) 모두 지원
@@ -1506,8 +1517,8 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   const prodPayTotal = Math.max(0, prodTotal - couponDiscountOnProd - prodCompedTotal);
 
   // Count checked
-  const checkedSvc = SVC_LIST.filter(s => items[s.id]?.checked).length + (items.extra_svc?.checked ? 1 : 0);
-  const checkedProd = PROD_LIST.filter(p => items[p.id]?.checked).length + (items.extra_prod?.checked ? 1 : 0);
+  const checkedSvc = SVC_LIST.filter(s => items[s.id]?.checked).length + _extraSvcAddCount;
+  const checkedProd = PROD_LIST.filter(p => items[p.id]?.checked).length + _extraProdAddCount;
 
   // Auto-calc remaining for default payment
   const svcRemain = Math.max(0, svcTotal - payMethod.svcCard - payMethod.svcTransfer - payMethod.svcCash - payMethod.svcPoint);
@@ -1547,21 +1558,30 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       const it = items[svc.id];
       if (it?.checked && (it.amount || 0) > 0) push(svc.name, it.amount);
     });
-    if (items.extra_svc?.checked && (items.extra_svc.amount || 0) > 0) {
-      push(items.extra_svc.label || items.extra_svc.name || "추가 시술", items.extra_svc.amount);
-    }
+    // 1.5) 추가 시술 (extraRows)
+    extraRows.forEach(r => {
+      if (r.kind==='svc' && r.action==='add' && (r.amount||0) > 0) {
+        push(r.name || "추가 시술", r.amount);
+      }
+    });
     // 2) 체크한 제품
     PROD_LIST.forEach(p => {
       const it = items[p.id];
       if (it?.checked && (it.amount || 0) > 0) push(p.name, it.amount);
     });
-    if (items.extra_prod?.checked && (items.extra_prod.amount || 0) > 0) {
-      push(items.extra_prod.label || items.extra_prod.name || "추가 제품", items.extra_prod.amount);
-    }
-    // 2.5) 할인 — 기록만 (별도 행), 금액은 양수로 저장하고 이름에 [할인] 프리픽스
-    if (items.discount?.checked && (items.discount.amount || 0) > 0) {
-      push("[할인]", items.discount.amount);
-    }
+    // 2.4) 추가 제품 (extraRows)
+    extraRows.forEach(r => {
+      if (r.kind==='prod' && r.action==='add' && (r.amount||0) > 0) {
+        push(r.name || "추가 제품", r.amount);
+      }
+    });
+    // 2.5) 할인 — extraRows의 discount 행, kind별로 라벨 분기
+    extraRows.forEach(r => {
+      if (r.action==='discount' && (r.amount||0) > 0) {
+        const lbl = r.kind==='prod' ? "[할인 제품]" : "[할인 시술]";
+        push(lbl, r.amount);
+      }
+    });
     // 3) 보유 패키지 사용 이력 — 기록만 (고객 보유권은 변경 안 함)
     try {
       Object.entries(pkgUse || {}).forEach(([pkgId, val]) => {
@@ -2241,10 +2261,12 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
         pushDetail(it.comped ? `[체험단] ${svc.name}` : svc.name, it.amount, 1, 'svc');
       }
     });
-    // 추가 시술
-    if (items.extra_svc?.checked && (items.extra_svc.amount || 0) > 0) {
-      pushDetail(items.extra_svc.label || items.extra_svc.name || "추가 시술", items.extra_svc.amount, 1, 'svc');
-    }
+    // 추가 시술 (extraRows)
+    extraRows.forEach(r => {
+      if (r.kind==='svc' && r.action==='add' && (r.amount||0) > 0) {
+        pushDetail(r.name || "추가 시술", r.amount, 1, 'svc');
+      }
+    });
     // 제품 (수량 반영)
     PROD_LIST.forEach(p => {
       const it = items[p.id];
@@ -2252,14 +2274,19 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
         pushDetail(it.comped ? `[체험단] ${p.name}` : p.name, it.amount, it.qty || 1, 'prod');
       }
     });
-    // 추가 제품
-    if (items.extra_prod?.checked && (items.extra_prod.amount || 0) > 0) {
-      pushDetail(items.extra_prod.label || items.extra_prod.name || "추가 제품", items.extra_prod.amount, 1, 'prod');
-    }
-    // 할인
-    if (items.discount?.checked && (items.discount.amount || 0) > 0) {
-      pushDetail("[할인]", items.discount.amount, 1, 'discount');
-    }
+    // 추가 제품 (extraRows)
+    extraRows.forEach(r => {
+      if (r.kind==='prod' && r.action==='add' && (r.amount||0) > 0) {
+        pushDetail(r.name || "추가 제품", r.amount, 1, 'prod');
+      }
+    });
+    // 할인 (extraRows) — kind별 라벨 분기
+    extraRows.forEach(r => {
+      if (r.action==='discount' && (r.amount||0) > 0) {
+        const lbl = r.kind==='prod' ? "[할인 제품]" : "[할인 시술]";
+        pushDetail(lbl, r.amount, 1, 'discount');
+      }
+    });
     // 이벤트 할인·적립 기록 (promoResults 기반)
     promoResults.forEach(r => {
       if (r.discount > 0) pushDetail(`[이벤트 할인] ${r.name}${r.reason?` (${r.reason})`:""}`, r.discount, 1, 'event_discount');
@@ -3063,31 +3090,58 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
                 </div>
               }
             </div>
-            {/* 통합 추가/할인 — 시술/제품 토글 + 입력 */}
-            {(()=>{
-              const TypeToggle = ({type, setType}) => (
-                <div style={{display:"flex",border:`1px solid ${T.gray400}`,borderRadius:4,overflow:"hidden",flexShrink:0,height:24}}>
-                  {[{v:"svc",l:"시술",c:T.primary},{v:"prod",l:"제품",c:T.info||"#1976D2"}].map(o=>(
-                    <button key={o.v} type="button" onClick={()=>setType(o.v)}
-                      style={{padding:"0 9px",fontSize:11,fontWeight:type===o.v?800:500,background:type===o.v?o.c:"transparent",color:type===o.v?"#fff":T.gray500,border:"none",cursor:"pointer",fontFamily:"inherit"}}>
-                      {o.l}
-                    </button>
-                  ))}
-                </div>
-              );
-              return <>
-                {/* 추가 */}
-                <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 0",marginTop:4}}>
-                  <TypeToggle type={extraType} setType={setExtraType}/>
-                  <SaleExtraRow id={extraType==="svc"?"extra_svc":"extra_prod"} color={extraType==="svc"?T.primary:(T.infoLt2)} placeholder={extraType==="svc"?"추가 시술명 입력":"추가 제품명 입력"} checked={!!(items[extraType==="svc"?"extra_svc":"extra_prod"]||{}).checked} amount={(items[extraType==="svc"?"extra_svc":"extra_prod"]||{}).amount||0} label={(items[extraType==="svc"?"extra_svc":"extra_prod"]||{}).label||""} toggle={toggle} setAmt={setAmt} setLabel={setLabel} />
-                </div>
-                {/* 할인 */}
-                <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 0"}}>
-                  <TypeToggle type={discountType} setType={setDiscountType}/>
-                  <SaleDiscountRow id="discount" checked={items.discount?.checked} amount={items.discount?.amount||0} toggle={toggle} setAmt={setAmt} />
-                </div>
-              </>;
-            })()}
+            {/* 통합 추가/할인 — 동적 row: [시술/제품] [추가/할인] [이름] [금액], 아래 + 버튼 */}
+            <div style={{marginTop:6,display:"flex",flexDirection:"column",gap:4}}>
+              {extraRows.map((row, idx) => {
+                const isAdd = row.action === 'add';
+                const kindColor = row.kind === 'svc' ? T.primary : (T.info || "#1976D2");
+                const actColor = isAdd ? T.danger : T.female;
+                return <div key={row.id} style={{display:"flex",alignItems:"center",gap:5,padding:"3px 0"}}>
+                  {/* kind toggle */}
+                  <div style={{display:"flex",border:`1px solid ${T.gray400}`,borderRadius:4,overflow:"hidden",flexShrink:0,height:24}}>
+                    {[{v:"svc",l:"시술",c:T.primary},{v:"prod",l:"제품",c:T.info||"#1976D2"}].map(o=>(
+                      <button key={o.v} type="button" onClick={()=>updExtraRow(row.id, {kind:o.v})}
+                        style={{padding:"0 7px",fontSize:11,fontWeight:row.kind===o.v?800:500,background:row.kind===o.v?o.c:"transparent",color:row.kind===o.v?"#fff":T.gray500,border:"none",cursor:"pointer",fontFamily:"inherit"}}>
+                        {o.l}
+                      </button>
+                    ))}
+                  </div>
+                  {/* action toggle */}
+                  <div style={{display:"flex",border:`1px solid ${T.gray400}`,borderRadius:4,overflow:"hidden",flexShrink:0,height:24}}>
+                    {[{v:"add",l:"추가",c:T.danger},{v:"discount",l:"할인",c:T.female}].map(o=>(
+                      <button key={o.v} type="button" onClick={()=>updExtraRow(row.id, {action:o.v})}
+                        style={{padding:"0 7px",fontSize:11,fontWeight:row.action===o.v?800:500,background:row.action===o.v?o.c:"transparent",color:row.action===o.v?"#fff":T.gray500,border:"none",cursor:"pointer",fontFamily:"inherit"}}>
+                        {o.l}
+                      </button>
+                    ))}
+                  </div>
+                  {/* name */}
+                  {isAdd ? (
+                    <input value={row.name} onChange={e=>updExtraRow(row.id, {name:e.target.value})}
+                      placeholder={row.kind==='svc' ? "추가 시술명" : "추가 제품명"}
+                      style={{flex:1,padding:"0 6px",fontSize:12,height:24,boxSizing:"border-box",background:T.bgCard,border:"1px solid "+T.border,borderRadius:5,fontFamily:"inherit",outline:"none",minWidth:0}}/>
+                  ) : (
+                    <input value="" disabled placeholder="(할인 사유 — 메모에 기록)"
+                      style={{flex:1,padding:"0 6px",fontSize:12,height:24,boxSizing:"border-box",background:"#f5f5f5",border:"1px solid "+T.border,borderRadius:5,fontFamily:"inherit",outline:"none",color:T.gray400,minWidth:0}}/>
+                  )}
+                  {/* amount */}
+                  <input type="text" inputMode="numeric" value={row.amount ? Number(row.amount).toLocaleString() : ""} placeholder="0"
+                    onChange={e=>{ const raw=e.target.value.replace(/[^0-9]/g,""); updExtraRow(row.id, {amount: raw ? Number(raw) : 0}); }}
+                    style={{width:85,padding:"0 6px",fontSize:12,height:24,boxSizing:"border-box",textAlign:"right",borderRadius:5,
+                      border:`1px solid ${(row.amount||0)>0 ? actColor : T.border}`,fontFamily:"inherit",outline:"none",
+                      color:(row.amount||0)>0 ? T.danger : T.gray500,fontWeight:(row.amount||0)>0 ? 700 : 400}}/>
+                  {/* delete (1개일 땐 비활성으로 자리 유지) */}
+                  <button type="button" onClick={()=>delExtraRow(row.id)} disabled={extraRows.length<=1 && !row.name && !row.amount}
+                    style={{width:22,height:22,padding:0,border:"none",background:"transparent",color:T.gray400,cursor:extraRows.length<=1 ? "default" : "pointer",fontSize:14,lineHeight:1,flexShrink:0,opacity:extraRows.length<=1 ? 0.3 : 1}}
+                    title="삭제">✕</button>
+                </div>;
+              })}
+              {/* + 추가 row 버튼 (전체 폭) */}
+              <button type="button" onClick={addExtraRow}
+                style={{width:"100%",padding:"6px 0",border:`1px dashed ${T.gray400}`,borderRadius:5,background:T.bg,color:T.gray500,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                + 항목 추가
+              </button>
+            </div>
           </div>
         </GridLayout>
 
