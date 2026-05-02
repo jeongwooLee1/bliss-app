@@ -176,6 +176,20 @@ export function evaluateConditions(evt, ctx) {
   if (Array.isArray(c.categoriesAny) && c.categoriesAny.length) {
     if (!c.categoriesAny.some(id => checkedCatIds.has(id))) return false
   }
+  // 처음 받는 시술 — 고객의 과거 sale_details에 해당 시술 service_name이 0건일 때만 통과
+  // ctx.customerSvcUsageMap: { service_name: count } (SaleForm에서 매출 등록 시점에 미리 조회)
+  if (Array.isArray(c.firstTimeServiceIds) && c.firstTimeServiceIds.length) {
+    // 카트에 그 시술이 체크되어 있어야 함
+    if (!c.firstTimeServiceIds.some(id => checkedSvcIds.has(id))) return false
+    const usageMap = ctx.customerSvcUsageMap || {}
+    // 카트에 체크된 시술 중 첫시술 후보의 이름 모음
+    const firstTimeNames = c.firstTimeServiceIds
+      .filter(id => checkedSvcIds.has(id))
+      .map(id => (ctx.svcList || []).find(s => s.id === id)?.name)
+      .filter(Boolean)
+    // 모두 처음(usage=0)이어야 통과 (한 가지라도 이미 받은 적 있으면 미반영)
+    if (firstTimeNames.some(n => (usageMap[n] || 0) > 0)) return false
+  }
 
   // 다담권/패키지/연간 상품 정확 매칭
   const prepaidIds = new Set((ctx.newPrepaidItems || []).map(it => it.id))
@@ -385,6 +399,23 @@ function applyReward(reward, evt, ctx, result, now) {
           }
         })
       }
+      break
+    }
+    case 'fixed_price': {
+      // 대상 시술의 현재 가격 → 고정가(value)로 변경. (현재가 - value)만큼 discountFlat에 합산.
+      // 회원가/정상가 무관하게 결과 가격이 항상 reward.value원이 됨.
+      const targets = Array.isArray(reward.targetServiceIds) ? reward.targetServiceIds : []
+      const fixedPrice = Math.max(0, Number(reward.value) || 0)
+      if (!targets.length) break
+      const items = ctx.items || {}
+      let cut = 0
+      targets.forEach(svcId => {
+        const it = items[svcId]
+        if (!it || !it.checked) return
+        const cur = Number(it.amount) || 0
+        if (cur > fixedPrice) cut += (cur - fixedPrice)
+      })
+      if (cut > 0) result.discountFlat += cut
       break
     }
     default: break

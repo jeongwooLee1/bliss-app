@@ -64,6 +64,7 @@ const REWARD_LABEL = {
   point_earn: '💰 포인트 적립',
   discount_pct: '🔖 % 할인',
   discount_flat: '🔖 정액 할인',
+  fixed_price: '🏷️ 고정가 (회원가/정상가 무관)',
   coupon_issue: '🎁 쿠폰 발행',
   prepaid_bonus: '💸 다담권 보너스',
   free_service: '🎀 무료 시술권',
@@ -73,6 +74,7 @@ const REWARD_OPTIONS = [
   ['point_earn','💰 포인트 적립'],
   ['discount_pct','🔖 % 할인'],
   ['discount_flat','🔖 정액 할인'],
+  ['fixed_price','🏷️ 고정가 (대상 시술 가격을 결과 N원으로)'],
   ['coupon_issue','🎁 쿠폰 발행'],
   ['prepaid_bonus','💸 다담권 보너스 (충전금액 %)'],
   ['free_service','🎀 무료 시술권'],
@@ -87,6 +89,7 @@ function rewardSummary(r) {
   }
   if (r.type === 'discount_pct' || r.type === 'discount') return `🔖 ${r.rate||0}% 할인`
   if (r.type === 'discount_flat') return `🔖 -${Number(r.value||0).toLocaleString()}원`
+  if (r.type === 'fixed_price') return `🏷️ ${Number(r.value||0).toLocaleString()}원 고정`
   if (r.type === 'coupon_issue') return `🎁 ${r.couponName||''} ×${r.qty||1}`
   if (r.type === 'prepaid_bonus') return `💸 +${r.rate||0}%`
   if (r.type === 'free_service') return '🎀 무료시술'
@@ -451,6 +454,11 @@ function ConditionsSection({ data, draft, setDraft }) {
         <SvcPicker data={data} label="모두 포함 (AND — 예: 브라질리언 + 케어)" value={c.servicesAll||[]} onChange={v=>setC({servicesAll:v})}/>
         <SvcPicker data={data} label="제외 (이게 있으면 미반영)" value={c.servicesNone||[]} onChange={v=>setC({servicesNone:v})}/>
         <CatPicker data={data} label="카테고리 any" value={c.categoriesAny||[]} onChange={v=>setC({categoriesAny:v})}/>
+        <SvcPicker data={data} label="🆕 처음 받는 시술 (이 시술을 과거에 받은 적 0건일 때만 통과)" value={c.firstTimeServiceIds||[]} onChange={v=>setC({firstTimeServiceIds:v})}/>
+        <div style={{fontSize:10, color:T.textMuted, marginTop:4, lineHeight:1.4}}>
+          예) "재생케어 첫 체험 1만원" — 위에 재생케어 선택 + 보상에 🏷️ 고정가 10000원 + 같은 시술 선택.<br/>
+          판정 기준: 그 고객의 과거 sale_details에서 해당 시술명 횟수 0건.
+        </div>
       </Collapsible>
 
       {/* 금액 범위 */}
@@ -646,6 +654,13 @@ function RewardRow({ idx, reward, data, onChange, onRemove }) {
         {(r.type==='discount_flat') && <>
           <Field label="할인 금액 (원)" value={r.value} onChange={v=>onChange({value:+v||0})} type="number"/>
         </>}
+        {(r.type==='fixed_price') && <>
+          <Field label="결과 가격 (원)" value={r.value} onChange={v=>onChange({value:+v||0})} type="number"/>
+          <div style={{gridColumn:'1 / -1', fontSize:10, color:T.textMuted, lineHeight:1.4}}>
+            대상 시술이 매출에 체크되어 있으면 (현재가 - 결과가)만큼 자동 할인 → 회원가/정상가 무관 결과 N원.
+          </div>
+          <div style={{gridColumn:'1 / -1'}}><SvcPicker data={data} label="대상 시술" value={r.targetServiceIds||[]} onChange={v=>onChange({targetServiceIds:v})}/></div>
+        </>}
         {(r.type==='coupon_issue') && <>
           <Field label="발행 쿠폰" value={r.couponName} onChange={v=>onChange({couponName:v})} type="select"
             options={[['','쿠폰 선택'],...(data?.services||[]).filter(s=>{const c=(data?.categories||[]).find(cc=>cc.id===s.cat);return c?.name==='쿠폰'}).map(s=>[s.name,s.name])]}/>
@@ -675,6 +690,7 @@ function ConditionSummary({ evt, data }) {
   if (c.servicesAny?.length) chips.push(`시술any: ${c.servicesAny.map(svcName).join(',')}`)
   if (c.servicesAll?.length) chips.push(`시술ALL: ${c.servicesAll.map(svcName).join('+')}`)
   if (c.servicesNone?.length) chips.push(`제외: ${c.servicesNone.map(svcName).join(',')}`)
+  if (c.firstTimeServiceIds?.length) chips.push(`🆕 처음: ${c.firstTimeServiceIds.map(svcName).join(',')}`)
   if (c.categoriesAny?.length) chips.push(`카테any: ${c.categoriesAny.map(catName).join(',')}`)
   if (c.prepaidServiceIds?.length) chips.push(`다담권: ${c.prepaidServiceIds.map(svcName).join(',')}`)
   if (c.pkgServiceIds?.length) chips.push(`패키지: ${c.pkgServiceIds.map(svcName).join(',')}`)

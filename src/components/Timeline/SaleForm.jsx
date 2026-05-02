@@ -605,11 +605,31 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   }, [JSON.stringify(usePkgToday)]);
   // ── 신규 판정: 매출 이력 0건 여부 (DB 조회) ──
   const [custHasSale, setCustHasSale] = useState(false);
+  // 이 고객의 과거 시술 사용 횟수 — 이벤트 엔진 firstTimeServiceIds 조건 평가용
+  // { service_name: count }
+  const [custSvcUsageMap, setCustSvcUsageMap] = useState({});
   useEffect(() => {
-    if (!cust.id) { setCustHasSale(false); return; }
+    if (!cust.id) { setCustHasSale(false); setCustSvcUsageMap({}); return; }
     sb.get("sales", `&cust_id=eq.${cust.id}&limit=1`)
       .then(rows => setCustHasSale((rows||[]).length > 0))
       .catch(() => setCustHasSale(false));
+    // 과거 sale_details에서 service_name 사용 횟수 집계 (item_kind=svc만 대상)
+    (async () => {
+      try {
+        const sales = await sb.get("sales", `&cust_id=eq.${cust.id}&select=id&limit=500`);
+        const ids = (sales||[]).map(s => s.id).filter(Boolean);
+        if (!ids.length) { setCustSvcUsageMap({}); return; }
+        // sale_details IN (sale_ids) — Supabase REST: in.(id1,id2,...)
+        const inList = ids.join(",");
+        const details = await sb.get("sale_details", `&sale_id=in.(${inList})&item_kind=eq.svc&select=service_name`);
+        const map = {};
+        (details||[]).forEach(d => {
+          const n = d.service_name; if (!n) return;
+          map[n] = (map[n] || 0) + 1;
+        });
+        setCustSvcUsageMap(map);
+      } catch(e) { setCustSvcUsageMap({}); }
+    })();
   }, [cust.id]);
 
   // ── 신규 다담권 자동 우선차감 ref (실제 useEffect는 items 선언 이후 — TDZ 방지) ──
@@ -1522,6 +1542,8 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
         items, svcList: SVC_LIST, prodList: PROD_LIST,
         // 고객 보유권 (servicesNone 평가 시 보유권 이름 매칭에 사용)
         customerPkgs: ownPkgs,
+        // 고객의 과거 시술 사용 이력 (firstTimeServiceIds 조건 평가용)
+        customerSvcUsageMap: custSvcUsageMap,
         // 엔진 외부 할인·체험단 (netAmount 계산에 차감)
         externalDiscount: _discountTotal
           + couponDiscountTotal + promoDiscountTotal + svcCompedTotal + prodCompedTotal,
@@ -1531,7 +1553,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       };
       return applyEvents(events, ctx);
     } catch (e) { console.warn('[eventEngine]', e); return { pointEarn:0, pointExpiresAt:null, discountFlat:0, discountFlatPkg:0, discountFlatPrepaid:0, discountFlatAnnual:0, discountPct:0, prepaidBonus:0, issueCoupons:[], virtualCoupons:[], appliedEvents:[] }; }
-  }, [data?.businesses, cust.id, custHasSale, custPkgs, newPrepaidPurchases, newPkgPurchases, newAnnualPurchases, svcTotal, prodTotal, items, extraRows, payMethod.svcCash, payMethod.svcCard, payMethod.prodCash, payMethod.prodCard, gender]);
+  }, [data?.businesses, cust.id, custHasSale, custPkgs, custSvcUsageMap, newPrepaidPurchases, newPkgPurchases, newAnnualPurchases, svcTotal, prodTotal, items, extraRows, payMethod.svcCash, payMethod.svcCard, payMethod.prodCash, payMethod.prodCard, gender]);
 
   // 레거시 호환: 기존 UI/로직에서 참조하던 newCustEventEarn 형태 유지
   // 신규 스키마(rewards[])와 레거시(rewardType) 모두 지원
