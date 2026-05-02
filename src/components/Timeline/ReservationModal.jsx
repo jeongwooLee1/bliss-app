@@ -470,10 +470,8 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
       memo: cleanMemo, custGender: item?.custGender || "", endDate: item?.date||todayStr(), endTime: defaultEnd(),
       selectedTags: (() => {
       let baseTags = item?.selectedTags || [];
-      // 신규 예약이면 "신규" 태그 자동 포함
-      if (!item?.id && !isSchedule && NEW_CUST_TAG_ID_GLOBAL && !baseTags.includes(NEW_CUST_TAG_ID_GLOBAL))
-        baseTags = [...baseTags, NEW_CUST_TAG_ID_GLOBAL];
-      // 선결제(네이버 예약금 포함)면 "예약금완료" 태그 자동 포함
+      // '신규' 태그는 service_tags.auto_trigger 시스템(is_new_customer 트리거)이 처리 — 하드코딩 제거됨
+      // 선결제(네이버 예약금 포함)면 "예약금완료" 태그 자동 포함 (이건 매출 등록 후 발생하는 시스템 상태이므로 유지)
       const hasPrepaid = item?.isPrepaid || (item?.externalPrepaid || 0) > 0;
       if (hasPrepaid && PREPAID_TAG_ID && !baseTags.includes(PREPAID_TAG_ID))
         baseTags = [...baseTags, PREPAID_TAG_ID];
@@ -938,10 +936,10 @@ ${naverText}
       });
       const validSvcSet = new Set((data?.services||[]).map(s=>s.id));
       const validTagSet = new Set((data?.serviceTags||[]).map(t=>t.id));
-      // AI 결과에서 신규 태그 제거 후 코드가 직접 판단
+      // AI 결과에서 시스템 태그 제거 (시스템 태그는 service_tags.auto_trigger 시스템이 자동 처리)
       let newTags = fuzzyFix(parsed.matchedTagIds || [], validTagSet).filter(id => !SYSTEM_TAG_IDS.includes(id) && validTagSet.has(id));
-      if (effectiveIsNew) newTags = [...newTags, NEW_CUST_TAG_ID];
-      // 예약금완료 자동 처리: 선결제(네이버 또는 외부플랫폼)면 태그 추가
+      // '신규' 태그는 evaluateTagTriggers useEffect(is_new_customer 트리거)가 자동 처리 — 하드코딩 제거
+      // 예약금완료 자동 처리: 선결제(네이버 또는 외부플랫폼)면 태그 추가 (시스템 상태이므로 유지)
       const _hasPrepaid = f.isPrepaid || (f.externalPrepaid || 0) > 0;
       if (_hasPrepaid && !newTags.includes(PREPAID_TAG_ID)) newTags = [...newTags, PREPAID_TAG_ID];
       let newSvcs = fuzzyFix(parsed.matchedServiceIds || [], validSvcSet).filter(id => validSvcSet.has(id));
