@@ -6,6 +6,7 @@ import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, getDow, genId, fmtL
 import I from '../common/I'
 import SendSmsModal from '../common/SendSmsModal'
 import { DetailedSaleForm } from './SaleForm'
+import { evaluateTagTriggers } from '../../lib/tagAutoTrigger'
 
 const uid = genId;
 
@@ -618,22 +619,43 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
     }).catch(() => setCustPkgsInfo([]));
   }, [f.custId]);
 
-  // 신규고객 자동 태그 — 새 예약 + 미등록 고객(custId 없음 + DB phone 매칭 X)일 때 '신규' 태그 자동 추가
-  // 매칭되는 고객으로 변경되면 '신규' 태그 자동 제거. 내부일정/네이버 예약은 영향 없음.
+  // 자동 부여 트리거 평가 — service_tags.auto_trigger에 설정된 트리거 조건 만족 시 태그 자동 부여
+  // 트리거 종류(코드: src/lib/tagAutoTrigger.js): 신규고객 / 패키지 잔여 N회 이하 / 패키지 만료 /
+  //   쿠폰 N일 내 만료 / N일 이상 미방문(기존상담)
+  // 내부일정·기존 예약(네이버 포함)은 자동 평가 안 함 (사용자 토글 보존)
   useEffect(() => {
-    if (item?.id) return; // 기존 예약(네이버 포함)은 별도 흐름
-    if (isSchedule) return; // 내부일정 X
-    if (!NEW_CUST_TAG_ID_GLOBAL) return;
+    if (item?.id) return;
+    if (isSchedule) return;
+    const tagsCfg = data?.serviceTags || [];
+    if (!tagsCfg.some(t => t?.autoTrigger?.type)) return;
+    // 매칭되는 고객 찾기 (custId 우선, 없으면 phone 매칭)
     const phoneNorm = (f.custPhone||"").replace(/[^0-9]/g,"");
-    const custLinked = !!(f.custId) || (phoneNorm.length >= 10 && !!(data?.customers||[]).find(c => (c.phone||"").replace(/[^0-9]/g,"") === phoneNorm));
-    setF(p => {
-      const tags = Array.isArray(p.selectedTags) ? p.selectedTags : [];
-      const has = tags.includes(NEW_CUST_TAG_ID_GLOBAL);
-      if (!custLinked && !has) return {...p, selectedTags: [...tags, NEW_CUST_TAG_ID_GLOBAL]};
-      if (custLinked && has) return {...p, selectedTags: tags.filter(t => t !== NEW_CUST_TAG_ID_GLOBAL)};
-      return p;
-    });
-  }, [f.custId, f.custPhone, isSchedule, data?.customers, item?.id]);
+    const matchedCust = f.custId
+      ? (data?.customers||[]).find(c => c.id === f.custId)
+      : (phoneNorm.length >= 10 ? (data?.customers||[]).find(c => (c.phone||"").replace(/[^0-9]/g,"") === phoneNorm) : null);
+    // 매칭 고객의 customer_packages 비동기 조회 후 트리거 평가 (race-condition 방지용 cancel ref)
+    let cancelled = false;
+    (async () => {
+      let custPkgs = [];
+      if (matchedCust?.id) {
+        try { custPkgs = await sb.get("customer_packages", `&customer_id=eq.${matchedCust.id}`) || []; }
+        catch (_) { custPkgs = []; }
+      }
+      if (cancelled) return;
+      const matchedTagIds = evaluateTagTriggers({ tags: tagsCfg, customer: matchedCust || null, custPkgs });
+      setF(p => {
+        const tags = Array.isArray(p.selectedTags) ? p.selectedTags : [];
+        // 이번 평가에서 부여될 태그(matchedTagIds)는 추가, 부여되지 않을 자동 트리거 태그는 제거
+        const autoIds = new Set(tagsCfg.filter(t => t?.autoTrigger?.type).map(t => t.id));
+        const next = tags.filter(id => !autoIds.has(id) || matchedTagIds.includes(id));
+        matchedTagIds.forEach(id => { if (!next.includes(id)) next.push(id); });
+        // 변경 없으면 prev 그대로
+        if (next.length === tags.length && next.every((id, i) => id === tags[i])) return p;
+        return { ...p, selectedTags: next };
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [f.custId, f.custPhone, isSchedule, data?.customers, data?.serviceTags, item?.id]);
   // 보유권 요약: 유효권(잔액>0/회차>0) + 소진권 모두 표시 (소진은 흐리게)
   const activePkgSummary = (() => {
     const out = [];

@@ -5,6 +5,7 @@ import { _activeBizId, SYSTEM_TAG_IDS } from '../../lib/db'
 import { genId } from '../../lib/utils'
 import I from '../common/I'
 import { AConfirm, ASheet, AField, AInp, AEmpty, APageHeader, AToggle, ABadge, APalette, useTouchDragSort } from './AdminUI'
+import { TAG_TRIGGER_TYPES } from '../../lib/tagAutoTrigger'
 
 const uid = genId;
 
@@ -15,7 +16,7 @@ function AdminServiceTags({ data, setData }) {
   const [activeTab,setActiveTab]=useState("reservation");
   const [sheet,setSheet]=useState(false);
   const [editItem,setEditItem]=useState(null);
-  const [form,setForm]=useState({name:"",dur:0,color:"",useYn:true});
+  const [form,setForm]=useState({name:"",dur:0,color:"",useYn:true,autoTrigger:null});
   const [del,setDel]=useState(null);
   const set=(k,v)=>setForm(p=>({...p,[k]:v}));
 
@@ -32,18 +33,18 @@ function AdminServiceTags({ data, setData }) {
   };
 
   const syncTags=updated=>{setTags(updated);if(setData)setData(p=>p?{...p,serviceTags:updated}:p);};
-  const tagToDb=t=>({id:t.id,business_id:_activeBizId,name:t.name,dur:t.dur||0,schedule_yn:t.scheduleYn==="Y"?"Y":"N",color:t.color||"",use_yn:t.useYn!==false,sort:t.sort||0});
+  const tagToDb=t=>({id:t.id,business_id:_activeBizId,name:t.name,dur:t.dur||0,schedule_yn:t.scheduleYn==="Y"?"Y":"N",color:t.color||"",use_yn:t.useYn!==false,sort:t.sort||0,auto_trigger:t.autoTrigger||null});
 
-  const openNew=()=>{setEditItem(null);setForm({name:"",dur:0,color:"",useYn:true});setSheet(true);};
-  const openEdit=t=>{setEditItem(t);setForm({name:t.name||"",dur:t.dur||0,color:t.color||"",useYn:t.useYn!==false});setSheet(true);};
+  const openNew=()=>{setEditItem(null);setForm({name:"",dur:0,color:"",useYn:true,autoTrigger:null});setSheet(true);};
+  const openEdit=t=>{setEditItem(t);setForm({name:t.name||"",dur:t.dur||0,color:t.color||"",useYn:t.useYn!==false,autoTrigger:t.autoTrigger||null});setSheet(true);};
 
   const save=()=>{
     if(!form.name.trim())return;
     if(editItem){
       syncTags(tags.map(t=>t.id===editItem.id?{...t,...form}:t));
-      sb.update("service_tags",editItem.id,{name:form.name,dur:form.dur||0,color:form.color,use_yn:form.useYn!==false,sort:editItem.sort||0}).catch(console.error);
+      sb.update("service_tags",editItem.id,{name:form.name,dur:form.dur||0,color:form.color,use_yn:form.useYn!==false,sort:editItem.sort||0,auto_trigger:form.autoTrigger||null}).catch(console.error);
     }else{
-      const t={id:uid(),name:form.name.trim(),dur:Number(form.dur)||0,scheduleYn:isSchedule?"Y":"N",color:form.color,useYn:true,sort:tags.length};
+      const t={id:uid(),name:form.name.trim(),dur:Number(form.dur)||0,scheduleYn:isSchedule?"Y":"N",color:form.color,useYn:true,sort:tags.length,autoTrigger:form.autoTrigger||null};
       syncTags([...tags,t]);
       sb.upsert("service_tags",[tagToDb(t)]);
     }
@@ -131,6 +132,36 @@ function AdminServiceTags({ data, setData }) {
         <span style={{fontSize:T.fs.sm,fontWeight:500}}>사용 중</span>
         <AToggle on={form.useYn!==false} onChange={v=>set("useYn",v)}/>
       </div>
+
+      {/* 자동 부여 트리거 — 매장이 직접 정책 설정 (예: 마지막회차/기존상담/신규고객) */}
+      {!isSchedule && <AField label="🤖 자동 부여 트리거" hint="조건을 만족하면 시스템이 예약에 이 태그를 자동으로 부여합니다">
+        <select style={{...AInp,width:"100%"}}
+          value={form.autoTrigger?.type||""}
+          onChange={e=>{
+            const type=e.target.value;
+            if(!type){set("autoTrigger",null);return;}
+            const def=TAG_TRIGGER_TYPES.find(x=>x.type===type);
+            const next={type};
+            (def?.params||[]).forEach(p=>{next[p.key]=p.default;});
+            set("autoTrigger",next);
+          }}>
+          <option value="">자동 부여 안 함 (수동 토글만)</option>
+          {TAG_TRIGGER_TYPES.map(x=><option key={x.type} value={x.type}>{x.label}</option>)}
+        </select>
+        {form.autoTrigger?.type && (() => {
+          const def=TAG_TRIGGER_TYPES.find(x=>x.type===form.autoTrigger.type);
+          if(!def?.params?.length) return null;
+          return <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}}>
+            {def.params.map(p=><div key={p.key} style={{display:"flex",alignItems:"center",gap:6}}>
+              <input type="number" value={form.autoTrigger[p.key]??p.default} onChange={e=>{
+                const v=Number(e.target.value)||0;
+                set("autoTrigger",{...form.autoTrigger,[p.key]:v});
+              }} style={{...AInp,width:80}}/>
+              <span style={{fontSize:T.fs.xxs,color:T.textMuted}}>{p.label}</span>
+            </div>)}
+          </div>;
+        })()}
+      </AField>}
 
     </ASheet>
     <AConfirm open={!!del} title="태그 삭제" onOk={()=>doDelete(del)} onCancel={()=>setDel(null)}/>

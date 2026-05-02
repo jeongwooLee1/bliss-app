@@ -4649,14 +4649,20 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                             {isNaverCancelled && <span style={{fontSize:Math.max(6,blockFs-2),padding:"1px 3px",borderRadius:T.radius.sm,background:T.warning,color:T.bgCard,fontWeight:T.fw.bolder,lineHeight:1,flexShrink:0}}>취소</span>}
                             {isNaverUnassigned && <span style={{fontSize:Math.max(6,blockFs-2),padding:"1px 3px",borderRadius:T.radius.sm,background:T.info,color:T.bgCard,fontWeight:T.fw.bolder,lineHeight:1,flexShrink:0}}>미배정</span>}
                             {isNaverPending && !isNaverUnassigned && <span style={{fontSize:Math.max(6,blockFs-2),padding:"1px 3px",borderRadius:T.radius.sm,background:T.orange,color:T.bgCard,fontWeight:T.fw.bolder,lineHeight:1,flexShrink:0,animation:"pendingBlink 1.5s infinite"}}>대기</span>}
-                            {effectiveNaverColShow["태그"] !== false && block.selectedTags?.slice(0,3).map(tid=>{
-                              const tg=tags.find(t=>t.id===tid);
-                              if(!tg) return null;
-                              const bg=tg.color||T.primary;
-                              const h=bg.replace("#",""); const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);
-                              const txt=(0.299*r+0.587*g+0.114*b)/255>0.55?T.text:T.bgCard;
-                              return <span key={tid} style={{fontSize:Math.max(6,blockFs-2),padding:"1px 4px",borderRadius:T.radius.sm,background:bg,color:txt,fontWeight:T.fw.bolder,lineHeight:1,flexShrink:0}}>{tg.name}</span>;
-                            })}
+                            {effectiveNaverColShow["태그"] !== false && (() => {
+                              // 태그 표시 순서 = service_tags 등록순(sort 컬럼). 처음 3개만.
+                              const sorted = (block.selectedTags||[])
+                                .map(tid => tags.find(t => t.id === tid))
+                                .filter(Boolean)
+                                .sort((a, b) => (a.sort||0) - (b.sort||0))
+                                .slice(0, 3);
+                              return sorted.map(tg => {
+                                const bg=tg.color||T.primary;
+                                const h=bg.replace("#",""); const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);
+                                const txt=(0.299*r+0.587*g+0.114*b)/255>0.55?T.text:T.bgCard;
+                                return <span key={tg.id} style={{fontSize:Math.max(6,blockFs-2),padding:"1px 4px",borderRadius:T.radius.sm,background:bg,color:txt,fontWeight:T.fw.bolder,lineHeight:1,flexShrink:0}}>{tg.name}</span>;
+                              });
+                            })()}
                             {effectiveNaverColShow["태그"] !== false && block.selectedTags?.length>3 && <span style={{fontSize:Math.max(6,blockFs-2),color:T.bgCard,background:T.gray500,borderRadius:T.radius.sm,padding:"1px 2px",flexShrink:0}}>+{block.selectedTags.length-3}</span>}
                             {/* 이름 */}
                             <span style={{fontWeight:T.fw.bold,color:isNaverCancelled?T.gray500:T.text,textDecoration:isNaverCancelled?"line-through":"none",flexShrink:1,minWidth:0}}>
