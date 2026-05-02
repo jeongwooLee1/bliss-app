@@ -1541,14 +1541,14 @@ ${naverText}
                       })}
                     </div>}
                   </div>
-                  {/* 변경/취소 + 고객관리 */}
+                  {/* 변경/취소 + 고객관리 — 가로 wrap (좁은 화면에서도 자연스럽게 줄바꿈) */}
                   {editingCust ? (
-                    <div style={{display:"flex",flexDirection:"column",gap:3,alignSelf:"flex-start",flexShrink:0}}>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:3,alignSelf:"flex-start",flexShrink:0,justifyContent:"flex-end",maxWidth:"40%"}}>
                       <button onClick={()=>{ setEditingCust(false); setCustSearch(""); setShowCustDropdown(false); }}
                         style={{padding:"3px 8px",borderRadius:5,border:"1px solid #ddd",background:"#fff",color:"#999",fontSize:10,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>취소</button>
                     </div>
                   ) : (
-                    <div style={{display:"flex",flexDirection:"column",gap:3,alignSelf:"flex-start",flexShrink:0}}>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:3,alignSelf:"flex-start",flexShrink:0,justifyContent:"flex-end",maxWidth:"40%"}}>
                       <button onClick={()=>{
                           setEditingCust(true);
                           // 변경 모드 진입 시 현재 phone(또는 name)으로 즉시 기존고객 검색 트리거
@@ -1587,7 +1587,7 @@ ${naverText}
                         style={{padding:"3px 8px",borderRadius:5,border:"1px solid "+T.primary,background:T.primaryLt||"#fff0ec",color:T.primary,fontSize:10,cursor:"pointer",fontFamily:"inherit",fontWeight:600,whiteSpace:"nowrap"}}>고객정보 ↗</button>}
                       {f.custPhone && <button onClick={()=>setShowSmsModal(true)}
                         title="이 고객에게 문자 발송"
-                        style={{padding:"3px 9px",borderRadius:5,border:"1px solid #7C3AED",background:"#7C3AED",color:"#fff",fontSize:13,cursor:"pointer",fontFamily:"inherit",fontWeight:800,whiteSpace:"nowrap",lineHeight:1}}>✉</button>}
+                        style={{padding:"3px 8px",borderRadius:5,border:"1px solid #7C3AED",background:"#7C3AED",color:"#fff",fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:800,whiteSpace:"nowrap",lineHeight:1}}>✉</button>}
                     </div>
                   )}
                 </div>
