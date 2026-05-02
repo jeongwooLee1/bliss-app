@@ -99,21 +99,45 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     .filter(Boolean)
     .map(String);
 
-  // 메시지 로드 (캐시 방지용 _t 파라미터 추가)
+  // 메시지 로드 — Supabase max-rows=1000 cap 우회용 페이지네이션.
+  // 첫 1000건은 즉시 표시하고 나머지는 백그라운드로 append (검색·user_name 매칭용).
   const loadingRef = useRef(false);
   const loadMsgs = useCallback(async () => {
-    if (loadingRef.current) return; // 중복 호출 방지
+    if (loadingRef.current) return;
     loadingRef.current = true;
     try {
-      // 최근 60일치만 로드 (장기 누적 시 렉 방지). 더 오래된 건 검색 시 별도 호출 가능
       const _since = new Date(Date.now() - 60 * 86400000).toISOString();
-      const r = await fetch(SB_URL+`/rest/v1/messages?created_at=gte.${encodeURIComponent(_since)}&order=created_at.desc&limit=3000&select=*`,{headers:{...sbHeaders,"Cache-Control":"no-cache"},cache:"no-store"});
-      const d2 = await r.json();
-      if (Array.isArray(d2)) {
-        setMsgs(d2);
-        const nm = {};
-        d2.forEach(m => { if (m.user_name && !nm[m.user_id]) nm[m.user_id] = m.user_name; });
-        if (Object.keys(nm).length > 0) setNames(prev => ({...prev,...nm}));
+      const sinceEnc = encodeURIComponent(_since);
+      const fetchPage = (offset) => fetch(
+        SB_URL+`/rest/v1/messages?created_at=gte.${sinceEnc}&order=created_at.desc&limit=1000&offset=${offset}&select=*`,
+        { headers: { ...sbHeaders, "Cache-Control": "no-cache" }, cache: "no-store" }
+      ).then(r => r.json());
+
+      // 1) 첫 페이지 즉시 반영
+      const first = await fetchPage(0);
+      if (!Array.isArray(first)) return;
+      setMsgs(first);
+      const nm = {};
+      first.forEach(m => { if (m.user_name && !nm[m.user_id]) nm[m.user_id] = m.user_name; });
+      if (Object.keys(nm).length > 0) setNames(prev => ({...prev,...nm}));
+
+      // 2) 백그라운드로 추가 페이지 append (60일치 max ~6000건 안전망)
+      if (first.length === 1000) {
+        (async () => {
+          let offset = 1000;
+          for (let p = 0; p < 5; p++) {
+            try {
+              const batch = await fetchPage(offset);
+              if (!Array.isArray(batch) || batch.length === 0) break;
+              setMsgs(prev => [...prev, ...batch]);
+              const more = {};
+              batch.forEach(m => { if (m.user_name && !more[m.user_id]) more[m.user_id] = m.user_name; });
+              if (Object.keys(more).length > 0) setNames(prev => ({...prev,...more}));
+              if (batch.length < 1000) break;
+              offset += 1000;
+            } catch (e) { break; }
+          }
+        })();
       }
     } catch(e){} finally{ loadingRef.current = false; setLoading(false); }
   }, []);
