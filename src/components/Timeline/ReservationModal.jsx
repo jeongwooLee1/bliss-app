@@ -2688,7 +2688,7 @@ function SmartDatePicker({ open, onClose, anchorEl, startDate, endDate, onApply,
 
   const presets = mode==="res"
     ? [["today","오늘"],["7days","7일"],["month","한달"],["all","전체"],["custom","직접"]]
-    : [["today","오늘"],["prev","전일"],["thismonth","이번달"],["lastmonth","지난달"],["custom","직접"]];
+    : [["today","오늘"],["prev","전일"],["thismonth","이번달"],["lastmonth","지난달"],["thisyear","올해"],["lastyear","작년"],["all","전체"],["custom","직접"]];
 
   const applyPreset = (key) => {
     const today = todayStr();
@@ -2710,6 +2710,8 @@ function SmartDatePicker({ open, onClose, anchorEl, startDate, endDate, onApply,
       s=`${ly}-${String(lm+1).padStart(2,"0")}-01`;
       e=fmtLocal(new Date(y,m,0));
     }
+    else if (key==="thisyear") { s=`${y}-01-01`; e=today; }
+    else if (key==="lastyear") { s=`${y-1}-01-01`; e=`${y-1}-12-31`; }
     else if (key==="all") { s=""; e=""; }
     setPeriod(key); setSelStart(s); setSelEnd(e);
     if (s) { const sd=new Date(s); const sd2=new Date(sd.getFullYear(),sd.getMonth()+1,1); setMonths([{y:sd.getFullYear(),m:sd.getMonth()},{y:sd2.getFullYear(),m:sd2.getMonth()}]); }

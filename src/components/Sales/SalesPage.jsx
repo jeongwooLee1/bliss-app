@@ -867,9 +867,17 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
 // ═══════════════════════════════════════════
 function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, periodKey, setStartDate, setEndDate, setPeriodKey }) {
   const [vb, setVb] = useState("all");
-  const [statsPeriod, setStatsPeriod] = useState("day"); // "day" | "month" | "year"
   const dateAnchorRef = React.useRef(null);
   const [showSheet, setShowSheet] = useState(false);
+  // 기간 길이로 차트 단위 자동 결정 — 60일↓ 일별, 365일↓ 월별, 그 외 연도별
+  const statsPeriod = (() => {
+    if (periodKey === "all" || !startDate || !endDate) return "day";
+    const ds = new Date(startDate); const de = new Date(endDate);
+    const totalDays = Math.round((de - ds) / 86400000) + 1;
+    if (totalDays > 365) return "year";
+    if (totalDays > 60) return "month";
+    return "day";
+  })();
   // 매출통계는 권한 무관 전 지점 표시 (userBranches 무시)
   const allBids = (data?.branches || []).map(b => b.id);
 
@@ -1039,18 +1047,11 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     </GridLayout>
     {/* Chart */}
     <div className="card" style={{padding:20,marginBottom:16}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,gap:8,flexWrap:"wrap"}}>
-        <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub}}>
-          {statsPeriod==="day"?`${chartDays.length}일`:statsPeriod==="month"?`${chartDays.length}개월`:`${chartDays.length}년`} 매출 (시술 + 제품)
-        </div>
-        <div style={{display:"flex",border:"1px solid "+T.gray400,borderRadius:6,overflow:"hidden",height:28}}>
-          {[["day","일별"],["month","월별"],["year","연도별"]].map(([k,l])=>(
-            <button key={k} type="button" onClick={()=>setStatsPeriod(k)}
-              style={{padding:"0 12px",fontSize:12,fontWeight:statsPeriod===k?800:500,background:statsPeriod===k?T.primary:"#fff",color:statsPeriod===k?"#fff":T.gray600,border:"none",cursor:"pointer",fontFamily:"inherit"}}>
-              {l}
-            </button>
-          ))}
-        </div>
+      <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:16}}>
+        {statsPeriod==="day"?`${chartDays.length}일`:statsPeriod==="month"?`${chartDays.length}개월`:`${chartDays.length}년`} 매출 (시술 + 제품)
+        <span style={{marginLeft:8,fontSize:11,fontWeight:500,color:T.gray400}}>
+          · 기간에 따라 자동 {statsPeriod==="day"?"일별":statsPeriod==="month"?"월별":"연도별"} 표시
+        </span>
       </div>
       <div style={{display:"flex",alignItems:"flex-end",gap:6,height:130}}>
         {chartDays.map((d,i)=>(
