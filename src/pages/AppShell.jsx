@@ -1165,8 +1165,8 @@ function App() {
         // Load business info
         const bizList = await sb.get("businesses", `&id=eq.${bizId}`);
         setCurrentBiz(bizList[0] || { name: "매장" });
-        // 기능 토글 로드 (사업장별 features → 런타임 _features에 적재)
-        setFeatures(extractFeatures(bizList[0]?.settings, bizId));
+        // 기능 토글 로드 (사업장별 features → 런타임 _features에 적재). plan 컬럼 fallback으로 derive
+        setFeatures(extractFeatures(bizList[0]?.settings, bizId, bizList[0]?.plan));
         // businesses.settings에서 gemini_key / ai_rules 복원 (localStorage 삭제 후 복구)
         try {
           const memo = JSON.parse(bizList[0]?.settings || "{}");
