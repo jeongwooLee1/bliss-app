@@ -2132,36 +2132,6 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   const handleSave = async (item) => {
     // 베타 모드: 모든 신규/수정 예약에 isBeta=true 강제 마킹 (라이브 격리)
     if (betaGroupMode) item.isBeta = true;
-    // 베타 모드 동반자 묶음 — 메인 저장 전에 group 생성, companion reservation 객체 준비
-    let _companionRow = null;
-    if (betaGroupMode && item._companion && (item._companion.name || "").trim()) {
-      if (!item._companion.staffId) {
-        alert("동반자 담당 직원을 선택해주세요.");
-        return;
-      }
-      const _groupId = "rg_" + uid();
-      sb.insert("reservation_groups", toDb("reservation_groups", {
-        id: _groupId, bid: item.bid || "", leaderCustId: item.custId || "",
-        roomType: 'separate', memo: ''
-      })).catch(e => console.warn("[group insert]", e));
-      item.reservationGroupId = _groupId;
-      const _cid = uid();
-      _companionRow = {
-        id: _cid, bid: item.bid, roomId: "",
-        custName: item._companion.name.trim(),
-        custPhone: (item._companion.phone || "").replace(/[^0-9]/g, ""),
-        staffId: item._companion.staffId,
-        serviceId: item.serviceId || "",
-        selectedServices: Array.isArray(item.selectedServices) ? [...item.selectedServices] : [],
-        selectedTags: [],
-        date: item.date, time: item.time, dur: item.dur,
-        status: item.status || "reserved",
-        type: 'reservation', isSchedule: false, source: 'manual',
-        isBeta: true, reservationGroupId: _groupId,
-        reservationId: 'manual_' + _cid,
-      };
-    }
-    delete item._companion;
     // 🔒 race-condition 방어: 네이버 서버가 비동기로 갱신하는 필드(status, naver_*_dt)는
     // 모달이 열린 동안 stale 값으로 덮어쓰기 방지.
     const _snap = item._initialServerSnap;
@@ -2312,7 +2282,6 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           cur.setDate(cur.getDate() + 1);
         }
       }
-      if (_companionRow) items.push(_companionRow);
       allItems.push(...items);
       return { ...prev, reservations: [...prev.reservations, ...items] };
     });
@@ -2604,36 +2573,6 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
 
   const handleDelete = (id) => {
     const res = (data?.reservations||[]).find(r => r.id === id);
-    // 묶음 예약 — confirm 분기
-    const grpId = res?.reservationGroupId;
-    if (grpId) {
-      const groupMembers = (data?.reservations||[]).filter(r => r.reservationGroupId === grpId);
-      if (groupMembers.length > 1) {
-        const names = groupMembers.map(r => r.custName || "(이름없음)").join(", ");
-        const ans = window.prompt(`👥 묶음 예약 (${groupMembers.length}명): ${names}\n\n어떻게 할까요?\n  1 = 이 사람만 삭제\n  2 = 묶음 전체 삭제\n  (취소 = 그대로 두기)`, "1");
-        if (ans === null) { setShowModal(false); setModalData(null); return; }
-        if (ans === "2") {
-          // 전체 그룹 삭제
-          const ids = groupMembers.map(r => r.id);
-          setData(prev => ({ ...prev, reservations: (prev?.reservations||[]).filter(r => !ids.includes(r.id)) }));
-          ids.forEach(rid => sb.del("reservations", rid).catch(console.error));
-          sb.del("reservation_groups", grpId).catch(console.error);
-          groupMembers.forEach(m => { if (m.custId) cleanupOrphanCust(m.custId, m.id); });
-          setShowModal(false); setModalData(null);
-          return;
-        }
-        // ans === "1" 또는 기타 → 본인만 삭제 (그룹은 유지, 마지막 1명 남으면 그룹 자동 정리)
-        if (groupMembers.length - 1 <= 1) {
-          // 남은 1명도 그룹 해제 (외톨이 그룹 정리)
-          const remain = groupMembers.find(m => m.id !== id);
-          if (remain) {
-            sb.update("reservations", remain.id, { reservation_group_id: null }).catch(console.error);
-            setData(prev => ({ ...prev, reservations: (prev?.reservations||[]).map(r => r.id === remain.id ? { ...r, reservationGroupId: null } : r) }));
-          }
-          sb.del("reservation_groups", grpId).catch(console.error);
-        }
-      }
-    }
     setData(prev => ({ ...prev, reservations: (prev?.reservations||[]).filter(r => r.id !== id) }));
     sb.del("reservations", id).catch(console.error);
     if (res?.custId) cleanupOrphanCust(res.custId, id);
@@ -2779,6 +2718,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           // ✨ end_time 우선으로 길이 계산. dur 컬럼이 잘못 저장된 케이스에서도 길이 보존됨.
           const trueDur = blockDurMin(block);
           // ─── Ctrl/Cmd + 드래그 = 복사 (원본 유지, 새 reservation INSERT) ───
+          // 동반자 처리: 친구 = 별도 사람. cust_id/phone/email 비움, 이름에 "동반자N" suffix
           if (isCopyDragRef.current) {
             const [csh, csm] = snap.time.split(":").map(Number);
             const cEndMin = csh*60 + csm + trueDur;
@@ -2789,6 +2729,15 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             const cRoomId = snap.roomId || "";
             const cBid = snap.bid || block.bid;
             const newId = uid();
+            // 동반자 번호 매기기 — base name = "이정우 동반자2" → "이정우" 추출 후
+            // 같은 date에 같은 base로 시작하는 예약 카운트가 새 동반자 번호
+            const baseName = String(block.custName || "").replace(/\s*동반자\d+\s*$/, "").trim();
+            const sameBaseCount = baseName ? (data?.reservations || []).filter(r => {
+              if (r.date !== block.date) return false;
+              const rn = String(r.custName || "").replace(/\s*동반자\d+\s*$/, "").trim();
+              return rn === baseName;
+            }).length : 0;
+            const newCustName = baseName ? `${baseName} 동반자${sameBaseCount}` : "";
             const newRes = {
               ...block,
               id: newId,
@@ -2798,6 +2747,14 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
               isBeta: !!(betaGroupMode || block.isBeta),
               time: snap.time, endTime: cEndTime, dur: trueDur,
               roomId: cRoomId, bid: cBid, staffId: cStaffId,
+              // 친구 = 별도 사람 — 고객 정보 끊기
+              custName: newCustName,
+              custId: "",
+              custPhone: "",
+              custEmail: "",
+              custGender: "",
+              custNum: "",
+              isNewCust: false,
               // 매출·로그 흔적 리셋 (sales는 reservation_id 새 거라 자동 끊김)
               scheduleLog: [], tsLog: [],
             };
@@ -4843,10 +4800,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                 const _cp = Number(liveCust?.cancelPenaltyCount || 0);
                                 const _ns = Number(liveCust?.noShowCount || 0);
                                 const isCaution = _cp >= 3 || _ns >= 1;
-                                const grpId = block.reservationGroupId;
-                                const grpCount = grpId ? (data?.reservations||[]).filter(r => r.reservationGroupId === grpId).length : 0;
                                 return <>
-                                  {grpCount > 1 && <span title="묶음 예약" style={{marginRight:3,fontSize:Math.max(7,blockFs-2),background:"#F59E0B",color:"#fff",padding:"0 4px",borderRadius:3,fontWeight:800}}>👥{grpCount}</span>}
                                   {g ? <span style={{color:g==="M"?T.male:T.female}}>{g==="M"?"남":"여"}</span> : null} {displayName}
                                   {custNum && <span style={{marginLeft:3,fontSize:Math.max(7,blockFs-2),color:T.text,fontWeight:T.fw.bold,fontFamily:"monospace"}}>#{custNum}</span>}
                                   {isCaution && <span title={`페널티 취소 ${_cp}회 / 노쇼 ${_ns}회`} style={{marginLeft:3,fontSize:Math.max(8,blockFs-1)}}>⚠️</span>}
