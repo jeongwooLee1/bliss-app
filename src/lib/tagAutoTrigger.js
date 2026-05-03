@@ -62,11 +62,9 @@ function _isPrepaid(pkg) {
   return false;
 }
 
-// 쿠폰 식별 — note에 "쿠폰SEQ:" 패턴이 있거나 service_name에 "쿠폰" 키워드
+// 쿠폰 식별 — service_name에 "쿠폰" 키워드만 (note의 "쿠폰SEQ:"는 네이버 결제 추적 번호라 X)
 // 쿠폰은 다회권/패키지와 의미 다름 — 마지막회차/기존상담 트리거 대상 X
 function _isCoupon(pkg) {
-  const note = String(pkg?.note || '');
-  if (/쿠폰\s*SEQ\s*[:：]/i.test(note)) return true;
   const name = String(pkg?.service_name || '');
   if (/쿠폰/.test(name)) return true;
   return false;
