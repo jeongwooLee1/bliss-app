@@ -4532,7 +4532,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
                         const cellBg = fullyBlocked ? "rgba(0,0,0,.06)" : "rgba(156,163,175,.10)";
                         const cellBorder = fullyBlocked ? "2px dashed rgba(0,0,0,.12)" : "1px solid rgba(0,0,0,.06)";
                         out.push(
-                          <div key={`s${slotIdx}`} style={{position:"absolute",top,left:0,right:0,height:slotPx,background:cellBg,borderTop:cellBorder,pointerEvents:"none",zIndex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3}}>
+                          <div key={`s${slotIdx}`} style={{position:"absolute",top,left:0,right:0,height:slotPx,background:cellBg,borderTop:cellBorder,pointerEvents:"none",zIndex:3,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3}}>
                             {dots}
                           </div>
                         );
