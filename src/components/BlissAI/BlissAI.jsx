@@ -403,7 +403,7 @@ export default function BlissAI({ data, setData, currentUser, userBranches, isMa
       try {
         const apiKey = window.__systemGeminiKey || window.__geminiKey || localStorage.getItem('bliss_gemini_key') || ''
         if (apiKey && bizId) {
-          const hits = await searchDocs({ question: q, businessId: bizId, geminiKey: apiKey, threshold: 0.5, count: 5 })
+          const hits = await searchDocs({ question: q, businessId: bizId, geminiKey: apiKey, threshold: 0.35, count: 8 })
           const docsCtx = buildDocsContext(hits)
           if (docsCtx) extraContext = (extraContext ? extraContext + '\n\n' : '') + docsCtx
         }

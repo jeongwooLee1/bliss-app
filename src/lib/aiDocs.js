@@ -379,7 +379,7 @@ export function buildDocsContext(hits) {
     const src = h?.metadata?.source ? ` (출처: ${h.metadata.source})` : ''
     return `[문서 ${i + 1}${src}]\n${h.content}`
   })
-  return `[하우스왁싱 업로드 문서 — 답변 시 우선 참고]\n${lines.join('\n\n')}`
+  return `[참고 자료 (업로드 문서) — 답변 시 최우선으로 참고]\n${lines.join('\n\n')}`
 }
 
 export default { extractText, chunkText, embedTexts, embedQuery, ingestDocument, searchDocs, buildDocsContext }
