@@ -3552,7 +3552,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                         {addStaffPopup?.branchId===room.branch_id && (<>
                           <div style={{position:"fixed",inset:0,zIndex:9998,background:window.innerWidth<768?"rgba(0,0,0,.4)":"transparent"}} onClick={e=>{e.stopPropagation();setAddStaffPopup(null);}}/>
                           <div onClick={e=>e.stopPropagation()} style={window.innerWidth<768
-                            ? {position:"fixed",inset:"12px 12px auto 12px",bottom:12,background:T.bgCard,borderRadius:14,boxShadow:"0 4px 24px rgba(0,0,0,.3)",zIndex:9999,padding:"0 0 8px",overflowY:"auto",maxHeight:"calc(100vh - 24px)"}
+                            ? {position:"fixed",top:12,left:12,right:12,bottom:12,width:"auto",maxWidth:"none",background:T.bgCard,borderRadius:14,boxShadow:"0 4px 24px rgba(0,0,0,.3)",zIndex:9999,padding:0,overflowY:"auto",overflowX:"hidden",boxSizing:"border-box",WebkitOverflowScrolling:"touch"}
                             : {position:"fixed",left:Math.min(addStaffPopup.x,window.innerWidth-220),top:addStaffPopup.y+8,background:T.bgCard,borderRadius:12,boxShadow:"0 4px 24px rgba(0,0,0,.22)",zIndex:9999,padding:"8px 0",minWidth:200,maxHeight:300,overflowY:"auto"}}>
                             <div style={{fontSize:11,color:T.textMuted,padding:"10px 12px 8px",fontWeight:700,borderBottom:"1px solid "+T.border,display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,background:T.bgCard,zIndex:1}}>
                               <span>직원 추가 (당일)</span>
@@ -3747,7 +3747,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                       {empMovePopup?.empId===room.staffId && empMovePopup?.date===selDate && empMovePopup?.branchId===room.branch_id && (<>
                         <div style={{position:"fixed",inset:0,zIndex:9998,background:window.innerWidth<768?"rgba(0,0,0,.4)":"transparent"}} onClick={e=>{e.stopPropagation();setEmpMovePopup(null);}}/>
                         <div onClick={e=>e.stopPropagation()} style={window.innerWidth<768
-                          ? {position:"fixed",inset:"12px 12px auto 12px",bottom:12,background:T.bgCard,borderRadius:14,boxShadow:"0 4px 24px rgba(0,0,0,.3)",zIndex:9999,padding:"0 0 8px",overflowY:"auto",maxHeight:"calc(100vh - 24px)"}
+                          ? {position:"fixed",top:12,left:12,right:12,bottom:12,width:"auto",maxWidth:"none",background:T.bgCard,borderRadius:14,boxShadow:"0 4px 24px rgba(0,0,0,.3)",zIndex:9999,padding:0,overflowY:"auto",overflowX:"hidden",boxSizing:"border-box",WebkitOverflowScrolling:"touch"}
                           : {position:"fixed",left:Math.min(empMovePopup.x,window.innerWidth-200),top:empMovePopup.y+8,background:T.bgCard,borderRadius:12,boxShadow:"0 4px 24px rgba(0,0,0,.22)",zIndex:9999,padding:"10px 0 6px",minWidth:200}}>
                           <div style={{padding:"10px 12px 8px",borderBottom:"1px solid "+T.border,display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,background:T.bgCard,zIndex:1}}>
                             <span style={{fontSize:12,fontWeight:800,color:T.text}}>{room.staffId} · 직원 이동/근무</span>
