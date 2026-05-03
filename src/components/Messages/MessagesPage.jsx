@@ -1173,7 +1173,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                   </span>
                   {uc>0&&<div style={{width:20,height:20,borderRadius:"50%",background:T.primary,color:"#fff",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:4}}>{uc>9?"9+":uc}</div>}
                 </div>
-                {(()=>{const res=chatResMap[key];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"확정대기":res.status==="completed"?"완료":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":"#9E9E9E";return<div style={{marginTop:3}}><span style={{fontSize:10,fontWeight:700,color:clr,background:clr+"18",borderRadius:3,padding:"1px 6px"}}>📅 {st} {res.date?.slice(5)} {res.time}</span></div>;})()}
+                {(()=>{const res=chatResMap[key];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="reserved"?"예약중":res.status==="request"?"확정대기":res.status==="completed"?"완료":null;if(!st)return null;const clr=(res.status==="confirmed"||res.status==="reserved")?"#4CAF50":res.status==="request"?"#FF9800":"#9E9E9E";return<div style={{marginTop:3}}><span style={{fontSize:10,fontWeight:700,color:clr,background:clr+"18",borderRadius:3,padding:"1px 6px"}}>📅 {st} {res.date?.slice(5)} {res.time}</span></div>;})()}
               </div>
             </div>;
           })}
