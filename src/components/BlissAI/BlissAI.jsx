@@ -14,6 +14,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { T } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY } from '../../lib/sb'
 import { buildFullPrompt, searchFAQ } from './contextBuilder'
+import { searchDocs, buildDocsContext } from '../../lib/aiDocs'
 import { classifyIntentLLM, queryCustomer, querySales, queryReservations, formatIntentResult } from './dataQuery'
 import { buildWriteIntentPrompt, ACTION_SCHEMAS } from './actionSchemas'
 import { validateAction, buildPreview, executeAction } from './actionRunner'
@@ -397,6 +398,16 @@ export default function BlissAI({ data, setData, currentUser, userBranches, isMa
         const res = await queryReservations({ ...intent.params, bid, role, userBranches, bizId })
         extraContext = formatIntentResult(intent, res, data?.branches)
       }
+
+      // 📚 RAG: 업로드된 문서에서 질문 관련 청크 검색 → extraContext에 합류
+      try {
+        const apiKey = window.__systemGeminiKey || window.__geminiKey || localStorage.getItem('bliss_gemini_key') || ''
+        if (apiKey && bizId) {
+          const hits = await searchDocs({ question: q, businessId: bizId, geminiKey: apiKey, threshold: 0.5, count: 5 })
+          const docsCtx = buildDocsContext(hits)
+          if (docsCtx) extraContext = (extraContext ? extraContext + '\n\n' : '') + docsCtx
+        }
+      } catch (e) { /* 문서 검색 실패해도 답변은 진행 */ }
 
       const prompt = buildFullPrompt({ question: q, data, faqItems, role, extraContext })
       // 메인 답변은 Claude Sonnet 4.5 (서버 프록시) — 실패 시 Gemini 폴백

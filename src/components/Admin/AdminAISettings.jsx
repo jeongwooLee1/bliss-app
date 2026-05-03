@@ -3,6 +3,7 @@ import { T } from '../../lib/constants'
 import { SB_URL, sbHeaders } from '../../lib/sb'
 import I from '../common/I'
 import { AField, AInp, AEmpty, APageHeader, ABadge, AIBtn } from './AdminUI'
+import AdminAIDocs from './AdminAIDocs'
 
 // AI 설정 — 단일 페이지 4섹션 (아코디언)
 // 1) 🔑 API 키   2) 📘 FAQ (블리스AI + 메시지함 공용)
@@ -16,6 +17,7 @@ function AdminAISettings({ data, sb: sbProp, bizId }) {
   const [openFaq, setOpenFaq]   = useState(true)
   const [openChat, setOpenChat] = useState(false)
   const [openAnal, setOpenAnal] = useState(false)
+  const [openDocs, setOpenDocs] = useState(false)
 
   // ── API 키 ─────────────────────────────────────────
   const [apiKey, setApiKey] = useState(() => window.__systemGeminiKey || window.__geminiKey || localStorage.getItem("bliss_gemini_key") || "")
@@ -376,6 +378,16 @@ function AdminAISettings({ data, sb: sbProp, bizId }) {
             placeholder={"비워두면 시스템 기본 프롬프트 사용\n\n예시:\n당신은 왁싱샵 예약 정보를 분석하는 AI입니다.\n[태그 목록] {tags}\n[시술상품 목록] {services}\n\n[규칙]\n- 태그 목록에 있는 태그만 선택\n- '신규','예약금완료' 제외\n- 음모왁싱/음부왁싱 = 브라질리언\n\n[예약 정보]\n고객명: {cust_name}\n방문횟수: {visit_count}\n\n[고객 요청]\n{naver_text}"} />
         </AField>
         <AIBtn onClick={saveAnalyzePrompt} label={analyzeSaved ? "✓ 저장됨" : "저장"} style={{ background: analyzeSaved ? T.success : T.primary }} />
+      </div>}
+    </div>
+
+    {/* ── 5) 📚 학습 문서 (RAG) ─────────────────── */}
+    <div style={{ marginBottom: 16, border: "1px solid " + T.border, borderRadius: 12, overflow: "hidden", background: T.bgCard }}>
+      <SectionHeader icon="book" title="📚 학습 문서 (RAG)"
+        desc="매장 매뉴얼/가격표/노하우 문서 업로드 → BlissAI가 검색해 답변에 활용"
+        open={openDocs} onToggle={() => setOpenDocs(v => !v)} />
+      {openDocs && <div style={{ padding: "16px 18px" }}>
+        <AdminAIDocs bizId={bizId} geminiKey={apiKey} />
       </div>}
     </div>
   </div>
