@@ -227,7 +227,7 @@ export default function FloatingAI({ data, currentUser, isMaster, bizId }) {
       ]})
       const rImg = await fetch(GEMINI_URL + '?key=' + geminiKey, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents, generationConfig: { temperature: 0.3, maxOutputTokens: 1024 } }),
+        body: JSON.stringify({ contents, generationConfig: { temperature: 0.3, maxOutputTokens: 4096 } }),
       })
       if (rImg.ok) {
         const dd = await rImg.json()
@@ -253,7 +253,7 @@ export default function FloatingAI({ data, currentUser, isMaster, bizId }) {
       contents.push({ role: 'user', parts: [{ text: prompt }] })
       const r2 = await fetch(GEMINI_URL + '?key=' + geminiKey, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents, generationConfig: { temperature: 0.3, maxOutputTokens: 1024 } }),
+        body: JSON.stringify({ contents, generationConfig: { temperature: 0.3, maxOutputTokens: 4096 } }),
       })
       if (r2.ok) {
         const dd = await r2.json()
