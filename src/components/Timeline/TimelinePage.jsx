@@ -2756,7 +2756,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
               custNum: "",
               isNewCust: false,
               // 매출·로그 흔적 리셋 (sales는 reservation_id 새 거라 자동 끊김)
-              scheduleLog: [], tsLog: [],
+              scheduleLog: "", tsLog: [],
             };
             setData(prev => ({ ...prev, reservations: [...(prev?.reservations||[]), newRes] }));
             sb.upsert("reservations", [toDb("reservations", newRes)]).catch(e => console.error("[copy-drag] upsert", e));

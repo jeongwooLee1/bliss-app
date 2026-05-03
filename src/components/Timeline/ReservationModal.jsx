@@ -1990,7 +1990,8 @@ ${naverText}
             const regFmt = c && !isNaN(c)
               ? `${String(c.getMonth()+1).padStart(2,"0")}-${String(c.getDate()).padStart(2,"0")} ${String(c.getHours()).padStart(2,"0")}:${String(c.getMinutes()).padStart(2,"0")}`
               : "";
-            const schLog = (item?.scheduleLog || "").trim();
+            const _schLogRaw = item?.scheduleLog;
+            const schLog = (Array.isArray(_schLogRaw) ? _schLogRaw.join("\n") : (_schLogRaw || "")).trim();
             if (!regFmt && !schLog) return null;
             const schLines = schLog ? schLog.split("\n").filter(Boolean) : [];
             return <div style={{padding:"6px 10px",marginBottom:8,background:T.gray100,borderRadius:T.radius.md,fontSize:11,color:T.textSub}}>
