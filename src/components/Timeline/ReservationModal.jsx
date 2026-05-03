@@ -638,13 +638,14 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
       // 캐시에 없으면 직접 조회 — visits 정확도 보장
       if (!matchedCust && f.custId) {
         try {
-          const rows = await sb.get("customers", `&id=eq.${f.custId}&select=id,name,phone,visits,last_date&limit=1`);
-          if (rows?.[0]) matchedCust = rows[0];
+          const rows = await sb.get("customers", `&id=eq.${f.custId}&select=id,name,phone,visits,last_visit&limit=1`);
+          if (rows?.[0]) { matchedCust = rows[0]; matchedCust.lastDate = matchedCust.last_visit; }
         } catch (_) {}
       }
       if (!matchedCust && phoneNorm.length >= 10) {
         try {
-          const rows = await sb.get("customers", `&phone=eq.${phoneNorm}&select=id,name,phone,visits,last_date&limit=1`);
+          const rows = await sb.get("customers", `&phone=eq.${phoneNorm}&select=id,name,phone,visits,last_visit&limit=1`);
+          if (rows?.[0]) { rows[0].lastDate = rows[0].last_visit; }
           if (rows?.[0]) matchedCust = rows[0];
         } catch (_) {}
       }
