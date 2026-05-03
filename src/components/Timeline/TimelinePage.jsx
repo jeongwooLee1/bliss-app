@@ -2329,7 +2329,12 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     });
     // Async sync to Supabase
     setTimeout(()=>{
-      if(allItems.length) sb.upsert("reservations", allItems.map(i=>toDb("reservations", betaGroupMode ? {...i, isBeta:true} : i))).then(() => {
+      if(allItems.length) {
+        // PGRST102 회피 — bulk upsert는 모든 row가 동일한 키 집합 필요. 빠진 키는 null로 채움.
+        const _dbRows = allItems.map(i => toDb("reservations", betaGroupMode ? {...i, isBeta:true} : i));
+        const _allKeys = [...new Set(_dbRows.flatMap(r => Object.keys(r)))];
+        const _normalized = _dbRows.map(r => { const o = {}; _allKeys.forEach(k => { o[k] = (k in r) ? r[k] : null; }); return o; });
+        sb.upsert("reservations", _normalized).then(() => {
         // 저장 성공 — 개별 항목 재시도 불필요
       }).catch(async err => {
         console.error("예약 저장 실패 (batch):", err, allItems);
@@ -2354,6 +2359,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           alert("예약 저장 실패 " + failedItems.length + "건:\n" + (err?.message || "DB 오류").slice(0, 200));
         }
       });
+      }
     }, 0);
     // AI 시술 분석 (수동예약 + 시술 미선택 시)
     if (isNewItem && !item.isSchedule && (!item.selectedServices || item.selectedServices.length === 0)) {
