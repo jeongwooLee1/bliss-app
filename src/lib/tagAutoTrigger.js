@@ -62,6 +62,16 @@ function _isPrepaid(pkg) {
   return false;
 }
 
+// 쿠폰 식별 — note에 "쿠폰SEQ:" 패턴이 있거나 service_name에 "쿠폰" 키워드
+// 쿠폰은 다회권/패키지와 의미 다름 — 마지막회차/기존상담 트리거 대상 X
+function _isCoupon(pkg) {
+  const note = String(pkg?.note || '');
+  if (/쿠폰\s*SEQ\s*[:：]/i.test(note)) return true;
+  const name = String(pkg?.service_name || '');
+  if (/쿠폰/.test(name)) return true;
+  return false;
+}
+
 /**
  * 단일 트리거 평가
  * @returns boolean
@@ -78,9 +88,10 @@ export function evaluateTrigger(trigger, ctx) {
     }
     case 'package_low_count': {
       const threshold = Number(trigger.threshold ?? 1);
-      // 다회권(회수 차감)만 대상 — 다담권/바프권(잔액제)은 제외.
+      // 다회권(회수 차감)만 대상 — 다담권/바프권(잔액제)·쿠폰(일회성) 제외.
       return custPkgs.some(p => {
-        if (_isPrepaid(p)) return false; // 다담권/바프권 잔액제 제외
+        if (_isPrepaid(p)) return false;
+        if (_isCoupon(p)) return false;
         if (Number(p.total_count || 0) <= 0) return false;
         const rem = _remainingCount(p);
         if (rem <= 0) return false;
@@ -89,8 +100,8 @@ export function evaluateTrigger(trigger, ctx) {
       });
     }
     case 'package_expired': {
-      // 보유 패키지/쿠폰 중 만료된 게 1건 이상
-      return custPkgs.some(p => _isExpired(p, todayStr));
+      // 보유 패키지/연간권 중 만료된 게 1건 이상 (쿠폰 만료는 제외 — 일회성이라 의미 다름)
+      return custPkgs.some(p => !_isCoupon(p) && _isExpired(p, todayStr));
     }
     case 'coupon_expiring_days': {
       const days = Number(trigger.days ?? 7);
