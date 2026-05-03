@@ -3563,9 +3563,16 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                           +
                         </span>
                         {addStaffPopup?.branchId===room.branch_id && (<>
-                          <div style={{position:"fixed",inset:0,zIndex:9998}} onClick={e=>{e.stopPropagation();setAddStaffPopup(null);}}/>
-                          <div onClick={e=>e.stopPropagation()} style={{position:"fixed",left:Math.min(addStaffPopup.x,window.innerWidth-220),top:addStaffPopup.y+8,background:T.bgCard,borderRadius:12,boxShadow:"0 4px 24px rgba(0,0,0,.22)",zIndex:9999,padding:"8px 0",minWidth:200,maxHeight:300,overflowY:"auto"}}>
-                            <div style={{fontSize:11,color:T.textMuted,padding:"0 12px 6px",fontWeight:700,borderBottom:"1px solid "+T.border}}>직원 추가 (당일)</div>
+                          <div style={{position:"fixed",inset:0,zIndex:9998,background:window.innerWidth<768?"rgba(0,0,0,.4)":"transparent"}} onClick={e=>{e.stopPropagation();setAddStaffPopup(null);}}/>
+                          <div onClick={e=>e.stopPropagation()} style={window.innerWidth<768
+                            ? {position:"fixed",inset:"12px 12px auto 12px",bottom:12,background:T.bgCard,borderRadius:14,boxShadow:"0 4px 24px rgba(0,0,0,.3)",zIndex:9999,padding:"0 0 8px",overflowY:"auto",maxHeight:"calc(100vh - 24px)"}
+                            : {position:"fixed",left:Math.min(addStaffPopup.x,window.innerWidth-220),top:addStaffPopup.y+8,background:T.bgCard,borderRadius:12,boxShadow:"0 4px 24px rgba(0,0,0,.22)",zIndex:9999,padding:"8px 0",minWidth:200,maxHeight:300,overflowY:"auto"}}>
+                            <div style={{fontSize:11,color:T.textMuted,padding:"10px 12px 8px",fontWeight:700,borderBottom:"1px solid "+T.border,display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,background:T.bgCard,zIndex:1}}>
+                              <span>직원 추가 (당일)</span>
+                              <button onClick={e=>{e.stopPropagation();setAddStaffPopup(null);}}
+                                style={{width:24,height:24,padding:0,border:"none",background:T.gray100,borderRadius:6,cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:800,color:T.textMuted,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}
+                                title="닫기">×</button>
+                            </div>
                             {!addStaffPopup?.selectedEmp && <div style={{padding:"6px 12px",borderBottom:"1px solid "+T.border,background:T.infoLt}}>
                               <button onClick={(e)=>{e.stopPropagation();addExtraCol(room.branch_id);setAddStaffPopup(null);}}
                                 style={{width:"100%",padding:"7px 8px",fontSize:11,fontWeight:700,border:`1px solid ${T.info}`,borderRadius:7,background:T.bgCard,color:T.info,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
