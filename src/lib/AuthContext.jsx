@@ -61,15 +61,7 @@ export function AuthProvider({ children }) {
       const users = await res.json()
       if (users?.length) return users[0]
 
-      // 🚫 신규 가입 차단 (멀티테넌트 격리 작업 중)
-      // 기존 app_users에 없는 OAuth 사용자는 자동 생성 X → 로그아웃 + 메시지
-      if (typeof window !== 'undefined') {
-        alert('현재 신규 가입을 일시 중단했습니다.\n잠시 후 다시 시도해주세요.')
-      }
-      try { await supabase.auth.signOut() } catch {}
-      return null
-
-      // 2. 없으면 자동으로 비즈니스 + 지점 + 계정 생성
+      // 2. 없으면 자동으로 비즈니스 + 지점 + 계정 생성 (trial plan)
       const name = authUser.user_metadata?.full_name || authUser.user_metadata?.name || email.split('@')[0]
       const provider = authUser.app_metadata?.provider || 'oauth'
       const bizId = 'biz_' + uid()
@@ -79,12 +71,26 @@ export function AuthProvider({ children }) {
       const bizName = name + '님의 사업장'
       const exp = new Date(); exp.setDate(exp.getDate() + 14);
 
-      // businesses 생성
+      // businesses 생성 — plan/industry는 컬럼, features는 settings 안에 (전부 false)
+      const newFeatures = Object.fromEntries([
+        'schedule_advanced','branch_support','male_rotation','branch_groups',
+        'customer_packages','package_share','member_pricing',
+        'event_engine','coupons','points',
+        'kakao_alimtalk','aligo_sms','naver_scrape','naver_block',
+        'whatsapp','instagram_dm','line_chat','ai_auto_reply','ai_book',
+        'care_sms','external_prepaid','bliss_ai','oracle_sync',
+      ].map(k => [k, false]))
       await fetch(`${SB_URL}/rest/v1/businesses`, {
         method: 'POST', headers: { ...H, 'Prefer': 'return=minimal' },
         body: JSON.stringify({
           id: bizId, name: bizName, code: loginId, phone: '',
-          settings: JSON.stringify({ plan: 'trial', planExpiry: exp.toISOString().slice(0, 10) }),
+          industry: 'general',
+          plan: 'trial',
+          settings: JSON.stringify({
+            plan: 'trial',
+            planExpiry: exp.toISOString().slice(0, 10),
+            features: newFeatures,
+          }),
           use_yn: true
         })
       })
