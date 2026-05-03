@@ -5,6 +5,7 @@ import { sb, SB_URL, SB_KEY, sbHeaders } from '../lib/sb'
 import { supabase as _supaClient } from '../lib/supabase'
 import { fromDb, resolveSystemIds, setActiveBiz, _activeBizId } from '../lib/db'
 import { refreshBranchesSch } from '../components/Schedule/scheduleConstants'
+import { setFeatures, extractFeatures } from '../lib/features'
 import Timeline from '../components/Timeline/TimelinePage'
 import ReservationList from '../components/Reservations/ReservationsPage'
 import AdminInbox from '../components/Messages/MessagesPage'
@@ -24,7 +25,7 @@ import FloatingAI from '../components/BlissAI/FloatingAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.411"
+const BLISS_V = "3.7.412"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1164,6 +1165,8 @@ function App() {
         // Load business info
         const bizList = await sb.get("businesses", `&id=eq.${bizId}`);
         setCurrentBiz(bizList[0] || { name: "매장" });
+        // 기능 토글 로드 (사업장별 features → 런타임 _features에 적재)
+        setFeatures(extractFeatures(bizList[0]?.settings, bizId));
         // businesses.settings에서 gemini_key / ai_rules 복원 (localStorage 삭제 후 복구)
         try {
           const memo = JSON.parse(bizList[0]?.settings || "{}");
