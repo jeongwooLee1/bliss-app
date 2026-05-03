@@ -1008,6 +1008,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       }
       if (Array.isArray(_snapshotInput.extraRows)) setExtraRows(_snapshotInput.extraRows);
       if (_snapshotInput.pkgUse) setPkgUse(_snapshotInput.pkgUse);
+      if (_snapshotInput.pkgItems) setPkgItems(_snapshotInput.pkgItems);
       if (typeof _snapshotInput.pointUse === 'number') setPointUse(_snapshotInput.pointUse);
       if (typeof _snapshotInput.pointEarn === 'number') setPointEarn(_snapshotInput.pointEarn);
       if (_snapshotInput.payMethod) setPayMethod(_snapshotInput.payMethod);
@@ -1017,6 +1018,27 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       if (typeof _snapshotInput.saleMemo === 'string') setSaleMemo(_snapshotInput.saleMemo);
     } catch (e) { console.warn('[snapshotInput restore]', e); }
   }, [viewOnly, _snapshotInput]);
+
+  // viewOnly/editMode에서 pkgUse → pkgItems 자동 동기화 (구버전 매출은 snapshot에 pkgItems 없음 — 다회권 표시 fallback)
+  useEffect(() => {
+    if (!_isEditOrView) return;
+    if (!pkgUse || Object.keys(pkgUse).length === 0) return;
+    if (!Array.isArray(custPkgs) || custPkgs.length === 0) return;
+    const updates = {};
+    Object.entries(pkgUse).forEach(([pkgId, val]) => {
+      const pkg = custPkgs.find(p => p.id === pkgId);
+      if (!pkg) return;
+      const sn = String(pkg.service_name || "").toLowerCase();
+      const isPrepaid = sn.includes("다담") || sn.includes("선불");
+      if (isPrepaid) return;
+      if (typeof val === 'number' && val > 0) {
+        updates['pkg__' + pkgId] = { qty: val };
+      }
+    });
+    if (Object.keys(updates).length > 0) {
+      setPkgItems(prev => ({ ...prev, ...updates }));
+    }
+  }, [_isEditOrView, JSON.stringify(pkgUse), custPkgs.length]);
 
   // 편집 모드: existingDetails에서 items 프리필 (시술/제품/추가/할인)
   // ⚠️ inputSnapshot이 있으면 위 useEffect가 시점 그대로 복원하므로 이 매칭은 스킵
@@ -2376,6 +2398,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
           items: Object.fromEntries(Object.entries(items || {}).filter(([_, v]) => v && (v.checked || v.amount || v.comped))),
           extraRows: Array.isArray(extraRows) ? extraRows : [],
           pkgUse: pkgUse || {},
+          pkgItems: pkgItems || {},
           pointUse: pointUse || 0,
           pointEarn: pointEarn || 0,
           payMethod: payMethod || {},
