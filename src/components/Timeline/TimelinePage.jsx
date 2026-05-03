@@ -1680,8 +1680,16 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       _brIdx: brIdx,
       _isFirstOfBranch: i === 0,
     }));
-    // 🚨 네이버 예약 막기 컬럼 — 긴급 차단됨 (시술 비활성 의혹 조사 중)
-    const blockCol = [];
+    // 네이버 예약 막기 컬럼 — naverBizId 있는 지점만 1개 컬럼 추가
+    const blockCol = br.naverBizId ? [{
+      id: `block_${br.id}`,
+      name: '',
+      branch_id: br.id,
+      branchName: br.short||br.name||"",
+      isBlockCol: true,
+      _naverBizId: br.naverBizId,
+      _brIdx: brIdx,
+    }] : [];
     // 출근표 기반 직원 컬럼 (커스텀 순서 적용)
     const rawStaff = getWorkingStaff(br.id, selDate);
     const workingStaff = rawStaff ? sortStaffByOrder(rawStaff, br.id) : null;

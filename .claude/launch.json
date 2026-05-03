@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "vite-dev",
+      "name": "block-naver-vite",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["vite", "--force"],
-      "port": 5173
+      "runtimeArgs": ["vite", "--force", "--port", "5183"],
+      "port": 5183
     }
   ]
 }
