@@ -2241,6 +2241,47 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     const allItems = [];
     const isNewItem = !data?.reservations?.find(r => r.id === item.id);
     const isExistItem = !isNewItem;
+    // ─── 커플룸 태그 자동 동반자 (신규 등록만) ───
+    // 같은 staff/time/dur로 동반자 1명 자동 INSERT (Ctrl 복사와 동일 패턴, room_type='shared')
+    const COUPLE_TAG_ID = 'bvkgtel09';
+    let _coupleCompanion = null;
+    if (isNewItem && !item.isSchedule && Array.isArray(item.selectedTags) && item.selectedTags.includes(COUPLE_TAG_ID)) {
+      const _baseName = String(item.custName || "").replace(/\s*동반자\d+\s*$/, "").trim();
+      if (_baseName) {
+        const _alreadyHasCompanion = (data?.reservations || []).some(r =>
+          r.date === item.date && r.time === item.time && (r.staffId||"") === (item.staffId||"") &&
+          String(r.custName || "").startsWith(_baseName + " 동반자")
+        );
+        if (!_alreadyHasCompanion) {
+          const _grpId = item.reservationGroupId || ("rg_" + uid());
+          if (!item.reservationGroupId) {
+            item.reservationGroupId = _grpId;
+            sb.insert("reservation_groups", toDb("reservation_groups", {
+              id: _grpId, bid: item.bid || "", leaderCustId: item.custId || "",
+              roomType: 'shared', memo: '커플룸'
+            })).catch(e => console.warn("[couple group insert]", e));
+          }
+          const _cid = uid();
+          _coupleCompanion = {
+            id: _cid, bid: item.bid, roomId: item.roomId || "",
+            custName: `${_baseName} 동반자1`,
+            custPhone: "", custEmail: "", custGender: "", custNum: "",
+            custId: "", isNewCust: false,
+            staffId: item.staffId || "",   // 디폴트: 같은 관리사 칼럼
+            serviceId: item.serviceId || "",
+            selectedServices: Array.isArray(item.selectedServices) ? [...item.selectedServices] : [],
+            selectedTags: [COUPLE_TAG_ID],
+            date: item.date, time: item.time, dur: item.dur,
+            status: item.status || "reserved",
+            type: 'reservation', isSchedule: false, source: 'manual',
+            isBeta: !!(betaGroupMode || item.isBeta),
+            reservationGroupId: _grpId,
+            reservationId: 'manual_' + _cid,
+            scheduleLog: "", tsLog: [],
+          };
+        }
+      }
+    }
     setData(prev => {
       const exists = (prev?.reservations||[]).find(r => r.id === item.id);
       if (exists) {
@@ -2282,6 +2323,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           cur.setDate(cur.getDate() + 1);
         }
       }
+      if (_coupleCompanion) items.push(_coupleCompanion);
       allItems.push(...items);
       return { ...prev, reservations: [...prev.reservations, ...items] };
     });
