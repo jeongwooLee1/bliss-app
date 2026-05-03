@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
-import { BUSINESS_ID } from './constants'
+import { _activeBizId } from './db'
+
+// 현재 활성 사업장 ID — _activeBizId(live binding)에서 읽음. AppShell에서 setActiveBiz로 세팅됨.
+// 미설정이면 null 반환 → 호출부에서 fetch 스킵
 
 // ── 직원 목록 (Supabase employees_v1) ──────────────────────
 export function useEmployees() {
@@ -8,8 +11,10 @@ export function useEmployees() {
   const [loading, setLoading] = useState(true)
 
   const load = async () => {
+    if (!_activeBizId) { setLoading(false); return }
     const { data } = await supabase
-      .from('schedule_data').select('value').eq('key', 'employees_v1').single()
+      .from('schedule_data').select('value')
+      .eq('business_id', _activeBizId).eq('key', 'employees_v1').maybeSingle()
     if (data?.value) {
       const list = typeof data.value === 'string' ? JSON.parse(data.value) : data.value
       setEmployees(list)
@@ -20,10 +25,12 @@ export function useEmployees() {
   useEffect(() => { load() }, [])
 
   const save = async (list) => {
+    if (!_activeBizId) throw new Error('activeBizId not set')
     await supabase.from('schedule_data').upsert({
+      business_id: _activeBizId,
       id: 'employees_v1', key: 'employees_v1',
       value: JSON.stringify(list)
-    })
+    }, { onConflict: 'business_id,key' })
     setEmployees(list)
   }
 
@@ -36,8 +43,9 @@ export function useBranches() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (!_activeBizId) { setLoading(false); return }
     supabase.from('branches').select('*')
-      .eq('business_id', BUSINESS_ID).order('sort', { ascending: true })
+      .eq('business_id', _activeBizId).order('sort', { ascending: true })
       .then(({ data }) => { if (data) setBranches(data); setLoading(false) })
   }, [])
 
@@ -64,28 +72,33 @@ export function useSchHistory() {
   }
 
   useEffect(() => {
-    supabase.from('schedule_data').select('value').eq('key', 'schHistory_v1').single()
+    if (!_activeBizId) { setLoading(false); return }
+    const bizId = _activeBizId
+    supabase.from('schedule_data').select('value')
+      .eq('business_id', bizId).eq('key', 'schHistory_v1').maybeSingle()
       .then(({ data }) => {
         if (data?.value) setSchHistory(parse(data.value))
         setLoading(false)
       })
 
-    const ch = supabase.channel('sch_realtime')
+    const ch = supabase.channel(`sch_realtime_${bizId}`)
       .on('postgres_changes', {
         event: 'UPDATE', schema: 'public',
-        table: 'schedule_data', filter: 'key=eq.schHistory_v1'
+        table: 'schedule_data', filter: `business_id=eq.${bizId}`
       }, ({ new: n }) => {
-        if (n?.value) setSchHistory(parse(n.value))
+        if (n?.key === 'schHistory_v1' && n?.value) setSchHistory(parse(n.value))
       }).subscribe()
 
     return () => ch.unsubscribe()
   }, [])
 
   const save = async (history) => {
+    if (!_activeBizId) throw new Error('activeBizId not set')
     await supabase.from('schedule_data').upsert({
+      business_id: _activeBizId,
       id: 'schHistory_v1', key: 'schHistory_v1',
       value: JSON.stringify(history)
-    })
+    }, { onConflict: 'business_id,key' })
   }
 
   return { schHistory, setSchHistory, save, loading }
@@ -96,7 +109,10 @@ export function useMaleRotation() {
   const [maleRotation, setMaleRotation] = useState({})
 
   useEffect(() => {
-    supabase.from('schedule_data').select('value').eq('key', 'maleRotation_v1').single()
+    if (!_activeBizId) return
+    const bizId = _activeBizId
+    supabase.from('schedule_data').select('value')
+      .eq('business_id', bizId).eq('key', 'maleRotation_v1').maybeSingle()
       .then(({ data }) => {
         if (data?.value) {
           const val = typeof data.value === 'string' ? JSON.parse(data.value) : data.value
@@ -104,12 +120,12 @@ export function useMaleRotation() {
         }
       })
 
-    const ch = supabase.channel('male_rot_realtime')
+    const ch = supabase.channel(`male_rot_realtime_${bizId}`)
       .on('postgres_changes', {
         event: 'UPDATE', schema: 'public',
-        table: 'schedule_data', filter: 'key=eq.maleRotation_v1'
+        table: 'schedule_data', filter: `business_id=eq.${bizId}`
       }, ({ new: n }) => {
-        if (n?.value) {
+        if (n?.key === 'maleRotation_v1' && n?.value) {
           const val = typeof n.value === 'string' ? JSON.parse(n.value) : n.value
           setMaleRotation(val)
         }
@@ -138,9 +154,12 @@ export function useScheduleData(key, defaultValue = null) {
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
+    if (!_activeBizId) { setLoaded(true); return }
+    const bizId = _activeBizId
     let cancelled = false
     // 초기 로드
-    supabase.from('schedule_data').select('value').eq('key', key).single()
+    supabase.from('schedule_data').select('value')
+      .eq('business_id', bizId).eq('key', key).maybeSingle()
       .then(({ data: row }) => {
         if (cancelled) return
         if (row?.value) {
@@ -150,13 +169,14 @@ export function useScheduleData(key, defaultValue = null) {
         setLoaded(true)
       })
 
-    // Realtime 구독 — 다른 PC에서 변경 시 자동 반영
-    const ch = supabase.channel(`sch_data_${key}`)
+    // Realtime 구독 — 같은 사업장 안에서만 (filter는 단일 조건만 지원 → key+business_id 합성 필터 사용)
+    const ch = supabase.channel(`sch_data_${bizId}_${key}`)
       .on('postgres_changes', {
         event: '*', schema: 'public',
-        table: 'schedule_data', filter: `key=eq.${key}`
+        table: 'schedule_data', filter: `business_id=eq.${bizId}`
       }, ({ new: n }) => {
         if (cancelled) return
+        if (n?.key !== key) return
         if (n?.value !== undefined && n?.value !== null) {
           try {
             const val = typeof n.value === 'string' ? JSON.parse(n.value) : n.value
@@ -170,6 +190,7 @@ export function useScheduleData(key, defaultValue = null) {
 
   // val이 함수면 항상 fresh state 기반 (stale closure 방지). 객체면 기존 동작 유지.
   const save = async (valOrFn) => {
+    if (!_activeBizId) throw new Error('activeBizId not set')
     const isFn = typeof valOrFn === 'function'
     let next
     if (isFn) {
@@ -179,10 +200,11 @@ export function useScheduleData(key, defaultValue = null) {
       setData(next)
     }
     await supabase.from('schedule_data').upsert({
+      business_id: _activeBizId,
       id: key, key,
       value: JSON.stringify(next),
       updated_at: new Date().toISOString()
-    })
+    }, { onConflict: 'business_id,key' })
   }
 
   return { data, setData, save, loaded }
@@ -199,16 +221,18 @@ export function useAppData() {
       const from = new Date(today.getFullYear(), today.getMonth() - 1, 1).toISOString().slice(0, 10)
       const to = new Date(today.getFullYear(), today.getMonth() + 2, 0).toISOString().slice(0, 10)
 
+      if (!_activeBizId) { setLoading(false); return }
+      const bizId = _activeBizId
       const [branches, services, tags, cats, sources, reservations, rooms, businesses] = await Promise.all([
-        supabase.from('branches').select('*').eq('business_id', BUSINESS_ID).order('sort'),
-        supabase.from('services').select('*').eq('business_id', BUSINESS_ID).order('sort'),
-        supabase.from('service_tags').select('*').eq('business_id', BUSINESS_ID).order('sort'),
-        supabase.from('service_categories').select('*').eq('business_id', BUSINESS_ID).order('sort'),
-        supabase.from('reservation_sources').select('*').eq('business_id', BUSINESS_ID).order('sort'),
-        supabase.from('reservations').select('*').eq('business_id', BUSINESS_ID)
+        supabase.from('branches').select('*').eq('business_id', bizId).order('sort'),
+        supabase.from('services').select('*').eq('business_id', bizId).order('sort'),
+        supabase.from('service_tags').select('*').eq('business_id', bizId).order('sort'),
+        supabase.from('service_categories').select('*').eq('business_id', bizId).order('sort'),
+        supabase.from('reservation_sources').select('*').eq('business_id', bizId).order('sort'),
+        supabase.from('reservations').select('*').eq('business_id', bizId)
           .gte('date', from).lte('date', to).order('date'),
-        supabase.from('rooms').select('*').eq('business_id', BUSINESS_ID),
-        supabase.from('businesses').select('*').eq('id', BUSINESS_ID),
+        supabase.from('rooms').select('*').eq('business_id', bizId),
+        supabase.from('businesses').select('*').eq('id', bizId),
       ])
 
       setData({

@@ -11,6 +11,7 @@
  * 저장: localStorage 'bliss_claude_sessions_v1' = [{id, title, messages, createdAt, updatedAt}]
  */
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { _activeBizId } from '../../lib/db'
 import { T } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY } from '../../lib/sb'
 import { buildFullPrompt, searchFAQ } from './contextBuilder'
@@ -258,7 +259,7 @@ export default function BlissAI({ data, setData, currentUser, userBranches, isMa
         intent: intent?.type || 'general',
         answer_preview: (answer || '').slice(0, 300),
       }
-      const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.bliss_ai_logs_v1&select=value`, {
+      const r = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.bliss_ai_logs_v1&select=value`, {
         headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY }
       })
       const rows = await r.json()
@@ -269,13 +270,13 @@ export default function BlissAI({ data, setData, currentUser, userBranches, isMa
       }
       list.unshift(entry)
       if (list.length > 500) list = list.slice(0, 500)
-      await fetch(`${SB_URL}/rest/v1/schedule_data`, {
+      await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
         method: 'POST',
         headers: {
           apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY,
           'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates',
         },
-        body: JSON.stringify({ id: 'bliss_ai_logs_v1', key: 'bliss_ai_logs_v1', value: JSON.stringify(list) }),
+        body: JSON.stringify({ business_id: _activeBizId, id: 'bliss_ai_logs_v1', key: 'bliss_ai_logs_v1', value: JSON.stringify(list) }),
       })
     } catch { /* ignore */ }
   }

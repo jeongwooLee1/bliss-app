@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
-import { T, BUSINESS_ID } from '../../lib/constants'
+import { T } from '../../lib/constants'
+import { _activeBizId } from '../../lib/db'
 import { sb, buildTokenSearch, matchAllTokens, SB_URL, sbHeaders } from '../../lib/sb'
 import { toDb, fromDb } from '../../lib/db'
 import { todayStr, genId, fmtLocal, useSessionState, TTL } from '../../lib/utils'
@@ -883,7 +884,7 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
   useEffect(() => {
     let cancelled = false;
     setAllTimeStats(p => ({...p, loading: true}));
-    const body = JSON.stringify({ p_biz_id: BUSINESS_ID, p_bid: vb === "all" ? null : vb });
+    const body = JSON.stringify({ p_biz_id: _activeBizId, p_bid: vb === "all" ? null : vb });
     const opt = { method:'POST', headers:{...sbHeaders, 'Content-Type':'application/json'}, body };
     Promise.all([
       fetch(`${SB_URL}/rest/v1/rpc/get_sales_monthly`, opt).then(r => r.ok ? r.json() : []).catch(() => []),
@@ -901,7 +902,7 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     let cancelled = false;
     setPeriodSummary(p => ({...p, loading: true}));
     const body = JSON.stringify({
-      p_biz_id: BUSINESS_ID,
+      p_biz_id: _activeBizId,
       p_start: (periodKey==="all" || !startDate) ? null : startDate,
       p_end: (periodKey==="all" || !endDate) ? null : endDate,
       p_bid: vb === "all" ? null : vb,

@@ -23,14 +23,13 @@ import FloatingAI from '../components/BlissAI/FloatingAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.409"
+const BLISS_V = "3.7.410"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
   const ref = useScrollRestore(storageKey)
   return <div ref={ref} className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}>{children}</div>
 }
-const BIZ_ID = 'biz_khvurgshb'
 const PAGE_ROUTES = { timeline:"/timeline", "timeline-beta":"/timeline-beta", reservations:"/reservations", sales:"/sales", customers:"/customers", users:"/users", messages:"/messages", admin:"/settings", schedule:"/schedule", requests:"/requests", blissai:"/blissai" };
 // 과거 데이터 백그라운드 로드 (초기 14d/30d 이전 예약/매출) — UI 렌더 후 머지
 async function loadHistoricalInBackground(bizId, setData) {
@@ -741,7 +740,8 @@ function App() {
       if(accIds.length===0 && !isMaster && userBranches !== null) { setUnreadMsgCount(0); return; }
       // 1분 이상 답변 안 된 IN 메시지만 배너에 포함 (즉시 응답 중인 상담은 제외)
       const cutoff = new Date(Date.now() - 60_000).toISOString();
-      fetch(SB_URL+`/rest/v1/messages?is_read=eq.false&direction=eq.in&created_at=lte.${encodeURIComponent(cutoff)}&select=id,account_id,channel,user_id,user_name,message_text,created_at&order=created_at.desc&limit=999`,
+      if (!_activeBizId) { setUnreadMsgCount(0); return; }
+      fetch(SB_URL+`/rest/v1/messages?business_id=eq.${_activeBizId}&is_read=eq.false&direction=eq.in&created_at=lte.${encodeURIComponent(cutoff)}&select=id,account_id,channel,user_id,user_name,message_text,created_at&order=created_at.desc&limit=999`,
         {headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY,"Cache-Control":"no-cache"},cache:"no-store"})
         .then(r=>r.json())
         .then(arr=>{
@@ -779,7 +779,7 @@ function App() {
   // 수정요청 pending 카운트
   useEffect(() => {
     const load = () => {
-      fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.bliss_requests_v1&select=value`, {
+      fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.bliss_requests_v1&select=value`, {
         headers: { apikey: SB_KEY, Authorization: "Bearer "+SB_KEY, "Cache-Control":"no-cache" },
         cache: "no-store",
       }).then(r=>r.json()).then(rows=>{
@@ -805,7 +805,7 @@ function App() {
     const getDismissed = () => { try { return new Set(JSON.parse(sessionStorage.getItem(DISMISS_KEY) || '[]')); } catch { return new Set(); } };
     const check = async () => {
       try {
-        const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=in.(bliss_notices_v1,employees_v1)&select=key,value`, {
+        const r = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=in.(bliss_notices_v1,employees_v1)&select=key,value`, {
           headers: { apikey: SB_KEY, Authorization: "Bearer "+SB_KEY, "Cache-Control":"no-cache" },
           cache: "no-store",
         });
@@ -1153,7 +1153,7 @@ function App() {
         setPhase("super");
       }
     } else {
-      const bizId = user.businessId || user.business_id || "biz_khvurgshb";
+      const bizId = user.businessId || user.business_id;
       if (!bizId) { alert("사업자 연결 정보가 없습니다."); setPhase("login"); return; }
       setCurrentBizId(bizId);
       setActiveBiz(bizId);

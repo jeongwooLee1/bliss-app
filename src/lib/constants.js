@@ -1,4 +1,4 @@
-export const BUSINESS_ID = 'biz_khvurgshb'
+// BUSINESS_ID 상수 제거됨. 대신 src/lib/db.js의 _activeBizId 사용 (런타임 결정).
 
 export const T = {
   primary:'#7c7cc8', primaryLt:'#ede9fe', primaryDk:'#5b5bb8', primaryHover:'#f5f5ff',

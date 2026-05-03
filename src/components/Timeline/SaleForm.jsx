@@ -261,7 +261,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   }, [onClose]);
   useEffect(() => {
     // schedule_data는 created_at 컬럼이 없어 sb.get 기본 정렬이 400 에러 → 직접 fetch
-    fetch(`${SB_URL}/rest/v1/schedule_data?key=in.(schHistory_v1,empOverride_v1,employees_v1,maleRotation_v1)&select=key,value`, {
+    fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=in.(schHistory_v1,empOverride_v1,employees_v1,maleRotation_v1)&select=key,value`, {
       headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
     }).then(r => r.ok ? r.json() : []).then(rows => {
       try {
@@ -527,7 +527,8 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     const timer = setTimeout(async () => {
       const raw = custSearch.trim();
       try {
-        const bizId = _activeBizId || "biz_khvurgshb";
+        const bizId = _activeBizId;
+        if (!bizId) { setCustResults([]); return; }
         const cond = buildTokenSearch(raw, ["name","name2","phone","phone2","email","cust_num"]);
         const rows = await sb.get("customers", `&business_id=eq.${bizId}${cond}&limit=20`);
         setCustResults(Array.isArray(rows) ? fromDb("customers", rows) : []);

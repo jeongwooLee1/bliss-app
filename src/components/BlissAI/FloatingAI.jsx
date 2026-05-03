@@ -3,6 +3,7 @@
  * 단순 1세션, 컨텍스트(FAQ/지점/시술/가격) 자동 주입, Gemini 호출
  */
 import React, { useState, useRef, useEffect, useMemo } from 'react'
+import { _activeBizId } from '../../lib/db'
 import { T } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY } from '../../lib/sb'
 import { genId } from '../../lib/utils'
@@ -47,7 +48,7 @@ async function logUnknownAsRequest({ question, answer, currentUser }) {
   try {
     const H = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' }
     // 기존 목록 가져오기
-    const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.bliss_requests_v1&select=value`, { headers: H })
+    const r = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.bliss_requests_v1&select=value`, { headers: H })
     const rows = await r.json()
     const v = rows?.[0]?.value
     const list = (() => { try { return typeof v === 'string' ? JSON.parse(v) : (Array.isArray(v) ? v : []); } catch { return []; } })()
@@ -68,10 +69,10 @@ async function logUnknownAsRequest({ question, answer, currentUser }) {
       _autoAi: true,
     }
     const next = [newReq, ...list]
-    await fetch(`${SB_URL}/rest/v1/schedule_data`, {
+    await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
       method: 'POST',
       headers: { ...H, Prefer: 'resolution=merge-duplicates' },
-      body: JSON.stringify({ id: 'bliss_requests_v1', key: 'bliss_requests_v1', value: JSON.stringify(next) }),
+      body: JSON.stringify({ business_id: _activeBizId, id: 'bliss_requests_v1', key: 'bliss_requests_v1', value: JSON.stringify(next) }),
     })
   } catch (e) { /* ignore */ }
 }

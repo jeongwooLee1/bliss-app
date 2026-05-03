@@ -512,7 +512,8 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
 
   // 모달 초기화 시 고객 DB 자동 매칭/백필 (성별·이메일이 예약 row에 없을 때 고객 레코드에서 가져옴)
   useEffect(() => {
-    const bizId = _activeBizId || "biz_khvurgshb";
+    const bizId = _activeBizId;
+    if (!bizId) return;
 
     // Case A: custId 있음 → 고객 레코드에서 빈 필드(성별/이메일/이름2) 백필 + 이름 변경시 최신 이름으로 동기화
     if (f.custId) {
@@ -710,7 +711,8 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
     const timer = setTimeout(async () => {
       const raw = custSearch.trim();
       try {
-        const bizId = _activeBizId || "biz_khvurgshb";
+        const bizId = _activeBizId;
+        if (!bizId) return;
         // cust_num 정확매칭 우선 (전체가 숫자일 때만)
         let exactRows = [];
         if (/^\d+$/.test(raw)) {
@@ -2390,7 +2392,7 @@ ${naverText}
                     let useEnglish=false;
                     if(dbRes.chat_channel && dbRes.chat_user_id){
                       try{
-                        const sampleMsgs=await fetch(`${SB_URL}/rest/v1/messages?channel=eq.${dbRes.chat_channel}&user_id=eq.${dbRes.chat_user_id}&direction=eq.in&order=created_at.asc&limit=5&select=message_text`,{headers:{"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY},cache:"no-store"}).then(r=>r.json());
+                        const sampleMsgs=await fetch(`${SB_URL}/rest/v1/messages?business_id=eq.${_activeBizId}&channel=eq.${dbRes.chat_channel}&user_id=eq.${dbRes.chat_user_id}&direction=eq.in&order=created_at.asc&limit=5&select=message_text`,{headers:{"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY},cache:"no-store"}).then(r=>r.json());
                         const text=(sampleMsgs||[]).map(m=>m.message_text||"").join(" ");
                         const ko=[...text].filter(c=>c>="\uAC00"&&c<="\uD7A3").length;
                         const en=[...text].filter(c=>/[a-zA-Z]/.test(c)).length;
@@ -2417,7 +2419,7 @@ ${naverText}
                           const atIdx=userId.indexOf("@");
                           if(atIdx>=0){
                             const uname=userId.slice(atIdx+1);
-                            const rows=await fetch(`${SB_URL}/rest/v1/messages?channel=eq.instagram&user_name=eq.${encodeURIComponent(uname)}&select=user_id,account_id&order=created_at.desc&limit=1`,{headers:{"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY}}).then(r=>r.json());
+                            const rows=await fetch(`${SB_URL}/rest/v1/messages?business_id=eq.${_activeBizId}&channel=eq.instagram&user_name=eq.${encodeURIComponent(uname)}&select=user_id,account_id&order=created_at.desc&limit=1`,{headers:{"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY}}).then(r=>r.json());
                             if(rows?.length){igUserId=rows[0].user_id;igPageId=rows[0].account_id;}
                           }
                           if(!igPageId) igPageId=(data?.branches||[]).find(b=>b.id===f.bid)?.instagramAccountId || (data?.branches||[]).find(b=>b.instagramAccountId)?.instagramAccountId || "";

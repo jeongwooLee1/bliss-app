@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { T } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY } from '../../lib/sb'
 import { uploadImageToStorage } from '../../lib/supabase'
+import { _activeBizId } from '../../lib/db'
 import { genId } from '../../lib/utils'
 import I from '../common/I'
 
@@ -33,7 +34,8 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
 
   const loadData = async () => {
     try {
-      const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=in.(bliss_requests_v1,bliss_notices_v1,employees_v1)&select=key,value`, {
+      if (!_activeBizId) { setLoading(false); return; }
+      const r = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=in.(bliss_requests_v1,bliss_notices_v1,employees_v1)&select=key,value`, {
         headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
       });
       const rows = await r.json();
@@ -52,19 +54,21 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
   useEffect(() => { loadData(); }, []);
 
   const saveAll = async (next) => {
+    if (!_activeBizId) throw new Error('activeBizId not set');
     setRequests(next.sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||"")));
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
-    await fetch(`${SB_URL}/rest/v1/schedule_data`, {
+    await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
       method: "POST", headers: H,
-      body: JSON.stringify({ id: "bliss_requests_v1", key: "bliss_requests_v1", value: JSON.stringify(next) })
+      body: JSON.stringify({ business_id: _activeBizId, id: "bliss_requests_v1", key: "bliss_requests_v1", value: JSON.stringify(next) })
     });
   };
   const saveNotices = async (next) => {
+    if (!_activeBizId) throw new Error('activeBizId not set');
     setNotices(next.sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||"")));
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
-    await fetch(`${SB_URL}/rest/v1/schedule_data`, {
+    await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
       method: "POST", headers: H,
-      body: JSON.stringify({ id: "bliss_notices_v1", key: "bliss_notices_v1", value: JSON.stringify(next) })
+      body: JSON.stringify({ business_id: _activeBizId, id: "bliss_notices_v1", key: "bliss_notices_v1", value: JSON.stringify(next) })
     });
   };
   const submitNotice = async () => {
