@@ -126,16 +126,23 @@ def naver_get_hour_bit(biz_id, item_id, date):
         return None
 
 def naver_set_hour_bit(biz_id, item_id, date, hour_bit, csrf=None):
-    """hourBit POST → 막기/풀기"""
+    """hourBit POST → 막기/풀기.
+    네이버 API: hourBit must contain only '0' or '1'.
+    운영 외 슬롯('-')은 '1'로 인코딩 (default isUnitSaleDay=true 유지) → 운영 외 데이터 손상 방지."""
     if not csrf:
         csrf = naver_get_csrf()
     if not csrf:
         return False, "no csrf"
+    # 정제: 0/1만 허용. 운영 외('-')는 '1'(sale 켬) 유지.
+    hour_bit = hour_bit.replace('-', '1')
+    if len(hour_bit) != 48 or any(c not in '01' for c in hour_bit):
+        return False, f"invalid hourBit: {hour_bit!r}"
     try:
         url = f"{NAVER_PARTNER_BASE}/v3.1/businesses/{biz_id}/biz-items/{item_id}/sale-schedules"
         cookies = _naver_partner_session()
         h = {**_naver_partner_headers(biz_id), "x-booking-naver-role": "OWNER", "x-csrf-token": csrf}
         r = requests.post(url, cookies=cookies, headers=h, json={"day": date, "hourBit": hour_bit}, timeout=10)
+        log.info(f"[partner] set-bit {biz_id}/{item_id} {date} status={r.status_code} body={r.text[:150]}")
         if r.status_code in (200, 201):
             return True, ""
         if r.status_code in (401, 403, 419):
