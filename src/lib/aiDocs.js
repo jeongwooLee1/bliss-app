@@ -243,27 +243,47 @@ export function chunkText(text, opts = {}) {
   return chunks
 }
 
-// ─── Gemini text-embedding-004 임베딩 (768 차원, 한국어 지원) ────────────────
+// ─── Gemini 임베딩 (gemini-embedding-001 최신, outputDimensionality=768로 DB schema 호환) ───
+const EMBED_MODEL = 'gemini-embedding-001'
+const EMBED_DIM = 768
+
 export async function embedTexts(texts, apiKey) {
   if (!apiKey) throw new Error('Gemini API 키가 설정되지 않음')
   if (!Array.isArray(texts) || texts.length === 0) return []
   const out = []
-  // 배치 호출 — Gemini batch embed up to 100 per request
   const BATCH = 50
   for (let i = 0; i < texts.length; i += BATCH) {
     const batch = texts.slice(i, i + BATCH)
     const body = {
       requests: batch.map(t => ({
-        model: 'models/text-embedding-004',
+        model: `models/${EMBED_MODEL}`,
         content: { parts: [{ text: t }] },
         taskType: 'RETRIEVAL_DOCUMENT',
+        outputDimensionality: EMBED_DIM,
       }))
     }
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:batchEmbedContents?key=${apiKey}`, {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${EMBED_MODEL}:batchEmbedContents?key=${apiKey}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     })
-    if (!r.ok) throw new Error('임베딩 실패: ' + (await r.text()).slice(0, 200))
+    if (!r.ok) {
+      // gemini-embedding-001 안 되는 키면 text-embedding-004로 fallback
+      const errText = await r.text()
+      const r2 = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:batchEmbedContents?key=${apiKey}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requests: batch.map(t => ({
+            model: 'models/text-embedding-004',
+            content: { parts: [{ text: t }] },
+            taskType: 'RETRIEVAL_DOCUMENT',
+          }))
+        })
+      })
+      if (!r2.ok) throw new Error('임베딩 실패: ' + errText.slice(0, 300))
+      const j2 = await r2.json()
+      ;(j2.embeddings || []).forEach(e => out.push(e.values))
+      continue
+    }
     const j = await r.json()
     ;(j.embeddings || []).forEach(e => out.push(e.values))
   }
@@ -273,15 +293,24 @@ export async function embedTexts(texts, apiKey) {
 // 단일 쿼리 임베딩 (검색용 — taskType=RETRIEVAL_QUERY)
 export async function embedQuery(text, apiKey) {
   if (!apiKey) throw new Error('Gemini API 키가 설정되지 않음')
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${apiKey}`, {
+  const tryUrl = async (model, body) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:embedContent?key=${apiKey}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+    body: JSON.stringify(body)
+  })
+  let r = await tryUrl(EMBED_MODEL, {
+    model: `models/${EMBED_MODEL}`,
+    content: { parts: [{ text }] },
+    taskType: 'RETRIEVAL_QUERY',
+    outputDimensionality: EMBED_DIM,
+  })
+  if (!r.ok) {
+    r = await tryUrl('text-embedding-004', {
       model: 'models/text-embedding-004',
       content: { parts: [{ text }] },
       taskType: 'RETRIEVAL_QUERY',
     })
-  })
-  if (!r.ok) throw new Error('쿼리 임베딩 실패: ' + (await r.text()).slice(0, 200))
+    if (!r.ok) throw new Error('쿼리 임베딩 실패: ' + (await r.text()).slice(0, 300))
+  }
   const j = await r.json()
   return j.embedding?.values || []
 }
