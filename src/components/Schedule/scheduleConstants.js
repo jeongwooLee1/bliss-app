@@ -1,6 +1,9 @@
 import { T } from '../../lib/constants'
+import { _activeBizId } from '../../lib/db'
 
-export const BRANCHES_SCH = [
+// 하우스왁싱 legacy: employees_v1.branch가 'gangnam' 스타일 키 사용 → 호환 위해 정적 리스트 유지.
+// 다른 사업장: data.branches에서 동적 도출 (branch.id 사용).
+const HOUSEWAXING_LEGACY_BRANCHES_SCH = [
   { id:'gangnam',   name:'강남',   color:'#c8793a', minStaff:1 },
   { id:'wangsimni', name:'왕십리', color:'#d4923a', minStaff:1 },
   { id:'hongdae',   name:'홍대',   color:'#3a9e8e', minStaff:1 },
@@ -10,8 +13,28 @@ export const BRANCHES_SCH = [
   { id:'wirye',     name:'위례',   color:'#5a9abf', minStaff:1 },
   { id:'cheonho',   name:'천호',   color:'#a07040', minStaff:1 },
 ]
+const HOUSEWAXING_BIZ_ID = 'biz_khvurgshb'
 
-export const BRANCH_LABEL = Object.fromEntries(BRANCHES_SCH.map(b => [b.id, b.name]))
+// ES module live binding: import { BRANCHES_SCH } 가 항상 현재값 참조
+// AppShell이 data.branches 로드 후 refreshBranchesSch() 호출 → 사업장별 layout 갱신
+export let BRANCHES_SCH = HOUSEWAXING_LEGACY_BRANCHES_SCH
+export let BRANCH_LABEL = Object.fromEntries(BRANCHES_SCH.map(b => [b.id, b.name]))
+
+export function refreshBranchesSch(dataBranches) {
+  if (_activeBizId === HOUSEWAXING_BIZ_ID) {
+    // 하우스왁싱: 기존 'gangnam' 키 유지
+    BRANCHES_SCH = HOUSEWAXING_LEGACY_BRANCHES_SCH
+  } else {
+    // 다른 사업장: data.branches → branch.id 가 schedule 키
+    BRANCHES_SCH = (dataBranches || []).map(b => ({
+      id: b.id,
+      name: b.short || b.name || '',
+      color: b.color || '#7c7cc8',
+      minStaff: 1,
+    }))
+  }
+  BRANCH_LABEL = Object.fromEntries(BRANCHES_SCH.map(b => [b.id, b.name]))
+}
 
 export const STATUS = { WORK:'근무', OFF:'휴무', MUST_OFF:'휴무(꼭)', UNPAID:'무급', SUPPORT:'지원', SHARE:'전체쉐어' }
 
