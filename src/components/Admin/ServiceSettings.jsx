@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { T, BUSINESS_ID } from '../../lib/constants'
+import { T } from '../../lib/constants'
 import { supabase } from '../../lib/supabase'
+import { _activeBizId } from '../../lib/db'
 import Icon from '../common/Icon'
 
 export default function ServiceSettings({ data, setData, onBack }) {
@@ -18,7 +19,7 @@ export default function ServiceSettings({ data, setData, onBack }) {
     setSaving(true)
     try {
       const isNew = editing==='new'
-      const payload = {...form, business_id:BUSINESS_ID}
+      const payload = {...form, business_id:_activeBizId}
       if (isNew) {
         const {data:saved} = await supabase.from('services').insert(payload).select().single()
         if (saved) setData(p=>({...p,services:[...p.services,saved]}))

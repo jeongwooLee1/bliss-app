@@ -19,7 +19,7 @@ import { SB_URL, SB_KEY, sbHeaders } from '../../lib/sb'
  *  2) send-sms Edge Function 호출 (100건/배치)
  *  3) Edge Function이 sms_send_log에 자동 기록 + sms_consent 재차단
  */
-export default function SendSmsModal({ open, onClose, customers = [], branches = [], userBranches = [], defaultBranchId, selfPhone, bizId = 'biz_khvurgshb' }) {
+export default function SendSmsModal({ open, onClose, customers = [], branches = [], userBranches = [], defaultBranchId, selfPhone, bizId }) {
   const [branchId, setBranchId] = useState(defaultBranchId || '')
   const [message, setMessage] = useState('')
   const [sending, setSending] = useState(false)

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { _activeBizId } from '../../lib/db'
 
 // 사내 메신저 데이터 훅
 // 유저: employees_v1(근무표 등록 직원) + maleRotation_v1
@@ -28,10 +29,11 @@ export function useTeamChat() {
   useEffect(() => {
     let cancelled = false
     const load = async () => {
+      if (!_activeBizId) return
       try {
         const [empRes, rotRes] = await Promise.all([
-          supabase.from('schedule_data').select('value').eq('key', 'employees_v1').single(),
-          supabase.from('schedule_data').select('value').eq('key', 'maleRotation_v1').single(),
+          supabase.from('schedule_data').select('value').eq('business_id', _activeBizId).eq('key', 'employees_v1').maybeSingle(),
+          supabase.from('schedule_data').select('value').eq('business_id', _activeBizId).eq('key', 'maleRotation_v1').maybeSingle(),
         ])
         if (cancelled) return
         const parse = (raw) => typeof raw === 'string' ? JSON.parse(raw) : raw
@@ -60,12 +62,15 @@ export function useTeamChat() {
 
   // 메시지 로드 + Realtime 구독
   useEffect(() => {
+    if (!_activeBizId) { setLoading(false); return }
+    const bizId = _activeBizId
     let cancelled = false
     const loadMsgs = async () => {
       try {
         const { data, error } = await supabase
           .from('team_chat_messages')
           .select('id,user_id,body,created_at,is_announce')
+          .eq('business_id', bizId)
           .order('created_at', { ascending: true })
           .limit(500)
         if (cancelled) return
@@ -82,11 +87,11 @@ export function useTeamChat() {
     }
     loadMsgs()
 
-    // Realtime: INSERT 이벤트 구독
+    // Realtime: INSERT 이벤트 구독 (해당 사업장만)
     const ch = supabase
-      .channel('team_chat_messages_rt')
+      .channel(`team_chat_messages_rt_${bizId}`)
       .on('postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'team_chat_messages' },
+        { event: 'INSERT', schema: 'public', table: 'team_chat_messages', filter: `business_id=eq.${bizId}` },
         (payload) => {
           const row = payload?.new
           if (!row) return
@@ -104,7 +109,7 @@ export function useTeamChat() {
           })
         })
       .on('postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'team_chat_messages' },
+        { event: 'DELETE', schema: 'public', table: 'team_chat_messages', filter: `business_id=eq.${bizId}` },
         (payload) => {
           const oldId = payload?.old?.id
           if (oldId == null) return
@@ -144,6 +149,7 @@ export function useTeamChat() {
   const send = useCallback(async (body, opts = {}) => {
     const text = (body || '').trim()
     if (!text || !currentUserId) return
+    if (!_activeBizId) return
     const isAnnounce = !!opts.announce
     setSending(true)
     const tempId = 'local_' + Date.now() + '_' + Math.random().toString(36).slice(2,8)
@@ -160,7 +166,7 @@ export function useTeamChat() {
     try {
       const { data, error } = await supabase
         .from('team_chat_messages')
-        .insert({ user_id: currentUserId, body: text, is_announce: isAnnounce })
+        .insert({ business_id: _activeBizId, user_id: currentUserId, body: text, is_announce: isAnnounce })
         .select('id,user_id,body,created_at,is_announce')
         .single()
       if (error) throw error

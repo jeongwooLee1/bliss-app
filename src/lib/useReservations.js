@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { supabase } from './supabase'
-import { BUSINESS_ID } from './constants'
+import { _activeBizId } from './db'
 import { genId, todayStr } from './utils'
 
 export function useReservations(data, setData) {
@@ -13,7 +13,7 @@ export function useReservations(data, setData) {
       const payload = {
         ...item,
         id: item.id || genId('res'),
-        business_id: BUSINESS_ID,
+        business_id: _activeBizId,
         updated_at: new Date().toISOString(),
       }
       if (isNew) payload.created_at = new Date().toISOString()

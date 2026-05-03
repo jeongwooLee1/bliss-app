@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
+import { _activeBizId } from '../../lib/db'
 import { T, SCH_BRANCH_MAP } from '../../lib/constants'
 import { I } from '../common/I'
 import { useScheduleData, useEmployees } from '../../lib/useData'
@@ -109,7 +110,7 @@ export default function SchedulePage({ employees: propEmps }) {
   const [dataLoaded, setDataLoaded] = useState(false)
   useEffect(() => {
     let cancelled = false
-    supabase.from('schedule_data').select('value').eq('key', DB_KEYS.schHistory).single()
+    supabase.from('schedule_data').select('value').eq('business_id', _activeBizId).eq('key', DB_KEYS.schHistory).maybeSingle()
       .then(({ data }) => {
         if (cancelled) return
         if (data?.value) {
@@ -121,7 +122,7 @@ export default function SchedulePage({ employees: propEmps }) {
     const ch = supabase.channel('sch_history_realtime')
       .on('postgres_changes', {
         event: '*', schema: 'public',
-        table: 'schedule_data', filter: `key=eq.${DB_KEYS.schHistory}`
+        table: 'schedule_data', filter: `business_id=eq.${_activeBizId}`
       }, ({ new: n }) => {
         if (cancelled || !n?.value) return
         try {
@@ -137,7 +138,7 @@ export default function SchedulePage({ employees: propEmps }) {
   const saveSchHistory = async (history) => {
     try {
       const { data: row } = await supabase.from('schedule_data')
-        .select('value').eq('key', DB_KEYS.schHistory).single();
+        .select('value').eq('business_id', _activeBizId).eq('key', DB_KEYS.schHistory).maybeSingle();
       const latestRaw = row?.value
         ? (typeof row.value === 'string' ? JSON.parse(row.value) : row.value)
         : {};
@@ -148,15 +149,15 @@ export default function SchedulePage({ employees: propEmps }) {
         merged[monthKey] = { ...(latestRaw[monthKey] || {}), ...monthData };
       });
       await supabase.from('schedule_data').upsert({
-        id: DB_KEYS.schHistory, key: DB_KEYS.schHistory,
+        business_id: _activeBizId, id: DB_KEYS.schHistory, key: DB_KEYS.schHistory,
         value: JSON.stringify(merged), updated_at: new Date().toISOString()
-      });
+      }, { onConflict: 'business_id,key' });
     } catch (e) {
       console.warn('[saveSchHistory] merge fail, fallback to direct save:', e);
       await supabase.from('schedule_data').upsert({
-        id: DB_KEYS.schHistory, key: DB_KEYS.schHistory,
+        business_id: _activeBizId, id: DB_KEYS.schHistory, key: DB_KEYS.schHistory,
         value: JSON.stringify(history), updated_at: new Date().toISOString()
-      });
+      }, { onConflict: 'business_id,key' });
     }
   }
 
@@ -177,7 +178,7 @@ export default function SchedulePage({ employees: propEmps }) {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const { data: d1 } = await supabase.from('schedule_data').select('value').eq('key', DB_KEYS.empSettings).single()
+      const { data: d1 } = await supabase.from('schedule_data').select('value').eq('business_id', _activeBizId).eq('key', DB_KEYS.empSettings).maybeSingle()
       if (cancelled) return
       if (d1?.value) {
         const val = typeof d1.value === 'string' ? JSON.parse(d1.value) : d1.value
@@ -190,7 +191,7 @@ export default function SchedulePage({ employees: propEmps }) {
     const ch = supabase.channel('emp_settings_realtime')
       .on('postgres_changes', {
         event: '*', schema: 'public',
-        table: 'schedule_data', filter: `key=eq.${DB_KEYS.empSettings}`
+        table: 'schedule_data', filter: `business_id=eq.${_activeBizId}`
       }, ({ new: n }) => {
         if (cancelled) return
         if (n?.value !== undefined && n?.value !== null) {
@@ -236,7 +237,7 @@ export default function SchedulePage({ employees: propEmps }) {
   const [isConfirmed, setIsConfirmed] = useState(false)
   const [lockedDates, setLockedDates] = useState(new Set())
   const loadLockStatus = useCallback(() => {
-    supabase.from('schedule_data').select('value').eq('key', DB_KEYS.lockStatus).single()
+    supabase.from('schedule_data').select('value').eq('business_id', _activeBizId).eq('key', DB_KEYS.lockStatus).maybeSingle()
       .then(({ data }) => {
         if (data?.value) {
           const val = typeof data.value === 'string' ? JSON.parse(data.value) : data.value
@@ -270,7 +271,7 @@ export default function SchedulePage({ employees: propEmps }) {
     const ch = supabase.channel('lock_status_realtime')
       .on('postgres_changes', {
         event: '*', schema: 'public',
-        table: 'schedule_data', filter: `key=eq.${DB_KEYS.lockStatus}`
+        table: 'schedule_data', filter: `business_id=eq.${_activeBizId}`
       }, () => { loadLockStatus() })
       .subscribe()
     return () => ch.unsubscribe()
@@ -279,15 +280,16 @@ export default function SchedulePage({ employees: propEmps }) {
   const saveLockStatus = (data) => {
     lockStatusRef.current = data
     const payload = {
+      business_id: _activeBizId,
       id:DB_KEYS.lockStatus, key:DB_KEYS.lockStatus,
       value:JSON.stringify(data), updated_at:new Date().toISOString()
     }
-    supabase.from('schedule_data').upsert(payload)
+    supabase.from('schedule_data').upsert(payload, { onConflict: 'business_id,key' })
       .then(({error}) => {
         if(error) {
           console.error('lockStatus 저장 실패:', error)
           // fallback: REST API로 직접 저장
-          fetch(`https://dpftlrsuqxqqeouwbfjd.supabase.co/rest/v1/schedule_data`, {
+          fetch(`https://dpftlrsuqxqqeouwbfjd.supabase.co/rest/v1/schedule_data?on_conflict=business_id,key`, {
             method:'POST',
             headers:{'apikey':'sb_publishable_3H-KTP0MoV_KuY74ocbefw_3Ze5xBJj',
               'Authorization':'Bearer sb_publishable_3H-KTP0MoV_KuY74ocbefw_3Ze5xBJj',
@@ -401,7 +403,7 @@ export default function SchedulePage({ employees: propEmps }) {
 
   const syncSchToOverride = useCallback((empId, date, status) => {
     const overrideKey = empId + "_" + date;
-    supabase.from('schedule_data').select('value').eq('key', 'empOverride_v1').single()
+    supabase.from('schedule_data').select('value').eq('business_id', _activeBizId).eq('key', 'empOverride_v1').maybeSingle()
       .then(({ data: row }) => {
         const raw = row?.value ? (typeof row.value === 'string' ? JSON.parse(row.value) : row.value) : {};
         if (isSupport(status)) {
@@ -417,9 +419,9 @@ export default function SchedulePage({ employees: propEmps }) {
           delete raw[overrideKey];
         }
         return supabase.from('schedule_data').upsert({
-          id: 'empOverride_v1', key: 'empOverride_v1',
+          business_id: _activeBizId, id: 'empOverride_v1', key: 'empOverride_v1',
           value: JSON.stringify(raw), updated_at: new Date().toISOString()
-        });
+        }, { onConflict: 'business_id,key' });
       }).catch(console.error);
   }, [schNameToBranchId]);
 
@@ -444,7 +446,7 @@ export default function SchedulePage({ employees: propEmps }) {
   const onSetEmpSetting = (eid, key, val) => {
     setEmpSettings(p => {
       const next = { ...p, [eid]:{ ...p[eid], [key]:val } }
-      supabase.from('schedule_data').upsert({ id:DB_KEYS.empSettings, key:DB_KEYS.empSettings, value:JSON.stringify(next), updated_at:new Date().toISOString() })
+      supabase.from('schedule_data').upsert({ business_id: _activeBizId, id:DB_KEYS.empSettings, key:DB_KEYS.empSettings, value:JSON.stringify(next), updated_at:new Date().toISOString() }, { onConflict: 'business_id,key' })
         .then(({error}) => { if (error) console.error('empSettings 저장 실패:', error) })
       return next
     })
@@ -600,9 +602,9 @@ export default function SchedulePage({ employees: propEmps }) {
     let freshEmpReqs = empReqs, freshOwnerReqs = ownerReqs, freshEmpReqsTs = empReqsTs
     try {
       const [r1, r2, r3] = await Promise.all([
-        supabase.from('schedule_data').select('value').eq('key', DB_KEYS.empReqs).single(),
-        supabase.from('schedule_data').select('value').eq('key', DB_KEYS.ownerReqs).single(),
-        supabase.from('schedule_data').select('value').eq('key', DB_KEYS.empReqsTs).single(),
+        supabase.from('schedule_data').select('value').eq('business_id', _activeBizId).eq('key', DB_KEYS.empReqs).maybeSingle(),
+        supabase.from('schedule_data').select('value').eq('business_id', _activeBizId).eq('key', DB_KEYS.ownerReqs).maybeSingle(),
+        supabase.from('schedule_data').select('value').eq('business_id', _activeBizId).eq('key', DB_KEYS.empReqsTs).maybeSingle(),
       ])
       if (r1.data?.value) { const v = typeof r1.data.value === 'string' ? JSON.parse(r1.data.value) : r1.data.value; freshEmpReqs = v; setEmpReqs(v) }
       if (r2.data?.value) { const v = typeof r2.data.value === 'string' ? JSON.parse(r2.data.value) : r2.data.value; freshOwnerReqs = v; setOwnerReqs(v) }
@@ -827,7 +829,7 @@ export default function SchedulePage({ employees: propEmps }) {
           if (snap.ruleConfig) saveRuleConfig(snap.ruleConfig)
           if (snap.empSettings) {
             setEmpSettings(snap.empSettings)
-            supabase.from('schedule_data').upsert({ id:DB_KEYS.empSettings, key:DB_KEYS.empSettings, value:JSON.stringify(snap.empSettings), updated_at:new Date().toISOString() })
+            supabase.from('schedule_data').upsert({ business_id: _activeBizId, id:DB_KEYS.empSettings, key:DB_KEYS.empSettings, value:JSON.stringify(snap.empSettings), updated_at:new Date().toISOString() }, { onConflict: 'business_id,key' })
               .then(({error}) => { if (error) console.error('empSettings 복원 실패:', error) })
           }
           if (snap.ownerReqs) { setOwnerReqs(snap.ownerReqs); saveOwnerReqs(snap.ownerReqs) }

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { T } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY, sbHeaders, matchAllTokens } from '../../lib/sb'
 import { searchDocs, buildDocsContext } from '../../lib/aiDocs'
-import { fromDb } from '../../lib/db'
+import { fromDb, _activeBizId } from '../../lib/db'
 import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, useSessionState, TTL } from '../../lib/utils'
 import I from '../common/I'
 import { ChannelLogo } from './channelIcons'
@@ -110,7 +110,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       const _since = new Date(Date.now() - 60 * 86400000).toISOString();
       const sinceEnc = encodeURIComponent(_since);
       const fetchPage = (offset) => fetch(
-        SB_URL+`/rest/v1/messages?created_at=gte.${sinceEnc}&order=created_at.desc&limit=1000&offset=${offset}&select=*`,
+        SB_URL+`/rest/v1/messages?business_id=eq.${_activeBizId}&created_at=gte.${sinceEnc}&order=created_at.desc&limit=1000&offset=${offset}&select=*`,
         { headers: { ...sbHeaders, "Cache-Control": "no-cache" }, cache: "no-store" }
       ).then(r => r.json());
 
@@ -185,7 +185,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   // AI 자동답변 채널별 ON/OFF 로드
   const _parseSettings = (raw) => { try { return typeof raw==='string'?JSON.parse(raw):(raw||{}); } catch{ return {}; } };
   useEffect(()=>{
-    fetch(SB_URL+"/rest/v1/businesses?id=eq.biz_khvurgshb&select=settings",{headers:sbHeaders})
+    fetch(SB_URL+`/rest/v1/businesses?id=eq.${_activeBizId}&select=settings`,{headers:sbHeaders})
       .then(r=>r.json()).then(rows=>{
         const s = _parseSettings(rows?.[0]?.settings);
         setAiAutoChannels(s.ai_auto_reply_channels || {});
@@ -206,12 +206,12 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     const updated = {...prev, [ch]: !prev[ch]};
     setAiAutoChannels(updated);
     try {
-      const r = await fetch(SB_URL+"/rest/v1/businesses?id=eq.biz_khvurgshb&select=settings",{headers:sbHeaders});
+      const r = await fetch(SB_URL+`/rest/v1/businesses?id=eq.${_activeBizId}&select=settings`,{headers:sbHeaders});
       const rows = await r.json();
       const settings = _parseSettings(rows?.[0]?.settings);
       settings.ai_auto_reply_channels = updated;
       settings.ai_auto_reply_enabled = Object.values(updated).some(v=>v);
-      await fetch(SB_URL+"/rest/v1/businesses?id=eq.biz_khvurgshb",{method:"PATCH",headers:{...sbHeaders,"Prefer":"return=minimal"},body:JSON.stringify({settings:JSON.stringify(settings)})});
+      await fetch(SB_URL+`/rest/v1/businesses?id=eq.${_activeBizId}`,{method:"PATCH",headers:{...sbHeaders,"Prefer":"return=minimal"},body:JSON.stringify({settings:JSON.stringify(settings)})});
     } catch(e){ setAiAutoChannels(prev); }
   };
 
@@ -221,11 +221,11 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     const updated = {...prev, ...patch};
     setAiSchedule(updated);
     try {
-      const r = await fetch(SB_URL+"/rest/v1/businesses?id=eq.biz_khvurgshb&select=settings",{headers:sbHeaders});
+      const r = await fetch(SB_URL+`/rest/v1/businesses?id=eq.${_activeBizId}&select=settings`,{headers:sbHeaders});
       const rows = await r.json();
       const settings = _parseSettings(rows?.[0]?.settings);
       settings.ai_auto_reply_schedule = updated;
-      await fetch(SB_URL+"/rest/v1/businesses?id=eq.biz_khvurgshb",{method:"PATCH",headers:{...sbHeaders,"Prefer":"return=minimal"},body:JSON.stringify({settings:JSON.stringify(settings)})});
+      await fetch(SB_URL+`/rest/v1/businesses?id=eq.${_activeBizId}`,{method:"PATCH",headers:{...sbHeaders,"Prefer":"return=minimal"},body:JSON.stringify({settings:JSON.stringify(settings)})});
     } catch(e){ setAiSchedule(prev); }
   };
 
@@ -293,7 +293,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       try {
         // sns_accounts에 channel + user_id 들어있는 고객 검색 (jsonb @> 연산자)
         const filter = encodeURIComponent(`[{"channel":"${sel.channel}","user_id":"${sel.user_id}"}]`);
-        const rows = await sb.get('customers', `&business_id=eq.${data?.business?.id||'biz_khvurgshb'}&sns_accounts=cs.${filter}&limit=1`);
+        const rows = await sb.get('customers', `&business_id=eq.${data?.business?.id||_activeBizId}&sns_accounts=cs.${filter}&limit=1`);
         if (cancelled) return;
         if (Array.isArray(rows) && rows.length > 0) {
           const c = fromDb('customers', rows)[0];
@@ -437,7 +437,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     // ch가 있으면 해당 채널만, 없으면 user_id 전체 (구버전 호환)
     const matches = (m) => m.user_id===uid && (!ch || (m.channel||"naver")===ch);
     const unreadCount = msgs.filter(m => matches(m) && !m.is_read && m.direction==="in").length;
-    let url = SB_URL+"/rest/v1/messages?user_id=eq."+uid+"&is_read=eq.false";
+    let url = SB_URL+`/rest/v1/messages?business_id=eq.${_activeBizId}&user_id=eq.`+uid+"&is_read=eq.false";
     if (ch) url += "&channel=eq."+encodeURIComponent(ch);
     try {
       await fetch(url, {method:"PATCH",headers:{...sbHeaders,Prefer:"return=minimal"},body:JSON.stringify({is_read:true})});
@@ -557,7 +557,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     let cancelled = false;
     (async () => {
       try {
-        const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.employees_v1&select=value&limit=1`, {
+        const r = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.employees_v1&select=value&limit=1`, {
           headers: { ...sbHeaders, "Cache-Control": "no-cache" }, cache: "no-store"
         });
         const rows = await r.json();
@@ -727,7 +727,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       let docsCtx = "";
       try {
         const lastInMsg = convo.filter(m=>m.direction==="in"&&m.message_text&&!String(m.message_text).startsWith("[")).slice(-1)[0]?.message_text || "";
-        const bizId = data?.business?.id || data?.businesses?.[0]?.id || "biz_khvurgshb";
+        const bizId = data?.business?.id || data?.businesses?.[0]?.id || _activeBizId;
         if (lastInMsg && bizId) {
           const hits = await searchDocs({ question: lastInMsg, businessId: bizId, geminiKey: key, threshold: 0.0, count: 8 });
           const ctx = buildDocsContext(hits);

@@ -3,7 +3,7 @@ import { T, NAVER_COLS, getNaverVal, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, BRA
 import { sb, SB_URL, SB_KEY, sbHeaders, queueAlimtalk } from '../../lib/sb'
 import { useMaleRotation, useScheduleData } from '../../lib/useData'
 import { DEFAULT_CELL_TAGS } from '../Schedule/scheduleConstants'
-import { fromDb, toDb, resolveSystemIds, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS } from '../../lib/db'
+import { fromDb, toDb, resolveSystemIds, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS, _activeBizId } from '../../lib/db'
 import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, useSessionState, getCustPkgBranchInitial, naverConfirmBooking, naverPollNow } from '../../lib/utils'
 import I from '../common/I'
 import TimelineModal from './ReservationModal'
@@ -291,9 +291,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       const next = typeof updater === "function" ? updater(prev) : updater;
       // DB 저장 (upsert)
       const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
-      fetch(`${SB_URL}/rest/v1/schedule_data`, {
+      fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
         method: "POST", headers: H,
-        body: JSON.stringify({ id: "empOverride_v1", key: "empOverride_v1", value: JSON.stringify(next) })
+        body: JSON.stringify({ business_id: _activeBizId, id: "empOverride_v1", key: "empOverride_v1", value: JSON.stringify(next) })
       }).catch(console.error);
       return next;
     });
@@ -303,7 +303,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     if (empOverrideLoaded.current) return;
     empOverrideLoaded.current = true;
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
-    fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.empOverride_v1&select=value`, { headers: H })
+    fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.empOverride_v1&select=value`, { headers: H })
       .then(r => r.json())
       .then(rows => {
         if (rows?.[0]?.value) {
@@ -319,7 +319,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   React.useEffect(() => {
     if (empWorkHoursLoaded.current) return;
     empWorkHoursLoaded.current = true;
-    fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.empWorkHours_v1&select=value`, {
+    fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.empWorkHours_v1&select=value`, {
       headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
     }).then(r => r.json()).then(rows => {
       if (rows?.[0]?.value) {
@@ -332,9 +332,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     _setEmpWorkHours(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
       const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
-      fetch(`${SB_URL}/rest/v1/schedule_data`, {
+      fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
         method: "POST", headers: H,
-        body: JSON.stringify({ id: "empWorkHours_v1", key: "empWorkHours_v1", value: JSON.stringify(next) })
+        body: JSON.stringify({ business_id: _activeBizId, id: "empWorkHours_v1", key: "empWorkHours_v1", value: JSON.stringify(next) })
       }).catch(console.error);
       return next;
     });
@@ -346,7 +346,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   useEffect(() => {
     if (colTplLoaded.current) return;
     colTplLoaded.current = true;
-    fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.colTemplates_v1&select=value`, {
+    fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.colTemplates_v1&select=value`, {
       headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
     }).then(r => r.json()).then(rows => {
       if (rows?.[0]?.value) {
@@ -358,9 +358,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   const saveColTemplates = useCallback((next) => {
     setColTemplates(next);
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
-    fetch(`${SB_URL}/rest/v1/schedule_data`, {
+    fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
       method: "POST", headers: H,
-      body: JSON.stringify({ id: "colTemplates_v1", key: "colTemplates_v1", value: JSON.stringify(next) })
+      body: JSON.stringify({ business_id: _activeBizId, id: "colTemplates_v1", key: "colTemplates_v1", value: JSON.stringify(next) })
     }).catch(console.error);
   }, []);
 
@@ -380,8 +380,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     };
     // employees_v1 + empSettings_v1 동시 로드 (customEmployees_v1 폐기됨, 2026-05-01)
     Promise.all([
-      fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.employees_v1&select=value`, { headers: H }).then(r => r.json()),
-      fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.empSettings_v1&select=value`, { headers: H }).then(r => r.json()),
+      fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.employees_v1&select=value`, { headers: H }).then(r => r.json()),
+      fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.empSettings_v1&select=value`, { headers: H }).then(r => r.json()),
     ]).then(([empRows, setRows]) => {
       setEmpList(parseEmps(empRows?.[0]?.value || []));
       setEmpSettings(parseSettings(setRows?.[0]?.value));
@@ -391,8 +391,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     let empLastRt = 0;
     const reload = () => {
       Promise.all([
-        fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.employees_v1&select=value`, { headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY } }).then(r => r.json()),
-        fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.empSettings_v1&select=value`, { headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY } }).then(r => r.json()),
+        fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.employees_v1&select=value`, { headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY } }).then(r => r.json()),
+        fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.empSettings_v1&select=value`, { headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY } }).then(r => r.json()),
       ]).then(([empRows, setRows]) => {
         empLastRt = Date.now();
         setEmpList(parseEmps(empRows?.[0]?.value || []));
@@ -488,7 +488,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   useEffect(() => {
     const H = { apikey: SB_KEY_SCH, Authorization: "Bearer " + SB_KEY_SCH };
 
-    fetch(`${SB_URL_SCH}/rest/v1/schedule_data?key=eq.schHistory_v1&select=value`, { headers: H })
+    fetch(`${SB_URL_SCH}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.schHistory_v1&select=value`, { headers: H })
       .then(r=>r.json()).then(rows=>{
         if (!rows?.length) return;
         const parsed = parseSchHistory(rows[0].value);
@@ -527,7 +527,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     // 폴링 fallback (30초마다 - Realtime 불안정 시)
     pollTimer = setInterval(() => {
       if (Date.now() - lastRtUpdate < 25000) return; // Realtime 작동 중이면 스킵
-      fetch(`${SB_URL_SCH}/rest/v1/schedule_data?key=eq.schHistory_v1&select=value`, { headers: H })
+      fetch(`${SB_URL_SCH}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.schHistory_v1&select=value`, { headers: H })
         .then(r=>r.json()).then(rows=>{
           if (!rows?.length) return;
           const newSch = parseSchHistory(rows[0].value);
@@ -594,7 +594,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
 
   // AI 키 로드 (DB에서)
   useEffect(()=>{
-    fetch(SB_URL+"/rest/v1/businesses?id=eq.biz_khvurgshb&select=settings",{headers:sbHeaders})
+    if (!_activeBizId) return;
+    fetch(SB_URL+`/rest/v1/businesses?id=eq.${_activeBizId}&select=settings`,{headers:sbHeaders})
       .then(r=>r.json())
       .then(d=>{
         try {
@@ -604,11 +605,14 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       }).catch(()=>{});
   }, []);
   useEffect(() => {
-    const load = () => fetch(SB_URL+"/rest/v1/messages?select=id,is_read,direction&limit=500&order=created_at.desc",
+    const load = () => {
+      if (!_activeBizId) return;
+      return fetch(SB_URL+`/rest/v1/messages?business_id=eq.${_activeBizId}&select=id,is_read,direction&limit=500&order=created_at.desc`,
         {headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY}})
       .then(r=>r.json())
       .then(arr=>{ if(Array.isArray(arr)) setUnreadMsgCount(arr.filter(m=>m.direction==="in"&&!m.is_read).length); })
       .catch(()=>{});
+    };
     load();
     const t = setInterval(load, 10000);
     return ()=>clearInterval(t);
@@ -771,16 +775,16 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     }
     // schHistory_v1 raw fetch → patch → upsert
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
-    fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.schHistory_v1&select=value`, { headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY } })
+    fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.schHistory_v1&select=value`, { headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY } })
       .then(r => r.json())
       .then(rows => {
         const raw = rows?.[0]?.value ? (typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value) : {};
         if (!raw[monthKey]) raw[monthKey] = {};
         if (!raw[monthKey][empId]) raw[monthKey][empId] = {};
         raw[monthKey][empId][date] = newStatus;
-        return fetch(`${SB_URL}/rest/v1/schedule_data`, {
+        return fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
           method: "POST", headers: H,
-          body: JSON.stringify({ id: "schHistory_v1", key: "schHistory_v1", value: JSON.stringify(raw), updated_at: new Date().toISOString() })
+          body: JSON.stringify({ business_id: _activeBizId, id: "schHistory_v1", key: "schHistory_v1", value: JSON.stringify(raw), updated_at: new Date().toISOString() })
         });
       }).catch(console.error);
   };
@@ -1309,7 +1313,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   useEffect(() => {
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
     const loadExtra = () => {
-      fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.extraCols_v1&select=value`, { headers: H })
+      fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.extraCols_v1&select=value`, { headers: H })
         .then(r => r.json()).then(rows => {
           if (rows?.[0]?.value != null) {
             const v = typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value;
@@ -1330,9 +1334,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   }, []);
   const _saveExtraCols = (next) => {
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
-    fetch(`${SB_URL}/rest/v1/schedule_data`, {
+    fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
       method: "POST", headers: H,
-      body: JSON.stringify({ id: "extraCols_v1", key: "extraCols_v1", value: JSON.stringify(next) })
+      body: JSON.stringify({ business_id: _activeBizId, id: "extraCols_v1", key: "extraCols_v1", value: JSON.stringify(next) })
     }).catch(console.error);
   };
   const addExtraCol = (branchId) => {
@@ -1362,7 +1366,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   useEffect(() => {
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
     const load = () => {
-      fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.naverColShifts_v1&select=value`, { headers: H })
+      fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.naverColShifts_v1&select=value`, { headers: H })
         .then(r => r.json()).then(rows => {
           if (rows?.[0]?.value != null) {
             const v = typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value;
@@ -1383,9 +1387,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   }, []);
   const _saveNaverColShifts = (next) => {
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
-    fetch(`${SB_URL}/rest/v1/schedule_data`, {
+    fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
       method: "POST", headers: H,
-      body: JSON.stringify({ id: "naverColShifts_v1", key: "naverColShifts_v1", value: JSON.stringify(next) })
+      body: JSON.stringify({ business_id: _activeBizId, id: "naverColShifts_v1", key: "naverColShifts_v1", value: JSON.stringify(next) })
     }).catch(console.error);
   };
   const moveNaverCol = (branchId, naverIdx, dir) => {
@@ -1423,7 +1427,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   React.useEffect(() => {
     if (alarmsLoaded.current) return;
     alarmsLoaded.current = true;
-    fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.alarms_v1&select=value`, {
+    fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.alarms_v1&select=value`, {
       headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
     }).then(r => r.json()).then(rows => {
       if (rows?.[0]?.value) {
@@ -1436,9 +1440,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     _setAlarms(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
       const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
-      fetch(`${SB_URL}/rest/v1/schedule_data`, {
+      fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
         method: "POST", headers: H,
-        body: JSON.stringify({ id: "alarms_v1", key: "alarms_v1", value: JSON.stringify(next) })
+        body: JSON.stringify({ business_id: _activeBizId, id: "alarms_v1", key: "alarms_v1", value: JSON.stringify(next) })
       }).catch(console.error);
       return next;
     });
@@ -1572,7 +1576,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   React.useEffect(() => {
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
     const loadOrder = () => {
-      fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.empColOrder_v1&select=value`, { headers: H })
+      fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.empColOrder_v1&select=value`, { headers: H })
         .then(r => r.json()).then(rows => {
           if (rows?.[0]?.value) {
             const v = typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value;
@@ -1626,9 +1630,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         merged[bid] = [...nList, ...missing];
       });
       const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
-      fetch(`${SB_URL}/rest/v1/schedule_data`, {
+      fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
         method: "POST", headers: H,
-        body: JSON.stringify({ id: "empColOrder_v1", key: "empColOrder_v1", value: JSON.stringify(merged) })
+        body: JSON.stringify({ business_id: _activeBizId, id: "empColOrder_v1", key: "empColOrder_v1", value: JSON.stringify(merged) })
       }).catch(console.error);
       return merged;
     });
@@ -1939,23 +1943,23 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   // DB row에 여러 키를 한 번에 merge upsert (race 방지)
   const pushToDb = useCallback((updates) => {
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json" };
-    fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.tl_shared_settings_v1&select=value`, { headers: H })
+    fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.tl_shared_settings_v1&select=value`, { headers: H })
       .then(r => r.json()).then(rows => {
         let cur = {};
         const v = rows?.[0]?.value;
         if (v) { try { cur = typeof v === "string" ? JSON.parse(v) : v; } catch(e) {} }
         const next = {...cur, ...updates};
-        fetch(`${SB_URL}/rest/v1/schedule_data`, {
+        fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
           method: "POST",
           headers: {...H, Prefer: "resolution=merge-duplicates"},
-          body: JSON.stringify({ id: "tl_shared_settings_v1", key: "tl_shared_settings_v1", value: JSON.stringify(next) })
+          body: JSON.stringify({ business_id: _activeBizId, id: "tl_shared_settings_v1", key: "tl_shared_settings_v1", value: JSON.stringify(next) })
         }).catch(console.error);
       }).catch(console.error);
   }, []);
   // 초기 로드: DB에서 _sk(공유키 목록) + 각 공유값 가져와서 적용
   useEffect(() => {
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
-    fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.tl_shared_settings_v1&select=value`, { headers: H })
+    fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.tl_shared_settings_v1&select=value`, { headers: H })
       .then(r => r.json()).then(rows => {
         const v = rows?.[0]?.value;
         if (!v) return;
@@ -3611,14 +3615,14 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                 // employees_v1에 추가 (customEmployees_v1 폐기됨)
                                 const H = {apikey:SB_KEY, Authorization:"Bearer "+SB_KEY, "Content-Type":"application/json", "Prefer":"resolution=merge-duplicates"};
                                 try {
-                                  const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.employees_v1&select=value`, {headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY}});
+                                  const r = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.employees_v1&select=value`, {headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY}});
                                   const rows = await r.json();
                                   const raw = rows?.[0]?.value;
                                   const existing = typeof raw === 'string' ? JSON.parse(raw) : (Array.isArray(raw) ? raw : []);
                                   // 같은 이름의 프리랜서가 이미 같은 지점에 있으면 차단 (UI 혼란 방지)
                                   if (existing.some(e => e.isFreelancer && (e.name||e.id) === nm && e.branch === schKey)) { alert("같은 지점에 같은 이름의 프리랜서가 이미 있습니다."); return; }
                                   const updated = [...existing, newEmp];
-                                  await fetch(`${SB_URL}/rest/v1/schedule_data`, {method:"POST", headers:H, body:JSON.stringify({id:"employees_v1",key:"employees_v1",value:JSON.stringify(updated)})});
+                                  await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {method:"POST", headers:H, body:JSON.stringify({business_id: _activeBizId, id:"employees_v1",key:"employees_v1",value:JSON.stringify(updated)})});
                                   setEmpList(prev=>[...prev.filter(e=>e.id!==newEmp.id), newEmp]);
                                   // ★ 그 날짜만 출근으로 schHistory에 등록 (다른 날짜는 표시 안 됨)
                                   setSchHistory(prev => {
@@ -3630,14 +3634,14 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                   // schHistory_v1 DB 동기화 (월별 키 구조 유지)
                                   try {
                                     const monthKey = selDate.slice(0,7);
-                                    const schR = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.schHistory_v1&select=value`, {headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY}});
+                                    const schR = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.schHistory_v1&select=value`, {headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY}});
                                     const schRows = await schR.json();
                                     const schRaw = schRows?.[0]?.value;
                                     const schObj = typeof schRaw === 'string' ? JSON.parse(schRaw) : (schRaw || {});
                                     if (!schObj[monthKey]) schObj[monthKey] = {};
                                     if (!schObj[monthKey][newId]) schObj[monthKey][newId] = {};
                                     schObj[monthKey][newId][selDate] = "근무";
-                                    await fetch(`${SB_URL}/rest/v1/schedule_data`, {method:"POST", headers:H, body:JSON.stringify({id:"schHistory_v1",key:"schHistory_v1",value:JSON.stringify(schObj)})});
+                                    await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {method:"POST", headers:H, body:JSON.stringify({business_id: _activeBizId, id:"schHistory_v1",key:"schHistory_v1",value:JSON.stringify(schObj)})});
                                   } catch(_e) { console.warn("schHistory 등록 실패:", _e); }
                                   setAddStaffPopup(null);
                                 } catch(e){console.error("프리랜서 추가 실패:",e);}
@@ -4327,13 +4331,13 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                 setSchHistory(newSch);
                                 // DB는 월별 구조 유지: raw를 읽어와서 monthKey 하위에 patch
                                 const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
-                                const rows = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.schHistory_v1&select=value`, { headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY} }).then(r=>r.json());
+                                const rows = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.schHistory_v1&select=value`, { headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY} }).then(r=>r.json());
                                 const raw = rows?.[0]?.value ? (typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value) : {};
                                 const monthKey = selDate.slice(0,7);
                                 if (!raw[monthKey]) raw[monthKey] = {};
                                 if (!raw[monthKey][room.staffId]) raw[monthKey][room.staffId] = {};
                                 raw[monthKey][room.staffId][selDate] = "휴무";
-                                await fetch(`${SB_URL}/rest/v1/schedule_data`, { method:"POST", headers:H, body: JSON.stringify({id:"schHistory_v1", key:"schHistory_v1", value: JSON.stringify(raw), updated_at: new Date().toISOString()}) });
+                                await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, { method:"POST", headers:H, body: JSON.stringify({business_id: _activeBizId, id:"schHistory_v1", key:"schHistory_v1", value: JSON.stringify(raw), updated_at: new Date().toISOString()}) });
                                 setEmpMovePopup(null);
                               } catch (err) { console.error("휴무 처리 실패:", err); alert("실패: " + err.message); }
                             }} style={{flex:1,padding:"7px 0",borderRadius:7,border:"1px solid "+T.gray400,background:T.gray100,color:T.text,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
@@ -4359,14 +4363,14 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                 if (!confirm(`"${room.staffId}" 프리랜서 컬럼을 삭제할까요?\n(모든 지점/날짜에서 제거됩니다)`)) return;
                                 const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
                                 try {
-                                  const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.employees_v1&select=value`, { headers: H });
+                                  const r = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.employees_v1&select=value`, { headers: H });
                                   const rows = await r.json();
                                   const raw = rows?.[0]?.value;
                                   const existing = typeof raw === "string" ? JSON.parse(raw) : (Array.isArray(raw) ? raw : []);
                                   const filtered = existing.filter(x => x.id !== room.staffId);
-                                  await fetch(`${SB_URL}/rest/v1/schedule_data`, {
+                                  await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
                                     method: "POST", headers: H,
-                                    body: JSON.stringify({ id: "employees_v1", key: "employees_v1", value: JSON.stringify(filtered) })
+                                    body: JSON.stringify({ business_id: _activeBizId, id: "employees_v1", key: "employees_v1", value: JSON.stringify(filtered) })
                                   });
                                   setEmpList(prev => prev.filter(x => x.id !== room.staffId));
                                   setEmpMovePopup(null);
@@ -4412,14 +4416,14 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                             if (!confirm(`"${room.staffId}" 컬럼을 삭제할까요?\n(이 지점의 모든 날짜에서 제거됩니다)`)) return;
                             const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
                             try {
-                              const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.employees_v1&select=value`, { headers: H });
+                              const r = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.employees_v1&select=value`, { headers: H });
                               const rows = await r.json();
                               const raw = rows?.[0]?.value;
                               const existing = typeof raw === "string" ? JSON.parse(raw) : (Array.isArray(raw) ? raw : []);
                               const filtered = existing.filter(x => x.id !== room.staffId);
-                              await fetch(`${SB_URL}/rest/v1/schedule_data`, {
+                              await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
                                 method: "POST", headers: H,
-                                body: JSON.stringify({ id: "employees_v1", key: "employees_v1", value: JSON.stringify(filtered) })
+                                body: JSON.stringify({ business_id: _activeBizId, id: "employees_v1", key: "employees_v1", value: JSON.stringify(filtered) })
                               });
                               setEmpList(prev => prev.filter(x => x.id !== room.staffId));
                             } catch (err) { console.error("삭제 실패:", err); alert("삭제 실패: " + err.message); }

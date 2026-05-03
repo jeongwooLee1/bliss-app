@@ -7,6 +7,7 @@
  *   3. executeAction(action, params, data, context) → DB 실행 + 결과 반환
  */
 import { sb, SB_URL, SB_KEY } from '../../lib/sb'
+import { _activeBizId } from '../../lib/db'
 import { ACTION_SCHEMAS } from './actionSchemas'
 import { parseBookingWithAI, findCustomerForBooking } from '../../lib/aiBookParse'
 
@@ -264,7 +265,7 @@ export async function executeAction({ action, target, changes = {} }, data, { bi
     else if (schema.op === 'schedule_list_add' || schema.op === 'schedule_list_bulk_add' || schema.op === 'schedule_list_update' || schema.op === 'schedule_list_delete') {
       const key = schema.scheduleKey
       // 기존 로드
-      const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.${key}&select=value`, {
+      const r = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.${key}&select=value`, {
         headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY },
       })
       const rows = await r.json()
@@ -292,7 +293,7 @@ export async function executeAction({ action, target, changes = {} }, data, { bi
         list = list.filter(x => x.id !== targetRow.id)
       }
       // 저장
-      const w = await fetch(`${SB_URL}/rest/v1/schedule_data`, {
+      const w = await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
         method: 'POST',
         headers: {
           apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY,
@@ -373,7 +374,7 @@ function summarizeResult(result) {
 // ─── 감사 로그 ─────────────────────────────────────────────────────────────
 async function writeAuditLog(entry) {
   try {
-    const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.bliss_ai_action_logs_v1&select=value`, {
+    const r = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.bliss_ai_action_logs_v1&select=value`, {
       headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY },
     })
     const rows = await r.json()
@@ -384,13 +385,13 @@ async function writeAuditLog(entry) {
     }
     list.unshift(entry)
     if (list.length > 1000) list = list.slice(0, 1000)
-    await fetch(`${SB_URL}/rest/v1/schedule_data`, {
+    await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
       method: 'POST',
       headers: {
         apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY,
         'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates',
       },
-      body: JSON.stringify({ id: 'bliss_ai_action_logs_v1', key: 'bliss_ai_action_logs_v1', value: JSON.stringify(list) }),
+      body: JSON.stringify({ business_id: _activeBizId, id: 'bliss_ai_action_logs_v1', key: 'bliss_ai_action_logs_v1', value: JSON.stringify(list) }),
     })
   } catch { /* ignore log failure */ }
 }
@@ -548,7 +549,7 @@ async function runSetupInitial(changes, { bizId, data }) {
   }
   // 5. 직원 (schedule_data.employees_v1)
   if ((c.staff || []).length) {
-    const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.employees_v1&select=value`, {
+    const r = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.employees_v1&select=value`, {
       headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY },
     })
     const rows = await r.json()
@@ -561,13 +562,13 @@ async function runSetupInitial(changes, { bizId, data }) {
       list.push({ id: st.id || genId('emp'), ...st })
       out.staff++
     }
-    await fetch(`${SB_URL}/rest/v1/schedule_data`, {
+    await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
       method: 'POST',
       headers: {
         apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY,
         'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates',
       },
-      body: JSON.stringify({ id: 'employees_v1', key: 'employees_v1', value: JSON.stringify(list) }),
+      body: JSON.stringify({ business_id: _activeBizId, id: 'employees_v1', key: 'employees_v1', value: JSON.stringify(list) }),
     })
   }
   // 6. 예약 경로
