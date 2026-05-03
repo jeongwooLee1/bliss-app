@@ -70,6 +70,23 @@ function _isCoupon(pkg) {
   return false;
 }
 
+// 활성 보유권 보유 여부 — 다담권 잔액>0 또는 다회권/연간권 잔여>0 + 비만료 (쿠폰 제외)
+function _hasActivePackage(custPkgs, todayStr) {
+  return (custPkgs || []).some(p => {
+    if (_isCoupon(p)) return false;
+    if (_isExpired(p, todayStr)) return false;
+    // 다담권: note의 "잔액:N" > 0
+    if (_isPrepaid(p)) {
+      const m = String(p?.note || '').match(/잔액\s*[:：]\s*([0-9,]+)/);
+      const bal = m ? Number(m[1].replace(/,/g,'')) : 0;
+      return bal > 0;
+    }
+    // 다회권/연간권: total>0 + 잔여>0
+    if (Number(p.total_count || 0) <= 0) return false;
+    return _remainingCount(p) > 0;
+  });
+}
+
 /**
  * 단일 트리거 평가
  * @returns boolean
@@ -98,8 +115,11 @@ export function evaluateTrigger(trigger, ctx) {
       });
     }
     case 'package_expired': {
-      // 보유 패키지/연간권 중 만료된 게 1건 이상 (쿠폰 만료는 제외 — 일회성이라 의미 다름)
-      return custPkgs.some(p => !_isCoupon(p) && _isExpired(p, todayStr));
+      // 만료된 보유 패키지/연간권 1건 이상 + 활성 보유권 없음 (재구매 유도 대상)
+      // 활성 보유권 있으면 "기존상담" 부적합 (단골 활성 고객)
+      const hasExpired = custPkgs.some(p => !_isCoupon(p) && _isExpired(p, todayStr));
+      if (!hasExpired) return false;
+      return !_hasActivePackage(custPkgs, todayStr);
     }
     case 'coupon_expiring_days': {
       const days = Number(trigger.days ?? 7);
