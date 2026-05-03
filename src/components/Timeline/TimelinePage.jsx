@@ -924,6 +924,20 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   // 🔴 빨강 테두리 깜빡임 하이라이트 (메시지함 예약버튼/확정대기 배너 클릭 시)
   const [highlightedBlockId, setHighlightedBlockId] = useState(null);
 
+  // 📱 모바일 뒤로가기 → 예약모달만 닫기 (선택한 날짜/스크롤 위치 보존)
+  // 모달 열릴 때 history.pushState({mTl:1}) 추가, popstate 시 모달만 닫고 selDate/scroll은 그대로.
+  useEffect(() => {
+    if (!showModal) return;
+    try { window.history.pushState({ _blissTlModal: 1 }, ""); } catch (_) {}
+    const onPop = (e) => {
+      // 모달이 열려있으면 닫기 (날짜·스크롤 그대로 유지 — selDate state 변경 X)
+      setShowModal(false);
+      setModalData(null);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [showModal]);
+
   // ReservationList/메시지함에서 넘어온 예약 자동 오픈 + 스크롤 중앙 정렬
   useEffect(()=>{
     if (!pendingOpenRes) return;
@@ -3167,6 +3181,9 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           </div>
           <button onClick={()=>changeDate(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:T.fs.sm,color:T.gray600,padding:"2px 4px",flexShrink:0}}><I name="chevR" size={14}/></button>
           <button onClick={()=>setSelDate(todayStr())} style={{padding:"0 10px",height:32,fontSize:T.fs.sm,border:"1px solid #d0d0d0",borderRadius:T.radius.md,background:T.bgCard,color:T.gray600,cursor:"pointer",fontFamily:"inherit",flexShrink:0,display:"flex",alignItems:"center"}} className="hide-mobile">오늘</button>
+          <button onClick={()=>window.location.reload()} title="새로고침" style={{padding:"0 8px",height:32,border:"1px solid #d0d0d0",borderRadius:T.radius.md,background:T.bgCard,color:T.gray600,cursor:"pointer",fontFamily:"inherit",flexShrink:0,display:"flex",alignItems:"center",gap:4}}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          </button>
           <button onClick={()=>setShowQuickBook(true)} style={{padding:"0 12px",height:32,fontSize:T.fs.sm,border:"none",borderRadius:T.radius.xl,background:"linear-gradient(135deg,#4285f4,#9b72cb,#d96570)",color:T.bgCard,cursor:"pointer",fontFamily:"inherit",flexShrink:0,display:"flex",alignItems:"center",gap:5,fontWeight:T.fw.bolder,boxShadow:"0 2px 8px rgba(66,133,244,.25)"}}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill={T.bgCard} style={{flexShrink:0}}><path d="M12 2L13.09 8.26L18 6L14.74 10.91L21 12L14.74 13.09L18 18L13.09 15.74L12 22L10.91 15.74L6 18L9.26 13.09L3 12L9.26 10.91L6 6L10.91 8.26L12 2Z"/></svg> AI Book
           </button>
@@ -3202,20 +3219,31 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           </div>
           
         </div>
-        {/* Row 2 (mobile) / inline (desktop): 7-day buttons */}
-        <div className="tl-days" style={{display:"flex",gap:2,alignItems:"center"}}>
-          {Array.from({length:7},(_,i)=>{
+        {/* Row 2 (mobile) / inline (desktop): 14-day buttons + 모바일 스와이프 */}
+        <div className="tl-days"
+          onTouchStart={(e)=>{ const t=e.touches[0]; e.currentTarget._tStart={x:t.clientX,y:t.clientY,t:Date.now()}; }}
+          onTouchEnd={(e)=>{
+            const s=e.currentTarget._tStart; if(!s) return;
+            const t=e.changedTouches[0]; const dx=t.clientX-s.x, dy=t.clientY-s.y, dt=Date.now()-s.t;
+            // 가로 스와이프(절대값 50px+, 세로 변동 작음, 500ms 내) → 날짜 변경
+            if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)*1.5 && dt < 500) {
+              changeDate(dx < 0 ? 1 : -1);
+            }
+            e.currentTarget._tStart = null;
+          }}
+          style={{display:"flex",gap:2,alignItems:"center",overflowX:"auto",scrollbarWidth:"none"}}>
+          {Array.from({length:14},(_,i)=>{
             const dt = new Date(); dt.setDate(dt.getDate()+i);
             const ds = fmtLocal(dt);
             const dow = dt.getDay();
             const isSel = ds === selDate;
             const dayColor = dow===0?T.female:dow===6?T.male:T.gray700;
             return <button key={i} onClick={()=>setSelDate(ds)}
-              style={{minWidth:42,height:32,borderRadius:T.radius.md,border:isSel?"none":"1px solid #e8e8e8",
+              style={{minWidth:38,height:32,borderRadius:T.radius.md,border:isSel?"none":"1px solid #e8e8e8",
                 background:isSel?T.primary:T.bgCard,color:isSel?T.bgCard:dayColor,
-                fontSize:T.fs.sm,fontWeight:isSel?700:500,cursor:"pointer",fontFamily:"inherit",padding:"2px 4px",flexShrink:0,
+                fontSize:T.fs.sm,fontWeight:isSel?700:500,cursor:"pointer",fontFamily:"inherit",padding:"2px 3px",flexShrink:0,
                 display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",lineHeight:1.1}}>
-              <span style={{fontSize:T.fs.sm}}>{DAYS_KR[dow]}</span>
+              <span style={{fontSize:T.fs.xs}}>{DAYS_KR[dow]}</span>
               <span>{dt.getDate()}</span>
             </button>;
           })}
