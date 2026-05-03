@@ -90,26 +90,90 @@ export async function extractText(file, geminiKey) {
   throw new Error(`지원하지 않는 파일 형식: ${file.name}`)
 }
 
-// ─── 청크 분할 (한글 800자 + 50자 overlap, 가능하면 줄/문장 경계) ─────────────
+// 헤더 라인 감지 — 각 청크에 prefix로 첨부할 섹션 식별용
+// 인식 패턴: 마크다운 (#·##·###), [대괄호 카테고리], [페이지 N], "1. 제목" / "## 1." 형식
+function _isHeaderLine(line) {
+  const t = String(line || '').trim()
+  if (!t) return false
+  if (/^#{1,6}\s+\S/.test(t)) return true                     // 마크다운 헤더
+  if (/^\[[^\]]{1,80}\]\s*$/.test(t)) return true             // [카테고리] 또는 [페이지 N]
+  if (/^[1-9]\d*\.\s+[가-힣A-Za-z]/.test(t) && t.length < 80) return true // "1. 제목" 짧은 줄
+  return false
+}
+function _normalizeHeader(line) {
+  return String(line || '').trim()
+    .replace(/^#{1,6}\s+/, '')
+    .replace(/^\[\s*|\s*\]$/g, '')
+    .trim()
+}
+
+// 텍스트를 헤더로 분할 — 각 섹션 = { header, body }
+function _splitByHeaders(text) {
+  const lines = String(text || '').split('\n')
+  const sections = []
+  let header = ''
+  let body = []
+  for (const line of lines) {
+    if (_isHeaderLine(line)) {
+      if (body.length) {
+        const b = body.join('\n').trim()
+        if (b) sections.push({ header, body: b })
+      }
+      header = _normalizeHeader(line)
+      body = []
+    } else {
+      body.push(line)
+    }
+  }
+  if (body.length) {
+    const b = body.join('\n').trim()
+    if (b) sections.push({ header, body: b })
+  }
+  // 헤더가 전혀 없으면 단일 섹션으로 처리
+  if (!sections.length && text.trim()) sections.push({ header: '', body: text.trim() })
+  return sections
+}
+
+// ─── 청크 분할 (한글 800자 + 50자 overlap + 섹션 헤더 prefix 자동 첨부) ───────
+// 모호한 Q 검색 정확도 ↑: "Q. 예약 시 요청해야 하나요?" 같은 광범위 Q도
+// 청크에 [섹션: 6. 관리사 & 성별 선택] prefix가 붙어 의미 매칭 가능.
 export function chunkText(text, opts = {}) {
   const SIZE = opts.size || 800
   const OVERLAP = opts.overlap || 50
-  const clean = String(text || '').replace(/\r\n/g, '\n').replace(/[ \t]+/g, ' ').trim()
-  if (!clean) return []
+  const raw = String(text || '').replace(/\r\n/g, '\n').trim()
+  if (!raw) return []
+  const sections = _splitByHeaders(raw)
   const chunks = []
-  let i = 0
-  while (i < clean.length) {
-    let end = Math.min(i + SIZE, clean.length)
-    if (end < clean.length) {
-      // 가능하면 줄바꿈/마침표/공백 경계로 백오프
-      const slice = clean.slice(i, end)
-      const lastBreak = Math.max(slice.lastIndexOf('\n'), slice.lastIndexOf('. '), slice.lastIndexOf('? '), slice.lastIndexOf('! '))
-      if (lastBreak > SIZE * 0.5) end = i + lastBreak + 1
+  for (const sec of sections) {
+    const headerPrefix = sec.header ? `[섹션: ${sec.header}]\n\n` : ''
+    const body = sec.body
+    if (!body) continue
+    // 섹션이 SIZE보다 작으면 통째로 한 청크
+    if (body.length + headerPrefix.length <= SIZE) {
+      chunks.push(headerPrefix + body)
+      continue
     }
-    const piece = clean.slice(i, end).trim()
-    if (piece) chunks.push(piece)
-    if (end >= clean.length) break
-    i = Math.max(i + 1, end - OVERLAP)
+    // 섹션 본문을 청크 분할 — prefix 길이는 SIZE 한계에 미포함 (작은 prefix 가정)
+    const inner = SIZE - headerPrefix.length
+    let i = 0
+    while (i < body.length) {
+      let end = Math.min(i + inner, body.length)
+      if (end < body.length) {
+        const slice = body.slice(i, end)
+        const lastBreak = Math.max(
+          slice.lastIndexOf('\n\n'),
+          slice.lastIndexOf('\n'),
+          slice.lastIndexOf('. '),
+          slice.lastIndexOf('? '),
+          slice.lastIndexOf('! ')
+        )
+        if (lastBreak > inner * 0.4) end = i + lastBreak + 1
+      }
+      const piece = body.slice(i, end).trim()
+      if (piece) chunks.push(headerPrefix + piece)
+      if (end >= body.length) break
+      i = Math.max(i + 1, end - OVERLAP)
+    }
   }
   return chunks
 }
