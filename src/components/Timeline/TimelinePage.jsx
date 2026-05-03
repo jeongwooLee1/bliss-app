@@ -2719,6 +2719,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           const trueDur = blockDurMin(block);
           // ─── Ctrl/Cmd + 드래그 = 복사 (원본 유지, 새 reservation INSERT) ───
           // 동반자 처리: 친구 = 별도 사람. cust_id/phone/email 비움, 이름에 "동반자N" suffix
+          // group_id 자동 부여: 원본+복사본 같은 reservation_group_id로 묶음 (시각 매칭용)
           if (isCopyDragRef.current) {
             const [csh, csm] = snap.time.split(":").map(Number);
             const cEndMin = csh*60 + csm + trueDur;
@@ -2738,12 +2739,23 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
               return rn === baseName;
             }).length : 0;
             const newCustName = baseName ? `${baseName} 동반자${sameBaseCount}` : "";
+            // group_id 자동 부여 — 원본에 없으면 새로 만들고 원본도 같은 group_id로 UPDATE
+            let _grpId = block.reservationGroupId;
+            if (!_grpId) {
+              _grpId = "rg_" + uid();
+              sb.insert("reservation_groups", toDb("reservation_groups", {
+                id: _grpId, bid: block.bid || "", leaderCustId: block.custId || "",
+                roomType: 'separate', memo: ''
+              })).catch(e => console.warn("[copy-drag group insert]", e));
+              sb.update("reservations", block.id, { reservation_group_id: _grpId }).catch(console.error);
+              setData(prev => ({ ...prev, reservations: (prev?.reservations||[]).map(r => r.id === block.id ? { ...r, reservationGroupId: _grpId } : r) }));
+            }
             const newRes = {
               ...block,
               id: newId,
               reservationId: "manual_" + newId,
               prevReservationId: null,
-              reservationGroupId: null,           // 그룹 끊기
+              reservationGroupId: _grpId,         // 같은 그룹으로 묶음
               isBeta: !!(betaGroupMode || block.isBeta),
               time: snap.time, endTime: cEndTime, dur: trueDur,
               roomId: cRoomId, bid: cBid, staffId: cStaffId,
@@ -4800,7 +4812,20 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                 const _cp = Number(liveCust?.cancelPenaltyCount || 0);
                                 const _ns = Number(liveCust?.noShowCount || 0);
                                 const isCaution = _cp >= 3 || _ns >= 1;
+                                // 동반자 묶음 색 도트 — 같은 reservation_group_id 멤버 2명 이상이면 표시
+                                const _grpId = block.reservationGroupId;
+                                const _grpMembers = _grpId ? (data?.reservations||[]).filter(r => r.reservationGroupId === _grpId && r.date === block.date) : [];
+                                const _grpDot = (() => {
+                                  if (!_grpId || _grpMembers.length < 2) return null;
+                                  const palette = ["#F59E0B","#10B981","#3B82F6","#EF4444","#8B5CF6","#EC4899","#14B8A6","#F97316"];
+                                  let h = 0;
+                                  for (let i = 0; i < _grpId.length; i++) h = ((h * 31) + _grpId.charCodeAt(i)) | 0;
+                                  const c = palette[Math.abs(h) % palette.length];
+                                  const dotSize = Math.max(6, blockFs-3);
+                                  return <span title={`동반자 묶음 (${_grpMembers.length}명)`} style={{display:"inline-block",width:dotSize,height:dotSize,borderRadius:"50%",background:c,marginRight:3,flexShrink:0,verticalAlign:"middle",boxShadow:"0 0 0 1px rgba(255,255,255,.6)"}}/>;
+                                })();
                                 return <>
+                                  {_grpDot}
                                   {g ? <span style={{color:g==="M"?T.male:T.female}}>{g==="M"?"남":"여"}</span> : null} {displayName}
                                   {custNum && <span style={{marginLeft:3,fontSize:Math.max(7,blockFs-2),color:T.text,fontWeight:T.fw.bold,fontFamily:"monospace"}}>#{custNum}</span>}
                                   {isCaution && <span title={`페널티 취소 ${_cp}회 / 노쇼 ${_ns}회`} style={{marginLeft:3,fontSize:Math.max(8,blockFs-1)}}>⚠️</span>}

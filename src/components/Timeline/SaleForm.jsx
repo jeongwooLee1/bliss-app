@@ -1027,6 +1027,9 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     if ((viewOnly || editMode) && _snapshotInput) return; // inputSnapshot 우선
     const existingDetails = reservation?._prefill?.existingDetails;
     if (!Array.isArray(existingDetails) || existingDetails.length === 0) return;
+    // 보유권 사용 행이 있는데 custPkgs가 아직 안 로드됐으면 다음 cycle 대기
+    const _hasPkgUseRow = existingDetails.some(d => /^\[보유권/.test((d.service_name||"").trim()));
+    if (_hasPkgUseRow && (!Array.isArray(custPkgs) || custPkgs.length === 0)) return;
     _prefilledFromDetails.current = true;
 
     const extraSvcRows = []; // 추가 시술 row 후보
@@ -1093,7 +1096,39 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     discountSvcRows.forEach(r => restored.push({ id:'er_'+uid(), kind:'svc', action:'discount', name:r.reason||'', amount:r.amount||0 }));
     discountProdRows.forEach(r => restored.push({ id:'er_'+uid(), kind:'prod', action:'discount', name:r.reason||'', amount:r.amount||0 }));
     if (restored.length > 0) setExtraRows(restored);
-  }, [editMode, reservation, SVC_LIST.length, PROD_LIST.length]);
+    // ─── 보유권 사용/차감 복원 (viewOnly·editMode에서 체크 상태 + qty 복원) ───
+    // sale_details의 [보유권 사용]/[보유권 차감] 행 → custPkgs 매칭 → pkgUse/pkgItems 세팅
+    const _pkgUseRestore = {};
+    const _pkgItemsRestore = {};
+    existingDetails.forEach(d => {
+      const nm = (d.service_name||"").trim();
+      const isPkgUse = /^\[보유권 사용\]\s*/.test(nm);   // 다회권 (회수 차감)
+      const isPkgDed = /^\[보유권 차감\]\s*/.test(nm);   // 다담권 (금액 차감)
+      if (!isPkgUse && !isPkgDed) return;
+      const baseName = nm.replace(/^\[보유권 (사용|차감)\]\s*/, "").trim();
+      if (!baseName) return;
+      // custPkgs에서 service_name 매칭 — 정확 일치 우선, 없으면 prefix 매칭
+      const matched = (custPkgs||[]).find(p => {
+        const pn = String(p?.service_name||"").trim();
+        return pn === baseName || pn.startsWith(baseName + "(") || pn.startsWith(baseName + " ");
+      });
+      if (!matched) return;
+      if (isPkgUse) {
+        const qty = Number(d.qty || 1);
+        _pkgUseRestore[matched.id] = qty;
+        _pkgItemsRestore['pkg__' + matched.id] = { qty };
+      } else {
+        // 다담권: 금액 차감 = unit_price (qty=1로 저장됨)
+        _pkgUseRestore[matched.id] = Number(d.unit_price || 0);
+      }
+    });
+    if (Object.keys(_pkgUseRestore).length > 0) {
+      setPkgUse(prev => ({ ...prev, ..._pkgUseRestore }));
+    }
+    if (Object.keys(_pkgItemsRestore).length > 0) {
+      setPkgItems(prev => ({ ...prev, ..._pkgItemsRestore }));
+    }
+  }, [editMode, reservation, SVC_LIST.length, PROD_LIST.length, custPkgs.length]);
 
   // 다회권 → 시술 목록 최상단에 증감 버튼으로 표시
   // pkgItems: { "pkg__{pkgId}": { qty: 0~N } }
