@@ -3745,8 +3745,16 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                         <span key={t.id} title={t.name} style={{fontSize:9,color:t.color,background:t.color+'22',border:`1px solid ${t.color}66`,borderRadius:3,padding:'0 4px',fontWeight:700,lineHeight:1.3,whiteSpace:'nowrap'}}>{t.name}</span>
                       ))}
                       {empMovePopup?.empId===room.staffId && empMovePopup?.date===selDate && empMovePopup?.branchId===room.branch_id && (<>
-                        <div style={{position:"fixed",inset:0,zIndex:9998}} onClick={e=>{e.stopPropagation();setEmpMovePopup(null);}}/>
-                        <div onClick={e=>e.stopPropagation()} style={{position:"fixed",left:Math.min(empMovePopup.x,window.innerWidth-200),top:empMovePopup.y+8,background:T.bgCard,borderRadius:12,boxShadow:"0 4px 24px rgba(0,0,0,.22)",zIndex:9999,padding:"10px 0 6px",minWidth:200}}>
+                        <div style={{position:"fixed",inset:0,zIndex:9998,background:window.innerWidth<768?"rgba(0,0,0,.4)":"transparent"}} onClick={e=>{e.stopPropagation();setEmpMovePopup(null);}}/>
+                        <div onClick={e=>e.stopPropagation()} style={window.innerWidth<768
+                          ? {position:"fixed",inset:"12px 12px auto 12px",bottom:12,background:T.bgCard,borderRadius:14,boxShadow:"0 4px 24px rgba(0,0,0,.3)",zIndex:9999,padding:"0 0 8px",overflowY:"auto",maxHeight:"calc(100vh - 24px)"}
+                          : {position:"fixed",left:Math.min(empMovePopup.x,window.innerWidth-200),top:empMovePopup.y+8,background:T.bgCard,borderRadius:12,boxShadow:"0 4px 24px rgba(0,0,0,.22)",zIndex:9999,padding:"10px 0 6px",minWidth:200}}>
+                          <div style={{padding:"10px 12px 8px",borderBottom:"1px solid "+T.border,display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,background:T.bgCard,zIndex:1}}>
+                            <span style={{fontSize:12,fontWeight:800,color:T.text}}>{room.staffId} · 직원 이동/근무</span>
+                            <button onClick={e=>{e.stopPropagation();setEmpMovePopup(null);}}
+                              style={{width:24,height:24,padding:0,border:"none",background:T.gray100,borderRadius:6,cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:800,color:T.textMuted,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}
+                              title="닫기">×</button>
+                          </div>
                           {/* 근무시간 설정 + 종일 근무지 변경 — 하단 저장 버튼으로 통합 */}
                           <div style={{padding:"8px 12px",borderBottom:"1px solid "+T.border}}>
                             <div style={{fontSize:10,color:T.textMuted,marginBottom:4,fontWeight:700}}>근무시간</div>
