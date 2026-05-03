@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { T } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY, sbHeaders, matchAllTokens } from '../../lib/sb'
+import { searchDocs, buildDocsContext } from '../../lib/aiDocs'
 import { fromDb } from '../../lib/db'
 import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, useSessionState, TTL } from '../../lib/utils'
 import I from '../common/I'
@@ -722,6 +723,17 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       const branchCtx = branchText ? `\n\n[지점 정보]\n${branchText}` : "";
       const pkgInfo = findCustPkgInfo(sel.user_id);
       const pkgCtx = pkgInfo ? `\n\n[이 고객의 다회권]\n${pkgInfo}` : "";
+      // 📚 RAG: 학습 문서에서 마지막 고객 메시지 관련 청크 검색
+      let docsCtx = "";
+      try {
+        const lastInMsg = convo.filter(m=>m.direction==="in"&&m.message_text&&!String(m.message_text).startsWith("[")).slice(-1)[0]?.message_text || "";
+        const bizId = data?.business?.id || data?.businesses?.[0]?.id || "biz_khvurgshb";
+        if (lastInMsg && bizId) {
+          const hits = await searchDocs({ question: lastInMsg, businessId: bizId, geminiKey: key, threshold: 0.5, count: 5 });
+          const ctx = buildDocsContext(hits);
+          if (ctx) docsCtx = `\n\n${ctx}`;
+        }
+      } catch (_) { /* RAG 실패해도 답변은 진행 */ }
       // 매출 유도 + 왁서 성별 응대 정책 (고정 주입)
       const salesPolicyCtx = `
 
@@ -768,7 +780,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
 ★ 여자 왁서 선호 고객도 동일 — 예약 요청사항 기재 시 배정 도와드린다고 안내
 ★ 특정 관리사 이름은 언급 금지`;
 
-      const prompt=`${chatPrompt}${salesPolicyCtx}${priceCtx}${branchCtx}${pkgCtx}\n\n[대화]\n${lastMsgs}\n\n고객 마지막 메시지에 답변하세요. JSON만 출력:\n{"reply":"${langName}로 작성한 답변","ko":"한국어 번역"}`;
+      const prompt=`${chatPrompt}${salesPolicyCtx}${priceCtx}${branchCtx}${pkgCtx}${docsCtx}\n\n[대화]\n${lastMsgs}\n\n고객 마지막 메시지에 답변하세요. 답변은 위 [학습 문서] 내용을 최우선으로 참고하세요. JSON만 출력:\n{"reply":"${langName}로 작성한 답변","ko":"한국어 번역"}`;
       const res=await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="+key,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
       if(res.status===429){alert("AI 요청 한도 초과. 잠시 후 시도해주세요.");return;}
       if(!res.ok){const err=await res.text();alert("AI API 오류: "+res.status);console.error("[genAI] API error:",err);return;}
