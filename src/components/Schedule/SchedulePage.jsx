@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { _activeBizId } from '../../lib/db'
+import { hasFeature } from '../../lib/features'
 import { T, SCH_BRANCH_MAP } from '../../lib/constants'
 import { I } from '../common/I'
 import { useScheduleData, useEmployees } from '../../lib/useData'
@@ -879,7 +880,8 @@ export default function SchedulePage({ employees: propEmps }) {
           </div>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:4 }}>
-          {/* Auto assign */}
+          {/* Auto assign — 고급 모드만 */}
+          {hasFeature('schedule_advanced') && (<>
           <button onClick={handleAutoAssign} style={{
             display:'inline-flex', alignItems:'center', gap:6,
             background:isConfirmed ? '#aaa' : isAssigning ? T.gray400 : T.primary, color:'#fff', border:'none',
@@ -890,13 +892,14 @@ export default function SchedulePage({ employees: propEmps }) {
             {isAssigning ? '배치중...' : isConfirmed ? '확정됨' : '⚡ 배치'}
           </button>
           <div style={{ width:1, height:24, background:T.border, margin:'0 2px' }}/>
+          </>)}
           {/* Icon buttons */}
           {[
-            { icon:'lock', tip:isConfirmed ? '잠금해제' : '배치확정', fn:toggleLock, confirmed:isConfirmed },
+            hasFeature('schedule_advanced') && { icon:'lock', tip:isConfirmed ? '잠금해제' : '배치확정', fn:toggleLock, confirmed:isConfirmed },
             { icon:'trash2', tip:'초기화', fn:() => { if (isConfirmed) { toast_('확정 해제 후 초기화할 수 있습니다', 'err'); return } setShowResetConfirm(true) }, danger:true },
             { icon:'download', tip:'CSV', fn:handleExportCSV },
             { icon:'printer', tip:'인쇄', fn:() => window.print() },
-          ].map(({ icon, tip, fn, danger, confirmed }) => (
+          ].filter(Boolean).map(({ icon, tip, fn, danger, confirmed }) => (
             <button key={tip} onClick={fn} title={tip} style={{
               width:32, height:32, borderRadius:T.radius.md,
               border:`1px solid ${confirmed ? '#2a9a5a55' : danger ? T.danger+'55' : T.border}`,
@@ -920,12 +923,12 @@ export default function SchedulePage({ employees: propEmps }) {
               <div style={{ position:'fixed', inset:0, zIndex:149 }} onClick={() => setShowSettings(false)}/>
               <div style={{ position:'absolute', top:'calc(100% + 6px)', right:0, background:T.bgCard, borderRadius:T.radius.lg, boxShadow:T.shadow.lg, zIndex:150, overflow:'hidden', minWidth:168, border:'1px solid '+T.border }}>
                 {[
-                  { label:'규칙 설정', icon:'settings', action:() => { setShowRuleConfig(true); setShowSettings(false) } },
+                  hasFeature('schedule_advanced') && { label:'규칙 설정', icon:'settings', action:() => { setShowRuleConfig(true); setShowSettings(false) } },
                   // 원장 설정 → 직원 설정의 "휴무 설정" 탭으로 통합
                   { label:'직원 설정', icon:'users', action:() => { setShowEmpSettings(true); setShowSettings(false) } },
-                  { label:'지점지원 설정', icon:'building', action:() => { setShowSupportSettings(true); setShowSettings(false) } },
-                  { label:'백업', icon:'fileText', action:() => { setShowSnapshots(true); setShowSettings(false) } },
-                ].map(({ label, icon, action }, idx, arr) => (
+                  hasFeature('branch_support') && { label:'지점지원 설정', icon:'building', action:() => { setShowSupportSettings(true); setShowSettings(false) } },
+                  hasFeature('schedule_advanced') && { label:'백업', icon:'fileText', action:() => { setShowSnapshots(true); setShowSettings(false) } },
+                ].filter(Boolean).map(({ label, icon, action }, idx, arr) => (
                   <button key={label} onClick={action} style={{
                     display:'flex', alignItems:'center', gap:10, width:'100%', padding:'10px 14px', border:'none',
                     borderBottom:idx < arr.length-1 ? '1px solid '+T.border : 'none',
@@ -940,8 +943,8 @@ export default function SchedulePage({ employees: propEmps }) {
         </div>
       </div>
 
-      {/* Confirmed banner */}
-      {isConfirmed && (
+      {/* Confirmed banner — 고급 모드만 */}
+      {hasFeature('schedule_advanced') && isConfirmed && (
         <div style={{ background:'#e8f8ee', borderBottom:'2px solid #2a9a5a', padding:'8px 16px', display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
           <I name="lock" size={14} color="#2a9a5a"/>
           <span style={{ fontSize:12, fontWeight:700, color:'#1a7a4a' }}>✅ 배치 확정됨 — 자동배치가 비활성화되어 있습니다.</span>
@@ -949,8 +952,8 @@ export default function SchedulePage({ employees: propEmps }) {
         </div>
       )}
 
-      {/* Violations */}
-      {violations.length > 0 && (
+      {/* Violations — 고급 모드만 */}
+      {hasFeature('schedule_advanced') && violations.length > 0 && (
         <div className="np" style={{ background:T.dangerLt, borderBottom:'1px solid '+T.danger+'44', padding:'6px 14px', display:'flex', gap:6, flexWrap:'wrap', alignItems:'center', flexShrink:0 }}>
           <span style={{ fontSize:T.fs.xs, fontWeight:T.fw.bolder, color:T.danger }}>⚠ 규칙 위반 ({violations.length}건):</span>
           {violations.slice(0,6).map((v, i) => <span key={i} style={{ fontSize:T.fs.xxs, color:T.danger, background:T.bgCard, border:'1px solid '+T.danger+'55', borderRadius:T.radius.sm, padding:'1px 7px', fontWeight:T.fw.bold }}>{v}</span>)}
@@ -985,11 +988,12 @@ export default function SchedulePage({ employees: propEmps }) {
                   <td style={{ ...stickyCol, padding:'6px 10px 3px', border:'none' }}>
                     <div style={{ display:'inline-flex', alignItems:'center', gap:6, background:branch.color+'18', padding:'3px 12px 3px 8px', borderRadius:6, borderLeft:`4px solid ${branch.color}` }}>
                       <span style={{ fontSize:12, fontWeight:700, color:branch.color }}>{branch.name}</span>
-                      <span style={{ fontSize:10, color:T.textMuted, fontWeight:600 }}>최소 {minS}명</span>
+                      {hasFeature('schedule_advanced') && <span style={{ fontSize:10, color:T.textMuted, fontWeight:600 }}>최소 {minS}명</span>}
                     </div>
                   </td>
                   {days.map(day => {
                     if (day.isNext) return <td key={day.ds} style={{ padding:0, border:'none' }}/>
+                    if (!hasFeature('schedule_advanced')) return <td key={day.ds} style={{ padding:0, border:'none' }}/>
                     const cnt = branchWorkerCount(branch.id, branch.name, day.ds)
                     const short = cnt < minS
                     return <td key={day.ds} style={{ padding:'2px 1px', textAlign:'center', border:'none' }}>
