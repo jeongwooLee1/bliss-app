@@ -817,3 +817,89 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - **회원가 규칙 수정 시 `businesses.settings` 전체 parse → 수정 → stringify** (JSON 문자열 내부)
 - **v3.7.0이 서버에 덮어써지는 경쟁 케이스 발생** — v3.7.1 재배포로 복구. 배포 후 `curl live version.txt` 반드시 검증
 - **WhatsApp rate limit**: 24h 단위로 걸림. 1회라도 여러번 재요청하면 같은 번호 OTP 전부 차단 (SMS + 음성 통화 둘 다)
+
+### v3.7.391 → v3.7.408 — 베타 격리 + 동반자 묶음 + 핫픽스 (2026-05-03)
+
+#### 베타 타임라인 데이터 격리 (v3.7.395)
+- `reservations.is_beta boolean default false` 컬럼 + `idx_reservations_is_beta` partial index
+- AppShell의 reservations 5개 fetch (초기 + visibilitychange + online + 60초 폴링 + 과거 lazy load) 모두 `&is_beta=eq.false` 필터
+- Realtime 핸들러에서 `payload.new.is_beta === true`면 라이브 state 업데이트 차단
+- TimelinePage가 `betaGroupMode=true`일 때 `data` prop을 `_liveData`로 받고 useMemo wrap → `_betaReservations` 별도 fetch (30초 폴링) 후 reservations만 교체
+- `setData` wrap: 베타 모드면 reservations 변경만 `_setBetaReservations`에 격리, 다른 필드(고객·매출 등) 변경은 무시 → 라이브 보호
+- 베타에서 만든 예약 핸들러: 알림톡 큐 INSERT 차단(3곳), 자동 고객 생성 SKIP, ReservationModal 매출등록 버튼 disabled
+- ReservationModal·TimelinePage handleSave에 `if (betaGroupMode) item.isBeta = true` 강제 마킹 + sb.upsert 시 재마킹
+
+#### 동반자 묶음 — Ctrl/Cmd 복사로 통일 (v3.7.397 → v3.7.404)
+- 처음에 베타 모달 안에 동반자 추가 카드 UI (companion state) 만들었다가 v3.7.398에서 **완전 제거**. 묶음은 Ctrl 복사 하나로 일원화.
+- TimelinePage handleDragStart에 `isCopyDragRef` ref + Ctrl/Cmd 키 캡처. mousemove마다 갱신, drop 시점에 분기.
+- 복사 시 새 reservation INSERT, 원본은 그대로. 끊는 필드: `reservation_id`(새 부여) + `prev_reservation_id` + 매출 자동 끊김(reservation_id 새 거) + `scheduleLog`/`tsLog` 초기화
+- **Ctrl 복사 후 동반자 N 자동 suffix**: base name = `이정우 동반자2 → 이정우`, 같은 날 같은 base name 카운트 = 새 동반자 번호. cust_id/phone/email/gender/num 모두 비움(친구=별도 사람)
+- **Ctrl 복사 시 reservation_group_id 자동 부여**: 원본 group 없으면 새로 만들고 원본+복사본 둘 다 같은 group_id로(원본 UPDATE + 복사본 INSERT). 원본도 메모리 setData로 즉시 반영
+- **블록 색 도트**: 같은 group_id 멤버 2명 이상이면 이름 앞에 작은 색 원 표시. group_id 해시로 색 결정(8색 팔레트), 같은 묶음 = 같은 색
+- **커플룸 태그(`bvkgtel09`) 자동 동반자** (v3.7.403): selected_tags에 커플룸 포함 + 신규 등록 시 같은 staff/time/dur로 동반자 1명 자동 INSERT, room_type='shared'. 이미 같은 base name 동반자 있으면 재추가 안 함
+- **PGRST102 회피** (v3.7.404): bulk upsert 시 row마다 toDb 키 집합 다르면 PostgREST 거부. 모든 row 키 합집합 계산 후 빠진 키는 null로 채워 정규화
+
+#### 매출 확인 모달 보유권 차감 스냅샷 복원 (v3.7.400 → v3.7.401)
+- snapshot.input에 `pkgUse`만 저장하고 `pkgItems`(다회권 UI 체크 상태)는 누락 → viewOnly에서 좌측 "📦 보유 패키지 ✓ N회 사용" 배지가 안 떴음
+- snapshot 저장 시 `pkgItems`도 포함 (신규 매출)
+- 복원 시 snapshot에 `pkgItems` 있으면 set, 구버전(snapshot에 pkgItems 없음) fallback: `pkgUse` → `pkgItems` 자동 동기화 useEffect (custPkgs로 다회권/다담권 판정, 다회권만 pkgItems 채움)
+- existingDetails 처리: `[보유권 사용]`/`[보유권 차감]` 행 → custPkgs service_name 매칭 → pkgUse/pkgItems 자동 복원
+
+#### 미배정 칼럼 클릭 정확 배치 (v3.7.402)
+- 빈 셀 클릭 시 미배정 칼럼이면 `roomId=""` 비워서 → 자동 배치 알고리즘이 같은 시간대 충돌로 **다른 미배정 칼럼**에 떨어뜨리던 버그
+- handleCellClick에서 미배정/일반 룸 클릭 시 `room.id`(예: `nv_{bid}_0`) 유지 → naverAssignments Phase 1(명시 배치)이 클릭한 칼럼에 정확히 표시
+- handleSave에서 `nv_*` ID 정리 로직 제거(blank_/st_만 정리), DB에도 `nv_*` 그대로 저장. 컬럼 수 변경 시 fallback은 자동 배치
+
+#### last_date 컬럼 오타 fix (서버 + 클라이언트)
+- `customers` 테이블에 `last_date` 컬럼은 없음 — `last_visit`. PostgREST 400 → customer=None → `is_new_customer` trigger가 `(not customer)`로 항상 True → **모든 매칭된 기존 고객한테 신규 태그 부여**
+- 서버 `bliss_naver.py` `fetch_customer_summary` SELECT `last_date` → `last_visit` 정정 + bliss-naver 재시작
+- 클라이언트 `ReservationModal.jsx`도 같은 오타 → 정정 + `lastDate` 별칭 매핑(tagAutoTrigger 호환)
+- DB backfill 11건 (오늘+ 네이버 예약, visits>0인데 신규 태그 잘못 부여된 케이스 정리)
+
+#### AI 프롬프트 "상담 후" 규칙 반전 (v3.7.408 동시 서버 패치)
+- 기존: "'상담 후' 표현이 있으면 앞에 나온 부위를 시술로 선택" → "페이스상담후" 메모를 "풀페이스"로 잘못 매칭
+- 변경: "'상담', '상담후', '상담 후' 표현이 들어간 부위는 미정 상태이므로 매칭하지 마세요"
+- 서버 sed로 적용 + 재시작. 기존 잘못 매칭된 selected_services는 backfill 안 함 (유저 결정)
+
+#### ★기존상담 트리거 활성 보유권 체크 (v3.7.391)
+- `package_expired` 트리거 의미 변경: 만료 보유권 1건 이상 + **활성 보유권 0개**(다담권 잔액>0 또는 다회권/연간권 잔여>0 + 비만료)인 경우만
+- 활성 단골 고객(다담권 잔액 있는 등)은 ★기존상담 부착 X
+- 클라이언트 `tagAutoTrigger.js` + 서버 `_at_has_active_pkg` 동시 적용
+
+#### 쿠폰 식별 단순화 (v3.7.390)
+- `_at_is_coupon`/`_isCoupon`에서 note의 `쿠폰SEQ:` 패턴 제거 — 네이버 결제 추적용 SEQ라 실제 쿠폰 여부 X
+- service_name에 "쿠폰" 키워드만 매칭 (왁싱 PKG의 쿠폰SEQ:534042 같은 케이스 오분류 방지 → ★마지막회차 트리거 정상 동작)
+
+#### 막기 컬럼 헤더 SVG (v3.7.408)
+- 회색 원 + 가로 막대(no-entry) → 초록 원(네이버 #03C75A 50%) + 흰 N + 우측 상단 빨강 금지 도트
+- 유저 제공 SVG (Z:\bliss\네이버막기.zip) 그대로 인라인 적용
+
+#### 막힘 슬롯 동그라미 가시성 (v3.7.394)
+- 30분 가이드 박스(불투명 #E8F5E9, zIndex:2)가 막힘 인디케이터(zIndex:1) 위를 덮어 동그라미가 가려짐
+- 인디케이터 zIndex 1 → 3 (가이드 위로)
+
+#### 신규예약 알림 배너 (v3.7.405 → v3.7.406)
+- 한 번에 모든 외부 채널로 확장(v3.7.405) → 즉시 롤백(v3.7.406) 네이버만 유지
+- pending/request → 🟠 확정대기 (주황), reserved/confirmed → 🆕 새 예약 (초록)
+- 라벨 옆 작은 "네이버" 배지 추가, 20초 자동 사라짐, 클릭하면 즉시 닫힘
+
+#### 사이드바 베타 메뉴 가시성 (v3.7.392 → v3.7.393)
+- 메뉴 조건 `owner||super` → `isMaster`(manager 포함) 확장
+- Sidebar.jsx의 카테고리 화이트리스트에 `timeline-beta` 누락이라 nav 들어와도 안 보였음 — 추가
+
+#### scheduleLog array TypeError 핫픽스 (v3.7.399)
+- v3.7.398에서 Ctrl 복사 시 `scheduleLog: []`(array)로 저장 → DB jsonb로 저장돼 fetch 시 array 그대로 반환 → ReservationModal `(item.scheduleLog || "").trim()`에서 TypeError → 베타·라이브 모두 페이지 진입 즉시 크래시
+- `scheduleLog: ""` 빈 문자열로 변경 + ReservationModal에서 array도 안전하게 join("\n") 후 trim
+
+#### 공지 등록
+- "👥 동반자 빠른 등록 — Ctrl 드래그 복사 + 커플룸 자동 동반자" 게시 (`schedule_data.bliss_notices_v1` 배열 맨 앞)
+- value는 string으로 저장된 JSON 배열이라 `(value #>> '{}')::jsonb` parse → jsonb 조작 → `to_jsonb(merged::text)`로 다시 stringify
+
+### 주의사항 (v3.7.408 이후 참고)
+- **베타 페이지 = 데이터 격리 sandbox** — 베타에서 만든 모든 예약은 `is_beta=true`로 저장되어 라이브 어디에도 안 보임. 베타에서 매출 등록·알림톡·고객 자동생성 모두 차단. 네이버 스크래퍼는 항상 라이브(`is_beta=false`)
+- **Ctrl/Cmd 드래그 = 복사** (라이브·베타 공통). 동반자N suffix 자동, cust_id 비움, group_id 자동 묶음
+- **커플룸 태그 부착 + 저장 시 동반자 자동 INSERT** (신규 등록만, 기존 동반자 있으면 재추가 안 함)
+- **bulk upsert 시 키 집합 정규화 필수** (PGRST102 "All object keys must match" 회피)
+- **last_visit 컬럼 사용** (last_date 아님) — customers 테이블 query 작성 시 주의
+- **AI 분석 프롬프트의 "상담" 키워드 = 매칭 금지** (정반대 규칙)
+- **scheduleLog는 string** (DB jsonb 회피) — 배열로 저장하면 .trim() 호출에서 크래시
