@@ -180,8 +180,22 @@ export default function FloatingAI({ data, currentUser, isMaster, bizId }) {
     return () => timers.forEach(t => clearTimeout(t))
   }, [open])
   useEffect(() => {
-    if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight
+    if (!listRef.current) return
+    // 창 열림/메시지 변경 시 맨 아래로 — DOM mount/typewriter 대비 RAF 2회
+    const scroll = () => { if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight }
+    scroll()
+    requestAnimationFrame(() => { scroll(); requestAnimationFrame(scroll) })
   }, [messages, open])
+
+  // 마크다운 sanitize — **볼드**, *이탤릭*, # 헤더, --- 구분선 등 제거 (평문화)
+  const _sanitize = (s) => String(s || '')
+    .replace(/\*\*([^*\n]+)\*\*/g, '$1')      // **볼드**
+    .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '$1') // *이탤릭*
+    .replace(/^#{1,6}\s+/gm, '')               // # 헤더
+    .replace(/^>\s+/gm, '')                    // > 인용
+    .replace(/^---+$/gm, '')                   // --- 구분선
+    .replace(/`([^`\n]+)`/g, '$1')             // `코드`
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')   // [텍스트](url)
 
   const faqItems = useMemo(() => {
     try {
@@ -533,10 +547,20 @@ export default function FloatingAI({ data, currentUser, isMaster, bizId }) {
                   {m.image && <img src={m.image} alt="첨부" style={{ display: 'block', maxWidth: 260, maxHeight: 260, borderRadius: 12, marginBottom: m.text && m.text !== '[이미지]' ? 6 : 0 }}/>}
                   {(!m.image || (m.text && m.text !== '[이미지]')) && (
                     <div style={{ padding: m.image && isUser ? '0 8px' : 0 }}>
-                      {m._typewriter ? <Typewriter text={m.text}/> : m.text}
+                      {m._typewriter ? <Typewriter text={isUser ? m.text : _sanitize(m.text)}/> : (isUser ? m.text : _sanitize(m.text))}
                     </div>
                   )}
                 </div>
+                {!isUser && !m.action && m.text && (
+                  <button onClick={async () => {
+                    try { await navigator.clipboard.writeText(_sanitize(m.text)); }
+                    catch { /* noop */ }
+                  }}
+                    title="답변 복사"
+                    style={{ fontSize: 10, color: T.gray500, background: '#fff', border: '1px solid '+T.border, padding: '2px 8px', borderRadius: 10, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    📋 복사
+                  </button>
+                )}
                 {!isUser && m.unknown && (
                   <span style={{ fontSize: 10, color: '#B45309', background: '#FEF3C7', border: '1px solid #FCD34D', padding: '2px 7px', borderRadius: 10, fontWeight: 700 }}>
                     📌 답변 부족 — 요청사항으로 자동 등록됨
