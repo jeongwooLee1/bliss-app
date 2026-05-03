@@ -23,7 +23,7 @@ import FloatingAI from '../components/BlissAI/FloatingAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.405"
+const BLISS_V = "3.7.406"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1340,11 +1340,11 @@ function App() {
               try {
                 const parsed = row.id ? fromDb("reservations", [row])[0] : null;
                 if (ev === "INSERT" && parsed) {
-                  // 외부 채널 신규 예약 알림 (직원 직접 등록 source="" 제외)
+                  // 네이버 신규 예약 알림 (확정대기 + 자동확정 둘 다)
                   const _src = (parsed.source || "").trim();
-                  const _isExternal = _src !== "" && _src !== "manual";
+                  const _isNaver = _src === "naver" || _src === "네이버";
                   const _isNewState = ["pending","request","reserved","confirmed"].includes(parsed.status);
-                  if (_isExternal && _isNewState) {
+                  if (_isNaver && _isNewState) {
                     try {
                       const isPending = parsed.status === "pending" || parsed.status === "request";
                       if (window.__blissAlertDiv) window.__blissAlertDiv.remove();
@@ -1352,7 +1352,7 @@ function App() {
                       window.__blissAlertDiv = div;
                       const bg = isPending ? "#ff9800" : "#4CAF50";
                       const label = isPending ? "🟠 확정대기" : "🆕 새 예약";
-                      div.innerHTML = `<div style="position:fixed;top:20px;right:20px;z-index:99999;background:${bg};color:#fff;padding:16px 24px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.3);font-size:15px;font-weight:800;animation:slideIn .3s;cursor:pointer;max-width:360px;" onclick="this.parentElement.remove()">🔔 ${label} <span style="font-size:11px;font-weight:600;opacity:.85;background:rgba(0,0,0,.15);padding:2px 6px;border-radius:4px;margin-left:4px;">${_src}</span><br><span style="font-size:13px;font-weight:500;">${parsed.custName||"신규 예약"} · ${parsed.date||""} ${parsed.time||""}</span></div>`;
+                      div.innerHTML = `<div style="position:fixed;top:20px;right:20px;z-index:99999;background:${bg};color:#fff;padding:16px 24px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.3);font-size:15px;font-weight:800;animation:slideIn .3s;cursor:pointer;max-width:360px;" onclick="this.parentElement.remove()">🔔 ${label} <span style="font-size:11px;font-weight:600;opacity:.85;background:rgba(0,0,0,.15);padding:2px 6px;border-radius:4px;margin-left:4px;">네이버</span><br><span style="font-size:13px;font-weight:500;">${parsed.custName||"네이버 예약"} · ${parsed.date||""} ${parsed.time||""}</span></div>`;
                       document.body.appendChild(div);
                       setTimeout(()=>{ try{div.remove();}catch(e){} }, 20000);
                     } catch(e){}
