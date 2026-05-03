@@ -72,13 +72,14 @@ function AdminAIDocs({ bizId, geminiKey }) {
       <div style={{fontWeight:T.fw.bold,marginBottom:4}}>📚 학습 문서 — RAG 시스템</div>
       매장 노하우/매뉴얼/가격표 등을 업로드하면 BlissAI가 그 내용을 학습해 답변에 활용합니다.
       <div style={{fontSize:9,color:T.textMuted,marginTop:4}}>
-        지원 형식: PDF · 워드(.docx) · 엑셀(.xlsx) · 이미지(.jpg/.png — 한글 OCR) · 텍스트(.txt)
+        지원 형식: PDF · 워드(.docx) · 파워포인트(.pptx) · 엑셀(.xlsx/.csv) · 한글(.hwpx) · HTML · RTF · 텍스트(.txt/.md/.json) · 이미지(.jpg/.png/.webp — 한글 OCR)
+        <br/>※ 한글 .hwp(구버전 바이너리)·워드 .doc는 PDF 또는 .docx로 변환 후 업로드 필요
       </div>
     </div>
 
     <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:12,flexWrap:'wrap'}}>
       <input ref={fileRef} type="file" multiple
-        accept=".pdf,.docx,.xlsx,.xls,.txt,image/*"
+        accept=".pdf,.docx,.pptx,.xlsx,.xls,.csv,.txt,.md,.markdown,.json,.log,.html,.htm,.rtf,.hwpx,image/*"
         onChange={handleUpload}
         style={{display:'none'}}/>
       <button onClick={()=>fileRef.current?.click()} disabled={!!progress || !geminiKey}

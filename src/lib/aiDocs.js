@@ -11,6 +11,7 @@
 import * as pdfjsLib from 'pdfjs-dist'
 import mammoth from 'mammoth'
 import * as XLSX from 'xlsx'
+import JSZip from 'jszip'
 import { sb, SB_URL, sbHeaders } from './sb'
 import { genId } from './utils'
 
@@ -54,6 +55,61 @@ async function extractTXT(file) {
   return await file.text()
 }
 
+// 파워포인트 .pptx — zip 풀어서 ppt/slides/slide*.xml의 <a:t> 텍스트 추출
+async function extractPPTX(file) {
+  const buf = await file.arrayBuffer()
+  const zip = await JSZip.loadAsync(buf)
+  const slides = []
+  // slide*.xml 파일 정렬 (slide1, slide2, ...)
+  const slideFiles = Object.keys(zip.files)
+    .filter(n => /^ppt\/slides\/slide\d+\.xml$/.test(n))
+    .sort((a, b) => {
+      const na = parseInt(a.match(/slide(\d+)\.xml$/)[1], 10)
+      const nb = parseInt(b.match(/slide(\d+)\.xml$/)[1], 10)
+      return na - nb
+    })
+  for (let i = 0; i < slideFiles.length; i++) {
+    const xml = await zip.files[slideFiles[i]].async('string')
+    // <a:t>텍스트</a:t> 추출 (개행 제거 + 단어 사이 공백)
+    const matches = xml.match(/<a:t[^>]*>([\s\S]*?)<\/a:t>/g) || []
+    const text = matches.map(m => m.replace(/<[^>]+>/g, '').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&apos;/g,"'")).join(' ')
+    if (text.trim()) slides.push(`[슬라이드 ${i + 1}]\n${text}`)
+  }
+  return slides.join('\n\n')
+}
+
+// 한글 .hwpx (zip 기반) — Contents/section*.xml의 <hp:t> 텍스트 추출
+async function extractHWPX(file) {
+  const buf = await file.arrayBuffer()
+  const zip = await JSZip.loadAsync(buf)
+  const sectionFiles = Object.keys(zip.files)
+    .filter(n => /^Contents\/section\d+\.xml$/.test(n))
+    .sort()
+  const out = []
+  for (const f of sectionFiles) {
+    const xml = await zip.files[f].async('string')
+    // <hp:t>텍스트</hp:t> 또는 <t>...</t> 추출
+    const matches = xml.match(/<(?:hp:)?t[^>]*>([\s\S]*?)<\/(?:hp:)?t>/g) || []
+    const text = matches.map(m => m.replace(/<[^>]+>/g, '').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&')).join(' ')
+    if (text.trim()) out.push(text)
+  }
+  return out.join('\n\n')
+}
+
+// HTML — 태그 제거 + 텍스트만
+async function extractHTML(file) {
+  const html = await file.text()
+  return html.replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&')
+    .replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+// RTF — 컨트롤 워드 제거 + 텍스트만
+async function extractRTF(file) {
+  const rtf = await file.text()
+  return rtf.replace(/\\[a-z]+-?\d*\s?/gi, '').replace(/[{}]/g, '').replace(/\\\*[^;]*;/g, '').replace(/[ \t]+/g, ' ').trim()
+}
+
 // 이미지 OCR — Gemini Vision (한글 지원)
 async function extractImage(file, geminiKey) {
   if (!geminiKey) throw new Error('Gemini API 키가 설정되지 않음 (관리설정→AI 설정)')
@@ -83,10 +139,19 @@ export async function extractText(file, geminiKey) {
   const type = (file.type || '').toLowerCase()
   if (name.endsWith('.pdf') || type === 'application/pdf') return { text: await extractPDF(file), kind: 'pdf' }
   if (name.endsWith('.docx') || type.includes('wordprocessingml')) return { text: await extractDOCX(file), kind: 'docx' }
-  if (name.endsWith('.xlsx') || name.endsWith('.xls') || type.includes('spreadsheetml') || type.includes('ms-excel'))
+  if (name.endsWith('.pptx') || type.includes('presentationml')) return { text: await extractPPTX(file), kind: 'pptx' }
+  if (name.endsWith('.xlsx') || name.endsWith('.xls') || name.endsWith('.csv') || type.includes('spreadsheetml') || type.includes('ms-excel') || type === 'text/csv')
     return { text: await extractXLSX(file), kind: 'xlsx' }
-  if (name.endsWith('.txt') || type === 'text/plain') return { text: await extractTXT(file), kind: 'txt' }
-  if (type.startsWith('image/')) return { text: await extractImage(file, geminiKey), kind: 'image' }
+  if (name.endsWith('.hwpx')) return { text: await extractHWPX(file), kind: 'hwpx' }
+  if (name.endsWith('.html') || name.endsWith('.htm') || type === 'text/html') return { text: await extractHTML(file), kind: 'html' }
+  if (name.endsWith('.rtf') || type === 'application/rtf' || type === 'text/rtf') return { text: await extractRTF(file), kind: 'rtf' }
+  if (name.endsWith('.txt') || name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.json') || name.endsWith('.log')
+    || type === 'text/plain' || type === 'text/markdown' || type === 'application/json' || type.startsWith('text/'))
+    return { text: await extractTXT(file), kind: 'txt' }
+  if (type.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|bmp|heic)$/.test(name)) return { text: await extractImage(file, geminiKey), kind: 'image' }
+  // .hwp(바이너리)·.doc(구버전)·기타 — 한글에서 PDF 변환 후 업로드 권장
+  if (name.endsWith('.hwp')) throw new Error('한글 .hwp는 PDF로 변환 후 업로드해주세요 (한글 → 파일 → PDF로 저장)')
+  if (name.endsWith('.doc')) throw new Error('워드 .doc(구버전)은 .docx로 저장 후 업로드해주세요')
   throw new Error(`지원하지 않는 파일 형식: ${file.name}`)
 }
 
