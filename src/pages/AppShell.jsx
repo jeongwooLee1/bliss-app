@@ -4,6 +4,7 @@ import { T, SYSTEM_TAG_NAME_NEW_CUST, SYSTEM_TAG_NAME_PREPAID, SYSTEM_SRC_NAME_N
 import { sb, SB_URL, SB_KEY, sbHeaders } from '../lib/sb'
 import { supabase as _supaClient } from '../lib/supabase'
 import { fromDb, resolveSystemIds, setActiveBiz, _activeBizId } from '../lib/db'
+import { refreshBranchesSch } from '../components/Schedule/scheduleConstants'
 import Timeline from '../components/Timeline/TimelinePage'
 import ReservationList from '../components/Reservations/ReservationsPage'
 import AdminInbox from '../components/Messages/MessagesPage'
@@ -1209,6 +1210,8 @@ function App() {
           staff, resSources: db.resSources || [],
           branchGroups: db.branchGroups || [],
         });
+        // SchedulePage 등에서 쓰는 BRANCHES_SCH 동적 갱신 (멀티테넌트)
+        refreshBranchesSch(db.branches);
         // 권한: owner/super=전지점, manager=본인 branch_ids만
         const userBids = (() => {
           let b = user.branch_ids || user.branches;
