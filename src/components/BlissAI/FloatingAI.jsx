@@ -7,6 +7,7 @@ import { T } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY } from '../../lib/sb'
 import { genId } from '../../lib/utils'
 import { buildFullPrompt } from './contextBuilder'
+import { searchDocs, buildDocsContext } from '../../lib/aiDocs'
 import { buildWriteIntentPrompt, ACTION_SCHEMAS } from './actionSchemas'
 import { validateAction, buildPreview, executeAction } from './actionRunner'
 import { parseBookingWithAI, findCustomerForBooking, findReservationsToCancel } from '../../lib/aiBookParse'
@@ -381,7 +382,17 @@ export default function FloatingAI({ data, currentUser, isMaster, bizId }) {
       }
       // ── 2단계: 일반 조회/대화
       const role = isMaster ? 'master' : 'staff'
-      const prompt = buildFullPrompt({ question: q, data, faqItems, role, extraContext: '' })
+      // 📚 RAG: 업로드된 문서에서 질문 관련 청크 검색 → extraContext에 주입
+      let extraContext = ''
+      try {
+        const apiKey = window.__systemGeminiKey || window.__geminiKey || localStorage.getItem('bliss_gemini_key') || ''
+        if (apiKey && bizId) {
+          const hits = await searchDocs({ question: q, businessId: bizId, geminiKey: apiKey, threshold: 0.0, count: 8 })
+          const ctx = buildDocsContext(hits)
+          if (ctx) extraContext = ctx
+        }
+      } catch (_) { /* 문서 검색 실패해도 답변 진행 */ }
+      const prompt = buildFullPrompt({ question: q, data, faqItems, role, extraContext })
       const answer = await callAI(prompt, { smart: !!opts.smart, image: img })
       const unk = detectUnknown(answer)
       setMessages(prev => [...prev, { role: 'assistant', text: answer, at: Date.now(), unknown: unk, smart: !!opts.smart, _typewriter: true }])
