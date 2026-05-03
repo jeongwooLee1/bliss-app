@@ -356,20 +356,34 @@ export async function ingestDocument({ file, businessId, geminiKey, uploadedBy =
 }
 
 // ─── 질문으로 top K 청크 검색 ───────────────────────────────────────────────
-export async function searchDocs({ question, businessId, geminiKey, threshold = 0.5, count = 5 }) {
-  if (!question || !businessId || !geminiKey) return []
+export async function searchDocs({ question, businessId, geminiKey, threshold = 0.0, count = 8 }) {
+  if (!question || !businessId || !geminiKey) {
+    console.warn('[searchDocs] skip — missing args', { hasQ: !!question, hasBiz: !!businessId, hasKey: !!geminiKey })
+    return []
+  }
   try {
     const qvec = await embedQuery(question, geminiKey)
-    if (!qvec.length) return []
+    if (!qvec.length) {
+      console.warn('[searchDocs] embedQuery returned empty vector')
+      return []
+    }
     const r = await fetch(`${SB_URL}/rest/v1/rpc/match_documents`, {
       method: 'POST',
       headers: { ...sbHeaders, 'Content-Type': 'application/json' },
       body: JSON.stringify({ p_biz_id: businessId, query_embedding: qvec, match_threshold: threshold, match_count: count })
     })
-    if (!r.ok) return []
+    if (!r.ok) {
+      console.warn('[searchDocs] RPC failed', r.status, await r.text().catch(()=>''))
+      return []
+    }
     const rows = await r.json()
-    return Array.isArray(rows) ? rows : []
-  } catch (_) { return [] }
+    const arr = Array.isArray(rows) ? rows : []
+    console.info('[searchDocs] hits=' + arr.length + (arr[0] ? ` top_sim=${arr[0].similarity?.toFixed(3)}` : ''))
+    return arr
+  } catch (e) {
+    console.warn('[searchDocs] err', e?.message || e)
+    return []
+  }
 }
 
 // 검색 결과를 LLM 컨텍스트 문자열로 포맷

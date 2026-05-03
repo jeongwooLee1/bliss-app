@@ -729,7 +729,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         const lastInMsg = convo.filter(m=>m.direction==="in"&&m.message_text&&!String(m.message_text).startsWith("[")).slice(-1)[0]?.message_text || "";
         const bizId = data?.business?.id || data?.businesses?.[0]?.id || "biz_khvurgshb";
         if (lastInMsg && bizId) {
-          const hits = await searchDocs({ question: lastInMsg, businessId: bizId, geminiKey: key, threshold: 0.35, count: 8 });
+          const hits = await searchDocs({ question: lastInMsg, businessId: bizId, geminiKey: key, threshold: 0.0, count: 8 });
           const ctx = buildDocsContext(hits);
           if (ctx) docsCtx = `\n\n${ctx}`;
         }
