@@ -2100,9 +2100,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     // 모바일: 터치 직후 click 무시 (롱프레스로만 등록)
     if (Date.now() - lastTouchCell.current < 500) return;
     const time = yToTime(y);
-    // 미배정/직원 칼럼 클릭: 미배정은 roomId/staffId 모두 비움 → 진짜 미배정 상태
+    // 직원 칼럼은 roomId 비우고 staffId만, 미배정/일반 룸은 클릭한 그 칼럼 유지 (자동 배치 회피)
     setModalData({
-      roomId: (room.isStaffCol || room.isNaver) ? "" : room.id,
+      roomId: room.isStaffCol ? "" : room.id,
       bid: room.branch_id,
       time, date: selDate,
       staffId: room.isStaffCol ? room.staffId : undefined,
@@ -2166,8 +2166,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       setShowModal(false); setModalData(null);
       return;
     }
-    // 미배정 칼럼 roomId 정리 + 직원컬럼 합성 ID(st_) 정리 (DB에는 실제 room id만 저장)
-    if (item.roomId && (item.roomId.startsWith("blank_") || item.roomId.startsWith("st_") || item.roomId.startsWith("nv_"))) item.roomId = "";
+    // 합성 ID(blank_/st_) 정리 — nv_*(미배정 칼럼)는 사용자가 직접 클릭한 위치라 유지
+    if (item.roomId && (item.roomId.startsWith("blank_") || item.roomId.startsWith("st_"))) item.roomId = "";
     // 필수값 검증
     if (!item.isSchedule && item.type === "reservation" && !item.custName?.trim()) {
       alert("고객 이름을 입력해 주세요."); return;
