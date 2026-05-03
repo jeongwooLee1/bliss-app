@@ -9,6 +9,7 @@ export const DBMAP = {
   app_users:{business_id:"businessId",login_id:"loginId",branch_ids:"branches",password:"pw",view_branch_ids:"viewBranches"},
   branches:{business_id:"businessId",use_yn:"useYn",naver_email:"naverEmail",naver_biz_id:"naverBizId",naver_col_count:"naverColCount",noti_config:"notiConfig",staff_col_count:"staffColCount",naver_account_id:"naverAccountId",instagram_account_id:"instagramAccountId",whatsapp_account_id:"whatsappAccountId",booking_notice:"bookingNotice",alt_phone:"altPhone",timeline_settings:"timelineSettings"},
   reservation_sources:{business_id:"businessId",use_yn:"useYn"},
+  reservation_groups:{business_id:"businessId",leader_cust_id:"leaderCustId",room_type:"roomType"},
 };
 
 // ─── 시스템 보호 태그/경로 (삭제 불가 디폴트) ─────────────────────────────────
@@ -64,6 +65,7 @@ export const DB_COLS={
   services:["id","business_id","cat","name","dur","price_f","price_m","member_price_f","member_price_m","note","sort","is_package","pkg_count","pkg_price_f","pkg_price_m","badge_text","badge_color","badge_bg","promo_config","is_active","grants_member_price"],
   app_users:["id","business_id","login_id","password","name","role","branch_ids","view_branch_ids"],
   reservation_sources:["id","business_id","name","color","sort","use_yn"],
+  reservation_groups:["id","business_id","bid","leader_cust_id","room_type","memo"],
 };
 // Global active business context - auto-injected into DB writes
 export let _activeBizId = null;

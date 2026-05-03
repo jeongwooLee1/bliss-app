@@ -338,6 +338,8 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
 
   const [showSaleForm, setShowSaleForm] = useState(false);
   const [showSmsModal, setShowSmsModal] = useState(false);
+  // 베타 모드 — 동반자 1명 묶음 등록 (1차: 같은 시간/직원/시술 공유, room_type='shared')
+  const [companion, setCompanion] = useState(null); // null | {name, phone}
   const [existingSaleDetails, setExistingSaleDetails] = useState(null);
   // 변경 이력 chain — prev_reservation_id를 따라 거슬러 올라간 옛 예약 목록
   const [changeChain, setChangeChain] = useState([]);
@@ -2166,6 +2168,31 @@ ${naverText}
                 {STATUS_LABEL[k]}</button>})}
               </div>
             </div>}
+            {betaGroupMode && !isReadOnly && !isSchedule && f.type === "reservation" && (
+              <div style={{padding:"8px 12px",background:"#FEF3C7",border:"1px dashed #F59E0B",borderRadius:8,marginBottom:8,fontFamily:"inherit"}}>
+                {!companion ? (
+                  <button onClick={()=>setCompanion({name:"",phone:""})}
+                    style={{padding:"6px 12px",background:"#F59E0B",color:"#fff",border:"none",borderRadius:6,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                    + 👥 동반자 추가 (베타)
+                  </button>
+                ) : (
+                  <>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                      <span style={{fontSize:12,fontWeight:800,color:"#92400E"}}>👥 동반자 1</span>
+                      <button onClick={()=>setCompanion(null)}
+                        style={{padding:"2px 8px",background:"transparent",color:"#92400E",border:"1px solid #F59E0B",borderRadius:4,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>제거</button>
+                    </div>
+                    <div style={{display:"flex",gap:6}}>
+                      <input placeholder="이름" value={companion.name} onChange={e=>setCompanion({...companion,name:e.target.value})}
+                        style={{flex:1,padding:"6px 8px",border:"1px solid "+T.border,borderRadius:4,fontSize:13,fontFamily:"inherit"}}/>
+                      <input placeholder="연락처" value={companion.phone} onChange={e=>setCompanion({...companion,phone:e.target.value})}
+                        style={{flex:1,padding:"6px 8px",border:"1px solid "+T.border,borderRadius:4,fontSize:13,fontFamily:"inherit"}}/>
+                    </div>
+                    <div style={{fontSize:11,color:"#78350F",marginTop:4}}>같은 시간·직원·시술로 묶음 등록됨 (베타 격리)</div>
+                  </>
+                )}
+              </div>
+            )}
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
             {!isReadOnly && <>
               {(() => {
@@ -2371,7 +2398,7 @@ ${naverText}
                     sb.insert('customer_behavior_log', _entry).catch(e => console.warn('[behavior_log] insert err:', e?.message));
                   }
                 }
-                onSave({...f, memo: memoToSave, scheduleLog: scheduleLogToSave, tsLog: newLog, selectedTags: autoTags, isSchedule, _isColTemplate: item?._isColTemplate, _templateId: item?._templateId, _initialServerSnap: initialServerSnap});
+                onSave({...f, memo: memoToSave, scheduleLog: scheduleLogToSave, tsLog: newLog, selectedTags: autoTags, isSchedule, _isColTemplate: item?._isColTemplate, _templateId: item?._templateId, _initialServerSnap: initialServerSnap, _companion: (betaGroupMode && companion && (companion.name||"").trim()) ? companion : null});
               }}>{item?.id?"저장":"등록"}</button>
               {/* AI 예약 확정 버튼 */}
               {f.status==="request" && <Btn style={{padding:"10px 26px",background:"#9C27B0",boxShadow:"0 4px 14px rgba(156,39,176,.35)"}}
