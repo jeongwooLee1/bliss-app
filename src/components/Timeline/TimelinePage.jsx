@@ -1277,6 +1277,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   const dragStartRef = useRef(null);
   const isDragging = useRef(false);
   const dragSnapRef = useRef(null);
+  // Ctrl(Win/Linux) 또는 Cmd(Mac) + 드래그 = 복사. mousemove마다 갱신, drop 시점에 분기.
+  const isCopyDragRef = useRef(false);
   const longPressTimer = useRef(null);
   const longPressActive = useRef(false);
   const origBlockPos = useRef(null);
@@ -2133,18 +2135,22 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     // 베타 모드 동반자 묶음 — 메인 저장 전에 group 생성, companion reservation 객체 준비
     let _companionRow = null;
     if (betaGroupMode && item._companion && (item._companion.name || "").trim()) {
+      if (!item._companion.staffId) {
+        alert("동반자 담당 직원을 선택해주세요.");
+        return;
+      }
       const _groupId = "rg_" + uid();
-      const _grpInsert = sb.insert("reservation_groups", toDb("reservation_groups", {
+      sb.insert("reservation_groups", toDb("reservation_groups", {
         id: _groupId, bid: item.bid || "", leaderCustId: item.custId || "",
-        roomType: 'shared', memo: ''
+        roomType: 'separate', memo: ''
       })).catch(e => console.warn("[group insert]", e));
       item.reservationGroupId = _groupId;
       const _cid = uid();
       _companionRow = {
-        id: _cid, bid: item.bid, roomId: item.roomId || "",
+        id: _cid, bid: item.bid, roomId: "",
         custName: item._companion.name.trim(),
         custPhone: (item._companion.phone || "").replace(/[^0-9]/g, ""),
-        staffId: item.staffId || "",
+        staffId: item._companion.staffId,
         serviceId: item.serviceId || "",
         selectedServices: Array.isArray(item.selectedServices) ? [...item.selectedServices] : [],
         selectedTags: [],
@@ -2154,8 +2160,6 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         isBeta: true, reservationGroupId: _groupId,
         reservationId: 'manual_' + _cid,
       };
-      // group insert 비동기 — 빠른 처리 위해 await 안 함, 실패 시 로그만
-      _grpInsert;
     }
     delete item._companion;
     // 🔒 race-condition 방어: 네이버 서버가 비동기로 갱신하는 필드(status, naver_*_dt)는
@@ -2648,6 +2652,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     dragStartRef.current = { x: startPt.clientX, y: startPt.clientY };
     isDragging.current = false;
     longPressActive.current = false;
+    // 시작 시점의 ctrl/cmd 키 캡처 (mousemove에서 갱신)
+    isCopyDragRef.current = !isTouch && !!(e.ctrlKey || e.metaKey);
 
     origBlockPos.current = { time: block.time, roomId: block.roomId || naverAssignments[block.id] || null, bid: block.bid, staffId: block.staffId };
 
@@ -2772,6 +2778,36 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         if (snap.time !== orig.time || snap.roomId !== orig.roomId) {
           // ✨ end_time 우선으로 길이 계산. dur 컬럼이 잘못 저장된 케이스에서도 길이 보존됨.
           const trueDur = blockDurMin(block);
+          // ─── Ctrl/Cmd + 드래그 = 복사 (원본 유지, 새 reservation INSERT) ───
+          if (isCopyDragRef.current) {
+            const [csh, csm] = snap.time.split(":").map(Number);
+            const cEndMin = csh*60 + csm + trueDur;
+            const cEndTime = `${String(Math.floor(cEndMin/60)).padStart(2,"0")}:${String(cEndMin%60).padStart(2,"0")}`;
+            const cNaverCol = snap.roomId?.startsWith("nv_");
+            const cTargetRoom = allRooms.find(rm => rm.id === snap.roomId);
+            const cStaffId = cNaverCol ? "" : cTargetRoom?.isStaffCol ? cTargetRoom.staffId : (block.staffId || "");
+            const cRoomId = snap.roomId || "";
+            const cBid = snap.bid || block.bid;
+            const newId = uid();
+            const newRes = {
+              ...block,
+              id: newId,
+              reservationId: "manual_" + newId,
+              prevReservationId: null,
+              reservationGroupId: null,           // 그룹 끊기
+              isBeta: !!(betaGroupMode || block.isBeta),
+              time: snap.time, endTime: cEndTime, dur: trueDur,
+              roomId: cRoomId, bid: cBid, staffId: cStaffId,
+              // 매출·로그 흔적 리셋 (sales는 reservation_id 새 거라 자동 끊김)
+              scheduleLog: [], tsLog: [],
+            };
+            setData(prev => ({ ...prev, reservations: [...(prev?.reservations||[]), newRes] }));
+            sb.upsert("reservations", [toDb("reservations", newRes)]).catch(e => console.error("[copy-drag] upsert", e));
+            document.body.style.cursor = "";
+            setDragBlock(null); setDragPos(null); setDragSnap(null); dragSnapRef.current = null;
+            setTimeout(() => { isDragging.current = false; longPressActive.current = false; isCopyDragRef.current = false; }, 300);
+            return;
+          }
           setData(prev => ({...prev, reservations: (prev?.reservations||[]).map(r => {
             if (r.id !== block.id) return r;
             const [sh,sm] = snap.time.split(":").map(Number);
@@ -2883,10 +2919,13 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     } else {
       // 마우스: window 사용 + blur 시 강제 종료 (창 밖에서 마우스 놓아도 감지)
       const onMouseMove = (ev) => {
+        // ctrl/cmd 키 실시간 추적 (드래그 중간에 누르거나 떼면 모드 변경)
+        isCopyDragRef.current = !!(ev.ctrlKey || ev.metaKey);
         const dx = ev.clientX - dragStartRef.current.x;
         const dy = ev.clientY - dragStartRef.current.y;
         if (!isDragging.current && Math.abs(dx) + Math.abs(dy) < 12) return;
-        if (!isDragging.current) { isDragging.current = true; setDragBlock(block); document.body.style.cursor="move"; }
+        if (!isDragging.current) { isDragging.current = true; setDragBlock(block); document.body.style.cursor = isCopyDragRef.current ? "copy" : "move"; }
+        else { document.body.style.cursor = isCopyDragRef.current ? "copy" : "move"; }
         onDragMove(ev);
       };
       const onMouseUp = () => {
