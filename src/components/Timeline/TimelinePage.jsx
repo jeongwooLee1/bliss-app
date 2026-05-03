@@ -229,7 +229,40 @@ function TopAnnounceBubble() {
   );
 }
 
-function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, currentUser, setPage, bizId, onMenuClick, bizName, pendingOpenRes, setPendingOpenRes, naverColShow={}, scraperStatus=null, setPendingChat, setPendingOpenCust, unreadMsgCount=0, unreadSample=[], previewBlockStyle=false }) {
+function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBranches=[], isMaster, currentUser, setPage, bizId, onMenuClick, bizName, pendingOpenRes, setPendingOpenRes, naverColShow={}, scraperStatus=null, setPendingChat, setPendingOpenCust, unreadMsgCount=0, unreadSample=[], previewBlockStyle=false, betaGroupMode=false }) {
+  // ─── 베타 모드: reservations 격리 (is_beta=true만 별도 fetch + setData wrap) ───
+  const [_betaReservations, _setBetaReservations] = useState([]);
+  useEffect(() => {
+    if (!betaGroupMode || !bizId) return;
+    let alive = true;
+    const fetchBeta = async () => {
+      try {
+        const rows = await sb.get("reservations", `&business_id=eq.${bizId}&is_beta=eq.true&order=date.desc,time.asc&limit=5000`);
+        if (alive) _setBetaReservations(fromDb("reservations", rows||[]));
+      } catch(e) {}
+    };
+    fetchBeta();
+    const t = setInterval(fetchBeta, 30000);
+    return () => { alive = false; clearInterval(t); };
+  }, [betaGroupMode, bizId]);
+  const data = useMemo(() =>
+    betaGroupMode ? { ..._liveData, reservations: _betaReservations } : _liveData,
+    [_liveData, betaGroupMode, _betaReservations]
+  );
+  // 베타 모드에선 setData 호출 시 reservations 변경만 격리 state에 반영. 그 외 필드는 무시(라이브 보호).
+  const setData = useMemo(() => betaGroupMode
+    ? (updater) => {
+        const fakePrev = { ..._liveData, reservations: _betaReservations };
+        const next = typeof updater === 'function' ? updater(fakePrev) : updater;
+        if (!next) return;
+        const nextRes = next.reservations;
+        if (Array.isArray(nextRes) && nextRes !== _betaReservations) {
+          // 강제 isBeta=true 마킹
+          _setBetaReservations(nextRes.map(r => ({ ...r, isBeta: true })));
+        }
+      }
+    : _liveSetData,
+  [betaGroupMode, _liveData, _betaReservations, _liveSetData]);
   // 타임라인 블록 표시 항목 — App에서 prop으로 받음
   const effectiveNaverColShow = naverColShow;
   const SVC_LIST = (data?.services || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
@@ -2095,6 +2128,8 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
   };
 
   const handleSave = async (item) => {
+    // 베타 모드: 모든 신규/수정 예약에 isBeta=true 강제 마킹 (라이브 격리)
+    if (betaGroupMode) item.isBeta = true;
     // 🔒 race-condition 방어: 네이버 서버가 비동기로 갱신하는 필드(status, naver_*_dt)는
     // 모달이 열린 동안 stale 값으로 덮어쓰기 방지.
     const _snap = item._initialServerSnap;
@@ -2181,7 +2216,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
           item.custId = dup.id; item.custName = dup.name; item.isNewCust = false;
         }
       }
-      if (!item.custId) {
+      if (!item.custId && !betaGroupMode) {
         const newCustId = "cust_" + uid();
         item.custId = newCustId;
         const newCust = {
@@ -2250,7 +2285,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
     });
     // Async sync to Supabase
     setTimeout(()=>{
-      if(allItems.length) sb.upsert("reservations", allItems.map(i=>toDb("reservations", i))).then(() => {
+      if(allItems.length) sb.upsert("reservations", allItems.map(i=>toDb("reservations", betaGroupMode ? {...i, isBeta:true} : i))).then(() => {
         // 저장 성공 — 개별 항목 재시도 불필요
       }).catch(async err => {
         console.error("예약 저장 실패 (batch):", err, allItems);
@@ -2924,7 +2959,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
       }).catch(console.error);
     }
     // 예약안내 발송
-    if (sendAlimtalkFlag && block.custPhone && !block.isSchedule) {
+    if (sendAlimtalkFlag && block.custPhone && !block.isSchedule && !betaGroupMode) {
       try {
         const r = (data?.reservations||[]).find(rv => rv.id === block.id);
         const branch = (data?.branches||[]).find(b => b.id === (r?.bid || block.bid));
@@ -4844,6 +4879,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         const label = isChange ? "예약 변경" : "예약 확정";
         const notiKey = isChange ? "rsv_change" : "rsv_confirm";
         const sendIt = () => {
+          if (betaGroupMode) return; // 베타 모드: 알림톡 발송 차단
           try {
             const branch = (data?.branches||[]).find(b=>b.id===item.bid);
             const rsvUrlId = item.reservationId || item.id || "";
@@ -4959,7 +4995,7 @@ function Timeline({ data, setData, userBranches, viewBranches=[], isMaster, curr
         <button onClick={()=>setAlarmFired(null)} style={{width:"100%",padding:"8px 0",background:"#F59E0B",color:"#fff",border:"none",borderRadius:6,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:13}}>확인</button>
       </div>}
 
-      {showModal && <TimelineModal item={modalData} onSave={handleSave} onDelete={handleDelete} onDeleteRequest={handleDeleteRequest} naverColShow={naverColShow} onClose={()=>_mc(()=>{setShowModal(false);setModalData(null)})} selBranch={userBranches[0]} userBranches={userBranches} data={{...data, staff: BASE_EMP_LIST.map(e=>({id:e.id,bid:e.branch_id,dn:e.id,name:e.id,branch_id:e.branch_id})), workingStaffIds: (() => { const ws = getWorkingStaff(modalData?.bid || userBranches[0], selDate); return ws ? ws.map(e=>e.id) : null; })() }} setData={setData} setPage={setPage} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust}/>}
+      {showModal && <TimelineModal item={modalData} onSave={handleSave} onDelete={handleDelete} onDeleteRequest={handleDeleteRequest} naverColShow={naverColShow} onClose={()=>_mc(()=>{setShowModal(false);setModalData(null)})} selBranch={userBranches[0]} userBranches={userBranches} data={{...data, staff: BASE_EMP_LIST.map(e=>({id:e.id,bid:e.branch_id,dn:e.id,name:e.id,branch_id:e.branch_id})), workingStaffIds: (() => { const ws = getWorkingStaff(modalData?.bid || userBranches[0], selDate); return ws ? ws.map(e=>e.id) : null; })() }} setData={setData} setPage={setPage} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust} betaGroupMode={betaGroupMode}/>}
 
       {showQuickBook && <QuickBookModal
         onClose={()=>setShowQuickBook(false)}

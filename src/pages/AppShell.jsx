@@ -23,7 +23,7 @@ import FloatingAI from '../components/BlissAI/FloatingAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.394"
+const BLISS_V = "3.7.395"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -39,7 +39,7 @@ async function loadHistoricalInBackground(bizId, setData) {
   const salSince  = new Date(Date.now()-90*86400000).toISOString().slice(0,10);
   try {
     const [oldRes, oldSal] = await Promise.all([
-      sb.getAll("reservations", `&business_id=eq.${bizId}&date=lt.${resBefore}&order=date.desc,time.asc`).catch(()=>[]),
+      sb.getAll("reservations", `&business_id=eq.${bizId}&is_beta=eq.false&date=lt.${resBefore}&order=date.desc,time.asc`).catch(()=>[]),
       sb.getAll("sales", `&business_id=eq.${bizId}&date=gte.${salSince}&date=lt.${salBefore}&order=date.desc`).catch(()=>[]),
     ]);
     if (!oldRes.length && !oldSal.length) return;
@@ -66,7 +66,7 @@ async function loadAllFromDb(bizId) {
     // SNS 실제 연결된 고객만 (빈 배열 제외) — 부분 인덱스로 빠름
     sb.get("customers", `&business_id=eq.${bizId}&is_hidden=eq.false&sns_accounts=neq.${encodeURIComponent('[]')}&limit=500`).catch(()=>[]),
     // 과거 6개월 이후 예약 + 미래 전체 로드 (이전: limit 3000으로 4/19 이전 데이터 누락 사고)
-    sb.get("reservations", `&business_id=eq.${bizId}&date=gte.${new Date(Date.now()-180*86400000).toISOString().slice(0,10)}&order=date.desc,time.asc&limit=20000`).catch(()=>[]),
+    sb.get("reservations", `&business_id=eq.${bizId}&is_beta=eq.false&date=gte.${new Date(Date.now()-180*86400000).toISOString().slice(0,10)}&order=date.desc,time.asc&limit=20000`).catch(()=>[]),
     sb.get("sales", `&business_id=eq.${bizId}&date=gte.${new Date(Date.now()-90*86400000).toISOString().slice(0,10)}&order=date.desc&limit=5000`).catch(()=>[]),
     sb.getByBiz("products", bizId).catch(()=>[]),
     sb.getByBiz("branch_groups", bizId).catch(()=>[]),
@@ -1316,7 +1316,7 @@ function App() {
     const onVisible = async () => {
       if (!document.hidden) {
         try {
-          const rows = await sb.getAll("reservations", `&business_id=eq.${currentBizId}&order=date.desc,time.asc`);
+          const rows = await sb.getAll("reservations", `&business_id=eq.${currentBizId}&is_beta=eq.false&order=date.desc,time.asc`);
           const parsed = fromDb("reservations", rows);
           setData(prev => prev ? {...prev, reservations: parsed} : prev);
         } catch(e) {}
@@ -1332,6 +1332,8 @@ function App() {
             const ev = payload.eventType;
             const row = payload.new || {};
             const oldRow = payload.old || {};
+            // 베타 격리: 라이브 화면에는 is_beta=true 예약 전파 안 함 (베타 페이지는 자체 fetch)
+            if (row.is_beta === true || (ev === "DELETE" && oldRow.is_beta === true)) return;
             console.log("[RT] reservation", ev, row?.id||oldRow?.id, row?.time, "bid=", row?.bid);
             setData(prev => {
               if (!prev) return prev;
@@ -1383,7 +1385,7 @@ function App() {
     // 연결 복귀 시 1회 재동기화 (네트워크 끊김 후 재연결용)
     const onOnline = async () => {
       try {
-        const rows = await sb.getAll("reservations", `&business_id=eq.${currentBizId}&order=date.desc,time.asc`);
+        const rows = await sb.getAll("reservations", `&business_id=eq.${currentBizId}&is_beta=eq.false&order=date.desc,time.asc`);
         const parsed = fromDb("reservations", rows);
         setData(prev => prev ? {...prev, reservations: parsed} : prev);
       } catch(e) {}
@@ -1399,7 +1401,7 @@ function App() {
         const from = new Date(today); from.setDate(today.getDate() - 3);
         const to   = new Date(today); to.setDate(today.getDate() + 60);
         const rows = await sb.get("reservations",
-          `&business_id=eq.${currentBizId}&date=gte.${d2s(from)}&date=lte.${d2s(to)}&limit=5000`);
+          `&business_id=eq.${currentBizId}&is_beta=eq.false&date=gte.${d2s(from)}&date=lte.${d2s(to)}&limit=5000`);
         const parsed = fromDb("reservations", rows||[]);
         if (parsed.length > 0) {
           setData(prev => {

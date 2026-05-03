@@ -278,7 +278,7 @@ function CancelDecisionModal({ open, onResolve, onClose, custId, custName, branc
   );
 }
 
-function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBranch, userBranches, data, setData, setPage, naverColShow={}, setPendingChat, setPendingOpenCust }) {
+function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBranch, userBranches, data, setData, setPage, naverColShow={}, setPendingChat, setPendingOpenCust, betaGroupMode=false }) {
   // 카테고리 순서 → 카테고리 내 시술 순서 (시술상품관리와 동일)
   // 쿠폰·포인트 카테고리는 시술 선택 대상이 아니므로 제외 (증정/사용 대상)
   const _excludedCatIds = (data?.categories || []).filter(c => c.name === '쿠폰' || c.name === '포인트').map(c => c.id);
@@ -2192,9 +2192,10 @@ ${naverText}
                     )}
                   </>
                 ) : (
-                  <button onClick={()=>setShowSaleForm(true)}
-                    style={{padding:"10px 16px",borderRadius:T.radius.md,fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5,lineHeight:1,transition:"all .15s",border:"2px solid "+T.orange,color:T.orange,background:T.warningLt}}>
-                    <I name="wallet" size={12}/> 매출등록
+                  <button onClick={()=>{ if (betaGroupMode) { alert("베타 모드: 매출 등록은 라이브 타임라인에서만 가능합니다."); return; } setShowSaleForm(true); }}
+                    disabled={betaGroupMode}
+                    style={{padding:"10px 16px",borderRadius:T.radius.md,fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",cursor:betaGroupMode?"not-allowed":"pointer",display:"inline-flex",alignItems:"center",gap:5,lineHeight:1,transition:"all .15s",border:"2px solid "+T.orange,color:betaGroupMode?T.textMuted:T.orange,background:betaGroupMode?T.bgCard:T.warningLt,opacity:betaGroupMode?.5:1}}>
+                    <I name="wallet" size={12}/> 매출등록{betaGroupMode?" (베타 비활성)":""}
                   </button>
                 )
               )}
@@ -2298,7 +2299,7 @@ ${naverText}
                 // 상태가 cancelled로 변경되었고 이전 상태가 cancelled가 아니면 취소 알림톡
                 if(f.status==="cancelled" && item?.status!=="cancelled" && f.custPhone && !isSchedule){
                   const branch = (data?.branches||[]).find(b=>b.id===f.bid);
-                  queueAlimtalk(f.bid, "rsv_cancel", f.custPhone, {
+                  if (!betaGroupMode) queueAlimtalk(f.bid, "rsv_cancel", f.custPhone, {
                     "#{사용자명}":branch?.name||"", "#{날짜}":f.date||"", "#{시간}":f.time||"",
                     "#{대표전화번호}":branch?.phone||""
                   });
