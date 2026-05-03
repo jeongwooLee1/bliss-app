@@ -3343,38 +3343,25 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           </div>
           <button onClick={()=>changeDate(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:T.fs.sm,color:T.gray600,padding:"2px 4px",flexShrink:0}}><I name="chevR" size={14}/></button>
           <button onClick={()=>setSelDate(todayStr())} style={{padding:"0 10px",height:32,fontSize:T.fs.sm,border:"1px solid #d0d0d0",borderRadius:T.radius.md,background:T.bgCard,color:T.gray600,cursor:"pointer",fontFamily:"inherit",flexShrink:0,display:"flex",alignItems:"center"}} className="hide-mobile">오늘</button>
-          <button onClick={()=>window.location.reload()} title="새로고침" style={{padding:"0 8px",height:32,border:"1px solid #d0d0d0",borderRadius:T.radius.md,background:T.bgCard,color:T.gray600,cursor:"pointer",fontFamily:"inherit",flexShrink:0,display:"flex",alignItems:"center",gap:4}}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          {/* 새로고침 + 네이버 갱신 통합 — 네이버 list 즉시 동기화 후 페이지 reload */}
+          <button onClick={async (e)=>{
+            const btn = e.currentTarget; btn.disabled = true;
+            try {
+              const currentBranches = (data?.branches||[]).filter(b => userBranches.includes(b.id) && b.naverBizId);
+              const targets = currentBranches.length ? currentBranches : (data?.branches||[]).filter(b => b.naverBizId);
+              await Promise.all(targets.map(br => naverPollNow(br.naverBizId).catch(()=>null)));
+            } catch {}
+            window.location.reload();
+          }} title="네이버 갱신 + 새로고침" style={{padding:"0 8px",height:32,border:"1px solid #d0d0d0",borderRadius:T.radius.md,background:T.bgCard,color:T.gray600,cursor:"pointer",fontFamily:"inherit",flexShrink:0,display:"flex",alignItems:"center",gap:4}}>
+            <svg width="18" height="18" viewBox="0 0 24 24">
+              <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></g>
+              <text x="12" y="15.5" textAnchor="middle" fontSize="9.5" fontWeight="900" fill="#03C75A" fontFamily="-apple-system,BlinkMacSystemFont,sans-serif">N</text>
+            </svg>
           </button>
           <button onClick={()=>setShowQuickBook(true)} style={{padding:"0 12px",height:32,fontSize:T.fs.sm,border:"none",borderRadius:T.radius.xl,background:"linear-gradient(135deg,#4285f4,#9b72cb,#d96570)",color:T.bgCard,cursor:"pointer",fontFamily:"inherit",flexShrink:0,display:"flex",alignItems:"center",gap:5,fontWeight:T.fw.bolder,boxShadow:"0 2px 8px rgba(66,133,244,.25)"}}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill={T.bgCard} style={{flexShrink:0}}><path d="M12 2L13.09 8.26L18 6L14.74 10.91L21 12L14.74 13.09L18 18L13.09 15.74L12 22L10.91 15.74L6 18L9.26 13.09L3 12L9.26 10.91L6 6L10.91 8.26L12 2Z"/></svg> AI Book
           </button>
-          {/* 네이버 갱신 — 현재 보고 있는 지점의 list polling 즉시 실행 */}
-          <button onClick={async (e)=>{
-            const btn = e.currentTarget; const orig = btn.textContent;
-            btn.disabled = true; btn.textContent = "갱신중…";
-            try {
-              // 현재 보는 지점들 (selBranch 또는 viewBranches)
-              const currentBranches = (data?.branches||[]).filter(b => userBranches.includes(b.id) && b.naverBizId);
-              const targets = currentBranches.length ? currentBranches : (data?.branches||[]).filter(b => b.naverBizId);
-              let totalNew = 0, totalCancel = 0;
-              for (const br of targets) {
-                const r = await naverPollNow(br.naverBizId);
-                if (r?.ok) {
-                  totalNew += (r.inserted||0);
-                  totalCancel += (r.prev_cancelled||0) + (r.list_cancelled||0);
-                }
-              }
-              btn.textContent = totalNew||totalCancel ? `✓ +${totalNew} -${totalCancel}` : "✓ 최신";
-              setTimeout(()=>{ btn.textContent = orig; btn.disabled = false; }, 2500);
-            } catch(err) {
-              btn.textContent = "실패"; setTimeout(()=>{ btn.textContent = orig; btn.disabled = false; }, 2000);
-            }
-          }} title="네이버 예약 list 즉시 갱신 (변경/취소/누락 동기화)"
-          style={{padding:"0 10px",height:32,fontSize:T.fs.xs,border:"1px solid "+T.naver,borderRadius:T.radius.md,background:"#fff",color:T.naver,cursor:"pointer",fontFamily:"inherit",flexShrink:0,display:"flex",alignItems:"center",gap:4,fontWeight:T.fw.bold}}>
-            <I name="naver" size={11} color={T.naver}/> 갱신
-          </button>
-          <div style={{marginLeft:"auto",position:"relative",flexShrink:0}} ref={el => { if(el) el._settingsBtn = el; }}>
+<div style={{marginLeft:"auto",position:"relative",flexShrink:0}} ref={el => { if(el) el._settingsBtn = el; }}>
             <button onClick={(e)=>{const next=!showSettings;setShowSettings(next);if(next&&scrollRef.current)scrollRef.current.scrollLeft=0;}} id="settings-btn"
               style={{height:32,padding:"0 12px",border:"none",borderRadius:T.radius.md,background:"transparent",
                 cursor:"pointer",background:showSettings?T.primaryLt:"none",border:showSettings?"1px solid "+T.primary:"1px solid transparent",borderRadius:T.radius.md,padding:"4px 6px",display:"flex",alignItems:"center",justifyContent:"center"}}><I name="settings" size={17} color={showSettings?T.primary:T.gray500}/></button>
