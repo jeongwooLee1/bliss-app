@@ -1146,11 +1146,6 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
         style={{padding:"4px 10px",fontSize:10,fontWeight:700,borderRadius:6,border:"1px solid "+(includeNoNum?T.primary:T.border),background:includeNoNum?T.primaryLt:"#fff",color:includeNoNum?T.primary:T.textSub,cursor:"pointer",fontFamily:"inherit",height:30}}>
         {includeNoNum ? "☑ 번호없는 고객 포함" : "☐ 번호없는 고객 숨김"}
       </button>
-      <button type="button" onClick={()=>{unlockSingleAndReload(); setLongValOnly(v=>!v);}}
-        title="유효기간 1년+ 남고 잔여 있는 보유권 보유 고객만 (비정상 장기 보유권 검토용)"
-        style={{padding:"4px 10px",fontSize:10,fontWeight:700,borderRadius:6,border:"1px solid "+(longValOnly?"#dc2626":T.border),background:longValOnly?"#fee2e2":"#fff",color:longValOnly?"#dc2626":T.textSub,cursor:"pointer",fontFamily:"inherit",height:30,whiteSpace:"nowrap"}}>
-        {longValOnly ? "🔴 1년+ 보유권만" : "🔍 1년+ 보유권만"}
-      </button>
       <span style={{fontSize:T.fs.xxs,color:T.textMuted}}>{custs.length}명{hasMore?"+":""}</span>
       {searching && <span style={{fontSize:T.fs.xxs,color:T.orange}}>검색중...</span>}
       {/* 📱 선택 고객에게 문자 발송 */}
