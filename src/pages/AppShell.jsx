@@ -23,7 +23,7 @@ import FloatingAI from '../components/BlissAI/FloatingAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.388"
+const BLISS_V = "3.7.389"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -31,7 +31,7 @@ function ScrollArea({ storageKey, children }) {
   return <div ref={ref} className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}>{children}</div>
 }
 const BIZ_ID = 'biz_khvurgshb'
-const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", users:"/users", messages:"/messages", admin:"/settings", schedule:"/schedule", requests:"/requests", blissai:"/blissai" };
+const PAGE_ROUTES = { timeline:"/timeline", "timeline-beta":"/timeline-beta", reservations:"/reservations", sales:"/sales", customers:"/customers", users:"/users", messages:"/messages", admin:"/settings", schedule:"/schedule", requests:"/requests", blissai:"/blissai" };
 // 과거 데이터 백그라운드 로드 (초기 14d/30d 이전 예약/매출) — UI 렌더 후 머지
 async function loadHistoricalInBackground(bizId, setData) {
   const resBefore = new Date(Date.now()-14*86400000).toISOString().slice(0,10);
@@ -1460,6 +1460,7 @@ function App() {
   const isSuper = currentUser?.role === "super";
   const nav = [
     { id:"timeline", label:"타임라인", icon:<I name="calendar" size={16}/> },
+    ...((role==="owner"||role==="super")?[{ id:"timeline-beta", label:"🧪 타임라인 (베타)", icon:<I name="calendar" size={16}/> }]:[]),
     { id:"reservations", label:"예약목록", icon:<I name="clipboard" size={16}/> },
     { id:"sales", label:"매출관리", icon:<I name="wallet" size={16}/> },
     { id:"customers", label:"고객관리", icon:<I name="users" size={16}/> },
@@ -1553,6 +1554,7 @@ function App() {
           <Routes>
             <Route path="/timeline" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust} unreadMsgCount={unreadMsgCount} unreadSample={unreadSample}/></div>}/>
             <Route path="/timeline-preview" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust} unreadMsgCount={unreadMsgCount} unreadSample={unreadSample} previewBlockStyle={true}/></div>}/>
+            <Route path="/timeline-beta" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust} unreadMsgCount={unreadMsgCount} unreadSample={unreadSample} betaGroupMode={true}/></div>}/>
             <Route path="/reservations" element={<ScrollArea storageKey="page_reservations"><ReservationList data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} setNaverColShow={setNaverColShow}/></ScrollArea>}/>
             <Route path="/sales" element={<ScrollArea storageKey="page_sales"><SalesPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} role={role} setPendingOpenCust={setPendingOpenCust}/></ScrollArea>}/>
             <Route path="/sale-summary" element={<ScrollArea storageKey="page_sale_summary"><SaleSummary/></ScrollArea>}/>
