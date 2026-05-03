@@ -4389,9 +4389,11 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                           onMouseLeave={e=>{if(room._shift>0){e.currentTarget.style.opacity=".7";e.currentTarget.style.color=T.gray500;}}}>◀</button>
                       )}
                       {room.isBlockCol ? (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2.4" strokeLinecap="round" style={{display:"block"}}>
-                          <circle cx="12" cy="12" r="9"/>
-                          <line x1="6" y1="12" x2="18" y2="12"/>
+                        <svg width="22" height="22" viewBox="0 0 24 24" style={{display:"block"}} title="네이버 막기">
+                          <circle cx="12" cy="12" r="10" fill="#03C75A" opacity="0.5"/>
+                          <text x="12" y="16" textAnchor="middle" fontFamily="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif" fontSize="11" fontWeight="700" fill="#FFFFFF" opacity="0.85">N</text>
+                          <circle cx="19" cy="5" r="3.5" fill="#E53935"/>
+                          <rect x="17.5" y="4" width="3" height="1.5" rx="0.3" fill="#FFFFFF"/>
                         </svg>
                       ) : room.name}
                       {room.isNaver && typeof room._naverIdx === "number" && room._naverIdx > 0 && (
