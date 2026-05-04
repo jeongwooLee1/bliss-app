@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { T, NAVER_COLS, getNaverVal, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, BRANCH_DEFAULT_COLORS, branchColor, STATUS_CLR_DEFAULT, STATUS_KEYS, SCH_BRANCH_MAP } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY, sbHeaders, queueAlimtalk } from '../../lib/sb'
 import { useMaleRotation, useScheduleData } from '../../lib/useData'
@@ -22,13 +23,16 @@ const blockDurMin = (b) => {
   if (!b) return 30;
   const t = b.time;
   const et = b.endTime || b.end_time;
+  let fromEnd = 0;
   if (t && et) {
     const [sh, sm] = t.split(":").map(Number);
     const [eh, em] = et.split(":").map(Number);
-    const d = (eh*60+em) - (sh*60+sm);
-    if (d > 0) return d;
+    fromEnd = Math.max(0, (eh*60+em) - (sh*60+sm));
   }
-  return b.dur || 30;
+  const fromDur = Number(b.dur || 0);
+  // dur과 endTime 차이가 다르면 더 긴 쪽 사용 — 시술시간(dur) 누락된 케이스 + endTime이 dur 미반영된 케이스 둘 다 보호
+  const r = Math.max(fromEnd, fromDur);
+  return r > 0 ? r : 30;
 };
 
 // 타임라인 컬럼 바탕색 — 전 지점 공통 단일 톤(기본 흰색), 지점 구분은 세로선으로만
@@ -1110,6 +1114,10 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   const scrollRef = useRef(null);
   const topbarRef = useRef(null);
   const pendingClickIdx = useRef(0);
+  const newCustClickIdx = useRef(0);
+  const [dismissedNewCust, setDismissedNewCust] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('bliss_dismissed_newcust')||'[]')); } catch { return new Set(); }
+  });
   const didRestoreScrollRef = useRef(false);
   // ── 모달 열린 동안 RT 업데이트 보류 ──
   const isModalOpenRef = useRef(false);
@@ -1648,41 +1656,18 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     if (visIdx < 0) return;
     const newIdx = visIdx + dir;
     if (newIdx < 0 || newIdx >= visibleIds.length) return;
-    // 남직원 여부 — 본인 또는 swap 대상 중 한 명이라도 남직원이면 "그 날만" sessionStorage로 처리 (DB 변경 금지)
-    const swapEmpId = visibleIds[newIdx];
-    const isMaleEmp = (id) => {
-      const raw = empList.find(x => x.id === id);
-      return !!(raw?.isMale || raw?.gender === "M");
-    };
-    const sessionOnly = isMaleEmp(empId) || isMaleEmp(swapEmpId);
-    if (sessionOnly) {
-      const dayKey = `bliss_day_order_${selDate}_${branchId}`;
-      const newOrder = [...visibleIds];
-      [newOrder[visIdx], newOrder[newIdx]] = [newOrder[newIdx], newOrder[visIdx]];
-      try { sessionStorage.setItem(dayKey, JSON.stringify(newOrder)); } catch(e) {}
-      // 강제 리렌더 — state 자체는 변경 없음. 임시 버전 counter 사용
-      setDailyOrderTick(t => t + 1);
-      return;
-    }
-    // 일반 직원: 기존대로 DB 저장 order
+    // 모든 직원 통일 처리 — 보이는 순서(visibleIds) 그대로 swap → empColOrder DB 저장
+    // (이전엔 남직원 끼면 sessionStorage dayOrder로 우회했는데 두 시스템 충돌로 swap이 무시되던 버그)
+    // 같은 selDate에 남아있던 dayOrder가 새 empColOrder를 덮지 않도록 함께 정리
+    try { sessionStorage.removeItem(`bliss_day_order_${selDate}_${branchId}`); } catch {}
     setEmpColOrder(prev => {
-      let order = [...(prev[branchId] || [])];
-      if (!order.includes(empId)) order.unshift(empId);
-      const idx = order.indexOf(empId);
+      const newVisibleOrder = [...visibleIds];
+      [newVisibleOrder[visIdx], newVisibleOrder[newIdx]] = [newVisibleOrder[newIdx], newVisibleOrder[visIdx]];
+      // 보이지 않는 직원(휴무·타지점 이동 등)은 prev order의 뒤쪽에 그대로 유지
       const visibleSet = new Set(visibleIds);
-      let swapIdx = -1;
-      if (dir > 0) {
-        for (let i = idx + 1; i < order.length; i++) {
-          if (visibleSet.has(order[i])) { swapIdx = i; break; }
-        }
-      } else {
-        for (let i = idx - 1; i >= 0; i--) {
-          if (visibleSet.has(order[i])) { swapIdx = i; break; }
-        }
-      }
-      if (swapIdx < 0) return prev;
-      [order[idx], order[swapIdx]] = [order[swapIdx], order[idx]];
-      return {...prev, [branchId]: order};
+      const prevList = Array.isArray(prev[branchId]) ? prev[branchId] : [];
+      const hidden = prevList.filter(id => !visibleSet.has(id));
+      return {...prev, [branchId]: [...newVisibleOrder, ...hidden]};
     });
   };
   const allRoomsRef = React.useRef([]);
@@ -2802,6 +2787,11 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
               sb.update("reservations", block.id, { reservation_group_id: _grpId }).catch(console.error);
               setData(prev => ({ ...prev, reservations: (prev?.reservations||[]).map(r => r.id === block.id ? { ...r, reservationGroupId: _grpId } : r) }));
             }
+            // 결제 관련 시스템 태그("예약금완료") 제거 — 결제는 원본에만 귀속, 동반자엔 안 따라감
+            const _prepaidTagId = (data?.serviceTags || []).find(t => t.name === "예약금완료")?.id;
+            const _filteredTags = Array.isArray(block.selectedTags) && _prepaidTagId
+              ? block.selectedTags.filter(t => t !== _prepaidTagId)
+              : block.selectedTags;
             const newRes = {
               ...block,
               id: newId,
@@ -2819,6 +2809,13 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
               custGender: "",
               custNum: "",
               isNewCust: false,
+              selectedTags: _filteredTags,
+              // 결제 정보 끊기 — 선결제·네이버결제는 원본에만 귀속 (동반자가 가져가면 "예약금완료" 자동 부착됨)
+              isPrepaid: false,
+              externalPrepaid: 0,
+              externalPlatform: "",
+              totalPrice: 0,
+              npayMethod: "",
               // 매출·로그 흔적 리셋 (sales는 reservation_id 새 거라 자동 끊김)
               scheduleLog: "", tsLog: [],
             };
@@ -3269,7 +3266,13 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           return `[${CH_NAME[m.channel]||m.channel||"?"}]${brPart}${who}: ${txt}`;
         }).join(" / ");
         return <div style={{background:"#E0F2FE",borderBottom:"1px solid #7DD3FC",padding:"6px 12px",display:"flex",alignItems:"center",gap:T.sp.sm,flexShrink:0,cursor:"pointer",width:"100%",boxSizing:"border-box"}}
-          onClick={()=>setPage&&setPage("messages")}>
+          onClick={()=>{
+            const first = (unreadSample||[])[0];
+            if (first && first.user_id && setPendingChat) {
+              setPendingChat({ user_id: first.user_id, channel: first.channel, account_id: first.account_id });
+            }
+            setPage&&setPage("messages");
+          }}>
           <span style={{fontSize:T.fs.xl}}>💬</span>
           <div style={{flex:1,minWidth:0}}>
             <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#0369A1"}}>답변 안 한 메시지 {unreadMsgCount}건</span>
@@ -3328,6 +3331,68 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           <span style={{fontSize:T.fs.xxs,color:T.orange,fontWeight:T.fw.bold,flexShrink:0}}>확인 <I name="chevR" size={11} color={T.orange}/></span>
         </div>;
       })()}
+      {/* New Customer Alert — 네이버 자동확정 신규고객 (확정 액션 불필요, 미리 알림용) */}
+      {(() => {
+        const allowedBranches = isMaster ? branchesToShow : allBranchList.filter(b => userBranches.includes(b.id));
+        const newCustList = (data?.reservations||[]).filter(r =>
+          (r.source === "naver" || r.source === "네이버") &&
+          (r.status === "reserved" || r.status === "confirmed") &&
+          r.isNewCust === true &&
+          r.date >= todayStr() &&
+          !dismissedNewCust.has(r.id) &&
+          allowedBranches.some(b => b.id === r.bid)
+        );
+        if (newCustList.length === 0) return null;
+        return <div style={{background:"#F3E8FF",borderBottom:"1px solid #C4B5FD",padding:"6px 12px",display:"flex",alignItems:"center",gap:T.sp.sm,flexShrink:0,cursor:"pointer",width:"100%",boxSizing:"border-box"}}
+          onClick={()=>{
+            const target = newCustList[0];
+            if (!target) return;
+            setSelDate(target.date);
+            const _rid = target.reservationId || target.id;
+            if (_rid) setHighlightedBlockId(_rid);
+            // 클릭 = 1건 확인 처리. 모두 dismiss되면 배너 자동 사라짐.
+            setDismissedNewCust(prev => {
+              const ns = new Set(prev);
+              ns.add(target.id);
+              try { localStorage.setItem('bliss_dismissed_newcust', JSON.stringify([...ns])); } catch {}
+              return ns;
+            });
+            setTimeout(()=>{
+              if(!scrollRef.current) return;
+              const rid = target.reservationId || target.id;
+              const el = scrollRef.current.querySelector(`[data-rid="${rid}"]`);
+              if (el) {
+                const rect = el.getBoundingClientRect();
+                const sr = scrollRef.current;
+                const srRect = sr.getBoundingClientRect();
+                const elTop = rect.top - srRect.top + sr.scrollTop;
+                const elLeft = rect.left - srRect.left + sr.scrollLeft;
+                const stickyH = topbarH + headerH;
+                const stickyW = window.innerWidth <= 768 ? 52 : 88;
+                const visibleH = sr.clientHeight - stickyH;
+                const visibleW = sr.clientWidth - stickyW;
+                sr.scrollTo({
+                  top: Math.max(0, elTop - stickyH - visibleH / 2 + rect.height / 2),
+                  left: Math.max(0, elLeft - stickyW - visibleW / 2 + rect.width / 2),
+                  behavior: "smooth"
+                });
+              }
+            }, 300);
+          }}>
+          <span style={{fontSize:T.fs.xl}}>🆕</span>
+          <div style={{flex:1,minWidth:0}}>
+            <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#7C3AED"}}>신규고객 {newCustList.length}건</span>
+            <span style={{fontSize:T.fs.xxs,color:"#7C3AED",marginLeft:8}}>
+              {newCustList.slice(0,3).map(r => {
+                const br = allBranchList.find(b=>b.id===r.bid);
+                return `${br?.short||br?.name||""} ${r.custName||"네이버"} ${r.date.slice(5)} ${r.time||""}`;
+              }).join(" · ")}
+              {newCustList.length > 3 ? ` 외 ${newCustList.length-3}건` : ""}
+            </span>
+          </div>
+          <span style={{fontSize:T.fs.xxs,color:"#7C3AED",fontWeight:T.fw.bold,flexShrink:0}}>확인 <I name="chevR" size={11} color="#7C3AED"/></span>
+        </div>;
+      })()}
       {/* Single scroll container */}
       <div ref={scrollRef} className="timeline-scroll" style={{flex:1,overflow:"auto",minHeight:0,overscrollBehavior:"none",paddingBottom:200}}>
 
@@ -3343,13 +3408,18 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           </div>
           <button onClick={()=>changeDate(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:T.fs.sm,color:T.gray600,padding:"2px 4px",flexShrink:0}}><I name="chevR" size={14}/></button>
           <button onClick={()=>setSelDate(todayStr())} style={{padding:"0 10px",height:32,fontSize:T.fs.sm,border:"1px solid #d0d0d0",borderRadius:T.radius.md,background:T.bgCard,color:T.gray600,cursor:"pointer",fontFamily:"inherit",flexShrink:0,display:"flex",alignItems:"center"}} className="hide-mobile">오늘</button>
-          {/* 새로고침 + 네이버 갱신 통합 — 네이버 list 즉시 동기화 후 페이지 reload */}
+          {/* 새로고침 + 네이버 갱신 통합 — 네이버 list + 막기 상태 즉시 동기화 후 페이지 reload */}
           <button onClick={async (e)=>{
             const btn = e.currentTarget; btn.disabled = true;
             try {
               const currentBranches = (data?.branches||[]).filter(b => userBranches.includes(b.id) && b.naverBizId);
               const targets = currentBranches.length ? currentBranches : (data?.branches||[]).filter(b => b.naverBizId);
-              await Promise.all(targets.map(br => naverPollNow(br.naverBizId).catch(()=>null)));
+              // 막기 fetch 차단 해제 (세션 회복 시도)
+              naverBlockFailRef.current = false;
+              await Promise.all([
+                ...targets.map(br => naverPollNow(br.naverBizId).catch(()=>null)),
+                (async () => { try { await fetchNaverBlockStateRef.current?.(); } catch {} })(),
+              ]);
             } catch {}
             window.location.reload();
           }} title="네이버 갱신 + 새로고침" style={{padding:"0 8px",height:32,border:"1px solid #d0d0d0",borderRadius:T.radius.md,background:T.bgCard,color:T.gray600,cursor:"pointer",fontFamily:"inherit",flexShrink:0,display:"flex",alignItems:"center",gap:4}}>
@@ -3744,7 +3814,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                       {getTagsForEmp(room.staffId, selDate).map(t => (
                         <span key={t.id} title={t.name} style={{fontSize:9,color:t.color,background:t.color+'22',border:`1px solid ${t.color}66`,borderRadius:3,padding:'0 4px',fontWeight:700,lineHeight:1.3,whiteSpace:'nowrap'}}>{t.name}</span>
                       ))}
-                      {empMovePopup?.empId===room.staffId && empMovePopup?.date===selDate && empMovePopup?.branchId===room.branch_id && (<>
+                      {empMovePopup?.empId===room.staffId && empMovePopup?.date===selDate && empMovePopup?.branchId===room.branch_id && createPortal(<>
                         <div style={{position:"fixed",inset:0,zIndex:9998,background:window.innerWidth<768?"rgba(0,0,0,.4)":"transparent"}} onClick={e=>{e.stopPropagation();setEmpMovePopup(null);}}/>
                         <div onClick={e=>e.stopPropagation()} style={window.innerWidth<768
                           ? {position:"fixed",top:12,left:12,right:12,bottom:12,width:"auto",maxWidth:"none",background:T.bgCard,borderRadius:14,boxShadow:"0 4px 24px rgba(0,0,0,.3)",zIndex:9999,padding:0,overflowY:"auto",overflowX:"hidden",boxSizing:"border-box",WebkitOverflowScrolling:"touch"}
@@ -3788,7 +3858,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                               const _openH = parseInt(_opStart.split(":")[0]);
                               const _closeH = parseInt(_opEnd.split(":")[0]);
                               const _spanH = Math.max(1, _closeH - _openH + 1); // closeH 정시까지 포함
-                              const hours = Array.from({length:_spanH*12},(_,i)=>{const h=Math.floor(i/12)+_openH,m=(i%12)*5;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;});
+                              // closeH+1:00까지 포함 (예: closeTime=21:00 → 마지막 옵션 22:00) — 직원 잔업 끝 시각 선택 가능
+                              const hours = Array.from({length:_spanH*12 + 1},(_,i)=>{const h=Math.floor(i/12)+_openH,m=(i%12)*5;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;});
                               const selSt = {flex:1,fontSize:11,padding:"4px 3px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"};
 
                               // 종일 근무지 변경 — 체크박스 + 지점 select
@@ -4383,7 +4454,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                             </div>;
                           })()}
                         </div>
-                      </>)}
+                      </>, document.body)}
                     </div>
                   ) : (
                     <span className="tl-room-sub" style={{fontSize:14,color:room.isNaver?"#FF9800":T.gray500,display:"inline-flex",alignItems:"center",gap:6,fontWeight:800}}>
@@ -4837,6 +4908,18 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                           opacity:isDrag?0.35:1,userSelect:"none",WebkitUserSelect:"none",MozUserSelect:"none",msUserSelect:"none",WebkitTouchCallout:"none",touchAction:"pan-x pan-y"};
                         })()}
                         className="tl-block">
+                        {/* 동반자 묶음 마크 — 같은 reservation_group_id 멤버 2명 이상이면 왼쪽 위에 색 마크 */}
+                        {(() => {
+                          const _grpId = block.reservationGroupId;
+                          if (!_grpId) return null;
+                          const _grpMembers = (data?.reservations||[]).filter(r => r.reservationGroupId === _grpId && r.date === block.date);
+                          if (_grpMembers.length < 2) return null;
+                          const palette = ["#F59E0B","#10B981","#3B82F6","#EF4444","#8B5CF6","#EC4899","#14B8A6","#F97316"];
+                          let _h = 0;
+                          for (let i = 0; i < _grpId.length; i++) _h = ((_h * 31) + _grpId.charCodeAt(i)) | 0;
+                          const c = palette[Math.abs(_h) % palette.length];
+                          return <div title={`동반자 묶음 (${_grpMembers.length}명)`} style={{position:"absolute",top:2,right:2,width:12,height:12,borderRadius:"50%",background:c,border:"1.5px solid #fff",boxShadow:"0 1px 3px rgba(0,0,0,.3)",zIndex:6,pointerEvents:"none"}}/>;
+                        })()}
                         {block.type==="reservation" && !block.isSchedule && <>
                           <div style={{display:"flex",alignItems:"center",gap:2,flexWrap:"wrap"}}>
                             {/* 태그 - 이름 앞에 */}
@@ -4868,20 +4951,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                 const _cp = Number(liveCust?.cancelPenaltyCount || 0);
                                 const _ns = Number(liveCust?.noShowCount || 0);
                                 const isCaution = _cp >= 3 || _ns >= 1;
-                                // 동반자 묶음 색 도트 — 같은 reservation_group_id 멤버 2명 이상이면 표시
-                                const _grpId = block.reservationGroupId;
-                                const _grpMembers = _grpId ? (data?.reservations||[]).filter(r => r.reservationGroupId === _grpId && r.date === block.date) : [];
-                                const _grpDot = (() => {
-                                  if (!_grpId || _grpMembers.length < 2) return null;
-                                  const palette = ["#F59E0B","#10B981","#3B82F6","#EF4444","#8B5CF6","#EC4899","#14B8A6","#F97316"];
-                                  let h = 0;
-                                  for (let i = 0; i < _grpId.length; i++) h = ((h * 31) + _grpId.charCodeAt(i)) | 0;
-                                  const c = palette[Math.abs(h) % palette.length];
-                                  const dotSize = Math.max(6, blockFs-3);
-                                  return <span title={`동반자 묶음 (${_grpMembers.length}명)`} style={{display:"inline-block",width:dotSize,height:dotSize,borderRadius:"50%",background:c,marginRight:3,flexShrink:0,verticalAlign:"middle",boxShadow:"0 0 0 1px rgba(255,255,255,.6)"}}/>;
-                                })();
                                 return <>
-                                  {_grpDot}
                                   {g ? <span style={{color:g==="M"?T.male:T.female}}>{g==="M"?"남":"여"}</span> : null} {displayName}
                                   {custNum && <span style={{marginLeft:3,fontSize:Math.max(7,blockFs-2),color:T.text,fontWeight:T.fw.bold,fontFamily:"monospace"}}>#{custNum}</span>}
                                   {isCaution && <span title={`페널티 취소 ${_cp}회 / 노쇼 ${_ns}회`} style={{marginLeft:3,fontSize:Math.max(8,blockFs-1)}}>⚠️</span>}

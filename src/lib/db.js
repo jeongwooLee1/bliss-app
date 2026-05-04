@@ -95,6 +95,8 @@ const XL = {
 export function toDb(table,obj){const m=DBMAP[table];if(!m){const r={...obj};delete r.created_at;return r;}const rev={};for(const[k,v]of Object.entries(m))rev[v]=k;const r={};for(const[k,v]of Object.entries(obj)){if(k==="created_at"||k==="_ua")continue;r[rev[k]||k]=v;}
   // reservations: reservation_id가 없으면 DB에 보내지 않음 (NULLS NOT DISTINCT unique 충돌 방지)
   if(table==="reservations" && !r.reservation_id) delete r.reservation_id;
+  // reservations.is_beta — NOT NULL 제약, 누락/null 시 false default 강제
+  if(table==="reservations" && (r.is_beta===undefined || r.is_beta===null)) r.is_beta=false;
   // Stringify arrays for app_users
   if(table==="app_users"){if(Array.isArray(r.branch_ids))r.branch_ids=JSON.stringify(r.branch_ids);if(Array.isArray(r.view_branch_ids))r.view_branch_ids=JSON.stringify(r.view_branch_ids);}
   const cols=DB_COLS[table];if(cols){const f={};for(const c of cols)if(r[c]!==undefined)f[c]=r[c];

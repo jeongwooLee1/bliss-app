@@ -1520,9 +1520,15 @@ ${naverText}
                     </button>
                     {/* 정보 */}
                     <div style={{flex:1,minWidth:0}}>
-                      {/* 1줄: 이름 #번호 + 배지 (모두 클릭 복사) */}
+                      {/* 1줄: 이름 #번호 + 배지 (모두 클릭 복사 / 신규는 input) */}
                       <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                        <CopySpan text={f.custName} style={{fontSize:14,fontWeight:700,color:"#1a1a2e",whiteSpace:"nowrap"}}>{f.custName}</CopySpan>
+                        {f.isNewCust ? (
+                          <input value={f.custName||""} onChange={e=>set("custName",e.target.value)}
+                            placeholder="고객 이름"
+                            style={{fontSize:14,fontWeight:700,color:"#1a1a2e",padding:"3px 8px",border:"1px solid #e0e0e0",borderRadius:6,fontFamily:"inherit",outline:"none",background:"#fff",minWidth:120}}/>
+                        ) : (
+                          <CopySpan text={f.custName} style={{fontSize:14,fontWeight:700,color:"#1a1a2e",whiteSpace:"nowrap"}}>{f.custName}</CopySpan>
+                        )}
                         {f.custName2 && <span style={{fontSize:12,color:"#888",fontWeight:500,whiteSpace:"nowrap"}}>({f.custName2})</span>}
                         {custNum && <CopySpan text={custNum} style={{fontSize:13,color:"#999",fontFamily:"monospace",whiteSpace:"nowrap"}}>#{custNum}</CopySpan>}
                         {shareCusts.length > 0 && <span title={`쉐어: ${shareCusts.map(s=>s.name).join(", ")}`}
@@ -1543,16 +1549,22 @@ ${naverText}
                           </span>;
                         })()}
                       </div>
-                      {/* 2줄: 전화 + 이메일 한 줄 (변경 모드만 이메일 input) */}
+                      {/* 2줄: 전화 + 이메일 한 줄 (신규/변경 모드는 input) */}
                       <div style={{display:"flex",alignItems:"center",gap:8,marginTop:3,flexWrap:"wrap",minWidth:0}}>
-                        <span style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                        <span style={{display:"flex",alignItems:"center",gap:6,flexShrink:f.isNewCust?1:0,flex:f.isNewCust?1:"0 0 auto",minWidth:0}}>
                           <span style={{fontSize:11,color:"#aaa"}}>📞</span>
-                          <CopySpan text={f.custPhone} style={{fontSize:13,color:T.primary,fontWeight:500,whiteSpace:"nowrap"}}>{f.custPhone||"연락처 없음"}</CopySpan>
+                          {f.isNewCust ? (
+                            <input type="tel" value={f.custPhone||""} onChange={e=>set("custPhone",e.target.value.replace(/[^0-9-]/g,""))}
+                              placeholder="연락처 (010-1234-5678)"
+                              style={{flex:1,fontSize:13,padding:"3px 8px",border:"1px solid #e0e0e0",borderRadius:6,fontFamily:"inherit",outline:"none",background:"#fff",color:T.primary,fontWeight:500,minWidth:120}}/>
+                          ) : (
+                            <CopySpan text={f.custPhone} style={{fontSize:13,color:T.primary,fontWeight:500,whiteSpace:"nowrap"}}>{f.custPhone||"연락처 없음"}</CopySpan>
+                          )}
                         </span>
-                        {(editingCust || f.custEmail) && (
-                          <span style={{display:"flex",alignItems:"center",gap:6,flex:editingCust?1:"0 1 auto",minWidth:0}}>
+                        {(editingCust || f.isNewCust || f.custEmail) && (
+                          <span style={{display:"flex",alignItems:"center",gap:6,flex:(editingCust||f.isNewCust)?1:"0 1 auto",minWidth:0}}>
                             <span style={{fontSize:11,color:"#aaa"}}>✉</span>
-                            {editingCust ? (
+                            {(editingCust || f.isNewCust) ? (
                               <input type="email" value={f.custEmail||""} onChange={e=>set("custEmail",e.target.value)}
                                 placeholder="이메일 (외국인 고객 등)"
                                 style={{flex:1,fontSize:12,padding:"3px 8px",border:"1px solid #e0e0e0",borderRadius:6,fontFamily:"inherit",outline:"none",background:"#fff",color:"#444",minWidth:120}}/>
@@ -2449,32 +2461,40 @@ ${naverText}
 
       </div>
       {/* ── 매출 히스토리 패널 토글 (닫혀있을 때 다시 열기) ── */}
-      {!_isMob && !isSchedule && (f.custId || item?.custId || f.custName || item?.custName) && !historyOpen && (
-        <div style={{display:"flex",alignItems:"flex-start",alignSelf:"flex-start",flexShrink:0,marginLeft:8,marginTop:12}}>
+      {!isSchedule && (f.custId || item?.custId || f.custName || item?.custName) && !historyOpen && (
+        <div style={_isMob
+          ? {display:"flex",alignItems:"center",justifyContent:"center",margin:"8px 12px"}
+          : {display:"flex",alignItems:"flex-start",alignSelf:"flex-start",flexShrink:0,marginLeft:8,marginTop:12}}>
           <button onClick={e=>{e.stopPropagation();setHistoryOpen(true)}} title="매출 히스토리 열기"
-            style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"10px 8px",borderRadius:T.radius.md,
-              background:T.bgCard,border:`1px solid ${T.border}`,cursor:"pointer",
-              boxShadow:"0 1px 4px rgba(0,0,0,.05)"}}
+            style={_isMob
+              ? {display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"8px 14px",borderRadius:T.radius.md,background:T.bgCard,border:`1px solid ${T.border}`,cursor:"pointer",boxShadow:"0 1px 4px rgba(0,0,0,.05)",fontSize:13,fontWeight:700,color:T.primary,width:"100%"}
+              : {display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"10px 8px",borderRadius:T.radius.md,background:T.bgCard,border:`1px solid ${T.border}`,cursor:"pointer",boxShadow:"0 1px 4px rgba(0,0,0,.05)"}}
             onMouseOver={e=>{e.currentTarget.style.background=T.primaryLt||"#EEF2FF"}}
             onMouseOut={e=>{e.currentTarget.style.background=T.bgCard}}>
             <I name="clock" size={16} color={T.primary}/>
-            <span style={{fontSize:10,color:T.textSub,fontWeight:700,writingMode:"vertical-rl",letterSpacing:1}}>매출 히스토리</span>
+            <span style={_isMob
+              ? {fontSize:13,color:T.primary,fontWeight:700}
+              : {fontSize:10,color:T.textSub,fontWeight:700,writingMode:"vertical-rl",letterSpacing:1}}>매출 히스토리 · 고객 메모</span>
           </button>
         </div>
       )}
 
       {/* ── 매출 히스토리 확장 패널 ── */}
-      {!_isMob && historyOpen && (
+      {historyOpen && (
         <div className="modal-res" onClick={e=>e.stopPropagation()} style={{background:T.bgCard,
           borderRadius:T.radius.xl,
           border:`1px solid ${T.border}`,
           boxShadow:T.shadow.lg,
-          width:"100%",maxWidth:680,
-          marginLeft:12,
+          width: _isMob ? "auto" : "100%",
+          maxWidth: _isMob ? "none" : 680,
+          marginLeft: _isMob ? 12 : 12,
+          marginRight: _isMob ? 12 : 0,
+          marginTop: _isMob ? 8 : 0,
+          marginBottom: _isMob ? 12 : 0,
           display:"flex",flexDirection:"column",
           overflow:"hidden",
-          maxHeight: modalRef.current ? modalRef.current.offsetHeight : "80vh",
-          animation:"slideRight .3s cubic-bezier(.22,1,.36,1)",
+          maxHeight: _isMob ? "70vh" : (modalRef.current ? modalRef.current.offsetHeight : "80vh"),
+          animation: _isMob ? "slideUp .3s cubic-bezier(.22,1,.36,1)" : "slideRight .3s cubic-bezier(.22,1,.36,1)",
           position:"relative"}}>
           {/* 매출 히스토리 헤더 — 예약모달 X와 동일 스타일 */}
           <div style={{padding:"16px 20px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8,flexShrink:0,flexWrap:"wrap"}}>

@@ -378,7 +378,6 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
   const MENU=[
     {section:"지점 관리",items:[
       {key:"places", icon:"building", label:"예약장소 관리", desc:isOwner?"지점 추가·수정·삭제 + 지점 연계":"내 지점 설정"},
-      {key:"longValidity", icon:"alert", label:"보유권 유효기간 검토", desc:"1년 초과 잔존 보유권 검토·수정·삭제 (전 직원 접근)"},
     ]},
     ...(isMaster ? [{section:"사업장 관리",items:[
       {key:"saleitems",   icon:"scissors", label:"시술 상품 관리", desc:"시술 항목 및 가격 설정"},
