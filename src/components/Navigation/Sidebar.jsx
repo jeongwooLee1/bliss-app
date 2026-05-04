@@ -1,10 +1,26 @@
 import React, { useState } from 'react'
 import { T } from '../../lib/constants'
+import { PLANS } from '../../lib/features'
 import I from '../common/I'
 import { Btn } from '../common'
 import { TeamChat } from '../Chat'
 
-function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", isSuper=false, onBackToSuper, serverV, scraperStatus=null, BLISS_V="", isMobile=false }) {
+// 종료일 → "MM/DD" 또는 "D일 후"
+const fmtPlanEnd = (iso) => {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const now = new Date()
+  const diffDays = Math.ceil((d - now) / (1000*60*60*24))
+  const m = String(d.getMonth()+1).padStart(2,'0')
+  const day = String(d.getDate()).padStart(2,'0')
+  if (diffDays < 0) return `만료 ${m}/${day}`
+  if (diffDays <= 7) return `D-${diffDays} (${m}/${day})`
+  return `~${m}/${day}`
+}
+
+const fmtP = (n) => (n||0).toLocaleString() + 'P'
+
+function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", isSuper=false, onBackToSuper, serverV, scraperStatus=null, BLISS_V="", isMobile=false, billingState={} }) {
   const [chatExpanded, setChatExpanded] = useState(false);
   const cats = [
     { label:"예약 관리", items: nav.filter(n=>["timeline","timeline-beta","reservations"].includes(n.id)) },
@@ -12,8 +28,11 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
     { label:"매출 관리", items: nav.filter(n=>["sales"].includes(n.id)) },
     ...(nav.find(n=>n.id==="admin") ? [{ label:"시스템", items: nav.filter(n=>["users","messages","blissai","admin","wizard","requests"].includes(n.id)) }] : []),
   ];
+  const planLabel = PLANS[billingState.planKey]?.label || '체험'
+  const planEndStr = fmtPlanEnd(billingState.planEnd)
+  const balanceLow = (billingState.totalBalance||0) < 1000
   return <>
-    <div style={{padding:`${T.sp.md}px ${T.sp.lg}px`,borderBottom:`1px solid ${T.border}`,display:"flex",flexDirection:"column",gap:4}}>
+    <div style={{padding:`${T.sp.md}px ${T.sp.lg}px`,borderBottom:`1px solid ${T.border}`,display:"flex",flexDirection:"column",gap:6}}>
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
         <div style={{flex:1,minWidth:0,cursor:"pointer",userSelect:"none"}} onClick={()=>{ window.location.href = '/timeline'; }} title="타임라인 오늘 날짜로 이동">
           <div style={{fontSize:T.fs.lg,fontWeight:T.fw.black,color:T.primary,letterSpacing:-.5,lineHeight:1.15,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{bizName||"Bliss"}</div>
@@ -23,21 +42,26 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
             : role==="manager" ? ("지점 원장" + (branchNames ? ` · ${branchNames}` : ""))
             : (branchNames || "직원")
           }</div>
+          {/* 이름 아래 — 요금제 + 종료일 + 잔액 */}
+          {(billingState.planKey || billingState.totalBalance >= 0) && (
+            <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,marginTop:5,flexWrap:"wrap"}}>
+              <span style={{
+                fontSize:10,fontWeight:T.fw.bolder,color:billingState.planKey==='pro'?T.primary:billingState.planKey==='starter'?T.success:T.textMuted,
+                background:billingState.planKey==='pro'?T.primaryLt:billingState.planKey==='starter'?T.successLt:T.gray100,
+                padding:"1px 6px",borderRadius:4
+              }}>{planLabel}</span>
+              {planEndStr && <span style={{fontSize:10,color:T.textMuted}}>{planEndStr}</span>}
+              <span style={{fontSize:11,fontWeight:T.fw.bolder,color:balanceLow?T.danger:T.text,marginLeft:"auto"}}>
+                {fmtP(billingState.totalBalance)}
+              </span>
+            </div>
+          )}
         </div>
         <button onClick={onLogout} title="로그아웃" style={{flexShrink:0,padding:"4px 8px",fontSize:10,fontWeight:T.fw.bolder,border:`1px solid ${T.border}`,background:"transparent",color:T.textSub,borderRadius:6,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>로그아웃</button>
       </div>
-      <div style={{display:"flex",alignItems:"center",gap:6,fontSize:10,color:T.textMuted,flexWrap:"wrap"}}>
-        <span style={{color:T.danger,fontWeight:T.fw.bolder}}>v{BLISS_V}</span>
-        <span style={{color:T.gray400}}>·</span>
-        <span style={{color:serverV?"#03C75A":T.textMuted}}>서버 {serverV?`v${serverV}`:"…"}</span>
-        {scraperStatus && <>
-          <span style={{color:T.gray400}}>·</span>
-          <span style={{color:scraperStatus.isWarning?"#E65100":T.textMuted,fontWeight:scraperStatus.isWarning?700:400}} title={scraperStatus.lastScraped?`마지막 스크래핑: ${(()=>{const h=Math.floor(scraperStatus.scrapedDiffH);const m=Math.floor((scraperStatus.scrapedDiffH%1)*60);return h>0?`${h}시간${m>0?` ${m}분`:""} 전`:`${m}분 전`;})()}`:"스크래핑 기록 없음"}>
-            {scraperStatus.isWarning?"⚠️":"✅"}
-          </span>
-        </>}
-        {isSuper && <button onClick={onBackToSuper} style={{marginLeft:"auto",fontSize:10,padding:"2px 6px",border:`1px solid ${T.border}`,background:"transparent",color:T.textSub,borderRadius:4,cursor:"pointer",fontFamily:"inherit"}}>← 관리자</button>}
-      </div>
+      {isSuper && <div style={{display:"flex",justifyContent:"flex-end"}}>
+        <button onClick={onBackToSuper} style={{fontSize:10,padding:"2px 6px",border:`1px solid ${T.border}`,background:"transparent",color:T.textSub,borderRadius:4,cursor:"pointer",fontFamily:"inherit"}}>← 관리자</button>
+      </div>}
     </div>
     <div style={{flex:1,minHeight:0,padding:"8px 0",overflowY:"auto"}}>
       {cats.map((cat,ci) => (
@@ -56,6 +80,22 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
         </div>
       ))}
     </div>
+    {/* 팀채팅 위쪽 — 버전 + 서버 + 스크래퍼 + 잔액·종료일 한 줄 */}
+    {!isMobile && <div style={{padding:`6px ${T.sp.lg}px`,borderTop:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:6,fontSize:10,color:T.textMuted,flexWrap:"wrap"}}>
+      <span style={{color:T.danger,fontWeight:T.fw.bolder}}>v{BLISS_V}</span>
+      <span style={{color:T.gray400}}>·</span>
+      <span style={{color:serverV?"#03C75A":T.textMuted}}>서버 {serverV?`v${serverV}`:"…"}</span>
+      {scraperStatus && <>
+        <span style={{color:T.gray400}}>·</span>
+        <span style={{color:scraperStatus.isWarning?"#E65100":T.textMuted,fontWeight:scraperStatus.isWarning?700:400}} title={scraperStatus.lastScraped?`마지막 스크래핑: ${(()=>{const h=Math.floor(scraperStatus.scrapedDiffH);const m=Math.floor((scraperStatus.scrapedDiffH%1)*60);return h>0?`${h}시간${m>0?` ${m}분`:""} 전`:`${m}분 전`;})()}`:"스크래핑 기록 없음"}>
+          {scraperStatus.isWarning?"⚠️":"✅"}
+        </span>
+      </>}
+      <span style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:4}}>
+        {planEndStr && <span style={{color:T.textMuted}}>{planEndStr}</span>}
+        <span style={{color:balanceLow?T.danger:T.gray700,fontWeight:T.fw.bolder}}>{fmtP(billingState.totalBalance)}</span>
+      </span>
+    </div>}
     {!isMobile && <div style={{borderTop:`2px solid ${T.primary}`,display:"flex",flexDirection:"column",flexShrink:0,flexGrow:0,flexBasis:(chatExpanded?420:190)+"px",height:(chatExpanded?420:190)+"px",overflow:"hidden",transition:"flex-basis .18s,height .18s"}}>
       <div style={{flex:1,minHeight:0,display:"flex",flexDirection:"column"}}>
         <TeamChat scrollTrigger={chatExpanded} extraHeaderRight={

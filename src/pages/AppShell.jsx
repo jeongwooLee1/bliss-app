@@ -719,6 +719,28 @@ function App() {
   const [pendingChat, setPendingChat] = useState(null); // {user_id, channel, account_id}
   const [serverV, setServerV] = useState(null);
   const [scraperStatus, setScraperStatus] = useState(null); // {lastSeen, lastScraped, isAlive, isWarning}
+  // 사업장 빌링 정보 — 사이드바에 잔액·종료일 표시
+  const [billingState, setBillingState] = useState({ totalBalance: 0, planEnd: null, planLabel: '', planKey: '' });
+  useEffect(() => {
+    if (!currentBizId) return;
+    const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
+    const load = () => Promise.all([
+      fetch(`${SB_URL}/rest/v1/billing_balances?business_id=eq.${currentBizId}&select=balance`, { headers: H }).then(r=>r.json()).catch(()=>[]),
+      fetch(`${SB_URL}/rest/v1/billing_subscriptions?business_id=eq.${currentBizId}&select=plan_key,current_period_end&order=current_period_end.asc&limit=1`, { headers: H }).then(r=>r.json()).catch(()=>[]),
+    ]).then(([balances, subs]) => {
+      const totalBalance = (Array.isArray(balances) ? balances : []).reduce((s,b)=>s+(b.balance||0),0);
+      const sub = Array.isArray(subs) ? subs[0] : null;
+      setBillingState({
+        totalBalance,
+        planEnd: sub?.current_period_end || null,
+        planKey: sub?.plan_key || '',
+        planLabel: '',
+      });
+    });
+    load();
+    const t = setInterval(load, 60000); // 1분 폴링
+    return () => clearInterval(t);
+  }, [currentBizId]);
   const [naverColShow, setNaverColShowRaw] = useState(()=>{ try{return JSON.parse(localStorage.getItem("bliss_naver_cols")||"null")||{};}catch(e){return{};} });
   // DB에서 컬럼 설정 복원 (localStorage보다 우선)
   useEffect(()=>{
@@ -1489,12 +1511,12 @@ function App() {
       <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" rel="stylesheet"/>
       
       <aside className="sidebar-d" style={S.sidebar}>
-        <Sidebar nav={nav} page={page} setPage={setPage} role={role} branchNames={branchNames} onLogout={handleLogout} bizName={bizName} isSuper={isSuper} onBackToSuper={handleBackToSuper} serverV={serverV} BLISS_V={BLISS_V}/>
+        <Sidebar nav={nav} page={page} setPage={setPage} role={role} branchNames={branchNames} onLogout={handleLogout} bizName={bizName} isSuper={isSuper} onBackToSuper={handleBackToSuper} serverV={serverV} BLISS_V={BLISS_V} billingState={billingState} scraperStatus={scraperStatus}/>
       </aside>
       {sideOpen && <div className="sidebar-m" style={{position:"fixed",inset:0,zIndex:300}}>
         <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,.5)"}} onClick={()=>setSideOpen(false)}/>
         <div style={{position:"relative",width:260,height:"100%",background:T.bgCard,display:"flex",flexDirection:"column",animation:"slideIn .5s cubic-bezier(.22,1,.36,1)"}}>
-          <Sidebar nav={nav} page={page} setPage={p=>{setPage(p);setSideOpen(false)}} role={role} branchNames={branchNames} onLogout={handleLogout} bizName={bizName} isSuper={isSuper} onBackToSuper={handleBackToSuper} serverV={serverV} BLISS_V={BLISS_V} isMobile/>
+          <Sidebar nav={nav} page={page} setPage={p=>{setPage(p);setSideOpen(false)}} role={role} branchNames={branchNames} onLogout={handleLogout} bizName={bizName} isSuper={isSuper} onBackToSuper={handleBackToSuper} serverV={serverV} BLISS_V={BLISS_V} billingState={billingState} scraperStatus={scraperStatus} isMobile/>
         </div>
       </div>}
       {newVer && <div onClick={()=>{try{window.location.href=window.location.pathname+"?v="+newVer;}catch(e){window.location.reload();}}} style={{position:"fixed",top:10,right:10,zIndex:9999,background:T.primary,color:"#fff",padding:"10px 16px",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 12px rgba(0,0,0,.25)",animation:"ovFadeIn .3s"}}>
