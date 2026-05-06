@@ -903,3 +903,78 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - **last_visit 컬럼 사용** (last_date 아님) — customers 테이블 query 작성 시 주의
 - **AI 분석 프롬프트의 "상담" 키워드 = 매칭 금지** (정반대 규칙)
 - **scheduleLog는 string** (DB jsonb 회피) — 배열로 저장하면 .trim() 호출에서 크래시
+
+### v3.7.493 → v3.7.502 — AI 메모리 + 외부플랫폼 + 체험단 + cron fix (2026-05-06)
+
+#### 타임라인 / 직원 칼럼
+- **moveEmpCol 핵심 fix**: hidden 직원이 새 visible order 끝에 붙어 절대순서 망가뜨리던 버그. swap된 두 ID만 위치 교환 + hidden 원위치 유지
+- **외국 영문 ALL-CAPS 이름 정규화**: "ATWOOD LAUREN ELIZABETH" → "Atwood Lauren Elizabeth" (한글 섞이면 그대로)
+
+#### 예약 모달
+- **삭제 확인 모달 커스텀화**: 모바일 native confirm() 미표시 이슈 해결
+- **외부 플랫폼(Trazy/Creatrip/SeoulBeauty) 인식**: ReservationModal `isNaverItem` 판정에 외부 플랫폼 prefix·source 추가, 삭제·"✓ 확정" 버튼 정상 동작
+
+#### 매출관리 페이지
+- 검색 하단 카드 2줄 제거, "합 계" 행 헤더 직후 sticky 배치
+
+#### 메시지함
+- **번역 토글 3-state**: 자동/강제영어/OFF, localStorage
+- **번역 진행 중 ON-AIR 표시** (빨간 점 1초 깜빡 + "번역 중…")
+- **사이드바 클릭 시 첫 화면 리셋** (inboxResetKey 카운터)
+- **발신 직원 디폴트 = 지점명** + 수동 선택 localStorage 저장
+- **버튼 디자인 통일** (Bliss SVG 아이콘): sparkles/languages/calendar
+- `/ai-suggest` 엔드포인트 신설 — ✨ AI 버튼이 state 기반 멀티턴 플로우 사용 (suggest_only=True)
+
+#### 매출 등록 / 체험단
+- **체험단(0원 매출) 고객 → 신규로 판단**: SaleForm `custHasSale` 조회에 `total>0` 필터
+- **체험단 매출 모달 자동화**: 시술 클릭 → comped + 0원, 🎁 클릭 → 정상가 복원 (유료로)
+- **체크박스 + 🎁/분/금액 컬럼 정렬 표준화** (이름·🎁·분·금액 4컬럼)
+- 페어 행(절반/전체)도 동일 정렬 + 체크박스 + 🎁
+- 🎁 이모지 → Lucide gift SVG 아이콘
+
+#### AI 자동 응대 (ai_booking.py)
+- **모델 우선순위**: claude-haiku-4-5 → gpt-4o-mini → gemini-2.5-flash (3-tier hybrid)
+- **멀티턴 messages 배열 호출**: 단일 prompt → 진짜 conversation messages array
+- **chat_booking_state 시스템 메모리**: 대화별 누적 정보(branch/service/date/time/...) — AI 추출 못한 정보를 시스템이 누적
+- **언어 룰**: 첫 대화 언어로 끝까지 (이중 모드 제거)
+- **시간 처리 강화**: 모호 표현(evening/morning) → ask_info, 명시 숫자만 영업시간 기준 PM/AM 자동
+- **상담 후 시술 매칭 차단**: request_msg에 "페이스 상담"/"바디 상담" 발견 시 selected_services에서 해당 카테고리 시술 강제 제거 (AI 룰 무시 보강)
+
+#### AI 분석 비용 절감
+- rescrape 시 ai_analyze 재호출 차단 — `selected_services` 있으면 절대 재분석 X (5분 주기 ai_call 90% 감소 예상)
+- `reservations.ai_input_hash` 컬럼 추가
+
+#### Edge Functions / cron 인증 fix (큰 버그)
+- **alert-stale Edge Function 신설**: 5분 경과 확정대기/미읽 메시지 → 텔레그램 알림 (1회만)
+- **pg_cron 4개 인증 fix**: `net.http_post` 3번째 인자가 headers가 아니라 URL params였음 → 모든 호출 401 → named param `headers :=`로 재등록 (alert-stale, check-pending, daily-report, weekly-report)
+- `reservations.tg_alerted_at` / `messages.tg_alerted_at` 컬럼 + 부분 인덱스
+
+#### 자동 태그 트리거
+- **★마지막회차 = 패키지 카테고리 보유권만 평가** (에너지테라피·바디 등 다른 카테고리 잔여로 잘못 부착 방지)
+- **★기존상담 / customer_inactive_days**: hasPaidSale=false면 OFF
+- `is_new_customer`: visits=0 OR hasPaidSale=false (체험단 0원 매출 신규 처리)
+
+#### 외부 플랫폼 메일 처리 (서버)
+- **Trazy/Creatrip/SeoulBeauty 모두 INSERT 실패하던 버그 fix**: `service_name` 컬럼 reservations에 없음 → `request_msg`로 변경
+- **Creatrip HTML 파싱 fix**: `_strip_creatrip_html()` 추가 (HTML 태그 제거 후 정규식 매칭)
+
+#### 네이버 고객 매칭 안정화 (서버)
+- **orphan cust_id 방지**: find_cust_by_phone 실패 → INSERT도 실패 → orphan 저장되던 흐름 fix
+- 신규 생성 직전 재시도 매칭 + INSERT 응답 status_code 확인 + race recover + 최종 실패 시 cust_id="" fallback
+
+#### 알림톡 billing fix (서버)
+- **알림톡 billing 0건 버그 fix**: `noti` 변수 scope 문제 (process_item 내부 → 외부 참조 NameError) → `get_branch_cfg` 재조회로 fix
+
+#### 공지 이미지 중복 fix
+- BlissRequests 부모 div + 자식 textarea 양쪽 onPaste 핸들러 → 1장 paste = 2번 업로드 → 부모 핸들러 제거
+
+### 주의사항 (v3.7.502 이후 참고)
+- **AI 모델 우선순위**: claude-haiku-4-5(메인) → gpt-4o-mini → gemini-2.5-flash. claude_key/openai_key/gemini_key 모두 businesses.settings에 저장
+- **chat_booking_state 메모리 시스템**: 대화 turn마다 booking 정보 누적 → AI가 추출 못한 정보도 시스템이 보강
+- **rescrape AI 비용 절감**: selected_services 있으면 재분석 금지 (어떤 변경에서도)
+- **모든 cron net.http_post는 `headers :=` named param 사용** (3번째 인자 = URL params, 헤더 아님)
+- **외부 플랫폼 예약 reservation_id prefix**: `trazy_*`, `creatrip_*`, `seoulbeauty_*`, `cusmetic_*` — 이런 ID는 네이버 아닌 것으로 판정해야 (isNaverItem 룰)
+- **★마지막회차 트리거**: 패키지 카테고리(`c1fbbbff-`)만 평가. 회원권은 별도 트리거 필요 (membership_expiring_days, 미구현)
+- **Anthropic Claude 크레딧 자동 충전 $5→$30**, 결제는 Anthropic Console
+- **체험단 0원 매출 = 신규 고객으로 판단** (SaleForm custHasSale + tagAutoTrigger hasPaidSale 양쪽 적용)
+- **외국인 ALL-CAPS 이름은 자동 타이틀케이스로 표시** (네이버 여권명 → "Lauren Atwood")
