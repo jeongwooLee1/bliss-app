@@ -32,33 +32,33 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
   const planEndStr = fmtPlanEnd(billingState.planEnd)
   const balanceLow = (billingState.totalBalance||0) < 1000
   return <>
-    <div style={{padding:`${T.sp.md}px ${T.sp.lg}px`,borderBottom:`1px solid ${T.border}`,display:"flex",flexDirection:"column",gap:6}}>
+    <div style={{padding:`${T.sp.md}px ${T.sp.lg}px`,borderBottom:`1px solid ${T.border}`,display:"flex",flexDirection:"column",gap:10,background:`linear-gradient(135deg, ${T.primaryLt} 0%, transparent 60%)`}}>
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
         <div style={{flex:1,minWidth:0,cursor:"pointer",userSelect:"none"}} onClick={()=>{ window.location.href = '/timeline'; }} title="타임라인 오늘 날짜로 이동">
           <div style={{fontSize:T.fs.lg,fontWeight:T.fw.black,color:T.primary,letterSpacing:-.5,lineHeight:1.15,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{bizName||"Bliss"}</div>
-          <div style={{fontSize:T.fs.xs,color:T.textSub,marginTop:2}}>{
+          <div style={{fontSize:T.fs.xs,color:T.textSub,marginTop:3,fontWeight:T.fw.bold}}>{
             role==="owner" ? "대표 관리자"
             : role==="super" ? "슈퍼관리자"
             : role==="manager" ? ("지점 원장" + (branchNames ? ` · ${branchNames}` : ""))
             : (branchNames || "직원")
           }</div>
-          {/* 이름 아래 — 요금제 + 종료일 + 잔액 */}
-          {(billingState.planKey || billingState.totalBalance >= 0) && (
-            <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,marginTop:5,flexWrap:"wrap"}}>
-              <span style={{
-                fontSize:10,fontWeight:T.fw.bolder,color:billingState.planKey==='pro'?T.primary:billingState.planKey==='starter'?T.success:T.textMuted,
-                background:billingState.planKey==='pro'?T.primaryLt:billingState.planKey==='starter'?T.successLt:T.gray100,
-                padding:"1px 6px",borderRadius:4
-              }}>{planLabel}</span>
-              {planEndStr && <span style={{fontSize:10,color:T.textMuted}}>{planEndStr}</span>}
-              <span style={{fontSize:11,fontWeight:T.fw.bolder,color:balanceLow?T.danger:T.text,marginLeft:"auto"}}>
-                {fmtP(billingState.totalBalance)}
-              </span>
-            </div>
-          )}
         </div>
-        <button onClick={onLogout} title="로그아웃" style={{flexShrink:0,padding:"4px 8px",fontSize:10,fontWeight:T.fw.bolder,border:`1px solid ${T.border}`,background:"transparent",color:T.textSub,borderRadius:6,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>로그아웃</button>
+        <button onClick={onLogout} title="로그아웃" style={{flexShrink:0,padding:"4px 9px",fontSize:10,fontWeight:T.fw.bolder,border:`1px solid ${T.border}`,background:T.bgCard,color:T.textSub,borderRadius:6,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>로그아웃</button>
       </div>
+      {(billingState.planKey || billingState.totalBalance >= 0) && (
+        <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:T.bgCard,border:`1px solid ${T.border}`,borderRadius:8}}>
+          <span style={{
+            fontSize:10,fontWeight:T.fw.black,letterSpacing:.3,
+            color:billingState.planKey==='pro'?'#fff':billingState.planKey==='starter'?'#fff':T.gray600,
+            background:billingState.planKey==='pro'?T.primary:billingState.planKey==='starter'?T.success:T.gray300,
+            padding:"3px 8px",borderRadius:4
+          }}>{planLabel}</span>
+          {planEndStr && <span style={{fontSize:11,color:T.text,fontWeight:T.fw.bold,whiteSpace:"nowrap"}}>{planEndStr}</span>}
+          <span style={{marginLeft:"auto",fontSize:13,fontWeight:T.fw.black,color:balanceLow?T.danger:T.primary,letterSpacing:-.3}}>
+            {fmtP(billingState.totalBalance)}
+          </span>
+        </div>
+      )}
       {isSuper && <div style={{display:"flex",justifyContent:"flex-end"}}>
         <button onClick={onBackToSuper} style={{fontSize:10,padding:"2px 6px",border:`1px solid ${T.border}`,background:"transparent",color:T.textSub,borderRadius:4,cursor:"pointer",fontFamily:"inherit"}}>← 관리자</button>
       </div>}
@@ -80,7 +80,7 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
         </div>
       ))}
     </div>
-    {/* 팀채팅 위쪽 — 버전 + 서버 + 스크래퍼 + 잔액·종료일 한 줄 */}
+    {/* 팀채팅 위쪽 — 버전 + 서버 + 스크래퍼 (잔액·종료일은 상단 헤더에 표시, 중복 제거) */}
     {!isMobile && <div style={{padding:`6px ${T.sp.lg}px`,borderTop:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:6,fontSize:10,color:T.textMuted,flexWrap:"wrap"}}>
       <span style={{color:T.danger,fontWeight:T.fw.bolder}}>v{BLISS_V}</span>
       <span style={{color:T.gray400}}>·</span>
@@ -91,10 +91,6 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
           {scraperStatus.isWarning?"⚠️":"✅"}
         </span>
       </>}
-      <span style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:4}}>
-        {planEndStr && <span style={{color:T.textMuted}}>{planEndStr}</span>}
-        <span style={{color:balanceLow?T.danger:T.gray700,fontWeight:T.fw.bolder}}>{fmtP(billingState.totalBalance)}</span>
-      </span>
     </div>}
     {!isMobile && <div style={{borderTop:`2px solid ${T.primary}`,display:"flex",flexDirection:"column",flexShrink:0,flexGrow:0,flexBasis:(chatExpanded?420:190)+"px",height:(chatExpanded?420:190)+"px",overflow:"hidden",transition:"flex-basis .18s,height .18s"}}>
       <div style={{flex:1,minHeight:0,display:"flex",flexDirection:"column"}}>

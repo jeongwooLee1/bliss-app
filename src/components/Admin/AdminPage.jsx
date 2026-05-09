@@ -25,6 +25,7 @@ import AdminAlimtalkLog from './AdminAlimtalkLog'
 import AdminSmsLog from './AdminSmsLog'
 import AdminLongValidityReview from './AdminLongValidityReview'
 import AdminPlan from './AdminPlan'
+import AdminPaymentSettings from './AdminPaymentSettings'
 
 const uid = genId;
 
@@ -361,7 +362,7 @@ function AdminJoinBrand({ currentUser, onBack }) {
 function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userBranches=[], setPage }) {
   const navTo = useNavigate();
   const loc = useLocation();
-  const TAB_SLUGS = {places:"places",saleitems:"services",coupons:"coupons",prodmgmt:"products",svctags:"tags",ressrc:"sources",extplatforms:"ext-platforms",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",branchgroups:"branch-groups",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",branchaudit:"branch-audit",pointmig:"point-migration",memberrules:"member-rules",joinbrand:"join-brand",kiosks:"kiosks",alimtalkLog:"alimtalk-log",smsLog:"sms-log",longValidity:"long-validity",plan:"plan"};
+  const TAB_SLUGS = {places:"places",saleitems:"services",coupons:"coupons",prodmgmt:"products",svctags:"tags",ressrc:"sources",extplatforms:"ext-platforms",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",branchgroups:"branch-groups",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",branchaudit:"branch-audit",pointmig:"point-migration",memberrules:"member-rules",joinbrand:"join-brand",kiosks:"kiosks",alimtalkLog:"alimtalk-log",smsLog:"sms-log",longValidity:"long-validity",plan:"plan",paymentSettings:"payments"};
   const SLUG_TO_TAB = Object.fromEntries(Object.entries(TAB_SLUGS).map(([k,v])=>[v,k]));
   const tab = SLUG_TO_TAB[loc.pathname.replace(/^\/settings\/?/,"").split("/")[0]] || null;
   const setTab=t=>{ if(t) navTo(`/settings/${TAB_SLUGS[t]||t}`); else navTo("/settings"); };
@@ -391,19 +392,16 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
       {key:"svctags",     icon:"tag",      label:"태그 관리",      desc:"예약 태그 추가·편집"},
       {key:"ressrc",      icon:"zap",      label:"예약경로 관리",  desc:"예약 유입 경로 설정"},
       {key:"extplatforms",icon:"link",     label:"외부 플랫폼",    desc:"서울뷰티·크리에이트립 등 선결제 플랫폼 관리"},
+      {key:"paymentSettings",icon:"creditCard",label:"💳 결제 설정",  desc:"토스페이먼츠 가맹점 키 — 매장별 예약금 결제용"},
     ]}] : []),
     ...(isMaster ? [{section:"알림 & AI",items:[
       {key:"notiSettings",icon:"bell",     label:"알림톡 설정",    desc:"카카오 알림톡 자동 발송 설정"},
       {key:"memoTemplates",icon:"file",      label:"메모 템플릿",    desc:"매출·예약·고객 메모 양식 설정"},
       ...(isOwner ? [{key:"aisettings",  icon:"sparkles", label:"AI 설정",        desc:"AI 분석 규칙 관리"}] : []),
     ]}] : []),
-    {section:"전송 내역",items:[
-      {key:"alimtalkLog", icon:"clipboard", label:"📨 알림톡·SMS 전송내역", desc:"자동 알림톡/케어 SMS 큐 이력"},
-      {key:"smsLog",      icon:"send",      label:"📤 직원 SMS 발송 이력", desc:"고객관리에서 직원이 직접 발송한 SMS"},
-    ]},
     {section:"내 계정",items:[
       {key:"mypage",      icon:"user",     label:"마이페이지",     desc:"내 계정 정보 및 비밀번호 변경"},
-      ...(isOwner ? [{key:"plan", icon:"zap", label:"요금제 & 기능", desc:"현재 plan + 활성 기능 토글"}] : []),
+      ...(isMaster ? [{key:"plan", icon:"zap", label:"💳 요금제 & 사용내역", desc:"잔액·요금제·발송내역·포인트 차감 한 곳"}] : []),
       ...(!isMaster ? [{key:"joinbrand", icon:"link", label:"브랜드 가입 요청", desc:"브랜드 코드로 가입 요청"}] : []),
     ]},
   ];
@@ -444,17 +442,19 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     {tab==="svctags"      && isMaster &&<AdminServiceTags  data={data} setData={setData}/>}
     {tab==="ressrc"       && isMaster &&<AdminResSources   data={data} setData={setData}/>}
     {tab==="extplatforms" && isMaster &&<AdminExtPlatforms data={data} setData={setData} bizId={bizId}/>}
+    {tab==="paymentSettings" && isMaster &&<AdminPaymentSettings data={data} setData={setData} userBranches={userBranches} isMaster={isMaster}/>}
     {tab==="notiSettings" && isMaster &&<AdminNoti         data={data} setData={setData} sb={sb} bizId={bizId} branches={(data?.branches||[]).filter(b=>userBranches.includes(b.id))}/>}
     {tab==="memoTemplates"&&<AdminMemoTemplates bizId={bizId}/>}
     {tab==="aisettings"   && isMaster &&<AdminAISettings   data={data} sb={sb} bizId={bizId}/>}
     {tab==="brandmembers" && isMaster &&<AdminBrandMembers data={data} setData={setData} bizId={bizId} currentUser={currentUser}/>}
     {tab==="mypage"       &&<AdminMyPage       currentUser={currentUser} onLogout={onLogout}/>}
-    {tab==="plan"         && isOwner &&<AdminPlan         data={data} setData={setData} currentUser={currentUser}/>}
+    {tab==="plan"         && isMaster &&<AdminPlan         data={data} setData={setData} currentUser={currentUser} userBranches={userBranches}/>}
     {tab==="schedule"    && isMaster &&<AdminSchedule currentUser={currentUser} isMaster={isMaster}/>}
     {tab==="branchgroups"&& isMaster &&<AdminBranchGroups data={data} setData={setData} bizId={bizId}/>}
     {tab==="kiosks"      && isMaster &&<AdminKiosks        data={data} setData={setData} bizId={bizId}/>}
-    {tab==="alimtalkLog" && <AdminAlimtalkLog   data={data} userBranches={userBranches}/>}
-    {tab==="smsLog" && <AdminSmsLog data={data} userBranches={userBranches}/>}
+    {/* 알림톡/SMS 로그는 plan 페이지로 통합 — 직접 URL 접근 호환용 fallback */}
+    {tab==="alimtalkLog" && <AdminPlan data={data} setData={setData} currentUser={currentUser} userBranches={userBranches} initialSubTab="alimtalk"/>}
+    {tab==="smsLog" && <AdminPlan data={data} setData={setData} currentUser={currentUser} userBranches={userBranches} initialSubTab="sms"/>}
     {tab==="longValidity" && <AdminLongValidityReview data={data} userBranches={userBranches}/>}
     {tab==="joinbrand"    && !isMaster &&<AdminJoinBrand   currentUser={currentUser} onBack={back}/>}
     {tab && !["mypage","schedule"].includes(tab) && !isMaster && <div style={{textAlign:"center",padding:"60px 20px",color:T.textMuted}}>

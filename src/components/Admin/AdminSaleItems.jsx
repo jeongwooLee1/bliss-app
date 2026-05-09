@@ -177,6 +177,24 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
 
   const save=async()=>{
     if(!form.name.trim())return;
+    // 정상가 필수 검증 — 회원가만 입력하고 정상가 비워둔 케이스 차단
+    const _checkPrice = (pF, pM, mF, mM, label) => {
+      const pSum = (+pF||0) + (+pM||0);
+      const mSum = (+mF||0) + (+mM||0);
+      if (pSum === 0 && mSum > 0) {
+        alert(`${label} 정상가를 입력해주세요.\n회원가는 정상가 대비 할인 가격이에요. 정상가가 비어있으면 안 돼요.`);
+        return false;
+      }
+      return true;
+    };
+    if (useOptions) {
+      for (const opt of [opt1, opt2]) {
+        if (!(opt.name||"").trim()) continue;
+        if (!_checkPrice(opt.priceF, opt.priceM, opt.memberPriceF, opt.memberPriceM, `옵션 "${opt.name}"의`)) return;
+      }
+    } else {
+      if (!_checkPrice(form.priceF, form.priceM, form.memberPriceF, form.memberPriceM, "")) return;
+    }
     setSaving(true);
     try{
       // promoConfig 정리: 숫자 필드 정규화, 빈값 제거
@@ -417,12 +435,12 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
         <>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
             <AField label="소요(분)"><input style={AInp} type="number" value={form.dur} onChange={e=>set("dur",e.target.value)} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
-            <AField label="여성 정상가"><input style={AInp} type="number" value={form.priceF} onChange={e=>set("priceF",e.target.value)} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
-            <AField label="남성 정상가"><input style={AInp} type="number" value={form.priceM} onChange={e=>set("priceM",e.target.value)} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
+            <AField label="여성 정상가 *"><input style={AInp} type="number" value={form.priceF} onChange={e=>set("priceF",e.target.value)} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
+            <AField label="남성 정상가 *"><input style={AInp} type="number" value={form.priceM} onChange={e=>set("priceM",e.target.value)} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            <AField label="여성 회원가"><input style={{...AInp,borderColor:"#e0d4f5"}} type="number" value={form.memberPriceF} onChange={e=>set("memberPriceF",e.target.value)} placeholder="없으면 0" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e0d4f5"}/></AField>
-            <AField label="남성 회원가"><input style={{...AInp,borderColor:"#e0d4f5"}} type="number" value={form.memberPriceM} onChange={e=>set("memberPriceM",e.target.value)} placeholder="없으면 0" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e0d4f5"}/></AField>
+            <AField label="여성 회원가 (선택)"><input style={{...AInp,borderColor:"#e0d4f5"}} type="number" value={form.memberPriceF} onChange={e=>set("memberPriceF",e.target.value)} placeholder="없으면 비워두세요" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e0d4f5"}/></AField>
+            <AField label="남성 회원가 (선택)"><input style={{...AInp,borderColor:"#e0d4f5"}} type="number" value={form.memberPriceM} onChange={e=>set("memberPriceM",e.target.value)} placeholder="없으면 비워두세요" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e0d4f5"}/></AField>
           </div>
         </>
       ) : (
@@ -433,12 +451,12 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
               <AField label="옵션명"><input style={AInp} value={o.val.name} onChange={e=>o.set({...o.val,name:e.target.value})} placeholder="예: 절반 / 전체 / 1시간 / 2시간"/></AField>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
                 <AField label="소요(분)"><input style={AInp} type="number" value={o.val.dur} onChange={e=>o.set({...o.val,dur:e.target.value})}/></AField>
-                <AField label="여성가"><input style={AInp} type="number" value={o.val.priceF} onChange={e=>o.set({...o.val,priceF:e.target.value})}/></AField>
-                <AField label="남성가"><input style={AInp} type="number" value={o.val.priceM} onChange={e=>o.set({...o.val,priceM:e.target.value})}/></AField>
+                <AField label="여성가 *"><input style={AInp} type="number" value={o.val.priceF} onChange={e=>o.set({...o.val,priceF:e.target.value})}/></AField>
+                <AField label="남성가 *"><input style={AInp} type="number" value={o.val.priceM} onChange={e=>o.set({...o.val,priceM:e.target.value})}/></AField>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                <AField label="여성 회원가"><input style={{...AInp,borderColor:"#e0d4f5"}} type="number" value={o.val.memberPriceF} onChange={e=>o.set({...o.val,memberPriceF:e.target.value})} placeholder="없으면 0"/></AField>
-                <AField label="남성 회원가"><input style={{...AInp,borderColor:"#e0d4f5"}} type="number" value={o.val.memberPriceM} onChange={e=>o.set({...o.val,memberPriceM:e.target.value})} placeholder="없으면 0"/></AField>
+                <AField label="여성 회원가 (선택)"><input style={{...AInp,borderColor:"#e0d4f5"}} type="number" value={o.val.memberPriceF} onChange={e=>o.set({...o.val,memberPriceF:e.target.value})} placeholder="없으면 비워두세요"/></AField>
+                <AField label="남성 회원가 (선택)"><input style={{...AInp,borderColor:"#e0d4f5"}} type="number" value={o.val.memberPriceM} onChange={e=>o.set({...o.val,memberPriceM:e.target.value})} placeholder="없으면 비워두세요"/></AField>
               </div>
             </div>
           ))}

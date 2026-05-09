@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>보유권 표시 시안 — 10종</title>
+<style>
+  :root {
+    --primary: #7c7cc8;
+    --primaryLt: #ede9fe;
+    --primaryDk: #5b5bb8;
+    --primaryHover: #f5f5ff;
+    --success: #6ab56a;
+    --successLt: #e8f5e9;
+    --warning: #e8b830;
+    --warningLt: #fffde7;
+    --info: #5cb5c5;
+    --infoLt: #e0f7fa;
+    --g100:#f9fafb; --g200:#f2f4f6; --g300:#e5e8eb;
+    --g400:#d1d6db; --g500:#b0b8c1; --g600:#6b7684;
+    --g700:#4e5968; --g800:#191f28;
+  }
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;background:#fafbff;color:var(--g800);padding:24px;max-width:880px;margin:auto;line-height:1.5}
+  h1{font-size:20px;margin:0 0 6px}
+  .sub{color:var(--g600);font-size:13px;margin-bottom:24px}
+  .card{background:#fff;border:1px solid var(--g200);border-radius:14px;padding:18px 18px 22px;margin-bottom:16px;box-shadow:0 1px 2px rgba(0,0,0,.02)}
+  .card h2{font-size:14px;color:var(--primaryDk);font-weight:800;margin:0 0 4px;display:flex;align-items:center;gap:8px}
+  .card .num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--primary);color:#fff;font-size:12px;font-weight:800}
+  .card .desc{font-size:11px;color:var(--g600);margin:0 0 14px}
+  .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+
+  /* ========== 시안 1: Outline Pill ========== */
+  .v1-pill{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;background:#fff}
+  .v1-prepaid{border:1.5px solid var(--warning);color:#7a5a00}
+  .v1-pkg{border:1.5px solid var(--primary);color:var(--primaryDk)}
+  .v1-coupon{border:1.5px solid var(--info);color:#155e6a}
+  .v1-annual{border:1.5px solid #b06ac9;color:#6a1b9a}
+  .v1-pill .amt{font-weight:800;color:inherit}
+
+  /* ========== 시안 2: Solid Soft Fill ========== */
+  .v2-pill{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700}
+  .v2-prepaid{background:var(--warningLt);color:#7a5a00;border:1px solid #f3d77a}
+  .v2-pkg{background:var(--primaryLt);color:var(--primaryDk);border:1px solid #d6cefa}
+  .v2-coupon{background:var(--infoLt);color:#155e6a;border:1px solid #9bdde6}
+  .v2-annual{background:#f3e8f7;color:#6a1b9a;border:1px solid #d8b6e0}
+
+  /* ========== 시안 3: Two-tone Split ========== */
+  .v3-pill{display:inline-flex;align-items:stretch;border-radius:8px;overflow:hidden;font-size:11px;font-weight:700;border:1px solid var(--g300)}
+  .v3-pill .lbl{padding:3px 8px;background:#fff;color:var(--g700)}
+  .v3-pill .val{padding:3px 8px;font-weight:800}
+  .v3-prepaid .val{background:var(--warningLt);color:#7a5a00}
+  .v3-pkg .val{background:var(--primaryLt);color:var(--primaryDk)}
+  .v3-coupon .val{background:var(--infoLt);color:#155e6a}
+  .v3-annual .val{background:#f3e8f7;color:#6a1b9a}
+
+  /* ========== 시안 4: Mini Stat Card ========== */
+  .v4-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px}
+  .v4-card{background:#fff;border:1px solid var(--g300);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:2px}
+  .v4-card .lbl{font-size:10px;color:var(--g600);font-weight:600}
+  .v4-card .val{font-size:14px;font-weight:800}
+  .v4-prepaid{border-left:3px solid var(--warning)}
+  .v4-prepaid .val{color:#7a5a00}
+  .v4-pkg{border-left:3px solid var(--primary)}
+  .v4-pkg .val{color:var(--primaryDk)}
+  .v4-coupon{border-left:3px solid var(--info)}
+  .v4-coupon .val{color:#155e6a}
+  .v4-annual{border-left:3px solid #b06ac9}
+  .v4-annual .val{color:#6a1b9a}
+
+  /* ========== 시안 5: Number-first Big ========== */
+  .v5-pill{display:inline-flex;align-items:baseline;gap:5px;padding:4px 10px;border-radius:10px;background:#fff;border:1px solid var(--g300)}
+  .v5-pill .num{font-size:14px;font-weight:900}
+  .v5-pill .lbl{font-size:10px;color:var(--g600);font-weight:600}
+  .v5-prepaid .num{color:#7a5a00}
+  .v5-pkg .num{color:var(--primaryDk)}
+  .v5-coupon .num{color:#155e6a}
+  .v5-annual .num{color:#6a1b9a}
+
+  /* ========== 시안 6: Tag (티켓 모양) ========== */
+  .v6-tag{position:relative;display:inline-flex;align-items:center;padding:3px 10px 3px 18px;font-size:11px;font-weight:700;border-radius:0 6px 6px 0;color:#fff}
+  .v6-tag::before{content:"";position:absolute;left:5px;top:50%;transform:translateY(-50%);width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.85)}
+  .v6-prepaid{background:#d4a73a}
+  .v6-pkg{background:var(--primary)}
+  .v6-coupon{background:var(--info)}
+  .v6-annual{background:#9c4cb3}
+
+  /* ========== 시안 7: Icon-prefix Badge ========== */
+  .v7-pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px 3px 4px;border-radius:999px;background:var(--g100);border:1px solid var(--g300);font-size:11px;font-weight:700;color:var(--g700)}
+  .v7-pill .ic{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;font-size:10px;color:#fff;font-weight:800}
+  .v7-prepaid .ic{background:var(--warning)}
+  .v7-pkg .ic{background:var(--primary)}
+  .v7-coupon .ic{background:var(--info)}
+  .v7-annual .ic{background:#b06ac9}
+
+  /* ========== 시안 8: Glass / Soft Shadow ========== */
+  .v8-pill{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:999px;font-size:11px;font-weight:700;backdrop-filter:blur(10px);box-shadow:0 1px 6px rgba(124,124,200,.12)}
+  .v8-prepaid{background:rgba(232,184,48,.15);color:#7a5a00;border:1px solid rgba(232,184,48,.4)}
+  .v8-pkg{background:rgba(124,124,200,.12);color:var(--primaryDk);border:1px solid rgba(124,124,200,.35)}
+  .v8-coupon{background:rgba(92,181,197,.13);color:#155e6a;border:1px solid rgba(92,181,197,.35)}
+  .v8-annual{background:rgba(176,106,201,.13);color:#6a1b9a;border:1px solid rgba(176,106,201,.35)}
+
+  /* ========== 시안 9: Underline (Flat / Compact) ========== */
+  .v9-pill{display:inline-flex;align-items:baseline;gap:4px;padding:2px 0;font-size:11px;font-weight:700;color:var(--g700);border-bottom:2px solid transparent}
+  .v9-prepaid{border-color:var(--warning)}
+  .v9-pkg{border-color:var(--primary)}
+  .v9-coupon{border-color:var(--info)}
+  .v9-annual{border-color:#b06ac9}
+  .v9-pill .amt{font-weight:800}
+  .v9-prepaid .amt{color:#7a5a00}
+  .v9-pkg .amt{color:var(--primaryDk)}
+  .v9-coupon .amt{color:#155e6a}
+  .v9-annual .amt{color:#6a1b9a}
+  .v9-row{display:flex;flex-wrap:wrap;gap:14px}
+
+  /* ========== 시안 10: Compact Inline (한 줄) ========== */
+  .v10-line{padding:8px 12px;background:var(--primaryHover);border:1px solid var(--primaryLt);border-radius:10px;font-size:12px;color:var(--g700);line-height:1.7}
+  .v10-line .item{font-weight:700;margin-right:10px}
+  .v10-line .amt{font-weight:800}
+  .v10-prepaid .amt{color:#7a5a00}
+  .v10-pkg .amt{color:var(--primaryDk)}
+  .v10-coupon .amt{color:#155e6a}
+  .v10-annual .amt{color:#6a1b9a}
+  .v10-line .sep{color:var(--g400);margin:0 6px}
+
+  .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:11px;color:var(--g600);margin-top:8px}
+  .legend .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:middle}
+  footer{text-align:center;color:var(--g500);font-size:11px;padding:24px 0 12px}
+</style>
+</head>
+<body>
+  <h1>보유권 표시 디자인 시안 — 10종</h1>
+  <div class="sub">동일 데이터(다담권 50만 / 에너지테라피 60분 / 제품전용 8만원쿠폰 / 소급PKG 1회권 / 기기스크럽1회 무료 / 연간회원권)를 10개 컨셉으로 표시 — 마음에 드는 번호를 알려주세요.</div>
+
+  <!-- ============ 1 ============ -->
+  <div class="card">
+    <h2><span class="num">1</span>Outline Pill — 테두리만, 흰 배경</h2>
+    <div class="desc">미니멀. 종류별로 테두리 색만 다름. 화면 노이즈가 가장 적음.</div>
+    <div class="row">
+      <span class="v1-pill v1-prepaid">🎫 다담권 50만 <span class="amt">+500,000원</span></span>
+      <span class="v1-pill v1-pkg">🎟 에너지테라피 60분 <span class="amt">+1</span></span>
+      <span class="v1-pill v1-coupon">🎁 제품전용 8만원쿠폰 <span class="amt">+1</span></span>
+      <span class="v1-pill v1-pkg">🎟 소급PKG 1회권 <span class="amt">+1</span></span>
+      <span class="v1-pill v1-coupon">🎁 기기스크럽1회 무료 <span class="amt">+1</span></span>
+      <span class="v1-pill v1-annual">🏷 연간회원권</span>
+    </div>
+  </div>
+
+  <!-- ============ 2 ============ -->
+  <div class="card">
+    <h2><span class="num">2</span>Solid Soft Fill — 단색 부드러운 배경</h2>
+    <div class="desc">현재와 비슷하지만 색상 통일성↑. primaryLt/successLt/warningLt 톤 활용.</div>
+    <div class="row">
+      <span class="v2-pill v2-prepaid">🎫 다담권 50만 +500,000원</span>
+      <span class="v2-pill v2-pkg">🎟 에너지테라피 60분 +1</span>
+      <span class="v2-pill v2-coupon">🎁 제품전용 8만원쿠폰 +1</span>
+      <span class="v2-pill v2-pkg">🎟 소급PKG 1회권 +1</span>
+      <span class="v2-pill v2-coupon">🎁 기기스크럽1회 무료 +1</span>
+      <span class="v2-pill v2-annual">🏷 연간회원권</span>
+    </div>
+  </div>
+
+  <!-- ============ 3 ============ -->
+  <div class="card">
+    <h2><span class="num">3</span>Two-tone Split — 좌측 라벨 / 우측 잔액 분리</h2>
+    <div class="desc">잔액·회수가 우측에 강조. 가독성 우선.</div>
+    <div class="row">
+      <span class="v3-pill v3-prepaid"><span class="lbl">🎫 다담권 50만</span><span class="val">+500,000원</span></span>
+      <span class="v3-pill v3-pkg"><span class="lbl">🎟 에너지테라피 60분</span><span class="val">+1</span></span>
+      <span class="v3-pill v3-coupon"><span class="lbl">🎁 제품전용 8만원쿠폰</span><span class="val">+1</span></span>
+      <span class="v3-pill v3-pkg"><span class="lbl">🎟 소급PKG 1회권</span><span class="val">+1</span></span>
+      <span class="v3-pill v3-coupon"><span class="lbl">🎁 기기스크럽1회 무료</span><span class="val">+1</span></span>
+      <span class="v3-pill v3-annual"><span class="lbl">🏷 연간회원권</span><span class="val">유효</span></span>
+    </div>
+  </div>
+
+  <!-- ============ 4 ============ -->
+  <div class="card">
+    <h2><span class="num">4</span>Mini Stat Card — 카드형 (라벨↑ / 잔액↓)</h2>
+    <div class="desc">잔액 가시성 최고. 좌측 색 띠로 종류 구분. 공간 좀 차지.</div>
+    <div class="v4-grid">
+      <div class="v4-card v4-prepaid"><div class="lbl">🎫 다담권 50만</div><div class="val">+500,000원</div></div>
+      <div class="v4-card v4-pkg"><div class="lbl">🎟 에너지테라피 60분</div><div class="val">+1회</div></div>
+      <div class="v4-card v4-coupon"><div class="lbl">🎁 제품전용 8만원쿠폰</div><div class="val">+1장</div></div>
+      <div class="v4-card v4-pkg"><div class="lbl">🎟 소급PKG 1회권</div><div class="val">+1회</div></div>
+      <div class="v4-card v4-coupon"><div class="lbl">🎁 기기스크럽1회 무료</div><div class="val">+1회</div></div>
+      <div class="v4-card v4-annual"><div class="lbl">🏷 연간회원권</div><div class="val">유효</div></div>
+    </div>
+  </div>
+
+  <!-- ============ 5 ============ -->
+  <div class="card">
+    <h2><span class="num">5</span>Number-first — 잔액 수치 먼저, 라벨 작게</h2>
+    <div class="desc">은행 잔액처럼 숫자가 주인공.</div>
+    <div class="row">
+      <span class="v5-pill v5-prepaid"><span class="num">+500,000원</span><span class="lbl">다담권 50만</span></span>
+      <span class="v5-pill v5-pkg"><span class="num">+1회</span><span class="lbl">에너지테라피 60분</span></span>
+      <span class="v5-pill v5-coupon"><span class="num">+1장</span><span class="lbl">제품전용 8만원쿠폰</span></span>
+      <span class="v5-pill v5-pkg"><span class="num">+1회</span><span class="lbl">소급PKG 1회권</span></span>
+      <span class="v5-pill v5-coupon"><span class="num">+1회</span><span class="lbl">기기스크럽1회 무료</span></span>
+      <span class="v5-pill v5-annual"><span class="num">유효</span><span class="lbl">연간회원권</span></span>
+    </div>
+  </div>
+
+  <!-- ============ 6 ============ -->
+  <div class="card">
+    <h2><span class="num">6</span>Tag (티켓 모양) — 컬러 솔리드</h2>
+    <div class="desc">실제 티켓/태그 느낌. 매장 직원이 "쿠폰" 의미 빠르게 인지.</div>
+    <div class="row">
+      <span class="v6-tag v6-prepaid">다담권 50만 +500,000원</span>
+      <span class="v6-tag v6-pkg">에너지테라피 60분 +1</span>
+      <span class="v6-tag v6-coupon">제품전용 8만원쿠폰 +1</span>
+      <span class="v6-tag v6-pkg">소급PKG 1회권 +1</span>
+      <span class="v6-tag v6-coupon">기기스크럽1회 무료 +1</span>
+      <span class="v6-tag v6-annual">연간회원권</span>
+    </div>
+  </div>
+
+  <!-- ============ 7 ============ -->
+  <div class="card">
+    <h2><span class="num">7</span>Icon-prefix Badge — 좌측 컬러 동그라미</h2>
+    <div class="desc">flat한 회색 pill에 좌측 컬러 동그라미만 종류 구분. 노이즈 적고 깔끔.</div>
+    <div class="row">
+      <span class="v7-pill v7-prepaid"><span class="ic">₩</span>다담권 50만 · +500,000원</span>
+      <span class="v7-pill v7-pkg"><span class="ic">회</span>에너지테라피 60분 · +1</span>
+      <span class="v7-pill v7-coupon"><span class="ic">쿠</span>제품전용 8만원쿠폰 · +1</span>
+      <span class="v7-pill v7-pkg"><span class="ic">회</span>소급PKG 1회권 · +1</span>
+      <span class="v7-pill v7-coupon"><span class="ic">쿠</span>기기스크럽1회 무료 · +1</span>
+      <span class="v7-pill v7-annual"><span class="ic">★</span>연간회원권</span>
+    </div>
+  </div>
+
+  <!-- ============ 8 ============ -->
+  <div class="card">
+    <h2><span class="num">8</span>Glass — 반투명 + 부드러운 그림자</h2>
+    <div class="desc">애플 톤. 모바일에서 부드러운 인상. 가독성 ok.</div>
+    <div class="row">
+      <span class="v8-pill v8-prepaid">🎫 다담권 50만 +500,000원</span>
+      <span class="v8-pill v8-pkg">🎟 에너지테라피 60분 +1</span>
+      <span class="v8-pill v8-coupon">🎁 제품전용 8만원쿠폰 +1</span>
+      <span class="v8-pill v8-pkg">🎟 소급PKG 1회권 +1</span>
+      <span class="v8-pill v8-coupon">🎁 기기스크럽1회 무료 +1</span>
+      <span class="v8-pill v8-annual">🏷 연간회원권</span>
+    </div>
+  </div>
+
+  <!-- ============ 9 ============ -->
+  <div class="card">
+    <h2><span class="num">9</span>Underline — 가장 미니멀, 텍스트만 + 밑줄</h2>
+    <div class="desc">노이즈 ZERO. 텍스트와 자연스럽게 어울림. 색은 밑줄로만.</div>
+    <div class="v9-row">
+      <span class="v9-pill v9-prepaid">다담권 50만 <span class="amt">+500,000원</span></span>
+      <span class="v9-pill v9-pkg">에너지테라피 60분 <span class="amt">+1</span></span>
+      <span class="v9-pill v9-coupon">제품전용 8만원쿠폰 <span class="amt">+1</span></span>
+      <span class="v9-pill v9-pkg">소급PKG 1회권 <span class="amt">+1</span></span>
+      <span class="v9-pill v9-coupon">기기스크럽1회 무료 <span class="amt">+1</span></span>
+      <span class="v9-pill v9-annual">연간회원권</span>
+    </div>
+  </div>
+
+  <!-- ============ 10 ============ -->
+  <div class="card">
+    <h2><span class="num">10</span>Compact Inline — 한 줄 텍스트 (가장 압축)</h2>
+    <div class="desc">공간 가장 적게 차지. 보유권이 많은 VIP 고객 카드용.</div>
+    <div class="v10-line">
+      <span class="v10-prepaid"><span class="item">🎫 다담권 50만</span><span class="amt">+500,000원</span></span>
+      <span class="sep">·</span>
+      <span class="v10-pkg"><span class="item">🎟 에너지테라피 60분</span><span class="amt">+1</span></span>
+      <span class="sep">·</span>
+      <span class="v10-coupon"><span class="item">🎁 제품전용 8만원쿠폰</span><span class="amt">+1</span></span>
+      <span class="sep">·</span>
+      <span class="v10-pkg"><span class="item">🎟 소급PKG 1회권</span><span class="amt">+1</span></span>
+      <span class="sep">·</span>
+      <span class="v10-coupon"><span class="item">🎁 기기스크럽1회 무료</span><span class="amt">+1</span></span>
+      <span class="sep">·</span>
+      <span class="v10-annual"><span class="item">🏷 연간회원권</span></span>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><span class="dot" style="background:#e8b830"></span>다담권/선불잔액</span>
+    <span><span class="dot" style="background:#7c7cc8"></span>다회권/패키지</span>
+    <span><span class="dot" style="background:#5cb5c5"></span>쿠폰</span>
+    <span><span class="dot" style="background:#b06ac9"></span>연간회원권</span>
+  </div>
+  <footer>Bliss Design Preview · 2026-05-08</footer>
+</body>
+</html>

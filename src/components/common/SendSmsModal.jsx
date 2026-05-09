@@ -197,6 +197,28 @@ export default function SendSmsModal({ open, onClose, customers = [], branches =
     setSending(true)
     setProgress({ sent: 0, total: partition.valid.length, ok: 0, fail: 0 })
 
+    // billing 차감 헬퍼 — kind=sms/lms (90바이트 초과면 lms)
+    const _deductBilling = async (msgText, count) => {
+      try {
+        const _bytes = byteLen(msgText)
+        const kind = _bytes > 90 ? 'lms' : 'sms'
+        const points = (_bytes > 90 ? 60 : 20) * count
+        await fetch(`${SB_URL}/rest/v1/rpc/deduct_billing`, {
+          method: 'POST',
+          headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            p_business_id: bizId,
+            p_branch_id: branchId,
+            p_kind: kind,
+            p_count: count,
+            p_points: points,
+            p_ref_table: 'send_sms_modal',
+            p_ref_id: null,
+          }),
+        })
+      } catch (e) { console.warn('[send-sms] billing deduct err', e) }
+    }
+
     try {
       let ok = 0, fail = 0
       const hasVar = /#\{[^}]+\}/.test(message)
@@ -207,7 +229,10 @@ export default function SendSmsModal({ open, onClose, customers = [], branches =
           const slice = partition.valid.slice(i, i + BATCH)
           const receivers = slice.map(c => ({ phone: c._ph, userKey: c.id || c._ph }))
           const res = await callEdge(receivers)
-          if (res.ok && isAck(res.body)) ok += slice.length
+          if (res.ok && isAck(res.body)) {
+            ok += slice.length
+            _deductBilling(message, slice.length)
+          }
           else { fail += slice.length; console.warn('[send-sms] batch fail', res) }
           setProgress({ sent: i + slice.length, total: partition.valid.length, ok, fail })
         }
@@ -218,7 +243,10 @@ export default function SendSmsModal({ open, onClose, customers = [], branches =
           const personalMsg = renderTemplate(message, buildCustomFields(c))
           const receivers = [{ phone: c._ph, userKey: c.id || c._ph }]
           const res = await callEdge(receivers, personalMsg)
-          if (res.ok && isAck(res.body)) ok++
+          if (res.ok && isAck(res.body)) {
+            ok++
+            _deductBilling(personalMsg, 1)
+          }
           else { fail++; console.warn('[send-sms] one fail', c._ph, res) }
           setProgress({ sent: i + 1, total: partition.valid.length, ok, fail })
         }

@@ -4,10 +4,13 @@ import { sb, SB_URL, SB_KEY } from '../../lib/sb'
 import { _activeBizId } from '../../lib/db'
 import { ALL_FEATURES, PLANS, featuresForPlan, setFeatures, extractFeatures, POINT_PRICING } from '../../lib/features'
 import I from '../common/I'
+import AdminAlimtalkLog from './AdminAlimtalkLog'
+import AdminSmsLog from './AdminSmsLog'
 
-// 사업장 요금제 + 기능 토글 + 지점별 잔액·사용량
-function AdminPlan({ data, setData, currentUser }) {
+// 사업장 요금제 + 기능 토글 + 지점별 잔액·사용량 + 발송내역 통합
+function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTab = 'plan' }) {
   const isOwner = currentUser?.role === 'owner' || currentUser?.role === 'super'
+  const [subTab, setSubTab] = useState(initialSubTab)
   const biz = data?.businesses?.[0] || {}
   const branches = data?.branches || []
   const [plan, setPlan] = useState(biz.plan || 'trial')
@@ -16,6 +19,7 @@ function AdminPlan({ data, setData, currentUser }) {
   const [subs, setSubs] = useState([])      // billing_subscriptions
   const [balances, setBalances] = useState([]) // billing_balances
   const [usage, setUsage] = useState([])    // 이번 달 usage 집계
+  const [history, setHistory] = useState([])  // 최근 사용 히스토리 (시간순 50건)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
 
@@ -29,14 +33,16 @@ function AdminPlan({ data, setData, currentUser }) {
   const loadBilling = async () => {
     if (!biz.id) return
     const H = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }
-    const [s, b, u] = await Promise.all([
+    const [s, b, u, h] = await Promise.all([
       fetch(`${SB_URL}/rest/v1/billing_subscriptions?business_id=eq.${biz.id}&select=*`, { headers: H }).then(r => r.json()),
       fetch(`${SB_URL}/rest/v1/billing_balances?business_id=eq.${biz.id}&select=*`, { headers: H }).then(r => r.json()),
       fetch(`${SB_URL}/rest/v1/billing_usage_logs?business_id=eq.${biz.id}&select=branch_id,kind,count,points_charged&created_at=gte.${new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()}`, { headers: H }).then(r => r.json()),
+      fetch(`${SB_URL}/rest/v1/billing_usage_logs?business_id=eq.${biz.id}&select=branch_id,kind,count,points_charged,ref_table,created_at&order=created_at.desc&limit=100`, { headers: H }).then(r => r.json()),
     ])
     setSubs(Array.isArray(s) ? s : [])
     setBalances(Array.isArray(b) ? b : [])
     setUsage(Array.isArray(u) ? u : [])
+    setHistory(Array.isArray(h) ? h : [])
   }
   useEffect(() => { loadBilling() }, [biz.id])
 
@@ -116,9 +122,74 @@ function AdminPlan({ data, setData, currentUser }) {
     }
   }
 
-  return <div>
-    <h3 style={{margin:'0 0 16px',fontSize:T.fs.lg,fontWeight:T.fw.black}}>요금제 & 기능</h3>
+  const TABS = [
+    { k: 'plan',     label: '💳 요금제·잔액' },
+    { k: 'alimtalk', label: '📨 알림톡·SMS 발송' },
+    { k: 'sms',      label: '📤 직원 SMS 발송' },
+    { k: 'history',  label: '📊 포인트 차감 히스토리' },
+  ]
 
+  return <div>
+    <h3 style={{margin:'0 0 16px',fontSize:T.fs.lg,fontWeight:T.fw.black}}>요금제 & 사용내역</h3>
+
+    {/* 탭 네비게이션 */}
+    <div style={{display:'flex',gap:4,marginBottom:16,flexWrap:'wrap',borderBottom:`2px solid ${T.border}`}}>
+      {TABS.map(t => (
+        <button key={t.k} onClick={()=>setSubTab(t.k)}
+          style={{
+            padding:'8px 14px',
+            border:'none',
+            background:'transparent',
+            color: subTab===t.k ? T.primary : T.textSub,
+            fontWeight: subTab===t.k ? T.fw.black : T.fw.medium,
+            fontSize: T.fs.sm,
+            cursor:'pointer', fontFamily:'inherit',
+            borderBottom: subTab===t.k ? `2px solid ${T.primary}` : '2px solid transparent',
+            marginBottom: -2,
+          }}>{t.label}</button>
+      ))}
+    </div>
+
+    {/* 알림톡/SMS 로그 탭 */}
+    {subTab === 'alimtalk' && <AdminAlimtalkLog data={data} userBranches={userBranches}/>}
+    {subTab === 'sms' && <AdminSmsLog data={data} userBranches={userBranches}/>}
+
+    {/* 포인트 히스토리 단독 탭 (요금제 페이지에서 분리) */}
+    {subTab === 'history' && (
+      <div className="card" style={{overflow:'auto',maxHeight:'70vh'}}>
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:T.fs.xxs}}>
+          <thead style={{position:'sticky',top:0,background:T.bgCard}}>
+            <tr style={{borderBottom:`1px solid ${T.border}`}}>
+              <th style={{padding:'8px',textAlign:'left',color:T.textSub,fontWeight:T.fw.bolder}}>일시</th>
+              <th style={{padding:'8px',textAlign:'left',color:T.textSub,fontWeight:T.fw.bolder}}>지점</th>
+              <th style={{padding:'8px',textAlign:'left',color:T.textSub,fontWeight:T.fw.bolder}}>종류</th>
+              <th style={{padding:'8px',textAlign:'right',color:T.textSub,fontWeight:T.fw.bolder}}>건수</th>
+              <th style={{padding:'8px',textAlign:'right',color:T.textSub,fontWeight:T.fw.bolder}}>차감</th>
+              <th style={{padding:'8px',textAlign:'left',color:T.textSub,fontWeight:T.fw.bolder}}>출처</th>
+            </tr>
+          </thead>
+          <tbody>
+            {history.map((h, i) => {
+              const br = branches.find(b => b.id === h.branch_id)
+              const dt = h.created_at ? new Date(h.created_at) : null
+              const ts = dt ? `${String(dt.getMonth()+1).padStart(2,'0')}/${String(dt.getDate()).padStart(2,'0')} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}` : ''
+              return <tr key={i} style={{borderBottom:`1px solid ${T.border}40`}}>
+                <td style={{padding:'5px 8px',color:T.textSub,fontFamily:'monospace'}}>{ts}</td>
+                <td style={{padding:'5px 8px'}}>{br?.short || br?.name || h.branch_id?.slice(0,8) || '-'}</td>
+                <td style={{padding:'5px 8px',fontWeight:T.fw.bolder}}>{h.kind}</td>
+                <td style={{padding:'5px 8px',textAlign:'right'}}>{h.count}</td>
+                <td style={{padding:'5px 8px',textAlign:'right',color:T.danger,fontWeight:T.fw.bolder}}>-{(h.points_charged||0).toLocaleString()}P</td>
+                <td style={{padding:'5px 8px',color:T.textMuted,fontSize:10}}>{h.ref_table || '-'}</td>
+              </tr>
+            })}
+            {history.length === 0 && <tr><td colSpan={6} style={{padding:24,textAlign:'center',color:T.textMuted}}>차감 내역 없음</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    )}
+
+    {/* 요금제·잔액 탭 (기존 콘텐츠) */}
+    {subTab === 'plan' && <>
     {/* 현재 상태 */}
     <div className="card" style={{padding:16,marginBottom:16}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
@@ -207,6 +278,8 @@ function AdminPlan({ data, setData, currentUser }) {
         <br/>1P = 1원. 잔액 부족 시 발송 차단.
       </div>
     </div>
+
+    </>}
 
     {/* 기능 토글 (read-only) */}
     <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.text,marginBottom:8}}>활성 기능</div>

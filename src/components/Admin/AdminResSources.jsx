@@ -16,7 +16,7 @@ function AdminResSources({ data, setData }) {
   const [saving,setSaving]=useState(false);
   const [del,setDel]=useState(null);
   const set=(k,v)=>setForm(p=>({...p,[k]:v}));
-  const BRAND=[{n:"네이버",c:"#03C75A"},{n:"카카오",c:"#FEE500"},{n:"인스타",c:"#E4405F"},{n:"직접",c:"#7c7cc8"},{n:"기타",c:"#636e72"}];
+  const BRAND=[{n:"네이버",c:"#03C75A"},{n:"카카오",c:"#FEE500"},{n:"인스타",c:"#E4405F"},{n:"라인",c:"#06C755"},{n:"왓츠앱",c:"#25D366"},{n:"직접",c:"#7c7cc8"},{n:"기타",c:"#636e72"}];
 
   const openNew=()=>{setEdit(null);setForm({name:"",color:"",useYn:true});setSheet(true);};
   const openEdit=s=>{setEdit(s);setForm({name:s.name||"",color:s.color||"",useYn:s.useYn!==false});setSheet(true);};

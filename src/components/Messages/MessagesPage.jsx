@@ -11,7 +11,7 @@ import { ChannelLogo } from './channelIcons'
 // 지점 매핑은 data.branches에서 동적 생성 (하드코딩 제거)
 
 
-function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranches=[], isMaster=false, currentUser=null, pendingChat=null, onPendingChatDone, setPendingOpenRes, setPage, forceCompact=false }) {
+function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranches=[], isMaster=false, currentUser=null, pendingChat=null, onPendingChatDone, setPendingOpenRes, setPage, forceCompact=false, inboxResetKey=0, onClosePanel }) {
   // forceCompact: 사이드 패널 모드 — 좁은 폭에서 모바일 UI(리스트↔개별 토글) 사용
   const isMobile = forceCompact || (typeof window !== "undefined" && window.innerWidth < 768);
   const CH_ICON = {naver:"N",kakao:"K",instagram:"I",whatsapp:"W",telegram:"T",line:"L"};
@@ -23,14 +23,31 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   const [msgs, setMsgs] = useState([]);
   // 선택된 대화방 {channel,user_id} — 새로고침 시 유지 (24h TTL)
   const [sel, setSel] = useSessionState("msg_sel", null, { ttlMs: TTL.TAB });
+  // 사이드바 받은메시지함 클릭 시 inboxResetKey 변경 → sel 리셋해서 첫 화면(리스트)
+  React.useEffect(() => {
+    if (inboxResetKey > 0) {
+      setSel(null);
+      setReply("");
+      setReplyIsAi(false);
+    }
+  }, [inboxResetKey]);
   const [reply, setReply] = useState("");
   // AI로 생성된 답변인지 추적 (is_ai 플래그용)
   const [replyIsAi, setReplyIsAi] = useState(false);
   const [sending, setSending] = useState(false);
+  // 실제 번역 API 호출 중인지 표시 (번역 토글 버튼에 ON-AIR 표시용)
+  const [translating, setTranslating] = useState(false);
+  // IN 메시지 자동 번역 진행 중 표시 — 새 in 메시지 도착 후 translated_text 채워질 때까지 잠시 ON-AIR
+  const [inTranslating, setInTranslating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiBookLoading, setAiBookLoading] = useState(false);
-  const [autoTranslate, setAutoTranslate] = useState(true);
+  // 번역 모드: "auto" (기본, 고객 언어 감지) / "force_en" (강제 영어) / "off" (번역 안 함)
+  const [autoTranslate, setAutoTranslate] = useState(true);  // 기존 호환
+  const [translateMode, setTranslateMode] = useState("auto");
+  const cycleTranslateMode = () => {
+    setTranslateMode(m => m === "auto" ? "force_en" : m === "force_en" ? "off" : "auto");
+  };
   // pendingChat: 예약 모달에서 넘어온 대화방 자동 선택 — 이미 열린 sel이 있어도 강제 교체
   useEffect(() => {
     if (!pendingChat) return;
@@ -377,6 +394,21 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       .sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
   },[msgs, sel?.user_id, sel?.channel]);
 
+  // IN 메시지 자동 번역 ON-AIR — 새로 도착한 in 메시지가 translated_text 비어있고 8초 이내면 "번역 중…" 표시
+  useEffect(() => {
+    if (translateMode === "off" || !convo || convo.length === 0) { setInTranslating(false); return; }
+    const lastIn = [...convo].reverse().find(m => m.direction === "in");
+    if (!lastIn) { setInTranslating(false); return; }
+    if (lastIn.translated_text) { setInTranslating(false); return; }
+    const ts = new Date(lastIn.created_at).getTime();
+    const age = Date.now() - ts;
+    const WINDOW = 8000;
+    if (!isFinite(ts) || age >= WINDOW) { setInTranslating(false); return; }
+    setInTranslating(true);
+    const t = setTimeout(() => setInTranslating(false), WINDOW - age);
+    return () => clearTimeout(t);
+  }, [convo, translateMode]);
+
   const unread = (uid,ch)=>msgs.filter(m=>m.user_id===uid&&(m.channel||"naver")===ch&&!m.is_read&&m.direction==="in").length;
   const totalUnread = threads.reduce((acc,m)=>acc+unread(m.user_id,m.channel||"naver"),0);
 
@@ -552,7 +584,31 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
 
   // 직원 목록 (말머리 드롭다운용) + 선택된 직원
   const [empList, setEmpList] = useState([]);
-  const [selStaff, setSelStaff] = useState(currentUser?.name || "");
+  // 발신 직원 디폴트:
+  //   1) 사용자가 수동 선택한 값(localStorage) 우선
+  //   2) 없으면 로그인한 사용자 소속 지점명 (예: "강남점")
+  //   3) fallback: 빈값
+  const _userBranchName = (() => {
+    const bid = (userBranches || [])[0];
+    if (!bid) return "";
+    const br = (data?.branches || []).find(b => b.id === bid);
+    return br?.short || br?.name || "";
+  })();
+  const [selStaff, setSelStaff] = useState(() => {
+    try {
+      const saved = localStorage.getItem("bliss_inbox_sel_staff");
+      if (saved !== null) return saved;
+    } catch {}
+    return _userBranchName || currentUser?.name || "";
+  });
+  // localStorage 동기화 — 수동 변경 시 저장
+  const updateSelStaff = (v) => {
+    setSelStaff(v);
+    try {
+      if (v) localStorage.setItem("bliss_inbox_sel_staff", v);
+      else localStorage.removeItem("bliss_inbox_sel_staff");
+    } catch {}
+  };
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -568,8 +624,13 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     })();
     return () => { cancelled = true; };
   }, []);
-  // currentUser.name 변경 시 selStaff 기본값도 업데이트 (한 번만)
-  useEffect(() => { if (!selStaff && currentUser?.name) setSelStaff(currentUser.name); }, [currentUser?.name]);
+  // 사용자 지점 정보 도착 시 디폴트 갱신 (localStorage 저장값 없을 때만)
+  useEffect(() => {
+    if (selStaff) return; // 이미 값 있음
+    try { if (localStorage.getItem("bliss_inbox_sel_staff") !== null) return; } catch {}
+    const fallback = _userBranchName || currentUser?.name || "";
+    if (fallback) setSelStaff(fallback);
+  }, [_userBranchName, currentUser?.name]);
 
   // 고객 연결 해제 — sns_accounts에서 현재 채팅방의 (channel, user_id) 항목 제거
   const unlinkCustomer = async () => {
@@ -649,7 +710,20 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       catMap[catName].push(s);
     });
     const lines=[];
-    const fmt=s=>{const p=[];if(s.priceF)p.push("여"+Number(s.priceF).toLocaleString());if(s.priceM)p.push("남"+Number(s.priceM).toLocaleString());return `${s.name}: ${p.join("/")}`;};
+    const fmt=s=>{
+      const p=[];
+      if(s.priceF){
+        let t = "여"+Number(s.priceF).toLocaleString();
+        if(s.memberPriceF) t += `(회원가 ${Number(s.memberPriceF).toLocaleString()})`;
+        p.push(t);
+      }
+      if(s.priceM){
+        let t = "남"+Number(s.priceM).toLocaleString();
+        if(s.memberPriceM) t += `(회원가 ${Number(s.memberPriceM).toLocaleString()})`;
+        p.push(t);
+      }
+      return `${s.name}: ${p.join(" / ")}`;
+    };
     // 카테고리 순서대로 전부 포함
     const catOrder=[...cats.map(c=>c.name),"기타"];
     catOrder.forEach(catName=>{
@@ -701,17 +775,53 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
 
   const genAI = async()=>{
     if(!sel||convo.length===0){alert("대화가 선택되지 않았습니다.");return;}
-    const key=getGeminiKey();
-    if(!key){alert("AI API 키가 설정되지 않았습니다. 관리설정에서 Gemini 키를 입력하세요.");return;}
     setAiLoading(true); setAiKoDraft("");
+    // ✨ AI 버튼 — 새 state 기반 플로우 사용 (claude-haiku 메인)
+    // 서버 /ai-suggest 호출 → ai_booking_agent (suggest_only=true) → booking INSERT 안 하고 답변만
+    try {
+      const res = await fetch("https://blissme.ai/ai-suggest", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          channel: sel.channel,
+          account_id: sel.account_id,
+          user_id: sel.user_id,
+        }),
+      });
+      const dd = await res.json().catch(()=>({}));
+      if (res.ok && dd.ok && dd.reply) {
+        setReply(dd.reply);
+        setReplyIsAi(true);
+        setAiKoDraft("");
+        // billing 차감
+        try {
+          const _bizId = data?.businesses?.[0]?.id;
+          const _accBranch = (data?.branches||[]).find(b => String(b.naverAccountId||'')===String(sel?.account_id||'') || String(b.instagramAccountId||'')===String(sel?.account_id||''));
+          const _bid = _accBranch?.id || userBranches[0];
+          if (_bizId && _bid) {
+            const { deductBilling } = await import('../../lib/billing');
+            deductBilling({ bizId:_bizId, branchId:_bid, kind:'ai_call', refTable:'genAI_suggest' });
+          }
+        } catch {}
+        setAiLoading(false);
+        return;
+      }
+      // /ai-suggest 실패 시 → 구 Gemini 직접 호출 fallback
+      console.warn("[genAI] /ai-suggest failed, fallback to Gemini direct:", dd);
+    } catch (e) {
+      console.warn("[genAI] /ai-suggest err, fallback:", e);
+    }
+    // ── Fallback: 기존 Gemini 직접 호출 (서버 통신 실패 시) ──
+    const key=getGeminiKey();
+    if(!key){alert("AI API 키가 설정되지 않았습니다. 관리설정에서 Gemini 키를 입력하세요.");setAiLoading(false);return;}
     try{
-      // 첫 고객 메시지 언어 기준 고정 — 대화 도중 한국어 단어 섞여도 첫 메시지 언어 유지
+      // 한+영 혼용 시 영어 우선 — 마지막 in 메시지 기준. 영어 5자 이상이면 영어로 답변.
       const inMsgs = convo.filter(m=>m.direction==="in"&&m.message_text&&!String(m.message_text).startsWith("[미디어]"));
-      const firstIn = inMsgs[0];
-      const sampleText = (firstIn?.message_text || "").slice(0, 200);
-      const koChars = (sampleText.match(/[가-힣]/g)||[]).length;
-      const enChars = (sampleText.match(/[a-zA-Z]/g)||[]).length;
-      const langName = koChars >= enChars ? "한국어" : "영어";
+      const _lastInTxt = String(inMsgs[inMsgs.length-1]?.message_text || "");
+      const _ko = (_lastInTxt.match(/[가-힣ᄀ-ᇿ]/g)||[]).length;
+      const _en = (_lastInTxt.match(/[a-zA-Z]/g)||[]).length;
+      const _enPriority = _en >= 5 || (_en > 0 && _ko === 0);
+      const langName = _enPriority ? "영어" : "한국어";
       // [미디어]·reaction 제외하고 최근 6개
       const lastMsgs=convo.filter(m=>m.message_text&&!String(m.message_text).startsWith("[미디어]")&&!String(m.message_text).startsWith("[reaction]"))
         .slice(-6).map(m=>(m.direction==="in"?"고객":"직원")+": "+m.message_text).join("\n");
@@ -770,7 +880,12 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   • 한국어: "브라질리언 왁싱 신규 첫방문 이벤트 진행 중이에요! 여성 104,000원 / 남성 126,000원에 받아보실 수 있어요 💕 (정상가 154,000/176,000에서 5만원 할인!) 예약 도와드릴까요? 😊"
   • English: "We have a first-visit special! Brazilian wax is 104,000 KRW (women) / 126,000 KRW (men) for first-time customers — normally 154,000/176,000. Would you like to book? 💕"
 ★ 반드시 마지막에 "예약 도와드릴까요? / Would you like to book?" 로 예약 유도
-★ 연간회원권 보유 고객(이 고객의 다회권 블록 참고)이면 회원가로 안내
+★ 회원가 정책 — 매우 중요:
+  • 회원가 자격 = 다담권 / 다회권 / 연간회원권 중 하나라도 보유한 고객
+  • 회원가는 시술마다 다름. [시술 가격표]의 "(회원가 N)" 형식 참고. 회원가 표기 없는 시술은 회원가 적용 X.
+  • [이 고객의 다회권] 블록에 보유권이 있으면 → 정상가가 아닌 회원가로 안내. "○○ 시술 회원가 N원에 받으실 수 있어요"
+  • 보유권 없는 신규/일반 고객 → 첫방문가(있으면) 또는 정상가 안내. 회원가 언급 시엔 "다담권/다회권/연간회원권 구매하시면 회원가 적용돼요" 정도로 옵션 안내
+  • ⛔ "연간회원권 가격은 OOO원" 같은 패키지 가격 안내로 회원가를 대체하지 말 것. 회원가는 보유 시 시술가, 패키지 가격과 별개
 
 [왁서 성별 안내 정책]
 ★ "남자 왁서 계세요?" / "남자 직원 있나요?" 같은 질문엔:
@@ -778,12 +893,30 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   • English: "Yes, we have male waxers! Please request a male waxer when booking and we'll arrange one based on availability at your branch/time."
 ★ "지점마다 다르다 / 상황에 따라 달라진다" 같은 애매한 표현 금지. 남성 왁서 있음을 명확히 알리고 예약 유도.
 ★ 여자 왁서 선호 고객도 동일 — 예약 요청사항 기재 시 배정 도와드린다고 안내
-★ 특정 관리사 이름은 언급 금지`;
+★ 특정 관리사 이름은 언급 금지
 
-      const prompt=`${chatPrompt}${salesPolicyCtx}${priceCtx}${branchCtx}${pkgCtx}${docsCtx}\n\n[대화]\n${lastMsgs}\n\n고객 마지막 메시지에 답변하세요. 답변은 위 [학습 문서] 내용을 최우선으로 참고하세요. JSON만 출력:\n{"reply":"${langName}로 작성한 답변","ko":"한국어 번역"}`;
+[시간 추론 정책 — 매우 중요]
+★ 고객이 시각만 말하고 오전/오후 명시 안 하면, [지점 정보]의 영업시간 내로 자동 해석. ⛔ 절대 "오전인가요 오후인가요?" 같은 되묻기 금지.
+  • 영업 11~21시인 매장에서 "3시" / "3시 예약" → 오후 3시(15:00)로 즉시 해석하고 예약 진행
+  • 영업 11~21시인 매장에서 "10시" → 오전 10시는 영업 외 → 영업 시작 시각(11시)부터 가능 안내
+  • 영업시간 외 시각 명시(예: 영업 11~21시인데 새벽 3시) → 영업 외임을 알리고 영업시간(11~21시) 내로 재조정 안내
+★ "오전 3시" / "오후 3시" / "AM 3" / "PM 3" / "15시" 처럼 명시·24시간제는 그대로 사용
+★ 모호한 시각 → 영업시간으로 단일 해석 → 그 시각으로 예약 진행 ("오후 3시로 예약 도와드릴까요?")`;
+
+      const prompt=`${chatPrompt}${salesPolicyCtx}${priceCtx}${branchCtx}${pkgCtx}${docsCtx}\n\n[대화]\n${lastMsgs}\n\n고객 마지막 메시지에 답변하세요. 답변은 위 [학습 문서] 내용을 최우선으로 참고하세요.\n\n[형식 규칙]\n- 단락 구분이 필요한 곳에 줄바꿈(\\n) 사용 (소개·인사·정보·예약요청 등 각 단락마다)\n- 글머리 항목은 줄바꿈 + "•" 또는 "-" 사용\n- 한 줄로 다 붙이지 말고 시각적으로 읽기 쉽게 구성\n\nJSON만 출력 (reply의 줄바꿈은 \\n으로 escape):\n{"reply":"${langName}로 작성한 답변","ko":"한국어 번역"}`;
       const res=await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="+key,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
       if(res.status===429){alert("AI 요청 한도 초과. 잠시 후 시도해주세요.");return;}
       if(!res.ok){const err=await res.text();alert("AI API 오류: "+res.status);console.error("[genAI] API error:",err);return;}
+      // billing 차감 — sel.account_id로 매장 매핑, 못 찾으면 첫 userBranch
+      try {
+        const _bizId = data?.businesses?.[0]?.id;
+        const _accBranch = (data?.branches||[]).find(b => String(b.naverAccountId||'')===String(sel?.account_id||'') || String(b.instagramAccountId||'')===String(sel?.account_id||''));
+        const _bid = _accBranch?.id || userBranches[0];
+        if (_bizId && _bid) {
+          const { deductBilling } = await import('../../lib/billing');
+          deductBilling({ bizId:_bizId, branchId:_bid, kind:'ai_call', refTable:'genAI_messages' });
+        }
+      } catch {}
       const dd=await res.json();
       let raw=(dd.candidates?.[0]?.content?.parts?.[0]?.text||"").replace(/```json|```/g,"").trim();
       if(!raw){alert("AI 응답이 비어있습니다.");return;}
@@ -830,10 +963,67 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         }
         alert("✅ 예약이 미배정으로 생성됐습니다.\n\n대화 헤더의 📅 버튼으로 확인/배정하세요.");
       }else{
-        // AI가 ask_info로 반환 — AI가 어떤 정보를 더 필요하다고 판단했는지 그대로 노출
+        // 정보 부족 → 타임라인 예약 모달 열어서 직원이 부족한 부분 채우게 함
         const aiReply = (dd.reply||"").trim();
-        const hint = aiReply ? `\n\nAI 응답:\n${aiReply.slice(0,200)}` : "";
-        alert("ℹ️ AI가 정보 부족으로 예약을 보류했어요.\n\n고객에게 필요한 정보를 확인 후 재시도하거나 타임라인에서 직접 등록해주세요."+hint);
+        const cust = chatCustMapFull?.[sel.channel+"_"+sel.user_id] || {};
+        const today = new Date().toISOString().slice(0,10);
+        const parsed = dd.parsed || {};
+        // 마지막 IN 메시지 본문에서 정규식으로 추출 (서버 parsed 없을 때 fallback)
+        const lastInTxt = [...(convo||[])].reverse().find(m=>m.direction==='in'&&m.message_text)?.message_text || '';
+        // 전화: 010-XXXX-XXXX 또는 11자리 숫자
+        const _phMatch = lastInTxt.match(/01[016789][-\s]?\d{3,4}[-\s]?\d{4}/);
+        const _ph = _phMatch ? _phMatch[0].replace(/[^0-9]/g,'') : '';
+        // 한글 이름 (2~4자) — 첫 한글 단어
+        const _nmMatch = lastInTxt.match(/(?<![가-힣])[가-힣]{2,4}(?![가-힣])/);
+        const _nm = _nmMatch ? _nmMatch[0] : '';
+        // 지점명
+        const _branches = (data?.branches||[]);
+        const _bid = (() => {
+          for (const b of _branches) {
+            const sn = (b.short||'').replace(/점$/,'');
+            if (sn && lastInTxt.includes(sn)) return b.id;
+          }
+          return cust.bid || '';
+        })();
+        // 날짜 키워드
+        const _dateGuess = (() => {
+          const d = new Date();
+          if (lastInTxt.includes('내일')) { d.setDate(d.getDate()+1); }
+          else if (lastInTxt.includes('모레')) { d.setDate(d.getDate()+2); }
+          else return parsed.date || today;
+          return d.toISOString().slice(0,10);
+        })();
+        if (setPendingOpenRes && setPage) {
+          setPendingOpenRes({
+            _isNew: true,
+            _aiBookFallback: true,
+            _prefill: {
+              custId: cust.id || null,
+              custName: parsed.cust_name || cust.name || _nm || '',
+              custPhone: parsed.cust_phone || cust.phone || _ph || '',
+              custEmail: parsed.cust_email || cust.email || '',
+              custGender: parsed.cust_gender || cust.gender || '',
+              date: parsed.date || _dateGuess,
+              time: parsed.time || '14:00',
+              dur: parsed.dur || 60,
+              memo: aiReply ? `[AI 자동예약 — 정보 부족 보류분]\n${aiReply}\n\n[원문]\n${lastInTxt}` : `[원문]\n${lastInTxt}`,
+              matchedServiceIds: parsed.selected_services || [],
+              matchedTagIds: parsed.selected_tags || [],
+              _isNewCust: !cust.id,
+              source: 'ai_book_fallback',
+            },
+            bid: parsed.bid || _bid || '',
+            chatChannel: sel.channel,
+            chatAccountId: sel.account_id,
+            chatUserId: sel.user_id,
+          });
+          setPage('timeline');
+          if (typeof setSel === 'function') setSel(null);
+          if (typeof onClosePanel === 'function') onClosePanel();
+        } else {
+          const hint = aiReply ? `\n\nAI 응답:\n${aiReply.slice(0,200)}` : "";
+          alert("ℹ️ AI 정보 부족 — 타임라인에서 직접 등록해주세요."+hint);
+        }
       }
     }catch(e){console.error("[aiBook]",e);alert("AI 예약 오류: "+e.message);}
     finally{setAiBookLoading(false);}
@@ -846,10 +1036,15 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       const lastIn = [...convo].reverse().find(m=>m.direction==="in");
       let text = reply.trim();
       if(lastIn){
-        // 로컬 언어 감지 (한글 유니코드 범위)
-        const hasKorean = /[\uAC00-\uD7A3\u1100-\u11FF]/.test(lastIn.message_text);
-        const lang = hasKorean ? "ko" : "en"; // 한글 없으면 영어로 간주
-        if(lang!=="ko"){
+        // 한+영 혼용 시 영어 우선 — 영어 5자 이상이면 영어로 번역 (한글 일부 있어도)
+        const _lastInTxt = String(lastIn.message_text || "");
+        const _ko = (_lastInTxt.match(/[\uAC00-\uD7A3\u1100-\u11FF]/g)||[]).length;
+        const _en = (_lastInTxt.match(/[a-zA-Z]/g)||[]).length;
+        const _enPriority = _en >= 5 || (_en > 0 && _ko === 0);
+        // 번역 결정: force_en=강제영어 / auto=영어 우선 케이스 / off=안함
+        const _shouldTranslate = translateMode === "force_en" || (translateMode === "auto" && _enPriority);
+        const lang = "en";
+        if(_shouldTranslate){
           // 최근 6건의 대화 맥락 (시각·발화자 구분) — 번역 품질 + stale fact 방지용
           // 타임스탬프 포함: LLM이 "내일/오늘" 같은 상대 날짜를 KST 기준으로 재해석하도록.
           const _fmtKst = (iso) => {
@@ -866,6 +1061,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           }).filter(Boolean).join("\n");
           // 서버 GPT-4o-mini 엔드포인트 호출 — 실패 시 원문 그대로 발송
           let translated = "";
+          setTranslating(true);
           try {
             const sRes = await fetch("https://blissme.ai/translate-outgoing", {
               method: "POST",
@@ -877,6 +1073,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
               translated = (sd?.translated || "").trim();
             }
           } catch(e) { /* 서버 실패 시 원문 발송 */ }
+          finally { setTranslating(false); }
           text = String(translated || reply).replace(/^["'`]+|["'`]+$/g, "").trim();
           // 외국어 발송 시 사용자가 친 한국어 원문을 translated_text로 동반 → echo 처리 시 메시지함에 그대로 표시
           await sendMsg(text, reply.trim());
@@ -898,6 +1095,16 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   const branchName=(m)=>_ACC_NAME[m?.account_id]||"";
 
   // 모바일 목록 렌더 (인스타 스타일)
+  // 번역 진행 중 ON-AIR 깜빡 애니메이션 (한 번만 inject)
+  React.useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (document.getElementById("bliss-pulse-keyframes")) return;
+    const s = document.createElement("style");
+    s.id = "bliss-pulse-keyframes";
+    s.textContent = `@keyframes blissPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.85)}}`;
+    document.head.appendChild(s);
+  }, []);
+
   if(isMobile && !sel) return (
     <div style={{display:"flex",flexDirection:"column",background:"#fff",minHeight:"60vh"}}>
       <div style={{padding:"16px 16px 8px",borderBottom:"1px solid "+T.border,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -909,7 +1116,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       </div>
       {showAiSettings&&(()=>{ const stLabel=aiSchedule.enabled?(scheduleInWindow?"응대 시간":"OFF 시간"):"항상 응대"; const stColor=aiSchedule.enabled?(scheduleInWindow?"#059669":"#9ca3af"):"#7C3AED"; return <div style={{padding:"12px 14px",borderBottom:"1px solid "+T.border,background:"#faf5ff"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-          <span style={{fontSize:12,fontWeight:700,color:"#7C3AED"}}>🤖 AI 자동대답</span>
+          <span style={{fontSize:12,fontWeight:700,color:"#7C3AED",display:"inline-flex",alignItems:"center",gap:5}}><I name="bot" size={13}/>AI 자동대답</span>
           <span style={{fontSize:10,fontWeight:700,color:"#fff",background:stColor,padding:"2px 8px",borderRadius:10,whiteSpace:"nowrap"}}>● {stLabel}</span>
         </div>
         <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:10}}>
@@ -984,7 +1191,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                 </span>
                 {uc>0&&<div style={{width:forceCompact?16:20,height:forceCompact?16:20,borderRadius:"50%",background:T.primary,color:"#fff",fontSize:forceCompact?9:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:4}}>{uc}</div>}
               </div>
-              {(()=>{const res=chatResMap[key];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"확정대기":res.status==="completed"?"완료":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":"#9E9E9E";return<div style={{display:"flex",alignItems:"center",gap:4,marginTop:3}}><span style={{fontSize:10,fontWeight:700,color:clr,background:clr+"18",borderRadius:3,padding:"1px 6px"}}>📅 {st} {res.date?.slice(5)} {res.time}</span></div>;})()}
+              {(()=>{const res=chatLatestRes[key]||chatResMap[key];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"확정대기":res.status==="reserved"?"예약":res.status==="completed"?"완료":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":res.status==="reserved"?T.primary:res.status==="no_show"?"#EF5350":"#9E9E9E";return<div style={{display:"flex",alignItems:"center",gap:4,marginTop:3}}><span style={{fontSize:10,fontWeight:700,color:clr,background:clr+"18",borderRadius:3,padding:"1px 6px",display:"inline-flex",alignItems:"center",gap:3}}><I name="calendar" size={10}/>{st} {res.date?.slice(5)} {res.time}</span></div>;})()}
             </div>
           </div>;
         })}
@@ -1002,7 +1209,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         <div style={{flex:1,minWidth:0,position:"relative"}}>
           <div style={{fontWeight:T.fw.bolder,fontSize:forceCompact?12:16,display:"flex",alignItems:"center",gap:4,flexWrap:"nowrap",overflow:"hidden"}}>
             <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{(sel?.channel!=="whatsapp"&&branchName(convo[0]))?branchName(convo[0])+" · ":""}{getDisplayName(convo[0]||{user_id:sel.user_id})}</span>
-            {(()=>{ const cust = chatCustMapFull[sel.channel+"_"+sel.user_id]; if(cust) return <span style={{display:"inline-flex",alignItems:"center",gap:2,fontSize:forceCompact?9:11,fontWeight:700,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary+"40",borderRadius:6,padding:"1px 5px",whiteSpace:"nowrap",flexShrink:0}}>👤 {cust.name}{cust.custNum?` #${cust.custNum}`:""}<button onClick={unlinkCustomer} title="고객 연결 해제" style={{marginLeft:2,background:"none",border:"none",padding:"0 2px",fontSize:11,fontWeight:900,color:T.textMuted,cursor:"pointer",lineHeight:1,fontFamily:"inherit"}}>×</button></span>; return <button onClick={()=>setLinkPickerOpen(v=>!v)} style={{fontSize:forceCompact?9:10,fontWeight:800,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary,borderRadius:6,padding:"2px 7px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0}}>🔗 연결</button>; })()}
+            {(()=>{ const cust = chatCustMapFull[sel.channel+"_"+sel.user_id]; if(cust) return <span style={{display:"inline-flex",alignItems:"center",gap:2,fontSize:forceCompact?9:11,fontWeight:700,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary+"40",borderRadius:6,padding:"1px 5px",whiteSpace:"nowrap",flexShrink:0}}><I name="user" size={10}/> {cust.name}{cust.custNum?` #${cust.custNum}`:""}<button onClick={unlinkCustomer} title="고객 연결 해제" style={{marginLeft:2,background:"none",border:"none",padding:"0 2px",fontSize:11,fontWeight:900,color:T.textMuted,cursor:"pointer",lineHeight:1,fontFamily:"inherit"}}>×</button></span>; return <button onClick={()=>setLinkPickerOpen(v=>!v)} style={{fontSize:forceCompact?9:10,fontWeight:800,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary,borderRadius:6,padding:"2px 7px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0,display:"inline-flex",alignItems:"center",gap:3}}><I name="globe" size={10}/>연결</button>; })()}
           </div>
           <div style={{fontSize:forceCompact?10:12,color:T.textSub,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{CH_NAME[sel.channel]||sel.channel}{(()=>{ const ph=convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone||(sel.channel==="whatsapp"&&sel.user_id?(sel.user_id.startsWith("82")?"0"+sel.user_id.slice(2):sel.user_id):""); return ph?" · "+ph:""; })()}{(()=>{ const cust = chatCustMapFull[sel.channel+"_"+sel.user_id]; if(!cust?.phone) return null; return " · "+cust.phone; })()}</div>
           {linkPickerOpen && !chatCustMapFull[sel.channel+"_"+sel.user_id] && (
@@ -1025,7 +1232,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             </div>
           )}
         </div>
-        {(()=>{const res=chatLatestRes[sel.channel+"_"+sel.user_id];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"대기":res.status==="completed"?"완료":res.status==="reserved"?"예약":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":res.status==="completed"?"#9E9E9E":res.status==="no_show"?"#EF5350":T.primary;return<button onClick={()=>{if(setPendingOpenRes&&setPage){setPendingOpenRes({...res, _highlightOnly:true});setPage("timeline");setSel(null);}}} title={`${st} ${res.date?.slice(5)} ${res.time} — 예약 바로가기`} style={{fontSize:forceCompact?10:11,fontWeight:700,color:clr,background:clr+"15",border:"1px solid "+clr+"40",borderRadius:6,padding:forceCompact?"3px 6px":"4px 8px",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>📅{forceCompact?"":st}</button>;})()}
+        {(()=>{const res=chatLatestRes[sel.channel+"_"+sel.user_id];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"대기":res.status==="completed"?"완료":res.status==="reserved"?"예약":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":res.status==="completed"?"#9E9E9E":res.status==="no_show"?"#EF5350":T.primary;return<button onClick={()=>{if(setPendingOpenRes&&setPage){setPendingOpenRes({...res});setPage("timeline");}}} title={`${st} ${res.date?.slice(5)} ${res.time} — 예약 모달 열기`} style={{fontSize:forceCompact?10:11,fontWeight:700,color:clr,background:clr+"15",border:"1px solid "+clr+"40",borderRadius:6,padding:forceCompact?"3px 6px":"4px 8px",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}><I name="calendar" size={11}/>{forceCompact?"":st}</button>;})()}
         {_extLink && <a href={_extLink.url} target="_blank" rel="noopener noreferrer" title={_extLink.label} style={{fontSize:forceCompact?10:11,fontWeight:700,color:_extLink.color,background:_extLink.color+"18",border:"1px solid "+_extLink.color+"44",borderRadius:6,padding:forceCompact?"3px 6px":"4px 8px",textDecoration:"none",flexShrink:0,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}>{forceCompact?"↗":_extLink.short+" ↗"}</a>}
       </div>
       {/* 메시지 */}
@@ -1045,7 +1252,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
               {isOut && !m.is_ai && m.sent_by_staff_name && <div style={{display:"flex",justifyContent:isOut?"flex-end":"flex-start",marginBottom:3}}>
                 <span style={{background:"#6D28D9",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:forceCompact?9:10,fontWeight:800,letterSpacing:0.3}}>👤 {m.sent_by_staff_name}</span>
               </div>}
-              <div style={{padding:forceCompact?"7px 10px":"10px 14px",borderRadius:isOut?"14px 14px 4px 14px":"14px 14px 14px 4px",background:isOut?(m.is_ai?"#7C3AED":T.primary):"#fff",color:isOut?"#fff":T.text,fontSize:forceCompact?12:16,lineHeight:1.45,boxShadow:"0 1px 2px rgba(0,0,0,.08)",border:isOut?"none":"1px solid "+T.border,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
+              <div data-allow-select="true" style={{padding:forceCompact?"7px 10px":"10px 14px",borderRadius:isOut?"14px 14px 4px 14px":"14px 14px 14px 4px",background:isOut?(m.is_ai?"#7C3AED":T.primary):"#fff",color:isOut?"#fff":T.text,fontSize:forceCompact?12:16,lineHeight:1.45,boxShadow:"0 1px 2px rgba(0,0,0,.08)",border:isOut?"none":"1px solid "+T.border,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
                 {m.message_text}
                 {m.translated_text&&<div style={{marginTop:5,paddingTop:5,borderTop:isOut?"1px solid rgba(255,255,255,0.45)":"1px solid rgba(0,0,0,0.18)",fontSize:forceCompact?11:12,color:isOut?"rgba(255,255,255,0.95)":"rgba(0,0,0,0.78)",fontWeight:500}}>🔤 {m.translated_text}</div>}
               </div>
@@ -1060,25 +1267,47 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       {/* 입력창 */}
       <div style={{background:"transparent",padding:"8px 12px 12px",flexShrink:0}}>
         <div style={{display:"flex",gap:6,marginBottom:6,alignItems:"center",flexWrap:"wrap"}}>
-          <button onClick={genAI} disabled={aiLoading} title="AI 답변 생성" style={{padding:forceCompact?"3px 8px":"4px 10px",background:"#f0f4ff",color:"#4338ca",border:"1px solid #c7d2fe",borderRadius:6,fontSize:forceCompact?10:12,cursor:"pointer",fontWeight:600}}>{aiLoading?"⏳":"✨ AI"}</button>
-          <button onClick={()=>setAutoTranslate(v=>!v)} style={{padding:forceCompact?"3px 8px":"4px 10px",background:autoTranslate?"#166534":"#f0fdf4",color:autoTranslate?"#fff":"#166534",border:"1px solid #bbf7d0",borderRadius:6,fontSize:forceCompact?10:12,cursor:"pointer",fontWeight:600}}>🌐 {autoTranslate?"ON":"OFF"}</button>
-          <button onClick={aiBook} disabled={aiBookLoading} title="대화 분석하여 AI 예약 생성" style={{padding:forceCompact?"3px 8px":"4px 10px",background:aiBookLoading?"#9CA3AF":"#7C3AED",color:"#fff",border:"1px solid "+(aiBookLoading?"#9CA3AF":"#6D28D9"),borderRadius:6,fontSize:forceCompact?10:12,cursor:aiBookLoading?"wait":"pointer",fontWeight:700}}>{aiBookLoading?"⏳":"🤖 예약"}</button>
-          {/* 직원 말머리 선택 — 답장 보낼 때 누가 보내는지 */}
-          <select value={selStaff} onChange={e=>setSelStaff(e.target.value)}
-            title="답장 보낼 직원 (말머리에 표시)"
-            style={{padding:forceCompact?"3px 6px":"4px 8px",background:"#EDE9FE",color:"#6D28D9",border:"1px solid #C4B5FD",borderRadius:6,fontSize:forceCompact?10:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>
-            <option value="">👤 직원 선택</option>
-            {empList.map(e=><option key={e.id||e.name} value={e.id||e.name}>👤 {e.id||e.name}</option>)}
+          {/* AI 답변 추천 */}
+          <button onClick={genAI} disabled={aiLoading}
+            title="AI가 대화 맥락 보고 답변 추천 (직원 검토 후 발송)"
+            style={{padding:forceCompact?"5px 10px":"6px 12px",background:T.primaryLt,color:T.primaryDk,border:"1px solid "+T.primary+"55",borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:"pointer",fontWeight:T.fw.bold,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
+            <I name={aiLoading?"loader":"sparkles"} size={13}/> {aiLoading?"생성 중…":"AI 답변 추천"}
+          </button>
+          {/* 번역 토글 (번역 진행 중에는 빨간 ON-AIR 점 깜빡) */}
+          <button onClick={cycleTranslateMode}
+            title={(translating||inTranslating)?"번역 중...":translateMode==="auto"?"자동: 고객 언어에 맞춰 번역":translateMode==="force_en"?"강제 영어: 한국 고객도 영어로":"끄기: 원문 그대로"}
+            style={{padding:forceCompact?"5px 10px":"6px 12px",
+              background:translateMode==="auto"?T.successLt:translateMode==="force_en"?T.infoLt:T.gray100,
+              color:translateMode==="auto"?T.successDk:translateMode==="force_en"?"#0e7490":T.gray600,
+              border:"1px solid "+(translateMode==="auto"?T.success+"55":translateMode==="force_en"?T.info+"55":T.border),
+              borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:"pointer",fontWeight:T.fw.bold,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5,position:"relative"}}>
+            {(translating||inTranslating) && <span style={{width:7,height:7,borderRadius:"50%",background:T.danger,animation:"blissPulse 1s infinite",display:"inline-block"}}/>}
+            <I name="languages" size={13}/>
+            {(translating||inTranslating) ? "번역 중…" : (translateMode==="auto"?"번역 자동":translateMode==="force_en"?"번역 영어":"번역 OFF")}
+          </button>
+          {/* AI 예약 등록 */}
+          <button onClick={aiBook} disabled={aiBookLoading}
+            title="AI가 대화 분석해서 예약 자동 등록 (담당자 확인 후 확정)"
+            style={{padding:forceCompact?"5px 10px":"6px 12px",background:aiBookLoading?T.gray400:T.primary,color:"#fff",border:"1px solid "+(aiBookLoading?T.gray400:T.primaryDk),borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:aiBookLoading?"wait":"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
+            <I name={aiBookLoading?"loader":"calendar"} size={13} color="#fff"/> {aiBookLoading?"분석 중…":"AI 예약등록"}
+          </button>
+          {/* 발신 직원 선택 — 디폴트: 지점명, 수동 선택 시 localStorage 저장 */}
+          <select value={selStaff} onChange={e=>updateSelStaff(e.target.value)}
+            title="답장 발신자 — 메시지 머리에 표시됩니다 (디폴트: 지점명, 변경 시 자동 저장)"
+            style={{padding:forceCompact?"5px 10px":"6px 12px",background:"#fff",color:T.text,border:"1px solid "+T.border,borderRadius:T.radius.md,fontSize:forceCompact?11:12,fontWeight:T.fw.bold,fontFamily:"inherit",cursor:"pointer"}}>
+            {_userBranchName && <option value={_userBranchName}>{_userBranchName} (지점)</option>}
+            {empList.map(e=>{ const v=e.id||e.name; if (v===_userBranchName) return null; return <option key={v} value={v}>{v}</option>; })}
+            <option value="">— 말머리 없음 —</option>
           </select>
         </div>
         {aiKoDraft&&<div style={{fontSize:forceCompact?11:12,color:"#4338ca",padding:"4px 8px",background:"#eff6ff",borderRadius:6,marginBottom:6,borderLeft:"3px solid #818cf8"}}>🇰🇷 {aiKoDraft}</div>}
         <div style={{position:"relative"}}>
           <textarea id="bliss-reply-ta" value={reply} onChange={e=>{ setReply(e.target.value); setAiKoDraft(""); }}
-            onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();autoTranslate?sendTranslated():sendMsg(reply.trim(), aiKoDraft);}}}
+            onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();(translateMode!=="off")?sendTranslated():sendMsg(reply.trim(), aiKoDraft);}}}
             placeholder="메시지 입력..."
             style={{width:"100%",padding:forceCompact?"8px 44px 8px 12px":"10px 52px 10px 14px",border:"1px solid "+T.border,borderRadius:12,fontSize:forceCompact?12:15,resize:"none",minHeight:forceCompact?36:42,maxHeight:200,fontFamily:"inherit",outline:"none",background:"#fff",color:"#1f2937",lineHeight:"20px",overflowY:"auto",boxSizing:"border-box",WebkitAppearance:"none",appearance:"none"}}
           />
-          {(reply.trim()||sending)&&<button onClick={()=>autoTranslate?sendTranslated():sendMsg(reply.trim(), aiKoDraft)} disabled={sending||!reply.trim()}
+          {(reply.trim()||sending)&&<button onClick={()=>(translateMode!=="off")?sendTranslated():sendMsg(reply.trim(), aiKoDraft)} disabled={sending||!reply.trim()}
             style={{position:"absolute",right:6,bottom:5,width:forceCompact?26:32,height:forceCompact?26:32,background:"#7C3AED",color:"#fff",border:"none",borderRadius:"50%",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
             {sending?<span style={{fontSize:11}}>⏳</span>:<svg width={forceCompact?13:16} height={forceCompact?13:16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>}
           </button>}
@@ -1101,7 +1330,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         </div>
         {showAiSettings&&(()=>{ const stLabel=aiSchedule.enabled?(scheduleInWindow?"응대 시간":"OFF 시간"):"항상 응대"; const stColor=aiSchedule.enabled?(scheduleInWindow?"#059669":"#9ca3af"):"#7C3AED"; return <div style={{padding:"12px 14px",borderBottom:"1px solid "+T.border,background:"#faf5ff"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-            <span style={{fontSize:12,fontWeight:700,color:"#7C3AED"}}>🤖 AI 자동대답</span>
+            <span style={{fontSize:12,fontWeight:700,color:"#7C3AED",display:"inline-flex",alignItems:"center",gap:5}}><I name="bot" size={13}/>AI 자동대답</span>
             <span style={{fontSize:10,fontWeight:700,color:"#fff",background:stColor,padding:"2px 8px",borderRadius:10,whiteSpace:"nowrap"}}>● {stLabel}</span>
           </div>
           <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:10}}>
@@ -1173,7 +1402,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                   </span>
                   {uc>0&&<div style={{width:20,height:20,borderRadius:"50%",background:T.primary,color:"#fff",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:4}}>{uc>9?"9+":uc}</div>}
                 </div>
-                {(()=>{const res=chatResMap[key];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="reserved"?"예약중":res.status==="request"?"확정대기":res.status==="completed"?"완료":null;if(!st)return null;const clr=(res.status==="confirmed"||res.status==="reserved")?"#4CAF50":res.status==="request"?"#FF9800":"#9E9E9E";return<div style={{marginTop:3}}><span style={{fontSize:10,fontWeight:700,color:clr,background:clr+"18",borderRadius:3,padding:"1px 6px"}}>📅 {st} {res.date?.slice(5)} {res.time}</span></div>;})()}
+                {(()=>{const res=chatLatestRes[key]||chatResMap[key];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="reserved"?"예약":res.status==="request"?"확정대기":res.status==="completed"?"완료":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="reserved"?T.primary:res.status==="request"?"#FF9800":res.status==="no_show"?"#EF5350":"#9E9E9E";return<div style={{marginTop:3}}><span style={{fontSize:10,fontWeight:700,color:clr,background:clr+"18",borderRadius:3,padding:"1px 6px",display:"inline-flex",alignItems:"center",gap:3}}><I name="calendar" size={10}/>{st} {res.date?.slice(5)} {res.time}</span></div>;})()}
               </div>
             </div>;
           })}
@@ -1187,7 +1416,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             <div style={{flex:1,minWidth:0,position:"relative"}}>
               <div style={{fontWeight:T.fw.bolder,fontSize:T.fs.sm,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                 <span>{(sel?.channel!=="whatsapp"&&branchName(convo[0]))?branchName(convo[0])+" · ":""}{getDisplayName(convo[0]||{user_id:sel.user_id})}</span>
-                {(()=>{ const cust = chatCustMapFull[sel.channel+"_"+sel.user_id]; if(cust) return <span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:11,fontWeight:700,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary+"40",borderRadius:6,padding:"2px 6px",whiteSpace:"nowrap"}} title={cust.phone||""}>👤 {cust.name}{cust.custNum?` #${cust.custNum}`:""}<button onClick={unlinkCustomer} title="고객 연결 해제" style={{marginLeft:2,background:"none",border:"none",padding:"0 2px",fontSize:12,fontWeight:900,color:T.textMuted,cursor:"pointer",lineHeight:1,fontFamily:"inherit"}}>×</button></span>; return <button onClick={()=>setLinkPickerOpen(v=>!v)} style={{fontSize:10,fontWeight:700,color:T.textMuted,background:"#fff",border:"1px dashed "+T.gray400,borderRadius:6,padding:"2px 6px",cursor:"pointer",fontFamily:"inherit"}}>🔗 고객 연결</button>; })()}
+                {(()=>{ const cust = chatCustMapFull[sel.channel+"_"+sel.user_id]; if(cust) return <span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:11,fontWeight:700,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary+"40",borderRadius:6,padding:"2px 6px",whiteSpace:"nowrap"}} title={cust.phone||""}><I name="user" size={10}/> {cust.name}{cust.custNum?` #${cust.custNum}`:""}<button onClick={unlinkCustomer} title="고객 연결 해제" style={{marginLeft:2,background:"none",border:"none",padding:"0 2px",fontSize:12,fontWeight:900,color:T.textMuted,cursor:"pointer",lineHeight:1,fontFamily:"inherit"}}>×</button></span>; return <button onClick={()=>setLinkPickerOpen(v=>!v)} style={{fontSize:10,fontWeight:700,color:T.textMuted,background:"#fff",border:"1px dashed "+T.gray400,borderRadius:6,padding:"2px 6px",cursor:"pointer",fontFamily:"inherit"}}>🔗 고객 연결</button>; })()}
               </div>
               <div style={{fontSize:T.fs.xs,color:T.textMuted}}>{CH_NAME[sel.channel]||sel.channel}{(()=>{ const ph=convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone||(sel.channel==="whatsapp"&&sel.user_id?(sel.user_id.startsWith("82")?"0"+sel.user_id.slice(2):sel.user_id):""); return ph?" · "+ph:""; })()}{(()=>{ const cust = chatCustMapFull[sel.channel+"_"+sel.user_id]; if(!cust?.phone) return null; return " · "+cust.phone; })()}</div>
               {linkPickerOpen && !chatCustMapFull[sel.channel+"_"+sel.user_id] && (
@@ -1238,25 +1467,43 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           </div>
           <div style={{padding:"12px 16px",borderTop:"1px solid "+T.border,background:T.bgCard}}>
             <div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center",flexWrap:"wrap"}}>
-              <button onClick={genAI} disabled={aiLoading} title="AI 답변 생성" style={{padding:"4px 10px",background:"#f0f4ff",color:"#4338ca",border:"1px solid #c7d2fe",borderRadius:6,fontSize:11,cursor:"pointer",fontWeight:600}}>{aiLoading?"⏳":"✨ AI"}</button>
-              <button onClick={()=>setAutoTranslate(v=>!v)} style={{padding:"4px 10px",background:autoTranslate?"#166534":"#f0fdf4",color:autoTranslate?"#fff":"#166534",border:"1px solid #bbf7d0",borderRadius:6,fontSize:11,cursor:"pointer",fontWeight:600}}>🌐 자동번역 {autoTranslate?"ON":"OFF"}</button>
-              <button onClick={aiBook} disabled={aiBookLoading} title="대화 분석하여 AI 예약 생성" style={{padding:"4px 10px",background:aiBookLoading?"#9CA3AF":"#7C3AED",color:"#fff",border:"1px solid "+(aiBookLoading?"#9CA3AF":"#6D28D9"),borderRadius:6,fontSize:11,cursor:aiBookLoading?"wait":"pointer",fontWeight:700}}>{aiBookLoading?"⏳ 분석 중…":"🤖 AI 예약생성"}</button>
-              {/* 직원 말머리 선택 */}
-              <select value={selStaff} onChange={e=>setSelStaff(e.target.value)}
-                title="답장 보낼 직원 (말머리에 표시)"
-                style={{padding:"4px 10px",background:"#EDE9FE",color:"#6D28D9",border:"1px solid #C4B5FD",borderRadius:6,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>
-                <option value="">👤 직원 선택</option>
-                {empList.map(e=><option key={e.id||e.name} value={e.id||e.name}>👤 {e.id||e.name}</option>)}
+              <button onClick={genAI} disabled={aiLoading}
+                title="AI가 대화 맥락 보고 답변 추천 (직원 검토 후 발송)"
+                style={{padding:"6px 12px",background:T.primaryLt,color:T.primaryDk,border:"1px solid "+T.primary+"55",borderRadius:T.radius.md,fontSize:12,cursor:"pointer",fontWeight:T.fw.bold,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
+                <I name={aiLoading?"loader":"sparkles"} size={13}/> {aiLoading?"생성 중…":"AI 답변 추천"}
+              </button>
+              <button onClick={cycleTranslateMode}
+                title={(translating||inTranslating)?"번역 중...":translateMode==="auto"?"자동: 고객 언어에 맞춰 번역":translateMode==="force_en"?"강제 영어: 한국 고객도 영어로":"끄기: 원문 그대로"}
+                style={{padding:"6px 12px",
+                  background:translateMode==="auto"?T.successLt:translateMode==="force_en"?T.infoLt:T.gray100,
+                  color:translateMode==="auto"?T.successDk:translateMode==="force_en"?"#0e7490":T.gray600,
+                  border:"1px solid "+(translateMode==="auto"?T.success+"55":translateMode==="force_en"?T.info+"55":T.border),
+                  borderRadius:T.radius.md,fontSize:12,cursor:"pointer",fontWeight:T.fw.bold,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5,position:"relative"}}>
+                {(translating||inTranslating) && <span style={{width:7,height:7,borderRadius:"50%",background:T.danger,animation:"blissPulse 1s infinite",display:"inline-block"}}/>}
+                <I name="languages" size={13}/>
+                {(translating||inTranslating) ? "번역 중…" : (translateMode==="auto"?"번역 자동":translateMode==="force_en"?"번역 영어":"번역 OFF")}
+              </button>
+              <button onClick={aiBook} disabled={aiBookLoading}
+                title="AI가 대화 분석해서 예약 자동 등록 (담당자 확인 후 확정)"
+                style={{padding:"6px 12px",background:aiBookLoading?T.gray400:T.primary,color:"#fff",border:"1px solid "+(aiBookLoading?T.gray400:T.primaryDk),borderRadius:T.radius.md,fontSize:12,cursor:aiBookLoading?"wait":"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
+                <I name={aiBookLoading?"loader":"calendar"} size={13} color="#fff"/> {aiBookLoading?"분석 중…":"AI 예약등록"}
+              </button>
+              <select value={selStaff} onChange={e=>updateSelStaff(e.target.value)}
+                title="답장 발신자 — 메시지 머리에 표시 (디폴트: 지점명, 변경 시 자동 저장)"
+                style={{padding:"6px 10px",background:"#fff",color:T.text,border:"1px solid "+T.border,borderRadius:T.radius.md,fontSize:12,fontWeight:T.fw.bold,fontFamily:"inherit",cursor:"pointer"}}>
+                {_userBranchName && <option value={_userBranchName}>{_userBranchName} (지점)</option>}
+                {empList.map(e=>{ const v=e.id||e.name; if (v===_userBranchName) return null; return <option key={v} value={v}>{v}</option>; })}
+                <option value="">— 말머리 없음 —</option>
               </select>
             </div>
             {aiKoDraft&&<div style={{fontSize:11,color:"#4338ca",padding:"3px 8px",background:"#eff6ff",borderRadius:6,marginBottom:4,borderLeft:"3px solid #818cf8"}}>🇰🇷 {aiKoDraft}</div>}
             <div style={{display:"flex",gap:8}}>
               <textarea id="bliss-reply-ta" value={reply} onChange={e=>{ setReply(e.target.value); }}
-                onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();autoTranslate?sendTranslated():sendMsg(reply.trim(), aiKoDraft);}}}
+                onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();(translateMode!=="off")?sendTranslated():sendMsg(reply.trim(), aiKoDraft);}}}
                 placeholder="메시지 입력..."
                 style={{flex:1,padding:"10px 14px",border:"1px solid "+T.border,borderRadius:8,fontSize:15,resize:"none",minHeight:42,maxHeight:200,fontFamily:"inherit",outline:"none",background:"#fff",color:"#1f2937",lineHeight:"22px",overflowY:"auto"}}
               />
-              <button onClick={()=>autoTranslate?sendTranslated():sendMsg(reply.trim(), aiKoDraft)} disabled={sending||!reply.trim()}
+              <button onClick={()=>(translateMode!=="off")?sendTranslated():sendMsg(reply.trim(), aiKoDraft)} disabled={sending||!reply.trim()}
                 style={{width:44,height:44,alignSelf:"flex-end",flexShrink:0,background:reply.trim()?"#7C3AED":"#e5e7eb",color:reply.trim()?"#fff":"#9ca3af",border:"none",borderRadius:"50%",cursor:reply.trim()?"pointer":"default",display:"flex",alignItems:"center",justifyContent:"center"}}>
                 {sending?<span>⏳</span>:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>}
               </button>

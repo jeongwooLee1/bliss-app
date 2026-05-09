@@ -16,11 +16,16 @@ window.addEventListener('unhandledrejection', e => {
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import ChatPreview from './pages/ChatPreview'
+import PaymentApp from './pages/PaymentApp'
 import { AuthProvider } from './lib/AuthContext'
 
 // ?chat=1 → 사내 메신저 독립 프리뷰만 렌더 (라이브 앱 완전 우회)
 const isChatPreview = typeof window !== 'undefined' &&
   new URLSearchParams(window.location.search).get('chat') === '1'
+
+// /pay/* → 익명 결제 페이지 (AuthProvider/AppShell 우회)
+const isPaymentPage = typeof window !== 'undefined' &&
+  /^\/pay(\/|$)/.test(window.location.pathname)
 
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { error: null }; }
@@ -38,6 +43,10 @@ try {
     <ErrorBoundary>
       {isChatPreview ? (
         <ChatPreview />
+      ) : isPaymentPage ? (
+        <BrowserRouter>
+          <PaymentApp />
+        </BrowserRouter>
       ) : (
         <BrowserRouter>
           <AuthProvider>

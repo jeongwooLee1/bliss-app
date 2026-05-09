@@ -381,6 +381,8 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   });
   const [custPopupOpen, setCustPopupOpen] = useState(false);
   const [salesHistory, setSalesHistory] = useState([]);
+  // sale_id → sale_details[] 매핑 (실제 결제·차감 항목 기반으로 매출 카드 시술명 표시)
+  const [salesDetailsMap, setSalesDetailsMap] = useState({});
   const [custMemo, setCustMemo] = useState("");
   const [editingCustMemo, setEditingCustMemo] = useState(false);
   const [custMemoDraft, setCustMemoDraft] = useState("");
@@ -930,8 +932,24 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
         setCustMemo(crows?.[0]?.memo || "");
       } catch(e) { setCustMemo(""); }
       const rows = await sb.get("sales", `&cust_id=eq.${cid}&order=date.desc&limit=50`);
-      setSalesHistory(Array.isArray(rows) ? rows : []);
-    } catch(e) { console.error("sales history err", e); setSalesHistory([]); }
+      const list = Array.isArray(rows) ? rows : [];
+      setSalesHistory(list);
+      // sale_details 한 번에 IN 쿼리로 fetch (sales.service_name 단일 캐시는 부정확 — 실제 결제·차감 항목으로 표시)
+      try {
+        const ids = list.map(s => s.id).filter(Boolean);
+        if (ids.length) {
+          const inList = ids.join(",");
+          const dts = await sb.get("sale_details",
+            `&sale_id=in.(${inList})&select=sale_id,service_name,qty,unit_price,item_kind&order=service_no.asc`);
+          const map = {};
+          (dts || []).forEach(d => {
+            const sid = d.sale_id; if (!sid) return;
+            (map[sid] = map[sid] || []).push(d);
+          });
+          setSalesDetailsMap(map);
+        } else { setSalesDetailsMap({}); }
+      } catch(e) { console.error("sale_details err", e); setSalesDetailsMap({}); }
+    } catch(e) { console.error("sales history err", e); setSalesHistory([]); setSalesDetailsMap({}); }
     setHistoryLoading(false);
   }, []);
 
@@ -2792,12 +2810,35 @@ ${naverText}
                   const pt = (s.svc_point||0) + (s.prod_point||0);
                   const ext = s.external_prepaid||0;
                   const total = cash + card + tr + pt + ext;
+                  // sale_details 기반 실제 항목 (sales.service_name 단일 캐시는 reservation.service_id 단일 필드를 그대로 박는 부정확값이라 사용 안 함)
+                  const _details = salesDetailsMap[s.id] || [];
+                  const _pkgUses = _details.filter(d => d && d.item_kind === "pkg_use");
+                  const _items = _details.filter(d => d && (d.item_kind === "svc" || d.item_kind === "prod" || !d.item_kind));
+                  const _itemLines = _items.map(d => {
+                    const nm = (d.service_name||"").trim(); if (!nm) return null;
+                    const q = Number(d.qty)||1;
+                    return q>1 ? `${nm} × ${q}` : nm;
+                  }).filter(Boolean);
+                  // 매출 발생 지점
+                  const _br = (data?.branches||[]).find(b => b.id === s.bid);
+                  const _brName = _br?.short || _br?.name || "";
+                  // 보유권 차감 라인 (0원 매출이어도 차감 내역은 명확히 노출)
+                  const _pkgUseLines = _pkgUses.map(d => {
+                    let nm = (d.service_name||"").trim();
+                    nm = nm.replace(/^\[보유권\s*(사용|차감)\]\s*/, "");
+                    if (!nm) return null;
+                    const q = Number(d.qty)||1;
+                    return q>1 ? `${nm} ${q}회 차감` : `${nm} 1회 차감`;
+                  }).filter(Boolean);
                   return (
                     <div key={s.id||i} style={{padding:"12px 14px",marginBottom:8,background:i===0?"#f0f0ff":"#fafafa",
                       borderRadius:T.radius.md,border:`1px solid ${i===0?T.primary+"30":T.border}`,
                       transition:"background .15s"}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                        <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.primary}}>{s.date}</span>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:6,flexWrap:"wrap"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.primary}}>{s.date}</span>
+                          {_brName && <span style={{fontSize:9,padding:"1px 6px",borderRadius:T.radius.sm,background:"#ECEFF1",color:"#37474F",fontWeight:700}}>{_brName}</span>}
+                        </div>
                         {total>0 && <span style={{fontSize:T.fs.xs,color:T.text,fontWeight:700}}>{total.toLocaleString()}원</span>}
                       </div>
                       {total>0 && (cash+card+tr+pt+ext > 0) && <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:6}}>
@@ -2807,13 +2848,21 @@ ${naverText}
                         {pt>0 && <span style={{fontSize:9,padding:"1px 6px",borderRadius:T.radius.sm,background:"#F3E5F5",color:"#6A1B9A",fontWeight:700}}>⭐ 포인트 {pt.toLocaleString()}</span>}
                         {ext>0 && <span style={{fontSize:9,padding:"1px 6px",borderRadius:T.radius.sm,background:"#FFEBEE",color:"#C62828",fontWeight:700}}>📦 외부선결제 {ext.toLocaleString()}</span>}
                       </div>}
-                      {s.service_name && <div style={{fontSize:T.fs.xs,color:T.gray600,marginBottom:4}}>{s.service_name}</div>}
+                      {_itemLines.length > 0 && <div style={{fontSize:T.fs.xs,color:T.gray700,marginBottom:4,lineHeight:1.5}}>{_itemLines.join(" · ")}</div>}
+                      {_pkgUseLines.length > 0 && <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:6}}>
+                        {_pkgUseLines.map((ln,k) => (
+                          <span key={k} style={{fontSize:10,padding:"2px 7px",borderRadius:T.radius.sm,background:"#FFF8E1",color:"#8D6E00",fontWeight:700,border:"1px solid #F3D77A"}}>🎫 {ln}</span>
+                        ))}
+                      </div>}
                       {s.staff_name && <div style={{fontSize:T.fs.nano,color:T.textSub,marginBottom:4}}>담당: {s.staff_name}</div>}
-                      {s.memo && <div style={{fontSize:T.fs.xs,color:T.text,lineHeight:1.6,
-                        whiteSpace:"pre-wrap",wordBreak:"break-word",
-                        padding:"8px 10px",background:"#fff",borderRadius:6,
-                        maxHeight:200,overflowY:"auto",
-                        border:`1px solid ${T.border}`}}>{s.memo}</div>}
+                      {s.memo && <div
+                        onMouseDown={e=>e.stopPropagation()}
+                        style={{fontSize:T.fs.xs,color:T.text,lineHeight:1.6,
+                          whiteSpace:"pre-wrap",wordBreak:"break-word",
+                          userSelect:"text",WebkitUserSelect:"text",cursor:"text",
+                          padding:"8px 10px",background:"#fff",borderRadius:6,
+                          maxHeight:200,overflowY:"auto",
+                          border:`1px solid ${T.border}`}}>{s.memo}</div>}
                     </div>
                   );
                 })}
@@ -2892,12 +2941,24 @@ ${naverText}
                 <div style={{fontSize:11,fontWeight:700,color:T.textSub,marginBottom:6,display:"flex",alignItems:"center",gap:5}}><I name="chart" size={12}/>최근 매출 ({salesHistory.length}건)</div>
                 {salesHistory.slice(0,5).map((s,i) => {
                   const total = (s.svc_card||0)+(s.svc_cash||0)+(s.svc_transfer||0)+(s.svc_point||0);
+                  const _details = salesDetailsMap[s.id] || [];
+                  const _items = _details.filter(d => d && (d.item_kind === "svc" || d.item_kind === "prod" || d.item_kind === "pkg_use" || !d.item_kind));
+                  const _itemLines = _items.map(d => {
+                    const nm = (d.service_name||"").trim(); if (!nm) return null;
+                    const q = Number(d.qty)||1;
+                    return q>1 ? `${nm} × ${q}` : nm;
+                  }).filter(Boolean);
+                  const _br = (data?.branches||[]).find(b => b.id === s.bid);
+                  const _brName = _br?.short || _br?.name || "";
                   return <div key={s.id||i} style={{padding:"8px 10px",marginBottom:4,background:i===0?"#f0f0ff":"#fafafa",borderRadius:6,border:"1px solid "+(i===0?T.primary+"30":T.border),fontSize:11}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <span style={{fontWeight:700,color:T.primary}}>{s.date}</span>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:5}}>
+                        <span style={{fontWeight:700,color:T.primary}}>{s.date}</span>
+                        {_brName && <span style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:"#ECEFF1",color:"#37474F",fontWeight:700}}>{_brName}</span>}
+                      </div>
                       {total>0 && <span style={{fontWeight:700,color:T.text}}>{total.toLocaleString()}원</span>}
                     </div>
-                    {s.service_name && <div style={{color:T.gray600,marginTop:2}}>{s.service_name}</div>}
+                    {_itemLines.length > 0 && <div style={{color:T.gray700,marginTop:2}}>{_itemLines.join(" · ")}</div>}
                   </div>;
                 })}
               </div>}

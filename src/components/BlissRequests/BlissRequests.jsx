@@ -26,7 +26,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
   const [openId, setOpenId] = useState(null);
   const [openNoticeId, setOpenNoticeId] = useState(null);
   // Form state
-  const [form, setForm] = useState({ name: "", branchId: userBranches?.[0] || "", description: "", imageData: "" });
+  const [form, setForm] = useState({ name: "", branchId: userBranches?.[0] || "", description: "", images: [] });
   const [noticeForm, setNoticeForm] = useState({ title: "", version: "", content: "", images: [] });
   const [submitting, setSubmitting] = useState(false);
   // Reply form (master only)
@@ -136,7 +136,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
   };
   // 마킹 에디터 상태 — 공지 폼: {idx} / 수정요청 폼: boolean / 등록된 공지 수정: {noticeId, idx}
   const [markupIdx, setMarkupIdx] = useState(null);
-  const [reqMarkupOpen, setReqMarkupOpen] = useState(false);
+  const [reqMarkupIdx, setReqMarkupIdx] = useState(null);
   const [existingMarkup, setExistingMarkup] = useState(null); // {noticeId, idx}
 
   // 등록된 공지 이미지 마킹 저장 — MarkupEditor가 base64 반환하므로 storage 업로드 후 URL 저장
@@ -170,18 +170,20 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
     setMarkupIdx(null);
   };
 
-  // 이미지 → Supabase Storage 업로드 후 URL 저장 (v3.7.215, DB 부담 격감)
+  // 이미지 → Supabase Storage 업로드 후 URL 저장 (다중 첨부, v3.7.481)
   const onImagePick = async (e) => {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files || []);
     e.target.value = "";
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { alert("이미지 크기 5MB 이하로 업로드해주세요"); return; }
-    const url = await uploadImageToStorage(file, 'requests');
-    if (url) setForm(p => ({ ...p, imageData: url }));
-    else alert("이미지 업로드 실패");
+    if (files.length === 0) return;
+    for (const file of files) {
+      if (file.size > 5 * 1024 * 1024) { alert("이미지 크기 5MB 이하로 업로드해주세요"); continue; }
+      const url = await uploadImageToStorage(file, 'requests');
+      if (url) setForm(p => ({ ...p, images: [...(p.images||[]), url] }));
+      else alert("이미지 업로드 실패");
+    }
   };
 
-  // 클립보드 이미지 붙여넣기 — Ctrl+V / Cmd+V
+  // 클립보드 이미지 붙여넣기 — Ctrl+V / Cmd+V (다중)
   const onPasteImage = async (e) => {
     const items = e.clipboardData?.items || [];
     for (const it of items) {
@@ -189,13 +191,20 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
         e.preventDefault();
         const file = it.getAsFile();
         if (!file) continue;
-        if (file.size > 5 * 1024 * 1024) { alert("이미지 크기 5MB 이하만 붙여넣기 가능합니다"); return; }
+        if (file.size > 5 * 1024 * 1024) { alert("이미지 크기 5MB 이하만 붙여넣기 가능합니다"); continue; }
         const url = await uploadImageToStorage(file, 'requests');
-        if (url) setForm(p => ({ ...p, imageData: url }));
+        if (url) setForm(p => ({ ...p, images: [...(p.images||[]), url] }));
         else alert("이미지 업로드 실패");
-        return;
       }
     }
+  };
+  const removeReqImage = (idx) => {
+    setForm(p => ({ ...p, images: (p.images||[]).filter((_, i) => i !== idx) }));
+  };
+  const replaceReqImage = async (idx, newB64) => {
+    const url = await uploadImageToStorage(newB64, 'requests');
+    if (!url) { alert('이미지 저장 실패'); return; }
+    setForm(p => ({ ...p, images: (p.images||[]).map((img, i) => i === idx ? url : img) }));
   };
 
   const submit = async () => {
@@ -205,7 +214,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
     const newReq = {
       id: genId(), name: form.name.trim(), branchId: form.branchId || "",
       description: form.description.trim(),
-      imageData: form.imageData || "",
+      images: Array.isArray(form.images) ? form.images : [],
       status: "pending", reply: "",
       createdAt: new Date().toISOString(),
     };
@@ -220,7 +229,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
         body: JSON.stringify({ name: newReq.name, description: newReq.description, branch: brName }),
       }).catch(() => {});
     } catch (e) {}
-    setForm({ name: "", branchId: userBranches?.[0] || "", description: "", imageData: "" });
+    setForm({ name: "", branchId: userBranches?.[0] || "", description: "", images: [] });
     setShowForm(false);
     setSubmitting(false);
   };
@@ -274,7 +283,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
     </div>
     {/* 공지사항 */}
     {tab==="notices" && <>
-      {showNoticeForm && <div onPaste={onNoticePasteImage} style={{background:"#F5F3FF",border:"1.5px solid #C4B5FD",borderRadius:12,padding:18,marginBottom:18}}>
+      {showNoticeForm && <div style={{background:"#F5F3FF",border:"1.5px solid #C4B5FD",borderRadius:12,padding:18,marginBottom:18}}>
         <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#5B21B6",marginBottom:12}}>📢 새 공지 작성</div>
         <div style={{display:"flex",gap:8,marginBottom:8}}>
           <input value={noticeForm.title} onChange={e=>setNoticeForm(p=>({...p,title:e.target.value}))} placeholder="제목 *"
@@ -418,7 +427,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
 
 
     {/* 작성 폼 */}
-    {showForm && <div onPaste={onPasteImage} style={{background:"#FFFBEB",border:"1.5px solid #FCD34D",borderRadius:12,padding:18,marginBottom:18}}>
+    {showForm && <div style={{background:"#FFFBEB",border:"1.5px solid #FCD34D",borderRadius:12,padding:18,marginBottom:18}}>
       <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#B45309",marginBottom:12}}>새 요청 작성</div>
       <div style={{display:"flex",gap:8,marginBottom:8}}>
         <input value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} placeholder="✏️ 요청자 이름을 입력하세요 *"
@@ -432,28 +441,30 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
       </div>
       <textarea value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} onPaste={onPasteImage} placeholder="요청 내용 — 어떤 부분이 불편하거나 어떤 기능을 원하시는지 자유롭게 작성해주세요 * (캡쳐 이미지는 Ctrl+V로 바로 붙여넣기 가능)"
         style={{width:"100%",padding:"9px 12px",fontSize:13,border:"1px solid "+T.border,borderRadius:8,fontFamily:"inherit",resize:"vertical",minHeight:120,boxSizing:"border-box",marginBottom:8}}/>
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
         <label style={{padding:"7px 14px",borderRadius:8,border:"1px dashed "+T.gray400,background:"#fff",cursor:"pointer",fontSize:12,fontWeight:600,color:T.gray600,display:"inline-flex",alignItems:"center",gap:5}}>
-          <I name="image" size={12}/> 사진 첨부 (선택)
-          <input type="file" accept="image/*" onChange={onImagePick} style={{display:"none"}}/>
+          <I name="image" size={12}/> 사진 첨부 (여러 장 가능)
+          <input type="file" accept="image/*" multiple onChange={onImagePick} style={{display:"none"}}/>
         </label>
-        {form.imageData && <div style={{display:"flex",alignItems:"center",gap:6}}>
-          <img src={form.imageData} alt="preview" style={{height:40,borderRadius:6,border:"1px solid "+T.border}}/>
-          <button onClick={()=>setReqMarkupOpen(true)} title="마킹 편집"
-            style={{padding:"4px 10px",borderRadius:6,border:"none",background:"#7C3AED",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✏️ 편집</button>
-          <button onClick={()=>setForm(p=>({...p,imageData:""}))} style={{border:"none",background:"none",color:T.danger,cursor:"pointer",fontSize:14}}>×</button>
-        </div>}
       </div>
-      {reqMarkupOpen && form.imageData && <MarkupEditor
+      {(form.images||[]).length > 0 && <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+        {form.images.map((img, i) => (
+          <div key={i} style={{position:"relative",display:"flex",alignItems:"center",gap:4,padding:"4px 6px",border:"1px solid "+T.border,borderRadius:8,background:"#fff"}}>
+            <img src={img} alt={"preview-"+i} style={{height:40,borderRadius:6}}/>
+            <button onClick={()=>setReqMarkupIdx(i)} title="마킹 편집"
+              style={{padding:"4px 10px",borderRadius:6,border:"none",background:"#7C3AED",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✏️</button>
+            <button onClick={()=>removeReqImage(i)} style={{border:"none",background:"none",color:T.danger,cursor:"pointer",fontSize:14}}>×</button>
+          </div>
+        ))}
+      </div>}
+      {reqMarkupIdx !== null && form.images?.[reqMarkupIdx] && <MarkupEditor
         open={true}
-        imageSrc={form.imageData}
+        imageSrc={form.images[reqMarkupIdx]}
         onSave={async (newB64)=>{
-          const url = await uploadImageToStorage(newB64, 'requests');
-          if (url) setForm(p=>({...p,imageData:url}));
-          else { alert('이미지 저장 실패'); return; }
-          setReqMarkupOpen(false);
+          await replaceReqImage(reqMarkupIdx, newB64);
+          setReqMarkupIdx(null);
         }}
-        onClose={()=>setReqMarkupOpen(false)}
+        onClose={()=>setReqMarkupIdx(null)}
       />}
       <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
         <button onClick={()=>setShowForm(false)} style={{padding:"8px 16px",borderRadius:8,border:"1px solid "+T.border,background:"#fff",color:T.textSub,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>취소</button>
@@ -481,7 +492,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
                 </div>
                 <div style={{fontSize:11,color:T.textMuted,marginTop:2}}>
                   {r.branchId ? branchName(r.branchId) + " · " : ""}{fmtDate(r.createdAt)}
-                  {r.imageData && " · 📷"}
+                  {((Array.isArray(r.images) && r.images.length > 0) || r.imageData) && " · 📷" + (Array.isArray(r.images) && r.images.length > 1 ? r.images.length : "")}
                   {r.reply && " · 💬 답변있음"}
                 </div>
               </div>
@@ -489,7 +500,13 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
             </div>
             {isOpen && <div style={{padding:"0 16px 16px",borderTop:"1px solid "+T.gray100}}>
               <div style={{fontSize:13,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap",padding:"12px 0"}}>{r.description}</div>
-              {r.imageData && <img src={r.imageData} alt="첨부" style={{maxWidth:"100%",maxHeight:400,borderRadius:8,border:"1px solid "+T.border,marginTop:6}}/>}
+              {(() => {
+                const imgs = Array.isArray(r.images) ? r.images : (r.imageData ? [r.imageData] : []);
+                if (imgs.length === 0) return null;
+                return <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:6}}>
+                  {imgs.map((img, i) => <img key={i} src={img} alt={"첨부-"+(i+1)} style={{maxWidth:"100%",maxHeight:400,borderRadius:8,border:"1px solid "+T.border}}/>)}
+                </div>;
+              })()}
               {r.reply && <div style={{marginTop:12,padding:"10px 14px",background:T.primaryLt||"#EEF2FF",borderRadius:8,borderLeft:"3px solid "+T.primary}}>
                 <div style={{fontSize:11,fontWeight:T.fw.bolder,color:T.primary,marginBottom:4}}>💬 답변</div>
                 <div style={{fontSize:13,color:T.text,whiteSpace:"pre-wrap"}}>{r.reply}</div>

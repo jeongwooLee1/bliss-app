@@ -85,18 +85,20 @@ export const StatCard = ({ label, value, sub, color }) => (
 );
 
 // ── DataTable ──
-export function DataTable({ cols=[], rows=[], onRow, card=true, children }) {
+export function DataTable({ cols=[], rows=[], onRow, card=true, children, maxHeight }) {
   const thS = {padding:"7px 10px",background:T.gray100,borderBottom:"1px solid "+T.border,textAlign:"left",fontWeight:600,fontSize:12,whiteSpace:"nowrap"};
   const tdS = {padding:"7px 10px",borderBottom:"1px solid "+T.border,fontSize:13,verticalAlign:"middle"};
+  // maxHeight 지정 시 wrapper에 overflowY:auto + maxHeight → th sticky가 헤더 고정
+  const wrapStyle = {overflowX:"auto",borderRadius:T.radius.md,border:"1px solid "+T.border, ...(maxHeight ? {overflowY:"auto", maxHeight} : {})};
   if (children) {
-    return <div style={{overflowX:"auto",borderRadius:T.radius.md,border:"1px solid "+T.border}}>
-      <style>{`.bliss-tbl th{padding:7px 10px;background:${T.gray100};border-bottom:1px solid ${T.border};text-align:left;font-weight:600;font-size:12px;white-space:nowrap}.bliss-tbl td{padding:7px 10px;border-bottom:1px solid ${T.border};font-size:13px;vertical-align:middle}.bliss-tbl tbody tr:last-child td{border-bottom:none}.bliss-tbl tbody tr:hover{background:${T.gray100}}`}</style>
+    return <div style={wrapStyle}>
+      <style>{`.bliss-tbl th{padding:7px 10px;background:${T.gray100};border-bottom:1px solid ${T.border};text-align:left;font-weight:600;font-size:12px;white-space:nowrap;position:sticky;top:0;z-index:2}.bliss-tbl td{padding:7px 10px;border-bottom:1px solid ${T.border};font-size:13px;vertical-align:middle}.bliss-tbl tbody tr:last-child td{border-bottom:none}.bliss-tbl tbody tr:hover{background:${T.gray100}}`}</style>
       <table className="bliss-tbl" style={{width:"100%",borderCollapse:"collapse"}}>{children}</table>
     </div>;
   }
-  return <div style={{overflowX:"auto",...(card?{borderRadius:T.radius.md,border:"1px solid "+T.border}:{})}}>
+  return <div style={{...wrapStyle, ...(card?{}:{border:"none",borderRadius:0})}}>
     <table style={{width:"100%",borderCollapse:"collapse"}}>
-      <thead><tr>{cols.map((c,i) => <th key={i} style={{...thS,...(c.style||{})}}>{c.label||c}</th>)}</tr></thead>
+      <thead><tr>{cols.map((c,i) => <th key={i} style={{...thS,...(maxHeight?{position:"sticky",top:0,zIndex:2}:{}),...(c.style||{})}}>{c.label||c}</th>)}</tr></thead>
       <tbody>
         {rows.map((r,ri) => (
           <tr key={ri} onClick={()=>onRow?.(r,ri)} style={{cursor:onRow?"pointer":"default"}}>

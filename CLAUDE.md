@@ -978,3 +978,63 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - **Anthropic Claude 크레딧 자동 충전 $5→$30**, 결제는 Anthropic Console
 - **체험단 0원 매출 = 신규 고객으로 판단** (SaleForm custHasSale + tagAutoTrigger hasPaidSale 양쪽 적용)
 - **외국인 ALL-CAPS 이름은 자동 타이틀케이스로 표시** (네이버 여권명 → "Lauren Atwood")
+
+### v3.7.503 → v3.7.547 (2026-05-07 ~ 09)
+
+#### 매출/결제 일반화
+- **시술 차감 → 제품 spill 일반화** (v3.7.534, SaleForm:1709): 시술쪽 모든 차감(보유권/외부선결제/포인트/이벤트/일반할인) 합산이 svcTotal 초과하면 잉여분이 prodPayTotal로 spill. grandTotal == svcPay+prodPay 항상 일치. v3.3.50 이전 동작(다담권으로 제품 결제) 복원.
+- **타지점 구매 보유권 표시(비활성)** (v3.7.532, SaleForm): inactive 보유권 회색·🔒 배지로 노출. 직원이 잔여 인지 가능, 차감 차단.
+- **회원가 자동 적용 정책 정정** — 풀페이스+음모왁싱 묶음 시 풀페이스 회원가 적용은 매장 운영 정책으로 확정 (시스템 변경 X).
+
+#### 보유권 디자인
+- **보유권 시안 3 (Two-tone Split)** (v3.7.535, ReservationModal): 라벨/값 분리, 잔액 한국식 짧은 단위(`38.1만`/`5천`), 이모티콘 제거.
+
+#### 영수증 기능
+- **영수증** (v3.7.539~543, SaleForm viewOnly·editMode): [영수증] 버튼 1개 → 미리보기 모달 → 텍스트 복사·저장 / 이미지 복사·저장 (canvas 직접 그리기, 외부 라이브러리 X). 메모는 내부 문서라 제외. 보유권 사용은 영수증 상단(고객 정보 다음). 가로 폭 26자 모바일 카톡 fit.
+
+#### 메시지함 / AI / 번역
+- **사이드바 unread 배지 IG/WA account_id 분기 fix** (v3.7.535·537): 강남/홍대 IG account_id가 다른 지점은 본인 지점만 카운트. WhatsApp 공유 번호는 양쪽 공통(의도). settings.ig_branch_override 추가 IG 매핑도 적용 (강남 추가 IG `17841455170480955`).
+- **AI 예약등록 사이드 패널 자동 닫힘** (v3.7.538, MessagesPage·AppShell): AdminInbox onClosePanel prop. fallback 이동 시 메시지함 사이드 패널 자동 닫힘.
+- **(서버) ai_booking manual 우회** (ai_booking.py): manual=True 호출은 [미디어]/[reaction] 가드 우회. /ai-book user_msg는 직전 10건 중 첫 텍스트 메시지 선택 (last가 [미디어]여도 의미 있는 텍스트 분석).
+- **(서버) AI 상대 날짜 자동 처리** (ai_booking.py): 오늘/내일/모레/글피·today/tomorrow는 시스템이 즉시 변환. AI가 placeholder("Please provide exact date for today")로 재질문 절대 금지 룰 명시.
+- **(서버) 콜라보/체험단 사전 게이트** (ai_booking.py): 메시지 도착 → AI 호출 전 thread outbound 메시지 검사. `체험단`, `collab`, `collaboration`, `influencer`, `Instagram Reels review` 키워드 1개라도 발견 시 → AI 호출 X, 마케팅팀 안내 멘트만 자동 발송 (한/영 자동 분기, 평일 10~17시 KST). 직원 수동 클릭(manual=True)은 우회.
+- **언어 룰 — 마지막 메시지 기준** (서버 ai_booking + 클라이언트 MessagesPage): 첫 대화 언어 고정 X. 매 응답마다 마지막 inbound 메시지 언어 재판정. 한+영 혼용 시 영어 우선 (영어 알파벳 5자 이상이면 영어 응답).
+- **LINE 메시지 처리** — 토큰 갱신 + LINE webhook에 번역 호출 추가 + ai_booking detect_lang 한+영 혼용 룰. (LINE 상담완료 비공식 우회는 chat_id 매핑 장벽으로 보류 — 정식 챗봇 통합 방향)
+- **이모티콘 → I 아이콘 (Phase A1+A2)** (v3.7.535·539): SaleForm·ReservationModal·MessagesPage·TimelinePage 헤더/배지 약 30곳 SVG 통일.
+
+#### 매출 메모 textarea 스크롤 점프 fix
+- **textarea inline ref → useRef + useLayoutEffect** (v3.7.533, SaleForm): 매 렌더 height="auto" reset이 textarea 내부 scrollTop 점프시키던 버그. grow-only로 변경.
+
+#### 동반자/Ctrl 복사
+- **내부일정 group_id 도트 제외** (v3.7.532, TimelinePage): Ctrl/Cmd 드래그 복사 시 isSchedule이면 reservation_group_id 부여 안 함 + 도트 렌더 가드.
+
+#### 태그·예약경로 통합
+- **태그·경로 관리 통합** (v3.7.536, AdminServiceTags): 탭 [예약/내부일정/예약경로] 3개. reservation_sources 같은 row UI로 통일. maxWidth:720, 우측 액션 한 그룹 컴팩트.
+- **예약경로 BRAND 라인/왓츠앱 추가** (v3.7.535·라인 DB src_line) — partner.talk.naver.com 매장 핸들 8개도 캡처해 둠 (HANDOFF 기록).
+
+#### 자동태그 트리거 시스템 확장
+- **트리거 조건 확장** (v3.7.545, tagAutoTrigger.js):
+  - `package_low_count`(★마지막회차)에 `categoryIds`(다중 카테고리) + `serviceIds`(특정 시술 다중) + `matchReservationService`(예약 시술과 같은 카테고리/시술만 평가) 추가.
+  - `package_expired`(★기존상담)에 `categoryIds` 추가.
+  - param.type 카탈로그(`number`/`bool`/`category_multi`/`service_multi`).
+- **자동태그 설정 UI 분리** (v3.7.546~547, AdminServiceTags): 태그 편집창의 자동 부여 트리거 영역 제거. 헤더에 [⚡ 자동태그 설정] 버튼 1개 → 별도 ASheet에서 [태그 드롭다운 → 조건 → 저장] 1대1 편집 흐름. service_multi는 카테고리별 그룹핑 chip 다중 선택.
+
+#### 연계지점 권한 일관성
+- **userBranches 자동 머지** (v3.7.546, AppShell): useEffect로 같은 branchGroup 멤버를 userBranches에 자동 추가. 모든 컴포넌트(예약·매출·고객·메시지·관리설정 등) prop 변경 없이 양 지점 데이터 접근/수정.
+- **TimelinePage accessibleBids 머지** (v3.7.538): 네이버 예약막기 + 매출조회 등.
+
+#### 사용자 요청 처리 (bliss_requests)
+- 정우 동반자 도트, 지은 prod 할인 spill, 서현 다담권 제품 결제, 현아 신규쿠폰·연계지점 막기·네이버 톡톡 자동완료, 김기덕 ★마지막회차 오부착 정책 등 다수 처리·답변.
+
+#### 요금제 페이지 정정
+- **pricing.html 실제 요금제로 교체** (v3.7.537): Trial 0원·14일 / Starter 33,000 / Pro 77,000. 크레딧 단가 표(알림톡 10P / SMS 20P,60P / WhatsApp 1P / AI 5P / 메시지함 1P) 명시.
+
+### 주의사항 (v3.7.547 이후 참고)
+- **★마지막회차 트리거**는 매장이 관리설정 → 태그 관리 → [⚡ 자동태그 설정]에서 카테고리/시술/예약 매칭 모드를 직접 설정 가능. 디폴트는 패키지+회원권 카테고리 전체.
+- **연계지점 권한**: AppShell useEffect가 userBranches를 자동 확장. 새 prop 추가 X. branchGroups 변경 시 즉시 반영.
+- **ai_booking 콜라보 게이트**: 매장이 보낸 outbound 메시지에 키워드(`체험단`/`collab`/`collaboration`/`influencer`/`Instagram Reels review`)가 한 번이라도 들어가면 그 대화방은 영구 콜라보 분기 (수동 manual=True 호출은 우회).
+- **언어 룰**: 마지막 inbound 메시지 언어 기준 매 응답마다 재판정. 한+영 혼용 시 영어 우선(en≥5).
+- **AI 예약등록 manual**: [미디어]/[reaction] 가드 우회됨. /ai-book endpoint가 직전 10건 중 첫 텍스트 메시지를 user_msg로 사용.
+- **영수증**: SaleForm viewOnly·editMode일 때만 [영수증] 버튼 노출. canvas 직접 그리기(외부 라이브러리 X), monospace 폰트, 가로 26자.
+- **NHN KCP 카드사 심사 통과** (2026-05-07): 영세 가맹점 수수료(일반 3.2%/중소3 2.72%/중소2 2.47%), 신용카드 건당 100만, 정산 월4회, 등록비/연회비 0. 다음 단계: 계약서 제출 → 보증보험 200만 가입 → 포트원 V2 채널 등록 → Bliss 관리설정 키 입력 → 테스트 결제.
+- **네이버 톡톡 상담완료 자동 연동 보류**: POST /chatapi/ct/partner/{handle}/chat/{chatId}/end (200 OK 확인) + 매장 핸들 8개 확보(강남 w4jmdh, 마곡 w4lf15, 왕십리 w4h6dw, 용산 w4gsgn, 위례 w4l272, 잠실 w4ls78, 천호 w45f9j, 홍대 w5wyqh). chat_id(4자) ↔ messages.user_id(22자) 매핑이 nchat socket으로만 전달되어 HTTP 추출 불가. 정식 챗봇 통합(handover_v1)으로 전환 예정 (별도 1~2주 일정).

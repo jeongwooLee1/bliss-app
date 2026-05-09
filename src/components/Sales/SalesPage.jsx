@@ -8,6 +8,7 @@ import { Btn, StatCard, GridLayout, fmt, Empty, DataTable, FLD } from '../common
 import I from '../common/I'
 import { SmartDatePicker } from '../Reservations/ReservationsPage'
 import { DetailedSaleForm } from '../Timeline/ReservationModal'
+import SalesGridPage from './SalesGridPage'
 
 /* ── sale_details 캐시 ── */
 const _detailCache = {};  // { saleId: [rows...] | "loading" }
@@ -492,9 +493,27 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
     </div>;
   };
 
+  // 그리드 탭은 대표(super/owner)만 노출
+  const _gridAllowed = role === 'super' || role === 'owner'
+  const _tabs = [["sales","매출 관리"],["stats","매출 통계"], ..._gridAllowed ? [["grid","📊 그리드"]] : []]
+
+  if (salesTab === "grid") {
+    if (!_gridAllowed) { setSalesTab("sales"); return null }
+    return <div>
+      <div style={{display:"flex",gap:0,marginBottom:12}}>
+        {_tabs.map(([k,l])=>(
+          <button key={k} onClick={()=>setSalesTab(k)} style={{flex:1,padding:"10px 0",fontSize:T.fs.sm,fontWeight:salesTab===k?T.fw.bolder:T.fw.medium,
+            color:salesTab===k?T.primary:T.textMuted,
+            background:"none",border:"none",borderBottom:salesTab===k?`2px solid ${T.primary}`:"2px solid "+T.border,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
+        ))}
+      </div>
+      <SalesGridPage data={data} userBranches={userBranches} role={role}/>
+    </div>
+  }
+
   if (salesTab === "stats") return <div>
     <div style={{display:"flex",gap:0,marginBottom:12}}>
-      {[["sales","매출 관리"],["stats","매출 통계"]].map(([k,l])=>(
+      {_tabs.map(([k,l])=>(
         <button key={k} onClick={()=>setSalesTab(k)} style={{flex:1,padding:"10px 0",fontSize:T.fs.sm,fontWeight:salesTab===k?T.fw.bolder:T.fw.medium,
           color:salesTab===k?T.primary:T.textMuted,borderBottom:salesTab===k?`2px solid ${T.primary}`:"2px solid transparent",
           background:"none",border:"none",borderBottom:salesTab===k?`2px solid ${T.primary}`:"2px solid "+T.border,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
@@ -508,7 +527,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
   return <div>
     {/* Tab Segment */}
     <div style={{display:"flex",gap:0,marginBottom:12}}>
-      {[["sales","매출 관리"],["stats","매출 통계"]].map(([k,l])=>(
+      {_tabs.map(([k,l])=>(
         <button key={k} onClick={()=>setSalesTab(k)} style={{flex:1,padding:"10px 0",fontSize:T.fs.sm,fontWeight:salesTab===k?T.fw.bolder:T.fw.medium,
           color:salesTab===k?T.primary:T.textMuted,
           background:"none",border:"none",borderBottom:salesTab===k?`2px solid ${T.primary}`:"2px solid "+T.border,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
@@ -556,56 +575,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
       )}
     </div>
 
-    {/* 요약 합계 바 — 결제수단 분리 표시 (마감 시 편의) */}
-    {sales.length > 0 && (() => {
-      const cash = totals.svcCash + totals.prodCash;
-      const card = totals.svcCard + totals.prodCard;
-      const transfer = totals.svcTransfer + totals.prodTransfer;
-      const point = totals.svcPoint + totals.prodPoint;
-      return <>
-        <div style={{display:"flex",gap:T.sp.sm,marginBottom:6,flexWrap:"wrap"}}>
-          {[
-            {lbl:"총 매출",  v:totals.total, c:T.info,    bold:true},
-            {lbl:"시술",     v:totals.svc,   c:T.primary},
-            {lbl:"제품",     v:totals.prod,  c:T.info},
-          ].map(({lbl,v,c,bold})=>(
-            <div key={lbl} style={{background:T.bgCard,border:"1px solid "+T.border,borderRadius:T.radius.md,
-              padding:"6px 14px",display:"flex",alignItems:"baseline",gap:6}}>
-              <span style={{fontSize:T.fs.xxs,color:T.textSub}}>{lbl}</span>
-              <span style={{fontSize:T.fs.sm,fontWeight:bold?T.fw.black:T.fw.bolder,color:c}}>{fmt(v)}</span>
-            </div>
-          ))}
-          {/* 외부 플랫폼 선결제 — 플랫폼별 세분화 */}
-          {totals.extPrepaid > 0 && (
-            <div style={{background:"#F3E5F5",border:"1px solid #CE93D8",borderRadius:T.radius.md,padding:"6px 14px",display:"flex",alignItems:"baseline",gap:8,flexWrap:"wrap"}}>
-              <span style={{fontSize:T.fs.xxs,color:"#6A1B9A",fontWeight:T.fw.bolder}}>🏷 외부 선결제</span>
-              <span style={{fontSize:T.fs.sm,fontWeight:T.fw.black,color:"#6A1B9A"}}>{fmt(totals.extPrepaid)}</span>
-              {Object.entries(extByPlatform).map(([k,v])=>(
-                <span key={k} style={{fontSize:T.fs.xxs,color:"#8E24AA"}}>{k} <strong>{fmt(v)}</strong></span>
-              ))}
-            </div>
-          )}
-        </div>
-        {/* 결제수단별 합계 (마감 정산용) */}
-        <div style={{display:"flex",gap:T.sp.sm,marginBottom:T.sp.md,flexWrap:"wrap"}}>
-          {[
-            {lbl:"현금",  v:cash,     c:"#16a34a"},
-            {lbl:"카드",  v:card,     c:T.primary},
-            {lbl:"입금",  v:transfer, c:T.info},
-            {lbl:"포인트",v:point,    c:T.orange},
-            {lbl:"외부선결제",v:totals.extPrepaid, c:"#8E24AA"},
-          ].map(({lbl,v,c})=>(
-            <div key={lbl} style={{background:c+"15",border:"1px solid "+c+"55",borderRadius:T.radius.md,
-              padding:"6px 14px",display:"flex",alignItems:"baseline",gap:6}}>
-              <span style={{fontSize:T.fs.xxs,color:c,fontWeight:T.fw.bolder}}>{lbl}</span>
-              <span style={{fontSize:T.fs.sm,fontWeight:T.fw.black,color:c}}>{fmt(v)}</span>
-            </div>
-          ))}
-        </div>
-      </>;
-    })()}
-
-    {/* 테이블 */}
+    {/* 테이블 — 합계 카드 제거, 합계 행을 헤더 바로 다음으로 이동 (유저 요청) */}
     <DataTable card>
       <thead><tr>
         <th style={{width:36}}>#</th>
@@ -625,6 +595,19 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
         <th style={{width:60}}></th>
       </tr></thead>
       <tbody>
+        {/* 합계 행 — 헤더 바로 다음 (유저 요청) */}
+        {sales.length>0 && <tr style={{background:T.gray200,fontWeight:T.fw.bolder,position:"sticky",top:32,zIndex:1}}>
+          <td colSpan={6} style={{textAlign:"right",color:T.textSub,fontSize:T.fs.xxs}}>합 계</td>
+          <td style={{color:T.primary,textAlign:"right"}}>{fmt(totals.svc)}</td>
+          <td style={{color:T.info,textAlign:"right"}}>{fmt(totals.prod)}</td>
+          <td style={{color:"#16a34a",textAlign:"right"}}>{fmt(totals.svcCash+totals.prodCash)}</td>
+          <td style={{color:T.primary,textAlign:"right"}}>{fmt(totals.svcCard+totals.prodCard)}</td>
+          <td style={{color:T.info,textAlign:"right"}}>{fmt(totals.svcTransfer+totals.prodTransfer)}</td>
+          <td style={{color:T.orange,textAlign:"right"}}>{fmt(totals.svcPoint+totals.prodPoint)}</td>
+          <td style={{color:"#8E24AA",textAlign:"right"}}>{fmt(totals.extPrepaid)}</td>
+          <td style={{color:T.info,textAlign:"right"}}>{fmt(totals.total)}</td>
+          <td/>
+        </tr>}
         {sales.length===0
           ? <tr><td colSpan={15}><Empty msg="매출 기록 없음" icon="wallet"/></td></tr>
           : (() => {
@@ -825,19 +808,6 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
           });
         })()
         }
-        {/* 합계 행 */}
-        {sales.length>0 && <tr style={{background:T.gray200,fontWeight:T.fw.bolder}}>
-          <td colSpan={6} style={{textAlign:"right",color:T.textSub,fontSize:T.fs.xxs}}>합 계</td>
-          <td style={{color:T.primary,textAlign:"right"}}>{fmt(totals.svc)}</td>
-          <td style={{color:T.info,textAlign:"right"}}>{fmt(totals.prod)}</td>
-          <td style={{color:"#16a34a",textAlign:"right"}}>{fmt(totals.svcCash+totals.prodCash)}</td>
-          <td style={{color:T.primary,textAlign:"right"}}>{fmt(totals.svcCard+totals.prodCard)}</td>
-          <td style={{color:T.info,textAlign:"right"}}>{fmt(totals.svcTransfer+totals.prodTransfer)}</td>
-          <td style={{color:T.orange,textAlign:"right"}}>{fmt(totals.svcPoint+totals.prodPoint)}</td>
-          <td style={{color:"#8E24AA",textAlign:"right"}}>{fmt(totals.extPrepaid)}</td>
-          <td style={{color:T.info,textAlign:"right"}}>{fmt(totals.total)}</td>
-          <td/>
-        </tr>}
       </tbody>
     </DataTable>
 
@@ -920,6 +890,64 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     });
     return () => { cancelled = true; };
   }, [vb, periodKey, startDate, endDate]);
+
+  // 외국인 통계 (예약등록일 기준 신규/기존)
+  const [foreignStats, setForeignStats] = useState({ rows: [], loading: true });
+  useEffect(() => {
+    let cancelled = false;
+    setForeignStats(p => ({...p, loading: true}));
+    // 기간 fallback: periodKey='all' 또는 미설정이면 최근 90일
+    const today = new Date();
+    const _end = (periodKey==="all" || !endDate) ? today.toISOString().slice(0,10) : endDate;
+    const _startBase = new Date(today); _startBase.setDate(_startBase.getDate()-90);
+    const _start = (periodKey==="all" || !startDate) ? _startBase.toISOString().slice(0,10) : startDate;
+    fetch(`${SB_URL}/rest/v1/rpc/get_foreign_stats`, {
+      method:'POST', headers:{...sbHeaders,'Content-Type':'application/json'},
+      body: JSON.stringify({ p_biz_id: _activeBizId, p_start: _start, p_end: _end }),
+    }).then(r => r.ok ? r.json() : []).catch(() => []).then(j => {
+      if (cancelled) return;
+      let rows = Array.isArray(j) ? j : [];
+      if (vb !== "all") rows = rows.filter(r => r.bid === vb);
+      setForeignStats({ rows, loading: false });
+    });
+    return () => { cancelled = true; };
+  }, [vb, periodKey, startDate, endDate]);
+
+  // CSV 다운로드 (Excel 호환 — UTF-8 BOM 포함)
+  const downloadForeignCSV = () => {
+    const rows = foreignStats.rows || [];
+    if (!rows.length) { alert('다운로드할 외국인 통계가 없습니다.'); return; }
+    const months = [...new Set(rows.map(r => r.month))].sort();
+    const branches = [...new Set(rows.map(r => r.branch_short))];
+    const header = ['지점', ...months.flatMap(m => [`${m} 신규`, `${m} 기존`, `${m} 합계`])];
+    const lines = [header.join(',')];
+    branches.forEach(br => {
+      const cells = [br];
+      months.forEach(m => {
+        const r = rows.find(x => x.branch_short === br && x.month === m) || { new_cnt:0, returning_cnt:0, total_cnt:0 };
+        cells.push(r.new_cnt, r.returning_cnt, r.total_cnt);
+      });
+      lines.push(cells.join(','));
+    });
+    // 합계 row
+    const totalCells = ['전체'];
+    months.forEach(m => {
+      const monthRows = rows.filter(x => x.month === m);
+      totalCells.push(
+        monthRows.reduce((s,r)=>s+(r.new_cnt||0),0),
+        monthRows.reduce((s,r)=>s+(r.returning_cnt||0),0),
+        monthRows.reduce((s,r)=>s+(r.total_cnt||0),0),
+      );
+    });
+    lines.push(totalCells.join(','));
+    const csv = '﻿' + lines.join('\n');
+    const blob = new Blob([csv], { type:'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `외국인통계_${months[0]||''}_${months[months.length-1]||''}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
 
   // 만 단위 한국식 간략 표시 (예: 22억4천, 5천8백만, 748만)
   const fmtKMan = (n) => {
@@ -1245,6 +1273,83 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
         ))}
       </div>}
     </GridLayout>
+
+    {/* 🌍 외국인 예약 통계 */}
+    {(() => {
+      const rows = foreignStats.rows || [];
+      const months = [...new Set(rows.map(r => r.month))].sort();
+      const branches = [...new Set(rows.map(r => r.branch_short))];
+      return <div className="card" style={{padding:16,marginTop:20}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12,flexWrap:'wrap',gap:8}}>
+          <div>
+            <div style={{fontSize:T.fs.md,fontWeight:T.fw.bolder,color:T.text}}>🌍 외국인 예약 통계</div>
+            <div style={{fontSize:T.fs.xs,color:T.textMuted,marginTop:2}}>예약등록일 기준 · 매출 이력 0건이면 "신규" · 영문자 이름 기준 (내부일정 자동 제외)</div>
+          </div>
+          <button onClick={downloadForeignCSV} disabled={foreignStats.loading || rows.length===0}
+            style={{padding:'8px 14px',borderRadius:T.radius.md,border:`1px solid ${T.success}`,background:T.success+'18',
+              color:T.success,fontWeight:T.fw.bolder,fontSize:T.fs.sm,cursor:rows.length?'pointer':'not-allowed',
+              fontFamily:'inherit',display:'inline-flex',alignItems:'center',gap:6,opacity:rows.length?1:.4}}>
+            ⬇ Excel 다운로드 (CSV)
+          </button>
+        </div>
+        {foreignStats.loading ? (
+          <div style={{padding:20,textAlign:'center',color:T.textMuted,fontSize:T.fs.sm}}>로딩 중...</div>
+        ) : rows.length === 0 ? (
+          <div style={{padding:20,textAlign:'center',color:T.textMuted,fontSize:T.fs.sm}}>해당 기간 외국인 예약 없음</div>
+        ) : (
+          <div style={{overflowX:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:T.fs.xs}}>
+              <thead>
+                <tr style={{borderBottom:`2px solid ${T.border}`,background:T.gray100}}>
+                  <th style={{padding:'8px 10px',textAlign:'left',fontWeight:T.fw.bolder}}>지점</th>
+                  {months.map(m => (
+                    <th key={m} colSpan={3} style={{padding:'8px 10px',textAlign:'center',fontWeight:T.fw.bolder,borderLeft:`1px solid ${T.border}`}}>{m}</th>
+                  ))}
+                </tr>
+                <tr style={{borderBottom:`1px solid ${T.border}`,background:T.gray100,fontSize:T.fs.xxs}}>
+                  <th></th>
+                  {months.flatMap(m => [
+                    <th key={m+'_n'} style={{padding:'4px 6px',color:T.success,fontWeight:T.fw.bolder,borderLeft:`1px solid ${T.border}`}}>신규</th>,
+                    <th key={m+'_r'} style={{padding:'4px 6px',color:T.primary,fontWeight:T.fw.bolder}}>기존</th>,
+                    <th key={m+'_t'} style={{padding:'4px 6px',color:T.text,fontWeight:T.fw.bolder}}>합계</th>,
+                  ])}
+                </tr>
+              </thead>
+              <tbody>
+                {branches.map(br => (
+                  <tr key={br} style={{borderBottom:`1px solid ${T.border}40`}}>
+                    <td style={{padding:'6px 10px',fontWeight:T.fw.bolder}}>{br}</td>
+                    {months.flatMap(m => {
+                      const r = rows.find(x => x.branch_short === br && x.month === m) || { new_cnt:0, returning_cnt:0, total_cnt:0 };
+                      return [
+                        <td key={m+'_n'} style={{padding:'6px 8px',textAlign:'right',color:r.new_cnt>0?T.success:T.gray400,fontWeight:r.new_cnt>0?T.fw.bolder:T.fw.normal,borderLeft:`1px solid ${T.border}`}}>{r.new_cnt}</td>,
+                        <td key={m+'_r'} style={{padding:'6px 8px',textAlign:'right',color:r.returning_cnt>0?T.primary:T.gray400}}>{r.returning_cnt}</td>,
+                        <td key={m+'_t'} style={{padding:'6px 8px',textAlign:'right',fontWeight:T.fw.bolder}}>{r.total_cnt}</td>,
+                      ];
+                    })}
+                  </tr>
+                ))}
+                {/* 전체 합계 row */}
+                <tr style={{borderTop:`2px solid ${T.border}`,background:T.gray100}}>
+                  <td style={{padding:'8px 10px',fontWeight:T.fw.black}}>전체</td>
+                  {months.flatMap(m => {
+                    const monthRows = rows.filter(x => x.month === m);
+                    const sumN = monthRows.reduce((s,r)=>s+(r.new_cnt||0),0);
+                    const sumR = monthRows.reduce((s,r)=>s+(r.returning_cnt||0),0);
+                    const sumT = monthRows.reduce((s,r)=>s+(r.total_cnt||0),0);
+                    return [
+                      <td key={m+'_n'} style={{padding:'8px',textAlign:'right',color:T.success,fontWeight:T.fw.black,borderLeft:`1px solid ${T.border}`}}>{sumN}</td>,
+                      <td key={m+'_r'} style={{padding:'8px',textAlign:'right',color:T.primary,fontWeight:T.fw.black}}>{sumR}</td>,
+                      <td key={m+'_t'} style={{padding:'8px',textAlign:'right',fontWeight:T.fw.black}}>{sumT}</td>,
+                    ];
+                  })}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>;
+    })()}
   </div>;
 }
 

@@ -244,6 +244,14 @@ export default function BlissAI({ data, setData, currentUser, userBranches, isMa
       throw new Error(`Gemini ${r.status}: ${txt.slice(0, 200)}`)
     }
     const dd = await r.json()
+    // billing 차감 — BlissAI는 사업장 첫 branch에 귀속
+    try {
+      const _bid = userBranches?.[0]
+      if (bizId && _bid) {
+        const { deductBilling } = await import('../../lib/billing')
+        deductBilling({ bizId, branchId: _bid, kind: 'ai_call', refTable: 'blissai' })
+      }
+    } catch {}
     return dd?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '(답변 없음)'
   }
 
