@@ -1,9 +1,18 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.550** (https://blissme.ai/version.txt) — 2026-05-09 배포
+- **라이브: v3.7.551** (https://blissme.ai/version.txt) — 2026-05-09 배포
 - 다음 빌드 시 `BLISS_V` (AppShell.jsx) + `public/version.txt` 둘 다 함께 bump 필수
-- 변경 이력은 [CLAUDE.md "v3.7.503 → v3.7.550"](./CLAUDE.md) 섹션 참고
+- 변경 이력은 [CLAUDE.md "v3.7.503 → v3.7.551"](./CLAUDE.md) 섹션 참고
+
+## v3.7.551 변경 (2026-05-09)
+- **자동태그 service_multi UI 카테고리 헤더 토글** — 카테고리 헤더(✓/◐/○) 클릭 시 그 카테고리 시술 전체 선택/해제. 시각적 상태 3종(전체/일부/없음).
+- **[⚡ 미래 예약 일괄 평가] 도구** (AdminServiceTags 메인 페이지):
+  - 오늘 이후 미종결 예약을 모두 평가해 자동 부여될 태그 dry-run 표시 — 날짜·시간·지점·고객·추가될 태그 리스트
+  - customer_packages는 cust_id IN(100건씩 chunk)로 batch fetch
+  - `evaluateTagTriggers()` 활용 (서버 ai_analyze 로직과 동일)
+  - 결과 검토 후 [모두 적용] 버튼으로 selected_tags 일괄 UPDATE (이미 있는 태그는 보존, 자동태그만 추가)
+  - 추가 only — 자동 룰에 안 맞는 태그를 제거하지는 않음 (안전 모드)
 
 ## v3.7.550 변경 (2026-05-09)
 - **자동태그 설정 가시성 향상** (AdminServiceTags):

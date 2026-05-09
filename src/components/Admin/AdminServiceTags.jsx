@@ -5,7 +5,8 @@ import { _activeBizId, SYSTEM_TAG_IDS } from '../../lib/db'
 import { genId } from '../../lib/utils'
 import I from '../common/I'
 import { AConfirm, ASheet, AField, AInp, AEmpty, APageHeader, AToggle, ABadge, APalette, useTouchDragSort } from './AdminUI'
-import { TAG_TRIGGER_TYPES, describeTrigger } from '../../lib/tagAutoTrigger'
+import { TAG_TRIGGER_TYPES, describeTrigger, evaluateTagTriggers } from '../../lib/tagAutoTrigger'
+import { todayStr } from '../../lib/utils'
 
 const uid = genId;
 
@@ -158,13 +159,148 @@ function AdminServiceTags({ data, setData }) {
     } finally { setAutoSaving(false); }
   };
 
+  // ⚡ 미래 예약 일괄 평가 (오늘 이후 예약을 평가해 자동 태그 부여 dry-run + 일괄 적용)
+  const [bulkState, setBulkState] = useState(null); // null | {loading} | {items, ts} | {error}
+  const [bulkApplying, setBulkApplying] = useState(false);
+  const runBulkEval = async () => {
+    setBulkState({ loading: true });
+    try {
+      const today = todayStr();
+      const futureRes = (data?.reservations || []).filter(r =>
+        r && r.date && r.date >= today &&
+        !['cancelled','completed','no_show','naver_cancelled'].includes(r.status) &&
+        !r.isSchedule
+      );
+      // customer_packages batch fetch (cust_id IN, 100건씩 chunk)
+      const custIds = [...new Set(futureRes.map(r => r.custId).filter(Boolean))];
+      let pkgs = [];
+      const chunks = [];
+      for (let i = 0; i < custIds.length; i += 100) chunks.push(custIds.slice(i, i+100));
+      for (const ch of chunks) {
+        const r = await sb.get('customer_packages', `&customer_id=in.(${ch.join(',')})`).catch(()=>[]);
+        if (Array.isArray(r)) pkgs = pkgs.concat(r);
+      }
+      const pkgByCust = {};
+      pkgs.forEach(p => { (pkgByCust[p.customer_id] = pkgByCust[p.customer_id] || []).push(p); });
+
+      const allTags = data?.serviceTags || tags || [];
+      const services = data?.services || [];
+      const categories = data?.categories || [];
+      const customers = data?.customers || [];
+      const tagById = Object.fromEntries(allTags.map(t => [t.id, t]));
+
+      const items = [];
+      for (const r of futureRes) {
+        const customer = r.custId ? (customers.find(c => c.id === r.custId) || null) : null;
+        const custPkgs = r.custId ? (pkgByCust[r.custId] || []) : [];
+        const matched = evaluateTagTriggers({ tags: allTags, customer, custPkgs, todayStr: today, services, serviceCategories: categories });
+        const cur = Array.isArray(r.selectedTags) ? r.selectedTags.map(String) : [];
+        const toAdd = matched.filter(id => !cur.includes(id));
+        if (toAdd.length === 0) continue;
+        items.push({
+          id: r.id,
+          date: r.date,
+          time: r.time || '',
+          custName: r.custName || customer?.name || '',
+          bid: r.bid,
+          currentTagIds: cur,
+          addTagIds: toAdd,
+          addTagNames: toAdd.map(id => tagById[id]?.name || id),
+        });
+      }
+      setBulkState({ items, ts: new Date().toISOString(), totalScanned: futureRes.length });
+    } catch (e) {
+      console.error(e);
+      setBulkState({ error: String(e?.message || e) });
+    }
+  };
+  const applyBulkEval = async () => {
+    if (!bulkState?.items?.length) return;
+    if (!confirm(`${bulkState.items.length}건의 예약에 자동태그를 추가합니다. 진행할까요?`)) return;
+    setBulkApplying(true);
+    try {
+      let ok = 0, fail = 0;
+      for (const it of bulkState.items) {
+        const next = [...new Set([...(it.currentTagIds||[]), ...it.addTagIds])];
+        try {
+          await sb.update('reservations', it.id, { selected_tags: next });
+          ok++;
+        } catch (e) { fail++; console.error('update fail', it.id, e); }
+      }
+      // 로컬 state 갱신
+      if (setData) setData(prev => prev ? {
+        ...prev,
+        reservations: (prev.reservations||[]).map(r => {
+          const it = bulkState.items.find(x => x.id === r.id);
+          if (!it) return r;
+          return { ...r, selectedTags: [...new Set([...(r.selectedTags||[]), ...it.addTagIds])] };
+        })
+      } : prev);
+      alert(`자동태그 적용 완료 — 성공 ${ok}건${fail?`, 실패 ${fail}건`:''}`);
+      setBulkState(null);
+    } finally { setBulkApplying(false); }
+  };
+
   return <div style={{maxWidth:720,margin:"0 auto"}}>
     <APageHeader title="태그·경로 관리" count={items.length} onAdd={openNew} addLabel={addLabel}/>
-    {!isSource && <div style={{marginBottom:12,display:"flex",justifyContent:"flex-end"}}>
+    {!isSource && <div style={{marginBottom:12,display:"flex",justifyContent:"flex-end",gap:6,flexWrap:"wrap"}}>
+      <button onClick={runBulkEval} disabled={bulkState?.loading} title="오늘부터의 예약을 평가해 부여될 자동태그 미리보기"
+        style={{padding:"7px 14px",fontSize:12,fontWeight:700,border:"1px solid #F59E0B",background:"#FEF3C7",color:"#B45309",borderRadius:8,cursor:bulkState?.loading?"wait":"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5,opacity:bulkState?.loading?0.6:1}}>
+        ⚡ {bulkState?.loading?"평가 중…":"미래 예약 일괄 평가"}
+      </button>
       <button onClick={openAutoSheet} title="모든 태그의 자동 부여 조건을 한 화면에서 편집"
         style={{padding:"7px 14px",fontSize:12,fontWeight:700,border:"1px solid "+T.primary,background:T.primaryLt||"#ede9fe",color:T.primaryDk,borderRadius:8,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
         <I name="zap" size={12}/> 자동태그 설정
       </button>
+    </div>}
+    {!isSource && bulkState && !bulkState.loading && <div style={{marginBottom:14,padding:"12px 14px",background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:10}}>
+      {bulkState.error ? <div style={{color:T.danger,fontSize:12}}>오류: {bulkState.error} <button onClick={()=>setBulkState(null)} style={{marginLeft:8,padding:"2px 8px",border:"1px solid "+T.border,borderRadius:6,background:"#fff",cursor:"pointer"}}>닫기</button></div>
+      : <>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+          <span style={{fontSize:13,fontWeight:800,color:"#92400E"}}>⚡ 일괄 평가 결과</span>
+          <span style={{fontSize:11,color:T.gray700}}>오늘부터의 예약 {bulkState.totalScanned||0}건 중 <b style={{color:"#B45309"}}>{bulkState.items.length}건</b>에 자동태그 추가 예정</span>
+          <button onClick={()=>setBulkState(null)} style={{marginLeft:"auto",padding:"3px 8px",fontSize:11,border:"1px solid "+T.border,borderRadius:6,background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>닫기</button>
+        </div>
+        {bulkState.items.length === 0 ? <div style={{fontSize:12,color:T.gray600,padding:"6px 0"}}>변경할 예약이 없어요. 모든 미래 예약에 이미 정확한 태그가 붙어 있습니다.</div>
+        : <>
+          <div style={{maxHeight:340,overflowY:"auto",border:"1px solid "+T.border,borderRadius:8,background:"#fff"}}>
+            <table style={{width:"100%",fontSize:11,borderCollapse:"collapse"}}>
+              <thead style={{position:"sticky",top:0,background:"#F9FAFB",borderBottom:"1px solid "+T.border}}>
+                <tr style={{textAlign:"left"}}>
+                  <th style={{padding:"6px 8px",fontWeight:700,color:T.gray700}}>날짜·시간</th>
+                  <th style={{padding:"6px 8px",fontWeight:700,color:T.gray700}}>지점</th>
+                  <th style={{padding:"6px 8px",fontWeight:700,color:T.gray700}}>고객</th>
+                  <th style={{padding:"6px 8px",fontWeight:700,color:T.gray700}}>추가될 태그</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bulkState.items.slice(0, 200).map(it => {
+                  const br = (data?.branches||[]).find(b => b.id === it.bid);
+                  return <tr key={it.id} style={{borderBottom:"1px solid "+T.gray100}}>
+                    <td style={{padding:"4px 8px",fontFamily:"monospace",color:T.gray700}}>{it.date.slice(5)} {it.time}</td>
+                    <td style={{padding:"4px 8px",color:T.gray600}}>{br?.short || br?.name || ''}</td>
+                    <td style={{padding:"4px 8px",fontWeight:600}}>{it.custName||'-'}</td>
+                    <td style={{padding:"4px 8px"}}>
+                      {it.addTagNames.map((n,i) => <span key={i} style={{display:"inline-block",margin:"1px 3px 1px 0",padding:"1px 7px",borderRadius:10,background:"#FEF3C7",color:"#B45309",fontSize:10,fontWeight:700,border:"1px solid #FDE68A"}}>{n}</span>)}
+                    </td>
+                  </tr>;
+                })}
+              </tbody>
+            </table>
+            {bulkState.items.length > 200 && <div style={{padding:"6px 8px",fontSize:11,color:T.gray500,textAlign:"center",borderTop:"1px solid "+T.gray100,background:"#F9FAFB"}}>외 {bulkState.items.length - 200}건 (저장 시 모두 적용됨)</div>}
+          </div>
+          <div style={{display:"flex",gap:6,marginTop:10}}>
+            <button onClick={applyBulkEval} disabled={bulkApplying}
+              style={{padding:"8px 18px",fontSize:13,fontWeight:800,border:"none",borderRadius:8,background:bulkApplying?T.gray400:"#F59E0B",color:"#fff",cursor:bulkApplying?"wait":"pointer",fontFamily:"inherit"}}>
+              {bulkApplying ? "적용 중…" : `✓ ${bulkState.items.length}건 모두 적용`}
+            </button>
+            <button onClick={()=>setBulkState(null)} disabled={bulkApplying}
+              style={{padding:"8px 14px",fontSize:13,fontWeight:600,border:"1px solid "+T.border,borderRadius:8,background:"#fff",color:T.gray700,cursor:bulkApplying?"wait":"pointer",fontFamily:"inherit"}}>
+              취소
+            </button>
+          </div>
+        </>}
+      </>}
     </div>}
     <div style={{display:"flex",gap:6,marginBottom:16}}>
       {TABS.map(([k,lv])=>
@@ -332,8 +468,25 @@ function AdminServiceTags({ data, setData }) {
                       {catOrder.map(catName => {
                         const items = byCategory[catName];
                         if (!items?.length) return null;
+                        const catSvcIds = items.map(s => s.id);
+                        const allOn = catSvcIds.every(id => sel.includes(id));
+                        const someOn = !allOn && catSvcIds.some(id => sel.includes(id));
+                        const toggleCat = () => {
+                          if (allOn) {
+                            setParam(p.key, sel.filter(x => !catSvcIds.includes(x)));
+                          } else {
+                            const next = [...sel];
+                            catSvcIds.forEach(id => { if (!next.includes(id)) next.push(id); });
+                            setParam(p.key, next);
+                          }
+                        };
                         return <div key={catName} style={{marginBottom:8}}>
-                          <div style={{fontSize:10,fontWeight:700,color:T.gray600,marginBottom:4}}>{catName} <span style={{color:T.gray400}}>({items.length})</span></div>
+                          <div onClick={toggleCat} title={allOn?"이 카테고리 전체 해제":"이 카테고리 전체 선택"}
+                            style={{fontSize:10,fontWeight:700,color:allOn?T.primaryDk:(someOn?T.primary:T.gray600),marginBottom:4,cursor:"pointer",userSelect:"none",display:"inline-flex",alignItems:"center",gap:5,padding:"2px 6px",borderRadius:6,background:allOn?T.primaryLt:(someOn?T.primaryLt+"80":"transparent")}}>
+                            <span style={{fontSize:11}}>{allOn?"✓":(someOn?"◐":"○")}</span>
+                            <span>{catName}</span>
+                            <span style={{color:T.gray400,fontWeight:500}}>({items.length})</span>
+                          </div>
                           <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
                             {items.map(s => {
                               const on = sel.includes(s.id);
