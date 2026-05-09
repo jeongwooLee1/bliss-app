@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react'
 import { T, SCH_BRANCH_MAP } from '../../lib/constants'
 import { sb, buildTokenSearch, SB_URL, SB_KEY, sbHeaders } from '../../lib/sb'
 import { fromDb, toDb, _activeBizId } from '../../lib/db'
 import { todayStr, genId, getPkgPurchaseBranchShort, canUsePkgAtBranch } from '../../lib/utils'
 import { applyEvents } from '../../lib/eventEngine'
+import { isNewCustomer as _isNewCustomerSSOT } from '../../lib/customerStatus'
 import I from '../common/I'
 
 const uid = genId;
@@ -44,22 +45,28 @@ const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amou
         background:rowBg,border:`1px solid ${rowBorder}`,opacity:disabled?0.55:1,
         cursor:(disabled && !needsGender)?"not-allowed":"pointer",transition:"all .15s",lineHeight:1.4}}>
       {/* 이름 셀 */}
-      <div style={{flex:1,padding:"3px 8px",fontSize:13,color:checked?T.text:T.gray700,fontWeight:checked?700:400,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",display:"flex",alignItems:"center",gap:4,minWidth:0}}>
-        {checked && <span style={{color:T.primary}}>✓</span>}
+      <div style={{flex:1,padding:"3px 8px",fontSize:13,color:checked?T.text:T.gray700,fontWeight:checked?700:400,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",display:"flex",alignItems:"center",gap:6,minWidth:0}}>
+        <span style={{flexShrink:0,width:14,height:14,borderRadius:3,border:`1.5px solid ${checked?(comped?"#E65100":T.primary):T.gray400}`,background:checked?(comped?"#E65100":T.primary):"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>
+          {checked && <span style={{color:"#fff",fontSize:10,fontWeight:900,lineHeight:1}}>✓</span>}
+        </span>
         <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{name}</span>
         {isMember && <span style={{fontSize:9,color:T.primary,fontWeight:700,flexShrink:0}}>회원</span>}
         {hasCoupon && <span title="고객 보유 쿠폰 적용 가능" style={{fontSize:9,color:"#b45309",background:"#fff8e1",border:"1px solid #f59e0b",padding:"1px 5px",borderRadius:8,fontWeight:700,flexShrink:0}}>🎫 쿠폰</span>}
         {badgeText && <span style={{fontSize:9,color:badgeColor||"#fff",background:badgeBg||T.primary,padding:"1px 5px",borderRadius:8,fontWeight:700,flexShrink:0}}>{badgeText}</span>}
-        {checked && toggleComped && (
-          <button type="button" onClick={e => { e.stopPropagation(); toggleComped(id); }}
-            title={comped ? "체험단 제공 (클릭 해제)" : "체험단으로 제공 (무료)"}
-            style={{flexShrink:0,padding:"1px 5px",fontSize:10,border:`1px solid ${comped?"#E65100":T.border}`,
-              background:comped?"#fff":"transparent",color:comped?"#E65100":T.gray400,
-              borderRadius:3,cursor:"pointer",fontFamily:"inherit",fontWeight:comped?700:400,lineHeight:1,marginLeft:4}}>
-            🎁{comped?" 체험":""}
-          </button>
-        )}
       </div>
+      {/* 🎁 셀 — 분 컬럼 왼쪽 고정 위치 (체험단 모드일 때만) */}
+      {toggleComped && (
+        <div style={{width:50,padding:"2px 4px",borderLeft:cellDiv,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <button type="button" onClick={e => { e.stopPropagation(); toggleComped(id, defPrice); }}
+            title={comped ? "체험 무료 (클릭 시 유료 결제로 전환)" : "체험단으로 무료 제공 (클릭)"}
+            style={{padding:"2px 6px",fontSize:10,border:`1px solid ${comped?"#E65100":T.border}`,
+              background:comped?"#fff":"transparent",color:comped?"#E65100":T.gray500,
+              borderRadius:3,cursor:"pointer",fontFamily:"inherit",fontWeight:comped?700:400,lineHeight:1,
+              display:"inline-flex",alignItems:"center",gap:3}}>
+            <I name="gift" size={11} color={comped?"#E65100":T.gray500}/>{comped?"체험":""}
+          </button>
+        </div>
+      )}
       {/* 분 셀 */}
       <div style={{width:42,padding:"3px 6px",borderLeft:cellDiv,fontSize:10,color:checked?T.text:T.gray500,fontWeight:checked?600:400,display:"flex",alignItems:"center",justifyContent:"flex-end",flexShrink:0}}>
         {dur}분
@@ -122,20 +129,26 @@ const SaleProdRow = React.memo(function SaleProdRow({ id, name, price, priceTier
       style={{display:"flex",alignItems:"stretch",margin:"2px 0",borderRadius:5,overflow:"hidden",
         background:rowBg,border:`1px solid ${rowBorder}`,cursor:"pointer",transition:"all .15s",lineHeight:1.4}}>
       {/* 이름 셀 */}
-      <div style={{flex:1,padding:"3px 8px",fontSize:13,color:checked?T.text:T.gray700,fontWeight:checked?700:400,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",display:"flex",alignItems:"center",gap:4,minWidth:0}}>
-        {checked && <span style={{color:T.primary}}>✓</span>}
+      <div style={{flex:1,padding:"3px 8px",fontSize:13,color:checked?T.text:T.gray700,fontWeight:checked?700:400,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",display:"flex",alignItems:"center",gap:6,minWidth:0}}>
+        <span style={{flexShrink:0,width:14,height:14,borderRadius:3,border:`1.5px solid ${checked?(comped?"#E65100":T.primary):T.gray400}`,background:checked?(comped?"#E65100":T.primary):"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>
+          {checked && <span style={{color:"#fff",fontSize:10,fontWeight:900,lineHeight:1}}>✓</span>}
+        </span>
         <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{name}</span>
         {_bundleApplied && <span style={{fontSize:9,fontWeight:800,padding:"1px 5px",background:"#10B981",color:"#fff",borderRadius:3,flexShrink:0}} title={`낱개 ${_baseAmt.toLocaleString()}원 → 묶음 ${amount.toLocaleString()}원`}>묶음</span>}
-        {checked && toggleComped && (
-          <button type="button" onClick={e => { e.stopPropagation(); toggleComped(id); }}
-            title={comped ? "체험단 제공 (클릭 해제)" : "체험단으로 제공 (무료)"}
-            style={{flexShrink:0,padding:"1px 5px",fontSize:10,border:`1px solid ${comped?"#E65100":T.border}`,
-              background:comped?"#fff":"transparent",color:comped?"#E65100":T.gray400,
-              borderRadius:3,cursor:"pointer",fontFamily:"inherit",fontWeight:comped?700:400,lineHeight:1,marginLeft:4}}>
-            🎁{comped?" 체험":""}
-          </button>
-        )}
       </div>
+      {/* 🎁 셀 — 분(수량) 컬럼 왼쪽 고정 위치 */}
+      {toggleComped && (
+        <div style={{width:50,padding:"2px 4px",borderLeft:cellDiv,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <button type="button" onClick={e => { e.stopPropagation(); toggleComped(id, price); }}
+            title={comped ? "체험 무료 (클릭 시 유료 결제로 전환)" : "체험단으로 무료 제공 (클릭)"}
+            style={{padding:"2px 6px",fontSize:10,border:`1px solid ${comped?"#E65100":T.border}`,
+              background:comped?"#fff":"transparent",color:comped?"#E65100":T.gray500,
+              borderRadius:3,cursor:"pointer",fontFamily:"inherit",fontWeight:comped?700:400,lineHeight:1,
+              display:"inline-flex",alignItems:"center",gap:3}}>
+            <I name="gift" size={11} color={comped?"#E65100":T.gray500}/>{comped?"체험":""}
+          </button>
+        </div>
+      )}
       {/* 수량 셀 (체크 시만) */}
       {checked ? (
         <div style={{display:"flex",alignItems:"center",gap:0,flexShrink:0,borderLeft:cellDiv,background:T.bgCard}} onClick={e=>e.stopPropagation()}>
@@ -223,6 +236,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   const _submitLock = useRef(false);
   // 커스텀 alert (브라우저 alert 대체) — Bliss UI 통일
   const [alertMsg, setAlertMsg] = useState(null);
+  const [receiptOpen, setReceiptOpen] = useState(false);
   const showAlert = (msg) => setAlertMsg(msg);
   // 통합 추가/할인 행 — 동적 row. 각 row: { id, kind:'svc'|'prod', action:'add'|'discount', name, amount }
   const [extraRows, setExtraRows] = useState([
@@ -369,6 +383,14 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       return s?.memo_templates?.sale || "";
     } catch { return ""; }
   });
+  // 매출 메모 textarea autosize ref — grow only (입력 중 height auto reset으로 인한 내부 scrollTop 점프 방지)
+  const memoRef = useRef(null);
+  useLayoutEffect(() => {
+    const el = memoRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.max(120, el.scrollHeight) + "px";
+  }, []);
 
   // 결제수단 분배 — 편집 모드면 기존 매출의 값으로 프리필
   const _isEditOrView = editMode || viewOnly;
@@ -604,14 +626,17 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       return next;
     });
   }, [JSON.stringify(usePkgToday)]);
-  // ── 신규 판정: 매출 이력 0건 여부 (DB 조회) ──
+  // ── 신규 판정: 유료 매출(>0원) 이력 0건 여부 (DB 조회) ──
+  // 체험단 등 0원 매출은 신규로 간주 (사용자 요청 2026-05-06)
   const [custHasSale, setCustHasSale] = useState(false);
   // 이 고객의 과거 시술 사용 횟수 — 이벤트 엔진 firstTimeServiceIds 조건 평가용
   // { service_name: count }
   const [custSvcUsageMap, setCustSvcUsageMap] = useState({});
   useEffect(() => {
     if (!cust.id) { setCustHasSale(false); setCustSvcUsageMap({}); return; }
-    sb.get("sales", `&cust_id=eq.${cust.id}&limit=1`)
+    // 결제수단 합 > 0 인 매출만 카운트 → 체험단(전 컬럼 0원, comped만)은 신규로 취급
+    // (sales 테이블엔 'total' 컬럼이 없음 → PostgREST OR 필터로 결제수단 컬럼 확인)
+    sb.get("sales", `&cust_id=eq.${cust.id}&or=(svc_cash.gt.0,svc_transfer.gt.0,svc_card.gt.0,svc_point.gt.0,prod_cash.gt.0,prod_transfer.gt.0,prod_card.gt.0,prod_point.gt.0,external_prepaid.gt.0)&select=id&limit=1`)
       .then(rows => setCustHasSale((rows||[]).length > 0))
       .catch(() => setCustHasSale(false));
     // 과거 sale_details에서 service_name 사용 횟수 집계 (item_kind=svc만 대상)
@@ -730,11 +755,15 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   });
   // 현재 지점에서 사용 가능한 보유권 (차감/사용용). 구매지점 외에선 차단됨.
   const activePkgs = validPkgs.filter(p => canUsePkgAtBranch(p, branchId, data?.branches, data?.branchGroups));
+  // 타지점 구매로 현 지점에서 사용 차단된 보유권 — 표시만 하고 차감/체크 비활성 (직원이 보유 현황 인지용)
+  const inactivePkgs = validPkgs.filter(p => !canUsePkgAtBranch(p, branchId, data?.branches, data?.branchGroups));
   // 활성 다회권 목록 (패키지 사용 자동 차감용)
   const activeMultiPkgs = activePkgs.filter(p => _pkgType(p) === "package");
+  const inactiveMultiPkgs = inactivePkgs.filter(p => _pkgType(p) === "package");
   // 활성 보유 쿠폰 (관리설정 → 혜택관리 → 쿠폰등록의 쿠폰 카테고리, 잔여≥1, 유효기간 내)
   // v3.7.216: 매출등록·예약모달에 보유 쿠폰 패널 표시 → 클릭 시 적용 시술 자동 추가
   const activeCustCoupons = activePkgs.filter(p => _pkgType(p) === "coupon");
+  const inactiveCustCoupons = inactivePkgs.filter(p => _pkgType(p) === "coupon");
   // 쿠폰 적용 가능 시술 ID Set (시술 카드에 🎫 뱃지 달기 위함) + svcId → 쿠폰 매핑
   const couponEligibleMap = React.useMemo(() => {
     // 쿠폰 카테고리 시술만 (이름 충돌 방지: 정상 카테고리에 같은 이름 있으면 promoConfig=null 떨어짐)
@@ -818,7 +847,15 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     if (_excludedSvcNames.has(p.service_name)) return false;
     if (_qualifyingSvcNames) {
       // 새 구조: 자격 시술 명단에 있는지
-      return _qualifyingSvcNames.has(p.service_name);
+      if (_qualifyingSvcNames.has(p.service_name)) return true;
+      // 옛 데이터 호환: 다담권 50만/70만/100만/200만/300만 분리되기 전엔 service_name="다담권"|"선불권"으로 통합 저장됨
+      // 자격 시술에 선불권 카테고리(1s18w2l46) 시술이 하나라도 체크되어 있으면 옛 다담권도 자격 부여
+      if (p.service_name === "다담권" || p.service_name === "선불권") {
+        return (data?.services || []).some(s =>
+          _qualifyingSvcIds && _qualifyingSvcIds.has(s.id) && s.cat === "1s18w2l46"
+        );
+      }
+      return false;
     }
     // 레거시 fallback: annual + prepaid
     const t = _pkgType(p);
@@ -864,6 +901,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     try {
       if (_qualifyingSvcIds) {
         return (data?.services || []).some(s => (
+          s.id !== svc.id && // 자기참조 차단 — 토탈 PKG가 자격이라고 자기 자신에게 회원가 적용 X
           _qualifyingSvcIds.has(s.id) &&
           items[s.id]?.checked &&
           !_excludedSvcNames.has(s.name) &&
@@ -872,6 +910,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       }
       // 레거시: 다담권(잔액 ≥ memPrice) 또는 연간권(잔액 무관)
       return (data?.services || []).some(s => {
+        if (s.id === svc.id) return false; // 자기참조 차단
         if (!items[s.id]?.checked) return false;
         if (_excludedSvcNames.has(s.name)) return false;
         if (_isAnnualSvcMP(s)) return true; // 연간권은 잔액 무관
@@ -914,7 +953,12 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     SVC_LIST.forEach(svc => {
       const preSelected = selSvcs.includes(svc.id);
       const defPrice = _defPrice(svc, gender);
-      init[svc.id] = { checked: preSelected, amount: preSelected ? defPrice : 0, comped: false };
+      // 체험단 예약(hasCompedTag)이면 prefill 항목도 자동 comped + amount=0
+      if (preSelected && hasCompedTag) {
+        init[svc.id] = { checked: true, amount: 0, comped: true };
+      } else {
+        init[svc.id] = { checked: preSelected, amount: preSelected ? defPrice : 0, comped: false };
+      }
     });
     PROD_LIST.forEach(p => { init[p.id] = { checked: false, amount: 0, comped: false }; });
     // extra_svc/extra_prod/discount는 extraRows state로 통합됨 (init 불필요)
@@ -1235,9 +1279,13 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     setItems(prev => {
       const cur = prev[id] || { checked: false, amount: 0 };
       const newChecked = !cur.checked;
-      return { ...prev, [id]: { ...cur, checked: newChecked, amount: newChecked ? (cur.amount || defPrice || 0) : 0 } };
+      // 체험단 예약(hasCompedTag)이면 체크 시 자동 comped=true + amount=0
+      if (newChecked && hasCompedTag) {
+        return { ...prev, [id]: { ...cur, checked: true, comped: true, amount: 0 } };
+      }
+      return { ...prev, [id]: { ...cur, checked: newChecked, comped: newChecked ? (cur.comped || false) : false, amount: newChecked ? (cur.amount || defPrice || 0) : 0 } };
     });
-  }, [editMode, viewOnly]);
+  }, [editMode, viewOnly, hasCompedTag]);
   const setAmt = useCallback((id, v) => {
     if (editMode || viewOnly) return;
     setItems(prev => ({ ...prev, [id]: { ...prev[id], amount: Number(v) || 0 } }));
@@ -1250,12 +1298,18 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     if (editMode || viewOnly) return;
     setItems(prev => ({ ...prev, [id]: { ...prev[id], label: v } }));
   }, [editMode, viewOnly]);
-  // 🎁 체험단 토글 — 체크된 항목에만 적용. 체험이면 결제대상에서 제외하고 svcComped/prodComped로 집계
-  const toggleComped = useCallback((id) => {
+  // 🎁 체험단 토글 — 체크 안 된 행도 가능 (체험단에선 모든 행에 🎁 노출).
+  //   comped=true 전환: amount=0
+  //   comped=false 해제: defPrice 복원 (체험단이라도 유료 결제 가능)
+  const toggleComped = useCallback((id, defPrice) => {
     if (editMode || viewOnly) return;
     setItems(prev => {
-      const cur = prev[id]; if (!cur?.checked) return prev;
-      return { ...prev, [id]: { ...cur, comped: !cur.comped } };
+      const cur = prev[id] || { checked: false, amount: 0 };
+      const willBeComped = !cur.comped;
+      // 체크 안 됐으면 자동 체크 + comped 모드로 전환
+      const newChecked = cur.checked || willBeComped;
+      const newAmount = willBeComped ? 0 : (defPrice || 0);
+      return { ...prev, [id]: { ...cur, checked: newChecked, comped: willBeComped, amount: newAmount } };
     });
   }, [editMode, viewOnly]);
 
@@ -1345,10 +1399,11 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   // ─── 이벤트·프로모 엔진: 체크된 시술의 promoConfig 기반 자동 할인·포인트 적립 ───
   const promoResults = (() => {
     const today = new Date().toISOString().slice(0,10);
-    // 신규고객 판정: 매출 이력 0건 (custHasSale useEffect로 DB에서 확인)
-    // - custId 없음 → 신규 (아직 미등록 고객)
-    // - custId 있어도 매출 한 건도 없으면 → 신규
-    const isNewCustomer = !cust.id || !custHasSale;
+    // 신규고객 판정 — SSOT (../../lib/customerStatus). 자동태그/이벤트엔진/서버 모두 동일 룰.
+    // - custId 없음 (새 고객 등록 진행 중) → 신규
+    // - custId 있고 매칭된 customer가 있으면 SSOT 룰 (visits/매출) 평가
+    const _matchedCustForEvent = cust.id ? ((data?.customers||[]).find(c => c.id === cust.id) || null) : null;
+    const isNewCustomer = !cust.id ? true : _isNewCustomerSSOT(_matchedCustForEvent, !!custHasSale);
     const results = [];
     SVC_LIST.forEach(svc => {
       const it = items[svc.id];
@@ -1666,8 +1721,13 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   newPkgInstantDeduct = newPrepaidActiveTotal > 0 ? Math.min(svcAfterAllDiscounts, Math.max(0, newPrepaidActiveTotal - eventDiscountPrepaid)) : 0;
   const grandTotal = Math.max(0, svcTotal + prodTotal - discount - promoDiscountTotal - couponDiscountTotal - eventDiscountTotal - naverDeduct - externalDeduct - pkgDeduct - newPkgInstantDeduct - pointDeduct - svcCompedTotal - prodCompedTotal);
   // 실제 결제할 금액 (예약금·할인·이벤트·쿠폰·보유권·신규다담권즉시차감·체험단제공 차감)
-  const svcPayTotal = Math.max(0, svcTotal - discount - promoDiscountTotal - couponDiscountOnSvc - eventDiscountTotal - naverDeduct - externalDeduct - pkgDeduct - newPkgInstantDeduct - pointDeduct - svcCompedTotal);
-  const prodPayTotal = Math.max(0, prodTotal - couponDiscountOnProd - prodCompedTotal);
+  // 시술쪽 모든 차감(일반할인·보유권·외부선결제·포인트·이벤트 등)을 합산해서 svcTotal을 초과하면 잉여분이 제품으로 spill됨.
+  // grandTotal과 svcPay+prodPay를 항상 일치시키기 위함 (예: 다담권 잔액이 시술+제품 통합 결제하는 케이스).
+  // svc 전용 쿠폰은 그대로 svc에서, prod 전용 쿠폰은 그대로 prod에서 차감.
+  const _svcDeductsAll = discount + promoDiscountTotal + couponDiscountOnSvc + eventDiscountTotal + naverDeduct + externalDeduct + pkgDeduct + newPkgInstantDeduct + pointDeduct + svcCompedTotal;
+  const _svcSpillToProd = Math.max(0, _svcDeductsAll - svcTotal);
+  const svcPayTotal = Math.max(0, svcTotal - _svcDeductsAll);
+  const prodPayTotal = Math.max(0, prodTotal - couponDiscountOnProd - prodCompedTotal - _svcSpillToProd);
 
   // Count checked
   const checkedSvc = SVC_LIST.filter(s => items[s.id]?.checked).length + _extraSvcAddCount;
@@ -1754,6 +1814,194 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       });
     } catch(e) { console.warn("[buildSaleDetails pkgUse]", e); }
     return list;
+  };
+
+  // ─── 영수증 생성 (텍스트/이미지) ───
+  const _padLine = (left, right, total = 26) => {
+    const w = (s) => [...String(s||"")].reduce((acc, c) => acc + (/[가-힣ㄱ-ㆎ　-〿＀-￯]/.test(c) ? 2 : 1), 0);
+    const lw = w(left), rw = w(right);
+    const pad = Math.max(1, total - lw - rw);
+    return left + " ".repeat(pad) + right;
+  };
+  const _buildReceiptLines = () => {
+    const fmt = (n) => Number(n||0).toLocaleString();
+    const _br = (data?.branches||[]).find(b => b.id === selBranch);
+    const _bizName = (data?.businesses||[])[0]?.name || "Bliss";
+    const _branchShort = _br?.short || _br?.name || "";
+    const _custName = cust?.name || reservation?.custName || "";
+    const _custPhone = cust?.phone || reservation?.custPhone || "";
+    const _custNum = cust?.custNum || cust?.cust_num || "";
+    const _date = saleDate;
+    const _wd = (() => { try { const d = new Date(_date+"T00:00:00"); return ["일","월","화","수","목","금","토"][d.getDay()]; } catch { return ""; } })();
+    const _staffName = (() => {
+      const sid = manager;
+      if (!sid) return "";
+      const e = (data?.employees||[]).find(x => x.id === sid);
+      if (e) return e.name || sid;
+      const r = (data?.rooms||[]).find(x => x.id === sid);
+      return r?.name || sid;
+    })();
+    const SEP = "━".repeat(26);
+    const HR = "─".repeat(26);
+    const lines = [];
+    lines.push(SEP);
+    lines.push(`${_bizName}${_branchShort?` ${_branchShort}`:""}`);
+    lines.push(`${_date}${_wd?` (${_wd})`:""}${_staffName?` · 시술자 ${_staffName}`:""}`);
+    lines.push(SEP);
+    if (_custName || _custPhone) {
+      const _cline = [_custName, _custNum?`#${_custNum}`:"", _custPhone].filter(Boolean).join(" ");
+      lines.push(`고객: ${_cline}`);
+      lines.push("");
+    }
+    // 보유권 사용 — 영수증 상단 (시술 위)
+    const _existing = reservation?._prefill?.existingDetails || [];
+    const _pkgUsedRows = _existing.filter(d => /^\[보유권/.test((d.service_name||"").trim()));
+    const pkgUsed = [];
+    if (_pkgUsedRows.length > 0) {
+      _pkgUsedRows.forEach(d => {
+        const nm = (d.service_name||"").trim();
+        const cleaned = nm.replace(/^\[보유권[^\]]*\]\s*/, "").trim();
+        const qty = d.qty || 1;
+        if (cleaned) pkgUsed.push(`${cleaned} ${qty}회 사용`);
+      });
+    } else {
+      Object.entries(pkgItems||{}).forEach(([key, val]) => {
+        const qty = val?.qty || 0;
+        if (qty <= 0) return;
+        let name = "";
+        if (String(key).startsWith("pkg__")) {
+          const pid = String(key).replace("pkg__","");
+          const p = (custPkgs||[]).find(x => x.id === pid);
+          name = (p?.service_name||"").split("(")[0].trim();
+        } else {
+          name = String(key).split("∷")[0] || "";
+        }
+        if (name && name !== "undefined") pkgUsed.push(`${name} ${qty}회 사용`);
+      });
+    }
+    if (pkgUsed.length) {
+      lines.push("[보유권 사용]");
+      pkgUsed.forEach(t => lines.push("  • " + t));
+      lines.push("");
+    }
+    // 시술
+    const svcRows = SVC_LIST.filter(s => items[s.id]?.checked).map(s => ({ name: s.name, amount: items[s.id].amount, dur: items[s.id].dur || s.dur || 0, comped: !!items[s.id].comped }));
+    if (svcRows.length) {
+      lines.push("[시술]");
+      svcRows.forEach(s => {
+        const n = s.name + (s.dur ? ` (${s.dur}분)` : "");
+        const a = s.comped ? "체험단 무료" : fmt(s.amount);
+        lines.push(_padLine(n, a));
+      });
+      lines.push(HR);
+      lines.push(_padLine("시술 합계", fmt(svcTotal)));
+    }
+    // 제품
+    const prodRows = PROD_LIST.filter(p => items[p.id]?.checked).map(p => ({ name: p.name, amount: items[p.id].amount, comped: !!items[p.id].comped }));
+    if (prodRows.length) {
+      lines.push("");
+      lines.push("[제품]");
+      prodRows.forEach(p => lines.push(_padLine(p.name, p.comped ? "체험단 무료" : fmt(p.amount))));
+      lines.push(HR);
+      lines.push(_padLine("제품 합계", fmt(prodTotal)));
+    }
+    // 할인/이벤트/쿠폰
+    if (discount > 0 || couponDiscountTotal > 0 || eventDiscountTotal > 0) {
+      lines.push("");
+      if (discount > 0) lines.push(_padLine("일반 할인", "-" + fmt(discount)));
+      if (couponDiscountTotal > 0) lines.push(_padLine("쿠폰 할인", "-" + fmt(couponDiscountTotal)));
+      if (eventDiscountTotal > 0) lines.push(_padLine("이벤트 할인", "-" + fmt(eventDiscountTotal)));
+    }
+    // 결제
+    const payRows = [];
+    const _cash = (payMethod.svcCash||0) + (payMethod.prodCash||0);
+    const _card = (payMethod.svcCard||0) + (payMethod.prodCard||0);
+    const _trf = (payMethod.svcTransfer||0) + (payMethod.prodTransfer||0);
+    const _pt  = (payMethod.svcPoint||0) + (payMethod.prodPoint||0) + (pointDeduct||0);
+    if (_card > 0) payRows.push(_padLine("카드", fmt(_card)));
+    if (_cash > 0) payRows.push(_padLine("현금", fmt(_cash)));
+    if (_trf > 0)  payRows.push(_padLine("입금/계좌이체", fmt(_trf)));
+    if (externalDeduct > 0) payRows.push(_padLine(`선결제${externalPlatform?` (${externalPlatform})`:""}`, "-" + fmt(externalDeduct)));
+    if (pkgDeduct > 0) payRows.push(_padLine("선불잔액 차감", "-" + fmt(pkgDeduct)));
+    if (newPkgInstantDeduct > 0) payRows.push(_padLine("신규 선불권 차감", "-" + fmt(newPkgInstantDeduct)));
+    if (_pt > 0) payRows.push(_padLine("포인트 사용", "-" + fmt(_pt)));
+    if (payRows.length) {
+      lines.push("");
+      lines.push("[결제]");
+      lines.push(...payRows);
+    }
+    lines.push(HR);
+    lines.push(_padLine("총 결제금액", fmt(grandTotal)));
+    // 보유권 사용은 위쪽으로 이동 (시술 섹션 위)
+    lines.push("");
+    lines.push(SEP);
+    return { lines, _bizName, _branchShort, _custName, _date };
+  };
+  const _buildReceiptText = () => _buildReceiptLines().lines.join("\n");
+  const _receiptFilename = (ext) => {
+    const { _custName, _date } = _buildReceiptLines();
+    const safe = (s) => String(s||"").replace(/[^가-힣A-Za-z0-9_-]/g, "");
+    return `receipt_${safe(_custName)||"매출"}_${(_date||"").replace(/-/g,"")}.${ext}`;
+  };
+  const _copyReceiptText = async () => {
+    try {
+      await navigator.clipboard.writeText(_buildReceiptText());
+      showAlert("영수증 텍스트가 복사됐어요. 채팅창에 붙여넣기 하세요.");
+    } catch (e) {
+      showAlert("복사 실패: " + (e?.message || e));
+    }
+  };
+  const _saveReceiptText = () => {
+    try {
+      const blob = new Blob([_buildReceiptText()], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = _receiptFilename("txt");
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+    } catch (e) { showAlert("저장 실패: " + (e?.message || e)); }
+  };
+  const _drawReceiptCanvas = () => {
+    const lines = _buildReceiptLines().lines;
+    const W = 360, PAD = 16, LH = 20;
+    const fontSize = 13;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const canvas = document.createElement("canvas");
+    const H = PAD * 2 + LH * lines.length;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    canvas.style.width = W + "px"; canvas.style.height = H + "px";
+    const ctx = canvas.getContext("2d");
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#191f28";
+    ctx.font = `${fontSize}px ui-monospace, "Menlo", "Consolas", "Apple SD Gothic Neo", monospace`;
+    ctx.textBaseline = "top";
+    lines.forEach((ln, i) => ctx.fillText(ln, PAD, PAD + i * LH));
+    return canvas;
+  };
+  const _copyReceiptImage = async () => {
+    try {
+      const canvas = _drawReceiptCanvas();
+      const blob = await new Promise(res => canvas.toBlob(res, "image/png"));
+      if (!blob) throw new Error("blob 생성 실패");
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      showAlert("영수증 이미지가 복사됐어요. 채팅창에 붙여넣기 하세요.");
+    } catch (e) {
+      showAlert("이미지 복사 실패 (브라우저 미지원일 수 있음): " + (e?.message || e));
+    }
+  };
+  const _saveReceiptImage = () => {
+    try {
+      const canvas = _drawReceiptCanvas();
+      canvas.toBlob(blob => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = _receiptFilename("png");
+        document.body.appendChild(a); a.click();
+        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+      }, "image/png");
+    } catch (e) { showAlert("저장 실패: " + (e?.message || e)); }
   };
 
   const handleSubmit = async (continueAfter = false) => {
@@ -2965,59 +3213,67 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
           {/* Col 1+2: Services by category (span 2 columns) */}
           <div style={{gridColumn:"span 2"}}>
             {/* 다회권 패키지 — 시술과 동일한 UI */}
-            {activeMultiPkgs.length > 0 && <div style={{marginBottom:6,border:"1px solid "+T.border,borderRadius:8,overflow:"hidden"}}>
+            {(activeMultiPkgs.length + inactiveMultiPkgs.length) > 0 && <div style={{marginBottom:6,border:"1px solid "+T.border,borderRadius:8,overflow:"hidden"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 10px",background:hasPkgChecked()?T.primaryHover:T.gray100}}>
-                <span style={{fontSize:13,fontWeight:700,color:hasPkgChecked()?T.primary:T.text}}>📦 보유 패키지{hasPkgChecked()&&<span style={{marginLeft:6,fontSize:11,color:T.primary}}>✓ {totalPkgQty()}회 사용</span>}</span>
+                <span style={{fontSize:13,fontWeight:700,color:hasPkgChecked()?T.primary:T.text,display:"inline-flex",alignItems:"center",gap:6}}><I name="pkg" size={14}/>보유 패키지{hasPkgChecked()&&<span style={{marginLeft:0,fontSize:11,color:T.primary,display:"inline-flex",alignItems:"center",gap:3}}><I name="check" size={11}/>{totalPkgQty()}회 사용</span>}</span>
               </div>
               <div style={{padding:"4px 0"}}>
               {(()=>{
-                // 이름 + 소유자로 그룹핑
-                // 이유: 동명 패키지라도 소유자 성별에 따라 가격 다름 → 본인/쉐어(소유자별) 분리 표시
-                // groupKey = "이름∷self" (본인) 또는 "이름∷shared_{owner_id}" (쉐어)
+                // 이름 + 소유자 + active/inactive로 그룹핑
+                // 이유: 동명 패키지라도 소유자 성별에 따라 가격 다름 → 본인/쉐어(소유자별) 분리.
+                // 또한 active(현 지점 사용 가능) vs inactive(타지점 구매, 표시만) 분리해서 표시.
                 const groups = {};
-                activeMultiPkgs.forEach(p => {
+                const _addToGroups = (p, isInactive) => {
                   const name = (p.service_name?.split("(")[0]||"").replace(/\s*\d+회$/,"").trim();
                   const ownerKey = p._shared_from ? `shared_${p.customer_id}` : 'self';
-                  const key = name + '∷' + ownerKey;
+                  const branchKey = isInactive ? `inactive_${p.branch_id||''}` : 'active';
+                  const key = name + '∷' + ownerKey + '∷' + branchKey;
                   if (!groups[key]) groups[key] = {
-                    name, ownerKey, pkgs: [], totalRemain: 0,
+                    name, ownerKey, branchKey, pkgs: [], totalRemain: 0,
                     sharedFrom: p._shared_from || null,
                     ownerGender: p._owner_gender || null,
+                    isInactive,
                   };
                   groups[key].pkgs.push(p);
                   groups[key].totalRemain += (p.total_count - p.used_count);
-                });
+                };
+                activeMultiPkgs.forEach(p => _addToGroups(p, false));
+                inactiveMultiPkgs.forEach(p => _addToGroups(p, true));
                 return Object.values(groups).map(g => {
-                  const useQty = g.pkgs.reduce((s,p) => s + (pkgItems["pkg__"+p.id]?.qty||0), 0);
+                  const useQty = g.isInactive ? 0 : g.pkgs.reduce((s,p) => s + (pkgItems["pkg__"+p.id]?.qty||0), 0);
                   const isActive = useQty > 0;
-                  const groupKey = g.name + '∷' + g.ownerKey;
+                  const groupKey = g.name + '∷' + g.ownerKey + '∷' + g.branchKey;
                   // 쉐어 보정금 힌트: 여자 소유 + 남자 사용
                   const surchargeHint = (g.sharedFrom && g.ownerGender === 'F' && gender === 'M');
+                  const branchShort = g.isInactive ? getPkgPurchaseBranchShort(g.pkgs[0], data?.branches) : '';
                   return <div key={groupKey} className="sale-svc-row"
-                    onClick={() => setPkgQty(groupKey, isActive ? 0 : 1)}
+                    onClick={() => { if (g.isInactive) return; setPkgQty(groupKey, isActive ? 0 : 1); }}
                     style={{display:"flex",alignItems:"center",gap:4,padding:"1px 8px",borderRadius:4,
-                      background:isActive?"#7c7cc810":"transparent",cursor:"pointer",lineHeight:1.4}}>
-                    <span style={{flex:1,fontSize:13,color:isActive?T.text:T.gray700,fontWeight:isActive?700:400,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                      background:isActive?"#7c7cc810":"transparent",cursor:g.isInactive?"not-allowed":"pointer",
+                      opacity:g.isInactive?0.55:1,lineHeight:1.4}}>
+                    <span style={{flex:1,fontSize:13,color:g.isInactive?T.gray500:(isActive?T.text:T.gray700),fontWeight:isActive?700:400,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                       {isActive&&<span style={{color:T.primary,marginRight:3}}>✓</span>}{g.name}
-                      {g.sharedFrom
-                        ? <span style={{marginLeft:6,fontSize:9,padding:"1px 6px",borderRadius:8,background:"#F5F3FF",color:"#5B21B6",border:"1px solid #C4B5FD",fontWeight:700}}>🤝 쉐어 · {g.sharedFrom}{g.ownerGender ? (g.ownerGender === 'F' ? ' (여)' : ' (남)') : ''}</span>
-                        : <span style={{marginLeft:6,fontSize:9,padding:"1px 6px",borderRadius:8,background:"#E0E7FF",color:"#3730A3",border:"1px solid #C7D2FE",fontWeight:700}}>본인</span>
+                      {g.isInactive
+                        ? <span title="구매지점 외에서는 사용 불가 — 사용하려면 모달 우측 지점을 변경하세요" style={{marginLeft:6,fontSize:9,padding:"1px 6px",borderRadius:8,background:"#FEE2E2",color:"#991B1B",border:"1px solid #FCA5A5",fontWeight:700}}>🔒 {branchShort||'타지점'} 구매</span>
+                        : (g.sharedFrom
+                            ? <span style={{marginLeft:6,fontSize:9,padding:"1px 6px",borderRadius:8,background:"#F5F3FF",color:"#5B21B6",border:"1px solid #C4B5FD",fontWeight:700}}>🤝 쉐어 · {g.sharedFrom}{g.ownerGender ? (g.ownerGender === 'F' ? ' (여)' : ' (남)') : ''}</span>
+                            : <span style={{marginLeft:6,fontSize:9,padding:"1px 6px",borderRadius:8,background:"#E0E7FF",color:"#3730A3",border:"1px solid #C7D2FE",fontWeight:700}}>본인</span>)
                       }
                       {surchargeHint && <span title="여자 패키지를 남자가 사용 → +33,000원 보정" style={{marginLeft:4,fontSize:9,padding:"1px 5px",borderRadius:6,background:"#FEF3C7",color:"#92400E",fontWeight:700}}>+33,000원</span>}
                     </span>
-                    <span style={{flexShrink:0,fontSize:11,color:T.gray700,fontWeight:700}}>잔여 {g.totalRemain}회</span>
-                    <span style={{flexShrink:0,width:95,textAlign:"right",padding:"0 6px",fontSize:13,fontWeight:isActive?700:400,color:isActive?T.danger:T.gray400}}>
-                      {isActive ? "1회 사용" : "0원"}
+                    <span style={{flexShrink:0,fontSize:11,color:g.isInactive?T.gray500:T.gray700,fontWeight:700}}>잔여 {g.totalRemain}회</span>
+                    <span style={{flexShrink:0,width:95,textAlign:"right",padding:"0 6px",fontSize:13,fontWeight:isActive?700:400,color:g.isInactive?T.gray400:(isActive?T.danger:T.gray400)}}>
+                      {g.isInactive ? "사용불가" : (isActive ? "1회 사용" : "0원")}
                     </span>
                   </div>;
                 });
               })()}
               </div>
             </div>}
-            {/* 보유 쿠폰 (관리설정 → 혜택관리 → 쿠폰등록) v3.7.216 */}
-            {activeCustCoupons.length > 0 && <div style={{marginBottom:6,border:"1px solid #f59e0b",borderRadius:8,overflow:"hidden"}}>
+            {/* 보유 쿠폰 (관리설정 → 혜택관리 → 쿠폰등록) v3.7.216 — inactive(타지점 구매) 쿠폰도 표시(비활성) */}
+            {(activeCustCoupons.length + inactiveCustCoupons.length) > 0 && <div style={{marginBottom:6,border:"1px solid #f59e0b",borderRadius:8,overflow:"hidden"}}>
               <div style={{display:"flex",alignItems:"center",padding:"7px 10px",background:"#fff8e1"}}>
-                <span style={{fontSize:13,fontWeight:700,color:"#b45309"}}>🎫 보유 쿠폰 ({activeCustCoupons.length})</span>
+                <span style={{fontSize:13,fontWeight:700,color:"#b45309",display:"inline-flex",alignItems:"center",gap:6}}><I name="gift" size={14}/>보유 쿠폰 ({activeCustCoupons.length}{inactiveCustCoupons.length>0?` · 타지점 ${inactiveCustCoupons.length}`:""})</span>
                 <span style={{marginLeft:"auto",fontSize:10,color:"#92400e",fontWeight:600}}>적용 시술 {Object.keys(couponEligibleMap).length}건 사용 가능</span>
               </div>
               <div style={{padding:"4px 0"}}>
@@ -3025,50 +3281,58 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
                   // 쿠폰 카테고리 시술만 매칭 (이름 충돌 방지)
                   const _couponCatId = (data?.categories||[]).find(c => c.name === '쿠폰')?.id;
                   const _couponSvcs = (data?.services||[]).filter(s => s.cat === _couponCatId);
-                  return activeCustCoupons.map(pkg => {
-                  const svc = _couponSvcs.find(s => s.name === pkg.service_name);
-                  let pc = svc?.promoConfig;
-                  if (typeof pc === "string") { try { pc = JSON.parse(pc); } catch { pc = null; } }
-                  const sids = (pc && (pc.couponTargetServiceIds || (pc.couponTargetServiceId ? [pc.couponTargetServiceId] : []))) || [];
-                  const targetSvcs = sids.map(sid => (data?.services||[]).find(s => s.id === sid)).filter(Boolean);
-                  const remain = (pkg.total_count||0) - (pkg.used_count||0);
-                  const exp = ((pkg.note||"").match(/유효:\s*(\d{4}-\d{2}-\d{2})/)||[])[1] || "";
-                  const typeLabel = pc?.couponType === 'free_service' ? '무료'
-                    : pc?.couponType === 'flat' ? `${(pc.couponValue||0).toLocaleString()}원 할인`
-                    : pc?.couponType === 'percent' ? `${pc.couponValue||0}% 할인`
-                    : pc?.couponType === 'point_bonus_pct' ? `${pc.couponValue||0}% 추가적립`
-                    : '쿠폰';
-                  const allChecked = targetSvcs.length > 0 && targetSvcs.every(s => items[s.id]?.checked);
-                  const onClickCoupon = () => {
-                    // 적용 시술 1개 → 자동 카트 체크. 여러 개면 → 안내만 (직원이 시술 직접 클릭)
-                    if (targetSvcs.length === 1) {
-                      const s = targetSvcs[0];
-                      if (items[s.id]?.checked) return; // 이미 체크됨
-                      const dp = _defPrice(s, gender);
-                      toggle(s.id, dp);
-                    }
+                  const _renderCouponRow = (pkg, isInactive) => {
+                    const svc = _couponSvcs.find(s => s.name === pkg.service_name);
+                    let pc = svc?.promoConfig;
+                    if (typeof pc === "string") { try { pc = JSON.parse(pc); } catch { pc = null; } }
+                    const sids = (pc && (pc.couponTargetServiceIds || (pc.couponTargetServiceId ? [pc.couponTargetServiceId] : []))) || [];
+                    const targetSvcs = sids.map(sid => (data?.services||[]).find(s => s.id === sid)).filter(Boolean);
+                    const remain = (pkg.total_count||0) - (pkg.used_count||0);
+                    const exp = ((pkg.note||"").match(/유효:\s*(\d{4}-\d{2}-\d{2})/)||[])[1] || "";
+                    const typeLabel = pc?.couponType === 'free_service' ? '무료'
+                      : pc?.couponType === 'flat' ? `${(pc.couponValue||0).toLocaleString()}원 할인`
+                      : pc?.couponType === 'percent' ? `${pc.couponValue||0}% 할인`
+                      : pc?.couponType === 'point_bonus_pct' ? `${pc.couponValue||0}% 추가적립`
+                      : '쿠폰';
+                    const allChecked = !isInactive && targetSvcs.length > 0 && targetSvcs.every(s => items[s.id]?.checked);
+                    const branchShort = isInactive ? getPkgPurchaseBranchShort(pkg, data?.branches) : '';
+                    const onClickCoupon = () => {
+                      if (isInactive) return;
+                      if (targetSvcs.length === 1) {
+                        const s = targetSvcs[0];
+                        if (items[s.id]?.checked) return;
+                        const dp = _defPrice(s, gender);
+                        toggle(s.id, dp);
+                      }
+                    };
+                    return <div key={pkg.id} className="sale-svc-row"
+                      onClick={onClickCoupon}
+                      style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:4,
+                        background:allChecked?"#fff8e1":"transparent",
+                        cursor:isInactive?"not-allowed":(targetSvcs.length===1?"pointer":"default"),
+                        opacity:isInactive?0.55:1,lineHeight:1.4}}>
+                      <span style={{fontSize:13,color:"#78350f",fontWeight:allChecked?700:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flex:1,minWidth:0}}>
+                        {allChecked && <span style={{color:"#b45309",marginRight:3}}>✓</span>}
+                        🎫 {pkg.service_name}
+                        <span style={{marginLeft:6,fontSize:9,padding:"1px 5px",borderRadius:6,background:"#fef3c7",color:"#92400e",fontWeight:700}}>{typeLabel}</span>
+                        {isInactive && <span title="구매지점 외에서는 사용 불가 — 사용하려면 모달 우측 지점을 변경하세요" style={{marginLeft:6,fontSize:9,padding:"1px 5px",borderRadius:6,background:"#FEE2E2",color:"#991B1B",border:"1px solid #FCA5A5",fontWeight:700}}>🔒 {branchShort||'타지점'} 구매</span>}
+                        {!isInactive && targetSvcs.length > 1 && <span style={{marginLeft:6,fontSize:9,color:"#92400e"}}>· 적용 시술 {targetSvcs.length}개 (시술 카드 🎫 클릭)</span>}
+                        {!isInactive && targetSvcs.length === 1 && !allChecked && <span style={{marginLeft:6,fontSize:9,color:"#b45309",fontWeight:700}}>→ 클릭하면 시술 자동 추가</span>}
+                      </span>
+                      <span style={{flexShrink:0,fontSize:11,color:"#92400e",fontWeight:700}}>잔여 {remain}회</span>
+                      {exp && <span style={{flexShrink:0,fontSize:10,color:"#92400e"}}>{exp.replace(/^20(\d\d)/, '$1')}까지</span>}
+                    </div>;
                   };
-                  return <div key={pkg.id} className="sale-svc-row"
-                    onClick={onClickCoupon}
-                    style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:4,
-                      background:allChecked?"#fff8e1":"transparent",cursor:targetSvcs.length===1?"pointer":"default",lineHeight:1.4}}>
-                    <span style={{fontSize:13,color:"#78350f",fontWeight:allChecked?700:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flex:1,minWidth:0}}>
-                      {allChecked && <span style={{color:"#b45309",marginRight:3}}>✓</span>}
-                      🎫 {pkg.service_name}
-                      <span style={{marginLeft:6,fontSize:9,padding:"1px 5px",borderRadius:6,background:"#fef3c7",color:"#92400e",fontWeight:700}}>{typeLabel}</span>
-                      {targetSvcs.length > 1 && <span style={{marginLeft:6,fontSize:9,color:"#92400e"}}>· 적용 시술 {targetSvcs.length}개 (시술 카드 🎫 클릭)</span>}
-                      {targetSvcs.length === 1 && !allChecked && <span style={{marginLeft:6,fontSize:9,color:"#b45309",fontWeight:700}}>→ 클릭하면 시술 자동 추가</span>}
-                    </span>
-                    <span style={{flexShrink:0,fontSize:11,color:"#92400e",fontWeight:700}}>잔여 {remain}회</span>
-                    {exp && <span style={{flexShrink:0,fontSize:10,color:"#92400e"}}>{exp.replace(/^20(\d\d)/, '$1')}까지</span>}
-                  </div>;
-                  });
+                  return [
+                    ...activeCustCoupons.map(pkg => _renderCouponRow(pkg, false)),
+                    ...inactiveCustCoupons.map(pkg => _renderCouponRow(pkg, true)),
+                  ];
                 })()}
               </div>
             </div>}
             {/* 신규 PKG 패키지 구매 + 오늘 1회 사용 (체크 즉시 시술 상단 노출) */}
             {newPkgPurchases.length > 0 && <div style={{marginBottom:8,padding:"8px 12px",background:"#EEF2FF",border:"1.5px dashed #6366F1",borderRadius:T.radius.md}}>
-              <div style={{fontSize:11,fontWeight:T.fw.bolder,color:"#4338CA",marginBottom:6}}>📦 오늘 구매한 패키지 — 1회 사용</div>
+              <div style={{fontSize:11,fontWeight:T.fw.bolder,color:"#4338CA",marginBottom:6,display:"flex",alignItems:"center",gap:5}}><I name="pkg" size={12}/>오늘 구매한 패키지 — 1회 사용</div>
               {newPkgPurchases.map(svc => {
                 const used = Number(usePkgToday[svc.id] || 0);
                 const total = parsePkgCount(svc.name);
@@ -3154,33 +3418,57 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
                         if (_needsG) { showAlert("성별을 먼저 선택해주세요\n(시술 가격이 남녀 다릅니다)"); return; }
                         const wasChecked = !!items[targetSvc.id]?.checked;
                         const tdp = _defPrice(targetSvc, gender);
+                        // 체험단 예약(hasCompedTag)이면 신규 선택 시 자동 comped + amount=0
+                        const newChecked = !wasChecked;
+                        const _comped = newChecked && hasCompedTag;
                         setItems(prev => ({
                           ...prev,
-                          [targetSvc.id]: { ...prev[targetSvc.id], checked: !wasChecked, amount: !wasChecked ? tdp : 0 },
-                          [otherSvc.id]: { ...prev[otherSvc.id], checked: false, amount: 0 },
+                          [targetSvc.id]: { ...prev[targetSvc.id], checked: newChecked, comped: _comped, amount: newChecked ? (_comped ? 0 : tdp) : 0 },
+                          [otherSvc.id]: { ...prev[otherSvc.id], checked: false, comped: false, amount: 0 },
                         }));
                       };
-                      // 셀 분리: [이름+절반 | 이름+전체 | 분 | 금액]
+                      // 셀 분리: [이름+절반 | 이름+전체 | (🎁 체험단 시) | 분 | 금액]
+                      // 표준화: 분 42px, 금액 110px — SaleSvcRow와 동일
                       const rowBg = active ? (T.primaryLt||"#EEF2FF") : "#F3F4F6";
                       const rowBd = active ? T.primary : "#E5E7EB";
                       const cellDiv = "1px solid rgba(0,0,0,.05)";
+                      const _activeComped = active && (items[activeSvc?.id]?.comped);
                       return <div key={`pair_${g.full.id}_${g.half.id}`} className="sale-svc-row"
                         style={{display:"flex",alignItems:"stretch",margin:"2px 0",borderRadius:5,overflow:"hidden",
-                          background:rowBg,border:`1px solid ${rowBd}`,transition:"all .15s",lineHeight:1.4}}>
+                          background:_activeComped?"#FFF3E0":rowBg,border:`1px solid ${_activeComped?"#E65100":rowBd}`,transition:"all .15s",lineHeight:1.4}}>
                         <div onClick={()=>togglePair('half')} title={`${dpHalf.toLocaleString()}원 · ${g.half.dur}분`}
-                          style={{flex:1,padding:"3px 10px",display:"flex",alignItems:"center",gap:4,fontSize:13,fontWeight:halfChecked?700:400,color:halfChecked?T.text:T.gray700,background:halfChecked?"rgba(124,124,200,.18)":"transparent",cursor:"pointer",minWidth:0,opacity:fullChecked?0.4:1,transition:"opacity .15s"}}>
-                          {halfChecked && <span style={{color:T.primary}}>✓</span>}
+                          style={{flex:1,padding:"3px 10px",display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:halfChecked?700:400,color:halfChecked?T.text:T.gray700,background:halfChecked?"rgba(124,124,200,.18)":"transparent",cursor:"pointer",minWidth:0,opacity:fullChecked?0.4:1,transition:"opacity .15s"}}>
+                          <span style={{flexShrink:0,width:14,height:14,borderRadius:3,border:`1.5px solid ${halfChecked?(_activeComped?"#E65100":T.primary):T.gray400}`,background:halfChecked?(_activeComped?"#E65100":T.primary):"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>
+                            {halfChecked && <span style={{color:"#fff",fontSize:10,fontWeight:900,lineHeight:1}}>✓</span>}
+                          </span>
                           <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{g.base}{g.halfOpt}</span>
                         </div>
                         <div onClick={()=>togglePair('full')} title={`${dpFull.toLocaleString()}원 · ${g.full.dur}분`}
-                          style={{flex:1,padding:"3px 10px",borderLeft:cellDiv,display:"flex",alignItems:"center",gap:4,fontSize:13,fontWeight:fullChecked?700:400,color:fullChecked?T.text:T.gray700,background:fullChecked?"rgba(124,124,200,.18)":"transparent",cursor:"pointer",minWidth:0,opacity:halfChecked?0.4:1,transition:"opacity .15s"}}>
-                          {fullChecked && <span style={{color:T.primary}}>✓</span>}
+                          style={{flex:1,padding:"3px 10px",borderLeft:cellDiv,display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:fullChecked?700:400,color:fullChecked?T.text:T.gray700,background:fullChecked?"rgba(124,124,200,.18)":"transparent",cursor:"pointer",minWidth:0,opacity:halfChecked?0.4:1,transition:"opacity .15s"}}>
+                          <span style={{flexShrink:0,width:14,height:14,borderRadius:3,border:`1.5px solid ${fullChecked?(_activeComped?"#E65100":T.primary):T.gray400}`,background:fullChecked?(_activeComped?"#E65100":T.primary):"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>
+                            {fullChecked && <span style={{color:"#fff",fontSize:10,fontWeight:900,lineHeight:1}}>✓</span>}
+                          </span>
                           <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{g.base}{g.fullOpt}</span>
                         </div>
+                        {/* 🎁 셀 — 체험단 모드 + active(체크된 것) 있을 때만 작동 */}
+                        {hasCompedTag && (
+                          <div style={{width:50,padding:"2px 4px",borderLeft:cellDiv,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                            {active && (
+                              <button type="button" onClick={e => { e.stopPropagation(); toggleComped(activeSvc.id, _defPrice(activeSvc, gender)); }}
+                                title={_activeComped ? "체험 무료 (클릭 시 유료 결제로 전환)" : "체험단으로 무료 제공 (클릭)"}
+                                style={{padding:"2px 6px",fontSize:10,border:`1px solid ${_activeComped?"#E65100":T.border}`,
+                                  background:_activeComped?"#fff":"transparent",color:_activeComped?"#E65100":T.gray500,
+                                  borderRadius:3,cursor:"pointer",fontFamily:"inherit",fontWeight:_activeComped?700:400,lineHeight:1,
+                                  display:"inline-flex",alignItems:"center",gap:3}}>
+                                <I name="gift" size={11} color={_activeComped?"#E65100":T.gray500}/>{_activeComped?"체험":""}
+                              </button>
+                            )}
+                          </div>
+                        )}
                         <div style={{width:42,padding:"3px 6px",borderLeft:cellDiv,fontSize:10,color:active?T.text:T.gray500,fontWeight:active?600:400,display:"flex",alignItems:"center",justifyContent:"flex-end",flexShrink:0}}>
                           {activeSvc ? `${activeSvc.dur}분` : ""}
                         </div>
-                        <div style={{width:95,padding:"3px 8px",borderLeft:cellDiv,fontSize:13,fontWeight:active?700:400,color:active?T.danger:T.gray400,display:"flex",alignItems:"center",justifyContent:"flex-end",flexShrink:0}}>
+                        <div style={{width:110,padding:"3px 8px",borderLeft:cellDiv,fontSize:13,fontWeight:active?700:400,color:_activeComped?"#E65100":(active?T.danger:T.gray400),textDecoration:_activeComped?"line-through":"none",display:"flex",alignItems:"center",justifyContent:"flex-end",flexShrink:0}}>
                           {active ? fmt(activeAmt) : ""}
                         </div>
                       </div>;
@@ -3309,7 +3597,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
 
           {/* 보유권 잔액 */}
           {cust.id && activePkgs.filter(p=>_pkgType(p)!=="annual").length > 0 && <div style={{background:"#FFF8E1",border:"1px solid #FFD54F",borderRadius:T.radius.md,padding:"10px 12px",marginBottom:10}}>
-            <div style={{fontSize:13,fontWeight:800,color:"#F57F17",marginBottom:6}}>🎫 보유권</div>
+            <div style={{fontSize:13,fontWeight:800,color:"#F57F17",marginBottom:6,display:"flex",alignItems:"center",gap:5}}><I name="wallet" size={14}/>보유권</div>
             {(()=>{
               const groups={};
               activePkgs.filter(p=>_pkgType(p)!=="annual").forEach(p=>{
@@ -3330,7 +3618,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
           {/* 이벤트·프로모 요약 */}
           {promoResults.length > 0 && <div style={{marginBottom:8,padding:"8px 10px",background:"#fff7ed",borderRadius:T.radius.md,border:"1px solid #fdba74"}}>
             <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
-              <span style={{fontSize:12,fontWeight:800,color:"#c2410c"}}>🎁 이벤트 자동적용</span>
+              <span style={{fontSize:12,fontWeight:800,color:"#c2410c",display:"inline-flex",alignItems:"center",gap:5}}><I name="sparkles" size={13}/>이벤트 자동적용</span>
               {promoDiscountTotal > 0 && <span style={{fontSize:11,fontWeight:700,color:"#c2410c"}}>할인 -{fmt(promoDiscountTotal)}원</span>}
               {promoEarnTotal > 0 && <span style={{fontSize:11,fontWeight:700,color:"#c2410c"}}>적립 +{fmt(promoEarnTotal)}P</span>}
             </div>
@@ -3362,7 +3650,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
               <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.info||"#1976D2"}}>{fmt(prodTotal)}원</span>
             </div>}
             {(svcCompedTotal + prodCompedTotal) > 0 && <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
-              <span style={{fontSize:T.fs.sm,color:"#E65100",fontWeight:600}}>🎁 체험단 제공</span>
+              <span style={{fontSize:T.fs.sm,color:"#E65100",fontWeight:600,display:"inline-flex",alignItems:"center",gap:5}}><I name="gift" size={13}/>체험단 제공</span>
               <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#E65100"}}>-{fmt(svcCompedTotal + prodCompedTotal)}원</span>
             </div>}
             {discount > 0 && <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
@@ -3379,12 +3667,12 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
               <span style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:"#E65100",flexShrink:0,whiteSpace:"nowrap"}}>-{fmt(eventDiscountTotal)}원</span>
             </div>}
             {couponDiscountTotal > 0 && <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
-              <span style={{fontSize:T.fs.sm,color:"#b45309"}}>🎫 쿠폰 할인</span>
+              <span style={{fontSize:T.fs.sm,color:"#b45309",display:"inline-flex",alignItems:"center",gap:5}}><I name="gift" size={13}/>쿠폰 할인</span>
               <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#b45309"}}>-{fmt(couponDiscountTotal)}원</span>
             </div>}
             {/* 외부 선결제 — 좁은 패널에서 자동 줄바꿈 허용 */}
             <div style={{display:"flex",alignItems:"center",gap:5,padding:"4px 0",marginTop:0}}>
-              <span style={{fontSize:T.fs.xs,color:"#6A1B9A",fontWeight:700,flexShrink:0}}>🏷 선결제</span>
+              <span style={{fontSize:T.fs.xs,color:"#6A1B9A",fontWeight:700,flexShrink:0,display:"inline-flex",alignItems:"center",gap:4}}><I name="tag" size={11}/>선결제</span>
               <select value={externalPlatform} onChange={e=>setExternalPlatform(e.target.value)}
                 style={{flex:"0 1 90px",minWidth:70,padding:"3px 4px",fontSize:T.fs.xs,border:"1px solid #CE93D8",borderRadius:6,background:"#fff",color:"#6A1B9A",fontFamily:"inherit"}}>
                 <option value="">플랫폼</option>
@@ -3407,20 +3695,20 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
               <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.primary,marginBottom:6}}><I name="scissors" size={12}/> 결제 <span style={{color:T.danger,fontWeight:T.fw.black}}>{fmt(svcPayTotal + prodPayTotal)}원</span></div>
               {(svcCompedTotal + prodCompedTotal) > 0 && (
                 <div style={{display:"flex",alignItems:"center",gap:6,padding:"5px 8px",marginBottom:5,background:"#FFF3E0",border:"1px solid #E65100",borderRadius:6,fontSize:11,color:"#E65100"}}>
-                  <span style={{fontWeight:700}}>🎁 체험단 제공 (무료)</span>
+                  <span style={{fontWeight:700,display:"inline-flex",alignItems:"center",gap:5}}><I name="gift" size={12}/>체험단 제공 (무료)</span>
                   <span style={{marginLeft:"auto",fontWeight:800}}>-{fmt(svcCompedTotal + prodCompedTotal)}원</span>
                 </div>
               )}
               {activeCoupons.filter(c=>(c.applyTo==='services' || c.applyTo==='all' || c.applyTo==='category' || c.applyTo==='specific_service' || c.applyTo==='products') && c.discount>0).map(c => (
                 <label key={c.pkgId} style={{display:"flex",alignItems:"center",gap:4,padding:"4px 6px",marginBottom:4,background:"#fff8e1",border:"1px solid #f59e0b",borderRadius:6,fontSize:10,color:"#78350f",cursor:"pointer",whiteSpace:"nowrap",overflow:"hidden"}} title={`${c.name}${c.consumeOnUse?" (1회 소진)":""} -${fmt(c.discount)}원`}>
                   <input type="checkbox" checked={!couponOff[c.pkgId]} onChange={e=>setCouponOff(p=>({...p,[c.pkgId]:!e.target.checked}))} style={{accentColor:"#b45309",flexShrink:0}}/>
-                  <span style={{fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",minWidth:0,flex:"1 1 auto"}}>🎫 {c.name}</span>
+                  <span style={{fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",minWidth:0,flex:"1 1 auto",display:"inline-flex",alignItems:"center",gap:4}}><I name="gift" size={11}/>{c.name}</span>
                   <span style={{marginLeft:"auto",fontWeight:800,color:"#b45309",flexShrink:0}}>-{fmt(c.discount)}</span>
                 </label>
               ))}
               {activeCoupons.filter(c=>c.earn>0).map(c => (
                 <div key={`earn-${c.pkgId}`} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 8px",marginBottom:5,background:"#fff8e1",border:"1px solid #f59e0b",borderRadius:6,fontSize:11,color:"#78350f"}}>
-                  <span style={{fontWeight:700}}>🎫 {c.name}</span>
+                  <span style={{fontWeight:700,display:"inline-flex",alignItems:"center",gap:5}}><I name="gift" size={12}/>{c.name}</span>
                   <span style={{marginLeft:"auto",fontWeight:800,color:"#b45309"}}>+{fmt(c.earn)}P</span>
                 </div>
               ))}
@@ -3712,8 +4000,13 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
           {/* 매출 메모 */}
           <div style={{marginTop:8}}>
             <span style={{fontSize:11,color:T.textMuted,fontWeight:600}}>매출 메모</span>
-            <textarea className="inp" ref={el=>{if(el){el.style.height="auto";el.style.height=Math.max(120,el.scrollHeight)+"px";}}}
-              value={saleMemo} onChange={e=>{setSaleMemo(e.target.value);const t=e.target;t.style.height="auto";t.style.height=Math.max(120,t.scrollHeight)+"px";}}
+            <textarea className="inp" ref={memoRef}
+              value={saleMemo} onChange={e=>{
+                setSaleMemo(e.target.value);
+                const t=e.target;
+                // grow only — scrollHeight가 현재 높이보다 클 때만 늘림. height="auto" reset을 안 해서 textarea 내부 scrollTop이 점프하지 않음.
+                if (t.scrollHeight > t.offsetHeight) t.style.height = t.scrollHeight + "px";
+              }}
               placeholder="매출 메모" style={{resize:"vertical",width:"100%",fontSize:T.fs.sm,minHeight:120,marginTop:4,lineHeight:1.6}}/>
           </div>
         </div>
@@ -3729,6 +4022,11 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
               : ((gender ? (gender === "F" ? "여성" : "남성") + " 가격 적용" : "성별 미선택") + " · 체크한 항목만 매출 반영")}
           </div>
           <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
+            {(viewOnly || editMode) && (
+              <Btn variant="ghost" style={{ padding: "8px 14px", fontSize: 12, fontWeight: 700 }} onClick={()=>setReceiptOpen(true)} title="영수증 미리보기 (복사·이미지 저장 가능)">
+                <I name="fileText" size={12}/> 영수증
+              </Btn>
+            )}
             <Btn variant="secondary" onClick={onClose}>{viewOnly ? "닫기" : "취소"}</Btn>
             {editMode && onCancelSale && (
               <Btn variant="ghost" style={{ padding: "10px 14px", fontSize: 12, fontWeight: 700, color: "#C62828", borderColor: "#C62828" }}
@@ -3783,6 +4081,23 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
         </div>
         );
       })()}
+      {receiptOpen && (
+        <div onClick={()=>setReceiptOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(2px)"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,maxWidth:460,width:"100%",maxHeight:"92vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
+            <div style={{padding:"12px 16px",borderBottom:"1px solid "+T.border,display:"flex",alignItems:"center",justifyContent:"space-between",background:T.gray100}}>
+              <div style={{fontWeight:800,fontSize:14,color:T.text,display:"flex",alignItems:"center",gap:6}}><I name="fileText" size={14}/>영수증</div>
+              <button onClick={()=>setReceiptOpen(false)} style={{width:28,height:28,borderRadius:14,border:"none",background:"transparent",color:T.gray500,fontSize:18,cursor:"pointer",fontFamily:"inherit",lineHeight:1}}>×</button>
+            </div>
+            <pre style={{flex:1,overflow:"auto",margin:0,padding:"14px 16px",fontFamily:"ui-monospace, Menlo, Consolas, 'Apple SD Gothic Neo', monospace",fontSize:12,lineHeight:1.55,whiteSpace:"pre",color:T.text,background:"#fafafe"}}>{_buildReceiptText()}</pre>
+            <div style={{padding:"10px 12px",borderTop:"1px solid "+T.border,display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end",background:T.gray100}}>
+              <Btn variant="ghost" style={{padding:"7px 11px",fontSize:11,fontWeight:700}} onClick={_copyReceiptText} title="영수증 텍스트를 클립보드에 복사 (채팅 붙여넣기용)"><I name="fileText" size={11}/> 텍스트 복사</Btn>
+              <Btn variant="ghost" style={{padding:"7px 11px",fontSize:11,fontWeight:700}} onClick={_saveReceiptText} title=".txt 파일로 저장"><I name="download" size={11}/> 텍스트 저장</Btn>
+              <Btn variant="ghost" style={{padding:"7px 11px",fontSize:11,fontWeight:700}} onClick={_copyReceiptImage} title="이미지 클립보드에 복사"><I name="clipboard" size={11}/> 이미지 복사</Btn>
+              <Btn variant="ghost" style={{padding:"7px 11px",fontSize:11,fontWeight:700}} onClick={_saveReceiptImage} title=".png 파일로 저장"><I name="download" size={11}/> 이미지 저장</Btn>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

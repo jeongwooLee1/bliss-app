@@ -4,6 +4,8 @@
  * service_tags.auto_trigger jsonb에 매장이 등록한 트리거 설정을 기반으로,
  * 예약/고객/보유권 데이터를 평가해 자동으로 부여될 태그 ID 배열을 반환.
  *
+ * 신규 고객 판정은 ./customerStatus.js의 isNewCustomer() 단일 함수 사용 (SSOT).
+ *
  * 트리거 타입 (확장 가능):
  *  - is_new_customer        : 미등록 고객 또는 visits=0
  *  - package_low_count      : 보유 패키지/다회권 잔여 회수 ≤ threshold (기본 1)
@@ -11,6 +13,8 @@
  *  - coupon_expiring_days   : 쿠폰의 만료가 N일 이내
  *  - customer_inactive_days : 마지막 방문이 N일 이상 지남 (기존상담)
  */
+
+import { isNewCustomer } from './customerStatus'
 
 // ─── 트리거 카탈로그 (UI 드롭다운 + 파라미터 라벨용) ─────────────────────────
 // param.type: 'number' | 'bool' | 'category_multi' | 'service_multi'  (UI 렌더 분기)
@@ -171,13 +175,9 @@ export function evaluateTrigger(trigger, ctx) {
 
   switch (trigger.type) {
     case 'is_new_customer': {
-      if (!customer) return true;
-      // 미방문(visits=0) → 신규
-      if (Number(customer.visits || 0) === 0) return true;
-      // visits 있어도 유료 매출(>0원) 0건이면 신규로 취급 (체험단 케이스)
-      // hasPaidSale가 명시적으로 false면 신규. null/undefined(미체크)면 visits만 보고 판단(이전 동작 유지).
-      if (hasPaidSale === false) return true;
-      return false;
+      // SSOT — 자동태그/이벤트엔진/서버 모두 동일 룰. ./customerStatus.js 참고.
+      // customer 매칭 안 된 경우(직원 phone 검색 중 race) → false (보수적). 매칭 후엔 visits/hasPaidSale 기준.
+      return isNewCustomer(customer, hasPaidSale);
     }
     case 'package_low_count': {
       const threshold = Number(trigger.threshold ?? 1);
