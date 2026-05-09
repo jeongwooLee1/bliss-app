@@ -1264,6 +1264,20 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
             }
             sb.update("customer_packages",p.id,updates).catch(console.error);
             setCustPkgsServer(prev=>prev.map(x=>x.id===p.id?{...x,...updates}:x));
+            // 변경분 트랜잭션 기록 — 사용량 변동(usedDelta) + 충전·총회수 변동(totalDelta)
+            const usedDelta = newUsed - (p.used_count||0);
+            const totalDelta = newTotal - (p.total_count||0);
+            const unit = isPrepaid ? "won" : "count";
+            const balBefore = isPrepaid ? balance : ((p.total_count||0) - (p.used_count||0));
+            const balAfter = isPrepaid ? Math.max(0, newTotal - newUsed) : (newTotal - newUsed);
+            if (usedDelta !== 0) {
+              recordPkgTx(p, usedDelta > 0 ? "deduct" : "charge", Math.abs(usedDelta), unit,
+                balBefore, balAfter, `편집: ${isPrepaid?"사용액":"사용횟수"} ${p.used_count||0}→${newUsed}`);
+            }
+            if (totalDelta !== 0) {
+              recordPkgTx(p, totalDelta > 0 ? "charge" : "deduct", Math.abs(totalDelta), unit,
+                balBefore, balAfter, `편집: ${isPrepaid?"충전액":"총횟수"} ${p.total_count||0}→${newTotal}`);
+            }
             setPkgEditId(null);
           }}>저장</Btn>
         </div>
