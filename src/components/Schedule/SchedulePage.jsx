@@ -590,6 +590,16 @@ export default function SchedulePage({ employees: propEmps }) {
   // Auto assign
   const handleAutoAssign = async () => {
     if (isAssigning || isConfirmed) return
+    // 🛡 가드: 현재 월(또는 그 이전)에는 자동 배치 차단 — 이미 운영 중인 근무표가 덮어써지는 사고 방지
+    {
+      const _today = new Date()
+      const _todayIdx = _today.getFullYear() * 12 + _today.getMonth()
+      const _curIdx = year * 12 + month
+      if (_curIdx <= _todayIdx) {
+        toast_('⚠️ 자동 배치는 다음 달부터 가능합니다 (현재 월 이전엔 운영 중인 근무표를 덮어쓸 수 있어 잠겨 있어요)', 'err')
+        return
+      }
+    }
     // 🛡 자동 배치 직전 schHistory 백업 — 실수로 누른 경우 복구 가능
     try {
       const beforeSnap = { ts: new Date().toISOString(), data: { ...(schHistory[curKey]||{}) }, type: 'before_auto_assign' }
@@ -885,15 +895,22 @@ export default function SchedulePage({ employees: propEmps }) {
         <div style={{ display:'flex', alignItems:'center', gap:4 }}>
           {/* Auto assign — 고급 모드만 */}
           {hasFeature('schedule_advanced') && (<>
-          <button onClick={handleAutoAssign} style={{
-            display:'inline-flex', alignItems:'center', gap:6,
-            background:isConfirmed ? '#aaa' : isAssigning ? T.gray400 : T.primary, color:'#fff', border:'none',
-            borderRadius:T.radius.md, padding:'7px 14px', fontSize:T.fs.sm, fontWeight:T.fw.bolder,
-            cursor:isConfirmed ? 'default' : 'pointer', fontFamily:'inherit',
-            boxShadow:isConfirmed ? 'none' : '0 1px 4px rgba(124,124,200,.35)', opacity:isConfirmed ? 0.7 : 1
-          }}>
-            {isAssigning ? '배치중...' : isConfirmed ? '확정됨' : '⚡ 배치'}
-          </button>
+          {(()=>{
+            const _today = new Date()
+            const _todayIdx = _today.getFullYear() * 12 + _today.getMonth()
+            const _curIdx = year * 12 + month
+            const _isPastOrCurrent = _curIdx <= _todayIdx
+            const _disabled = isConfirmed || _isPastOrCurrent
+            return <button onClick={handleAutoAssign} title={_isPastOrCurrent ? '자동 배치는 다음 달부터 가능합니다' : ''} style={{
+              display:'inline-flex', alignItems:'center', gap:6,
+              background:_disabled ? '#aaa' : isAssigning ? T.gray400 : T.primary, color:'#fff', border:'none',
+              borderRadius:T.radius.md, padding:'7px 14px', fontSize:T.fs.sm, fontWeight:T.fw.bolder,
+              cursor:_disabled ? 'not-allowed' : 'pointer', fontFamily:'inherit',
+              boxShadow:_disabled ? 'none' : '0 1px 4px rgba(124,124,200,.35)', opacity:_disabled ? 0.6 : 1
+            }}>
+              {isAssigning ? '배치중...' : isConfirmed ? '확정됨' : _isPastOrCurrent ? '🔒 배치' : '⚡ 배치'}
+            </button>
+          })()}
           <div style={{ width:1, height:24, background:T.border, margin:'0 2px' }}/>
           </>)}
           {/* Icon buttons */}

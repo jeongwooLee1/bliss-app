@@ -584,6 +584,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
         <th style={{width:80}}>고객번호</th>
         <th>이름</th>
         <th>담당자</th>
+        <th style={{textAlign:"right"}}>총합계</th>
         <th style={{textAlign:"right"}}>시술합계</th>
         <th style={{textAlign:"right"}}>제품합계</th>
         <th style={{color:"#16a34a",textAlign:"right"}}>현금</th>
@@ -591,13 +592,13 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
         <th style={{color:T.info,textAlign:"right"}}>입금</th>
         <th style={{color:T.orange,textAlign:"right"}}>포인트</th>
         <th style={{color:"#8E24AA",textAlign:"right"}}>외부선결제</th>
-        <th style={{textAlign:"right"}}>총합계</th>
         <th style={{width:60}}></th>
       </tr></thead>
       <tbody>
         {/* 합계 행 — 헤더 바로 다음 (유저 요청) */}
         {sales.length>0 && <tr style={{background:T.gray200,fontWeight:T.fw.bolder,position:"sticky",top:32,zIndex:1}}>
           <td colSpan={6} style={{textAlign:"right",color:T.textSub,fontSize:T.fs.xxs}}>합 계</td>
+          <td style={{color:T.info,textAlign:"right",fontWeight:T.fw.black}}>{fmt(totals.total)}</td>
           <td style={{color:T.primary,textAlign:"right"}}>{fmt(totals.svc)}</td>
           <td style={{color:T.info,textAlign:"right"}}>{fmt(totals.prod)}</td>
           <td style={{color:"#16a34a",textAlign:"right"}}>{fmt(totals.svcCash+totals.prodCash)}</td>
@@ -605,7 +606,6 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
           <td style={{color:T.info,textAlign:"right"}}>{fmt(totals.svcTransfer+totals.prodTransfer)}</td>
           <td style={{color:T.orange,textAlign:"right"}}>{fmt(totals.svcPoint+totals.prodPoint)}</td>
           <td style={{color:"#8E24AA",textAlign:"right"}}>{fmt(totals.extPrepaid)}</td>
-          <td style={{color:T.info,textAlign:"right"}}>{fmt(totals.total)}</td>
           <td/>
         </tr>}
         {sales.length===0
@@ -628,6 +628,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
                       <span style={{marginLeft:4,color:dow==='일'?'#dc2626':dow==='토'?'#2563eb':T.textMuted}}>({dow})</span>
                       <span style={{marginLeft:10,fontSize:T.fs.xxs,color:T.textMuted,fontWeight:T.fw.medium}}>{g.count}건</span>
                     </td>
+                    <td style={{textAlign:"right",color:T.text,fontWeight:T.fw.black,fontSize:T.fs.sm}}>{fmt(g.total)}</td>
                     <td style={{textAlign:"right",color:T.primary,fontWeight:T.fw.bolder}}>{g.svc>0?fmt(g.svc):'-'}</td>
                     <td style={{textAlign:"right",color:T.info,fontWeight:T.fw.bolder}}>{g.prod>0?fmt(g.prod):'-'}</td>
                     <td style={{textAlign:"right",color:g.cash>0?"#16a34a":T.gray400,fontWeight:T.fw.bolder}}>{g.cash>0?fmt(g.cash):'-'}</td>
@@ -635,7 +636,6 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
                     <td style={{textAlign:"right",color:g.transfer>0?T.info:T.gray400,fontWeight:T.fw.bolder}}>{g.transfer>0?fmt(g.transfer):'-'}</td>
                     <td style={{textAlign:"right",color:g.point>0?T.orange:T.gray400,fontWeight:T.fw.bolder}}>{g.point>0?fmt(g.point):'-'}</td>
                     <td style={{textAlign:"right",color:g.ep>0?"#8E24AA":T.gray400,fontWeight:T.fw.bolder}}>{g.ep>0?fmt(g.ep):'-'}</td>
-                    <td style={{textAlign:"right",color:T.text,fontWeight:T.fw.black,fontSize:T.fs.sm}}>{fmt(g.total)}</td>
                     <td></td>
                   </tr>
                   {/* 그날 거래 행 (접힘 X) */}
@@ -670,12 +670,24 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
                       {num ? `#${num}` : "없음"}
                     </td>;
                   })()}
-                  <td style={{fontWeight:T.fw.bold}}>
-                    {s.custGender && <span style={{...sx.genderBadge(s.custGender),marginRight:4}}>{s.custGender==="M"?"남":"여"}</span>}
-                    <span onClick={s.custId ? (e)=>{e.stopPropagation(); goToCustomer(s.custId);} : undefined}
-                      style={s.custId ? {color:T.primary,textDecoration:"underline",textDecorationColor:T.primary+"55",cursor:"pointer"} : undefined}>{s.custName||"-"}</span>
-                  </td>
+                  {(() => {
+                    // 영문 이름이면 한글 음역(name_kor) 또는 name2(순한글)을 hover title로 노출
+                    const _cust = s.custId ? (data?.customers||[]).find(c=>c.id===s.custId) : null;
+                    const _nm = s.custName || "";
+                    const _isEn = _nm && !/[가-힣]/.test(_nm);
+                    const _kor = _cust?.nameKor || _cust?.name_kor || _cust?.name2 || "";
+                    const _korPure = _kor && /[가-힣]/.test(_kor) && !/[A-Za-z]/.test(_kor) ? _kor : "";
+                    const _title = _isEn && _korPure ? _korPure : undefined;
+                    return <td style={{fontWeight:T.fw.bold}}>
+                      {s.custGender && <span style={{...sx.genderBadge(s.custGender),marginRight:4}}>{s.custGender==="M"?"남":"여"}</span>}
+                      <span title={_title}
+                        onClick={s.custId ? (e)=>{e.stopPropagation(); goToCustomer(s.custId);} : undefined}
+                        style={s.custId ? {color:T.primary,textDecoration:"underline",textDecorationColor:T.primary+"55",cursor:"pointer"} : undefined}>{_nm||"-"}</span>
+                      {_title && <span style={{marginLeft:4,fontSize:T.fs.xxs,color:T.textSub}}>({_title})</span>}
+                    </td>;
+                  })()}
                   <td style={{color:T.textSub,fontSize:T.fs.xxs}}>{s.staffName||"-"}</td>
+                  <td style={{fontWeight:T.fw.black,color:T.info,textAlign:"right"}}>{fmt(total)}</td>
                   <td style={{fontWeight:T.fw.bold,color:T.primary,textAlign:"right"}}>{sv>0?fmt(sv):<Z/>}</td>
                   <td style={{fontWeight:T.fw.bold,color:T.info,textAlign:"right"}}>{prDisp>0?fmt(prDisp):<Z/>}</td>
                   <td style={{fontWeight:T.fw.bold,color:rowCash>0?"#16a34a":T.gray400,textAlign:"right"}}>{rowCash>0?fmt(rowCash):"-"}</td>
@@ -685,7 +697,6 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
                   <td style={{fontWeight:T.fw.bold,color:(s.externalPrepaid||0)>0?"#8E24AA":T.gray400,textAlign:"right"}} title={s.externalPlatform||""}>
                     {(s.externalPrepaid||0)>0 ? fmt(s.externalPrepaid) : "-"}
                   </td>
-                  <td style={{fontWeight:T.fw.black,color:T.info,textAlign:"right"}}>{fmt(total)}</td>
                   <td onClick={e=>e.stopPropagation()}>
                     <div style={{display:"flex",gap:3}}>
                       <Btn variant="secondary" size="sm" style={{padding:"2px 5px"}} onClick={()=>openFullEdit(s)}><I name="edit" size={12}/></Btn>

@@ -1787,7 +1787,9 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                                     ))}</tbody>
                                   </table>
                                 </div>}
-                                {s.memo && <div style={{fontSize:T.fs.xxs,color:T.textSub,whiteSpace:"pre-wrap",lineHeight:1.6,background:T.bgCard,borderRadius:T.radius.sm,padding:"6px 8px"}}>{s.memo}</div>}
+                                {s.memo && <div
+                                  onMouseDown={e=>e.stopPropagation()}
+                                  style={{fontSize:T.fs.xxs,color:T.textSub,whiteSpace:"pre-wrap",lineHeight:1.6,background:T.bgCard,borderRadius:T.radius.sm,padding:"6px 8px",userSelect:"text",WebkitUserSelect:"text",cursor:"text"}}>{s.memo}</div>}
                               </div>;
                             })
                         }
