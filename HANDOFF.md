@@ -1,11 +1,16 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.551** (https://blissme.ai/version.txt) — 2026-05-09 배포
+- **라이브: v3.7.552** (https://blissme.ai/version.txt) — 2026-05-09 배포
 - 다음 빌드 시 `BLISS_V` (AppShell.jsx) + `public/version.txt` 둘 다 함께 bump 필수
-- 변경 이력은 [CLAUDE.md "v3.7.503 → v3.7.551"](./CLAUDE.md) 섹션 참고
+- 변경 이력은 [CLAUDE.md "v3.7.503 → v3.7.552"](./CLAUDE.md) 섹션 참고
 
-## v3.7.551 변경 (2026-05-09)
+## v3.7.552 변경 (2026-05-09)
+- **네이버 막기 — 표시는 전체 / 변경은 권한 내** (TimelinePage):
+  - **표시(현황 fetch)**: `isMaster`(브랜드 owner/매니저)이면 전 지점의 막기 상태를 fetch. 일반 직원은 종전대로 `accessibleBids`만.
+  - **변경(toggleOne / 전체 막기·풀기)**: `accessibleBids` (본인 지점 + branchGroups 연계지점)에 속한 지점만 가능. 그 외 지점은 alert + 토글 disabled.
+  - **막기 팝업 UI**: 권한 외 지점 클릭 시 `👁 타지점 — 조회 전용 (변경 불가)` 노란 배너 + 시술 토글·전체 버튼 모두 비활성. 기존 "🔒 타지점이라 막기 불가" 메시지(빈 itemIds일 때)는 정리.
+  - 효과: 강남점 owner도 모든 지점 슬롯 현황을 보면서, 변경은 강남+왕십리(연계) 한정.
 - **자동태그 service_multi UI 카테고리 헤더 토글** — 카테고리 헤더(✓/◐/○) 클릭 시 그 카테고리 시술 전체 선택/해제. 시각적 상태 3종(전체/일부/없음).
 - **[⚡ 미래 예약 일괄 평가] 도구** (AdminServiceTags 메인 페이지):
   - 오늘 이후 미종결 예약을 모두 평가해 자동 부여될 태그 dry-run 표시 — 날짜·시간·지점·고객·추가될 태그 리스트

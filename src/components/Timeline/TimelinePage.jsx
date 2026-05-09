@@ -105,7 +105,7 @@ function AlarmModal({ initial, brName, onSave, onDelete, onClose }) {
   return <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
     <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,padding:20,width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-        <div style={{fontSize:16,fontWeight:800,color:T.text}}>🔔 {onDelete?"알람 수정":"알람 생성"}</div>
+        <div style={{fontSize:16,fontWeight:800,color:T.text,display:"flex",alignItems:"center",gap:6}}><I name="bell" size={16}/>{onDelete?"알람 수정":"알람 생성"}</div>
         <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:T.gray400}}>×</button>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -165,8 +165,8 @@ function AlarmModal({ initial, brName, onSave, onDelete, onClose }) {
   </div>;
 }
 
-// ── Topbar 공지 말풍선 위젯 — 팀채팅 is_announce=true 최신 1개 ──
-function TopAnnounceBubble() {
+// ── Topbar 공지 말풍선 위젯 — AnnouncesMarquee로 통합 (AppShell 상단), 미사용 ──
+function TopAnnounceBubble_DEPRECATED() {
   const [announce, setAnnounce] = useState(null); // {id, user_id, body, created_at}
   const DISMISS_KEY = 'bliss_dismissed_announces';
   const AUTO_MS = 60 * 60 * 1000;
@@ -233,7 +233,7 @@ function TopAnnounceBubble() {
   );
 }
 
-function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBranches=[], isMaster, currentUser, setPage, bizId, onMenuClick, bizName, pendingOpenRes, setPendingOpenRes, naverColShow={}, scraperStatus=null, setPendingChat, setPendingOpenCust, unreadMsgCount=0, unreadSample=[], previewBlockStyle=false, betaGroupMode=false }) {
+function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBranches=[], isMaster, currentUser, setPage, bizId, onMenuClick, bizName, pendingOpenRes, setPendingOpenRes, naverColShow={}, scraperStatus=null, setPendingChat, setPendingOpenCust, unreadMsgCount=0, unreadDelayedCount=0, unreadSample=[], messagesPanelOpen=false, previewBlockStyle=false, betaGroupMode=false }) {
   // ─── 베타 모드: reservations 격리 (is_beta=true만 별도 fetch + setData wrap) ───
   const [_betaReservations, _setBetaReservations] = useState([]);
   useEffect(() => {
@@ -332,9 +332,22 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       }
     }).catch(console.error);
   }, []);
-  const setEmpWorkHours = React.useCallback((updater) => {
-    _setEmpWorkHours(prev => {
-      const next = typeof updater === "function" ? updater(prev) : updater;
+  const setEmpWorkHours = React.useCallback(async (updater) => {
+    // race condition fix — 저장 직전 서버 latest fetch → merge → 저장
+    // (다중 사용자 동시 편집 시 옛 데이터로 덮어쓰던 버그: "출근시간 종종 12:10으로 회귀" 사고)
+    let serverLatest = {};
+    try {
+      const r = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.empWorkHours_v1&select=value`, {
+        headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
+      });
+      const rows = await r.json();
+      const v = rows?.[0]?.value;
+      serverLatest = v ? (typeof v === "string" ? JSON.parse(v) : v) : {};
+    } catch {}
+    _setEmpWorkHours(localPrev => {
+      // 서버 baseline + 내 로컬 변경 우선 적용 (다른 사용자 변경 보존)
+      const merged = { ...serverLatest, ...localPrev };
+      const next = typeof updater === "function" ? updater(merged) : updater;
       const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
       fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
         method: "POST", headers: H,
@@ -554,9 +567,10 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   const fetchNaverBlockStateRef = React.useRef(null);
   useEffect(() => {
     if (!selDate) return;
-    // 권한 있는 지점만
-    const allowedBids = new Set(accessibleBids);
-    const targets = (data?.branches || []).filter(b => b.naverBizId && allowedBids.has(b.id));
+    // 표시 대상: 브랜드(isMaster=대표·매니저)는 전 지점 현황을 봐야 함. 일반 직원은 권한 있는 지점만.
+    // 변경(toggleOne) 권한은 별도로 accessibleBids 체크.
+    const allowedBids = isMaster ? null : new Set(accessibleBids);
+    const targets = (data?.branches || []).filter(b => b.naverBizId && (allowedBids ? allowedBids.has(b.id) : true));
     if (!targets.length) return;
 
     let cancel = false;
@@ -964,6 +978,39 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   const [modalData, setModalData] = useState(null);
   // 🔴 빨강 테두리 깜빡임 하이라이트 (메시지함 예약버튼/확정대기 배너 클릭 시)
   const [highlightedBlockId, setHighlightedBlockId] = useState(null);
+  // 고객관리 우클릭 → 예약 등록: sessionStorage prefill 픽업해서 새 예약 모달 자동 오픈
+  // ReservationModal form init이 item._prefill.* 만 매핑하므로 _prefill 객체로 감싸서 전달
+  React.useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('pendingNewRes');
+      if (!raw) return;
+      sessionStorage.removeItem('pendingNewRes');
+      const p = JSON.parse(raw);
+      if (!p) return;
+      const _date = p.date || todayStr();
+      const _time = p.time || "11:00";
+      const _dur = p.dur || 30;
+      setModalData({
+        bid: p.bid || "",
+        date: _date,
+        time: _time,
+        dur: _dur,
+        _prefill: {
+          custId: p.custId || "",
+          custName: p.custName || "",
+          custName2: p.custName2 || "",
+          custPhone: p.custPhone || "",
+          custEmail: p.custEmail || "",
+          custGender: p.custGender || "",
+          date: _date,
+          time: _time,
+          dur: _dur,
+          _isNewCust: false, // 기존 고객이라 신규 등록 아님
+        },
+      });
+      setShowModal(true);
+    } catch (e) { console.warn('pendingNewRes pickup err:', e); }
+  }, []);
 
   // 📱 모바일 뒤로가기 → 예약모달만 닫기 (선택한 날짜/스크롤 위치 보존)
   // 모달 열릴 때 history.pushState({mTl:1}) 추가, popstate 시 모달만 닫고 selDate/scroll은 그대로.
@@ -1128,7 +1175,15 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
 
   // Branch view: 편집가능(userBranches) + 열람가능(viewBranches)
   const allBranchList = [...(data.branchSettings || data.branches || [])].filter(b => b.useYn !== false).sort((a,b)=>(a.sort||0)-(b.sort||0));
-  const accessibleBids = [...new Set([...userBranches, ...(viewBranches||[])])];
+  // userBranches + viewBranches + branchGroups 연계 지점 (네이버 예약막기·매출조회 등 권한 일관성)
+  const accessibleBids = (() => {
+    const set = new Set([...(userBranches||[]), ...(viewBranches||[])]);
+    (data?.branchGroups || []).forEach(g => {
+      const ids = g.branch_ids || g.branchIds || [];
+      if (ids.some(b => set.has(b))) ids.forEach(b => set.add(b));
+    });
+    return [...set];
+  })();
   // 기본: 본인 지점(쓰기권한)만 표시, isMaster는 전지점
   const defaultViewBids = isMaster ? allBranchList.map(b=>b.id) : (userBranches.length > 0 ? userBranches : accessibleBids);
   // localStorage에서 저장된 viewBids 복원
@@ -1581,11 +1636,17 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   // 직원 컬럼 순서 커스텀 (DB: schedule_data.empColOrder_v1)
   const [empColOrder, _setEmpColOrder] = useState({});
   const empColOrderLoaded = React.useRef(false);
+  // 마지막 POST 시각 — fetch한 row의 updated_at이 이보다 옛것이면 무시 (race 방지)
+  const empOrderLastWriteRef = React.useRef(0);
   React.useEffect(() => {
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
     const loadOrder = () => {
-      fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.empColOrder_v1&select=value`, { headers: H })
+      // updated_at도 같이 fetch — race 방지용
+      fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.empColOrder_v1&select=value,updated_at`, { headers: H })
         .then(r => r.json()).then(rows => {
+          // race 방지: 자기가 방금 POST한 시각보다 fetch한 row의 updated_at이 더 오래됐으면 무시
+          const dbAt = rows?.[0]?.updated_at ? new Date(rows[0].updated_at).getTime() : 0;
+          if (empOrderLastWriteRef.current > 0 && dbAt < empOrderLastWriteRef.current) return;
           if (rows?.[0]?.value) {
             const v = typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value;
             // 방어: DB가 축소되어 들어왔으면 현재 state의 누락 id를 뒤에 복구
@@ -1617,17 +1678,22 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.empColOrder_v1" }, loadOrder)
         .subscribe();
     }
-    // 폴링 — Realtime 실패 대비 (30초)
-    const poll = setInterval(loadOrder, 30000);
+    // 폴링 — Realtime 실패 대비 (5분, 백업용). visibilitychange로 탭 복귀 시 즉시 1회 추가 동기화.
+    const poll = setInterval(loadOrder, 300000);
+    const onVis = () => { if (document.visibilityState === 'visible') loadOrder(); };
+    document.addEventListener('visibilitychange', onVis);
     return () => {
       try { ch?.unsubscribe(); } catch(e) {}
       clearInterval(poll);
+      document.removeEventListener('visibilitychange', onVis);
     };
   }, []);
   const setEmpColOrder = React.useCallback((updater) => {
+    // setState updater 안에서 사이드이펙트(fetch) 일으키면 StrictMode/batching에서 두 번 실행 → race.
+    // 방법: updater에선 next state 계산만, POST는 setState 후 microtask에서 1번만.
+    let mergedToPost = null;
     _setEmpColOrder(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
-      // 방어: next가 prev보다 길이 짧아진 경우(의도적 삭제 X) prev의 누락 id를 뒤에 복구
       const merged = {};
       const bids = new Set([...Object.keys(prev||{}), ...Object.keys(next||{})]);
       bids.forEach(bid => {
@@ -1637,12 +1703,27 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         const missing = pList.filter(id => !nSet.has(id));
         merged[bid] = [...nList, ...missing];
       });
+      mergedToPost = merged;
+      return merged;
+    });
+    // setState 직후 1회만 POST (microtask)
+    Promise.resolve().then(() => {
+      if (!mergedToPost) return;
       const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
+      empOrderLastWriteRef.current = Date.now();
       fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
         method: "POST", headers: H,
-        body: JSON.stringify({ business_id: _activeBizId, id: "empColOrder_v1", key: "empColOrder_v1", value: JSON.stringify(merged) })
-      }).catch(console.error);
-      return merged;
+        body: JSON.stringify({ business_id: _activeBizId, id: "empColOrder_v1", key: "empColOrder_v1", value: JSON.stringify(mergedToPost) })
+      }).then(async r => {
+        if (!r.ok) {
+          const txt = await r.text().catch(()=>"");
+          console.error("[empColOrder] POST 실패:", r.status, txt);
+          alert("직원 순서 저장 실패: " + r.status + "\n" + (txt||"네트워크 또는 권한 문제"));
+        }
+      }).catch(err => {
+        console.error("[empColOrder] POST error:", err);
+        alert("직원 순서 저장 네트워크 오류: " + (err?.message||err));
+      });
     });
   }, []);
   // sessionStorage 기반 임시 순서 override 트리거용 (남직원 이동 시 사용)
@@ -1656,38 +1737,71 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     if (visIdx < 0) return;
     const newIdx = visIdx + dir;
     if (newIdx < 0 || newIdx >= visibleIds.length) return;
-    // 모든 직원 통일 처리 — 보이는 순서(visibleIds) 그대로 swap → empColOrder DB 저장
-    // (이전엔 남직원 끼면 sessionStorage dayOrder로 우회했는데 두 시스템 충돌로 swap이 무시되던 버그)
-    // 같은 selDate에 남아있던 dayOrder가 새 empColOrder를 덮지 않도록 함께 정리
     try { sessionStorage.removeItem(`bliss_day_order_${selDate}_${branchId}`); } catch {}
     setEmpColOrder(prev => {
-      const newVisibleOrder = [...visibleIds];
-      [newVisibleOrder[visIdx], newVisibleOrder[newIdx]] = [newVisibleOrder[newIdx], newVisibleOrder[visIdx]];
-      // 보이지 않는 직원(휴무·타지점 이동 등)은 prev order의 뒤쪽에 그대로 유지
-      const visibleSet = new Set(visibleIds);
+      // 룰: 사용자가 visible에서 두 칼럼 swap → 저장된 order에서도 그 두 ID만 위치 교환.
+      // hidden(휴무·타지점) 직원은 원래 위치 유지 → 다른 날 갔다가 돌아와도 visible 상대순서 보존.
+      const a = visibleIds[visIdx];
+      const b = visibleIds[newIdx];
       const prevList = Array.isArray(prev[branchId]) ? prev[branchId] : [];
-      const hidden = prevList.filter(id => !visibleSet.has(id));
-      return {...prev, [branchId]: [...newVisibleOrder, ...hidden]};
+      let next = [...prevList];
+      // newcomer(아직 order에 없는 visible 직원)는 visible 인접한 stored 직원 옆에 끼워넣음
+      visibleIds.forEach((vid, vi) => {
+        if (next.indexOf(vid) >= 0) return;
+        let prevStoredIdx = -1;
+        for (let i = vi - 1; i >= 0; i--) {
+          const idx = next.indexOf(visibleIds[i]);
+          if (idx >= 0) { prevStoredIdx = idx; break; }
+        }
+        let nextStoredIdx = -1;
+        for (let i = vi + 1; i < visibleIds.length; i++) {
+          const idx = next.indexOf(visibleIds[i]);
+          if (idx >= 0) { nextStoredIdx = idx; break; }
+        }
+        const insertAt = prevStoredIdx >= 0 ? prevStoredIdx + 1 : (nextStoredIdx >= 0 ? nextStoredIdx : next.length);
+        next.splice(insertAt, 0, vid);
+      });
+      // 이제 a,b 모두 next에 있음 → 위치 swap (hidden 직원은 그대로 유지)
+      const ai = next.indexOf(a);
+      const bi = next.indexOf(b);
+      if (ai >= 0 && bi >= 0) {
+        [next[ai], next[bi]] = [next[bi], next[ai]];
+      }
+      return {...prev, [branchId]: next};
     });
   };
   const allRoomsRef = React.useRef([]);
   // render 중 setState 금지 → 미시딩 대상은 모아뒀다가 effect에서 일괄 반영
   const pendingSeedRef = React.useRef({});
   const sortStaffByOrder = (staffList, branchId) => {
-    // empColOrder 자동 추가 제거 — user 수동 변경만 (룰: 코드는 순서 안 건드림)
-    // empColOrder에 없는 직원은 끝에 임시 표시 (그 일자만, DB는 변경 안 함)
-    const order = empColOrder[branchId];
-    if (!order || order.length === 0) return staffList;
-    const sorted = [];
-    for (const id of order) {
-      const e = staffList.find(s => s.id === id);
-      if (e) sorted.push(e);
+    // 룰:
+    //  - empColOrder가 있으면 사용자 ◀▶ 순서 절대 안 건드림 (강제 정렬 X)
+    //  - empColOrder에 없는 직원(첫 근무표·새 이동)만 자동 끼워넣기:
+    //      · base 비남자/guest 비남자 → 남직원 직전에
+    //      · 남직원 → 항상 끝
+    //  예: 경아·지은·도윤 + 민정 이동 → 경아·지은·민정·도윤
+    const isBase = (e) => {
+      const emp = BASE_EMP_LIST.find(b => b.id === e.id);
+      return emp && emp.branch_id === branchId;
+    };
+    const isMaleEmp = (e) => {
+      const emp = empList.find(x => x.id === e.id);
+      return emp?.isMale === true || emp?.gender === 'M';
+    };
+    // 룰:
+    //  - 디폴트(empColOrder 비어있음): 비남자 base → guest → 남직원 순서로 자동 배치
+    //  - 유저 ◀▶ 변경(empColOrder 있음): 그 순서 그대로 절대 안 건드림. newcomers는 ordered 끝.
+    const order = Array.isArray(empColOrder[branchId]) ? empColOrder[branchId] : [];
+    if (order.length === 0) {
+      const nonMaleBase = staffList.filter(e => isBase(e) && !isMaleEmp(e));
+      const guests = staffList.filter(e => !isBase(e) && !isMaleEmp(e));
+      const males = staffList.filter(e => isMaleEmp(e));
+      return [...nonMaleBase, ...guests, ...males];
     }
-    // empColOrder에 없는 직원 (예: 신규 타지점이동) — 끝에 추가
-    for (const e of staffList) {
-      if (!sorted.find(s => s.id === e.id)) sorted.push(e);
-    }
-    return sorted;
+    const orderSet = new Set(order);
+    const ordered = order.map(id => staffList.find(e => e.id === id)).filter(Boolean);
+    const newcomers = staffList.filter(e => !orderSet.has(e.id));
+    return [...ordered, ...newcomers];
   };
   // pendingSeedRef effect 제거 — empColOrder 자동 갱신 X (룰)
 
@@ -1725,35 +1839,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         if (ds === "휴무" || ds === "휴무(꼭)" || ds === "무급") return false;
         return true;
       });
-      // 커스텀 순서가 있으면 그대로, 없으면 base→guest 순서
-      const hasCustomOrder = empColOrder[br.id]?.length > 0;
-      let orderedStaff;
-      if (hasCustomOrder) {
-        orderedStaff = sortStaffByOrder(filteredStaff, br.id);
-      } else {
-        const baseStaff = filteredStaff.filter(e => {
-          const emp = BASE_EMP_LIST.find(b=>b.id===e.id);
-          return emp && emp.branch_id === br.id;
-        });
-        const guestStaff = filteredStaff.filter(e => {
-          const emp = BASE_EMP_LIST.find(b=>b.id===e.id);
-          return !emp || emp.branch_id !== br.id;
-        });
-        orderedStaff = [...baseStaff, ...guestStaff];
-      }
-      // 일자별 override (sessionStorage) — user가 그 날짜만 순서 변경한 경우 우선 적용
-      // 남직원 자동 정렬 제거 (룰: 타임라인 순서는 코드가 자동 변경 안 함)
-      try {
-        const dayKey = `bliss_day_order_${selDate}_${br.id}`;
-        const raw = sessionStorage.getItem(dayKey);
-        const dayOrder = raw ? JSON.parse(raw) : null;
-        if (Array.isArray(dayOrder) && dayOrder.length > 0) {
-          const byId = new Map(orderedStaff.map(e => [e.id, e]));
-          const pinned = dayOrder.map(id => byId.get(id)).filter(Boolean);
-          const rest = orderedStaff.filter(e => !dayOrder.includes(e.id));
-          orderedStaff = [...pinned, ...rest];
-        }
-      } catch(e) {}
+      // 정렬: sortStaffByOrder가 empColOrder만 적용 (자동 정렬 일체 없음, 근무표 순서 그대로)
+      const orderedStaff = sortStaffByOrder(filteredStaff, br.id);
       staffRooms = orderedStaff.map(e => {
         const segments = getEmpActiveSegments(e.id, selDate, br.id);
         const firstSeg = segments && segments[0];
@@ -1913,12 +2000,12 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     const sc = dbTl.current.sc;
     return sc ? {...STATUS_CLR_DEFAULT,...sc} : {...STATUS_CLR_DEFAULT};
   });
-  // 매출 강조 — 매출 총합이 min 이상이면 블록 테두리/그림자에 color 적용. min=0 이면 비활성
+  // 매출 강조 — 매출 총합이 min 이상 OR 매출에 svcIds/catIds 매칭 시 블록 테두리/그림자에 color 적용
   const [salesHighlight, setSalesHighlightRaw] = useState(() => {
     const hl = dbTl.current.hl;
     return (hl && typeof hl === "object")
-      ? { min: Number(hl.min)||0, color: hl.color || "#FFD700", mode: hl.mode || "border" }
-      : { min: 0, color: "#FFD700", mode: "border" };
+      ? { min: Number(hl.min)||0, color: hl.color || "#FFD700", mode: hl.mode || "border", svcIds: Array.isArray(hl.svcIds)?hl.svcIds:[], catIds: Array.isArray(hl.catIds)?hl.catIds:[] }
+      : { min: 0, color: "#FFD700", mode: "border", svcIds: [], catIds: [] };
   });
   // 항목별 전 지점 공통 적용 — 각 설정 키를 개별 토글
   // sharedKeys: {sh: true, eh: false, rh: true, cw:true, tu:true, fs:false, op:false, sc:false}
@@ -2012,6 +2099,38 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     });
     return m;
   }, [data?.sales]);
+  // 강조 시술 매칭 — selDate sale_details fetch → reservationId → Set<svc.id>
+  const [saleDetailsByResId, setSaleDetailsByResId] = useState(() => new Map());
+  useEffect(() => {
+    const hlSvcOn = (salesHighlight.svcIds||[]).length > 0 || (salesHighlight.catIds||[]).length > 0;
+    if (!hlSvcOn) { setSaleDetailsByResId(new Map()); return; }
+    const todaysSales = (data?.sales||[]).filter(s => (s.date||s.saleDate) === selDate);
+    const saleIds = todaysSales.map(s => s.id).filter(Boolean);
+    if (saleIds.length === 0) { setSaleDetailsByResId(new Map()); return; }
+    const idsParam = saleIds.map(id => `"${id}"`).join(',');
+    fetch(`${SB_URL}/rest/v1/sale_details?sale_id=in.(${idsParam})&select=sale_id,service_name`, {
+      headers: { apikey: SB_KEY, Authorization: 'Bearer '+SB_KEY, 'Cache-Control':'no-cache' }, cache:'no-store'
+    }).then(r=>r.json()).then(rows=>{
+      if (!Array.isArray(rows)) return;
+      const saleToRes = new Map(todaysSales.map(s => [s.id, s.reservationId]));
+      const svcByName = new Map((data?.services||[]).map(s => [s.name, s]));
+      const m = new Map();
+      rows.forEach(r => {
+        const sn = r.service_name || '';
+        // [보유권 사용]/[보유권 차감]/[할인]/[체험단] 등 prefix 행은 실제 판매가 아니므로 강조 매칭에서 제외
+        if (/^\[/.test(sn)) return;
+        const rid = saleToRes.get(r.sale_id);
+        if (!rid) return;
+        const svc = svcByName.get(sn);
+        if (!svc) return;
+        if (!m.has(rid)) m.set(rid, new Set());
+        m.get(rid).add(svc.id);
+      });
+      setSaleDetailsByResId(m);
+    }).catch(()=>{});
+  }, [selDate, salesHighlight.svcIds?.join(','), salesHighlight.catIds?.join(','), data?.sales, data?.services]);
+  // svc.id → svc lookup
+  const svcById = useMemo(() => new Map((data?.services||[]).map(s => [s.id, s])), [data?.services]);
   // Sync status colors to localStorage for other components using getStatusClr()
   useEffect(() => { try{localStorage.setItem("tl_sc",JSON.stringify(statusClr))}catch(e){} }, [statusClr]);
   // 예약 endTime이 설정된 종료시간을 초과하면 자동 확장
@@ -2185,7 +2304,13 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     if (!item.reservationId) item.reservationId = "manual_" + (item.id || uid());
     // 고객 미연결 + 이름 있으면 자동 신규 등록 (직원이 "신규" 체크 잊어도 누락 방지)
     // — 같은 전화번호 중복은 기존 고객 연결 confirm으로 별도 보호 (아래 dup 체크)
-    if (!item.custId && item.custName) {
+    // — 내부일정(type='schedule') 또는 cust_name이 내부일정 키워드(청소/오픈/재고 등)이면 customers INSERT 차단 (2026-05-05)
+    const _isScheduleType = item.type === 'schedule' || item.isSchedule === true;
+    const _custNameTrim = (item.custName||'').trim();
+    const _isInternalKw = /^(청소|오픈|재고|전일|아침|휴게|이동|바디도움|메모|점심|식사|★필수★|★필수|예약불가|예약막기|블락|블록|오늘의공부|연습|공부)(\s|\(|$)/.test(_custNameTrim) || /★/.test(_custNameTrim);
+    // Ctrl 드래그 복사 / 커플룸 자동 동반자 — "원본 동반자N" 패턴은 cust_id 비워두는 게 의도 (매출 등록 시 진짜 친구 고객 매칭)
+    const _isCompanionAuto = /\s동반자\d+\s*$/.test(_custNameTrim);
+    if (!item.custId && item.custName && !_isScheduleType && !_isInternalKw && !_isCompanionAuto) {
       const normPhone = (item.custPhone || "").replace(/[^0-9]/g, "");
       // 1) 로컬 캐시 검사
       let dup = normPhone ? (data?.customers||[]).find(c => (c.phone||"").replace(/[^0-9]/g,'') === normPhone) : null;
@@ -2395,6 +2520,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
 
   // ── Delete with repeat options ──
   const [deletePopup, setDeletePopup] = useState(null);
+  // 일반 예약 삭제 확인 모달 (모바일 native confirm 미표시 대응 — 커스텀 모달)
+  const [confirmDelete, setConfirmDelete] = useState(null);
   const [alimtalkConfirm, setAlimtalkConfirm] = useState(null); // {item} 저장 후 예약안내 발송 여부 팝업
 
   const handleDeleteRequest = (block) => {
@@ -2423,10 +2550,12 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     // 내부일정(isSchedule)은 반복이어도 묻지 않고 바로 삭제
     if (hasRepeat && !block.isSchedule) {
       setDeletePopup(block);
-    } else {
-      // 일반 예약 삭제는 확인창 1회 (내부일정은 묻지 않고 바로 — 기존 정책 유지)
-      if (!block.isSchedule && !confirm("이 예약을 삭제하시겠습니까?")) return;
+    } else if (block.isSchedule) {
+      // 내부일정은 확인 없이 바로 삭제 (기존 정책 유지)
       handleDelete(block.id);
+    } else {
+      // 일반 예약은 커스텀 확인 모달 (모바일에서 native confirm 미표시 이슈 대응)
+      setConfirmDelete(block);
     }
   };
 
@@ -2662,6 +2791,29 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
 
     const getPoint = (ev) => isTouch ? ev.touches[0] : ev;
 
+    // 자동 스크롤 RAF 루프 — 손가락이 멈춰도 화면 가장자리에 머물면 스크롤 진행
+    const _autoScrollState = { pt: null };
+    let _autoScrollRAF = null;
+    const _autoScrollLoop = () => {
+      const pt = _autoScrollState.pt;
+      if (!pt || !sr) { _autoScrollRAF = null; return; }
+      const rect = sr.getBoundingClientRect();
+      const isMob = window.innerWidth <= 768;
+      const edgeZone = isMob ? 70 : 50;
+      const stepY = isMob ? 10 : 12;
+      const stepX = isMob ? 12 : 16;
+      let moved = false;
+      if (pt.clientY - rect.top < edgeZone) { sr.scrollTop -= stepY; moved = true; }
+      if (rect.bottom - pt.clientY < edgeZone) { sr.scrollTop += stepY; moved = true; }
+      if (pt.clientX - rect.left < edgeZone) { sr.scrollLeft -= stepX; moved = true; }
+      if (rect.right - pt.clientX < edgeZone) { sr.scrollLeft += stepX; moved = true; }
+      _autoScrollRAF = requestAnimationFrame(_autoScrollLoop);
+    };
+    const _stopAutoScroll = () => {
+      if (_autoScrollRAF) { cancelAnimationFrame(_autoScrollRAF); _autoScrollRAF = null; }
+      _autoScrollState.pt = null;
+    };
+
     const onDragMove = (ev) => {
       const pt = getPoint(ev);
       if (!pt) return;
@@ -2718,21 +2870,16 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         x: colLeftInScroll - sr.scrollLeft, y: newTopV - rect.top,
         clientX: newLeftV, clientY: newTopV,
       });
-      // 자동 스크롤: 모바일은 edgeZone 줄이고 스텝 작게 (위아래 핑퐁 완화)
-      const isMobile = window.innerWidth <= 768;
-      const edgeZone = isMobile ? 20 : 40;
-      const stepY = isMobile ? 4 : 8;
-      const stepX = isMobile ? 6 : 12;
-      if (pt.clientY - rect.top < edgeZone) sr.scrollTop -= stepY;
-      if (rect.bottom - pt.clientY < edgeZone) sr.scrollTop += stepY;
-      if (pt.clientX - rect.left < edgeZone) sr.scrollLeft -= stepX;
-      if (rect.right - pt.clientX < edgeZone) sr.scrollLeft += stepX;
+      // 자동 스크롤 — RAF 루프로 위임 (손가락 멈춰도 가장자리면 스크롤 진행)
+      _autoScrollState.pt = pt;
+      if (!_autoScrollRAF) _autoScrollRAF = requestAnimationFrame(_autoScrollLoop);
     };
 
     const onDragUp = () => {
       document.removeEventListener(isTouch ? "touchmove" : "mousemove", onDragMove);
       document.removeEventListener(isTouch ? "touchend" : "mouseup", onDragUp);
       document.body.style.cursor = "";
+      _stopAutoScroll();
       if (isDragging.current && dragSnapRef.current) {
         let snap = dragSnapRef.current;
         const orig = origBlockPos.current;
@@ -2777,8 +2924,10 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             }).length : 0;
             const newCustName = baseName ? `${baseName} 동반자${sameBaseCount}` : "";
             // group_id 자동 부여 — 원본에 없으면 새로 만들고 원본도 같은 group_id로 UPDATE
-            let _grpId = block.reservationGroupId;
-            if (!_grpId) {
+            // 내부일정(isSchedule)은 동반자 개념이 없으므로 group_id 부여 안 함
+            const _isSchedCopy = !!block.isSchedule;
+            let _grpId = _isSchedCopy ? null : block.reservationGroupId;
+            if (!_isSchedCopy && !_grpId) {
               _grpId = "rg_" + uid();
               sb.insert("reservation_groups", toDb("reservation_groups", {
                 id: _grpId, bid: block.bid || "", leaderCustId: block.custId || "",
@@ -3231,7 +3380,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           ? "네이버 세션 만료 — 새 예약이 앱에 반영되지 않아요"
           : `마지막 스크래핑: ${lastScrapedStr} — 12시간 이상 동기화 안 됨`;
         return <div style={{background:"#fff3e0",borderBottom:"2px solid #FF6D00",padding:"8px 14px",display:"flex",alignItems:"center",gap:8,flexShrink:0,width:"100%",boxSizing:"border-box"}}>
-          <span style={{fontSize:18}}>⚠️</span>
+          <I name="alert" size={18} style={{color:"#E65100"}}/>
           <div style={{flex:1,minWidth:0}}>
             <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#E65100"}}>네이버 스크래핑 경고</span>
             <span style={{fontSize:T.fs.xxs,color:"#BF360C",marginLeft:8}}>{msg}</span>
@@ -3239,8 +3388,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           <span style={{fontSize:T.fs.xxs,color:"#E65100",fontWeight:T.fw.bolder,flexShrink:0,whiteSpace:"nowrap"}}>login_local.py 실행 필요</span>
         </div>;
       })()}
-      {/* Unanswered Messages Alert — 확정대기 배너 스타일 통일 */}
-      {unreadMsgCount > 0 && (()=>{
+      {/* Unanswered Messages Alert — 1분 이상 미응답만 배너 (즉시 응답 중인 상담 제외). 패널 열려있으면 hide */}
+      {unreadDelayedCount > 0 && !messagesPanelOpen && (()=>{
         const CH_NAME = {naver:"네이버",kakao:"카톡",instagram:"인스타",whatsapp:"왓츠앱",telegram:"텔레"};
         // account_id → 지점명 매핑 (네이버는 naverAccountId, 인스타는 instagramAccountId)
         const acc2branch = {};
@@ -3273,10 +3422,10 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             }
             setPage&&setPage("messages");
           }}>
-          <span style={{fontSize:T.fs.xl}}>💬</span>
+          <I name="msgSq" size={18} style={{color:"#0369A1"}}/>
           <div style={{flex:1,minWidth:0}}>
-            <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#0369A1"}}>답변 안 한 메시지 {unreadMsgCount}건</span>
-            <span style={{fontSize:T.fs.xxs,color:"#0369A1",marginLeft:8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{preview}{unreadMsgCount>3?` 외 ${unreadMsgCount-3}건`:""}</span>
+            <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#0369A1"}}>답변 안 한 메시지 {unreadDelayedCount}건</span>
+            <span style={{fontSize:T.fs.xxs,color:"#0369A1",marginLeft:8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{preview}{unreadDelayedCount>3?` 외 ${unreadDelayedCount-3}건`:""}</span>
           </div>
           <span style={{fontSize:T.fs.xxs,color:"#0369A1",fontWeight:T.fw.bold,flexShrink:0}}>확인 <I name="chevR" size={11} color="#0369A1"/></span>
         </div>;
@@ -3379,7 +3528,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
               }
             }, 300);
           }}>
-          <span style={{fontSize:T.fs.xl}}>🆕</span>
+          <I name="sparkles" size={18} style={{color:"#7C3AED"}}/>
           <div style={{flex:1,minWidth:0}}>
             <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#7C3AED"}}>신규고객 {newCustList.length}건</span>
             <span style={{fontSize:T.fs.xxs,color:"#7C3AED",marginLeft:8}}>
@@ -3468,7 +3617,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           })}
         </div>
         {/* 📣 팀채팅 공지 말풍선 — 7-day 버튼 오른쪽 빈 공간에 배치 */}
-        <TopAnnounceBubble/>
+        {/* TopAnnounceBubble 제거 — AnnouncesMarquee로 통합 (AppShell 상단) */}
       </div>
 
 
@@ -3851,12 +4000,12 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                 savedWh = empBaseWh || branchHours || {start:"10:00",end:"21:00"};
                               }
                               const wh = empMovePopup.draftWh || savedWh;
-                              // 드롭다운 범위: 영업시간(openTime/closeTime) 기준 — defaultWorkEnd가 아닌 closeTime을 상한선으로 (직원 잔업 가능)
+                              // 드롭다운 범위: 영업시간(openTime/closeTime) ±1시간 — 일찍 출근(예: 매장 11시 시작이지만 고객이 10시 예약)·잔업 케이스 모두 커버
                               const _opTimes = (data?.branches||[]).find(b=>b.id===room.branch_id)?.timelineSettings;
                               const _opStart = _opTimes?.openTime || branchHours?.start || "06:00";
                               const _opEnd   = _opTimes?.closeTime || branchHours?.end || "23:00";
-                              const _openH = parseInt(_opStart.split(":")[0]);
-                              const _closeH = parseInt(_opEnd.split(":")[0]);
+                              const _openH = Math.max(0, parseInt(_opStart.split(":")[0]) - 1);
+                              const _closeH = Math.min(23, parseInt(_opEnd.split(":")[0]) + 1);
                               const _spanH = Math.max(1, _closeH - _openH + 1); // closeH 정시까지 포함
                               // closeH+1:00까지 포함 (예: closeTime=21:00 → 마지막 옵션 22:00) — 직원 잔업 끝 시각 선택 가능
                               const hours = Array.from({length:_spanH*12 + 1},(_,i)=>{const h=Math.floor(i/12)+_openH,m=(i%12)*5;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;});
@@ -3921,7 +4070,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                             const currentStaffIds = new Set([room.staffId]);
                             const candidates = BASE_EMP_LIST.filter(e => !currentStaffIds.has(e.id));
                             return <div style={{padding:"8px 12px",borderBottom:"1px solid "+T.border,background:"#FFF8E1"}}>
-                              <div style={{fontSize:10,fontWeight:700,color:"#F57F17",marginBottom:4}}>📋 담당자 교체 <span style={{color:T.textMuted,fontWeight:500}}>(예약 {rsvList.length}건)</span></div>
+                              <div style={{fontSize:10,fontWeight:700,color:"#F57F17",marginBottom:4,display:"flex",alignItems:"center",gap:4}}><I name="clipboard" size={10}/>담당자 교체 <span style={{color:T.textMuted,fontWeight:500}}>(예약 {rsvList.length}건)</span></div>
                               <div style={{display:"flex",gap:4}}>
                                 <select value={empMovePopup.replaceWith||""} onChange={e=>setEmpMovePopup(p=>({...p,replaceWith:e.target.value}))}
                                   style={{flex:1,fontSize:11,padding:"4px 6px",borderRadius:6,border:"1px solid #ffb74d",fontFamily:"inherit"}}>
@@ -4377,7 +4526,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                 </button>
                                 <button onClick={commitDraft} disabled={!isDirty}
                                   style={{flex:2,padding:"8px 0",borderRadius:8,border:"none",background:isDirty?T.primary:T.gray300,color:"#fff",fontSize:12,fontWeight:800,cursor:isDirty?"pointer":"not-allowed",fontFamily:"inherit"}}>
-                                  {isDirty ? "💾 저장" : "변경 없음"}
+                                  {isDirty ? <span style={{display:"inline-flex",alignItems:"center",gap:4}}><I name="check" size={12}/>저장</span> : "변경 없음"}
                                 </button>
                               </div>
                             </>;
@@ -4821,7 +4970,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                     const h = (blockDur / timeUnit) * rowH;
                     // 서비스태그 색상 우선 적용
                     const tags = data?.serviceTags || [];
-                    const tagColor = block.type==="reservation" && block.selectedTags?.length
+                    const tagColor = (block.type==="reservation" || block.type==="schedule") && block.selectedTags?.length
                       ? (block.selectedTags.map(tid=>tags.find(t=>t.id===tid)).find(t=>t?.color)?.color || "")
                       : "";
                     // 취소/대기 상태 처리 — naver_cancelled와 일반 cancelled 모두 취소 스타일 적용
@@ -4886,7 +5035,14 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                         onContextMenu={e=>e.preventDefault()}
                         style={(()=>{
                           const _saleAmt = salesByResId.get(block.id) || 0;
-                          const _hlOn = salesHighlight.min > 0 && _saleAmt >= salesHighlight.min && !isNaverCancelled;
+                          const _hlByMin = salesHighlight.min > 0 && _saleAmt >= salesHighlight.min;
+                          const _hlSvcSet = saleDetailsByResId.get(block.id);
+                          const _hlSvcOn = (salesHighlight.svcIds||[]).length > 0 || (salesHighlight.catIds||[]).length > 0;
+                          const _hlBySvc = _hlSvcOn && _hlSvcSet && [..._hlSvcSet].some(sid =>
+                            (salesHighlight.svcIds||[]).includes(sid) ||
+                            (salesHighlight.catIds||[]).includes(svcById.get(sid)?.cat)
+                          );
+                          const _hlOn = (_hlByMin || _hlBySvc) && !isNaverCancelled;
                           const _hlC = salesHighlight.color || "#FFD700";
                           const _hlMode = salesHighlight.mode || "border";
                           // 🔴 외부 하이라이트 (메시지함/확정대기 클릭) — 빨강 테두리 깜빡임
@@ -4908,8 +5064,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                           opacity:isDrag?0.35:1,userSelect:"none",WebkitUserSelect:"none",MozUserSelect:"none",msUserSelect:"none",WebkitTouchCallout:"none",touchAction:"pan-x pan-y"};
                         })()}
                         className="tl-block">
-                        {/* 동반자 묶음 마크 — 같은 reservation_group_id 멤버 2명 이상이면 왼쪽 위에 색 마크 */}
+                        {/* 동반자 묶음 마크 — 같은 reservation_group_id 멤버 2명 이상이면 왼쪽 위에 색 마크. 내부일정은 제외 */}
                         {(() => {
+                          if (block.isSchedule) return null;
                           const _grpId = block.reservationGroupId;
                           if (!_grpId) return null;
                           const _grpMembers = (data?.reservations||[]).filter(r => r.reservationGroupId === _grpId && r.date === block.date);
@@ -4946,7 +5103,12 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                               {(() => {
                                 const liveCust = block.custId ? ((data?.customers||[]).find(c=>c.id===block.custId) || custInfoMap[block.custId]) : null;
                                 const g = block.custGender || liveCust?.gender || "";
-                                const displayName = liveCust?.name || block.custName;
+                                let displayName = liveCust?.name || block.custName || "";
+                                // 영문 ALL-CAPS 이름 → 타이틀케이스 정규화 (시각 일관성)
+                                // 한글이 섞여있으면 그대로. 순수 영문 + 모두 대문자일 때만 변환.
+                                if (displayName && !/[가-힣]/.test(displayName) && /^[A-Z\s.\-']+$/.test(displayName)) {
+                                  displayName = displayName.toLowerCase().replace(/(^|\s|-)([a-z])/g, (_, sep, ch) => sep + ch.toUpperCase());
+                                }
                                 const custNum = liveCust?.custNum || liveCust?.cust_num || "";
                                 const _cp = Number(liveCust?.cancelPenaltyCount || 0);
                                 const _ns = Number(liveCust?.noShowCount || 0);
@@ -5013,7 +5175,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                             </div>;
                           })()}
                         </>}
-                        {block.type==="reservation" && block.isSchedule && (() => {
+                        {(block.type==="reservation" || block.type==="schedule") && block.isSchedule && (() => {
                           const tagNames = (block.selectedTags||[]).map(tid=>{const tg=tags.find(t=>t.id===tid);return tg?.name}).filter(Boolean).join(", ");
                           return tagNames ? <div style={{fontWeight:T.fw.normal,color:T.text,fontSize:blockFs}}>{tagNames}</div> : null;
                         })()}
@@ -5055,7 +5217,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       {/* 구글 캘린더식 Floating Drag Preview — 커서 따라 이동, scale 1.03, 강한 그림자 */}
       {dragBlock && dragPos && dragPos.clientX != null && (() => {
         const tags = data?.serviceTags || [];
-        const tagColor = dragBlock.type==="reservation" && dragBlock.selectedTags?.length
+        const tagColor = (dragBlock.type==="reservation" || dragBlock.type==="schedule") && dragBlock.selectedTags?.length
           ? (dragBlock.selectedTags.map(tid=>tags.find(t=>t.id===tid)).find(t=>t?.color)?.color || "")
           : "";
         const stClr = dragBlock.type==="reservation" && !dragBlock.isSchedule && statusClr[dragBlock.status];
@@ -5191,7 +5353,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       {/* 알람 발화 토스트 */}
       {alarmFired && <div style={{position:"fixed",top:60,left:"50%",transform:"translateX(-50%)",background:"#FEF3C7",border:"2px solid #FBBF24",color:"#92400E",padding:"16px 20px",borderRadius:12,zIndex:9999,boxShadow:"0 8px 32px rgba(0,0,0,0.2)",minWidth:280,maxWidth:400,animation:"pendingBlink 1.5s infinite"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
-          <span style={{fontSize:24}}>🔔</span>
+          <I name="bell" size={24} style={{color:"#92400E"}}/>
           <div style={{flex:1}}>
             <div style={{fontWeight:700,fontSize:15}}>{alarmFired.alarm.title||"알람"}</div>
             <div style={{fontSize:12,color:"#78350F"}}>{alarmFired.alarm.time}</div>
@@ -5254,6 +5416,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         statusClr={statusClr} setStatusClr={setStatusClr}
         salesHighlight={salesHighlight} setSalesHighlight={setSalesHighlight}
         tlSharedKeys={tlSharedKeys} setTlSharedKey={setTlSharedKey}
+        data={data}
       />
 
       {/* 알람 팝업 */}
@@ -5276,6 +5439,23 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           <div style={{padding:"0 24px 20px",textAlign:"center"}}>
             <Btn variant="primary" onClick={()=>_mc(()=>setAlarmPopup(null))}
               style={{width:"100%",padding:12,fontSize:T.fs.md,background:T.orange,borderRadius:T.radius.md}}>확인</Btn>
+          </div>
+        </div>
+      </div>}
+
+      {/* 일반 예약 삭제 확인 모달 (모바일 친화) */}
+      {confirmDelete && <div className="ov" onClick={()=>_mc(()=>setConfirmDelete(null))} style={{zIndex:9999}}>
+        <div onClick={e=>e.stopPropagation()} style={{background:T.bgCard,borderRadius:T.radius.lg,width:"90%",maxWidth:340,
+          boxShadow:"0 16px 48px rgba(0,0,0,.25)",animation:"slideUp .6s cubic-bezier(.22,1,.36,1)",overflow:"hidden"}}>
+          <div style={{padding:"20px 24px 16px"}}>
+            <div style={{fontSize:T.fs.md,fontWeight:T.fw.bolder,color:T.text,marginBottom:6}}>예약 삭제</div>
+            <div style={{fontSize:T.fs.sm,color:T.textSub,lineHeight:1.5}}>이 예약을 삭제하시겠습니까?<br/>이 작업은 되돌릴 수 없습니다.</div>
+          </div>
+          <div style={{display:"flex",gap:8,padding:"0 16px 16px"}}>
+            <button onClick={()=>_mc(()=>setConfirmDelete(null))}
+              style={{flex:1,padding:"12px",fontSize:T.fs.sm,fontWeight:T.fw.bold,border:"1px solid "+T.border,borderRadius:T.radius.md,background:T.bgCard,color:T.textSub,cursor:"pointer",fontFamily:"inherit"}}>취소</button>
+            <button onClick={()=>{ const blk = confirmDelete; setConfirmDelete(null); handleDelete(blk.id); }}
+              style={{flex:1,padding:"12px",fontSize:T.fs.sm,fontWeight:T.fw.bolder,border:"none",borderRadius:T.radius.md,background:T.danger,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>삭제</button>
           </div>
         </div>
       </div>}
@@ -5331,7 +5511,12 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         });
         const allBlocked = visibleIds.length > 0 && visibleIds.every(iid => slotBitOf(iid) === '0');
         const anyOpen = visibleIds.some(iid => slotBitOf(iid) === '1');
+        // 막기/풀기 변경 권한 — 본인 지점 + 연계지점(branchGroups)만. 브랜드(isMaster)도 자기 그룹만.
+        const canEditBlock = blockSlotPopup.branchId
+          ? (accessibleBids||[]).includes(blockSlotPopup.branchId)
+          : false;
         const toggleOne = async (itemId, currentlyBlocked) => {
+          if (!canEditBlock) { alert('타지점이라 막기/풀기 변경은 불가합니다. 조회만 가능합니다.'); return; }
           const newBit = currentlyBlocked ? '1' : '0';
           // 옵티미스틱
           setNaverBlockState(prev => {
@@ -5383,7 +5568,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             <div onClick={()=>setBlockSlotPopup(null)} style={{position:"fixed",inset:0,zIndex:9998,background:"transparent"}}/>
             <div onClick={e=>e.stopPropagation()} style={{position:"fixed",left:popX,top:popY,zIndex:9999,background:"#fff",borderRadius:12,boxShadow:"0 8px 32px rgba(0,0,0,.18)",padding:14,minWidth:280,maxWidth:320,fontSize:13}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,gap:8}}>
-                <div style={{fontWeight:800,fontSize:14,flex:1}}>🚫 네이버 예약 막기 · {blockSlotPopup.time}</div>
+                <div style={{fontWeight:800,fontSize:14,flex:1,display:"flex",alignItems:"center",gap:6}}><I name="lock" size={14}/>네이버 예약 막기 · {blockSlotPopup.time}</div>
                 <a href={`https://partner.booking.naver.com/bizes/${blockSlotPopup.bizId}/simple-management`}
                    target="_blank" rel="noopener noreferrer" title="네이버 예약관리 열기"
                    onClick={e=>e.stopPropagation()}
@@ -5396,6 +5581,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                 <div style={{color:"#999",padding:"12px 0",textAlign:"center"}}>로딩 중…</div>
               ) : (
                 <>
+                  {!canEditBlock && <div style={{padding:"6px 8px",marginBottom:8,background:"#FEF3C7",border:"1px solid #FDE68A",borderRadius:6,fontSize:11,color:"#92400E",fontWeight:600,textAlign:"center"}}>👁 타지점 — 조회 전용 (변경 불가)</div>}
                   <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
                     {itemIds.map(iid => {
                       const cur = itemsState[iid];
@@ -5403,7 +5589,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                       const isBlocked = bit === '0';
                       const isInactive = cur.is_active === false;
                       const isOutOfHours = bit === '-' || bit === undefined; // 그 슬롯에 노출 안 됨
-                      const disabled = isInactive || isOutOfHours;
+                      const disabled = isInactive || isOutOfHours || !canEditBlock;
                       const bg = isInactive ? "#F3F4F6" : (isOutOfHours ? "#F9FAFB" : (isBlocked ? "#FEE2E2" : "#ECFDF5"));
                       return (
                         <div key={iid} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 8px",background:bg,borderRadius:6,gap:8,opacity:disabled?0.55:1}}>
@@ -5423,8 +5609,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                     })}
                   </div>
                   <div style={{display:"flex",gap:6,paddingTop:8,borderTop:"1px solid #eee"}}>
-                    <button onClick={()=>toggleAll(true)} disabled={allBlocked} style={{flex:1,padding:"7px 10px",fontSize:11,fontWeight:700,border:"1px solid #EF4444",borderRadius:6,background:allBlocked?"#FEE2E2":"#fff",color:"#EF4444",cursor:allBlocked?"default":"pointer",opacity:allBlocked?0.5:1}}>전체 막기</button>
-                    <button onClick={()=>toggleAll(false)} disabled={visibleIds.length>0 && visibleIds.every(iid => slotBitOf(iid) === '1')} style={{flex:1,padding:"7px 10px",fontSize:11,fontWeight:700,border:"1px solid #10B981",borderRadius:6,background:"#fff",color:"#10B981",cursor:"pointer"}}>전체 풀기</button>
+                    <button onClick={()=>toggleAll(true)} disabled={allBlocked || !canEditBlock} style={{flex:1,padding:"7px 10px",fontSize:11,fontWeight:700,border:"1px solid "+(canEditBlock?"#EF4444":"#D1D5DB"),borderRadius:6,background:(allBlocked||!canEditBlock)?"#F3F4F6":"#fff",color:canEditBlock?"#EF4444":"#9CA3AF",cursor:(allBlocked||!canEditBlock)?"not-allowed":"pointer",opacity:(allBlocked||!canEditBlock)?0.5:1}}>전체 막기</button>
+                    <button onClick={()=>toggleAll(false)} disabled={(visibleIds.length>0 && visibleIds.every(iid => slotBitOf(iid) === '1')) || !canEditBlock} style={{flex:1,padding:"7px 10px",fontSize:11,fontWeight:700,border:"1px solid "+(canEditBlock?"#10B981":"#D1D5DB"),borderRadius:6,background:!canEditBlock?"#F3F4F6":"#fff",color:canEditBlock?"#10B981":"#9CA3AF",cursor:!canEditBlock?"not-allowed":"pointer",opacity:!canEditBlock?0.5:1}}>전체 풀기</button>
                   </div>
                 </>
               )}
