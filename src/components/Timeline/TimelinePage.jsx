@@ -7,6 +7,7 @@ import { DEFAULT_CELL_TAGS } from '../Schedule/scheduleConstants'
 import { fromDb, toDb, resolveSystemIds, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS, _activeBizId } from '../../lib/db'
 import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, useSessionState, getCustPkgBranchInitial, naverConfirmBooking, naverPollNow } from '../../lib/utils'
 import I from '../common/I'
+import { transliterateName } from '../../lib/nameTransliterate'
 import TimelineModal from './ReservationModal'
 import QuickBookModal from './QuickBookModal'
 import TimelineSettings from './TimelineSettings'
@@ -2340,6 +2341,22 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           gender: item.custGender || "", visits: 0, lastVisit: null, memo: "",
           custNum: ""
         };
+        // 외국 이름이면 한글 음역 자동 채움 (Gemini 호출 — 비동기, 실패 시 빈 채로 INSERT)
+        const _isEnNew = item.custName && !/[가-힣]/.test(item.custName);
+        if (_isEnNew) {
+          let _gKey = '';
+          try {
+            const s = (data?.businesses || [])[0]?.settings;
+            const _p = typeof s === 'string' ? JSON.parse(s) : (s || {});
+            _gKey = _p?.gemini_key || '';
+          } catch {}
+          if (_gKey) {
+            try {
+              const _kor = await transliterateName(item.custName, _gKey);
+              if (_kor) newCust.nameKor = _kor;
+            } catch (e) { console.warn('[res save] transliterate fail', e); }
+          }
+        }
         setData(prev => ({ ...prev, customers: [...prev.customers, newCust] }));
         sb.insert("customers", toDb("customers", newCust)).catch(console.error);
       }

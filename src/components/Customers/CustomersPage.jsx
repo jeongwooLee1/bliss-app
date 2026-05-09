@@ -12,7 +12,7 @@ import { DetailedSaleForm } from '../Timeline/SaleForm'
 import { ColHeader as ExcelColHeader } from '../Sales/SalesGridPage'
 import ConsentModal from '../Consent/ConsentModal'
 import ConsentPanel from '../Consent/ConsentPanel'
-import { transliterateName, getCachedTransliteration } from '../../lib/nameTransliterate'
+import { transliterateName, transliterateBatch, getCachedTransliteration } from '../../lib/nameTransliterate'
 
 const uid = genId;
 const _mc = (fn) => { if(fn) fn(); };
@@ -514,6 +514,65 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       return parsed?.gemini_key || '';
     } catch { return ''; }
   })();
+
+  // ⚡ 외국 이름 일괄 음역
+  const [bulkKor, setBulkKor] = useState(null);
+  const runBulkKor = async () => {
+    if (!_geminiKey) {
+      setBulkKor({ error: 'Gemini API 키가 없어요. 관리설정 → AI 설정에서 등록해 주세요.' });
+      return;
+    }
+    setBulkKor({ loading: true, progress: '대상 고객 조회 중…' });
+    try {
+      // name_kor IS NULL + business_id 필터로 가져온 뒤 클라이언트에서 영문 이름만 필터
+      const rows = await sb.get('customers', `&business_id=eq.${_activeBizId}&name_kor=is.null&select=id,name,name_kor&limit=2000`);
+      const targets = (rows || []).filter(c => c.name && !/[가-힣]/.test(c.name));
+      if (targets.length === 0) {
+        setBulkKor({ items: [], totalScanned: rows?.length || 0 });
+        return;
+      }
+      setBulkKor({ loading: true, progress: `0/${targets.length} 음역 중…`, total: targets.length });
+      const map = await transliterateBatch(
+        targets.map(c => c.name),
+        _geminiKey,
+        { concurrency: 3, onProgress: (i, n) => setBulkKor({ loading: true, progress: `${i}/${n} 음역 중…`, total: n }) }
+      );
+      const items = targets
+        .map(c => ({ id: c.id, name: c.name, kor: map.get(String(c.name).trim()) || '' }))
+        .filter(x => x.kor);
+      setBulkKor({ items, totalScanned: targets.length });
+    } catch (e) {
+      console.error('[bulkKor] fail', e);
+      setBulkKor({ error: String(e?.message || e) });
+    }
+  };
+  const applyBulkKor = async () => {
+    if (!bulkKor?.items?.length) return;
+    if (!confirm(`${bulkKor.items.length}명의 고객에 한글 음역을 채웁니다. 진행할까요?`)) return;
+    setBulkKor(p => ({ ...p, applying: true }));
+    let ok = 0, fail = 0;
+    for (const it of bulkKor.items) {
+      try {
+        await sb.update('customers', it.id, { name_kor: it.kor });
+        ok++;
+      } catch (e) { fail++; console.error('update fail', it.id, e); }
+    }
+    if (setData) setData(prev => prev ? {
+      ...prev,
+      customers: (prev.customers||[]).map(c => {
+        const it = bulkKor.items.find(x => x.id === c.id);
+        if (!it) return c;
+        return { ...c, nameKor: it.kor };
+      })
+    } : prev);
+    setPagedCusts(prev => prev.map(c => {
+      const it = bulkKor.items.find(x => x.id === c.id);
+      if (!it) return c;
+      return { ...c, nameKor: it.kor };
+    }));
+    alert(`자동 음역 적용 완료 — 성공 ${ok}명${fail?`, 실패 ${fail}명`:''}`);
+    setBulkKor(null);
+  };
 
   const handleSave = async (item, isEdit) => {
     const normalized = {...item, phone: (item.phone || "").replace(/[^0-9]/g, "")};
@@ -1323,8 +1382,55 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
         </button>}
         <h2 className="page-title" style={{marginBottom:0}}>고객 관리</h2>
       </div>
-      <Btn variant="primary" onClick={()=>{setEditItem(null);setShowModal(true)}}><I name="plus" size={12}/> 고객 등록</Btn>
+      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+        <button onClick={runBulkKor} disabled={!!bulkKor?.loading || !!bulkKor?.applying}
+          title={!_geminiKey ? "Gemini 키가 필요해요 (관리설정 → AI 설정)" : "외국 이름 손님 한글 음역 일괄 채움"}
+          style={{padding:"6px 12px",fontSize:11,fontWeight:700,border:"1px solid #F59E0B",background:"#FEF3C7",color:"#B45309",borderRadius:T.radius.md,cursor:(bulkKor?.loading||bulkKor?.applying)?"wait":"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:4,whiteSpace:"nowrap",opacity:(bulkKor?.loading||bulkKor?.applying)?0.6:1}}>
+          ⚡ {bulkKor?.loading ? (bulkKor.progress||"평가 중…") : "외국 이름 일괄 음역"}
+        </button>
+        <Btn variant="primary" onClick={()=>{setEditItem(null);setShowModal(true)}}><I name="plus" size={12}/> 고객 등록</Btn>
+      </div>
     </div>
+    {bulkKor && !bulkKor.loading && <div style={{marginBottom:14,padding:"12px 14px",background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:10}}>
+      {bulkKor.error ? <div style={{color:T.danger,fontSize:12}}>오류: {bulkKor.error} <button onClick={()=>setBulkKor(null)} style={{marginLeft:8,padding:"2px 8px",border:"1px solid "+T.border,borderRadius:6,background:"#fff",cursor:"pointer"}}>닫기</button></div>
+      : <>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+          <span style={{fontSize:13,fontWeight:800,color:"#92400E"}}>⚡ 일괄 음역 결과</span>
+          <span style={{fontSize:11,color:T.gray700}}>대상 {bulkKor.totalScanned||0}명 중 <b style={{color:"#B45309"}}>{bulkKor.items.length}명</b>에 한글 음역 적용 예정</span>
+          <button onClick={()=>setBulkKor(null)} style={{marginLeft:"auto",padding:"3px 8px",fontSize:11,border:"1px solid "+T.border,borderRadius:6,background:"#fff",cursor:"pointer",fontFamily:"inherit"}}>닫기</button>
+        </div>
+        {bulkKor.items.length === 0 ? <div style={{fontSize:12,color:T.gray600,padding:"6px 0"}}>음역할 외국 이름 손님이 없어요. 모든 외국 이름이 이미 채워져 있거나 영문 이름이 없습니다.</div>
+        : <>
+          <div style={{maxHeight:340,overflowY:"auto",border:"1px solid "+T.border,borderRadius:8,background:"#fff"}}>
+            <table style={{width:"100%",fontSize:11,borderCollapse:"collapse"}}>
+              <thead style={{position:"sticky",top:0,background:"#F9FAFB",borderBottom:"1px solid "+T.border}}>
+                <tr style={{textAlign:"left"}}>
+                  <th style={{padding:"6px 8px",fontWeight:700,color:T.gray700}}>영문 이름</th>
+                  <th style={{padding:"6px 8px",fontWeight:700,color:T.gray700}}>→ 한글 음역</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bulkKor.items.slice(0, 200).map(it => <tr key={it.id} style={{borderBottom:"1px solid "+T.gray100}}>
+                  <td style={{padding:"4px 8px",fontWeight:600}}>{it.name}</td>
+                  <td style={{padding:"4px 8px",color:"#B45309",fontWeight:600}}>{it.kor}</td>
+                </tr>)}
+              </tbody>
+            </table>
+            {bulkKor.items.length > 200 && <div style={{padding:"6px 8px",fontSize:11,color:T.gray500,textAlign:"center",borderTop:"1px solid "+T.gray100,background:"#F9FAFB"}}>외 {bulkKor.items.length - 200}명 (저장 시 모두 적용)</div>}
+          </div>
+          <div style={{display:"flex",gap:6,marginTop:10}}>
+            <button onClick={applyBulkKor} disabled={bulkKor.applying}
+              style={{padding:"8px 18px",fontSize:13,fontWeight:800,border:"none",borderRadius:8,background:bulkKor.applying?T.gray400:"#F59E0B",color:"#fff",cursor:bulkKor.applying?"wait":"pointer",fontFamily:"inherit"}}>
+              {bulkKor.applying ? "적용 중…" : `✓ ${bulkKor.items.length}명 모두 적용`}
+            </button>
+            <button onClick={()=>setBulkKor(null)} disabled={bulkKor.applying}
+              style={{padding:"8px 14px",fontSize:13,fontWeight:600,border:"1px solid "+T.border,borderRadius:8,background:"#fff",color:T.gray700,cursor:bulkKor.applying?"wait":"pointer",fontFamily:"inherit"}}>
+              취소
+            </button>
+          </div>
+        </>}
+      </>}
+    </div>}
 
     {/* 검색 & 필터 */}
     <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>

@@ -1,9 +1,19 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.554** (https://blissme.ai/version.txt) — 2026-05-09 배포
+- **라이브: v3.7.555** (https://blissme.ai/version.txt) — 2026-05-09 배포
 - 다음 빌드 시 `BLISS_V` (AppShell.jsx) + `public/version.txt` 둘 다 함께 bump 필수
-- 변경 이력은 [CLAUDE.md "v3.7.503 → v3.7.554"](./CLAUDE.md) 섹션 참고
+- 변경 이력은 [CLAUDE.md "v3.7.503 → v3.7.555"](./CLAUDE.md) 섹션 참고
+
+## v3.7.555 변경 (2026-05-09)
+- **TimelinePage 신규 고객 INSERT 경로에 자동 음역 추가** (TimelinePage.jsx:2336~):
+  - 새 예약 저장 시 cust_id 없는 외국 이름이 customers 테이블에 INSERT되는 흐름에 `transliterateName()` 호출 추가. v3.7.554가 CustomersPage handleSave에만 음역을 걸어둔 누락 fix.
+  - Gemini 키 없거나 호출 실패 시 빈 채로 INSERT (UX 막지 않음).
+- **고객관리 [⚡ 외국 이름 일괄 음역] 도구**:
+  - 고객관리 페이지 헤더 우측 노란 버튼.
+  - `name_kor IS NULL` 손님 중 영문 이름만 추출 → `transliterateBatch()` (concurrency 3) → 미리보기 표 → [모두 적용] / [취소].
+  - DB UPDATE batch + 로컬 state 동시 갱신.
+  - Gemini 키 없으면 안내.
 
 ## v3.7.554 변경 (2026-05-09)
 - **외국 이름 한글 음역 (`customers.name_kor` 신규 컬럼)**:
