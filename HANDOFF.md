@@ -1,9 +1,17 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.552** (https://blissme.ai/version.txt) — 2026-05-09 배포
+- **라이브: v3.7.553** (https://blissme.ai/version.txt) — 2026-05-09 배포
 - 다음 빌드 시 `BLISS_V` (AppShell.jsx) + `public/version.txt` 둘 다 함께 bump 필수
-- 변경 이력은 [CLAUDE.md "v3.7.503 → v3.7.552"](./CLAUDE.md) 섹션 참고
+- 변경 이력은 [CLAUDE.md "v3.7.503 → v3.7.553"](./CLAUDE.md) 섹션 참고
+
+## v3.7.553 변경 (2026-05-09)
+- **네이버 막기 — 같은 브랜드(business_id) 소속이면 모두 변경 가능** (TimelinePage):
+  - `canEditBlock` 식: `accessibleBids` 기반 → `data.branches에 그 bid가 있으면 true`. 활성 비즈의 모든 지점은 변경 가능. 다른 브랜드(super 모드 진입 등)는 차단.
+  - 강남점 직원·매니저·owner 모두 마곡·홍대 등 같은 브랜드 지점 막기/풀기 가능.
+- **영어 고객명 hover 시 한글 별칭 표시**:
+  - 룰: `name`이 영문(한글 없음) + `name2`에 한글 있으면 hover로 `name2` 표시 (cursor: help).
+  - 적용: TimelinePage 블록 cust 이름 + CustomersPage 메인 리스트 이름 셀 + 검색 드롭다운(ShareCustModal 등에서 쓰는).
 
 ## v3.7.552 변경 (2026-05-09)
 - **네이버 막기 — 표시는 전체 / 변경은 권한 내** (TimelinePage):

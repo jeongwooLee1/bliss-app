@@ -5099,27 +5099,28 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                             })()}
                             {effectiveNaverColShow["태그"] !== false && block.selectedTags?.length>3 && <span style={{fontSize:Math.max(6,blockFs-2),color:T.bgCard,background:T.gray500,borderRadius:T.radius.sm,padding:"1px 2px",flexShrink:0}}>+{block.selectedTags.length-3}</span>}
                             {/* 이름 */}
-                            <span style={{fontWeight:T.fw.bold,color:isNaverCancelled?T.gray500:T.text,textDecoration:isNaverCancelled?"line-through":"none",flexShrink:1,minWidth:0}}>
-                              {(() => {
-                                const liveCust = block.custId ? ((data?.customers||[]).find(c=>c.id===block.custId) || custInfoMap[block.custId]) : null;
-                                const g = block.custGender || liveCust?.gender || "";
-                                let displayName = liveCust?.name || block.custName || "";
-                                // 영문 ALL-CAPS 이름 → 타이틀케이스 정규화 (시각 일관성)
-                                // 한글이 섞여있으면 그대로. 순수 영문 + 모두 대문자일 때만 변환.
-                                if (displayName && !/[가-힣]/.test(displayName) && /^[A-Z\s.\-']+$/.test(displayName)) {
-                                  displayName = displayName.toLowerCase().replace(/(^|\s|-)([a-z])/g, (_, sep, ch) => sep + ch.toUpperCase());
-                                }
-                                const custNum = liveCust?.custNum || liveCust?.cust_num || "";
-                                const _cp = Number(liveCust?.cancelPenaltyCount || 0);
-                                const _ns = Number(liveCust?.noShowCount || 0);
-                                const isCaution = _cp >= 3 || _ns >= 1;
-                                return <>
-                                  {g ? <span style={{color:g==="M"?T.male:T.female}}>{g==="M"?"남":"여"}</span> : null} {displayName}
-                                  {custNum && <span style={{marginLeft:3,fontSize:Math.max(7,blockFs-2),color:T.text,fontWeight:T.fw.bold,fontFamily:"monospace"}}>#{custNum}</span>}
-                                  {isCaution && <span title={`페널티 취소 ${_cp}회 / 노쇼 ${_ns}회`} style={{marginLeft:3,fontSize:Math.max(8,blockFs-1)}}>⚠️</span>}
-                                </>;
-                              })()}
-                            </span>
+                            {(() => {
+                              const liveCust = block.custId ? ((data?.customers||[]).find(c=>c.id===block.custId) || custInfoMap[block.custId]) : null;
+                              const g = block.custGender || liveCust?.gender || "";
+                              let displayName = liveCust?.name || block.custName || "";
+                              // 영문 ALL-CAPS 이름 → 타이틀케이스 정규화 (시각 일관성)
+                              // 한글이 섞여있으면 그대로. 순수 영문 + 모두 대문자일 때만 변환.
+                              if (displayName && !/[가-힣]/.test(displayName) && /^[A-Z\s.\-']+$/.test(displayName)) {
+                                displayName = displayName.toLowerCase().replace(/(^|\s|-)([a-z])/g, (_, sep, ch) => sep + ch.toUpperCase());
+                              }
+                              const custNum = liveCust?.custNum || liveCust?.cust_num || "";
+                              const _cp = Number(liveCust?.cancelPenaltyCount || 0);
+                              const _ns = Number(liveCust?.noShowCount || 0);
+                              const isCaution = _cp >= 3 || _ns >= 1;
+                              // 영어 이름이고 한글 별칭(name2)이 있으면 hover로 한글 표시
+                              const _name2 = liveCust?.name2 || liveCust?.name_2 || "";
+                              const _hoverKor = (displayName && !/[가-힣]/.test(displayName) && _name2 && /[가-힣]/.test(_name2)) ? _name2 : "";
+                              return <span title={_hoverKor || undefined} style={{fontWeight:T.fw.bold,color:isNaverCancelled?T.gray500:T.text,textDecoration:isNaverCancelled?"line-through":"none",flexShrink:1,minWidth:0,cursor:_hoverKor?"help":"inherit"}}>
+                                {g ? <span style={{color:g==="M"?T.male:T.female}}>{g==="M"?"남":"여"}</span> : null} {displayName}
+                                {custNum && <span style={{marginLeft:3,fontSize:Math.max(7,blockFs-2),color:T.text,fontWeight:T.fw.bold,fontFamily:"monospace"}}>#{custNum}</span>}
+                                {isCaution && <span title={`페널티 취소 ${_cp}회 / 노쇼 ${_ns}회`} style={{marginLeft:3,fontSize:Math.max(8,blockFs-1)}}>⚠️</span>}
+                              </span>;
+                            })()}
                           </div>
                           {effectiveNaverColShow["시술"] !== false && block.selectedServices?.length>0 && <div style={{fontSize:Math.max(6,blockFs-2),color:T.text,fontWeight:T.fw.bold,marginTop:1}}>
                             {groupSvcNames(block.selectedServices, SVC_LIST).slice(0,2).join(", ")}
@@ -5511,10 +5512,10 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         });
         const allBlocked = visibleIds.length > 0 && visibleIds.every(iid => slotBitOf(iid) === '0');
         const anyOpen = visibleIds.some(iid => slotBitOf(iid) === '1');
-        // 막기/풀기 변경 권한 — 본인 지점 + 연계지점(branchGroups)만. 브랜드(isMaster)도 자기 그룹만.
-        const canEditBlock = blockSlotPopup.branchId
-          ? (accessibleBids||[]).includes(blockSlotPopup.branchId)
-          : false;
+        // 막기/풀기 변경 권한 — 같은 브랜드(business_id) 소속 지점이면 모두 가능.
+        // data.branches는 활성 비즈의 지점만 들어 있으므로 그 안에 있으면 같은 브랜드.
+        const canEditBlock = !!blockSlotPopup.branchId &&
+          (data?.branches||[]).some(b => b.id === blockSlotPopup.branchId);
         const toggleOne = async (itemId, currentlyBlocked) => {
           if (!canEditBlock) { alert('타지점이라 막기/풀기 변경은 불가합니다. 조회만 가능합니다.'); return; }
           const newBit = currentlyBlocked ? '1' : '0';

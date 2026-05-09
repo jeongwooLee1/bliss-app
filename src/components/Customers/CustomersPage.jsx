@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router-dom'
 import { T } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY, sbHeaders, queueAlimtalk, buildTokenSearch } from '../../lib/sb'
 import { toDb, fromDb, _activeBizId } from '../../lib/db'
@@ -7,6 +9,7 @@ import { Btn, FLD, Empty, fmt, Spinner, DataTable } from '../common'
 import SendSmsModal from '../common/SendSmsModal'
 import I from '../common/I'
 import { DetailedSaleForm } from '../Timeline/SaleForm'
+import { ColHeader as ExcelColHeader } from '../Sales/SalesGridPage'
 import ConsentModal from '../Consent/ConsentModal'
 import ConsentPanel from '../Consent/ConsentPanel'
 
@@ -72,16 +75,69 @@ function CustModal({ item, isEdit, onSave, onClose, defBranch, userBranches, bra
 }
 
 function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust, setPendingOpenCust }) {
+  const navigate = useNavigate();
   const [q, setQ] = useSessionState("cust_q", "", { ttlMs: TTL.SEARCH });
   const [vb, setVb] = useSessionState("cust_vb", "all", { ttlMs: TTL.TAB });
   // 가입일 범위 필터 (신규 고객 날짜별 보기)
   const [joinFrom, setJoinFrom] = useSessionState("cust_joinFrom", "", { ttlMs: TTL.DATE_RANGE });
   const [joinTo, setJoinTo] = useSessionState("cust_joinTo", "", { ttlMs: TTL.DATE_RANGE });
-  // 고객번호 없는 고객 (매출 미발생) 숨김 여부 — 기본 숨김
-  const [includeNoNum, setIncludeNoNum] = useSessionState("cust_include_no_num", false, { ttlMs: TTL.TAB });
+  // 매출 미발생 고객 숨김 토글 제거됨 (2026-05-05) — 모든 고객 항상 표시
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [detailCust, setDetailCust] = useState(null);
+  // 우클릭 컨텍스트 메뉴 — {x, y, cust}
+  const [ctxMenu, setCtxMenu] = useState(null);
+
+  // 컬럼 헤더 ▼ 엑셀 스타일 필터 (sessionStorage 영속) — 클라이언트 필터, 페이지 한정
+  // v2 (2026-05-05): v1에 빈 Set/잘못된 includeEmpty 등이 저장되어 0건 표시되는 사고 방지 위해 키 변경
+  const _CUST_FILT_KEY = 'custList_filters_v2';
+  const _defCustFilters = () => ({
+    custNum:   { sort: null, min: '', max: '' },
+    joinDate:  { sort: null, start: '', end: '', includeEmpty: true },
+    custName:  { sort: null, selected: null, includeEmpty: true, enOnly: false },
+    custPhone: { sort: null, selected: null, includeEmpty: true },
+    custEmail: { sort: null, selected: null, includeEmpty: true },
+    bid:       { sort: null, selected: null, includeEmpty: true },
+    visitCount:{ sort: null, min: '', max: '' },
+    lastVisit: { sort: null, start: '', end: '', includeEmpty: true },
+  });
+  const [excelFilters, setExcelFilters] = useState(() => {
+    // v1 sessionStorage가 있으면 클리어 (구 데이터 무효화)
+    try { sessionStorage.removeItem('custList_filters_v1'); } catch {}
+    try {
+      const raw = sessionStorage.getItem(_CUST_FILT_KEY);
+      if (!raw) return _defCustFilters();
+      const parsed = JSON.parse(raw);
+      Object.keys(parsed).forEach(k => {
+        if (parsed[k] && Array.isArray(parsed[k].selected)) {
+          if (parsed[k].selected.length === 0) parsed[k].selected = null;
+          else parsed[k].selected = new Set(parsed[k].selected);
+        }
+      });
+      return { ..._defCustFilters(), ...parsed };
+    } catch { return _defCustFilters(); }
+  });
+  useEffect(() => {
+    try {
+      const out = {};
+      Object.keys(excelFilters).forEach(k => {
+        const f = excelFilters[k];
+        if (f?.selected instanceof Set) out[k] = { ...f, selected: [...f.selected] };
+        else out[k] = f;
+      });
+      sessionStorage.setItem(_CUST_FILT_KEY, JSON.stringify(out));
+    } catch {}
+  }, [excelFilters]);
+  const setExcelColFilter = (k, v) => setExcelFilters(prev => {
+    const merged = { ...prev[k], ...v };
+    let next = { ...prev, [k]: merged };
+    if (v.sort) {
+      Object.keys(next).forEach(otherK => {
+        if (otherK !== k && next[otherK]?.sort) next[otherK] = { ...next[otherK], sort: null };
+      });
+    }
+    return next;
+  });
   const [detailTab, setDetailTab] = useSessionState("cust_tab", "pkg", { ttlMs: TTL.TAB }); // "pkg" | "sales"
   // 쉐어 — 보유권/패키지를 공유하는 고객 페어
   const [shareCusts, setShareCusts] = useState([]); // [{id, name, phone, cust_num, shareRowId}]
@@ -167,14 +223,15 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
   const buildFilter = (offset, limit) => {
     const bizId = _activeBizId;
     let parts = [`business_id=eq.${bizId}`];
+    // 숨김 처리된 고객은 리스트에서 제외 (is_hidden=true 또는 NULL이 아닌 false만 통과)
+    parts.push(`is_hidden=not.is.true`);
     // 매장 필터: 특정 지점 선택 시에만 필터, "전체"는 userBranches 무시하고 전 지점 표시
     // (고객 DB는 공유 자산 — 어느 지점에서든 고객 조회 가능)
     if (vb !== "all") parts.push(`bid=eq.${vb}`);
     // 가입일 범위 필터 (신규 고객 날짜별 조회)
     if (joinFrom) parts.push(`join_date=gte.${joinFrom}`);
     if (joinTo) parts.push(`join_date=lte.${joinTo}`);
-    // 고객번호 없는 고객(=매출 미발생) 필터 — 기본 숨김. includeNoNum=true면 전체 노출
-    if (!includeNoNum) parts.push(`cust_num_int=not.is.null`);
+    // 매출 미발생 고객(cust_num_int IS NULL)도 항상 포함 (예약중인 신규 고객 누락 방지)
     // 🔍 longValOnly 활성 시 fetchPage가 RPC 분기를 사용 — buildFilter는 호출 안 됨
     // 검색: 공백 구분 다토큰 전부 서버에서 AND — 각 토큰이 아무 필드에든 부분매칭되어야 함
     const tokens = (q||"").trim().split(/\s+/).filter(Boolean);
@@ -189,9 +246,10 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       });
       parts.push(`and=(${ands.join(',')})`);
     }
-    // 정렬: 고객번호 내림차순 우선 → 생성일 내림차순 (보조)
-    // cust_num_int (generated column)로 숫자 정확 정렬 — text 정렬의 "9999 > 999" 문제 해결
-    parts.push(`order=cust_num_int.desc.nullslast,created_at.desc.nullslast`);
+    // 정렬: created_at(DB INSERT 시각) 내림차순 단일
+    // join_date.desc는 빈 문자열("")이 NULL 아니라 정렬 맨 뒤로 밀려 신규 고객 첫 페이지 누락
+    // (Julia aquilino, cust_id_wgcw2jj26g 누락 케이스, 2026-05-05 fix)
+    parts.push(`order=created_at.desc.nullslast`);
     parts.push(`offset=${offset}`);
     parts.push(`limit=${limit}`);
     return "&" + parts.join("&");
@@ -214,6 +272,9 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
     const myReqId = ++reqIdRef.current;
     setLoading(true);
     if (reset) setSearching(true);
+    // 검색어 있을 때 limit 4배 확장 (200) — 검색 결과를 한 번에 더 많이 가져옴
+    const _hasSearch = (q && q.trim().length > 0);
+    const _limit = _hasSearch ? PAGE_SIZE * 4 : PAGE_SIZE;
     try {
       let rows;
       if (longValOnly) {
@@ -229,20 +290,20 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
             p_cutoff: cutoff,
             p_bid: vb !== "all" ? vb : null,
             p_search: tokens[0] || null,
-            p_include_no_num: includeNoNum,
+            p_include_no_num: true,
             p_offset: offset,
-            p_limit: PAGE_SIZE,
+            p_limit: _limit,
           }),
         });
         rows = r.ok ? await r.json() : [];
       } else {
-        const filter = buildFilter(offset, PAGE_SIZE);
+        const filter = buildFilter(offset, _limit);
         rows = await sb.get("customers", filter);
       }
       if (myReqId !== reqIdRef.current) return; // 이미 구식 응답 — 무시
       const mapped = fromDb("customers", rows).filter(c => matchesQuery(c, q));
       setPagedCusts(prev => reset ? mapped : [...prev, ...mapped]);
-      setHasMore(rows.length === PAGE_SIZE);
+      setHasMore(rows.length === _limit);
       if (reset && scrollRef.current) scrollRef.current.scrollTop = 0;
       const ids = mapped.map(c => c.id).filter(Boolean);
       if (ids.length > 0) {
@@ -276,7 +337,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
     if (lockSingleRef.current) return;
     const timer = setTimeout(() => { fetchPage(0, true); }, q ? 300 : 0);
     return () => clearTimeout(timer);
-  }, [q, vb, joinFrom, joinTo, includeNoNum, pendingOpenCust, longValOnly]);
+  }, [q, vb, joinFrom, joinTo, pendingOpenCust, longValOnly]);
 
   // 스크롤 핸들러: 하단 근접 시 다음 페이지 로드
   const onScroll = (e) => {
@@ -286,7 +347,106 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
     }
   };
 
-  const custs = pagedCusts;
+  // 컬럼별 unique values (현재 로드된 페이지 기준 — 무한 스크롤로 더 로드되면 자동 확장)
+  const _excelUniqueByCol = React.useMemo(() => {
+    const u = { custName: new Set(), custPhone: new Set(), custEmail: new Set(), bid: new Set() };
+    pagedCusts.forEach(c => {
+      if (c.name) u.custName.add(c.name);
+      if (c.phone) u.custPhone.add(c.phone);
+      if (c.email) u.custEmail.add(c.email);
+      if (c.bid) u.bid.add(c.bid);
+    });
+    return Object.fromEntries(Object.entries(u).map(([k,v]) => {
+      const arr = [...v];
+      arr.sort((a,b)=>String(a).localeCompare(String(b),'ko'));
+      return [k, arr];
+    }));
+  }, [pagedCusts]);
+
+  const _excelBranchNameMap = React.useMemo(() => {
+    const m = {};
+    (data?.branches||[]).forEach(b => { m[b.id] = b.short || b.name || b.id; });
+    return m;
+  }, [data?.branches]);
+
+  const _matchExcelSet = (val, f) => {
+    if (!f) return true;
+    const isEmpty = !val || (typeof val === 'string' && !val.trim());
+    if (isEmpty) return f.includeEmpty !== false;
+    if (f.selected instanceof Set) return f.selected.has(val);
+    return true;
+  };
+
+  // 내부일정용으로 잘못 생성된 cust 제외 (이름이 청소/오픈/재고 등 키워드 + phone/cust_num 둘 다 비어있음)
+  const _isInternalScheduleCust = (c) => {
+    if ((c.phone||'').trim() || (c.phone2||'').trim() || (c.custNum||'').trim()) return false;
+    const nm = (c.name||'').trim();
+    return /^(청소|오픈|재고|전일|아침|휴게|이동|바디도움|메모|점심|식사)(\s|\(|$)/.test(nm);
+  };
+
+  // 클라이언트 엑셀 필터 + 정렬 적용
+  const custs = React.useMemo(() => {
+    let rows = pagedCusts.filter(c => !_isInternalScheduleCust(c)).filter(c => {
+      const f = excelFilters;
+      // 고객번호 (숫자 범위)
+      const _num = parseInt(c.custNum) || 0;
+      if (f.custNum.min !== '' && _num < Number(f.custNum.min)) return false;
+      if (f.custNum.max !== '' && _num > Number(f.custNum.max)) return false;
+      // 등록일 (날짜 범위)
+      const _jd = c.joinDate || (c.createdAt||'').slice(0,10) || '';
+      if (f.joinDate.start && (!_jd || _jd < f.joinDate.start)) return false;
+      if (f.joinDate.end   && (!_jd || _jd > f.joinDate.end))   return false;
+      if (f.joinDate.includeEmpty === false && !_jd) return false;
+      // 이름 (set + enOnly)
+      if (!_matchExcelSet(c.name, f.custName)) return false;
+      if (f.custName.enOnly) {
+        const nm = c.name || '';
+        const ko = (nm.match(/[가-힣]/g)||[]).length;
+        const en = (nm.match(/[A-Za-z]/g)||[]).length;
+        if (ko > 0 || en < 2) return false;
+      }
+      // 연락처 / 이메일 / 매장 (set)
+      if (!_matchExcelSet(c.phone, f.custPhone)) return false;
+      if (!_matchExcelSet(c.email, f.custEmail)) return false;
+      if (f.bid.selected instanceof Set) {
+        if (!c.bid) { if (f.bid.includeEmpty === false) return false; }
+        else if (!f.bid.selected.has(c.bid)) return false;
+      } else if (f.bid.includeEmpty === false && !c.bid) return false;
+      // 방문수 (숫자 범위)
+      const _vc = Number(c.visitCount || c.visits || 0);
+      if (f.visitCount.min !== '' && _vc < Number(f.visitCount.min)) return false;
+      if (f.visitCount.max !== '' && _vc > Number(f.visitCount.max)) return false;
+      // 최근방문 (날짜 범위)
+      const _lv = (c.lastVisit || '').slice(0,10);
+      if (f.lastVisit.start && (!_lv || _lv < f.lastVisit.start)) return false;
+      if (f.lastVisit.end   && (!_lv || _lv > f.lastVisit.end))   return false;
+      if (f.lastVisit.includeEmpty === false && !_lv) return false;
+      return true;
+    });
+    // 정렬 — 단일 컬럼
+    const sortCol = Object.keys(excelFilters).find(k => excelFilters[k]?.sort);
+    if (sortCol) {
+      const dir = excelFilters[sortCol].sort === 'asc' ? 1 : -1;
+      const accessor = {
+        custNum:    c => parseInt(c.custNum)||0,
+        joinDate:   c => c.joinDate || (c.createdAt||'').slice(0,10) || '',
+        custName:   c => c.name || '',
+        custPhone:  c => c.phone || '',
+        custEmail:  c => c.email || '',
+        bid:        c => _excelBranchNameMap[c.bid] || '',
+        visitCount: c => Number(c.visitCount||c.visits||0),
+        lastVisit:  c => (c.lastVisit||'').slice(0,10),
+      }[sortCol];
+      if (accessor) {
+        rows = [...rows].sort((a,b) => {
+          const va = accessor(a), vb = accessor(b);
+          if (typeof va === 'number' && typeof vb === 'number') return (va-vb)*dir;
+          return String(va).localeCompare(String(vb), 'ko') * dir;
+        });
+      }
+    }
+    return rows;
+  }, [pagedCusts, excelFilters, _excelBranchNameMap]);
 
   // 보유권 요약: 유효 다회권(남은회차>0) + 다담권(잔액>0) + 연간권. 쿠폰은 리스트에서 숨김 (상세 패널에서만 표시)
   const pkgSummaryForCust = (cid) => {
@@ -1140,14 +1300,18 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
         <option value="all">전체 매장</option>
         {(data.branches||[]).filter(b=>userBranches.includes(b.id)).map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
       </select>
-      {/* 고객번호 없는 고객 (매출 미발생) 포함 토글 */}
-      <button type="button" onClick={()=>{unlockSingleAndReload(); setIncludeNoNum(v=>!v);}}
-        title={includeNoNum ? "고객번호 없는 고객(매출 미발생) 포함 중 — 클릭해서 숨기기" : "고객번호 없는 고객(매출 미발생) 숨김 중 — 클릭해서 포함"}
-        style={{padding:"4px 10px",fontSize:10,fontWeight:700,borderRadius:6,border:"1px solid "+(includeNoNum?T.primary:T.border),background:includeNoNum?T.primaryLt:"#fff",color:includeNoNum?T.primary:T.textSub,cursor:"pointer",fontFamily:"inherit",height:30}}>
-        {includeNoNum ? "☑ 번호없는 고객 포함" : "☐ 번호없는 고객 숨김"}
-      </button>
       <span style={{fontSize:T.fs.xxs,color:T.textMuted}}>{custs.length}명{hasMore?"+":""}</span>
       {searching && <span style={{fontSize:T.fs.xxs,color:T.orange}}>검색중...</span>}
+      {/* 컬럼 ▼ 필터 전체 초기화 — sessionStorage도 클리어 */}
+      <button type="button"
+        onClick={()=>{
+          setExcelFilters(_defCustFilters());
+          try { sessionStorage.removeItem(_CUST_FILT_KEY); } catch {}
+        }}
+        title="컬럼 ▼ 필터 모두 해제"
+        style={{padding:"4px 10px",fontSize:11,fontWeight:600,borderRadius:6,border:"1px solid "+T.border,background:"#fff",color:T.textSub,cursor:"pointer",fontFamily:"inherit",height:30}}>
+        ↺ 필터 초기화
+      </button>
       {/* 📱 선택 고객에게 문자 발송 */}
       <button type="button"
         onClick={()=>{
@@ -1167,7 +1331,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       return <>
       {paged.length===0 && !loading
         ? <div style={{textAlign:"center",padding:"40px 0",color:T.textMuted}}><I name="users" size={24}/><div style={{marginTop:8,fontSize:T.fs.xs}}>고객 없음</div></div>
-        : <DataTable card>
+        : <DataTable card maxHeight="calc(100vh - 220px)">
             <thead><tr>
               <th style={{width:30,textAlign:"center"}}>
                 <input type="checkbox" title="현재 페이지 전체 선택"
@@ -1181,14 +1345,14 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                     });
                   }}/>
               </th>
-              <th style={{width:70}}>고객번호</th>
-              <th style={{width:100}}>등록일</th>
-              <th>이름</th>
-              <th style={{width:140}}>연락처</th>
-              <th style={{width:160}}>이메일</th>
-              <th style={{width:90}}>매장</th>
-              <th style={{width:60,textAlign:"right"}}>방문수</th>
-              <th style={{width:100}}>최근방문</th>
+              <ExcelColHeader label="고객번호" columnKey="custNum"   type="number" filter={excelFilters.custNum}   onChange={v=>setExcelColFilter('custNum',v)}   alignRight={true}/>
+              <ExcelColHeader label="등록일"   columnKey="joinDate"  type="date"   filter={excelFilters.joinDate}  onChange={v=>setExcelColFilter('joinDate',v)}/>
+              <ExcelColHeader label="이름"     columnKey="custName"  type="set"    uniqueValues={_excelUniqueByCol.custName}  filter={excelFilters.custName}  onChange={v=>setExcelColFilter('custName',v)}/>
+              <ExcelColHeader label="연락처"   columnKey="custPhone" type="set"    uniqueValues={_excelUniqueByCol.custPhone} filter={excelFilters.custPhone} onChange={v=>setExcelColFilter('custPhone',v)}/>
+              <ExcelColHeader label="이메일"   columnKey="custEmail" type="set"    uniqueValues={_excelUniqueByCol.custEmail} filter={excelFilters.custEmail} onChange={v=>setExcelColFilter('custEmail',v)}/>
+              <ExcelColHeader label="매장"     columnKey="bid"       type="set"    uniqueValues={_excelUniqueByCol.bid}       filter={excelFilters.bid}       onChange={v=>setExcelColFilter('bid',v)}       branchNameMap={_excelBranchNameMap}/>
+              <ExcelColHeader label="방문수"   columnKey="visitCount" type="number" filter={excelFilters.visitCount} onChange={v=>setExcelColFilter('visitCount',v)} alignRight={true}/>
+              <ExcelColHeader label="최근방문" columnKey="lastVisit" type="date"   filter={excelFilters.lastVisit} onChange={v=>setExcelColFilter('lastVisit',v)}/>
               <th style={{width:160}}>보유권</th>
               <th style={{width:70}}></th>
             </tr></thead>
@@ -1198,19 +1362,25 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
               const isOpen = detailCust?.id===c.id;
               return <React.Fragment key={c.id}>
                 <tr style={{cursor:"pointer",background:isOpen?T.primaryHover:"transparent"}}
-                  onClick={()=>{ setDetailCust(isOpen?null:c); setDetailTab("sales"); }}>
+                  onClick={()=>{ setDetailCust(isOpen?null:c); setDetailTab("sales"); }}
+                  onContextMenu={e=>{ e.preventDefault(); setCtxMenu({x:e.clientX,y:e.clientY,cust:c}); }}>
                   <td style={{textAlign:"center"}} onClick={e=>e.stopPropagation()}>
                     <input type="checkbox" checked={smsSel.has(c.id)}
                       onChange={e=>setSmsSel(prev=>{const n=new Set(prev); if(e.target.checked) n.add(c.id); else n.delete(c.id); return n;})}/>
                   </td>
                   <td style={{fontSize:T.fs.xs,color:T.text,fontFamily:"monospace",fontWeight:800}}>{c.custNum||"-"}</td>
                   <td style={{fontSize:T.fs.xxs,color:T.textSub,whiteSpace:"nowrap"}}>{c.joinDate||(c.createdAt||"").slice(0,10)||"-"}</td>
-                  <td style={{fontWeight:T.fw.bold}}>
-                    {c.gender && <span style={{...sx.genderBadge(c.gender),marginRight:4}}>{c.gender==="F"?"여":"남"}</span>}
-                    {c.name}
-                    {c.name2 && <span style={{color:T.textSub,fontWeight:T.fw.normal,marginLeft:4,fontSize:T.fs.xxs}}>({c.name2})</span>}
-                    {c.smsConsent===false && <span style={{fontSize:9,color:T.danger,fontWeight:T.fw.bold,marginLeft:4}}>수신거부</span>}
-                  </td>
+                  {(() => {
+                    // 영어 주이름 + 한글 별칭(name2) 있으면 hover로 한글 표시
+                    const _isEn = c.name && !/[가-힣]/.test(c.name);
+                    const _korAlias = (_isEn && c.name2 && /[가-힣]/.test(c.name2)) ? c.name2 : '';
+                    return <td title={_korAlias || undefined} style={{fontWeight:T.fw.bold,cursor:_korAlias?"help":"default"}}>
+                      {c.gender && <span style={{...sx.genderBadge(c.gender),marginRight:4}}>{c.gender==="F"?"여":"남"}</span>}
+                      {c.name}
+                      {c.name2 && <span style={{color:T.textSub,fontWeight:T.fw.normal,marginLeft:4,fontSize:T.fs.xxs}}>({c.name2})</span>}
+                      {c.smsConsent===false && <span style={{fontSize:9,color:T.danger,fontWeight:T.fw.bold,marginLeft:4}}>수신거부</span>}
+                    </td>;
+                  })()}
                   <td style={{fontSize:T.fs.xxs,color:T.primary,whiteSpace:"nowrap"}}>
                     {c.phone ? <span style={{cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted"}}
                       title="클릭하면 번호 복사"
@@ -1298,6 +1468,22 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                         style={{marginLeft:'auto',padding:'4px 10px',fontSize:T.fs.xxs,fontWeight:700,border:'1px solid '+T.primary,background:'#fff',color:T.primary,borderRadius:T.radius.sm,cursor:'pointer',fontFamily:'inherit'}}>
                         📱 문자 발송
                       </button>
+                      {/* 고객 삭제 (대표관리자만) */}
+                      {isMaster && <button onClick={async e=>{
+                        e.stopPropagation();
+                        if (!confirm(`${c.name} 고객 정보를 정말 삭제하시겠습니까?\n\n• 고객관리 리스트에서 영구 제거\n• 예약·매출 데이터는 그대로 (cust_id 참조 끊김)\n\n되돌릴 수 없습니다.`)) return;
+                        try {
+                          await sb.del("customers", c.id);
+                          setPagedCusts(prev => prev.filter(x => x.id !== c.id));
+                          setDetailCust(null);
+                        } catch (err) {
+                          alert("삭제 실패: " + (err?.message || err));
+                        }
+                      }}
+                        title="이 고객 정보 영구 삭제"
+                        style={{padding:'4px 10px',fontSize:T.fs.xxs,fontWeight:700,border:'1px solid '+T.danger,background:'#fff',color:T.danger,borderRadius:T.radius.sm,cursor:'pointer',fontFamily:'inherit'}}>
+                        🗑 삭제
+                      </button>}
                     </div>
                     {/* 탭 */}
                     <div style={{display:"flex",gap:0,borderBottom:"1px solid "+T.border,background:T.bgCard}}>
@@ -1417,6 +1603,21 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                                   <span style={{fontSize:T.fs.xs}}>제품 <b style={{color:T.infoLt2}}>{fmt(pr)}</b></span>
                                   <span style={{fontSize:T.fs.xs,marginLeft:"auto"}}>합계 <b style={{color:T.info,fontSize:T.fs.sm}}>{fmt(total)}</b></span>
                                 </div>
+                                {(() => {
+                                  const cash = (s.svcCash||0)+(s.prodCash||0);
+                                  const tr = (s.svcTransfer||0)+(s.prodTransfer||0);
+                                  const card = (s.svcCard||0)+(s.prodCard||0);
+                                  const pt = (s.svcPoint||0)+(s.prodPoint||0);
+                                  const ext = s.externalPrepaid||0;
+                                  if (cash+tr+card+pt+ext === 0) return null;
+                                  return <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:6,padding:"0 2px"}}>
+                                    {cash>0 && <span style={{fontSize:T.fs.nano,padding:"2px 7px",borderRadius:T.radius.sm,background:"#FFF3E0",color:"#E65100",fontWeight:T.fw.bold}}>💵 현금 {fmt(cash)}</span>}
+                                    {tr>0 && <span style={{fontSize:T.fs.nano,padding:"2px 7px",borderRadius:T.radius.sm,background:"#E8F5E9",color:"#2E7D32",fontWeight:T.fw.bold}}>🏦 계좌 {fmt(tr)}</span>}
+                                    {card>0 && <span style={{fontSize:T.fs.nano,padding:"2px 7px",borderRadius:T.radius.sm,background:"#E3F2FD",color:"#1565C0",fontWeight:T.fw.bold}}>💳 카드 {fmt(card)}</span>}
+                                    {pt>0 && <span style={{fontSize:T.fs.nano,padding:"2px 7px",borderRadius:T.radius.sm,background:"#F3E5F5",color:"#6A1B9A",fontWeight:T.fw.bold}}>⭐ 포인트 {fmt(pt)}</span>}
+                                    {ext>0 && <span style={{fontSize:T.fs.nano,padding:"2px 7px",borderRadius:T.radius.sm,background:"#FFEBEE",color:"#C62828",fontWeight:T.fw.bold}}>📦 외부선결제 {fmt(ext)}</span>}
+                                  </div>;
+                                })()}
                                 {/* sale_details 테이블 (로드됐을 때만) */}
                                 {details && details.length > 0 && <div style={{marginBottom:6,background:T.bgCard,border:"1px solid "+T.border,borderRadius:T.radius.sm,overflow:"hidden"}}>
                                   <table style={{width:"100%",borderCollapse:"collapse",fontSize:T.fs.nano}}>
@@ -1472,7 +1673,17 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
           </DataTable>}
 
       {loading && <div style={{textAlign:"center",padding:"12px 0",fontSize:T.fs.xxs,color:T.textMuted}}>불러오는 중...</div>}
-      {!hasMore && custs.length > 0 && <div style={{textAlign:"center",padding:"12px 0",fontSize:T.fs.xxs,color:T.textMuted}}>— 끝 —</div>}
+      {!loading && hasMore && (
+        <div style={{textAlign:"center",padding:"12px 0"}}>
+          <button onClick={()=>fetchPage(pagedCusts.length, false)}
+            style={{padding:"8px 18px",fontSize:T.fs.xs,fontWeight:T.fw.bolder,
+                    border:`1px solid ${T.primary}`,background:T.primaryLt,color:T.primary,
+                    borderRadius:T.radius.md,cursor:"pointer",fontFamily:"inherit"}}>
+            ▼ 더 보기 (현재 {pagedCusts.length}명 로드)
+          </button>
+        </div>
+      )}
+      {!hasMore && custs.length > 0 && <div style={{textAlign:"center",padding:"12px 0",fontSize:T.fs.xxs,color:T.textMuted}}>— 끝 ({pagedCusts.length}명) —</div>}
       </>;
     })()}
     </div>
@@ -1484,10 +1695,12 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
     {editSale && <DetailedSaleForm
       reservation={{...editSale, saleMemo: editSale.memo||""}}
       branchId={editSale.bid}
-      onSubmit={handleSaleEditSave}
+      userBranches={userBranches}
+      onSubmit={editSale._newMode ? (()=>{ setEditSale(null); }) : handleSaleEditSave}
       onClose={()=>_mc(()=>setEditSale(null))}
       data={data} setData={setData}
-      editMode={true} existingSaleId={editSale.id}/>}
+      editMode={!editSale._newMode}
+      existingSaleId={editSale._newMode ? null : editSale.id}/>}
     {showShareModal && detailCust && <ShareCustModal
       baseCust={detailCust}
       existingShareIds={shareCusts.map(s=>s.id)}
@@ -1506,7 +1719,80 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       branches={data?.branches || []}
       userBranches={userBranches}
       defaultBranchId={(smsCusts[0]?.bid) || (vb!=='all'?vb:userBranches[0]) || ''}/>}
+    {ctxMenu && <CustCtxMenu menu={ctxMenu} onClose={()=>setCtxMenu(null)}
+      onReserve={c=>{
+        // 현재 시각을 5분 단위로 올림
+        const _n = new Date();
+        let _mn = _n.getHours()*60 + _n.getMinutes();
+        _mn = Math.ceil(_mn/5)*5;
+        if (_mn >= 24*60) _mn = 24*60-5;
+        const _hh = String(Math.floor(_mn/60)).padStart(2,"0");
+        const _mm = String(_mn%60).padStart(2,"0");
+        const prefill = {
+          custId: c.id||"", custName: c.name||"", custPhone: c.phone||"",
+          custEmail: c.email||"", custGender: c.gender||"", custName2: c.name2||"",
+          bid: c.bid||userBranches[0]||"",
+          date: todayStr(), time: `${_hh}:${_mm}`, dur: 30,
+        };
+        try { sessionStorage.setItem('pendingNewRes', JSON.stringify(prefill)); } catch {}
+        navigate('/timeline');
+      }}
+      onMessage={c=>{ setSmsCusts([c]); setSmsOpen(true); }}
+      onSale={c=>{
+        setEditSale({
+          id: 'new_'+genId(), bid: c.bid||userBranches[0]||'',
+          custId: c.id, custName: c.name||'', custPhone: c.phone||'',
+          custGender: c.gender||'', custEmail: c.email||'',
+          staffId: '', serviceId: null, date: todayStr(), memo: '',
+          _newMode: true,
+        });
+      }}/>}
   </div>;
+}
+
+// ═══════════════════════════════════════════
+// 고객 행 우클릭 컨텍스트 메뉴 (예약/메시지/매출)
+// ═══════════════════════════════════════════
+function CustCtxMenu({ menu, onClose, onReserve, onMessage, onSale }) {
+  const ref = useRef();
+  useEffect(() => {
+    const onClick = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    const onEsc = (e) => { if (e.key === "Escape") onClose(); };
+    const tid = setTimeout(() => document.addEventListener("mousedown", onClick), 0);
+    document.addEventListener("keydown", onEsc);
+    return () => { clearTimeout(tid); document.removeEventListener("mousedown", onClick); document.removeEventListener("keydown", onEsc); };
+  }, []);
+  // 화면 밖 보정
+  const W = 180, H = 130;
+  const left = Math.min(menu.x, window.innerWidth - W - 8);
+  const top  = Math.min(menu.y, window.innerHeight - H - 8);
+  const items = [
+    { iconName: "calendar", label: "예약 등록",   onClick: () => onReserve(menu.cust) },
+    { iconName: "msgSq",    label: "메시지 보내기", onClick: () => onMessage(menu.cust) },
+    { iconName: "wallet",   label: "매출 등록",   onClick: () => onSale(menu.cust) },
+  ];
+  return createPortal(
+    <div ref={ref} onMouseDown={e=>e.stopPropagation()}
+      style={{ position:"fixed", top, left, zIndex:10000, background:"#fff",
+               border:`1px solid ${T.border}`, borderRadius:8,
+               boxShadow:"0 8px 32px rgba(0,0,0,.15)", padding:"4px 0", minWidth:W,
+               fontFamily:"inherit" }}>
+      <div style={{padding:"6px 12px",borderBottom:`1px solid ${T.border}`,fontSize:11,color:T.textMuted}}>
+        {menu.cust.name}{menu.cust.custNum?` · #${menu.cust.custNum}`:""}
+      </div>
+      {items.map((it, i) => (
+        <div key={i} onClick={() => { it.onClick(); onClose(); }}
+          style={{ padding:"9px 14px", cursor:"pointer", fontSize:13,
+                   display:"flex", alignItems:"center", gap:10, color:T.text }}
+          onMouseOver={e=>e.currentTarget.style.background=T.gray100}
+          onMouseOut={e=>e.currentTarget.style.background="transparent"}>
+          <I name={it.iconName} size={15} color={T.textSub}/>
+          <span>{it.label}</span>
+        </div>
+      ))}
+    </div>,
+    document.body
+  );
 }
 
 // ═══════════════════════════════════════════
@@ -1582,7 +1868,11 @@ function ShareCustModal({ baseCust, existingShareIds, onPick, onClose, setData }
           {filteredResults.map(c => (
             <button key={c.id} onClick={()=>onPick(c)}
               style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",border:"1px solid "+T.border,borderRadius:8,background:"#fff",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-              <span style={{fontSize:12,fontWeight:700,color:T.text,flex:1}}>{c.name}{c.name2?` (${c.name2})`:""}</span>
+              {(() => {
+                const _isEn = c.name && !/[가-힣]/.test(c.name);
+                const _korAlias = (_isEn && c.name2 && /[가-힣]/.test(c.name2)) ? c.name2 : '';
+                return <span title={_korAlias || undefined} style={{fontSize:12,fontWeight:700,color:T.text,flex:1,cursor:_korAlias?"help":"inherit"}}>{c.name}{c.name2?` (${c.name2})`:""}</span>;
+              })()}
               {c.cust_num && <span style={{fontSize:10,color:T.textMuted,fontFamily:"monospace"}}>#{c.cust_num}</span>}
               {c.phone && !c.phone.startsWith("no_phone") && <span style={{fontSize:11,color:T.textSub}}>{c.phone}</span>}
             </button>
