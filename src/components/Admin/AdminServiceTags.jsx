@@ -182,14 +182,20 @@ function AdminServiceTags({ data, setData }) {
     </div>}
     {items.length===0 ? <AEmpty icon={isSource?"zap":"tag"} message={isSource?"등록된 예약경로가 없어요":"등록된 태그가 없어요"} onAdd={openNew} addLabel={addLabel}/>
     : <div className="card" style={{padding:0,overflow:"hidden"}}>
-      {items.map((t,i)=><div key={t.id} draggable
+      {items.map((t,i)=>{
+        const _autoDesc = (!isSource && t.autoTrigger) ? describeTrigger(t.autoTrigger, { categories: data?.categories||[], services: data?.services||[], tagName: t.name }) : '';
+        return <div key={t.id} draggable
           data-drag-idx={i} {...tagMH(i)} {...tagTH(i)}
           style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderBottom:i<items.length-1?"1px solid "+T.gray100:"none",cursor:"grab",
           background:tagOver===i?T.primaryHover:"transparent",transition:"background .1s"}}>
         <div style={{width:10,height:10,borderRadius:"50%",background:t.color||T.primary,flexShrink:0}}/>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:t.useYn!==false?T.text:T.gray400}}>{t.name}</div>
+          <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:t.useYn!==false?T.text:T.gray400,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+            <span>{t.name}</span>
+            {!isSource && t.autoTrigger && <span title="자동 부여 조건이 설정된 태그" style={{fontSize:9,fontWeight:700,padding:"1px 6px",borderRadius:10,background:"#FEF3C7",color:"#B45309",border:"1px solid #FDE68A",display:"inline-flex",alignItems:"center",gap:2,lineHeight:1.4}}>⚡ 자동</span>}
+          </div>
           {!isSource && t.dur>0 && <div style={{fontSize:T.fs.xxs,color:T.textMuted}}>{t.dur}분</div>}
+          {_autoDesc && <div style={{fontSize:T.fs.xxs,color:"#92400E",marginTop:2,lineHeight:1.4}}>{_autoDesc}</div>}
         </div>
         {/* 우측 액션 한 그룹 */}
         <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
@@ -202,7 +208,8 @@ function AdminServiceTags({ data, setData }) {
           <button onClick={()=>openEdit(t)} style={{width:26,height:26,borderRadius:6,border:"1px solid "+T.border,background:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><I name="edit" size={12} style={{color:T.gray500}}/></button>
           {(isSource || !SYSTEM_TAG_IDS.includes(t.id)) && <button onClick={()=>setDel(t.id)} style={{width:26,height:26,borderRadius:6,border:"1px solid #fecaca",background:"#fff5f5",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><I name="trash" size={12} style={{color:T.danger}}/></button>}
         </div>
-      </div>)}
+      </div>;
+      })}
     </div>}
     <ASheet open={sheet} onClose={()=>setSheet(false)} title={editItem?editLabel:titleLabel} onSave={save} saveDisabled={!form.name.trim()} saveLabel={editItem?"저장":addLabel}>
       <AField label={isSource?"경로명":"태그명"} required><input style={AInp} value={form.name} onChange={e=>set("name",e.target.value)} placeholder={isSource?"예: 라인, 카톡":"예: 신규, VIP"} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
@@ -248,7 +255,7 @@ function AdminServiceTags({ data, setData }) {
           <AField label="태그 선택">
             <select value={autoTagId} onChange={e=>switchAutoTag(e.target.value)} style={{...AInp,width:"100%"}}>
               {reservationTags.length === 0 && <option value="">등록된 태그가 없어요</option>}
-              {reservationTags.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {reservationTags.map(t => <option key={t.id} value={t.id}>{t.autoTrigger ? '⚡ ' : ''}{t.name}{t.autoTrigger ? ' (자동)' : ''}</option>)}
             </select>
           </AField>
           {selTag && <>

@@ -1,9 +1,14 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.549** (https://blissme.ai/version.txt) — 2026-05-09 배포
+- **라이브: v3.7.550** (https://blissme.ai/version.txt) — 2026-05-09 배포
 - 다음 빌드 시 `BLISS_V` (AppShell.jsx) + `public/version.txt` 둘 다 함께 bump 필수
-- 변경 이력은 [CLAUDE.md "v3.7.503 → v3.7.549"](./CLAUDE.md) 섹션 참고
+- 변경 이력은 [CLAUDE.md "v3.7.503 → v3.7.550"](./CLAUDE.md) 섹션 참고
+
+## v3.7.550 변경 (2026-05-09)
+- **자동태그 설정 가시성 향상** (AdminServiceTags):
+  - 메인 태그 리스트의 각 행에 `⚡ 자동` 노란 배지 + 자연어 한 줄 설명 추가 (`describeTrigger`로 변환. 예: "마지막 방문이 90일 이상 지난 손님에게 ★기존상담가 자동으로 붙어요")
+  - 자동태그 설정 ASheet의 태그 드롭다운 옵션에 `⚡` prefix + `(자동)` suffix — 어떤 태그가 트리거 설정됐는지 한눈에 식별
 
 ## v3.7.549 변경 (2026-05-09)
 - **features 적재 race condition fix** (`features.js` + `useFeaturesVersion.js` 신규):
