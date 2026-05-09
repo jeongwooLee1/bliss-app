@@ -1544,27 +1544,27 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
               const isOpen = detailCust?.id===c.id;
               // 정보 편집 helper — 좌상 카드
               const renderInfoEdit = () => (
-                <div style={{padding:"14px 16px",display:"flex",flexDirection:"column",gap:10,fontSize:T.fs.xxs,overflowY:"auto",height:"100%",boxSizing:"border-box"}}>
-                  {/* 좌상단: 문자 발송 + 고객번호 */}
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{padding:"12px 14px",display:"flex",flexDirection:"column",gap:8,fontSize:T.fs.xxs,overflowY:"auto",height:"100%",boxSizing:"border-box"}}>
+                  {/* 좌상단 액션 */}
+                  <div style={{display:"flex",alignItems:"center",gap:8,paddingBottom:8,borderBottom:"1px dashed "+T.border}}>
                     <button onClick={e=>{e.stopPropagation(); setSmsCusts([c]); setSmsOpen(true);}}
                       title={c.smsConsent===false?"수신거부 고객 — 발송 시 자동 차단":"이 고객에게 문자 발송"}
                       style={{padding:"5px 10px",fontSize:T.fs.xxs,fontWeight:T.fw.bolder,border:"1px solid "+T.primary,background:T.primaryLt||"#EDE9FE",color:T.primaryDk||T.primary,borderRadius:6,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}>
                       <I name="msgSq" size={11}/> 문자 발송
                     </button>
-                    <label style={{display:"flex",alignItems:"center",gap:5,marginLeft:"auto"}}>
-                      <span style={{color:T.textMuted,fontWeight:T.fw.bold}}>고객번호</span>
-                      <input defaultValue={c.custNum||""} placeholder="-"
-                        onBlur={e=>{const v=e.target.value.trim(); if(v!==(c.custNum||"")) saveCustField({cust_num:v||null},{custNum:v});}}
-                        style={{padding:"4px 6px",border:"1px solid "+T.border,borderRadius:5,fontSize:T.fs.xs,fontFamily:"monospace",color:T.text,width:90,textAlign:"right",fontWeight:T.fw.bold}}/>
-                    </label>
                   </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                   <label style={{display:"flex",flexDirection:"column",gap:2}}>
                     <span style={{color:T.textMuted,fontWeight:T.fw.bold}}>이름</span>
                     <input defaultValue={c.name||""} placeholder="이름"
                       onBlur={e=>{const v=e.target.value.trim(); if(v!==(c.name||"")) saveCustField({name:v},{name:v});}}
                       style={{padding:"5px 8px",border:"1px solid "+T.border,borderRadius:5,fontSize:T.fs.xs,fontFamily:"inherit",color:T.text}}/>
+                  </label>
+                  <label style={{display:"flex",flexDirection:"column",gap:2}}>
+                    <span style={{color:T.textMuted,fontWeight:T.fw.bold}}>고객번호</span>
+                    <input defaultValue={c.custNum||""} placeholder="-"
+                      onBlur={e=>{const v=e.target.value.trim(); if(v!==(c.custNum||"")) saveCustField({cust_num:v||null},{custNum:v});}}
+                      style={{padding:"5px 8px",border:"1px solid "+T.border,borderRadius:5,fontSize:T.fs.xs,fontFamily:"monospace",color:T.text,fontWeight:T.fw.bold}}/>
                   </label>
                   <label style={{display:"flex",flexDirection:"column",gap:2}}>
                     <span style={{color:T.textMuted,fontWeight:T.fw.bold}}>이름 2</span>
@@ -1792,9 +1792,9 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                 {/* 상세 패널 — 풀스크린 모달 (펼침 → 화면 전체 덮음, 한 페이지에서 매출내역까지 다 보이게) */}
                 {isOpen && <tr><td colSpan={11} style={{padding:0}}>
                   <div onClick={e=>{if(e.target===e.currentTarget) setDetailCust(null);}}
-                    style={{position:"fixed",inset:0,zIndex:3000,background:"rgba(0,0,0,.5)",display:"flex",padding:"3vh 24px",alignItems:"flex-start",justifyContent:"center"}}>
+                    style={{position:"fixed",inset:0,zIndex:3000,background:"rgba(0,0,0,.5)",display:"flex",padding:"1.5vh 20px",alignItems:"flex-start",justifyContent:"center"}}>
                   <div onClick={e=>e.stopPropagation()} className="cust-fs-modal"
-                    style={{background:"#F4F5F7",borderRadius:16,width:"100%",maxWidth:1280,maxHeight:"94vh",overflow:"hidden",boxShadow:"0 20px 60px rgba(0,0,0,.25), 0 0 0 1px rgba(0,0,0,.04)",position:"relative",display:"flex",flexDirection:"column"}}>
+                    style={{background:"#F4F5F7",borderRadius:16,width:"100%",maxWidth:1280,height:"97vh",overflow:"hidden",boxShadow:"0 20px 60px rgba(0,0,0,.25), 0 0 0 1px rgba(0,0,0,.04)",position:"relative",display:"flex",flexDirection:"column"}}>
                   <style>{`
                     .cust-fs-modal input,.cust-fs-modal textarea{transition:border-color .15s, box-shadow .15s, background-color .15s;}
                     .cust-fs-modal input:focus,.cust-fs-modal textarea:focus{outline:none;border-color:${T.primary}!important;box-shadow:0 0 0 3px ${T.primary}22;background:#fff!important;}
@@ -1844,8 +1844,8 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                   </div>
                   {/* 외부 2컬럼 grid — 카드형 디자인, gap으로 영역 분리 */}
                   <div style={{display:"grid",gridTemplateColumns:"480px 1fr",gap:14,padding:14,flex:1,minHeight:0,overflow:"hidden",boxSizing:"border-box"}}>
-                  {/* 좌측 wrap — 정보 / 메모(위) / 포인트(아래) + 삭제버튼 */}
-                  <div style={{display:"grid",gridTemplateRows:"260px 1fr 200px",gap:12,minWidth:0,minHeight:0,position:"relative"}}>
+                  {/* 좌측 wrap — 정보 / 메모(위) / 포인트(아래) */}
+                  <div style={{display:"grid",gridTemplateRows:"360px 1fr 240px",gap:12,minWidth:0,minHeight:0,position:"relative"}}>
                   {/* 좌상 — 정보 편집 카드 */}
                   <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 3px rgba(0,0,0,.05), 0 0 0 1px rgba(0,0,0,.04)",minWidth:0,minHeight:0,overflow:"hidden"}}>
                     {renderInfoEdit()}
