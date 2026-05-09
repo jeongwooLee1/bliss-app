@@ -1,9 +1,24 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.553** (https://blissme.ai/version.txt) — 2026-05-09 배포
+- **라이브: v3.7.554** (https://blissme.ai/version.txt) — 2026-05-09 배포
 - 다음 빌드 시 `BLISS_V` (AppShell.jsx) + `public/version.txt` 둘 다 함께 bump 필수
-- 변경 이력은 [CLAUDE.md "v3.7.503 → v3.7.553"](./CLAUDE.md) 섹션 참고
+- 변경 이력은 [CLAUDE.md "v3.7.503 → v3.7.554"](./CLAUDE.md) 섹션 참고
+
+## v3.7.554 변경 (2026-05-09)
+- **외국 이름 한글 음역 (`customers.name_kor` 신규 컬럼)**:
+  - DB: `customers.name_kor text` 컬럼 추가. `name2`(사용자 자유 별칭)와 분리 — 시스템 음역 전용.
+  - db.js DBMAP/DB_COLS 매핑 (`name_kor → nameKor`).
+  - `src/lib/nameTransliterate.js` 신규: Gemini Flash 호출 + 메모리 캐시. `transliterateName(name, geminiKey)` 단건 호출 + `transliterateBatch(names, key, {concurrency,onProgress})` 배치.
+  - **CustModal**: "한글 음역 (외국인 이름용)" 입력 필드 + ⚡ 자동 버튼 (영문 이름일 때 노출). 사용자 직접 수정 가능.
+  - **자동 채움**: 고객 저장 시 `name`이 영문 + `nameKor` 비었으면 자동 음역(handleSave에서 호출).
+  - **인라인 표시** (영문 + name_kor 있을 때, 회색 작은 글씨로 영문 옆에):
+    - TimelinePage 블록 cust 이름 — `John Smith  존 스미스 #54485`
+    - CustomersPage 메인 리스트 이름 셀
+    - CustomersPage 검색 드롭다운 결과
+    - ReservationModal 고객 카드 — 캡처 시안과 동일 패턴
+  - fallback: name_kor 비어있고 name2가 한글이면 그것을 인라인 표시.
+  - v3.7.553 hover 방식은 인라인으로 대체됨.
 
 ## v3.7.553 변경 (2026-05-09)
 - **네이버 막기 — 같은 브랜드(business_id) 소속이면 모두 변경 가능** (TimelinePage):

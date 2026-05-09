@@ -12,6 +12,7 @@ import { DetailedSaleForm } from '../Timeline/SaleForm'
 import { ColHeader as ExcelColHeader } from '../Sales/SalesGridPage'
 import ConsentModal from '../Consent/ConsentModal'
 import ConsentPanel from '../Consent/ConsentPanel'
+import { transliterateName, getCachedTransliteration } from '../../lib/nameTransliterate'
 
 const uid = genId;
 const _mc = (fn) => { if(fn) fn(); };
@@ -24,10 +25,20 @@ const sx = {
   }),
 };
 
-function CustModal({ item, isEdit, onSave, onClose, defBranch, userBranches, branches, memoTemplate }) {
+function CustModal({ item, isEdit, onSave, onClose, defBranch, userBranches, branches, memoTemplate, geminiKey }) {
   const isNew = !isEdit;
   const [form, setForm] = React.useState(() => item ? {...item, smsConsent: item.smsConsent !== false} : {id:'cust_'+uid(),name:'',phone:'',gender:'',bid:defBranch||'',memo:'',visits:0, joinDate: new Date().toISOString().slice(0,10), smsConsent: true});
   const f = (k,v) => setForm(p=>({...p,[k]:v}));
+  const [korBusy, setKorBusy] = React.useState(false);
+  const _isEnName = form.name && !/[가-힣]/.test(form.name);
+  const requestKor = async () => {
+    if (!form.name || !geminiKey || !_isEnName) return;
+    setKorBusy(true);
+    try {
+      const k = await transliterateName(form.name, geminiKey);
+      if (k) f('nameKor', k);
+    } finally { setKorBusy(false); }
+  };
   return <div style={{position:'fixed',inset:0,zIndex:3000,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,.45)'}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
     <div style={{background:T.bgCard,borderRadius:T.radius.lg,padding:24,width:'100%',maxWidth:440,boxShadow:T.shadow.md}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:18}}>
@@ -42,6 +53,15 @@ function CustModal({ item, isEdit, onSave, onClose, defBranch, userBranches, bra
         </FLD>
         <FLD label="이름"><input className="inp" value={form.name} onChange={e=>f('name',e.target.value)} placeholder="회원명"/></FLD>
         <FLD label="이름 2 (선택)"><input className="inp" value={form.name2||''} onChange={e=>f('name2',e.target.value)} placeholder="회원명2 (오라클 NAME2)"/></FLD>
+        <FLD label="한글 음역 (외국인 이름용)">
+          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+            <input className="inp" value={form.nameKor||''} onChange={e=>f('nameKor',e.target.value)} placeholder={_isEnName?"예: 존 스미스 (자동 음역 가능)":"영문 이름일 때만 사용"} style={{flex:1}}/>
+            {_isEnName && <button type="button" onClick={requestKor} disabled={korBusy||!geminiKey} title={!geminiKey?"Gemini API 키가 필요해요":""}
+              style={{padding:"6px 10px",fontSize:11,fontWeight:700,border:"1px solid "+T.primary,background:T.primaryLt||"#ede9fe",color:T.primaryDk,borderRadius:6,cursor:(korBusy||!geminiKey)?"wait":"pointer",fontFamily:"inherit",whiteSpace:"nowrap",opacity:(korBusy||!geminiKey)?0.6:1}}>
+              {korBusy?"음역 중…":"⚡ 자동"}
+            </button>}
+          </div>
+        </FLD>
         <FLD label="연락처"><input className="inp" value={form.phone} onChange={e=>f('phone',e.target.value)} placeholder="01012345678"/></FLD>
         <FLD label="연락처 2 (선택)"><input className="inp" value={form.phone2||''} onChange={e=>f('phone2',e.target.value)} placeholder="두 번째 연락처 (동일 고객 병합용)"/></FLD>
         <FLD label="이메일"><input className="inp" type="email" value={form.email||''} onChange={e=>f('email',e.target.value)} placeholder="example@email.com"/></FLD>
@@ -486,8 +506,24 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
     return out;
   };
 
+  // 활성 비즈의 Gemini 키 추출 (음역 등에 사용)
+  const _geminiKey = (() => {
+    try {
+      const s = (data?.businesses || [])[0]?.settings;
+      const parsed = typeof s === 'string' ? JSON.parse(s) : (s || {});
+      return parsed?.gemini_key || '';
+    } catch { return ''; }
+  })();
+
   const handleSave = async (item, isEdit) => {
     const normalized = {...item, phone: (item.phone || "").replace(/[^0-9]/g, "")};
+    // 외국인 이름 자동 음역 — name이 영문이고 nameKor 비어있으면 Gemini로 채움
+    if (normalized.name && !/[가-힣]/.test(normalized.name) && !normalized.nameKor && _geminiKey) {
+      try {
+        const k = await transliterateName(normalized.name, _geminiKey);
+        if (k) normalized.nameKor = k;
+      } catch {}
+    }
 
     // 연락처 중복 체크 — 다른 고객이 같은 번호 사용 중이면 확인
     if (normalized.phone) {
@@ -1371,13 +1407,17 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                   <td style={{fontSize:T.fs.xs,color:T.text,fontFamily:"monospace",fontWeight:800}}>{c.custNum||"-"}</td>
                   <td style={{fontSize:T.fs.xxs,color:T.textSub,whiteSpace:"nowrap"}}>{c.joinDate||(c.createdAt||"").slice(0,10)||"-"}</td>
                   {(() => {
-                    // 영어 주이름 + 한글 별칭(name2) 있으면 hover로 한글 표시
+                    // 영문 이름이면 한글 음역(name_kor) 인라인 표시. fallback: name2 한글일 때.
                     const _isEn = c.name && !/[가-힣]/.test(c.name);
-                    const _korAlias = (_isEn && c.name2 && /[가-힣]/.test(c.name2)) ? c.name2 : '';
-                    return <td title={_korAlias || undefined} style={{fontWeight:T.fw.bold,cursor:_korAlias?"help":"default"}}>
+                    const _kor = _isEn ? (
+                      (c.nameKor && /[가-힣]/.test(c.nameKor)) ? c.nameKor :
+                      ((c.name2 && /[가-힣]/.test(c.name2)) ? c.name2 : '')
+                    ) : '';
+                    return <td style={{fontWeight:T.fw.bold}}>
                       {c.gender && <span style={{...sx.genderBadge(c.gender),marginRight:4}}>{c.gender==="F"?"여":"남"}</span>}
                       {c.name}
-                      {c.name2 && <span style={{color:T.textSub,fontWeight:T.fw.normal,marginLeft:4,fontSize:T.fs.xxs}}>({c.name2})</span>}
+                      {_kor && <span style={{color:T.gray500,fontWeight:T.fw.normal,marginLeft:5}}>{_kor}</span>}
+                      {c.name2 && !(_kor === c.name2) && <span style={{color:T.textSub,fontWeight:T.fw.normal,marginLeft:4,fontSize:T.fs.xxs}}>({c.name2})</span>}
                       {c.smsConsent===false && <span style={{fontSize:9,color:T.danger,fontWeight:T.fw.bold,marginLeft:4}}>수신거부</span>}
                     </td>;
                   })()}
@@ -1691,7 +1731,8 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
     {showModal && <CustModal item={editItem} isEdit={!!editItem?.id} onSave={handleSave}
       onClose={()=>_mc(()=>{setShowModal(false);setEditItem(null)})}
       defBranch={userBranches[0]} userBranches={userBranches} branches={data.branches||[]}
-      memoTemplate={(()=>{try{const s=typeof (data?.businesses||[])[0]?.settings==='string'?JSON.parse((data.businesses||[])[0].settings):(data?.businesses||[])[0]?.settings||{};return s?.memo_templates?.customer||"";}catch{return "";}})()}/>}
+      memoTemplate={(()=>{try{const s=typeof (data?.businesses||[])[0]?.settings==='string'?JSON.parse((data.businesses||[])[0].settings):(data?.businesses||[])[0]?.settings||{};return s?.memo_templates?.customer||"";}catch{return "";}})()}
+      geminiKey={_geminiKey}/>}
     {editSale && <DetailedSaleForm
       reservation={{...editSale, saleMemo: editSale.memo||""}}
       branchId={editSale.bid}
@@ -1870,8 +1911,15 @@ function ShareCustModal({ baseCust, existingShareIds, onPick, onClose, setData }
               style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",border:"1px solid "+T.border,borderRadius:8,background:"#fff",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
               {(() => {
                 const _isEn = c.name && !/[가-힣]/.test(c.name);
-                const _korAlias = (_isEn && c.name2 && /[가-힣]/.test(c.name2)) ? c.name2 : '';
-                return <span title={_korAlias || undefined} style={{fontSize:12,fontWeight:700,color:T.text,flex:1,cursor:_korAlias?"help":"inherit"}}>{c.name}{c.name2?` (${c.name2})`:""}</span>;
+                const _kor = _isEn ? (
+                  (c.name_kor && /[가-힣]/.test(c.name_kor)) ? c.name_kor :
+                  ((c.name2 && /[가-힣]/.test(c.name2)) ? c.name2 : '')
+                ) : '';
+                return <span style={{fontSize:12,fontWeight:700,color:T.text,flex:1}}>
+                  {c.name}
+                  {_kor && <span style={{color:T.gray500,fontWeight:500,marginLeft:5}}>{_kor}</span>}
+                  {c.name2 && !(_kor === c.name2) ? <span style={{color:T.textSub,fontWeight:500,marginLeft:4}}>({c.name2})</span> : null}
+                </span>;
               })()}
               {c.cust_num && <span style={{fontSize:10,color:T.textMuted,fontFamily:"monospace"}}>#{c.cust_num}</span>}
               {c.phone && !c.phone.startsWith("no_phone") && <span style={{fontSize:11,color:T.textSub}}>{c.phone}</span>}

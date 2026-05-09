@@ -1657,6 +1657,16 @@ ${naverText}
                         ) : (
                           <CopySpan text={f.custName} style={{fontSize:14,fontWeight:700,color:"#1a1a2e",whiteSpace:"nowrap"}}>{f.custName}</CopySpan>
                         )}
+                        {(() => {
+                          // 영문 이름이면 한글 음역(name_kor) 인라인 표시. 없으면 name2(한글) fallback.
+                          const _cust = (data?.customers||[]).find(c => c.id === f.custId);
+                          const _isEn = f.custName && !/[가-힣]/.test(f.custName);
+                          const _kor = _isEn ? (
+                            (_cust?.nameKor && /[가-힣]/.test(_cust.nameKor)) ? _cust.nameKor :
+                            ((f.custName2 && /[가-힣]/.test(f.custName2)) ? f.custName2 : '')
+                          ) : '';
+                          return _kor ? <span style={{fontSize:13,color:"#888",fontWeight:500,whiteSpace:"nowrap"}}>{_kor}</span> : null;
+                        })()}
                         {f.custName2 && <span style={{fontSize:12,color:"#888",fontWeight:500,whiteSpace:"nowrap"}}>({f.custName2})</span>}
                         {custNum && <CopySpan text={custNum} style={{fontSize:13,color:"#999",fontFamily:"monospace",whiteSpace:"nowrap"}}>#{custNum}</CopySpan>}
                         {shareCusts.length > 0 && <span title={`쉐어: ${shareCusts.map(s=>s.name).join(", ")}`}
