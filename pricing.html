@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>요금제 — Bliss</title>
+<meta name="description" content="Bliss SaaS 요금제 안내. 매장당 월 정기 결제로 운영됩니다.">
+<style>
+body{font-family:system-ui,-apple-system,"Apple SD Gothic Neo",sans-serif;max-width:1000px;margin:0 auto;padding:40px 20px;line-height:1.7;color:#222;background:#fafafe}
+h1{font-size:32px;margin:0 0 8px;color:#5b21b6;text-align:center}
+.sub{text-align:center;color:#888;margin-bottom:36px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin:30px 0}
+.card{background:#fff;border-radius:14px;padding:24px;box-shadow:0 2px 12px rgba(0,0,0,0.04);border:1px solid #eee;display:flex;flex-direction:column}
+.card.pro{border-color:#7C3AED;box-shadow:0 4px 24px rgba(124,58,237,0.15)}
+.card h3{margin:0 0 6px;font-size:18px;color:#222}
+.tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;background:#ede9fe;color:#5b21b6;font-weight:700;margin-bottom:6px}
+.tag.pro{background:#7C3AED;color:#fff}
+.price{font-size:30px;font-weight:800;color:#5b21b6;margin:8px 0 4px}
+.price small{font-size:14px;color:#888;font-weight:500}
+.credit{font-size:13px;color:#5b21b6;font-weight:600;margin-bottom:8px}
+.feat{list-style:none;padding:0;margin:14px 0 0;font-size:13px;color:#555}
+.feat li{padding:6px 0;border-bottom:1px dashed #f0f0f5}
+.feat li::before{content:"✓ ";color:#10b981;font-weight:700}
+.note{background:#f5f3ff;border-radius:10px;padding:16px;font-size:13px;color:#5b21b6;margin-top:24px}
+.back{display:inline-block;margin-bottom:20px;color:#7C3AED;text-decoration:none;font-size:13px}
+table{border-collapse:collapse;width:100%;margin:12px 0;background:#fff}
+th,td{padding:10px 12px;border-bottom:1px solid #eee;text-align:left;font-size:13px}
+th{background:#f5f3ff;color:#5b21b6}
+h2{font-size:18px;margin-top:32px;color:#5b21b6}
+.point-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:14px 0}
+.point-card{background:#fff;border:1px solid #eee;border-radius:10px;padding:12px 14px}
+.point-card .label{font-size:12px;color:#666;font-weight:600}
+.point-card .val{font-size:18px;color:#5b21b6;font-weight:800;margin-top:2px}
+.point-card .desc{font-size:11px;color:#999;margin-top:4px}
+</style>
+</head>
+<body>
+<a href="/" class="back">← 메인으로</a>
+<h1>요금제</h1>
+<p class="sub">Bliss는 매장(지점) 단위로 월 구독료가 부과됩니다. 신용카드 자동 결제(빌링키)로 매월 자동 청구됩니다.</p>
+
+<div class="grid">
+  <div class="card">
+    <span class="tag">체험</span>
+    <h3>Trial</h3>
+    <div class="price">0<small>원 · 14일</small></div>
+    <div class="credit">크레딧 1,000P 포함</div>
+    <p style="font-size:12px;color:#888;margin:0">신규 가입 시 14일 무료 체험</p>
+    <ul class="feat">
+      <li>예약·매출·고객 핵심 기능</li>
+      <li>다지점 관리</li>
+      <li>리포트·통계</li>
+      <li>이메일 지원</li>
+    </ul>
+  </div>
+  <div class="card">
+    <span class="tag">기본</span>
+    <h3>Starter</h3>
+    <div class="price">33,000<small>원/월·매장</small></div>
+    <div class="credit">크레딧 3,000P 포함</div>
+    <p style="font-size:12px;color:#888;margin:0">메시지 발송·멤버십·마케팅</p>
+    <ul class="feat">
+      <li>Trial 모든 기능</li>
+      <li>알림톡(카카오) 자동 발송</li>
+      <li>SMS·LMS 발송</li>
+      <li>다회권·다담권·연간회원권 관리</li>
+      <li>보유권 쉐어</li>
+      <li>회원가 자동 적용</li>
+      <li>이벤트 엔진 (트리거·보상 자동화)</li>
+      <li>쿠폰·포인트 적립</li>
+    </ul>
+  </div>
+  <div class="card pro">
+    <span class="tag pro">★ 추천</span>
+    <h3>Pro</h3>
+    <div class="price">77,000<small>원/월·매장</small></div>
+    <div class="credit">크레딧 7,000P 포함</div>
+    <p style="font-size:12px;color:#7C3AED;margin:0;font-weight:700">메시지함 + AI + 동의서 + 운영 고급</p>
+    <ul class="feat">
+      <li>Starter 모든 기능</li>
+      <li>통합 메시지함 (네이버톡톡·WhatsApp·Instagram·LINE)</li>
+      <li>네이버 예약 자동 연동·블록</li>
+      <li>AI 자동 응대 + AI 예약 접수</li>
+      <li>Bliss AI (어시스턴트 멀티턴 채팅)</li>
+      <li>전자 동의서</li>
+      <li>직원 자동 배정·근무 고급</li>
+      <li>시술 후 케어 SMS 자동</li>
+      <li>외부 플랫폼 선결제 (서울뷰티·크리에이트립 등)</li>
+    </ul>
+  </div>
+</div>
+
+<h2>크레딧(P) 차감 단가</h2>
+<p style="font-size:13px;color:#666;margin:6px 0 14px">발송·호출 시 매장 크레딧에서 차감 (1P = 1원). 매월 플랜에 따라 자동 충전되며, 부족 시 매장이 추가 충전 가능.</p>
+
+<div class="point-grid">
+  <div class="point-card"><div class="label">알림톡 (카카오)</div><div class="val">10P / 건</div><div class="desc">템플릿 기반 발송</div></div>
+  <div class="point-card"><div class="label">SMS 단문</div><div class="val">20P / 건</div><div class="desc">90바이트 이하</div></div>
+  <div class="point-card"><div class="label">SMS 장문 (LMS)</div><div class="val">60P / 건</div><div class="desc">90바이트 초과</div></div>
+  <div class="point-card"><div class="label">메시지함 발송</div><div class="val">1P / 건</div><div class="desc">네이버톡·인스타DM·LINE</div></div>
+  <div class="point-card"><div class="label">WhatsApp</div><div class="val">1P / 건</div><div class="desc">24h 서비스 윈도우 내</div></div>
+  <div class="point-card"><div class="label">AI 호출</div><div class="val">5P / 호출</div><div class="desc">AI 자동응답·자동예약·분석</div></div>
+</div>
+
+<h2>결제 안내</h2>
+<table>
+<tr><th>결제 주기</th><td>매월 자동 결제 (등록 카드)</td></tr>
+<tr><th>결제 수단</th><td>신용카드 (정기결제 / 빌링키)</td></tr>
+<tr><th>VAT</th><td>표시 금액에 부가가치세 별도 (10%)</td></tr>
+<tr><th>크레딧 추가 충전</th><td>매장 관리화면에서 부족 시 1P = 1원 단가로 충전</td></tr>
+<tr><th>플랜 변경</th><td>관리화면에서 즉시 변경 가능. 차액 일할 정산</td></tr>
+<tr><th>해지</th><td>다음 결제일 전날까지 해지 시 다음 달부터 미청구</td></tr>
+<tr><th>환불</th><td><a href="/refund.html">환불 정책</a> 참조</td></tr>
+</table>
+
+<div class="note">
+※ 표시 가격은 안내용입니다. 정확한 청구 금액은 결제 시점에 확정되며, 단체·브랜드·다지점 계약 시 별도 협의 가능합니다.<br>
+문의: teraport@blissme.ai
+</div>
+</body>
+</html>

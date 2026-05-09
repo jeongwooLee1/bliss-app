@@ -22,6 +22,13 @@
       html, body {
         -webkit-user-select: none !important; user-select: none !important;
       }
+      /* 코트라 손글씨체 — 공지 배너용 (무료/상용 OK) */
+      @font-face {
+        font-family: 'KotraHandwritingFont';
+        src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_20-10-21@1.0/KOTRA_SONGEULSSI.woff') format('woff');
+        font-weight: normal;
+        font-display: swap;
+      }
       /* form 요소는 항상 입력/선택 가능 */
       input, textarea, [contenteditable="true"] {
         -webkit-user-select: text !important; user-select: text !important;
@@ -29,6 +36,12 @@
       /* 팀채팅 영역만 텍스트 복사 허용 (data-allow-select="true" 컨테이너 내부) */
       [data-allow-select="true"], [data-allow-select="true"] * {
         -webkit-user-select: text !important; user-select: text !important;
+      }
+      /* 받은메시지함 패널 열린 상태 — 모달 wrapper 자체를 사이드바+패널 우측(540px)부터 시작하게 강제. wrapper width = viewport - 540 */
+      @media (min-width: 768px) {
+        body[data-msg-panel="open"] .rsv-modal-wrap {
+          left: 540px !important;
+        }
       }
 
       /* ══ 타임라인 블록 ══ */
@@ -194,6 +207,7 @@
         .hide-mobile{display:none!important}
         .page-reservations{overflow-x:hidden!important}
         .sidebar-d{display:none!important}
+        .main-footer-d{display:none!important}
         .mob-bottom-nav{display:flex!important}
         .mob-hdr{padding-left:16px!important}
         .main-c{margin-left:0!important;padding-bottom:64px!important}
@@ -255,8 +269,8 @@
         .sidebar-m{display:none!important}
       }
     </style>
-    <script type="module" crossorigin src="/assets/index-DkMvN5cU.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/vendor-CrfAmg9o.js">
+    <script type="module" crossorigin src="/assets/index-C7GcwQIl.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/vendor-JC4glAd5.js">
     <link rel="modulepreload" crossorigin href="/assets/supabase-DywSbxor.js">
   </head>
   <body>
