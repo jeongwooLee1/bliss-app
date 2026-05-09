@@ -2286,7 +2286,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     if (setData) {
       if (isNewCust) {
         // new_xxx 접두사(임시 ID)는 새 cust_xxx로 치환 — PK 중복 방지
-        let custId = (cust.id && !cust.id.startsWith("new_")) ? cust.id : ("cust_" + uid());
+        let custId = (cust.id && !cust.id.startsWith("new_")) ? cust.id : genId('cust');
 
         let serverExists = false;
         let existingCustNum = "";

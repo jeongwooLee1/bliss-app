@@ -671,11 +671,11 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
                     </td>;
                   })()}
                   {(() => {
-                    // 영문 이름이면 한글 음역(name_kor) 또는 name2(순한글)을 hover title로 노출
+                    // 영문 이름이면 한글 음역(name_kor)만 hover title + 인라인. name2는 직원 별칭용이라 음역 fallback으로 쓰지 않음.
                     const _cust = s.custId ? (data?.customers||[]).find(c=>c.id===s.custId) : null;
                     const _nm = s.custName || "";
                     const _isEn = _nm && !/[가-힣]/.test(_nm);
-                    const _kor = _cust?.nameKor || _cust?.name_kor || _cust?.name2 || "";
+                    const _kor = _cust?.nameKor || _cust?.name_kor || "";
                     const _korPure = _kor && /[가-힣]/.test(_kor) && !/[A-Za-z]/.test(_kor) ? _kor : "";
                     const _title = _isEn && _korPure ? _korPure : undefined;
                     return <td style={{fontWeight:T.fw.bold}}>

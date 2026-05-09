@@ -1391,11 +1391,6 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
         <h2 className="page-title" style={{marginBottom:0}}>고객 관리</h2>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
-        <button onClick={runBulkKor} disabled={!!bulkKor?.loading || !!bulkKor?.applying}
-          title={!_geminiKey ? "Gemini 키가 필요해요 (관리설정 → AI 설정)" : "외국 이름 손님 한글 음역 일괄 채움"}
-          style={{padding:"6px 12px",fontSize:11,fontWeight:700,border:"1px solid #F59E0B",background:"#FEF3C7",color:"#B45309",borderRadius:T.radius.md,cursor:(bulkKor?.loading||bulkKor?.applying)?"wait":"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:4,whiteSpace:"nowrap",opacity:(bulkKor?.loading||bulkKor?.applying)?0.6:1}}>
-          ⚡ {bulkKor?.loading ? (bulkKor.progress||"평가 중…") : "외국 이름 일괄 음역"}
-        </button>
         <Btn variant="primary" onClick={()=>{setEditItem(null);setShowModal(true)}}><I name="plus" size={12}/> 고객 등록</Btn>
       </div>
     </div>
@@ -1521,17 +1516,14 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                   <td style={{fontSize:T.fs.xs,color:T.text,fontFamily:"monospace",fontWeight:800}}>{c.custNum||"-"}</td>
                   <td style={{fontSize:T.fs.xxs,color:T.textSub,whiteSpace:"nowrap"}}>{c.joinDate||(c.createdAt||"").slice(0,10)||"-"}</td>
                   {(() => {
-                    // 영문 이름이면 한글 음역(name_kor) 인라인 표시. fallback: name2 한글일 때.
+                    // 영문 이름이면 한글 음역(name_kor)만 인라인 표시. name2는 직원 별칭용이라 음역 fallback으로 쓰지 않음.
                     const _isEn = c.name && !/[가-힣]/.test(c.name);
-                    const _kor = _isEn ? (
-                      (c.nameKor && /[가-힣]/.test(c.nameKor)) ? c.nameKor :
-                      ((c.name2 && /[가-힣]/.test(c.name2)) ? c.name2 : '')
-                    ) : '';
+                    const _kor = _isEn && c.nameKor && /[가-힣]/.test(c.nameKor) ? c.nameKor : '';
                     return <td style={{fontWeight:T.fw.bold}}>
                       {c.gender && <span style={{...sx.genderBadge(c.gender),marginRight:4}}>{c.gender==="F"?"여":"남"}</span>}
                       {c.name}
                       {_kor && <span style={{color:T.primaryDk||"#5B21B6",fontWeight:700,marginLeft:5}}>{_kor}</span>}
-                      {c.name2 && !(_kor === c.name2) && <span style={{color:T.textSub,fontWeight:T.fw.normal,marginLeft:4,fontSize:T.fs.xxs}}>({c.name2})</span>}
+                      {c.name2 && <span style={{color:T.textSub,fontWeight:T.fw.normal,marginLeft:4,fontSize:T.fs.xxs}}>({c.name2})</span>}
                       {c.smsConsent===false && <span style={{fontSize:9,color:T.danger,fontWeight:T.fw.bold,marginLeft:4}}>수신거부</span>}
                     </td>;
                   })()}
@@ -1993,7 +1985,7 @@ function ShareCustModal({ baseCust, existingShareIds, onPick, onClose, setData }
     if (!newName.trim()) { alert("이름을 입력하세요"); return; }
     setCreating(true);
     try {
-      const id = "cust_" + genId();
+      const id = genId('cust');
       const phoneVal = newPhone.trim() || ("no_phone_"+id.slice(-6));
       const row = {
         id, business_id: _activeBizId,
@@ -2026,15 +2018,13 @@ function ShareCustModal({ baseCust, existingShareIds, onPick, onClose, setData }
             <button key={c.id} onClick={()=>onPick(c)}
               style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",border:"1px solid "+T.border,borderRadius:8,background:"#fff",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
               {(() => {
+                // 영문 이름이면 한글 음역(name_kor)만 인라인 표시. name2는 직원 별칭용이라 음역 fallback으로 쓰지 않음.
                 const _isEn = c.name && !/[가-힣]/.test(c.name);
-                const _kor = _isEn ? (
-                  (c.name_kor && /[가-힣]/.test(c.name_kor)) ? c.name_kor :
-                  ((c.name2 && /[가-힣]/.test(c.name2)) ? c.name2 : '')
-                ) : '';
+                const _kor = _isEn && c.name_kor && /[가-힣]/.test(c.name_kor) ? c.name_kor : '';
                 return <span style={{fontSize:12,fontWeight:700,color:T.text,flex:1}}>
                   {c.name}
                   {_kor && <span style={{color:T.primaryDk||"#5B21B6",fontWeight:700,marginLeft:5}}>{_kor}</span>}
-                  {c.name2 && !(_kor === c.name2) ? <span style={{color:T.textSub,fontWeight:500,marginLeft:4}}>({c.name2})</span> : null}
+                  {c.name2 ? <span style={{color:T.textSub,fontWeight:500,marginLeft:4}}>({c.name2})</span> : null}
                 </span>;
               })()}
               {c.cust_num && <span style={{fontSize:10,color:T.textMuted,fontFamily:"monospace"}}>#{c.cust_num}</span>}

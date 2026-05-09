@@ -2334,31 +2334,54 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         }
       }
       if (!item.custId && !betaGroupMode) {
-        const newCustId = "cust_" + uid();
-        item.custId = newCustId;
-        const newCust = {
-          id: newCustId, bid: item.bid, name: item.custName, phone: normPhone,
-          gender: item.custGender || "", visits: 0, lastVisit: null, memo: "",
-          custNum: ""
-        };
-        // 외국 이름이면 한글 음역 자동 채움 (Gemini 호출 — 비동기, 실패 시 빈 채로 INSERT)
-        const _isEnNew = item.custName && !/[가-힣]/.test(item.custName);
-        if (_isEnNew) {
-          let _gKey = '';
+        // 🔒 race-window 직전 phone 재확인 — 두 번째 핸들러 호출이 첫 INSERT 전에 들어와도 매칭되도록
+        // (Maria Dominguez 5/9 07:25:06.300 vs .415 = 115ms race로 두 row 모두 INSERT된 사고 방어)
+        if (normPhone && normPhone.length >= 8) {
           try {
-            const s = (data?.businesses || [])[0]?.settings;
-            const _p = typeof s === 'string' ? JSON.parse(s) : (s || {});
-            _gKey = _p?.gemini_key || '';
-          } catch {}
-          if (_gKey) {
-            try {
-              const _kor = await transliterateName(item.custName, _gKey);
-              if (_kor) newCust.nameKor = _kor;
-            } catch (e) { console.warn('[res save] transliterate fail', e); }
-          }
+            const recheck = await sb.get("customers",
+              `&business_id=eq.${_activeBizId}&or=(phone.eq.${encodeURIComponent(normPhone)},phone2.eq.${encodeURIComponent(normPhone)})&limit=1`);
+            if (Array.isArray(recheck) && recheck.length > 0) {
+              const r0 = recheck[0];
+              item.custId = r0.id;
+              item.custName = r0.name || item.custName;
+              item.isNewCust = false;
+              // setData에도 즉시 반영해 다음 동시 흐름이 로컬 캐시에서 재매칭되게
+              setData(prev => {
+                const exists = (prev?.customers||[]).some(c => c.id === r0.id);
+                if (exists) return prev;
+                return { ...prev, customers: [...(prev?.customers||[]), { id: r0.id, name: r0.name, phone: r0.phone, gender: r0.gender, custNum: r0.cust_num, bid: r0.bid }] };
+              });
+            }
+          } catch(e) { console.warn("[res save] phone recheck", e); }
         }
-        setData(prev => ({ ...prev, customers: [...prev.customers, newCust] }));
-        sb.insert("customers", toDb("customers", newCust)).catch(console.error);
+        if (!item.custId) {
+          const newCustId = genId('cust');  // genId가 prefix 받음 → "cust_xxxxxxxxxx" (이전엔 uid()=genId()→"id_xxx" 리턴이라 "cust_id_xxx" 이상한 형태였음)
+          item.custId = newCustId;
+          const newCust = {
+            id: newCustId, bid: item.bid, name: item.custName, phone: normPhone,
+            gender: item.custGender || "", visits: 0, lastVisit: null, memo: "",
+            custNum: ""
+          };
+          // 외국 이름이면 한글 음역 자동 채움 (Gemini 호출 — 비동기, 실패 시 빈 채로 INSERT)
+          const _isEnNew = item.custName && !/[가-힣]/.test(item.custName);
+          if (_isEnNew) {
+            let _gKey = '';
+            try {
+              const s = (data?.businesses || [])[0]?.settings;
+              const _p = typeof s === 'string' ? JSON.parse(s) : (s || {});
+              _gKey = _p?.gemini_key || '';
+            } catch {}
+            if (_gKey) {
+              try {
+                const _kor = await transliterateName(item.custName, _gKey);
+                if (_kor) newCust.nameKor = _kor;
+              } catch (e) { console.warn('[res save] transliterate fail', e); }
+            }
+          }
+          setData(prev => ({ ...prev, customers: [...prev.customers, newCust] }));
+          // ⏱ await으로 변경 — fire-and-forget이면 다음 동시 흐름이 INSERT 끝나기 전 phone 검색해서 또 INSERT (race)
+          await sb.insert("customers", toDb("customers", newCust)).catch(console.error);
+        }
       }
     }
     // 숨김 고객 자동 활성화
@@ -5129,14 +5152,11 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                               const _cp = Number(liveCust?.cancelPenaltyCount || 0);
                               const _ns = Number(liveCust?.noShowCount || 0);
                               const isCaution = _cp >= 3 || _ns >= 1;
-                              // 영문 이름이면 한글 음역(name_kor) 인라인 표시. name2는 영문 섞이면 안 됨(별칭 케이스 회피)
+                              // 영문 이름이면 한글 음역(name_kor)만 인라인 표시. name2는 직원 별칭용이라 음역 fallback으로 쓰지 않음.
                               const _isPureKor = (s) => !!s && /[가-힣]/.test(s) && !/[A-Za-z]/.test(s);
                               const _nameKor = liveCust?.nameKor || liveCust?.name_kor || "";
-                              const _name2 = liveCust?.name2 || "";
                               const _isEnDisplay = displayName && !/[가-힣]/.test(displayName);
-                              const _korFull = _isEnDisplay
-                                ? (_isPureKor(_nameKor) ? _nameKor : (_isPureKor(_name2) ? _name2 : ''))
-                                : '';
+                              const _korFull = _isEnDisplay && _isPureKor(_nameKor) ? _nameKor : '';
                               // 예약박스에서는 부르는 이름(first name)만. 단어 1개면 그대로(예: Maria).
                               const _shortName = _isEnDisplay ? (displayName.split(/\s+/)[0] || displayName) : displayName;
                               const _shortKor = _korFull ? (_korFull.split(/\s+/)[0] || _korFull) : '';
