@@ -82,7 +82,7 @@ function CustModal({ item, isEdit, onSave, onClose, defBranch, userBranches, bra
             ))}
           </div>
         </FLD>
-        <FLD label="기본 예약태그">
+        <FLD label="예약태그">
           <div style={{padding:"8px 10px",border:"1px solid "+T.border,borderRadius:T.radius.md,background:"#FAFAFC"}}>
             <div style={{fontSize:11,color:T.textSub,marginBottom:6,lineHeight:1.5}}>이 고객의 새 예약(수동·네이버·AI)에 자동으로 부착될 태그를 미리 선택하세요.</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
@@ -1621,7 +1621,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                     </div>
                   </div>
                   <div style={{gridColumn:"1 / -1",display:"flex",flexDirection:"column",gap:4}}>
-                    <span style={{color:T.textMuted,fontWeight:T.fw.bold}}>기본 예약태그 <span style={{fontWeight:500,fontSize:9}}>(새 예약에 자동 부착)</span></span>
+                    <span style={{color:T.textMuted,fontWeight:T.fw.bold}}>예약태그 <span style={{fontWeight:500,fontSize:9}}>(새 예약에 자동 부착)</span></span>
                     <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
                       {(data?.serviceTags||[]).filter(t=>t.useYn!==false && t.scheduleYn!=="Y").sort((a,b)=>(a.sort||0)-(b.sort||0)).map(t=>{
                         const sel = Array.isArray(c.defaultTags) && c.defaultTags.includes(t.id);
@@ -1845,7 +1845,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                   {/* 외부 2컬럼 grid — 카드형 디자인, gap으로 영역 분리 */}
                   <div style={{display:"grid",gridTemplateColumns:"480px 1fr",gap:14,padding:14,flex:1,minHeight:0,overflow:"hidden",boxSizing:"border-box"}}>
                   {/* 좌측 wrap — 정보 / 메모(위) / 포인트(아래) */}
-                  <div style={{display:"grid",gridTemplateRows:"360px 1fr 240px",gap:12,minWidth:0,minHeight:0,position:"relative"}}>
+                  <div style={{display:"grid",gridTemplateRows:"420px 1fr 240px",gap:12,minWidth:0,minHeight:0,position:"relative"}}>
                   {/* 좌상 — 정보 편집 카드 */}
                   <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 3px rgba(0,0,0,.05), 0 0 0 1px rgba(0,0,0,.04)",minWidth:0,minHeight:0,overflow:"hidden"}}>
                     {renderInfoEdit()}
