@@ -1252,12 +1252,12 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     const batches = [];
     for (let i = 0; i < missing.length; i += batchSize) batches.push(missing.slice(i, i + batchSize));
     Promise.all(batches.map(batch =>
-      fetch(`${SB_URL}/rest/v1/customers?id=in.(${batch.join(",")})&select=id,name,phone,gender,cust_num`, {
+      fetch(`${SB_URL}/rest/v1/customers?id=in.(${batch.join(",")})&select=id,name,name2,name_kor,phone,gender,cust_num`, {
         headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
       }).then(r => r.json()).catch(() => [])
     )).then(results => {
       const next = {};
-      results.flat().forEach(c => { if (c?.id) next[c.id] = { name: c.name, phone: c.phone, gender: c.gender, custNum: c.cust_num }; });
+      results.flat().forEach(c => { if (c?.id) next[c.id] = { name: c.name, name2: c.name2, nameKor: c.name_kor, phone: c.phone, gender: c.gender, custNum: c.cust_num }; });
       if (Object.keys(next).length) setCustInfoMap(prev => ({...prev, ...next}));
     });
   }, [selDate, data?.reservations?.length, data?.customers?.length]);

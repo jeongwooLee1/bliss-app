@@ -619,6 +619,16 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
           isNewCust: false,
         }));
         if (c.custNum) setCustNum(c.custNum);
+        // 데이터 캐시에도 머지 — 다른 컴포넌트(타임라인 인라인 표시 등)에서 즉시 쓸 수 있도록
+        if (setData) setData(prev => {
+          if (!prev) return prev;
+          const list = prev.customers || [];
+          const idx = list.findIndex(x => x.id === c.id);
+          if (idx >= 0) {
+            return { ...prev, customers: list.map(x => x.id === c.id ? { ...x, ...c } : x) };
+          }
+          return { ...prev, customers: [...list, c] };
+        });
       }).catch(() => {});
       return;
     }
