@@ -1,9 +1,16 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.555** (https://blissme.ai/version.txt) — 2026-05-09 배포
+- **라이브: v3.7.556** (https://blissme.ai/version.txt) — 2026-05-09 배포
 - 다음 빌드 시 `BLISS_V` (AppShell.jsx) + `public/version.txt` 둘 다 함께 bump 필수
-- 변경 이력은 [CLAUDE.md "v3.7.503 → v3.7.555"](./CLAUDE.md) 섹션 참고
+- 변경 이력은 [CLAUDE.md "v3.7.503 → v3.7.556"](./CLAUDE.md) 섹션 참고
+
+## v3.7.556 변경 (2026-05-09)
+- **음역 결과 너무 짧게 잘리는 버그 fix** (`nameTransliterate.js`):
+  - 증상: `John Do → 존`, `Sini Juutilainen → 시니`처럼 첫 한두 글자만 나옴.
+  - 원인: Gemini 2.5 Flash는 thinking 모델이라 `maxOutputTokens=50`에 thinking 토큰까지 포함 → 실제 출력 거의 안 남음.
+  - fix: `thinkingConfig.thinkingBudget=0` (thinking 비활성) + `maxOutputTokens` 50 → 200.
+  - 효과: 완전한 음역(예: `John Do → 존 도`, `Sini Juutilainen → 시니 유틸라이넨`).
 
 ## v3.7.555 변경 (2026-05-09)
 - **TimelinePage 신규 고객 INSERT 경로에 자동 음역 추가** (TimelinePage.jsx:2336~):

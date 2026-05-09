@@ -26,7 +26,13 @@ export async function transliterateName(name, geminiKey) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: `다음 영문 이름을 한국에서 일반적으로 사용하는 한글 음역으로만 답변하세요. 설명·따옴표·이모지 없이 한글 음역만. 단어 사이는 한 칸 띄어쓰기.\n\n이름: ${name}\n\n한글 음역:` }] }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 50 }
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 200,
+          // Gemini 2.5 Flash는 thinking 모델 — maxOutputTokens에 thinking 토큰 포함
+          // thinkingBudget=0으로 thinking 끄기 (단순 음역엔 불필요, 짧은 출력 보장)
+          thinkingConfig: { thinkingBudget: 0 }
+        }
       })
     })
     if (!r.ok) return ''
