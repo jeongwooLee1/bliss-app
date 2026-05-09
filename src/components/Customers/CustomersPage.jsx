@@ -1545,14 +1545,6 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
               // 정보 편집 helper — 좌상 카드
               const renderInfoEdit = () => (
                 <div style={{padding:"12px 14px",display:"flex",flexDirection:"column",gap:8,fontSize:T.fs.xxs,overflowY:"auto",height:"100%",boxSizing:"border-box"}}>
-                  {/* 좌상단 액션 */}
-                  <div style={{display:"flex",alignItems:"center",gap:8,paddingBottom:8,borderBottom:"1px dashed "+T.border}}>
-                    <button onClick={e=>{e.stopPropagation(); setSmsCusts([c]); setSmsOpen(true);}}
-                      title={c.smsConsent===false?"수신거부 고객 — 발송 시 자동 차단":"이 고객에게 문자 발송"}
-                      style={{padding:"5px 10px",fontSize:T.fs.xxs,fontWeight:T.fw.bolder,border:"1px solid "+T.primary,background:T.primaryLt||"#EDE9FE",color:T.primaryDk||T.primary,borderRadius:6,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}>
-                      <I name="msgSq" size={11}/> 문자 발송
-                    </button>
-                  </div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                   <label style={{display:"flex",flexDirection:"column",gap:2}}>
                     <span style={{color:T.textMuted,fontWeight:T.fw.bold}}>이름</span>
@@ -1837,6 +1829,12 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                         <span style={{fontSize:T.fs.sm,fontWeight:T.fw.black,color:s.color}}>{s.val}</span>
                       </div>)}
                     </div>
+                    {/* 문자 발송 — 헤더 우측 (닫기 X 직전) */}
+                    <button onClick={e=>{e.stopPropagation(); setSmsCusts([c]); setSmsOpen(true);}}
+                      title={c.smsConsent===false?"수신거부 고객 — 발송 시 자동 차단":"이 고객에게 문자 발송"}
+                      style={{padding:"7px 14px",fontSize:T.fs.xs,fontWeight:T.fw.bolder,border:"1px solid "+T.primary,background:T.primaryLt||"#EDE9FE",color:T.primaryDk||T.primary,borderRadius:8,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:6}}>
+                      <I name="msgSq" size={13}/> 문자 발송
+                    </button>
                     <button onClick={()=>setDetailCust(null)} title="닫기 (ESC)"
                       style={{width:32,height:32,borderRadius:"50%",border:"none",background:"transparent",cursor:"pointer",lineHeight:1,fontFamily:"inherit",display:"inline-flex",alignItems:"center",justifyContent:"center",color:T.gray500}}>
                       <I name="x" size={18}/>
