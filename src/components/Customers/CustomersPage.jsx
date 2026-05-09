@@ -1797,8 +1797,14 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                       {c.custNum && <span style={{marginLeft:8,fontSize:T.fs.sm,color:T.textSub,fontFamily:"monospace",fontWeight:T.fw.normal}}>#{c.custNum}</span>}
                       {c.phone && <span style={{marginLeft:10,fontSize:T.fs.sm,color:T.primary,fontWeight:T.fw.normal}}>{c.phone}</span>}
                     </span>
+                    {/* 문자 발송 — 헤더 우측에 inline */}
+                    <button onClick={e=>{e.stopPropagation(); setSmsCusts([c]); setSmsOpen(true);}}
+                      title={c.smsConsent===false?"수신거부 고객 — 발송 시 자동 차단":"이 고객에게 문자 발송"}
+                      style={{marginLeft:"auto",padding:"7px 14px",fontSize:T.fs.xs,fontWeight:T.fw.bolder,border:"1px solid "+T.primary,background:T.primaryLt||"#EDE9FE",color:T.primaryDk||T.primary,borderRadius:8,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:6}}>
+                      <I name="msgSq" size={13}/> 문자 발송
+                    </button>
                     <button onClick={()=>setDetailCust(null)} title="닫기 (ESC)"
-                      style={{marginLeft:"auto",width:32,height:32,borderRadius:"50%",border:"none",background:"transparent",cursor:"pointer",lineHeight:1,fontFamily:"inherit",display:"inline-flex",alignItems:"center",justifyContent:"center",color:T.gray500}}>
+                      style={{width:32,height:32,borderRadius:"50%",border:"none",background:"transparent",cursor:"pointer",lineHeight:1,fontFamily:"inherit",display:"inline-flex",alignItems:"center",justifyContent:"center",color:T.gray500}}>
                       <I name="x" size={18}/>
                     </button>
                   </div>
@@ -1833,6 +1839,20 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                       <span style={{fontSize:T.fs.xxs,color:T.textMuted}}>{s.label}</span>
                       <span style={{fontSize:T.fs.sm,fontWeight:T.fw.black,color:s.color}}>{s.val}</span>
                     </div>)}
+                    {/* 삭제 (대표관리자만) — 통계 카드 우측 끝 */}
+                    {isMaster && <button onClick={async e=>{
+                      e.stopPropagation();
+                      if (!confirm(`${c.name} 고객 정보를 정말 삭제하시겠습니까?\n\n• 고객관리 리스트에서 영구 제거\n• 예약·매출 데이터는 그대로 (cust_id 참조 끊김)\n\n되돌릴 수 없습니다.`)) return;
+                      try {
+                        await sb.del("customers", c.id);
+                        setPagedCusts(prev => prev.filter(x => x.id !== c.id));
+                        setDetailCust(null);
+                      } catch (err) { alert("삭제 실패: " + (err?.message || err)); }
+                    }}
+                      title="이 고객 정보 영구 삭제"
+                      style={{marginLeft:"auto",padding:"4px 8px",fontSize:T.fs.nano,fontWeight:T.fw.bold,border:"1px solid "+T.gray300,background:"#fff",color:T.danger,borderRadius:6,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:3}}>
+                      <I name="trash" size={10}/> 삭제
+                    </button>}
                   </div>
                   {/* 포인트 카드 */}
                   <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 3px rgba(0,0,0,.05), 0 0 0 1px rgba(0,0,0,.04)",minWidth:0,minHeight:0,overflowY:"auto"}}>
@@ -1847,31 +1867,6 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                   <div style={{display:"grid",gridTemplateRows:"1fr 1fr",gap:14,minWidth:0,minHeight:0}}>
                   {/* 우상 — 보유권/포인트/쉐어/동의서 카드 */}
                   <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 3px rgba(0,0,0,.05), 0 0 0 1px rgba(0,0,0,.04)",minWidth:0,minHeight:0,overflowY:"auto",position:"relative"}}>
-                    {/* 액션 버튼 영역 (통계는 좌측으로 이동) */}
-                    <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:T.bgCard,borderBottom:"1px solid "+T.border,flexWrap:"wrap"}}>
-                      {/* 단건 SMS 발송 */}
-                      <button onClick={e=>{e.stopPropagation(); setSmsCusts([c]); setSmsOpen(true);}}
-                        title={c.smsConsent===false?"수신거부 고객 — 발송 시 자동 차단":"이 고객에게 문자 발송"}
-                        style={{padding:'5px 12px',fontSize:T.fs.xxs,fontWeight:700,border:'1px solid '+T.primary,background:'#fff',color:T.primary,borderRadius:T.radius.sm,cursor:'pointer',fontFamily:'inherit',display:"inline-flex",alignItems:"center",gap:5}}>
-                        <I name="msgSq" size={11}/> 문자 발송
-                      </button>
-                      {/* 고객 삭제 (대표관리자만) */}
-                      {isMaster && <button onClick={async e=>{
-                        e.stopPropagation();
-                        if (!confirm(`${c.name} 고객 정보를 정말 삭제하시겠습니까?\n\n• 고객관리 리스트에서 영구 제거\n• 예약·매출 데이터는 그대로 (cust_id 참조 끊김)\n\n되돌릴 수 없습니다.`)) return;
-                        try {
-                          await sb.del("customers", c.id);
-                          setPagedCusts(prev => prev.filter(x => x.id !== c.id));
-                          setDetailCust(null);
-                        } catch (err) {
-                          alert("삭제 실패: " + (err?.message || err));
-                        }
-                      }}
-                        title="이 고객 정보 영구 삭제"
-                        style={{padding:'4px 10px',fontSize:T.fs.xxs,fontWeight:700,border:'1px solid '+T.danger,background:'#fff',color:T.danger,borderRadius:T.radius.sm,cursor:'pointer',fontFamily:'inherit'}}>
-                        🗑 삭제
-                      </button>}
-                    </div>
                     {/* 탭 */}
                     <div style={{display:"flex",gap:0,borderBottom:"1px solid "+T.border,background:T.bgCard}}>
                       {[["pkg","보유권 ("+custPkgs.filter(p=>{const t=pkgType(p);const ex=(p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/);const isExp=ex&&ex[1]<todayStr();if(isExp)return false;return t==="prepaid"?((p.note||"").match(/잔액:([0-9,]+)/)?.[1]||"0").replace(/,/g,"")>0:(p.total_count-p.used_count)>0;}).length+")","ticket"],["share","쉐어 ("+shareCusts.length+")","users"],["consent","동의서","fileText"]].map(([tab,lbl,icon])=>(
