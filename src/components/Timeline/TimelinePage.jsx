@@ -5135,11 +5135,12 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                               const _kor = (displayName && !/[가-힣]/.test(displayName))
                                 ? (/[가-힣]/.test(_nameKor) ? _nameKor : (/[가-힣]/.test(_name2) ? _name2 : ''))
                                 : '';
-                              return <span style={{fontWeight:T.fw.bold,color:isNaverCancelled?T.gray500:T.text,textDecoration:isNaverCancelled?"line-through":"none",flexShrink:1,minWidth:0}}>
-                                {g ? <span style={{color:g==="M"?T.male:T.female}}>{g==="M"?"남":"여"}</span> : null} {displayName}
-                                {_kor && <span style={{marginLeft:4,color:T.gray500,fontWeight:T.fw.normal}}>{_kor}</span>}
-                                {custNum && <span style={{marginLeft:3,fontSize:Math.max(7,blockFs-2),color:T.text,fontWeight:T.fw.bold,fontFamily:"monospace"}}>#{custNum}</span>}
-                                {isCaution && <span title={`페널티 취소 ${_cp}회 / 노쇼 ${_ns}회`} style={{marginLeft:3,fontSize:Math.max(8,blockFs-1)}}>⚠️</span>}
+                              return <span style={{fontWeight:T.fw.bold,color:isNaverCancelled?T.gray500:T.text,textDecoration:isNaverCancelled?"line-through":"none",flexShrink:1,minWidth:0,display:"inline-block"}}>
+                                <span>{g ? <span style={{color:g==="M"?T.male:T.female}}>{g==="M"?"남":"여"}</span> : null} {displayName}
+                                  {custNum && <span style={{marginLeft:3,fontSize:Math.max(7,blockFs-2),color:T.text,fontWeight:T.fw.bold,fontFamily:"monospace"}}>#{custNum}</span>}
+                                  {isCaution && <span title={`페널티 취소 ${_cp}회 / 노쇼 ${_ns}회`} style={{marginLeft:3,fontSize:Math.max(8,blockFs-1)}}>⚠️</span>}
+                                </span>
+                                {_kor && <span style={{display:"block",fontSize:Math.max(8,blockFs-1),color:T.text,fontWeight:T.fw.bold,lineHeight:1.2,marginTop:1,opacity:0.85}}>{_kor}</span>}
                               </span>;
                             })()}
                           </div>
