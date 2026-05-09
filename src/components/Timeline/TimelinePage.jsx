@@ -5129,18 +5129,22 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                               const _cp = Number(liveCust?.cancelPenaltyCount || 0);
                               const _ns = Number(liveCust?.noShowCount || 0);
                               const isCaution = _cp >= 3 || _ns >= 1;
-                              // 영문 이름이면 한글 음역(name_kor) 인라인 표시. fallback: name2 한글일 때.
+                              // 영문 이름이면 한글 음역(name_kor) 인라인 표시. name2는 영문 섞이면 안 됨(별칭 케이스 회피)
+                              const _isPureKor = (s) => !!s && /[가-힣]/.test(s) && !/[A-Za-z]/.test(s);
                               const _nameKor = liveCust?.nameKor || liveCust?.name_kor || "";
                               const _name2 = liveCust?.name2 || "";
-                              const _kor = (displayName && !/[가-힣]/.test(displayName))
-                                ? (/[가-힣]/.test(_nameKor) ? _nameKor : (/[가-힣]/.test(_name2) ? _name2 : ''))
+                              const _isEnDisplay = displayName && !/[가-힣]/.test(displayName);
+                              const _korFull = _isEnDisplay
+                                ? (_isPureKor(_nameKor) ? _nameKor : (_isPureKor(_name2) ? _name2 : ''))
                                 : '';
-                              return <span style={{fontWeight:T.fw.bold,color:isNaverCancelled?T.gray500:T.text,textDecoration:isNaverCancelled?"line-through":"none",flexShrink:1,minWidth:0,display:"inline-block"}}>
-                                <span>{g ? <span style={{color:g==="M"?T.male:T.female}}>{g==="M"?"남":"여"}</span> : null} {displayName}
-                                  {custNum && <span style={{marginLeft:3,fontSize:Math.max(7,blockFs-2),color:T.text,fontWeight:T.fw.bold,fontFamily:"monospace"}}>#{custNum}</span>}
-                                  {isCaution && <span title={`페널티 취소 ${_cp}회 / 노쇼 ${_ns}회`} style={{marginLeft:3,fontSize:Math.max(8,blockFs-1)}}>⚠️</span>}
-                                </span>
-                                {_kor && <span style={{display:"block",fontSize:Math.max(8,blockFs-1),color:T.primaryDk||"#5B21B6",fontWeight:T.fw.bold,lineHeight:1.2,marginTop:1}}>{_kor}</span>}
+                              // 예약박스에서는 부르는 이름(first name)만. 단어 1개면 그대로(예: Maria).
+                              const _shortName = _isEnDisplay ? (displayName.split(/\s+/)[0] || displayName) : displayName;
+                              const _shortKor = _korFull ? (_korFull.split(/\s+/)[0] || _korFull) : '';
+                              return <span style={{fontWeight:T.fw.bold,color:isNaverCancelled?T.gray500:T.text,textDecoration:isNaverCancelled?"line-through":"none",flexShrink:1,minWidth:0}} title={_isEnDisplay && (displayName !== _shortName) ? `${displayName}${_korFull?` (${_korFull})`:''}` : undefined}>
+                                {g ? <span style={{color:g==="M"?T.male:T.female}}>{g==="M"?"남":"여"}</span> : null} {_shortName}
+                                {_shortKor && <span style={{marginLeft:4,color:T.primaryDk||"#5B21B6",fontWeight:T.fw.bold}}>{_shortKor}</span>}
+                                {custNum && <span style={{marginLeft:3,fontSize:Math.max(7,blockFs-2),color:T.text,fontWeight:T.fw.bold,fontFamily:"monospace"}}>#{custNum}</span>}
+                                {isCaution && <span title={`페널티 취소 ${_cp}회 / 노쇼 ${_ns}회`} style={{marginLeft:3,fontSize:Math.max(8,blockFs-1)}}>⚠️</span>}
                               </span>;
                             })()}
                           </div>
