@@ -1522,7 +1522,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                     return <td style={{fontWeight:T.fw.bold}}>
                       {c.gender && <span style={{...sx.genderBadge(c.gender),marginRight:4}}>{c.gender==="F"?"여":"남"}</span>}
                       {c.name}
-                      {_kor && <span style={{color:T.gray500,fontWeight:T.fw.normal,marginLeft:5}}>{_kor}</span>}
+                      {_kor && <span style={{color:T.primaryDk||"#5B21B6",fontWeight:700,marginLeft:5}}>{_kor}</span>}
                       {c.name2 && !(_kor === c.name2) && <span style={{color:T.textSub,fontWeight:T.fw.normal,marginLeft:4,fontSize:T.fs.xxs}}>({c.name2})</span>}
                       {c.smsConsent===false && <span style={{fontSize:9,color:T.danger,fontWeight:T.fw.bold,marginLeft:4}}>수신거부</span>}
                     </td>;
@@ -2023,7 +2023,7 @@ function ShareCustModal({ baseCust, existingShareIds, onPick, onClose, setData }
                 ) : '';
                 return <span style={{fontSize:12,fontWeight:700,color:T.text,flex:1}}>
                   {c.name}
-                  {_kor && <span style={{color:T.gray500,fontWeight:500,marginLeft:5}}>{_kor}</span>}
+                  {_kor && <span style={{color:T.primaryDk||"#5B21B6",fontWeight:700,marginLeft:5}}>{_kor}</span>}
                   {c.name2 && !(_kor === c.name2) ? <span style={{color:T.textSub,fontWeight:500,marginLeft:4}}>({c.name2})</span> : null}
                 </span>;
               })()}

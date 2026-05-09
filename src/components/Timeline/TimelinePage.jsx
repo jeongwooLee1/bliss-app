@@ -5140,7 +5140,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                   {custNum && <span style={{marginLeft:3,fontSize:Math.max(7,blockFs-2),color:T.text,fontWeight:T.fw.bold,fontFamily:"monospace"}}>#{custNum}</span>}
                                   {isCaution && <span title={`페널티 취소 ${_cp}회 / 노쇼 ${_ns}회`} style={{marginLeft:3,fontSize:Math.max(8,blockFs-1)}}>⚠️</span>}
                                 </span>
-                                {_kor && <span style={{display:"block",fontSize:Math.max(8,blockFs-1),color:T.text,fontWeight:T.fw.bold,lineHeight:1.2,marginTop:1,opacity:0.85}}>{_kor}</span>}
+                                {_kor && <span style={{display:"block",fontSize:Math.max(8,blockFs-1),color:T.primaryDk||"#5B21B6",fontWeight:T.fw.bold,lineHeight:1.2,marginTop:1}}>{_kor}</span>}
                               </span>;
                             })()}
                           </div>

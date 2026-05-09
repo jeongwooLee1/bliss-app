@@ -1675,7 +1675,7 @@ ${naverText}
                             (_cust?.nameKor && /[가-힣]/.test(_cust.nameKor)) ? _cust.nameKor :
                             ((f.custName2 && /[가-힣]/.test(f.custName2)) ? f.custName2 : '')
                           ) : '';
-                          return _kor ? <span style={{fontSize:13,color:"#888",fontWeight:500,whiteSpace:"nowrap"}}>{_kor}</span> : null;
+                          return _kor ? <span style={{fontSize:13,color:T.primaryDk||"#5B21B6",fontWeight:700,whiteSpace:"nowrap"}}>{_kor}</span> : null;
                         })()}
                         {f.custName2 && <span style={{fontSize:12,color:"#888",fontWeight:500,whiteSpace:"nowrap"}}>({f.custName2})</span>}
                         {custNum && <CopySpan text={custNum} style={{fontSize:13,color:"#999",fontFamily:"monospace",whiteSpace:"nowrap"}}>#{custNum}</CopySpan>}
