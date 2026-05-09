@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { T, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, SYSTEM_TAG_NAME_NEW_CUST, SYSTEM_TAG_NAME_PREPAID, SYSTEM_SRC_NAME_NAVER } from '../../lib/constants'
-import { sb, SB_URL, SB_KEY, queueAlimtalk, buildTokenSearch } from '../../lib/sb'
+import { sb, SB_URL, SB_KEY, sbHeaders, queueAlimtalk, buildTokenSearch } from '../../lib/sb'
 import { fromDb, toDb, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS, _activeBizId } from '../../lib/db'
 import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, getDow, genId, fmtLocal, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, getCustPkgBranchInitial, naverConfirmBooking, judgePenaltyType, customerGrade } from '../../lib/utils'
 import I from '../common/I'
@@ -386,12 +386,82 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   const [custMemoDraft, setCustMemoDraft] = useState("");
   const [savingCustMemo, setSavingCustMemo] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [depositCharging, setDepositCharging] = useState(false);
+
+  // 💳 예약금 청구 — 매장이 고객한테 결제 링크 발송 (토스페이먼츠)
+  const chargeDeposit = async () => {
+    if (!item?.id) { alert('예약 저장 후 청구 가능합니다.'); return; }
+    if (!f.bid) { alert('지점이 지정되지 않았습니다.'); return; }
+    const branch = (data?.branches||[]).find(b => b.id === f.bid);
+    const ps = (() => { try { const v = branch?.payment_settings; return typeof v === 'string' ? JSON.parse(v||'{}') : (v||{}); } catch { return {}; } })();
+    if (!ps?.tosspayments?.client_key || !ps?.tosspayments?.secret_key) {
+      alert('이 매장의 토스페이먼츠 키가 등록되지 않았습니다.\n관리설정 → 결제 설정에서 등록해 주세요.');
+      return;
+    }
+    const amtStr = window.prompt('예약금 금액 (원)을 입력하세요', '20000');
+    if (!amtStr) return;
+    const amount = parseInt(String(amtStr).replace(/[^0-9]/g, ''), 10);
+    if (!amount || amount < 100) { alert('100원 이상 입력하세요.'); return; }
+    setDepositCharging(true);
+    try {
+      const orderId = 'ord_' + genId();
+      const expires = new Date(Date.now() + 7*24*60*60*1000).toISOString();
+      const _bizId = (data?.businesses||[])[0]?.id || _activeBizId || 'biz_khvurgshb';
+      await sb.insert('reservation_payments', {
+        id: orderId,
+        business_id: _bizId,
+        branch_id: f.bid,
+        reservation_id: item.id,
+        cust_id: f.custId || null,
+        cust_name: f.custName || '',
+        cust_phone: f.custPhone || '',
+        cust_email: f.custEmail || '',
+        amount,
+        purpose: 'deposit',
+        status: 'pending',
+        payment_provider: 'tosspayments',
+        expires_at: expires,
+      });
+      const link = `https://blissme.ai/pay/${orderId}`;
+      let sent = false;
+      if (item.chatChannel && item.chatAccountId && item.chatUserId) {
+        try {
+          const text = `예약금 ${amount.toLocaleString()}원 결제 링크입니다 💳\n${link}\n\n토스페이먼츠로 안전하게 결제됩니다.`;
+          const r = await fetch(SB_URL + '/rest/v1/send_queue', {
+            method: 'POST',
+            headers: { ...sbHeaders, Prefer: 'return=representation' },
+            body: JSON.stringify({
+              account_id: item.chatAccountId,
+              user_id: item.chatUserId,
+              message_text: text,
+              channel: item.chatChannel,
+              status: 'pending',
+            }),
+          });
+          if (r.ok) sent = true;
+        } catch {}
+      }
+      try { await navigator.clipboard.writeText(link); } catch {}
+      alert(`✓ 결제 링크 생성 완료\n\n${link}\n\n${sent ? '메시지함으로 자동 발송되었습니다.' : '클립보드에 복사되었습니다.'}`);
+    } catch (e) {
+      alert('결제 링크 생성 실패: ' + (e?.message || e));
+    } finally {
+      setDepositCharging(false);
+    }
+  };
   const modalRef = useRef(null);
   const tags = (data?.serviceTags || []).slice().sort((a,b)=>a.sort-b.sort);
   const visibleTags = tags.filter(tag => tag.useYn !== false && (isSchedule ? tag.scheduleYn === "Y" : tag.scheduleYn !== "Y"));
 
   const BASE_DUR = 5; // 기본 예약시간 5분
-  const isNaverItem = !!(item?.reservationId) && !String(item.reservationId).startsWith("ai_") && !String(item.reservationId).startsWith("manual_");
+  // 네이버 예약 판정: reservationId 있음 + ai_/manual_/외부플랫폼 접두사 아님 + source != 외부플랫폼
+  const _resIdStr = String(item?.reservationId || "");
+  const _srcStr = String(item?.source || "").toLowerCase();
+  const _EXT_PREFIXES = ["ai_","manual_","trazy_","creatrip_","seoulbeauty_","cusmetic_"];
+  const _EXT_SOURCES = ["trazy","creatrip","seoulbeauty","cusmetic","서울뷰티","크리에이트립"];
+  const isNaverItem = !!(item?.reservationId)
+    && !_EXT_PREFIXES.some(p => _resIdStr.startsWith(p))
+    && !_EXT_SOURCES.some(p => _srcStr.includes(p));
   const itemDur = item?.dur || (isNaverItem ? 60 : BASE_DUR);
   const defaultEnd = () => { const t = item?.time||"10:00"; const [h,m] = t.split(":").map(Number); const em = m + itemDur; return `${String(h+Math.floor(em/60)).padStart(2,"0")}:${String(em%60).padStart(2,"0")}`; };
   const addMin = (t, mins) => { const [h,m] = t.split(":").map(Number); const em = m + mins; return `${String(h+Math.floor(em/60)).padStart(2,"0")}:${String(em%60).padStart(2,"0")}`; };
@@ -434,7 +504,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
     custEmail: item?._prefill?.custEmail || "",
     externalPlatform: item?._prefill?.externalPlatform || "",
     externalPrepaid: Math.max(0, Number(item?._prefill?.externalPrepaid) || 0),
-    type:"reservation",
+    type: item?.isSchedule ? "schedule" : (item?.type || "reservation"),
     selectedTags: item?._prefill?.matchedTagIds || [],
     isNewCust: item?._prefill?._isNewCust !== false, tsLog: [],
     selectedServices: item?._prefill?.matchedServiceIds || [], repeat: "none", repeatUntil: "",
@@ -609,6 +679,24 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   const [showCustDropdown, setShowCustDropdown] = useState(false);
   const [custResults, setCustResults] = useState([]);
   const [editingCust, setEditingCust] = useState(false);
+  const [custSnapshot, setCustSnapshot] = useState(null);
+  const commitBtnRef = React.useRef(null);
+  // editing 모드 진입 직전의 cust 필드 6종 저장 → 취소 시 복원용
+  const _captureCustSnapshot = () => setCustSnapshot({
+    custId: f.custId||"", custName: f.custName||"", custName2: f.custName2||"",
+    custPhone: f.custPhone||"", custEmail: f.custEmail||"", custGender: f.custGender||"",
+    isNewCust: !!f.isNewCust, custNum: custNum||""
+  });
+  const _restoreCustSnapshot = () => {
+    if (!custSnapshot) return;
+    setF(p=>({...p,
+      custId: custSnapshot.custId, custName: custSnapshot.custName, custName2: custSnapshot.custName2,
+      custPhone: custSnapshot.custPhone, custEmail: custSnapshot.custEmail, custGender: custSnapshot.custGender,
+      isNewCust: custSnapshot.isNewCust,
+    }));
+    setCustNum(custSnapshot.custNum);
+    setCustSnapshot(null);
+  };
   const [custPkgsInfo, setCustPkgsInfo] = useState([]); // 보유권 요약 표시용
   // 고객의 보유권(다담권/다회권) 로드 — 고객이 변경되거나 custId 백필될 때마다
   useEffect(() => {
@@ -652,12 +740,25 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
       }
       if (cancelled) return;
       let custPkgs = [];
+      let hasPaidSale = false; // 매출 > 0 건 1건이라도 있는지 (체험단 등 0원 매출은 신규로 간주)
       if (matchedCust?.id) {
         try { custPkgs = await sb.get("customer_packages", `&customer_id=eq.${matchedCust.id}`) || []; }
         catch (_) { custPkgs = []; }
+        // 유료 매출 1건이라도 있는지 — 결제수단 합 > 0 (sales 테이블엔 'total' 컬럼이 없음 → OR 필터)
+        try {
+          const _paid = await sb.get("sales", `&cust_id=eq.${matchedCust.id}&or=(svc_cash.gt.0,svc_transfer.gt.0,svc_card.gt.0,svc_point.gt.0,prod_cash.gt.0,prod_transfer.gt.0,prod_card.gt.0,prod_point.gt.0,external_prepaid.gt.0)&select=id&limit=1`);
+          hasPaidSale = Array.isArray(_paid) && _paid.length > 0;
+        } catch (_) { hasPaidSale = false; }
       }
       if (cancelled) return;
-      const matchedTagIds = evaluateTagTriggers({ tags: tagsCfg, customer: matchedCust || null, custPkgs });
+      const matchedTagIds = evaluateTagTriggers({
+        tags: tagsCfg,
+        customer: matchedCust || null,
+        custPkgs,
+        services: data?.services || [],
+        serviceCategories: data?.cats || data?.serviceCategories || [],
+        hasPaidSale,
+      });
       setF(p => {
         const tags = Array.isArray(p.selectedTags) ? p.selectedTags : [];
         // 이번 평가에서 부여될 태그(matchedTagIds)는 추가, 부여되지 않을 자동 트리거 태그는 제거
@@ -671,7 +772,14 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
     })();
     return () => { cancelled = true; };
   }, [f.custId, f.custPhone, isSchedule, data?.customers, data?.serviceTags, item?.id]);
-  // 보유권 요약: 유효권(잔액>0/회차>0) + 소진권 모두 표시 (소진은 흐리게)
+  // 잔액을 한국식 짧은 단위로 포맷 (380000 → "38만", 381000 → "38.1만", 5000 → "5천")
+  const _fmtKor = (n) => {
+    if (!n || n <= 0) return "";
+    if (n < 10000) return Math.round(n/1000) + "천";
+    const v = n / 10000;
+    return (v % 1 === 0 ? v : Math.round(v*10)/10) + "만";
+  };
+  // 보유권 요약: 유효권(잔액>0/회차>0)만 표시. 라벨/값 분리 (Two-tone Split 디자인용)
   const activePkgSummary = (() => {
     const out = [];
     const today = new Date().toISOString().slice(0,10);
@@ -680,28 +788,21 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
       const nl = n.toLowerCase();
       const isPrepaid = n.includes("다담권") || n.includes("선불") || nl.includes("10%추가적립");
       const isAnnual  = n.includes("연간") || n.includes("할인권") || n.includes("회원권");
-      // 유효기간 체크 공통
       const expM = (p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/);
       const isExp = expM && expM[1] < today;
+      const cleanName = (n.split("(")[0]||"").trim();
       if (isPrepaid) {
         const m = (p.note||"").match(/잔액:([0-9,]+)/);
         const bal = m ? Number(m[1].replace(/,/g,"")) : 0;
-        const label = bal > 0
-          ? `🎫 ${n.split("(")[0]||"다담권"} +${bal.toLocaleString()}원`
-          : `🎫 ${n.split("(")[0]||"다담권"} 소진`;
-        out.push({type:"prepaid", active: bal>0 && !isExp, label});
+        out.push({type:"prepaid", active: bal>0 && !isExp, label: cleanName || "다담권", value: _fmtKor(bal)});
       } else if (isAnnual) {
-        out.push({type:"annual", active:!isExp, label: isExp ? `🏷 ${n.split("(")[0]||"연간권"} 만료` : `🏷 ${n.split("(")[0]||"연간권"}`});
+        out.push({type:"annual", active:!isExp, label: cleanName || "연간권", value: ""});
       } else {
         const remain = (p.total_count||0) - (p.used_count||0);
-        const shortName = (n.split("(")[0]||"다회권").replace(/\s*5회$/,"").trim();
-        const label = remain > 0
-          ? `🎟 ${shortName} +${remain}`
-          : `🎟 ${shortName} 소진`;
-        out.push({type:"package", active: remain>0 && !isExp, label});
+        const shortName = cleanName.replace(/\s*5회$/,"").trim();
+        out.push({type:"package", active: remain>0 && !isExp, label: shortName || "다회권", value: remain>0 ? `${remain}회` : ""});
       }
     });
-    // 유효권만 표시
     return out.filter(p => p.active);
   })();
   // 디바운스 검색 (300ms, 2글자 이상) — DB 직접 검색
@@ -735,7 +836,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
     setCustNum(c.custNum||"");
     setCustSearch("");
     setShowCustDropdown(false);
-    setEditingCust(false);
+    // editingCust는 호출자에서 결정 (변경 모드는 유지, 인라인 검색결과/신규등록 후 액션바 유지)
   };
 
   // 태그 선택 → 기본 5분 + 태그 소요시간 합산 → 종료시간 자동 계산
@@ -921,6 +1022,14 @@ ${naverText}
       });
       if (!r.ok) throw new Error("API: "+(await r.text()).slice(0,120));
       const d2 = await r.json();
+      // billing 차감 — 예약 모달 AI 분석 (예약의 bid에 귀속)
+      try {
+        const _bizId = data?.businesses?.[0]?.id;
+        if (_bizId && f.bid) {
+          const { deductBilling } = await import('../../lib/billing');
+          deductBilling({ bizId:_bizId, branchId:f.bid, kind:'ai_call', refTable:'rsv_ai_analyze', refId:f.id });
+        }
+      } catch {}
       const txt = d2.candidates?.[0]?.content?.parts?.[0]?.text || "";
       const jsonMatch = txt.match(/\{[\s\S]*\}/);
       const parsed = JSON.parse((jsonMatch ? jsonMatch[0] : txt).replace(/```json|```/g,"").trim());
@@ -1302,6 +1411,7 @@ ${naverText}
   const _isMob = window.innerWidth <= 768;
   return (
     <div
+      className="rsv-modal-wrap"
       onMouseDown={_isMob ? undefined : e=>{_overlayDownRef.current=(e.target===e.currentTarget);}}
       onClick={_isMob ? undefined : e=>{if(_overlayDownRef.current && e.target===e.currentTarget)onClose(); _overlayDownRef.current=false;}}
       style={_isMob ? {
@@ -1343,7 +1453,7 @@ ${naverText}
             <I name="calendar" size={13}/> 예약
           </button>
           {/* 내부일정 탭 */}
-          <button className="res-tab-btn" onClick={()=>{setIsSchedule(true);setF(p=>({...p,isSchedule:true,selectedTags:[],type:"reservation"}));if(modalRef.current)modalRef.current.scrollTop=0}}
+          <button className="res-tab-btn" onClick={()=>{setIsSchedule(true);setF(p=>({...p,isSchedule:true,selectedTags:[],type:"schedule"}));if(modalRef.current)modalRef.current.scrollTop=0}}
             style={{flex:1,padding:"16px 20px",fontSize:T.fs.lg,fontWeight:isSchedule?T.fw.bolder:T.fw.medium,cursor:"pointer",fontFamily:"inherit",
               border:"none",borderBottom:isSchedule?"2.5px solid #e17055":"none",marginBottom:isSchedule?-1.5:0,
               background:"transparent",color:isSchedule?T.orange:T.textMuted,letterSpacing:"-.01em"}}>
@@ -1411,19 +1521,37 @@ ${naverText}
               const br = (data.branchSettings||data.branches||[]).find(b=>b.id===branchId);
               const bizId = br?.naverBizId;
               const resId = f?.reservationId || item?.reservationId;
+              // 네이버 예약일 때만 "네이버 확정" 버튼. 외부 플랫폼은 수동 확정만.
+              if (!isNaverItem) {
+                const onManualConfirm = (e) => {
+                  e.stopPropagation();
+                  setF(prev => ({...prev, status:'reserved'}));
+                  if (setData) setData(prev => ({...prev, reservations:(prev.reservations||[]).map(x => x.id === f.id ? {...x, status:'reserved'} : x)}));
+                };
+                return <button onClick={onManualConfirm}
+                  style={{fontSize:T.fs.sm,color:T.bgCard,fontWeight:T.fw.bolder,background:T.primary,padding:"5px 12px",borderRadius:T.radius.md,border:'none',cursor:'pointer',display:"inline-flex",alignItems:"center",gap:3,fontFamily:'inherit'}}>✓ 확정</button>;
+              }
               if (!bizId || !resId) return null;
               const onConfirm = async (e) => {
                 e.stopPropagation();
                 const btn = e.currentTarget; const orig = btn.textContent;
                 btn.textContent = '확정 중…'; btn.disabled = true;
                 const r = await naverConfirmBooking(bizId, resId);
-                if (r.ok) {
+                const errMsg = String(r?.msg || r?.error || '');
+                const isAlreadyConfirmed = !r?.ok && /ALREADY_CONFIRMED/i.test(errMsg);
+                if (r?.ok || isAlreadyConfirmed) {
                   btn.textContent = '✓ 완료';
                   setF(prev => ({...prev, status:'reserved'}));
                   if (setData) setData(prev => ({...prev, reservations:(prev.reservations||[]).map(x => x.id === f.id ? {...x, status:'reserved'} : x)}));
+                  try { await sb.update('reservations', f.id, { status: 'reserved' }); } catch {}
+                  if (isAlreadyConfirmed) alert('이미 네이버에서 확정된 예약이라 블리스 상태만 동기화했어요.');
                 } else {
                   btn.textContent = orig; btn.disabled = false;
-                  alert('네이버 확정 실패: ' + (r.msg || r.error || ''));
+                  if (/ITEM_NOT_SALE/i.test(errMsg)) {
+                    alert('이 시간/시술이 네이버 예약관리에서 판매 중지(막기) 상태라 확정할 수 없어요.\n네이버 예약관리에서 슬롯 막기를 해제한 뒤 다시 시도해 주세요.');
+                  } else {
+                    alert('네이버 확정 실패: ' + errMsg);
+                  }
                 }
               };
               return <button onClick={onConfirm}
@@ -1522,7 +1650,7 @@ ${naverText}
                     <div style={{flex:1,minWidth:0}}>
                       {/* 1줄: 이름 #번호 + 배지 (모두 클릭 복사 / 신규는 input) */}
                       <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                        {f.isNewCust ? (
+                        {(f.isNewCust || editingCust) ? (
                           <input value={f.custName||""} onChange={e=>set("custName",e.target.value)}
                             placeholder="고객 이름"
                             style={{fontSize:14,fontWeight:700,color:"#1a1a2e",padding:"3px 8px",border:"1px solid #e0e0e0",borderRadius:6,fontFamily:"inherit",outline:"none",background:"#fff",minWidth:120}}/>
@@ -1532,8 +1660,8 @@ ${naverText}
                         {f.custName2 && <span style={{fontSize:12,color:"#888",fontWeight:500,whiteSpace:"nowrap"}}>({f.custName2})</span>}
                         {custNum && <CopySpan text={custNum} style={{fontSize:13,color:"#999",fontFamily:"monospace",whiteSpace:"nowrap"}}>#{custNum}</CopySpan>}
                         {shareCusts.length > 0 && <span title={`쉐어: ${shareCusts.map(s=>s.name).join(", ")}`}
-                          style={{fontSize:10,padding:"2px 7px",borderRadius:10,background:"#F5F3FF",color:"#5B21B6",border:"1px solid #C4B5FD",fontWeight:700,whiteSpace:"nowrap"}}>
-                          🤝 쉐어 {shareCusts.length}명
+                          style={{fontSize:10,padding:"2px 7px",borderRadius:10,background:"#F5F3FF",color:"#5B21B6",border:"1px solid #C4B5FD",fontWeight:700,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}>
+                          <I name="users" size={10}/>쉐어 {shareCusts.length}명
                         </span>}
                         {/* 주의 배지 */}
                         {(() => {
@@ -1544,8 +1672,8 @@ ${naverText}
                           const _cp = Number(_cust.cancelPenaltyCount || 0);
                           const _ns = Number(_cust.noShowCount || 0);
                           return <span title={`페널티 취소 ${_cp}회 / 노쇼 ${_ns}회`}
-                            style={{fontSize:10,padding:"2px 7px",borderRadius:10,background:"#FFF3E0",color:"#E65100",border:"1px solid #FFB74D",fontWeight:800,whiteSpace:"nowrap"}}>
-                            ⚠️ 주의 (취소{_cp}/노쇼{_ns})
+                            style={{fontSize:10,padding:"2px 7px",borderRadius:10,background:"#FFF3E0",color:"#E65100",border:"1px solid #FFB74D",fontWeight:800,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}>
+                            <I name="alert" size={10}/>주의 (취소{_cp}/노쇼{_ns})
                           </span>;
                         })()}
                       </div>
@@ -1553,7 +1681,7 @@ ${naverText}
                       <div style={{display:"flex",alignItems:"center",gap:8,marginTop:3,flexWrap:"wrap",minWidth:0}}>
                         <span style={{display:"flex",alignItems:"center",gap:6,flexShrink:f.isNewCust?1:0,flex:f.isNewCust?1:"0 0 auto",minWidth:0}}>
                           <span style={{fontSize:11,color:"#aaa"}}>📞</span>
-                          {f.isNewCust ? (
+                          {(f.isNewCust || editingCust) ? (
                             <input type="tel" value={f.custPhone||""} onChange={e=>set("custPhone",e.target.value.replace(/[^0-9-]/g,""))}
                               placeholder="연락처 (010-1234-5678)"
                               style={{flex:1,fontSize:13,padding:"3px 8px",border:"1px solid #e0e0e0",borderRadius:6,fontFamily:"inherit",outline:"none",background:"#fff",color:T.primary,fontWeight:500,minWidth:120}}/>
@@ -1574,23 +1702,42 @@ ${naverText}
                           </span>
                         )}
                       </div>
-                      {/* 변경 모드 — 다른 고객으로 교체 검색창 */}
+                      {/* 변경 모드 — 한 줄 검색 input + inline 검색결과/신규등록 */}
                       {editingCust && (
-                        <div style={{marginTop:8,padding:"8px 10px",background:"#F5F3FF",border:"1px dashed "+T.primary+"60",borderRadius:T.radius.md}}>
-                          <div style={{fontSize:10,color:T.primary,fontWeight:700,marginBottom:5}}>🔍 다른 고객으로 교체 (검색 후 선택)</div>
-                          <div style={{position:"relative",display:"flex",alignItems:"center"}}>
-                            <span style={{position:"absolute",left:10,color:T.gray500,display:"flex",alignItems:"center",pointerEvents:"none"}}><I name="search" size={14}/></span>
-                            <input className="inp inp-search" style={{flex:1,minHeight:32,borderRadius:T.radius.md,paddingLeft:32,fontSize:13,border:"1px solid "+T.border}}
+                        <>
+                          <div style={{marginTop:8,position:"relative",display:"flex",alignItems:"center"}}>
+                            <span style={{position:"absolute",left:10,color:T.gray500,display:"flex",alignItems:"center",pointerEvents:"none",zIndex:1}}><I name="search" size={14}/></span>
+                            <input style={{flex:1,minHeight:36,borderRadius:T.radius.md,paddingLeft:32,paddingRight:10,fontSize:13,background:"#fff",border:`1.5px solid ${T.border}`,outline:"none",fontFamily:"inherit",color:T.text}}
                               value={custSearch}
                               onChange={e=>{ setCustSearch(e.target.value); setShowCustDropdown(true); }}
                               onFocus={()=>setShowCustDropdown(true)}
-                              placeholder="이름·전화 (예: 정우 8008)"
-                              autoFocus/>
+                              placeholder="고객명, 전화번호 (2글자 이상)"/>
                           </div>
-                        </div>
+                          {/* 인라인 검색결과 + 신규등록 — 변경 모드에서만 input 바로 아래에 */}
+                          {custSearch.length >= 2 && (
+                            <div style={{marginTop:6,background:"#fff",borderRadius:T.radius.md,border:`1px solid ${T.border}`,overflow:"hidden",maxHeight:240,overflowY:"auto"}}>
+                              {custResults.map(c => (
+                                <div key={c.id} onClick={()=>{selectCust(c);setF(p=>({...p,isNewCust:false}))}}
+                                  style={{padding:"7px 12px",cursor:"pointer",borderBottom:"1px solid #e0e0e020",display:"flex",gap:6,alignItems:"center",fontSize:12}}
+                                  onMouseOver={e=>e.currentTarget.style.background=T.gray200} onMouseOut={e=>e.currentTarget.style.background="transparent"}>
+                                  <span className="badge" style={{background:c.gender==="M"?T.infoLt:c.gender==="F"?T.femaleLt:T.gray200,color:c.gender==="M"?T.primary:c.gender==="F"?T.female:T.gray500,fontSize:10}}>{c.gender==="M"?"남":c.gender==="F"?"여":"-"}</span>
+                                  {c.custNum && <span style={{fontFamily:"monospace",fontSize:11,color:T.textSub,background:T.gray100,padding:"1px 5px",borderRadius:3,fontWeight:600}}>{c.custNum}</span>}
+                                  <span style={{fontWeight:600}}>{c.name}</span>
+                                  <span style={{color:T.textSub}}>{c.phone}</span>
+                                </div>
+                              ))}
+                              {custResults.length===0 && <div style={{padding:"8px 12px",fontSize:12,color:T.gray500,textAlign:"center"}}>검색결과 없음</div>}
+                              <div onClick={()=>{const q=custSearch.trim();const isEmail=q.includes("@");setF(p=>({...p,isNewCust:true,custId:null,custName:isEmail?"":q.replace(/[0-9\-@.]/g,"").trim(),custPhone:q.replace(/[^0-9]/g,""),custEmail:isEmail?q:""}));setCustSearch("");setShowCustDropdown(false)}}
+                                style={{padding:"8px 12px",cursor:"pointer",display:"flex",gap:6,alignItems:"center",fontSize:12,background:"#d0d0d020",borderTop:"1px solid "+T.border,color:T.danger,fontWeight:700}}
+                                onMouseOver={e=>e.currentTarget.style.background="#d0d0d040"} onMouseOut={e=>e.currentTarget.style.background="#d0d0d020"}>
+                                <I name="plus" size={13}/> 신규등록 {custSearch && <span style={{fontWeight:400,color:T.textSub}}>"{custSearch}"</span>}
+                              </div>
+                            </div>
+                          )}
+                        </>
                       )}
                       {/* 성별 선택 — 신규 고객 또는 미지정 고객만 */}
-                      {!editingCust && (f.isNewCust || !f.custGender) && (
+                      {(editingCust || f.isNewCust || !f.custGender) && (
                         <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6}}>
                           <span style={{fontSize:11,color:"#aaa"}}>성별</span>
                           {[["F","여","#e91e63","#fce4ec"],["M","남","#283593","#e8eaf6"],["","미지정","#999","#f5f5f5"]].map(([v,lv,clr,bg])=>(
@@ -1603,19 +1750,18 @@ ${naverText}
                         </div>
                       )}
                       {/* PKG 칩 */}
-                      {activePkgSummary.length > 0 && <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:5}}>
+                      {activePkgSummary.length > 0 && <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:5}}>
                         {activePkgSummary.map((pkg,i) => {
-                          const activeBg = pkg.type==="prepaid"?"linear-gradient(135deg,#FFE0B2,#FFCC80)":pkg.type==="annual"?"linear-gradient(135deg,#E1BEE7,#CE93D8)":"linear-gradient(135deg,#FFF3E0,#FFE0B2)";
-                          const activeClr = pkg.type==="annual"?"#6A1B9A":"#E65100";
-                          const activeBdr = pkg.type==="annual"?"1px solid #BA68C8":"1px solid #FFB74D";
+                          const c = pkg.type==="prepaid"
+                            ? { val:"#fffde7", txt:"#7a5a00", bdr:"#f3d77a" }
+                            : pkg.type==="annual"
+                            ? { val:"#f3e8f7", txt:"#6a1b9a", bdr:"#d8b6e0" }
+                            : { val:T.primaryLt, txt:T.primaryDk, bdr:"#d6cefa" };
                           return (
-                            <span key={i} title={pkg.active?"유효":"소진/만료"}
-                              style={{fontSize:10,fontWeight:800,padding:"2px 6px",borderRadius:10,
-                                background:pkg.active?activeBg:"#EEEEEE",
-                                color:pkg.active?activeClr:"#9E9E9E",
-                                border:pkg.active?activeBdr:"1px solid #E0E0E0",
-                                textDecoration:pkg.active?"none":"line-through",
-                                whiteSpace:"nowrap"}}>{pkg.label}</span>
+                            <span key={i} style={{display:"inline-flex",alignItems:"stretch",borderRadius:8,overflow:"hidden",fontSize:10,fontWeight:700,border:`1px solid ${c.bdr}`,whiteSpace:"nowrap"}}>
+                              <span style={{padding:"2px 6px",background:"#fff",color:T.gray700}}>{pkg.label}</span>
+                              {pkg.value && <span style={{padding:"2px 6px",background:c.val,color:c.txt,fontWeight:800}}>{pkg.value}</span>}
+                            </span>
                           );
                         })}
                       </div>}
@@ -1624,17 +1770,30 @@ ${naverText}
                   {/* ── 액션바 — 카드 아래 분리 ── */}
                   <div style={{display:"flex",borderTop:"1px solid #e2e5ea",background:"rgba(255,255,255,.5)"}}>
                     {editingCust ? (
-                      <button onClick={()=>{ setEditingCust(false); setCustSearch(""); setShowCustDropdown(false); }}
-                        style={{flex:1,padding:"8px 0",border:"none",background:"transparent",color:"#666",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        취소
-                      </button>
+                      <>
+                        <button onClick={()=>{
+                            _restoreCustSnapshot();
+                            setEditingCust(false); setCustSearch(""); setShowCustDropdown(false);
+                          }}
+                          style={{flex:1,padding:"8px 0",border:"none",borderRight:"1px solid #e2e5ea",background:"transparent",color:"#666",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                          취소
+                        </button>
+                        <button onClick={()=>{
+                            setCustSnapshot(null);
+                            setEditingCust(false); setCustSearch(""); setShowCustDropdown(false);
+                            setTimeout(()=>commitBtnRef.current?.click(), 0);
+                          }}
+                          style={{flex:1,padding:"8px 0",border:"none",background:"transparent",color:T.primary,fontSize:12,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                          <I name="check" size={11} style={{marginRight:3}}/>저장
+                        </button>
+                      </>
                     ) : (
                       <>
                         <button onClick={()=>{
+                            _captureCustSnapshot();
                             setEditingCust(true);
-                            const phone = (f.custPhone||"").replace(/[^0-9]/g,"");
-                            const q = phone || (f.custName||"").trim();
-                            if (q.length >= 2) { setCustSearch(q); setShowCustDropdown(true); }
+                            setCustSearch("");
+                            setShowCustDropdown(false);
                           }}
                           style={{flex:1,padding:"8px 0",border:"none",borderRight:"1px solid #e2e5ea",background:"transparent",color:"#666",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
                           변경
@@ -1660,7 +1819,7 @@ ${naverText}
                           }}
                           title="이 전화번호로 기존 고객 찾기"
                           style={{flex:1,padding:"8px 0",border:"none",borderRight:"1px solid #e2e5ea",background:"transparent",color:T.success,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                          🔍 기존고객
+                          <I name="search" size={11} style={{marginRight:3}}/>기존고객
                         </button>}
                         {f.custId && <button onClick={()=>setCustPopupOpen(true)}
                           title="고객정보 빠른 보기"
@@ -1670,7 +1829,7 @@ ${naverText}
                         {f.custPhone && <button onClick={()=>setShowSmsModal(true)}
                           title="이 고객에게 문자 발송"
                           style={{flex:1,padding:"8px 0",border:"none",background:"transparent",color:"#7C3AED",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                          ✉ 메시지
+                          <I name="msgSq" size={11} style={{marginRight:3}}/>메시지
                         </button>}
                       </>
                     )}
@@ -1684,8 +1843,8 @@ ${naverText}
                     placeholder="고객명, 전화번호 (2글자 이상)" onFocus={()=>setShowCustDropdown(true)}/>
                 </div>
               )}
-              {/* 검색 드롭다운 */}
-              {showCustDropdown && custSearch.length >= 2 && <div style={{position:"absolute",top:"100%",left:0,right:0,background:T.bgCard,borderRadius:T.radius.md,maxHeight:200,overflow:"auto",zIndex:10,marginTop:2,boxShadow:"0 8px 24px rgba(0,0,0,.12)"}}>
+              {/* 검색 드롭다운 — 새 예약 모드에서만 (변경 모드는 인라인) */}
+              {!editingCust && showCustDropdown && custSearch.length >= 2 && <div style={{position:"absolute",top:"100%",left:0,right:0,background:T.bgCard,borderRadius:T.radius.md,maxHeight:200,overflow:"auto",zIndex:10,marginTop:2,boxShadow:"0 8px 24px rgba(0,0,0,.12)"}}>
                 {custResults.map(c=><div key={c.id} onClick={()=>{selectCust(c);setF(p=>({...p,isNewCust:false}))}}
                   style={{padding:"7px 12px",cursor:"pointer",borderBottom:"1px solid #e0e0e020",display:"flex",gap:6,alignItems:"center",fontSize:12}}
                   onMouseOver={e=>e.currentTarget.style.background=T.gray200} onMouseOut={e=>e.currentTarget.style.background="transparent"}>
@@ -1695,7 +1854,7 @@ ${naverText}
                   <span style={{color:T.textSub}}>{c.phone}</span>
                 </div>)}
                 {custResults.length===0 && <div style={{padding:"8px 12px",fontSize:12,color:T.gray500,textAlign:"center"}}>검색결과 없음</div>}
-                <div onClick={()=>{const q=custSearch.trim();const isEmail=q.includes("@");setF(p=>({...p,isNewCust:true,custId:null,custName:isEmail?"":q.replace(/[0-9\-@.]/g,"").trim(),custPhone:q.replace(/[^0-9]/g,""),custEmail:isEmail?q:""}));setCustSearch("");setShowCustDropdown(false)}}
+                <div onClick={()=>{_captureCustSnapshot();const q=custSearch.trim();const isEmail=q.includes("@");setF(p=>({...p,isNewCust:true,custId:null,custName:isEmail?"":q.replace(/[0-9\-@.]/g,"").trim(),custPhone:q.replace(/[^0-9]/g,""),custEmail:isEmail?q:""}));setCustSearch("");setShowCustDropdown(false);setEditingCust(true)}}
                   style={{padding:"8px 12px",cursor:"pointer",display:"flex",gap:6,alignItems:"center",fontSize:12,background:"#d0d0d020",borderTop:"1px solid "+T.border,color:T.danger,fontWeight:700}}
                   onMouseOver={e=>e.currentTarget.style.background="#d0d0d040"} onMouseOut={e=>e.currentTarget.style.background="#d0d0d020"}>
                   <I name="plus" size={13}/> 신규등록 {custSearch && <span style={{fontWeight:400,color:T.textSub}}>"{custSearch}"</span>}
@@ -1820,7 +1979,7 @@ ${naverText}
                     groups[name].totalRemain+=(p.total_count||0)-(p.used_count||0);
                   });
                   return <div style={{borderBottom:"1px solid "+T.border,paddingBottom:4,marginBottom:4}}>
-                    <div style={{padding:"4px 10px",fontSize:11,fontWeight:700,color:T.textMuted}}>📦 보유 패키지</div>
+                    <div style={{padding:"4px 10px",fontSize:11,fontWeight:700,color:T.textMuted,display:"flex",alignItems:"center",gap:5}}><I name="pkg" size={12}/>보유 패키지</div>
                     {Object.values(groups).map(g=>{
                       const pkgId="pkg__"+g.name;
                       const sel=(f.selectedServices||[]).includes(pkgId);
@@ -1906,7 +2065,7 @@ ${naverText}
                       setPendingChat({user_id:uid,channel:ch,account_id:acc});
                       setPage("messages"); onClose();
                     }} style={{fontSize:11,fontWeight:700,color:"#5B63B5",background:"#5B63B510",border:"1px solid #5B63B530",borderRadius:5,padding:"2px 8px",cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:3}}>
-                      💬 대화보기
+                      <I name="msgSq" size={11}/>대화보기
                     </button>;
                   })()}
                 </span>
@@ -1957,6 +2116,25 @@ ${naverText}
                 <span style={{fontSize:T.fs.sm,color:"#E65100",fontWeight:700}}>원</span>
               </div>
             </div>
+
+            {/* 💳 예약금 청구 — 매장 → 고객 결제 링크 (토스페이먼츠) */}
+            {item?.id && !isReadOnly && !isSchedule && (
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",marginTop:6,flexWrap:"wrap",gap:6,background:item.depositPaidAt?"#E8F5E9":"#F5F3FF",borderRadius:8,border:`1px solid ${item.depositPaidAt?"#A5D6A7":"#D8B4FE"}`}}>
+                <span style={{fontSize:T.fs.sm,fontWeight:700,color:item.depositPaidAt?"#1B5E20":"#5B21B6",display:"inline-flex",alignItems:"center",gap:4}}>
+                  <I name="wallet" size={13}/>{item.depositPaidAt?"예약금 결제완료":"예약금 청구"}
+                </span>
+                {item.depositPaidAt ? (
+                  <span style={{fontSize:T.fs.sm,color:"#1B5E20",fontWeight:600}}>
+                    {Number(item.depositAmount||0).toLocaleString()}원 · {new Date(item.depositPaidAt).toLocaleDateString('ko')}
+                  </span>
+                ) : (
+                  <button type="button" onClick={chargeDeposit} disabled={depositCharging}
+                    style={{padding:"5px 12px",fontSize:11,fontWeight:700,background:depositCharging?"#a78bfa":"#7C3AED",color:"#fff",border:"none",borderRadius:6,cursor:depositCharging?"wait":"pointer",fontFamily:"inherit"}}>
+                    {depositCharging?"생성 중...":"결제 링크 발송"}
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* 예약태그 아코디언 */}
             <div className="tags-acc acc-tag">
@@ -2137,14 +2315,14 @@ ${naverText}
                   border:"1px solid #ff9800",borderRadius:10,cursor:aiAnalyzing?"default":"pointer",
                   background:aiAnalyzing?"#f5f5f5":"#fff3e0",color:"#e65100",
                   opacity:aiAnalyzing?.6:1,fontFamily:"inherit",lineHeight:1}}>
-                ✨ {aiAnalyzing?"분석중":"AI"}
+                <I name="sparkles" size={12} style={{marginRight:4}}/>{aiAnalyzing?"분석중":"AI"}
               </button>}
             </div>
             {/* 변경 이력 — prev_reservation_id 체인 (메모 위) */}
             {changeChain.length > 0 && (
               <div style={{marginBottom:10,padding:"10px 12px",background:"#FFF8E1",border:"1px solid #FFD54F",borderRadius:T.radius.md}}>
                 <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:"#E65100",marginBottom:6,display:"flex",alignItems:"center",gap:6}}>
-                  🔄 변경 이력 ({changeChain.length}건)
+                  <I name="clock" size={12}/>변경 이력 ({changeChain.length}건)
                 </div>
                 {changeChain.map((rec, i) => {
                   const stMap = { naver_changed:"변경됨", cancelled:"취소", naver_cancelled:"취소", reserved:"예약", confirmed:"확정", completed:"완료", no_show:"노쇼" };
@@ -2219,10 +2397,12 @@ ${naverText}
               {(() => {
                 if (!item?.id) return null;
                 const resId = String(item?.reservationId || '');
-                // 네이버 예약 판정: reservationId 있음 + manual_/ai_ 접두사 아님 + chat_channel 없음
+                const srcStr = String(item?.source || '').toLowerCase();
+                // 네이버 예약 판정: reservationId 있음 + ai_/manual_/외부플랫폼 접두사 아님 + chatChannel 없음 + source 외부플랫폼 아님
                 const isNaverRes = !!item?.reservationId
-                  && !/^(manual_|ai_)/.test(resId)
-                  && !item?.chatChannel;
+                  && !/^(manual_|ai_|trazy_|creatrip_|seoulbeauty_|cusmetic_)/.test(resId)
+                  && !item?.chatChannel
+                  && !["trazy","creatrip","seoulbeauty","cusmetic","서울뷰티","크리에이트립"].some(p => srcStr.includes(p));
                 // 네이버 활성 예약은 삭제 차단. 단, 네이버에서 이미 취소된 건은 삭제 허용 (직원이 정리 가능)
                 if (isNaverRes && f.status !== "naver_cancelled") return null;
                 return <button onClick={()=>onDeleteRequest?.(item)}
@@ -2231,6 +2411,7 @@ ${naverText}
                 </button>;
               })()}
               <button
+                ref={commitBtnRef}
                 disabled={!isSchedule && f.type==="reservation" && !f.custName?.trim()}
                 style={{marginLeft:"auto",padding:"10px 22px",borderRadius:T.radius.md,fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5,lineHeight:1,transition:"all .15s",border:"2px solid "+(isSchedule?T.orange:T.primary),color:"#fff",background:isSchedule?T.orange:T.primary,boxShadow:isSchedule?"0 4px 14px rgba(225,112,85,.35)":"0 4px 14px rgba(124,124,200,.35)"}}
                 onClick={async ()=>{
@@ -2507,8 +2688,8 @@ ${naverText}
               const _cp = Number(_cust.cancelPenaltyCount || 0);
               const _ns = Number(_cust.noShowCount || 0);
               return <span title={`페널티 취소 ${_cp}회 / 노쇼 ${_ns}회`}
-                style={{fontSize:10,padding:"2px 7px",borderRadius:10,background:"#FFF3E0",color:"#E65100",border:"1px solid #FFB74D",fontWeight:800,whiteSpace:"nowrap"}}>
-                ⚠️ 주의
+                style={{fontSize:10,padding:"2px 7px",borderRadius:10,background:"#FFF3E0",color:"#E65100",border:"1px solid #FFB74D",fontWeight:800,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}>
+                <I name="alert" size={10}/>주의
               </span>;
             })()}
             <span style={{fontSize:T.fs.xs,color:T.textSub,marginLeft:"auto",marginRight:8}}>{f.custName||item?.custName} ({salesHistory.length}건)</span>
@@ -2527,11 +2708,11 @@ ${naverText}
               <div style={{padding:"12px 14px",marginBottom:10,background:"#FFFDE7",
                 borderRadius:T.radius.md,border:`1px solid #FFF176`}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-                  <span style={{fontSize:T.fs.xxs,fontWeight:T.fw.bolder,color:"#F57F17"}}>📋 고객 메모</span>
+                  <span style={{fontSize:T.fs.xxs,fontWeight:T.fw.bolder,color:"#F57F17",display:"inline-flex",alignItems:"center",gap:4}}><I name="clipboard" size={11}/>고객 메모</span>
                   {!editingCustMemo && f.custId && (
                     <button onClick={()=>{ setCustMemoDraft(custMemo||""); setEditingCustMemo(true); }}
                       style={{fontSize:10,color:"#F57F17",background:"#fff",border:"1px solid #FFD54F",borderRadius:6,padding:"2px 8px",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>
-                      ✏️ {custMemo ? "수정" : "메모 추가"}
+                      <I name="edit" size={10} style={{marginRight:3}}/>{custMemo ? "수정" : "메모 추가"}
                     </button>
                   )}
                 </div>
@@ -2561,7 +2742,7 @@ ${naverText}
                           setSavingCustMemo(false);
                         }
                       }} style={{fontSize:11,padding:"4px 12px",borderRadius:6,border:"none",background:"#F57F17",color:"#fff",cursor:savingCustMemo?"not-allowed":"pointer",fontFamily:"inherit",fontWeight:700,opacity:savingCustMemo?0.6:1}}>
-                        {savingCustMemo ? "저장 중..." : "💾 저장"}
+                        {savingCustMemo ? "저장 중..." : <span style={{display:"inline-flex",alignItems:"center",gap:3}}><I name="check" size={11}/>저장</span>}
                       </button>
                     </div>
                   </>
@@ -2583,26 +2764,40 @@ ${naverText}
             ) : salesHistory.length === 0 && !custMemo ? (
               <div style={{textAlign:"center",padding:40,color:T.textSub,fontSize:T.fs.sm}}>매출 내역 없음</div>
             ) : (
-              salesHistory.map((s,i) => {
-                const total = (s.svc_card||0)+(s.svc_cash||0)+(s.svc_transfer||0)+(s.svc_point||0);
-                return (
-                  <div key={s.id||i} style={{padding:"12px 14px",marginBottom:8,background:i===0?"#f0f0ff":"#fafafa",
-                    borderRadius:T.radius.md,border:`1px solid ${i===0?T.primary+"30":T.border}`,
-                    transition:"background .15s"}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                      <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.primary}}>{s.date}</span>
-                      {total>0 && <span style={{fontSize:T.fs.xs,color:T.text,fontWeight:700}}>{total.toLocaleString()}원</span>}
+              <>
+                {salesHistory.map((s,i) => {
+                  const cash = (s.svc_cash||0) + (s.prod_cash||0);
+                  const card = (s.svc_card||0) + (s.prod_card||0);
+                  const tr = (s.svc_transfer||0) + (s.prod_transfer||0);
+                  const pt = (s.svc_point||0) + (s.prod_point||0);
+                  const ext = s.external_prepaid||0;
+                  const total = cash + card + tr + pt + ext;
+                  return (
+                    <div key={s.id||i} style={{padding:"12px 14px",marginBottom:8,background:i===0?"#f0f0ff":"#fafafa",
+                      borderRadius:T.radius.md,border:`1px solid ${i===0?T.primary+"30":T.border}`,
+                      transition:"background .15s"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                        <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.primary}}>{s.date}</span>
+                        {total>0 && <span style={{fontSize:T.fs.xs,color:T.text,fontWeight:700}}>{total.toLocaleString()}원</span>}
+                      </div>
+                      {total>0 && (cash+card+tr+pt+ext > 0) && <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:6}}>
+                        {cash>0 && <span style={{fontSize:9,padding:"1px 6px",borderRadius:T.radius.sm,background:"#FFF3E0",color:"#E65100",fontWeight:700}}>💵 현금 {cash.toLocaleString()}</span>}
+                        {tr>0 && <span style={{fontSize:9,padding:"1px 6px",borderRadius:T.radius.sm,background:"#E8F5E9",color:"#2E7D32",fontWeight:700}}>🏦 입금 {tr.toLocaleString()}</span>}
+                        {card>0 && <span style={{fontSize:9,padding:"1px 6px",borderRadius:T.radius.sm,background:"#E3F2FD",color:"#1565C0",fontWeight:700}}>💳 카드 {card.toLocaleString()}</span>}
+                        {pt>0 && <span style={{fontSize:9,padding:"1px 6px",borderRadius:T.radius.sm,background:"#F3E5F5",color:"#6A1B9A",fontWeight:700}}>⭐ 포인트 {pt.toLocaleString()}</span>}
+                        {ext>0 && <span style={{fontSize:9,padding:"1px 6px",borderRadius:T.radius.sm,background:"#FFEBEE",color:"#C62828",fontWeight:700}}>📦 외부선결제 {ext.toLocaleString()}</span>}
+                      </div>}
+                      {s.service_name && <div style={{fontSize:T.fs.xs,color:T.gray600,marginBottom:4}}>{s.service_name}</div>}
+                      {s.staff_name && <div style={{fontSize:T.fs.nano,color:T.textSub,marginBottom:4}}>담당: {s.staff_name}</div>}
+                      {s.memo && <div style={{fontSize:T.fs.xs,color:T.text,lineHeight:1.6,
+                        whiteSpace:"pre-wrap",wordBreak:"break-word",
+                        padding:"8px 10px",background:"#fff",borderRadius:6,
+                        maxHeight:200,overflowY:"auto",
+                        border:`1px solid ${T.border}`}}>{s.memo}</div>}
                     </div>
-                    {s.service_name && <div style={{fontSize:T.fs.xs,color:T.gray600,marginBottom:4}}>{s.service_name}</div>}
-                    {s.staff_name && <div style={{fontSize:T.fs.nano,color:T.textSub,marginBottom:4}}>담당: {s.staff_name}</div>}
-                    {s.memo && <div style={{fontSize:T.fs.xs,color:T.text,lineHeight:1.6,
-                      whiteSpace:"pre-wrap",wordBreak:"break-word",
-                      padding:"8px 10px",background:"#fff",borderRadius:6,
-                      maxHeight:200,overflowY:"auto",
-                      border:`1px solid ${T.border}`}}>{s.memo}</div>}
-                  </div>
-                );
-              })
+                  );
+                })}
+              </>
             )}
           </div>
         </div>
@@ -2647,26 +2842,34 @@ ${naverText}
               })()}
 
               {/* 보유 패키지 */}
-              {(custPkgsInfo||[]).length > 0 && <div style={{marginBottom:12}}>
-                <div style={{fontSize:11,fontWeight:700,color:T.textSub,marginBottom:6}}>🎫 보유권</div>
+              {(custPkgsInfo||[]).length > 0 && activePkgSummary.length > 0 && <div style={{marginBottom:12}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.textSub,marginBottom:6,display:"flex",alignItems:"center",gap:4}}><I name="wallet" size={12}/>보유권</div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
                   {activePkgSummary.map((pkg,i) => {
-                    const activeBg = pkg.type==="prepaid"?"linear-gradient(135deg,#FFE0B2,#FFCC80)":pkg.type==="annual"?"linear-gradient(135deg,#E1BEE7,#CE93D8)":"linear-gradient(135deg,#FFF3E0,#FFE0B2)";
-                    const activeClr = pkg.type==="annual"?"#6A1B9A":"#E65100";
-                    return <span key={i} style={{fontSize:11,fontWeight:800,padding:"3px 8px",borderRadius:10,background:pkg.active?activeBg:"#EEEEEE",color:pkg.active?activeClr:"#9E9E9E",border:"1px solid "+(pkg.active?"#FFB74D":"#E0E0E0"),textDecoration:pkg.active?"none":"line-through"}}>{pkg.label}</span>;
+                    const c = pkg.type==="prepaid"
+                      ? { val:"#fffde7", txt:"#7a5a00", bdr:"#f3d77a" }
+                      : pkg.type==="annual"
+                      ? { val:"#f3e8f7", txt:"#6a1b9a", bdr:"#d8b6e0" }
+                      : { val:T.primaryLt, txt:T.primaryDk, bdr:"#d6cefa" };
+                    return (
+                      <span key={i} style={{display:"inline-flex",alignItems:"stretch",borderRadius:8,overflow:"hidden",fontSize:11,fontWeight:700,border:`1px solid ${c.bdr}`,whiteSpace:"nowrap"}}>
+                        <span style={{padding:"3px 8px",background:"#fff",color:T.gray700}}>{pkg.label}</span>
+                        {pkg.value && <span style={{padding:"3px 8px",background:c.val,color:c.txt,fontWeight:800}}>{pkg.value}</span>}
+                      </span>
+                    );
                   })}
                 </div>
               </div>}
 
               {/* 고객 메모 */}
               {custMemo && <div style={{padding:"10px 12px",marginBottom:12,background:"#FFFDE7",borderRadius:8,border:"1px solid #FFF176"}}>
-                <div style={{fontSize:11,fontWeight:700,color:"#F57F17",marginBottom:4}}>📋 고객 메모</div>
+                <div style={{fontSize:11,fontWeight:700,color:"#F57F17",marginBottom:4,display:"flex",alignItems:"center",gap:4}}><I name="clipboard" size={11}/>고객 메모</div>
                 <div style={{fontSize:12,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{custMemo}</div>
               </div>}
 
               {/* 최근 매출 이력 (최대 5건) */}
               {salesHistory.length > 0 && <div style={{marginBottom:12}}>
-                <div style={{fontSize:11,fontWeight:700,color:T.textSub,marginBottom:6}}>📊 최근 매출 ({salesHistory.length}건)</div>
+                <div style={{fontSize:11,fontWeight:700,color:T.textSub,marginBottom:6,display:"flex",alignItems:"center",gap:5}}><I name="chart" size={12}/>최근 매출 ({salesHistory.length}건)</div>
                 {salesHistory.slice(0,5).map((s,i) => {
                   const total = (s.svc_card||0)+(s.svc_cash||0)+(s.svc_transfer||0)+(s.svc_point||0);
                   return <div key={s.id||i} style={{padding:"8px 10px",marginBottom:4,background:i===0?"#f0f0ff":"#fafafa",borderRadius:6,border:"1px solid "+(i===0?T.primary+"30":T.border),fontSize:11}}>

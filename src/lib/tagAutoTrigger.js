@@ -13,13 +13,76 @@
  */
 
 // ─── 트리거 카탈로그 (UI 드롭다운 + 파라미터 라벨용) ─────────────────────────
+// param.type: 'number' | 'bool' | 'category_multi' | 'service_multi'  (UI 렌더 분기)
 export const TAG_TRIGGER_TYPES = [
-  { type: 'is_new_customer',        label: '🆕 신규 고객 (미등록 또는 첫 방문)' },
-  { type: 'package_low_count',      label: '📦 패키지 잔여 회수 ≤ N',  params: [{ key: 'threshold', label: '회 이하', default: 1 }] },
-  { type: 'package_expired',        label: '⌛ 보유 패키지/연간권 만료' },
-  { type: 'coupon_expiring_days',   label: '🎫 쿠폰 N일 내 만료',     params: [{ key: 'days', label: '일 이내', default: 7 }] },
-  { type: 'customer_inactive_days', label: '😴 N일 이상 미방문 (기존상담)', params: [{ key: 'days', label: '일 이상', default: 90 }] },
+  { type: 'is_new_customer',        label: '🆕 처음 오신 손님' },
+  { type: 'package_low_count',      label: '📦 보유권 횟수가 거의 다 됐을 때',
+    params: [
+      { key: 'threshold', label: '회 이하 남았을 때', type: 'number', default: 1 },
+      { key: 'categoryIds', label: '어떤 종류의 보유권을 볼까요? (비우면 패키지+연간권)', type: 'category_multi', default: [] },
+      { key: 'serviceIds', label: '특정 시술만 따질까요? (비우면 위 카테고리 전체)', type: 'service_multi', default: [] },
+      { key: 'matchReservationService', label: '오늘 예약한 시술과 같은 종류만 따지기', type: 'bool', default: false },
+    ]
+  },
+  { type: 'package_expired',        label: '⌛ 보유권이 이미 만료됐을 때',
+    params: [
+      { key: 'categoryIds', label: '어떤 종류의 보유권을 볼까요? (비우면 전체)', type: 'category_multi', default: [] },
+    ]
+  },
+  { type: 'coupon_expiring_days',   label: '🎫 쿠폰 만료가 다가올 때',
+    params: [{ key: 'days', label: '일 이내로 만료', type: 'number', default: 7 }]
+  },
+  { type: 'customer_inactive_days', label: '😴 오랫동안 안 오신 손님',
+    params: [{ key: 'days', label: '일 이상 안 오셨을 때', type: 'number', default: 90 }]
+  },
 ];
+
+// 트리거 + 현재 params를 한 문장 자연어로 변환 (자동태그 설정 화면 미리보기용)
+// ctx: { categories, services, tagName }
+export function describeTrigger(trigger, ctx = {}) {
+  if (!trigger || !trigger.type) return '';
+  const cats = ctx.categories || [];
+  const svcs = ctx.services || [];
+  const tagName = ctx.tagName || '이 태그';
+  const t = trigger;
+  const catNames = (ids) => (ids||[]).map(id => cats.find(c=>c.id===id)?.name).filter(Boolean).join(', ');
+  const svcLabel = (ids) => {
+    const list = (ids||[]).map(id => svcs.find(s=>s.id===id)?.name).filter(Boolean);
+    if (list.length === 0) return '';
+    if (list.length <= 2) return list.join(', ');
+    return list.slice(0,2).join(', ') + ` 외 ${list.length-2}개`;
+  };
+  let who = '';
+  switch (t.type) {
+    case 'is_new_customer':
+      who = '미등록이거나 처음 방문한 손님';
+      break;
+    case 'package_low_count': {
+      const n = t.threshold ?? 1;
+      let scope = '보유권';
+      if (Array.isArray(t.serviceIds) && t.serviceIds.length) scope = svcLabel(t.serviceIds);
+      else if (Array.isArray(t.categoryIds) && t.categoryIds.length) scope = catNames(t.categoryIds);
+      const matchPart = t.matchReservationService ? ' (오늘 예약 시술과 같은 종류만)' : '';
+      who = `${scope} 잔여 ${n}회 이하인 손님${matchPart}`;
+      break;
+    }
+    case 'package_expired': {
+      let scope = '보유권';
+      if (Array.isArray(t.categoryIds) && t.categoryIds.length) scope = catNames(t.categoryIds);
+      who = `${scope}이(가) 이미 만료된 손님 (활성 보유권 없음)`;
+      break;
+    }
+    case 'coupon_expiring_days':
+      who = `쿠폰이 ${t.days ?? 7}일 안에 만료되는 손님`;
+      break;
+    case 'customer_inactive_days':
+      who = `마지막 방문이 ${t.days ?? 90}일 이상 지난 손님`;
+      break;
+    default:
+      return '';
+  }
+  return `${who}에게 ${tagName}가 자동으로 붙어요`;
+}
 
 // 패키지 유효기간 파싱 — note 안의 "유효:YYYY-MM-DD" 패턴 우선, 없으면 expires_at, 또는 무제한
 function _pkgExpiresAt(pkg) {
@@ -87,23 +150,45 @@ function _hasActivePackage(custPkgs, todayStr) {
   });
 }
 
+// 패키지 카테고리 ID 식별 — services에서 cat 조회 + service_categories에서 "패키지" 카테고리 ID 매칭
+function _isPackageCategory(pkg, services, packageCatIds) {
+  if (!packageCatIds || !packageCatIds.size) return true; // cat 정보 없으면 종전대로 모두 허용
+  const sid = pkg?.service_id;
+  if (!sid) return false;
+  const svc = (services || []).find(s => s.id === sid);
+  if (!svc) return false;
+  return packageCatIds.has(svc.cat);
+}
+
 /**
  * 단일 트리거 평가
  * @returns boolean
  */
 export function evaluateTrigger(trigger, ctx) {
   if (!trigger || !trigger.type) return false;
-  const { customer, custPkgs = [], todayStr } = ctx;
+  const { customer, custPkgs = [], todayStr, services = [], packageCatIds = null, hasPaidSale = null } = ctx;
   const today = new Date(todayStr + 'T00:00:00');
 
   switch (trigger.type) {
     case 'is_new_customer': {
       if (!customer) return true;
-      return Number(customer.visits || 0) === 0;
+      // 미방문(visits=0) → 신규
+      if (Number(customer.visits || 0) === 0) return true;
+      // visits 있어도 유료 매출(>0원) 0건이면 신규로 취급 (체험단 케이스)
+      // hasPaidSale가 명시적으로 false면 신규. null/undefined(미체크)면 visits만 보고 판단(이전 동작 유지).
+      if (hasPaidSale === false) return true;
+      return false;
     }
     case 'package_low_count': {
       const threshold = Number(trigger.threshold ?? 1);
-      // 다회권(회수 차감)만 대상 — 다담권/바프권(잔액제)·쿠폰(일회성) 제외.
+      const userCatIds = Array.isArray(trigger.categoryIds) ? new Set(trigger.categoryIds.filter(Boolean)) : null;
+      const userSvcIds = Array.isArray(trigger.serviceIds) ? new Set(trigger.serviceIds.filter(Boolean)) : null;
+      const matchRes = !!trigger.matchReservationService;
+      // 예약 시술이 있으면 그 시술의 카테고리 set + 시술 ID set 추출
+      const _resSvcIds = Array.isArray(ctx.reservationServiceIds) ? ctx.reservationServiceIds.filter(Boolean) : [];
+      const _resCatIds = new Set(_resSvcIds.map(sid => (services||[]).find(s => s.id === sid)?.cat).filter(Boolean));
+      // 매장 설정한 카테고리 우선, 없으면 디폴트 패키지+회원권
+      const effectiveCatIds = (userCatIds && userCatIds.size) ? userCatIds : packageCatIds;
       return custPkgs.some(p => {
         if (_isPrepaid(p)) return false;
         if (_isCoupon(p)) return false;
@@ -111,13 +196,33 @@ export function evaluateTrigger(trigger, ctx) {
         const rem = _remainingCount(p);
         if (rem <= 0) return false;
         if (_isExpired(p, todayStr)) return false;
+        // 시술 ID 필터 (가장 정밀)
+        if (userSvcIds && userSvcIds.size && !userSvcIds.has(p.service_id)) return false;
+        // 카테고리 필터 (위에서 우선 선정한 effectiveCatIds 적용)
+        if (effectiveCatIds && effectiveCatIds.size && !_isPackageCategory(p, services, effectiveCatIds)) return false;
+        // 예약 시술 매칭 모드 — 시술 ID 또는 카테고리 둘 중 하나 일치 필요
+        if (matchRes && (_resSvcIds.length > 0 || _resCatIds.size > 0)) {
+          const sid = p.service_id;
+          const svc = (services||[]).find(s => s.id === sid);
+          const sameSvc = sid && _resSvcIds.includes(sid);
+          const sameCat = svc && _resCatIds.has(svc.cat);
+          if (!sameSvc && !sameCat) return false;
+        }
         return rem <= threshold;
       });
     }
     case 'package_expired': {
       // 만료된 보유 패키지/연간권 1건 이상 + 활성 보유권 없음 (재구매 유도 대상)
       // 활성 보유권 있으면 "기존상담" 부적합 (단골 활성 고객)
-      const hasExpired = custPkgs.some(p => !_isCoupon(p) && _isExpired(p, todayStr));
+      // 유료 매출 0원 고객은 신규로 간주 → 기존상담 X
+      if (hasPaidSale === false) return false;
+      const userCatIds = Array.isArray(trigger.categoryIds) ? new Set(trigger.categoryIds.filter(Boolean)) : null;
+      const _matchCat = (p) => {
+        if (!userCatIds || !userCatIds.size) return true;
+        const svc = (services||[]).find(s => s.id === p.service_id);
+        return svc && userCatIds.has(svc.cat);
+      };
+      const hasExpired = custPkgs.some(p => !_isCoupon(p) && _isExpired(p, todayStr) && _matchCat(p));
       if (!hasExpired) return false;
       return !_hasActivePackage(custPkgs, todayStr);
     }
@@ -134,6 +239,8 @@ export function evaluateTrigger(trigger, ctx) {
     }
     case 'customer_inactive_days': {
       if (!customer) return false; // 미등록 고객은 신규 트리거가 처리
+      // 유료 매출 0원 고객은 신규로 간주 → 기존고객 inactive 판정 X
+      if (hasPaidSale === false) return false;
       const days = Number(trigger.days ?? 90);
       const last = customer.lastDate || customer.last_date || '';
       if (!last) return false;
@@ -155,13 +262,20 @@ export function evaluateTrigger(trigger, ctx) {
  * @param {string} args.todayStr   YYYY-MM-DD (기본: 오늘 KST)
  * @returns {string[]}
  */
-export function evaluateTagTriggers({ tags = [], customer = null, custPkgs = [], todayStr = null } = {}) {
+export function evaluateTagTriggers({ tags = [], customer = null, custPkgs = [], todayStr = null, services = [], serviceCategories = [], hasPaidSale = null } = {}) {
   if (!todayStr) {
     const now = new Date();
     const kst = new Date(now.getTime() + 9 * 3600 * 1000);
     todayStr = kst.toISOString().slice(0, 10);
   }
-  const ctx = { customer, custPkgs, todayStr };
+  // 패키지 카테고리 ID 추출 — service_categories.name === "패키지" 인 카테고리만 대상
+  // package_low_count(★마지막회차) 트리거가 패키지 카테고리 보유권만 평가하도록.
+  const packageCatIds = new Set(
+    (serviceCategories || [])
+      .filter(c => c && (c.name === "패키지" || c.name === "회원권"))
+      .map(c => c.id)
+  );
+  const ctx = { customer, custPkgs, todayStr, services, packageCatIds, hasPaidSale };
   const matched = [];
   tags.forEach(t => {
     if (!t || !t.id) return;

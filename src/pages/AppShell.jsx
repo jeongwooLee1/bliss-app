@@ -25,7 +25,7 @@ import FloatingAI from '../components/BlissAI/FloatingAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.429"
+const BLISS_V = "3.7.548"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -326,6 +326,20 @@ function Login({ users, onLogin, onSignup }) {
           </div>
           <div style={{fontSize:T.fs.xs,color:T.textMuted,textAlign:"center",marginTop:4}}>앱 v{BLISS_V}</div>
         </div>
+        {/* PG 심사 요건 — 사업자정보 + 정책 페이지 footer */}
+        <footer style={{marginTop:32,paddingTop:20,borderTop:`1px solid ${T.gray200}`,fontSize:11,color:T.textMuted,lineHeight:1.7,textAlign:"center"}}>
+          <div style={{marginBottom:6}}>
+            <a href="/about.html" style={{color:T.textSub,textDecoration:"none",margin:"0 6px"}}>회사소개</a>·
+            <a href="/pricing.html" style={{color:T.textSub,textDecoration:"none",margin:"0 6px"}}>요금제</a>·
+            <a href="/terms.html" style={{color:T.textSub,textDecoration:"none",margin:"0 6px"}}>이용약관</a>·
+            <a href="/privacy.html" style={{color:T.textSub,textDecoration:"none",margin:"0 6px",fontWeight:700}}>개인정보처리방침</a>·
+            <a href="/refund.html" style={{color:T.textSub,textDecoration:"none",margin:"0 6px"}}>환불정책</a>
+          </div>
+          <div>(주)테라포트 · 대표: 권신영 · 사업자등록번호: 632-81-02070</div>
+          <div>통신판매업신고: 제 2022-성남수정-0100 호 · 고객센터: 010-5702-8008 · 이메일: teraport@blissme.ai</div>
+          <div>주소: 서울특별시 강남구 논현로 641, 420호</div>
+          <div style={{marginTop:6,color:"#bbb"}}>© 2026 Terraport Inc. All rights reserved.</div>
+        </footer>
       </div>
     </div>
   );
@@ -687,12 +701,323 @@ function SignupWizard({ onComplete, onBack }) {
 }
 
 
+// ── 상단 마퀴 배너 — 팀채팅 is_announce=true 메시지 가로 흐름 표시 (세션 단위 dismiss) ──
+// overrideItems prop 있으면 fetch 안 하고 그 데이터로만 표시 (디자인 테스트용)
+function AnnouncesMarquee({ overrideItems }) {
+  const [items, setItems] = useState(overrideItems || []);
+  const SESSION_KEY = 'bliss_announce_dismissed_session';
+  const getDismissed = () => {
+    try { return new Set(JSON.parse(sessionStorage.getItem(SESSION_KEY) || '[]')); } catch { return new Set(); }
+  };
+  const addDismissed = (id) => {
+    const s = getDismissed(); s.add(id);
+    try { sessionStorage.setItem(SESSION_KEY, JSON.stringify([...s])); } catch {}
+  };
+  const load = async () => {
+    try {
+      const supa = window._sbClient;
+      if (!supa) return;
+      const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { data: rows } = await supa.from('team_chat_messages')
+        .select('id,user_id,body,created_at,is_announce')
+        .eq('is_announce', true).gte('created_at', since)
+        .order('created_at', { ascending: false }).limit(20);
+      const dis = getDismissed();
+      const filtered = (rows || []).filter(r => !dis.has(r.id)).reverse();
+      setItems(filtered);
+    } catch {}
+  };
+  useEffect(() => {
+    if (overrideItems) { setItems(overrideItems); return; } // 테스트 모드 — fetch 스킵
+    load();
+    const supa = window._sbClient;
+    if (!supa) return;
+    const ch = supa.channel('rt_announce_marquee_' + Date.now())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'team_chat_messages' },
+        (payload) => { if (payload?.new?.is_announce) load(); })
+      .subscribe();
+    return () => { try { supa.removeChannel(ch); } catch {} };
+  }, [overrideItems]);
+  if (items.length === 0) return null;
+  const dismiss = (id) => { addDismissed(id); setItems(prev => prev.filter(x => x.id !== id)); };
+  // 흐름 속도 — 글자 길이에 비례, 최소 30s ~ 최대 90s
+  const totalChars = items.reduce((s, it) => s + Math.min(200, (it.body||"").length) + 30, 0);
+  const duration = Math.max(30, Math.min(90, totalChars * 0.4));
+  return (
+    <div style={{position:"relative",overflow:"hidden",background:"#fafbfc",borderBottom:"1px solid #e8eaef",padding:"3px 0",zIndex:50,flexShrink:0,
+      WebkitMaskImage:"linear-gradient(to right, transparent 0, #000 60px, #000 calc(100% - 60px), transparent 100%)",
+      maskImage:"linear-gradient(to right, transparent 0, #000 60px, #000 calc(100% - 60px), transparent 100%)"}}>
+      <div style={{display:"inline-flex",alignItems:"center",animation:`marquee-scroll ${duration}s linear infinite`,paddingLeft:"100%",whiteSpace:"nowrap"}}>
+        {/* 달리는 고양이 — 4발 swing + 꼬리 흔들 */}
+        <span style={{display:"inline-block",marginRight:14,animation:"cat-bob .3s ease-in-out infinite alternate"}}>
+          <svg width="36" height="22" viewBox="0 0 56 36">
+            <ellipse cx="28" cy="18" rx="14" ry="6" fill="#A78BFA"/>
+            <circle cx="42" cy="14" r="6" fill="#8B5CF6"/>
+            <polygon points="38,9 39,5 42,8" fill="#8B5CF6"/>
+            <polygon points="46,8 49,5 50,9" fill="#8B5CF6"/>
+            <circle cx="44" cy="13" r="1" fill="#fff"/>
+            <circle cx="40" cy="13" r="1" fill="#fff"/>
+            <path d="M 42 16 Q 44 17 42 18" stroke="#fff" strokeWidth="0.8" fill="none"/>
+            <path d="M 14 16 Q 4 12, 8 6" stroke="#8B5CF6" strokeWidth="3.5" fill="none" strokeLinecap="round">
+              <animate attributeName="d" dur="0.4s" repeatCount="indefinite"
+                values="M 14 16 Q 4 12, 8 6;M 14 16 Q 6 14, 10 8;M 14 16 Q 4 12, 8 6"/>
+            </path>
+            <line x1="36" y1="22" x2="38" y2="32" stroke="#8B5CF6" strokeWidth="2.5" strokeLinecap="round">
+              <animate attributeName="x2" values="38;30;38" dur="0.3s" repeatCount="indefinite"/>
+            </line>
+            <line x1="32" y1="22" x2="30" y2="32" stroke="#8B5CF6" strokeWidth="2.5" strokeLinecap="round">
+              <animate attributeName="x2" values="30;38;30" dur="0.3s" repeatCount="indefinite"/>
+            </line>
+            <line x1="22" y1="22" x2="24" y2="32" stroke="#8B5CF6" strokeWidth="2.5" strokeLinecap="round">
+              <animate attributeName="x2" values="24;16;24" dur="0.3s" repeatCount="indefinite"/>
+            </line>
+            <line x1="18" y1="22" x2="16" y2="32" stroke="#8B5CF6" strokeWidth="2.5" strokeLinecap="round">
+              <animate attributeName="x2" values="16;24;16" dur="0.3s" repeatCount="indefinite"/>
+            </line>
+          </svg>
+        </span>
+        {items.map((it) => (
+          <span key={it.id} style={{display:"inline-flex",alignItems:"center",gap:8,marginRight:60,fontSize:14,color:"#1e293b",fontWeight:500,whiteSpace:"nowrap",fontFamily:"'KotraHandwritingFont', 'Pretendard', sans-serif",letterSpacing:.3}}>
+            <span style={{fontWeight:700,color:"#5b21b6"}}>{String(it.user_id||"").slice(0,8)}</span>
+            <span style={{opacity:.4}}>—</span>
+            <span>{String(it.body||"").replace(/\s+/g," ").slice(0,300)}</span>
+            <button onClick={()=>dismiss(it.id)} title="공지 닫기 (이번 세션만)"
+              style={{flexShrink:0,width:18,height:18,borderRadius:"50%",border:"none",background:"rgba(0,0,0,.08)",color:"#666",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",padding:0,marginLeft:6}}>×</button>
+          </span>
+        ))}
+      </div>
+      <style>{`
+        @keyframes marquee-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
+        @keyframes cat-bob { 0% { transform: translateY(0); } 100% { transform: translateY(-3px); } }
+      `}</style>
+    </div>
+  );
+}
+
+// ── 공지 배너 디자인 갤러리 (테스트용) ──
+function AnnounceDesignGallery() {
+  const fakeItems = [
+    {id:'g1',user_id:'경아',body:'시간날때 공지사항 읽고 각자 자기 이름 체크해'},
+    {id:'g2',user_id:'미진',body:'내일 10시 마곡점 미팅 잊지 마세요!'},
+    {id:'g3',user_id:'대표',body:'이번주 매출 목표 다 같이 화이팅~~ 🎉'},
+  ];
+  const dur = 50;
+  const renderItems = (extraStyle={}) => fakeItems.map((it,i)=>(
+    <span key={it.id} style={{display:"inline-flex",alignItems:"center",gap:8,marginRight:60,fontSize:14,fontWeight:500,whiteSpace:"nowrap",...extraStyle}}>
+      <span style={{fontWeight:700,opacity:.85}}>{it.user_id}</span>
+      <span style={{opacity:.4}}>—</span>
+      <span>{it.body}</span>
+    </span>
+  ));
+  const Card = ({title, desc, children}) => (
+    <div style={{marginBottom:24,border:"1px solid #e8eaef",borderRadius:12,overflow:"hidden",background:"#fff"}}>
+      <div style={{padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #e8eaef"}}>
+        <div style={{fontSize:14,fontWeight:700,color:"#1a1a2e"}}>{title}</div>
+        <div style={{fontSize:11,color:"#666",marginTop:2}}>{desc}</div>
+      </div>
+      <div style={{position:"relative"}}>{children}</div>
+    </div>
+  );
+  return <div style={{padding:24,background:"#f4f5f7",height:"100%",overflowY:"auto",flex:1,minHeight:0}}>
+    <div style={{maxWidth:1100,margin:"0 auto"}}>
+    <h2 style={{margin:"0 0 6px",fontSize:22}}>📢 공지 배너 디자인 갤러리</h2>
+    <p style={{fontSize:13,color:"#666",margin:"0 0 20px"}}>가짜 데이터 — DB 영향 없음. 마음에 드는 디자인 번호 알려줘.</p>
+
+    <Card title="① Aurora Glow" desc="보라→핑크→파랑 흐르는 그라디언트 + 텍스트 살짝 발광. Linear / Vercel 스타일.">
+      <div style={{position:"relative",overflow:"hidden",padding:"10px 0",background:"#0a0a1a",
+        WebkitMaskImage:"linear-gradient(to right, transparent 0, #000 60px, #000 calc(100% - 60px), transparent 100%)",
+        maskImage:"linear-gradient(to right, transparent 0, #000 60px, #000 calc(100% - 60px), transparent 100%)"}}>
+        <div style={{position:"absolute",inset:0,background:"linear-gradient(90deg,#a78bfa,#ec4899,#06b6d4,#a78bfa)",backgroundSize:"200% 100%",animation:"aurora 6s linear infinite",opacity:.18,pointerEvents:"none"}}/>
+        <div style={{display:"inline-flex",animation:`marquee-1 ${dur}s linear infinite`,paddingLeft:"100%",whiteSpace:"nowrap",position:"relative"}}>
+          {renderItems({color:"#fff",textShadow:"0 0 8px rgba(167,139,250,.5), 0 0 16px rgba(236,72,153,.3)"})}
+        </div>
+      </div>
+    </Card>
+
+    <Card title="② Glassmorphism" desc="반투명 유리 + backdrop blur. 미세한 그림자.">
+      <div style={{position:"relative",overflow:"hidden",padding:"10px 0",
+        background:"linear-gradient(135deg,#dbeafe 0%,#fce7f3 50%,#dbeafe 100%)",
+        WebkitMaskImage:"linear-gradient(to right, transparent 0, #000 60px, #000 calc(100% - 60px), transparent 100%)",
+        maskImage:"linear-gradient(to right, transparent 0, #000 60px, #000 calc(100% - 60px), transparent 100%)"}}>
+        <div style={{position:"absolute",inset:"4px 0",background:"rgba(255,255,255,.55)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",pointerEvents:"none"}}/>
+        <div style={{display:"inline-flex",animation:`marquee-2 ${dur}s linear infinite`,paddingLeft:"100%",whiteSpace:"nowrap",position:"relative",zIndex:1}}>
+          {renderItems({color:"#1e293b"})}
+        </div>
+      </div>
+    </Card>
+
+    <Card title="③ Holographic Shimmer" desc="텍스트 위로 무지개 빛이 스쳐 지나감. 게이밍/하이엔드 느낌.">
+      <div style={{position:"relative",overflow:"hidden",padding:"10px 0",background:"#1a1a2e",
+        WebkitMaskImage:"linear-gradient(to right, transparent 0, #000 60px, #000 calc(100% - 60px), transparent 100%)",
+        maskImage:"linear-gradient(to right, transparent 0, #000 60px, #000 calc(100% - 60px), transparent 100%)"}}>
+        <div style={{display:"inline-flex",animation:`marquee-3 ${dur}s linear infinite`,paddingLeft:"100%",whiteSpace:"nowrap"}}>
+          {fakeItems.map(it => (
+            <span key={it.id} style={{display:"inline-flex",alignItems:"center",gap:8,marginRight:60,fontSize:14,fontWeight:500,whiteSpace:"nowrap",
+              background:"linear-gradient(90deg,#fff 30%,#ff80ff 50%,#80ffff 60%,#fff 70%)",
+              backgroundSize:"200% 100%",backgroundClip:"text",WebkitBackgroundClip:"text",color:"transparent",
+              animation:"holo 3s linear infinite"}}>
+              <span style={{fontWeight:700}}>{it.user_id}</span>
+              <span style={{opacity:.5}}>—</span>
+              <span>{it.body}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+    </Card>
+
+    <Card title="④ Particle Trail" desc="텍스트 사이사이 ✨ 입자 반짝거림.">
+      <div style={{position:"relative",overflow:"hidden",padding:"10px 0",background:"#fafbfc",borderTop:"1px solid #e8eaef",borderBottom:"1px solid #e8eaef",
+        WebkitMaskImage:"linear-gradient(to right, transparent 0, #000 60px, #000 calc(100% - 60px), transparent 100%)",
+        maskImage:"linear-gradient(to right, transparent 0, #000 60px, #000 calc(100% - 60px), transparent 100%)"}}>
+        <div style={{display:"inline-flex",alignItems:"center",animation:`marquee-4 ${dur}s linear infinite`,paddingLeft:"100%",whiteSpace:"nowrap"}}>
+          {fakeItems.map((it,i) => (
+            <span key={it.id} style={{display:"inline-flex",alignItems:"center",gap:8,marginRight:60,fontSize:14,fontWeight:500,whiteSpace:"nowrap",color:"#444"}}>
+              <span style={{fontSize:14,animation:"sparkle 1.4s ease-in-out infinite",animationDelay:`${i*0.3}s`}}>✨</span>
+              <span style={{fontWeight:700,color:"#5b21b6"}}>{it.user_id}</span>
+              <span style={{opacity:.4}}>—</span>
+              <span>{it.body}</span>
+              <span style={{fontSize:12,opacity:.6,animation:"sparkle 1.6s ease-in-out infinite",animationDelay:`${i*0.4+0.5}s`}}>⭐</span>
+            </span>
+          ))}
+        </div>
+      </div>
+    </Card>
+
+    <Card title="⑤ Liquid Morph" desc="배경 blob이 부드럽게 형태 변화. 2024 트렌드.">
+      <div style={{position:"relative",overflow:"hidden",padding:"10px 0",background:"#fff",
+        WebkitMaskImage:"linear-gradient(to right, transparent 0, #000 60px, #000 calc(100% - 60px), transparent 100%)",
+        maskImage:"linear-gradient(to right, transparent 0, #000 60px, #000 calc(100% - 60px), transparent 100%)"}}>
+        <div style={{position:"absolute",top:-20,left:"10%",width:200,height:80,background:"radial-gradient(closest-side,rgba(167,139,250,.4),transparent)",animation:"blob 8s ease-in-out infinite alternate",pointerEvents:"none"}}/>
+        <div style={{position:"absolute",top:-10,right:"20%",width:180,height:80,background:"radial-gradient(closest-side,rgba(236,72,153,.35),transparent)",animation:"blob2 10s ease-in-out infinite alternate",pointerEvents:"none"}}/>
+        <div style={{display:"inline-flex",animation:`marquee-5 ${dur}s linear infinite`,paddingLeft:"100%",whiteSpace:"nowrap",position:"relative",zIndex:1}}>
+          {renderItems({color:"#1e1e2e"})}
+        </div>
+      </div>
+    </Card>
+
+    <Card title="⑥ Pure Minimal" desc="Apple 스타일 미니멀. 단정한 흰 배경 + 깔끔한 글자만.">
+      <div style={{position:"relative",overflow:"hidden",padding:"12px 0",background:"#fff",borderTop:"1px solid #f0f0f0",borderBottom:"1px solid #f0f0f0",
+        WebkitMaskImage:"linear-gradient(to right, transparent 0, #000 80px, #000 calc(100% - 80px), transparent 100%)",
+        maskImage:"linear-gradient(to right, transparent 0, #000 80px, #000 calc(100% - 80px), transparent 100%)"}}>
+        <div style={{display:"inline-flex",animation:`marquee-6 ${dur}s linear infinite`,paddingLeft:"100%",whiteSpace:"nowrap"}}>
+          {renderItems({color:"#1d1d1f",letterSpacing:"-0.01em"})}
+        </div>
+      </div>
+    </Card>
+
+    <Card title="⑦ Running Character (사람)" desc="진짜 다리·팔 swing하며 달리는 사람 SVG. 인라인. 외부 의존 X.">
+      <div style={{position:"relative",overflow:"hidden",padding:"10px 0",background:"#fafbfc",
+        WebkitMaskImage:"linear-gradient(to right, transparent 0, #000 60px, #000 calc(100% - 60px), transparent 100%)",
+        maskImage:"linear-gradient(to right, transparent 0, #000 60px, #000 calc(100% - 60px), transparent 100%)"}}>
+        <div style={{display:"inline-flex",alignItems:"center",animation:`marquee-7 ${dur}s linear infinite`,paddingLeft:"100%",whiteSpace:"nowrap"}}>
+          {/* 달리는 사람 SVG — 다리·팔이 실제로 swing */}
+          <span style={{display:"inline-block",marginRight:18,animation:"runner-bob .35s ease-in-out infinite alternate"}}>
+            <svg width="40" height="44" viewBox="0 0 40 44">
+              <circle cx="22" cy="7" r="4" fill="#FCD34D"/>
+              <line x1="20" y1="11" x2="18" y2="24" stroke="#3B82F6" strokeWidth="4.5" strokeLinecap="round"/>
+              {/* 팔 — 앞뒤 swing */}
+              <line x1="19" y1="15" x2="26" y2="20" stroke="#FCD34D" strokeWidth="2.5" strokeLinecap="round">
+                <animate attributeName="x2" values="26;10;26" dur="0.4s" repeatCount="indefinite"/>
+                <animate attributeName="y2" values="20;14;20" dur="0.4s" repeatCount="indefinite"/>
+              </line>
+              <line x1="19" y1="15" x2="10" y2="14" stroke="#FCD34D" strokeWidth="2.5" strokeLinecap="round">
+                <animate attributeName="x2" values="10;26;10" dur="0.4s" repeatCount="indefinite"/>
+                <animate attributeName="y2" values="14;20;14" dur="0.4s" repeatCount="indefinite"/>
+              </line>
+              {/* 다리 — 달리기 swing */}
+              <line x1="18" y1="24" x2="26" y2="36" stroke="#1F2937" strokeWidth="3" strokeLinecap="round">
+                <animate attributeName="x2" values="26;8;26" dur="0.4s" repeatCount="indefinite"/>
+                <animate attributeName="y2" values="36;28;36" dur="0.4s" repeatCount="indefinite"/>
+              </line>
+              <line x1="18" y1="24" x2="8" y2="32" stroke="#1F2937" strokeWidth="3" strokeLinecap="round">
+                <animate attributeName="x2" values="8;26;8" dur="0.4s" repeatCount="indefinite"/>
+                <animate attributeName="y2" values="32;36;28" dur="0.4s" repeatCount="indefinite"/>
+              </line>
+            </svg>
+          </span>
+          {renderItems({color:"#1e293b"})}
+        </div>
+      </div>
+    </Card>
+
+    <Card title="⑧ Running Cat (고양이)" desc="진짜 4발로 달리는 고양이 + 꼬리 흔들. 인라인 SVG.">
+      <div style={{position:"relative",overflow:"hidden",padding:"10px 0",background:"#fafbfc",
+        WebkitMaskImage:"linear-gradient(to right, transparent 0, #000 60px, #000 calc(100% - 60px), transparent 100%)",
+        maskImage:"linear-gradient(to right, transparent 0, #000 60px, #000 calc(100% - 60px), transparent 100%)"}}>
+        <div style={{display:"inline-flex",alignItems:"center",animation:`marquee-8 ${dur}s linear infinite`,paddingLeft:"100%",whiteSpace:"nowrap"}}>
+          <span style={{display:"inline-block",marginRight:18,animation:"runner-bob .3s ease-in-out infinite alternate"}}>
+            <svg width="56" height="36" viewBox="0 0 56 36">
+              {/* 몸 */}
+              <ellipse cx="28" cy="18" rx="14" ry="6" fill="#A78BFA"/>
+              {/* 머리 */}
+              <circle cx="42" cy="14" r="6" fill="#8B5CF6"/>
+              <polygon points="38,9 39,5 42,8" fill="#8B5CF6"/>
+              <polygon points="46,8 49,5 50,9" fill="#8B5CF6"/>
+              <circle cx="44" cy="13" r="1" fill="#fff"/>
+              <circle cx="40" cy="13" r="1" fill="#fff"/>
+              <path d="M 42 16 Q 44 17 42 18" stroke="#fff" strokeWidth="0.8" fill="none"/>
+              {/* 꼬리 — 흔들 */}
+              <path d="M 14 16 Q 4 12, 8 6" stroke="#8B5CF6" strokeWidth="3.5" fill="none" strokeLinecap="round">
+                <animate attributeName="d" dur="0.4s" repeatCount="indefinite"
+                  values="M 14 16 Q 4 12, 8 6;M 14 16 Q 6 14, 10 8;M 14 16 Q 4 12, 8 6"/>
+              </path>
+              {/* 앞다리 2개 */}
+              <line x1="36" y1="22" x2="38" y2="32" stroke="#8B5CF6" strokeWidth="2.5" strokeLinecap="round">
+                <animate attributeName="x2" values="38;30;38" dur="0.3s" repeatCount="indefinite"/>
+              </line>
+              <line x1="32" y1="22" x2="30" y2="32" stroke="#8B5CF6" strokeWidth="2.5" strokeLinecap="round">
+                <animate attributeName="x2" values="30;38;30" dur="0.3s" repeatCount="indefinite"/>
+              </line>
+              {/* 뒷다리 2개 */}
+              <line x1="22" y1="22" x2="24" y2="32" stroke="#8B5CF6" strokeWidth="2.5" strokeLinecap="round">
+                <animate attributeName="x2" values="24;16;24" dur="0.3s" repeatCount="indefinite"/>
+              </line>
+              <line x1="18" y1="22" x2="16" y2="32" stroke="#8B5CF6" strokeWidth="2.5" strokeLinecap="round">
+                <animate attributeName="x2" values="16;24;16" dur="0.3s" repeatCount="indefinite"/>
+              </line>
+            </svg>
+          </span>
+          {renderItems({color:"#1e293b"})}
+        </div>
+      </div>
+    </Card>
+
+    <style>{`
+      @keyframes marquee-1 { 0%{transform:translateX(0)} 100%{transform:translateX(-100%)} }
+      @keyframes marquee-2 { 0%{transform:translateX(0)} 100%{transform:translateX(-100%)} }
+      @keyframes marquee-3 { 0%{transform:translateX(0)} 100%{transform:translateX(-100%)} }
+      @keyframes marquee-4 { 0%{transform:translateX(0)} 100%{transform:translateX(-100%)} }
+      @keyframes marquee-5 { 0%{transform:translateX(0)} 100%{transform:translateX(-100%)} }
+      @keyframes marquee-6 { 0%{transform:translateX(0)} 100%{transform:translateX(-100%)} }
+      @keyframes marquee-7 { 0%{transform:translateX(0)} 100%{transform:translateX(-100%)} }
+      @keyframes marquee-8 { 0%{transform:translateX(0)} 100%{transform:translateX(-100%)} }
+      @keyframes runner-bob { 0%{transform:translateY(0)} 100%{transform:translateY(-3px)} }
+      @keyframes aurora { 0%{background-position:0% 50%} 100%{background-position:200% 50%} }
+      @keyframes holo { 0%{background-position:0% 50%} 100%{background-position:-200% 50%} }
+      @keyframes sparkle {
+        0%,100%{opacity:.3;transform:scale(.8)}
+        50%{opacity:1;transform:scale(1.3)}
+      }
+      @keyframes blob {
+        0%{transform:translate(0,0) scale(1)}
+        100%{transform:translate(40px,8px) scale(1.2)}
+      }
+      @keyframes blob2 {
+        0%{transform:translate(0,0) scale(1)}
+        100%{transform:translate(-30px,-4px) scale(1.15)}
+      }
+    `}</style>
+    </div>
+  </div>;
+}
+
 function App() {
   const [phase, setPhase] = useState("loading");
  // loading, login, super, app
   const navigate = useNavigate();
   const location = useLocation();
   const [unreadMsgCount, setUnreadMsgCount] = useState(0);
+  const [unreadDelayedCount, setUnreadDelayedCount] = useState(0); // 1분 이상 미응답 (타임라인 배너용)
   const [unreadSample, setUnreadSample] = useState([]); // 배너용: [{user_id, channel, user_name, message_text, created_at, account_id}]
   const [pendingReqCount, setPendingReqCount] = useState(0);
   const [unackNoticesPopup, setUnackNoticesPopup] = useState(null); // {count, ids}
@@ -708,6 +1033,23 @@ function App() {
   const [role, setRole] = useState("staff");
   const [userBranches, setUserBranches] = useState([]);
   const isMaster = role === "owner" || role === "super" || role === "manager";
+  // 연계지점 자동 머지 — userBranches에 같은 branchGroup 멤버가 있으면 자동으로 추가.
+  // 예: 홍대 사용자인데 홍대-마곡이 같은 그룹이면 userBranches=[홍대,마곡]으로 확장.
+  // 모든 컴포넌트가 prop으로 받는 userBranches가 자동으로 연계지점 포함됨 → 권한 일관성.
+  useEffect(() => {
+    if (!Array.isArray(userBranches) || userBranches.length === 0) return;
+    const groups = data?.branchGroups || [];
+    if (!groups.length) return;
+    const set = new Set(userBranches);
+    let added = false;
+    groups.forEach(g => {
+      const ids = g.branch_ids || g.branchIds || [];
+      if (ids.some(b => set.has(b))) {
+        ids.forEach(b => { if (b && !set.has(b)) { set.add(b); added = true; } });
+      }
+    });
+    if (added) setUserBranches([...set]);
+  }, [data?.branchGroups, userBranches]);
   const [viewBranches, setViewBranches] = useState([]);
   const page = useMemo(() => {
     const p = location.pathname.replace(/^\//, "").split("/")[0] || "timeline";
@@ -756,28 +1098,58 @@ function App() {
   const [sideOpen, setSideOpen] = useState(false);
   const [loadMsg, setLoadMsg] = useState("연결 중...");
   useEffect(() => {
-    // data.branches에서 동적으로 계정 매핑
-    const accIds = (userBranches||[]).map(bid => (data?.branches||[]).find(b=>b.id===bid)?.naverAccountId).filter(Boolean);
-    const SOCIAL_CH = ["whatsapp","telegram","instagram","kakao","line"];
+    // 사용자 지점에 매핑된 모든 채널의 account_id (네이버 + IG + WA)
+    const allowedAccIds = new Set();
+    (userBranches||[]).forEach(bid => {
+      const b = (data?.branches||[]).find(x => x.id === bid);
+      if (!b) return;
+      if (b.naverAccountId) allowedAccIds.add(String(b.naverAccountId));
+      if (b.instagramAccountId) allowedAccIds.add(String(b.instagramAccountId));
+      if (b.whatsappAccountId) allowedAccIds.add(String(b.whatsappAccountId));
+    });
+    // 브랜드 전체에 매핑된 account_id 집합 (이 집합에 속하는 메시지는 지점 분기 적용, 그 외 채널은 fallback 통과)
+    const allMappedAccIds = new Set();
+    (data?.branches||[]).forEach(b => {
+      if (b.naverAccountId) allMappedAccIds.add(String(b.naverAccountId));
+      if (b.instagramAccountId) allMappedAccIds.add(String(b.instagramAccountId));
+      if (b.whatsappAccountId) allMappedAccIds.add(String(b.whatsappAccountId));
+    });
+    // settings.ig_branch_override — 추가 IG 계정을 특정 지점에 매핑 (branches 컬럼이 1개라 못 잡는 케이스)
+    try {
+      const _s = (data?.businesses||[])[0]?.settings;
+      const _parsed = typeof _s === 'string' ? JSON.parse(_s) : _s || {};
+      const _igOverride = _parsed?.ig_branch_override || {};
+      Object.entries(_igOverride).forEach(([igId, bid]) => {
+        if (!igId || !bid) return;
+        allMappedAccIds.add(String(igId));
+        if ((userBranches||[]).includes(bid)) allowedAccIds.add(String(igId));
+      });
+    } catch {}
     const load = () => {
       // userBranches 아직 안 로드됐으면 스킵 (isMaster는 전체 허용)
-      if(accIds.length===0 && !isMaster && userBranches !== null) { setUnreadMsgCount(0); return; }
-      // 1분 이상 답변 안 된 IN 메시지만 배너에 포함 (즉시 응답 중인 상담은 제외)
-      const cutoff = new Date(Date.now() - 60_000).toISOString();
-      if (!_activeBizId) { setUnreadMsgCount(0); return; }
-      fetch(SB_URL+`/rest/v1/messages?business_id=eq.${_activeBizId}&is_read=eq.false&direction=eq.in&created_at=lte.${encodeURIComponent(cutoff)}&select=id,account_id,channel,user_id,user_name,message_text,created_at&order=created_at.desc&limit=999`,
+      if(allowedAccIds.size===0 && !isMaster && userBranches !== null) { setUnreadMsgCount(0); setUnreadDelayedCount(0); return; }
+      if (!_activeBizId) { setUnreadMsgCount(0); setUnreadDelayedCount(0); return; }
+      // 모든 미읽 IN 메시지 fetch — 사이드바 뱃지(즉시) + 배너(1분 이상 미응답) 두 가지로 분리 계산
+      fetch(SB_URL+`/rest/v1/messages?business_id=eq.${_activeBizId}&is_read=eq.false&direction=eq.in&select=id,account_id,channel,user_id,user_name,message_text,created_at&order=created_at.desc&limit=999`,
         {headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY,"Cache-Control":"no-cache"},cache:"no-store"})
         .then(r=>r.json())
         .then(arr=>{
           if(!Array.isArray(arr)) return;
-          // 네이버(지점 필터) + 소셜채널(전체 허용) 합산
-          const filtered = arr.filter(m =>
-            SOCIAL_CH.includes(m.channel) || accIds.length===0 || accIds.includes(String(m.account_id))
-          );
+          // isMaster는 전체 통과. 그 외엔 매핑된 account_id면 userBranches 일치 여부로, 매핑 없는 채널(Telegram/Kakao/Line 등)은 fallback 통과.
+          const filtered = isMaster ? arr : arr.filter(m => {
+            const accId = String(m.account_id || "");
+            if (allMappedAccIds.has(accId)) return allowedAccIds.has(accId);
+            return true;
+          });
+          // 사이드바 뱃지: 모든 미읽 즉시
           setUnreadMsgCount(filtered.length);
-          // 스레드별 최신 1건 (user_id+channel 기준)
+          // 타임라인 배너: 1분 이상 답변 안 된 것만 (즉시 응답 중인 상담은 제외)
+          const delayCutoff = Date.now() - 60_000;
+          const delayed = filtered.filter(m => new Date(m.created_at).getTime() <= delayCutoff);
+          setUnreadDelayedCount(delayed.length);
+          // 스레드별 최신 1건 (user_id+channel 기준) — 배너 미리보기 (delayed 기준)
           const seen = new Set(); const threads = [];
-          for (const m of filtered) {
+          for (const m of delayed) {
             const key = (m.channel||"")+"_"+(m.user_id||"");
             if (seen.has(key)) continue;
             seen.add(key); threads.push(m);
@@ -788,10 +1160,10 @@ function App() {
         .catch(()=>{});
     };
     load();
-    // Realtime: INSERT는 1분 뒤 재평가 (1분 이상 미응답 케이스만 배너), UPDATE(읽음 처리) 즉시 재카운트
+    // Realtime: INSERT 시 사이드바 뱃지는 즉시 갱신, 1분 뒤 재평가로 배너 카운트도 갱신. UPDATE(읽음 처리) 즉시 재카운트
     const rt = window._sbClient?.channel("unread_badge")
       ?.on("postgres_changes",{event:"INSERT",schema:"public",table:"messages"},
-        p=>{ if(p?.new?.direction==="in"&&!p?.new?.is_read) setTimeout(load, 60_000); }
+        p=>{ if(p?.new?.direction==="in"&&!p?.new?.is_read){ load(); setTimeout(load, 60_000); } }
       )
       ?.on("postgres_changes",{event:"UPDATE",schema:"public",table:"messages"},
         p=>{ if(p?.new?.is_read===true) load(); }
@@ -858,57 +1230,7 @@ function App() {
     const poll = setInterval(check, 120_000);
     return () => { try{rt?.unsubscribe();}catch(e){} clearInterval(poll); };
   }, [currentUser?.name]);
-  // 팀채팅 공지(📣) Realtime — is_announce=true 신규 메시지 → 전체 화면 배너
-  useEffect(() => {
-    const supaClient = window._sbClient;
-    if (!supaClient) return;
-    const DISMISS_KEY = 'bliss_dismissed_announces';
-    const getDismissed = () => {
-      try { return new Set(JSON.parse(localStorage.getItem(DISMISS_KEY) || '[]')); } catch { return new Set(); }
-    };
-    const addDismissed = (id) => {
-      const s = getDismissed(); s.add(id);
-      const arr = [...s].slice(-200);
-      try { localStorage.setItem(DISMISS_KEY, JSON.stringify(arr)); } catch {}
-    };
-    const AUTO_DISMISS_MS = 60 * 60 * 1000; // 1시간 후 자동 닫힘
-    const showAnnounce = (row) => {
-      if (!row || !row.is_announce) return;
-      if (getDismissed().has(row.id)) return;
-      const existingKey = '__blissAnnounce_' + row.id;
-      if (window[existingKey]) return;
-      const div = document.createElement('div');
-      window[existingKey] = div;
-      const esc = (s) => String(s || '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
-      div.innerHTML = `<div style="position:fixed;top:20px;right:20px;z-index:99999;background:linear-gradient(135deg,#ff9800,#f57c00);color:#fff;padding:14px 20px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.3);font-size:14px;font-weight:700;cursor:pointer;max-width:340px;max-height:60vh;overflow-y:auto;animation:slideIn .3s;border:2px solid #fff8e1;">📣 ${esc(row.user_id)} 공지<div style="font-size:13px;font-weight:500;margin-top:4px;white-space:pre-wrap;word-break:break-word;">${esc(row.body)}</div><div style="font-size:10px;opacity:.75;margin-top:6px;">탭하면 닫힘 · 1시간 후 자동 종료</div></div>`;
-      const dismiss = () => {
-        addDismissed(row.id);
-        try { div.remove(); } catch {}
-        try { clearTimeout(window[existingKey + '_to']); } catch {}
-        delete window[existingKey];
-        delete window[existingKey + '_to'];
-      };
-      div.addEventListener('click', dismiss, { once: true });
-      window[existingKey + '_to'] = setTimeout(dismiss, AUTO_DISMISS_MS);
-      document.body.appendChild(div);
-    };
-    // 최근 공지(5분 이내, dismiss 안 된 것)만 복원 — Realtime 붙기 전 갭 보정용
-    (async () => {
-      try {
-        const since = new Date(Date.now() - AUTO_DISMISS_MS).toISOString();
-        const { data } = await supaClient.from('team_chat_messages')
-          .select('id,user_id,body,created_at,is_announce')
-          .eq('is_announce', true).gte('created_at', since)
-          .order('created_at', { ascending: true }).limit(20);
-        (data || []).forEach(showAnnounce);
-      } catch {}
-    })();
-    const ch = supaClient.channel('rt_announce_' + Date.now())
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'team_chat_messages' },
-        (payload) => { if (payload?.new?.is_announce) showAnnounce(payload.new); })
-      .subscribe();
-    return () => { try { supaClient.removeChannel(ch); } catch {} };
-  }, []);
+  // 팀채팅 공지(📣) — 상단 마퀴 배너로 통합 (AnnouncesMarquee 컴포넌트). 우상단 플로팅 팝업 제거.
 
   // App Badge API — 홈화면 아이콘 배지 (미읽 메시지 + 확정대기 예약)
   useEffect(() => {
@@ -1014,12 +1336,22 @@ function App() {
     }catch(e){}
   };
   const [messagesPanelOpen, setMessagesPanelOpen] = useState(false);
+  // 사이드바에서 받은메시지함 클릭할 때마다 카운터 증가 → AdminInbox가 sel 리셋 (첫 화면으로)
+  const [inboxResetKey, setInboxResetKey] = useState(0);
+  // body data attribute로 패널 상태 토글 — 글로벌 CSS에서 모달이 메시지함 영역 침범 안 하도록
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.body.dataset.msgPanel = messagesPanelOpen ? "open" : "closed";
+    return () => { try { delete document.body.dataset.msgPanel; } catch {} };
+  }, [messagesPanelOpen]);
   const setPage = useCallback((p) => {
     // 받은메시지함은 라우트 이동 대신 우측 사이드 패널 (모바일은 기존 풀스크린 라우팅 유지)
     const isMob = typeof window !== "undefined" && window.innerWidth < 768;
     if (p === "messages" && !isMob) {
       // 항상 오픈 (재클릭 토글 X). 닫기는 × 버튼으로 — race condition 방지
+      // 클릭마다 inboxResetKey 증가 → AdminInbox가 sel 리셋해서 첫 화면(리스트)으로 돌아감
       setMessagesPanelOpen(true);
+      setInboxResetKey(k => k + 1);
       return;
     }
     // 다른 페이지로 이동 — 패널은 그대로 유지 (사용자가 채팅하면서 페이지 작업)
@@ -1033,9 +1365,8 @@ function App() {
     }
   }, [pendingChat]);
 
-  // 새 버전 감지 — 자동 새로고침 대신 배너 표시
+  // 새 버전 감지 — 강제 reload 안 함. 페이지 이동(라우트 변경) 시점에 자동 reload.
   const [newVer, setNewVer] = useState(null);
-  const [reloadCountdown, setReloadCountdown] = useState(0);
   useEffect(() => {
     let timer;
     const check = () => {
@@ -1050,22 +1381,49 @@ function App() {
     timer = setTimeout(check, 3000);
     return () => clearTimeout(timer);
   }, []);
-  // 새 버전 감지 시 1분 카운트다운 후 강제 새로고침
+  // 새 버전 감지 시 — 강제 reload 안 함. 사용자가 60초 이상 무입력 + 모달/입력창 없을 때 자동 reload.
+  // 메모/예약/매출 모달 작성 중에는 절대 reload 안 일어나도록 보호.
   useEffect(() => {
     if (!newVer) return;
-    setReloadCountdown(60);
-    const tick = setInterval(() => {
-      setReloadCountdown(c => {
-        if (c <= 1) {
-          clearInterval(tick);
-          try { window.location.href = window.location.pathname + "?v=" + newVer; }
-          catch(e) { window.location.reload(); }
-          return 0;
-        }
-        return c - 1;
-      });
-    }, 1000);
-    return () => clearInterval(tick);
+    const lastActivity = { t: Date.now() };
+    const onActivity = () => { lastActivity.t = Date.now(); };
+    window.addEventListener('keydown', onActivity, true);
+    window.addEventListener('mousemove', onActivity, true);
+    window.addEventListener('click', onActivity, true);
+    window.addEventListener('touchstart', onActivity, true);
+    window.addEventListener('scroll', onActivity, true);
+    const tryReload = () => {
+      // 1) 60초 무입력 체크
+      if (Date.now() - lastActivity.t < 60_000) return;
+      // 2) 입력창 focus 체크 (input/textarea/contenteditable)
+      const ae = document.activeElement;
+      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
+      // 3) 큰 fixed overlay (모달/패널) 존재 체크 — z-index ≥ 90, 화면 절반 이상
+      const all = document.querySelectorAll('div');
+      const vw = window.innerWidth, vh = window.innerHeight;
+      for (const el of all) {
+        const cs = window.getComputedStyle(el);
+        if (cs.position !== 'fixed') continue;
+        const z = parseInt(cs.zIndex || '0', 10);
+        if (!(z >= 90)) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width < vw * 0.4 || r.height < vh * 0.3) continue;
+        // 모달/패널 열려있음 → reload 보류
+        return;
+      }
+      // 모든 조건 통과 → reload
+      try { window.location.href = window.location.pathname + "?v=" + newVer; }
+      catch(e) { window.location.reload(); }
+    };
+    const iv = setInterval(tryReload, 10_000);
+    return () => {
+      clearInterval(iv);
+      window.removeEventListener('keydown', onActivity, true);
+      window.removeEventListener('mousemove', onActivity, true);
+      window.removeEventListener('click', onActivity, true);
+      window.removeEventListener('touchstart', onActivity, true);
+      window.removeEventListener('scroll', onActivity, true);
+    };
   }, [newVer]);
 
   // Phase 1: Load all users on mount + auto-login from saved session
@@ -1519,7 +1877,7 @@ function App() {
         </div>
       </div>}
       {newVer && <div onClick={()=>{try{window.location.href=window.location.pathname+"?v="+newVer;}catch(e){window.location.reload();}}} style={{position:"fixed",top:10,right:10,zIndex:9999,background:T.primary,color:"#fff",padding:"10px 16px",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 12px rgba(0,0,0,.25)",animation:"ovFadeIn .3s"}}>
-        🔄 새 버전 v{newVer} {reloadCountdown > 0 ? `(${reloadCountdown}초 후 자동 업데이트)` : "— 즉시 업데이트"}
+        🔄 새 버전 v{newVer} — 즉시 업데이트
       </div>}
       {/* 플로팅 AI — 우하단 항상 표시 */}
       <FloatingAI data={data} currentUser={currentUser} isMaster={isMaster} bizId={currentBizId}/>
@@ -1534,7 +1892,7 @@ function App() {
             <button onClick={()=>setMessagesPanelOpen(false)} title="닫기" style={{width:24,height:24,borderRadius:12,border:"none",background:T.gray100,color:T.textSub,cursor:"pointer",fontSize:16,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>×</button>
           </div>
           <div style={{flex:1,minHeight:0,overflow:"hidden",position:"relative"}}>
-            <AdminInbox sb={sb} branches={data?.branches} data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} currentUser={currentUser} onRead={(cnt)=>setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)))} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage} forceCompact={true}/>
+            <AdminInbox sb={sb} branches={data?.branches} data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} currentUser={currentUser} onRead={(cnt)=>setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)))} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage} forceCompact={true} inboxResetKey={inboxResetKey} onClosePanel={()=>setMessagesPanelOpen(false)}/>
           </div>
         </div>
       )}
@@ -1582,9 +1940,11 @@ function App() {
       )}
       <main className="main-c" style={{...S.main, marginLeft: 200 + (messagesPanelOpen ? 340 : 0), transition:"margin-left .25s cubic-bezier(.22,1,.36,1)"}}>
         <div className="mob-hdr" style={{display:"none"}}></div>
+        <AnnouncesMarquee/>
         <div className="page-pad" style={{flex:1,padding:(page==="timeline"||page==="messages"||page==="schedule")?"0":"16px 20px 16px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
           <Routes>
-            <Route path="/timeline" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust} unreadMsgCount={unreadMsgCount} unreadSample={unreadSample}/></div>}/>
+            <Route path="/announce-test" element={<AnnounceDesignGallery/>}/>
+            <Route path="/timeline" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust} unreadMsgCount={unreadMsgCount} unreadDelayedCount={unreadDelayedCount} unreadSample={unreadSample} messagesPanelOpen={messagesPanelOpen}/></div>}/>
             <Route path="/timeline-preview" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust} unreadMsgCount={unreadMsgCount} unreadSample={unreadSample} previewBlockStyle={true}/></div>}/>
             <Route path="/reservations" element={<ScrollArea storageKey="page_reservations"><ReservationList data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} setNaverColShow={setNaverColShow}/></ScrollArea>}/>
             <Route path="/sales" element={<ScrollArea storageKey="page_sales"><SalesPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} role={role} setPendingOpenCust={setPendingOpenCust}/></ScrollArea>}/>
@@ -1600,6 +1960,27 @@ function App() {
             <Route path="*" element={<Navigate to="/timeline" replace/>}/>
           </Routes>
         </div>
+        {/* 메인 하단 footer — 사업자정보 + 약관 페이지 (PG 심사용 + 빈 공간 채움) */}
+        <footer className="main-footer-d" style={{flexShrink:0,padding:"8px 20px",borderTop:`1px solid ${T.gray200}`,background:T.bgCard,fontSize:11,color:T.textMuted,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            <a href="/about.html" target="_blank" rel="noopener" style={{color:T.textSub,textDecoration:"none"}}>회사소개</a>
+            <span style={{color:T.gray300}}>·</span>
+            <a href="/pricing.html" target="_blank" rel="noopener" style={{color:T.textSub,textDecoration:"none"}}>요금제</a>
+            <span style={{color:T.gray300}}>·</span>
+            <a href="/terms.html" target="_blank" rel="noopener" style={{color:T.textSub,textDecoration:"none"}}>이용약관</a>
+            <span style={{color:T.gray300}}>·</span>
+            <a href="/privacy.html" target="_blank" rel="noopener" style={{color:T.textSub,textDecoration:"none",fontWeight:600}}>개인정보처리방침</a>
+            <span style={{color:T.gray300}}>·</span>
+            <a href="/refund.html" target="_blank" rel="noopener" style={{color:T.textSub,textDecoration:"none"}}>환불정책</a>
+          </div>
+          <div style={{color:T.textMuted,fontSize:10,display:"flex",gap:6,flexWrap:"wrap"}}>
+            <span>(주)테라포트</span><span>·</span>
+            <span>632-81-02070</span><span>·</span>
+            <span>대표 권신영</span><span>·</span>
+            <span>010-5702-8008</span><span>·</span>
+            <span>teraport@blissme.ai</span>
+          </div>
+        </footer>
       </main>
       <MobileBottomNav nav={nav} page={page} setPage={setPage} isChatOpen={isChatOpen}/>
     </div>
