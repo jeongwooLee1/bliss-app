@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { _activeBizId } from '../../lib/db'
 import { hasFeature } from '../../lib/features'
+import { useFeaturesVersion } from '../../lib/useFeaturesVersion'
 import { T, SCH_BRANCH_MAP } from '../../lib/constants'
 import { I } from '../common/I'
 import { useScheduleData, useEmployees } from '../../lib/useData'
@@ -20,6 +21,8 @@ import DailyView from './DailyView'
 const mkKey = (y, m) => `${y}-${String(m+1).padStart(2,'0')}`
 
 export default function SchedulePage({ employees: propEmps }) {
+  // features 적재 race 방지 — setFeatures 호출 시 자동 리렌더되어 hasFeature 게이트가 정확히 평가됨
+  useFeaturesVersion()
   const { employees: hookEmployees, save: saveEmployees } = useEmployees()
   const baseEmployees = propEmps?.length ? propEmps : hookEmployees
 

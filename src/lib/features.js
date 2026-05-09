@@ -112,11 +112,12 @@ export const PLANS = {
 
 // 단가 (1P = 1원). usage_logs.points_charged 계산.
 export const POINT_PRICING = {
-  alimtalk: 10,    // 알림톡
-  sms: 20,         // SMS 단문
-  lms: 60,         // SMS 장문
-  whatsapp: 30,    // WhatsApp
-  ai_call: 100,    // AI 호출 평균 (실제는 토큰 기반 변동)
+  alimtalk: 10,    // 알림톡 (원가 ~10원)
+  sms: 20,         // SMS 단문 (원가 ~20원)
+  lms: 60,         // SMS 장문 (원가 ~60원)
+  whatsapp: 1,     // WhatsApp (24h 서비스 윈도우 내 답변은 무료 — 사용량 표시용 1P)
+  ai_call: 5,      // AI 호출 (Gemini 2.5 Flash 원가 ~2원 × 2)
+  chat_msg: 1,     // 메시지함 무료 채널 발송 (네이버톡/인스타DM/LINE)
 }
 
 // Plan key → features map (전 키 채움)
@@ -128,8 +129,18 @@ export function featuresForPlan(planKey) {
 // 런타임 상태
 let _features = {}
 
+// 변경 알림 listener (React 컴포넌트가 useFeaturesVersion()으로 구독)
+const _listeners = new Set()
+
+export function subscribeFeatures(fn) {
+  _listeners.add(fn)
+  return () => { _listeners.delete(fn) }
+}
+
 export function setFeatures(featuresMap) {
   _features = featuresMap || {}
+  // 변경 알림 → 구독한 컴포넌트들 자동 리렌더
+  _listeners.forEach(fn => { try { fn() } catch {} })
 }
 
 export function getFeatures() {
@@ -139,6 +150,9 @@ export function getFeatures() {
 export function hasFeature(name) {
   return !!_features[name]
 }
+
+// React 훅(useFeaturesVersion)은 vite Fast Refresh 충돌 회피를 위해
+// 별도 파일로 분리: ./useFeaturesVersion.js
 
 // businesses.settings.features 추출. 없으면 plan으로 derive.
 // 하우스왁싱 legacy: features 미설정 + plan 미설정 → 'pro'로 간주 (호환).

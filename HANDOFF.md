@@ -1,9 +1,15 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.548** (https://blissme.ai/version.txt) — 2026-05-09 배포
+- **라이브: v3.7.549** (https://blissme.ai/version.txt) — 2026-05-09 배포
 - 다음 빌드 시 `BLISS_V` (AppShell.jsx) + `public/version.txt` 둘 다 함께 bump 필수
-- 변경 이력은 [CLAUDE.md "v3.7.503 → v3.7.548"](./CLAUDE.md) 섹션 참고
+- 변경 이력은 [CLAUDE.md "v3.7.503 → v3.7.549"](./CLAUDE.md) 섹션 참고
+
+## v3.7.549 변경 (2026-05-09)
+- **features 적재 race condition fix** (`features.js` + `useFeaturesVersion.js` 신규):
+  - 증상: 직원근무표(SchedulePage)에서 `hasFeature('schedule_advanced')` 게이트에 묶인 자동배치·규칙 설정·배치확정·백업 메뉴 등이 안 보임. DB는 `schedule_advanced=true` 정상.
+  - 원인: `_features`가 module-level 변수라 `setFeatures(...)` 호출이 SchedulePage 리렌더를 자동 트리거 안 함. 첫 렌더가 적재 전에 일어나면 false 그대로 남음.
+  - fix: `subscribeFeatures(fn)` listener 패턴 추가 + `useFeaturesVersion` hook을 별도 파일(vite Fast Refresh 충돌 회피)로 분리. SchedulePage 함수 본문에 `useFeaturesVersion()` 한 줄 호출 → setFeatures 시 자동 리렌더 → hasFeature 정확히 평가.
 
 ## v3.7.548 변경 (2026-05-09)
 - **네이버 확정 친절 처리** (ReservationModal onConfirm):
