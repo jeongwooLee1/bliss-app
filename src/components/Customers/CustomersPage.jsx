@@ -1797,10 +1797,34 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                       {c.custNum && <span style={{marginLeft:8,fontSize:T.fs.sm,color:T.textSub,fontFamily:"monospace",fontWeight:T.fw.normal}}>#{c.custNum}</span>}
                       {c.phone && <span style={{marginLeft:10,fontSize:T.fs.sm,color:T.primary,fontWeight:T.fw.normal}}>{c.phone}</span>}
                     </span>
-                    {/* 문자 발송 — 헤더 우측에 inline */}
+                    {/* 통계 — 헤더 가운데 inline */}
+                    <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:14,padding:"4px 14px",background:"#F8F9FB",borderRadius:8,border:"1px solid "+T.border}}>
+                      {(() => {
+                        const _cp = Number(c.cancelPenaltyCount || 0);
+                        const _ns = Number(c.noShowCount || 0);
+                        if (_cp >= 3 || _ns >= 1) {
+                          return <span title={`페널티 취소 ${_cp}회 / 노쇼 ${_ns}회`}
+                            style={{fontSize:10,padding:"2px 7px",borderRadius:8,background:"#FFF3E0",color:"#E65100",border:"1px solid #FFB74D",fontWeight:800,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}>
+                            <I name="alert" size={9}/> 주의
+                          </span>;
+                        }
+                        return null;
+                      })()}
+                      {[
+                        {label:"예약",val:custResStats.total,color:T.primary},
+                        {label:"노쇼",val:Number(c.noShowCount||0)||custResStats.noshow,color:(Number(c.noShowCount||0)||custResStats.noshow)>0?"#e53e3e":T.gray500},
+                        {label:"페널티",val:Number(c.cancelPenaltyCount||0),color:Number(c.cancelPenaltyCount||0)>=3?"#e53e3e":Number(c.cancelPenaltyCount||0)>0?"#dd6b20":T.gray500,title:"전일 21시 이후~예약시각 사이 취소"},
+                        {label:"당취",val:custResStats.samedayCancel,color:custResStats.samedayCancel>0?"#dd6b20":T.gray500,title:"당일 취소"},
+                        {label:"당변",val:custResStats.samedayChange,color:custResStats.samedayChange>0?"#d97706":T.gray500,title:"당일 변경"}
+                      ].map(s=><div key={s.label} title={s.title||""} style={{display:"flex",alignItems:"baseline",gap:3}}>
+                        <span style={{fontSize:T.fs.xxs,color:T.textMuted}}>{s.label}</span>
+                        <span style={{fontSize:T.fs.sm,fontWeight:T.fw.black,color:s.color}}>{s.val}</span>
+                      </div>)}
+                    </div>
+                    {/* 문자 발송 — 헤더 우측 */}
                     <button onClick={e=>{e.stopPropagation(); setSmsCusts([c]); setSmsOpen(true);}}
                       title={c.smsConsent===false?"수신거부 고객 — 발송 시 자동 차단":"이 고객에게 문자 발송"}
-                      style={{marginLeft:"auto",padding:"7px 14px",fontSize:T.fs.xs,fontWeight:T.fw.bolder,border:"1px solid "+T.primary,background:T.primaryLt||"#EDE9FE",color:T.primaryDk||T.primary,borderRadius:8,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:6}}>
+                      style={{padding:"7px 14px",fontSize:T.fs.xs,fontWeight:T.fw.bolder,border:"1px solid "+T.primary,background:T.primaryLt||"#EDE9FE",color:T.primaryDk||T.primary,borderRadius:8,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:6}}>
                       <I name="msgSq" size={13}/> 문자 발송
                     </button>
                     <button onClick={()=>setDetailCust(null)} title="닫기 (ESC)"
@@ -1810,36 +1834,20 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                   </div>
                   {/* 외부 2컬럼 grid — 카드형 디자인, gap으로 영역 분리 */}
                   <div style={{display:"grid",gridTemplateColumns:"480px 1fr",gap:14,padding:14,flex:1,minHeight:0,overflow:"hidden",boxSizing:"border-box"}}>
-                  {/* 좌측 wrap — 정보 / 통계 / 포인트 / 메모 */}
-                  <div style={{display:"grid",gridTemplateRows:"260px auto 200px 1fr",gap:12,minWidth:0,minHeight:0}}>
+                  {/* 좌측 wrap — 정보 / 메모(위) / 포인트(아래) + 삭제버튼 */}
+                  <div style={{display:"grid",gridTemplateRows:"260px 1fr 200px",gap:12,minWidth:0,minHeight:0,position:"relative"}}>
                   {/* 좌상 — 정보 편집 카드 */}
                   <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 3px rgba(0,0,0,.05), 0 0 0 1px rgba(0,0,0,.04)",minWidth:0,minHeight:0,overflow:"hidden"}}>
                     {renderInfoEdit()}
                   </div>
-                  {/* 통계 카드 (예약·노쇼·페널티·당취·당변) */}
-                  <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 3px rgba(0,0,0,.05), 0 0 0 1px rgba(0,0,0,.04)",padding:"10px 14px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",minWidth:0}}>
-                    {(() => {
-                      const _cp = Number(c.cancelPenaltyCount || 0);
-                      const _ns = Number(c.noShowCount || 0);
-                      if (_cp >= 3 || _ns >= 1) {
-                        return <span title={`페널티 취소 ${_cp}회 / 노쇼 ${_ns}회`}
-                          style={{fontSize:10,padding:"2px 7px",borderRadius:8,background:"#FFF3E0",color:"#E65100",border:"1px solid #FFB74D",fontWeight:800,whiteSpace:"nowrap"}}>
-                          <I name="alert" size={9} style={{verticalAlign:"middle",marginRight:2}}/> 주의
-                        </span>;
-                      }
-                      return null;
-                    })()}
-                    {[
-                      {label:"예약",val:custResStats.total,color:T.primary},
-                      {label:"노쇼",val:Number(c.noShowCount||0)||custResStats.noshow,color:(Number(c.noShowCount||0)||custResStats.noshow)>0?"#e53e3e":T.gray500},
-                      {label:"페널티",val:Number(c.cancelPenaltyCount||0),color:Number(c.cancelPenaltyCount||0)>=3?"#e53e3e":Number(c.cancelPenaltyCount||0)>0?"#dd6b20":T.gray500,title:"전일 21시 이후~예약시각 사이 취소"},
-                      {label:"당취",val:custResStats.samedayCancel,color:custResStats.samedayCancel>0?"#dd6b20":T.gray500,title:"당일 취소"},
-                      {label:"당변",val:custResStats.samedayChange,color:custResStats.samedayChange>0?"#d97706":T.gray500,title:"당일 변경"}
-                    ].map(s=><div key={s.label} title={s.title||""} style={{display:"flex",alignItems:"baseline",gap:3}}>
-                      <span style={{fontSize:T.fs.xxs,color:T.textMuted}}>{s.label}</span>
-                      <span style={{fontSize:T.fs.sm,fontWeight:T.fw.black,color:s.color}}>{s.val}</span>
-                    </div>)}
-                    {/* 삭제 (대표관리자만) — 통계 카드 우측 끝 */}
+                  {/* 좌중 — 메모 카드 (포인트 위로) */}
+                  <div style={{background:"#FFFCF0",borderRadius:12,boxShadow:"0 1px 3px rgba(0,0,0,.05), 0 0 0 1px rgba(234,179,8,.15)",minWidth:0,minHeight:0,overflow:"hidden"}}>
+                    {renderMemo()}
+                  </div>
+                  {/* 좌하 — 포인트 카드 */}
+                  <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 3px rgba(0,0,0,.05), 0 0 0 1px rgba(0,0,0,.04)",minWidth:0,minHeight:0,overflowY:"auto",position:"relative"}}>
+                    <PointPanel cust={c} txList={custPointTx} balance={custPointBalance} onReload={()=>loadCustPoints(c.id)}/>
+                    {/* 삭제 버튼 — 포인트 카드 우상단 (대표관리자만) */}
                     {isMaster && <button onClick={async e=>{
                       e.stopPropagation();
                       if (!confirm(`${c.name} 고객 정보를 정말 삭제하시겠습니까?\n\n• 고객관리 리스트에서 영구 제거\n• 예약·매출 데이터는 그대로 (cust_id 참조 끊김)\n\n되돌릴 수 없습니다.`)) return;
@@ -1850,17 +1858,9 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                       } catch (err) { alert("삭제 실패: " + (err?.message || err)); }
                     }}
                       title="이 고객 정보 영구 삭제"
-                      style={{marginLeft:"auto",padding:"4px 8px",fontSize:T.fs.nano,fontWeight:T.fw.bold,border:"1px solid "+T.gray300,background:"#fff",color:T.danger,borderRadius:6,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:3}}>
-                      <I name="trash" size={10}/> 삭제
+                      style={{position:"absolute",top:8,right:10,padding:"3px 7px",fontSize:T.fs.nano,fontWeight:T.fw.bold,border:"1px solid "+T.gray300,background:"#fff",color:T.danger,borderRadius:5,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:3,zIndex:2}}>
+                      <I name="trash" size={10}/> 고객 삭제
                     </button>}
-                  </div>
-                  {/* 포인트 카드 */}
-                  <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 3px rgba(0,0,0,.05), 0 0 0 1px rgba(0,0,0,.04)",minWidth:0,minHeight:0,overflowY:"auto"}}>
-                    <PointPanel cust={c} txList={custPointTx} balance={custPointBalance} onReload={()=>loadCustPoints(c.id)}/>
-                  </div>
-                  {/* 좌하 — 메모 카드 */}
-                  <div style={{background:"#FFFCF0",borderRadius:12,boxShadow:"0 1px 3px rgba(0,0,0,.05), 0 0 0 1px rgba(234,179,8,.15)",minWidth:0,minHeight:0,overflow:"hidden"}}>
-                    {renderMemo()}
                   </div>
                   </div>
                   {/* 우측 wrap — 탭(크게) / 매출(크게) */}
