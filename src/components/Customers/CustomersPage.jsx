@@ -1544,7 +1544,22 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
               const isOpen = detailCust?.id===c.id;
               // 정보 편집 helper — 좌상 카드
               const renderInfoEdit = () => (
-                <div style={{padding:"14px 16px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,fontSize:T.fs.xxs,overflowY:"auto",height:"100%",alignContent:"start",boxSizing:"border-box"}}>
+                <div style={{padding:"14px 16px",display:"flex",flexDirection:"column",gap:10,fontSize:T.fs.xxs,overflowY:"auto",height:"100%",boxSizing:"border-box"}}>
+                  {/* 좌상단: 문자 발송 + 고객번호 */}
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <button onClick={e=>{e.stopPropagation(); setSmsCusts([c]); setSmsOpen(true);}}
+                      title={c.smsConsent===false?"수신거부 고객 — 발송 시 자동 차단":"이 고객에게 문자 발송"}
+                      style={{padding:"5px 10px",fontSize:T.fs.xxs,fontWeight:T.fw.bolder,border:"1px solid "+T.primary,background:T.primaryLt||"#EDE9FE",color:T.primaryDk||T.primary,borderRadius:6,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}>
+                      <I name="msgSq" size={11}/> 문자 발송
+                    </button>
+                    <label style={{display:"flex",alignItems:"center",gap:5,marginLeft:"auto"}}>
+                      <span style={{color:T.textMuted,fontWeight:T.fw.bold}}>고객번호</span>
+                      <input defaultValue={c.custNum||""} placeholder="-"
+                        onBlur={e=>{const v=e.target.value.trim(); if(v!==(c.custNum||"")) saveCustField({cust_num:v||null},{custNum:v});}}
+                        style={{padding:"4px 6px",border:"1px solid "+T.border,borderRadius:5,fontSize:T.fs.xs,fontFamily:"monospace",color:T.text,width:90,textAlign:"right",fontWeight:T.fw.bold}}/>
+                    </label>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                   <label style={{display:"flex",flexDirection:"column",gap:2}}>
                     <span style={{color:T.textMuted,fontWeight:T.fw.bold}}>이름</span>
                     <input defaultValue={c.name||""} placeholder="이름"
@@ -1618,6 +1633,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                       })}
                       {(data?.serviceTags||[]).filter(t=>t.useYn!==false && t.scheduleYn!=="Y").length === 0 && <span style={{fontSize:10,color:T.textMuted}}>등록된 예약태그가 없습니다</span>}
                     </div>
+                  </div>
                   </div>
                 </div>
               );
@@ -1821,12 +1837,6 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                         <span style={{fontSize:T.fs.sm,fontWeight:T.fw.black,color:s.color}}>{s.val}</span>
                       </div>)}
                     </div>
-                    {/* 문자 발송 — 헤더 우측 */}
-                    <button onClick={e=>{e.stopPropagation(); setSmsCusts([c]); setSmsOpen(true);}}
-                      title={c.smsConsent===false?"수신거부 고객 — 발송 시 자동 차단":"이 고객에게 문자 발송"}
-                      style={{padding:"7px 14px",fontSize:T.fs.xs,fontWeight:T.fw.bolder,border:"1px solid "+T.primary,background:T.primaryLt||"#EDE9FE",color:T.primaryDk||T.primary,borderRadius:8,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:6}}>
-                      <I name="msgSq" size={13}/> 문자 발송
-                    </button>
                     <button onClick={()=>setDetailCust(null)} title="닫기 (ESC)"
                       style={{width:32,height:32,borderRadius:"50%",border:"none",background:"transparent",cursor:"pointer",lineHeight:1,fontFamily:"inherit",display:"inline-flex",alignItems:"center",justifyContent:"center",color:T.gray500}}>
                       <I name="x" size={18}/>
@@ -1845,22 +1855,8 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                     {renderMemo()}
                   </div>
                   {/* 좌하 — 포인트 카드 */}
-                  <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 3px rgba(0,0,0,.05), 0 0 0 1px rgba(0,0,0,.04)",minWidth:0,minHeight:0,overflowY:"auto",position:"relative"}}>
+                  <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 3px rgba(0,0,0,.05), 0 0 0 1px rgba(0,0,0,.04)",minWidth:0,minHeight:0,overflowY:"auto"}}>
                     <PointPanel cust={c} txList={custPointTx} balance={custPointBalance} onReload={()=>loadCustPoints(c.id)}/>
-                    {/* 삭제 버튼 — 포인트 카드 우상단 (대표관리자만) */}
-                    {isMaster && <button onClick={async e=>{
-                      e.stopPropagation();
-                      if (!confirm(`${c.name} 고객 정보를 정말 삭제하시겠습니까?\n\n• 고객관리 리스트에서 영구 제거\n• 예약·매출 데이터는 그대로 (cust_id 참조 끊김)\n\n되돌릴 수 없습니다.`)) return;
-                      try {
-                        await sb.del("customers", c.id);
-                        setPagedCusts(prev => prev.filter(x => x.id !== c.id));
-                        setDetailCust(null);
-                      } catch (err) { alert("삭제 실패: " + (err?.message || err)); }
-                    }}
-                      title="이 고객 정보 영구 삭제"
-                      style={{position:"absolute",top:8,right:10,padding:"3px 7px",fontSize:T.fs.nano,fontWeight:T.fw.bold,border:"1px solid "+T.gray300,background:"#fff",color:T.danger,borderRadius:5,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:3,zIndex:2}}>
-                      <I name="trash" size={10}/> 고객 삭제
-                    </button>}
                   </div>
                   </div>
                   {/* 우측 wrap — 탭(크게) / 매출(크게) */}
