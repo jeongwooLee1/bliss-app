@@ -1302,10 +1302,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
             (target.total_count||0) - (target.used_count||0),
             (target.total_count||0) - up.used_count,
             "수동 1회 사용");
-          if(detailCust?.phone && detailCust?.bid){
-            const br=(data.branches||[]).find(b=>b.id===detailCust.bid);
-            queueAlimtalk(detailCust.bid,"tkt_charge",detailCust.phone,{"#{고객명}":detailCust.name||"","#{총횟수}":String(p.total_count),"#{사용횟수}":String(up.used_count),"#{잔여횟수}":String(p.total_count-up.used_count),"#{시작일}":"시작일","#{종료일}":"","#{매장명}":br?.name||"","#{대표전화번호}":br?.phone||""});
-          }
+          // 알림톡 — 고객정보 패널의 수동 차감에서는 발송 X (매출 등록 시에만 발송). 정우 요청 id_qj4klbtklv.
         }}>1회 사용</Btn>}
 
         {/* 다담권: 금액 차감 */}
@@ -1321,10 +1318,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
           setCustPkgsServer(prev=>prev.map(x=>x.id===p.id?{...x, used_count:newSpent, note:newNote}:x));
           // 히스토리 기록 — 수동 금액 차감
           recordPkgTx(p, "deduct", deduct, "won", balance, newBal, "수동 금액 차감");
-          if(detailCust?.phone && detailCust?.bid){
-            const br=(data.branches||[]).find(b=>b.id===detailCust.bid);
-            queueAlimtalk(detailCust.bid,"pkg_charge",detailCust.phone,{"#{고객명}":detailCust.name||"","#{충전금액}":String(charged),"#{사용금액}":String(newSpent),"#{잔액}":String(newBal),"#{매장명}":br?.name||"","#{대표전화번호}":br?.phone||""});
-          }
+          // 알림톡 — 고객정보 패널의 수동 차감에서는 발송 X (매출 등록 시에만 발송). 정우 요청 id_qj4klbtklv.
         }}>금액 차감</Btn>}
 
         <Btn variant="outline" size="sm" style={{padding:"3px 8px",fontSize:T.fs.nano}} onClick={()=>{
