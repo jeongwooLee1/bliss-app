@@ -2812,7 +2812,8 @@ ${naverText}
                   const total = cash + card + tr + pt + ext;
                   // sale_details 기반 실제 항목 (sales.service_name 단일 캐시는 reservation.service_id 단일 필드를 그대로 박는 부정확값이라 사용 안 함)
                   const _details = salesDetailsMap[s.id] || [];
-                  const _pkgUses = _details.filter(d => d && d.item_kind === "pkg_use");
+                  // 보유권 사용/차감: pkg_use(회수 차감 — 다회권), pkg_deduct(금액 차감 — 다담권/선불권)
+                  const _pkgUses = _details.filter(d => d && (d.item_kind === "pkg_use" || d.item_kind === "pkg_deduct"));
                   const _items = _details.filter(d => d && (d.item_kind === "svc" || d.item_kind === "prod" || !d.item_kind));
                   const _itemLines = _items.map(d => {
                     const nm = (d.service_name||"").trim(); if (!nm) return null;
@@ -2828,8 +2829,17 @@ ${naverText}
                     nm = nm.replace(/^\[보유권\s*(사용|차감)\]\s*/, "");
                     if (!nm) return null;
                     const q = Number(d.qty)||1;
+                    const amt = Number(d.unit_price)||0;
+                    if (d.item_kind === "pkg_deduct") {
+                      // 다담권/선불권: 금액 차감
+                      const total = amt * q;
+                      return total > 0 ? `${nm} ${total.toLocaleString()}원 사용` : `${nm} 사용`;
+                    }
+                    // 다회권/패키지: 회수 차감
                     return q>1 ? `${nm} ${q}회 차감` : `${nm} 1회 차감`;
                   }).filter(Boolean);
+                  // 포인트 사용 (결제수단 합계가 0원이어도 포인트만 사용한 경우 노출 — 결제수단 배지는 total>0 조건이라 안 보임)
+                  const _pointUsed = (s.svc_point||0) + (s.prod_point||0);
                   return (
                     <div key={s.id||i} style={{padding:"12px 14px",marginBottom:8,background:i===0?"#f0f0ff":"#fafafa",
                       borderRadius:T.radius.md,border:`1px solid ${i===0?T.primary+"30":T.border}`,
@@ -2849,10 +2859,13 @@ ${naverText}
                         {ext>0 && <span style={{fontSize:9,padding:"1px 6px",borderRadius:T.radius.sm,background:"#FFEBEE",color:"#C62828",fontWeight:700}}>📦 외부선결제 {ext.toLocaleString()}</span>}
                       </div>}
                       {_itemLines.length > 0 && <div style={{fontSize:T.fs.xs,color:T.gray700,marginBottom:4,lineHeight:1.5}}>{_itemLines.join(" · ")}</div>}
-                      {_pkgUseLines.length > 0 && <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:6}}>
+                      {(_pkgUseLines.length > 0 || (total === 0 && _pointUsed > 0)) && <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:6}}>
                         {_pkgUseLines.map((ln,k) => (
                           <span key={k} style={{fontSize:10,padding:"2px 7px",borderRadius:T.radius.sm,background:"#FFF8E1",color:"#8D6E00",fontWeight:700,border:"1px solid #F3D77A"}}>🎫 {ln}</span>
                         ))}
+                        {total === 0 && _pointUsed > 0 && (
+                          <span style={{fontSize:10,padding:"2px 7px",borderRadius:T.radius.sm,background:"#F3E5F5",color:"#6A1B9A",fontWeight:700,border:"1px solid #E1BEE7"}}>⭐ 포인트 {_pointUsed.toLocaleString()} 사용</span>
+                        )}
                       </div>}
                       {s.staff_name && <div style={{fontSize:T.fs.nano,color:T.textSub,marginBottom:4}}>담당: {s.staff_name}</div>}
                       {s.memo && <div
