@@ -25,9 +25,9 @@ const sx = {
   }),
 };
 
-function CustModal({ item, isEdit, onSave, onClose, defBranch, userBranches, branches, memoTemplate, geminiKey }) {
+function CustModal({ item, isEdit, onSave, onClose, defBranch, userBranches, branches, serviceTags, memoTemplate, geminiKey }) {
   const isNew = !isEdit;
-  const [form, setForm] = React.useState(() => item ? {...item, smsConsent: item.smsConsent !== false} : {id:'cust_'+uid(),name:'',phone:'',gender:'',bid:defBranch||'',memo:'',visits:0, joinDate: new Date().toISOString().slice(0,10), smsConsent: true});
+  const [form, setForm] = React.useState(() => item ? {...item, smsConsent: item.smsConsent !== false, defaultTags: Array.isArray(item.defaultTags) ? item.defaultTags : []} : {id:'cust_'+uid(),name:'',phone:'',gender:'',bid:defBranch||'',memo:'',visits:0, joinDate: new Date().toISOString().slice(0,10), smsConsent: true, defaultTags: []});
   const f = (k,v) => setForm(p=>({...p,[k]:v}));
   const [korBusy, setKorBusy] = React.useState(false);
   const _isEnName = form.name && !/[가-힣]/.test(form.name);
@@ -80,6 +80,21 @@ function CustModal({ item, isEdit, onSave, onClose, defBranch, userBranches, bra
             {[[true,'동의'],[false,'거부']].map(([v,l])=>(
               <button key={String(v)} onClick={()=>f('smsConsent',v)} style={{flex:1,padding:'6px',border:'1.5px solid',borderRadius:T.radius.md,cursor:'pointer',fontFamily:'inherit',fontSize:T.fs.sm,fontWeight:form.smsConsent===v?T.fw.bolder:T.fw.normal,background:form.smsConsent===v?(v?T.success:T.danger):T.bgCard,color:form.smsConsent===v?T.bgCard:T.gray700,borderColor:form.smsConsent===v?(v?T.success:T.danger):T.border}}>{l}</button>
             ))}
+          </div>
+        </FLD>
+        <FLD label="기본 예약태그">
+          <div style={{padding:"8px 10px",border:"1px solid "+T.border,borderRadius:T.radius.md,background:"#FAFAFC"}}>
+            <div style={{fontSize:11,color:T.textSub,marginBottom:6,lineHeight:1.5}}>이 고객의 새 예약(수동·네이버·AI)에 자동으로 부착될 태그를 미리 선택하세요.</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+              {(serviceTags||[]).filter(t=>t.useYn!==false && t.scheduleYn!=="Y").sort((a,b)=>(a.sort||0)-(b.sort||0)).map(t=>{
+                const sel = (form.defaultTags||[]).includes(t.id);
+                return <button key={t.id} type="button" onClick={()=>{
+                  const cur = Array.isArray(form.defaultTags)?form.defaultTags:[];
+                  f('defaultTags', sel ? cur.filter(x=>x!==t.id) : [...cur, t.id]);
+                }} style={{padding:"3px 9px",fontSize:11,fontWeight:700,borderRadius:12,border:"1px solid "+(sel?(t.color||T.primary):T.border),background:sel?(t.color||T.primary):"#fff",color:sel?"#fff":T.gray700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{t.name}</button>;
+              })}
+              {(serviceTags||[]).filter(t=>t.useYn!==false && t.scheduleYn!=="Y").length === 0 && <span style={{fontSize:11,color:T.textMuted}}>등록된 예약태그가 없습니다 (관리설정 → 태그 관리)</span>}
+            </div>
           </div>
         </FLD>
         <FLD label="메모"><textarea className="inp" rows={3} value={form.memo||''} onChange={e=>f('memo',e.target.value)} placeholder="메모"
@@ -1839,6 +1854,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
     {showModal && <CustModal item={editItem} isEdit={!!editItem?.id} onSave={handleSave}
       onClose={()=>_mc(()=>{setShowModal(false);setEditItem(null)})}
       defBranch={userBranches[0]} userBranches={userBranches} branches={data.branches||[]}
+      serviceTags={data?.serviceTags||[]}
       memoTemplate={(()=>{try{const s=typeof (data?.businesses||[])[0]?.settings==='string'?JSON.parse((data.businesses||[])[0].settings):(data?.businesses||[])[0]?.settings||{};return s?.memo_templates?.customer||"";}catch{return "";}})()}
       geminiKey={_geminiKey}/>}
     {editSale && <DetailedSaleForm

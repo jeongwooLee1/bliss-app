@@ -2392,6 +2392,21 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         setData(prev=>({...prev,customers:(prev?.customers||[]).map(c=>c.id===cust.id?{...c,isHidden:false}:c)}));
       }
     }
+    // 🏷 고객 기본 예약태그 자동 머지 — 신규 예약일 때만 (앞으로의 예약만 적용, 기존 수정엔 영향 X)
+    {
+      const _isNewRes = !data?.reservations?.find(r => r.id === item.id);
+      if (_isNewRes && item.custId) {
+        const _cust = (data?.customers||[]).find(c=>c.id===item.custId);
+        const _defTags = Array.isArray(_cust?.defaultTags) ? _cust.defaultTags : [];
+        if (_defTags.length > 0) {
+          const _cur = Array.isArray(item.selectedTags) ? item.selectedTags : [];
+          const _validTagIds = new Set((data?.serviceTags||[]).filter(t=>t.useYn!==false && t.scheduleYn!=="Y").map(t=>t.id));
+          const _merged = [..._cur];
+          _defTags.forEach(tid => { if (_validTagIds.has(tid) && !_merged.includes(tid)) _merged.push(tid); });
+          item.selectedTags = _merged;
+        }
+      }
+    }
     const allItems = [];
     const isNewItem = !data?.reservations?.find(r => r.id === item.id);
     const isExistItem = !isNewItem;
