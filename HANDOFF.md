@@ -5,6 +5,41 @@
 - 다음 빌드 시 `BLISS_V` (AppShell.jsx) + `public/version.txt` 둘 다 함께 bump 필수
 - 변경 이력은 [CLAUDE.md "v3.7.503 → v3.7.556"](./CLAUDE.md) 섹션 참고
 
+## 2026-05-12 서버 ai_booking.py 응급 복구 (React 변경 0)
+**증상**
+- 자동응답이 이미 받은 정보(시술/이름/날짜)를 다시 물어봄 — Monique WhatsApp thread에서 발견
+- 메시지함 [예약] 버튼 클릭 시 reservations INSERT 0건 (실제 500 에러)
+
+**원인**
+- 2026-05-10 11:52 UTC 서버 `ai_booking.py`가 90KB → 41KB로 대규모 롤백
+- 사라진 기능: `chat_booking_state` load/save (시스템 메모리), `force/manual/suggest_only` kwargs, 멀티턴 messages 배열, 3-tier 모델, BRANCH_KEYWORDS, 영→한 시술명 매핑
+- /ai-book endpoint가 `ai_booking_agent(force=True, manual=True)` 호출 → `unexpected keyword argument 'force'` → 500
+- chat_booking_state 테이블 마지막 row 2026-05-09 22:46 KST 이후 0건 누적 (코드에 INSERT/UPDATE 자체 없음)
+
+**fix (서버 직접 적용 — ssh + scp + systemctl restart bliss-naver)**
+- `bak_addr_20260506_162116` (5/6 07:21 풀버전 1664줄) 베이스로 복원
+- 5/7~5/9 surgical 변경 cherry-pick:
+  - 콜라보/체험단 사전 게이트 (체험단/collab/influencer/Reels 키워드, manual 우회, 한·영 자동 분기 canned 응답)
+  - 상담 후 매칭 차단 (prompt 룰 + create_booking_from_ai에서 "X 상담"·"X 상담후"·"X consult" 패턴 regex로 제거)
+  - manual=True 호출 시 [미디어]/[reaction] 가드 우회
+  - 언어 룰 마지막 inbound 메시지 기준 + en≥5 영어 우선 (v3.7.547)
+- 언어 회귀 보강 (재배포):
+  - prompt `[⛔ 응답 언어]` 블록 강조 (양 언어 병기 금지, reply_lang 100% 준수)
+  - `[말투]` 섹션에 한국어/영어 예시 분리 추가
+  - `[규칙] 8` 의 이중언어 옵션 제거
+
+**검증**
+- 직접 호출 10건 smoke test (KR/EN/혼용/멀티턴/콜라보/상담후/Monique 재현) → 모두 PASS
+- 언어 재테스트 10건 → 9 PASS / 1 edge case (단답 "Yes"는 en=3<5라 한국어로 fallback, 의도된 동작)
+
+**서버 백업 (롤백 시 복원)**
+- `/home/ubuntu/naver-sync/ai_booking.py.bak_pre_restore_20260511_231750` (롤백된 41KB 상태)
+- `/home/ubuntu/naver-sync/ai_booking.py.bak_pre_langfix_20260511_234159` (lang fix 직전 1697줄)
+
+**잔여 작업 (낮은 우선순위)**
+- "before/after Npm" 같은 시간 **범위 표현**은 ask_info 강제 룰 미적용 (현재 AI가 그대로 booking date에 넣을 수 있음). prompt `[⛔ 금지 — 모호한 표현]` 블록에 추가 필요 시 별도 작업
+- 5/7~5/9 변경 중 LINE 메시지 처리 / detect_lang LINE 분기는 미반영
+
 ## v3.7.556 변경 (2026-05-09)
 - **음역 결과 너무 짧게 잘리는 버그 fix** (`nameTransliterate.js`):
   - 증상: `John Do → 존`, `Sini Juutilainen → 시니`처럼 첫 한두 글자만 나옴.

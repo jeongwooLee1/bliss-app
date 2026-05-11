@@ -1038,3 +1038,46 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - **영수증**: SaleForm viewOnly·editMode일 때만 [영수증] 버튼 노출. canvas 직접 그리기(외부 라이브러리 X), monospace 폰트, 가로 26자.
 - **NHN KCP 카드사 심사 통과** (2026-05-07): 영세 가맹점 수수료(일반 3.2%/중소3 2.72%/중소2 2.47%), 신용카드 건당 100만, 정산 월4회, 등록비/연회비 0. 다음 단계: 계약서 제출 → 보증보험 200만 가입 → 포트원 V2 채널 등록 → Bliss 관리설정 키 입력 → 테스트 결제.
 - **네이버 톡톡 상담완료 자동 연동 보류**: POST /chatapi/ct/partner/{handle}/chat/{chatId}/end (200 OK 확인) + 매장 핸들 8개 확보(강남 w4jmdh, 마곡 w4lf15, 왕십리 w4h6dw, 용산 w4gsgn, 위례 w4l272, 잠실 w4ls78, 천호 w45f9j, 홍대 w5wyqh). chat_id(4자) ↔ messages.user_id(22자) 매핑이 nchat socket으로만 전달되어 HTTP 추출 불가. 정식 챗봇 통합(handover_v1)으로 전환 예정 (별도 1~2주 일정).
+
+### 서버 ai_booking.py 응급 복구 (2026-05-12, React 변경 0)
+**증상**
+- 자동응답이 history에 이미 있는 정보(시술/이름/날짜) 재질문 — Monique WhatsApp thread에서 발견
+- 메시지함 [예약] 버튼 클릭 시 `/ai-book` 500 (실제 예약 INSERT 0건)
+
+**원인** (회귀)
+- 2026-05-10 11:52 UTC 시점 `/home/ubuntu/naver-sync/ai_booking.py`가 92KB → 41KB로 **대규모 롤백**
+- 사라진 기능: `chat_booking_state` load/save (시스템 메모리), `force/manual/suggest_only` kwargs, 멀티턴 messages 배열, 3-tier 모델, BRANCH_KEYWORDS, 영→한 시술명 매핑, check_availability ±10시간 search
+- `/ai-book` endpoint가 `ai_booking_agent(force=True, manual=True)` 호출 → `unexpected keyword argument` 500
+- `chat_booking_state` 테이블 마지막 row 2026-05-09 22:46 KST 이후 0건 누적 (코드에 INSERT/UPDATE 자체 없음 = 시스템 메모리 죽음)
+
+**fix**
+- `ai_booking.py.bak_addr_20260506_162116` (5/6 07:21 풀버전 1664줄) 베이스로 풀 복원
+- 5/7~5/9 surgical 변경 cherry-pick:
+  - 콜라보/체험단 사전 게이트 — outbound 메시지에 `체험단`·`collab`·`collaboration`·`influencer`·`Instagram Reels review` 키워드 발견 시 AI 호출 차단, 마케팅팀 안내 멘트 자동 발송 (한·영 분기, manual=True 우회)
+  - 상담 후 매칭 차단 — prompt 룰 + `create_booking_from_ai`에서 `([가-힣A-Za-z]{1,12})\s*(?:상담\s*후?|consult(?:ation)?)` regex로 매칭 텍스트에서 해당 부위 키워드 제거 (예: "페이스 상담후" → 풀페이스 잘못 매칭 방지)
+  - manual=True 호출 시 [미디어]/[reaction] 가드 우회
+  - 언어 룰 — 마지막 inbound 메시지 기준 매 응답마다 재판정 + en≥5 영어 우선 (v3.7.547)
+- 언어 회귀 추가 보강:
+  - prompt `[⛔ 응답 언어 = {reply_lang}]` 블록 — 양 언어 병기 절대 금지, reply_lang 100% 준수
+  - `[말투]` 한국어/영어 예시 분리, "Hi there! 😊 This is House Waxing." 등 영어 예시 추가
+  - `[규칙] 8` 의 이중언어 옵션 표현 제거
+
+**적용**
+- 서버 직접 (ssh + scp + `sudo systemctl restart bliss-naver`)
+- React 앱 변경 0건 → `BLISS_V` / `version.txt` bump 불필요, CF 퍼지 불필요
+- 작업세션(worktree-ai-autoreply-fix) 직접 적용. 워크트리는 React 빌드 trigger 없는 backend-only 작업이라 본 워크트리에 commit된 코드 없음
+
+**검증** (직접 ai_booking_agent 호출 + chat_booking_state 검사)
+- 10건 smoke test: KR 인사 / EN 인사 / 한·영 혼용 / KR 가격 / EN brazilian Gangnam / 멀티턴 (history+신규 누적) / 콜라보 게이트 / 상담후 매칭 차단 / 상대 날짜 / Monique 재현 — 모두 정상
+- 언어 재테스트 10건: EN 다양한 길이/패턴 / 혼용 / KR — 9 PASS / 1 edge case (단답 "Yes"는 en=3<5라 한국어로 fallback)
+
+**서버 백업 (롤백 시 복원)**
+- `/home/ubuntu/naver-sync/ai_booking.py.bak_pre_restore_20260511_231750` (롤백된 41KB 상태)
+- `/home/ubuntu/naver-sync/ai_booking.py.bak_pre_langfix_20260511_234159` (lang fix 직전 1697줄)
+
+### 주의사항 (2026-05-12 이후 참고)
+- **서버 `ai_booking.py`는 bliss-app git에 추적되지 않음** — 별도 `/home/ubuntu/naver-sync/` git repo. ssh + scp + systemctl restart로 직접 적용. CF 퍼지 무관.
+- **chat_booking_state 시스템 메모리는 다시 동작 중** — 매 응답마다 `_state_load → AI 호출 → booking JSON에서 추출 → _state_save` 흐름. ✓ 표시된 필드는 prompt에서 "절대 재질문 금지" 강조.
+- **언어 룰**: 마지막 inbound 메시지 기준 + 영어 5자 이상 + en ≥ ko → "영어". reply_lang 결정 후 prompt에 강하게 박힘. 단발 단답(en<5)은 한국어로 fallback.
+- **콜라보 게이트는 영구**: outbound에 한 번이라도 키워드 들어가면 그 thread는 영구 콜라보 분기. 해제하려면 `messages` 테이블에서 해당 outbound row 삭제 또는 키워드 제거.
+- **잔여 미반영 (낮은 우선순위)**: ① "before/after Npm" 같은 시간 **범위 표현**은 ask_info 강제 룰 미적용 (현재 AI가 booking date에 그대로 넣을 가능성). ② 5/7~5/9 변경 중 LINE 메시지 처리 / detect_lang LINE 분기.
