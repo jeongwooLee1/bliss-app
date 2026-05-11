@@ -52,6 +52,15 @@ export default function AdminExtPlatforms({ data, setData, bizId }) {
     if (!n || n === oldName) return
     persist(platforms.map(p => p===oldName ? n : p))
   }
+  const move = (name, dir) => {
+    const idx = platforms.indexOf(name)
+    if (idx < 0) return
+    const newIdx = idx + dir
+    if (newIdx < 0 || newIdx >= platforms.length) return
+    const next = [...platforms]
+    ;[next[idx], next[newIdx]] = [next[newIdx], next[idx]]
+    persist(next)
+  }
 
   return <div>
     <APageHeader title="외부 플랫폼 관리" desc="서울뷰티·크리에이트립 등 외부 선결제 플랫폼 목록. 매출 등록 시 드롭다운에 노출됩니다."/>
@@ -68,14 +77,28 @@ export default function AdminExtPlatforms({ data, setData, bizId }) {
     </div>
     <div className="card" style={{padding:0,overflow:"hidden"}}>
       {(()=>{
-        const list = ["네이버", ...platforms.filter(p=>p!=="네이버")]
-        return list.map((p,i) => <PlatformRow key={p} name={p} isSystem={p==="네이버"} isLast={i===list.length-1} onRemove={()=>remove(p)} onRename={(n)=>rename(p,n)}/>)
+        // 네이버는 시스템 플랫폼이라 별도로 맨 위에 고정
+        const sysList = platforms.filter(p=>p==="네이버")
+        const userList = platforms.filter(p=>p!=="네이버")
+        const list = [...(sysList.length ? sysList : ["네이버"]), ...userList]
+        return list.map((p,i) => <PlatformRow
+          key={p}
+          name={p}
+          isSystem={p==="네이버"}
+          isLast={i===list.length-1}
+          canUp={!sysList.length || (i > 1)}  // 시스템 플랫폼 아래 첫 줄은 위로 못 감
+          canDown={i < list.length-1 && p !== "네이버"}
+          onRemove={()=>remove(p)}
+          onRename={(n)=>rename(p,n)}
+          onMoveUp={()=>move(p, -1)}
+          onMoveDown={()=>move(p, 1)}
+        />)
       })()}
     </div>
   </div>
 }
 
-function PlatformRow({ name, isSystem, isLast, onRemove, onRename }) {
+function PlatformRow({ name, isSystem, isLast, canUp, canDown, onRemove, onRename, onMoveUp, onMoveDown }) {
   const [editing, setEditing] = useState(false)
   const [v, setV] = useState(name)
   useEffect(()=>setV(name), [name])
@@ -88,8 +111,21 @@ function PlatformRow({ name, isSystem, isLast, onRemove, onRename }) {
           style={{flex:1,padding:"4px 8px",fontSize:T.fs.sm,borderRadius:6,border:"1px solid "+T.primary,fontFamily:"inherit",outline:"none"}}/>
       : <span onClick={()=>!isSystem&&setEditing(true)} style={{flex:1,fontSize:T.fs.sm,fontWeight:600,color:T.text,cursor:isSystem?"default":"pointer"}}>{name}{isSystem && <span style={{marginLeft:8,fontSize:10,color:"#03C75A",fontWeight:700,padding:"1px 6px",background:"#fff",border:"1px solid #03C75A",borderRadius:4}}>시스템</span>}</span>
     }
-    {!isSystem && <button onClick={onRemove} title="삭제" style={{padding:"4px 8px",borderRadius:6,border:"none",background:"transparent",color:T.danger,cursor:"pointer"}}>
-      <I name="trash" size={14}/>
-    </button>}
+    {!isSystem && (
+      <>
+        <button onClick={onMoveUp} disabled={!canUp} title="위로 이동"
+          style={{padding:"4px 8px",borderRadius:6,border:"none",background:"transparent",color:canUp?T.primary:T.gray400,cursor:canUp?"pointer":"not-allowed"}}>
+          <I name="arrowUp" size={14}/>
+        </button>
+        <button onClick={onMoveDown} disabled={!canDown} title="아래로 이동"
+          style={{padding:"4px 8px",borderRadius:6,border:"none",background:"transparent",color:canDown?T.primary:T.gray400,cursor:canDown?"pointer":"not-allowed"}}>
+          <I name="arrowDown" size={14}/>
+        </button>
+        <button onClick={onRemove} title="삭제"
+          style={{padding:"4px 8px",borderRadius:6,border:"none",background:"transparent",color:T.danger,cursor:"pointer"}}>
+          <I name="trash" size={14}/>
+        </button>
+      </>
+    )}
   </div>
 }

@@ -275,6 +275,53 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   // 새로고침·재진입 시 항상 오늘 날짜로 복귀 (유저 요청: 타임라인 refresh → today)
   const [selDate, setSelDate] = useState(todayStr());
   const [schHistory, setSchHistory] = useState(null);
+  // ── ⚡ Viewport-based 자동 fetch ──
+  // selDate 변경 시 그 날짜 데이터가 메모리에 없으면 자동으로 서버 fetch + 머지
+  // 초기 로드는 30일치만 있으므로, 그보다 더 과거/미래 날짜로 navigate 시 보충 필요
+  const _viewportFetchedRef = React.useRef(new Set()); // 이미 fetch한 날짜 캐시
+  React.useEffect(() => {
+    if (!selDate || betaGroupMode) return; // 베타 모드는 별도 처리
+    // selDate ±7일 윈도우 — 한 번에 2주치 가져옴 (잦은 fetch 방지)
+    const _d = new Date(selDate + 'T00:00:00');
+    if (isNaN(_d.getTime())) return;
+    const _from = new Date(_d.getTime() - 7*86400000).toISOString().slice(0,10);
+    const _to = new Date(_d.getTime() + 7*86400000).toISOString().slice(0,10);
+    const _windowKey = `${_from}_${_to}`;
+    if (_viewportFetchedRef.current.has(_windowKey)) return;
+    // 메모리에 이미 selDate 데이터가 충분히 있으면 skip
+    const _hasInMemory = (data?.reservations || []).some(r => r && r.date === selDate);
+    if (_hasInMemory) {
+      _viewportFetchedRef.current.add(_windowKey);
+      return;
+    }
+    // 30일 전~14일 후 안이면 초기 로드 범위 — fetch 불필요
+    const _today = new Date(); _today.setHours(0,0,0,0);
+    const _gapPast = (_today - _d) / 86400000;
+    const _gapFuture = (_d - _today) / 86400000;
+    if (_gapPast <= 30 && _gapFuture <= 14) {
+      _viewportFetchedRef.current.add(_windowKey);
+      return;
+    }
+    // 백그라운드 fetch
+    _viewportFetchedRef.current.add(_windowKey);
+    (async () => {
+      try {
+        const rows = await sb.get("reservations",
+          `&business_id=eq.${_activeBizId}&is_beta=eq.false&date=gte.${_from}&date=lte.${_to}&order=date.desc,time.asc&limit=5000`);
+        if (!Array.isArray(rows) || !rows.length) return;
+        const mapped = fromDb("reservations", rows);
+        setData(prev => {
+          if (!prev) return prev;
+          const existing = new Set((prev.reservations || []).map(r => r.id));
+          const fresh = mapped.filter(r => !existing.has(r.id));
+          if (!fresh.length) return prev;
+          return { ...prev, reservations: [...(prev.reservations || []), ...fresh] };
+        });
+      } catch (e) {
+        console.warn('[viewport fetch] failed:', e);
+      }
+    })();
+  }, [selDate, betaGroupMode]);
   // ── 네이버 막기 상태: { [bizId]: { [date]: { [itemId]: {name, hour_bit(48자)} } } } ──
   const [naverBlockState, setNaverBlockState] = useState({});
   const [blockSlotPopup, setBlockSlotPopup] = useState(null); // {bizId, branchId, date, slotIdx, time, x, y}

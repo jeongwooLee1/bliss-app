@@ -7,6 +7,7 @@ import I from '../common/I'
 import SendSmsModal from '../common/SendSmsModal'
 import { DetailedSaleForm } from './SaleForm'
 import { evaluateTagTriggers } from '../../lib/tagAutoTrigger'
+import { transliterateName, getCachedTransliteration } from '../../lib/nameTransliterate'
 
 const uid = genId;
 
@@ -711,6 +712,34 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   };
   const [custPkgsInfo, setCustPkgsInfo] = useState([]); // 보유권 요약 표시용
   const [custPointBal, setCustPointBal] = useState(0);  // 보유 포인트 잔액
+  // 외국 이름 음역 fallback — 네이버/AI 예약 신규 고객은 customers.name_kor 비어있어서
+  // _cust?.nameKor 조건만으론 화면에 안 뜸. 캐시 → Gemini 호출 → 결과 state + DB 백필
+  const [autoNameKor, setAutoNameKor] = useState('');
+  useEffect(() => {
+    setAutoNameKor('');
+    const _name = (f.custName || '').trim();
+    if (!_name) return;
+    if (/[가-힣]/.test(_name)) return; // 한글 이름은 음역 X
+    // 1) 메모리 캐시
+    const _cached = getCachedTransliteration(_name);
+    if (_cached) { setAutoNameKor(_cached); return; }
+    // 2) Gemini 호출
+    const _key = window.__systemGeminiKey || window.__geminiKey || (typeof localStorage !== 'undefined' ? localStorage.getItem('bliss_gemini_key') : '') || '';
+    if (!_key) return;
+    let cancelled = false;
+    transliterateName(_name, _key).then(k => {
+      if (cancelled || !k) return;
+      setAutoNameKor(k);
+      // 3) DB 백필 — custId 있고 nameKor 비어있을 때만
+      if (f.custId) {
+        const _cust = (data?.customers || []).find(c => c.id === f.custId);
+        if (_cust && !_cust.nameKor) {
+          sb.update('customers', f.custId, { name_kor: k }).catch(() => {});
+        }
+      }
+    });
+    return () => { cancelled = true; };
+  }, [f.custName, f.custId]);
   // 고객의 보유권(다담권/다회권) + 포인트 잔액 로드 — 고객이 변경되거나 custId 백필될 때마다
   useEffect(() => {
     if (!f.custId) { setCustPkgsInfo([]); setCustPointBal(0); return; }
@@ -1696,10 +1725,16 @@ ${naverText}
                           <CopySpan text={f.custName} style={{fontSize:14,fontWeight:700,color:"#1a1a2e",whiteSpace:"nowrap"}}>{f.custName}</CopySpan>
                         )}
                         {(() => {
-                          // 영문 이름이면 한글 음역(name_kor)만 인라인 표시. name2는 직원 별칭용이라 음역 fallback으로 쓰지 않음.
+                          // 영문 이름이면 한글 음역 인라인 표시.
+                          // 1순위: customers.name_kor (DB 저장값) — 직원/관리 페이지에서 음역 처리한 결과
+                          // 2순위: autoNameKor (이 모달 useEffect에서 즉석 음역) — 네이버/AI 예약 신규 고객 fallback
                           const _cust = (data?.customers||[]).find(c => c.id === f.custId);
                           const _isEn = f.custName && !/[가-힣]/.test(f.custName);
-                          const _kor = _isEn && _cust?.nameKor && /[가-힣]/.test(_cust.nameKor) ? _cust.nameKor : '';
+                          let _kor = '';
+                          if (_isEn) {
+                            if (_cust?.nameKor && /[가-힣]/.test(_cust.nameKor)) _kor = _cust.nameKor;
+                            else if (autoNameKor && /[가-힣]/.test(autoNameKor)) _kor = autoNameKor;
+                          }
                           return _kor ? <span style={{fontSize:13,color:T.primaryDk||"#5B21B6",fontWeight:700,whiteSpace:"nowrap"}}>{_kor}</span> : null;
                         })()}
                         {f.custName2 && <span style={{fontSize:12,color:"#888",fontWeight:500,whiteSpace:"nowrap"}}>({f.custName2})</span>}

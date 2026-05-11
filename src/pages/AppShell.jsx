@@ -25,7 +25,7 @@ import FloatingAI from '../components/BlissAI/FloatingAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.601"
+const BLISS_V = "3.7.605"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -34,13 +34,20 @@ function ScrollArea({ storageKey, children }) {
 }
 const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", users:"/users", messages:"/messages", admin:"/settings", schedule:"/schedule", requests:"/requests", blissai:"/blissai" };
 // 과거 데이터 백그라운드 로드 (초기 14d/30d 이전 예약/매출) — UI 렌더 후 머지
+// reservations 테이블엔 대용량 JSONB 없음 (snapshot_data는 sales 테이블에만 존재)
+// type/is_schedule/source/repeat 등 필터링 필수 컬럼이 누락되면 화면 비어짐 → * 사용이 안전
+const RES_SELECT = "*";
+
 async function loadHistoricalInBackground(bizId, setData) {
-  const resBefore = new Date(Date.now()-14*86400000).toISOString().slice(0,10);
-  const salBefore = new Date(Date.now()-30*86400000).toISOString().slice(0,10);
-  const salSince  = new Date(Date.now()-90*86400000).toISOString().slice(0,10);
+  // 초기 로드 범위(30일) 밖 데이터를 백그라운드로 천천히 가져옴
+  // 범위 명시: 30일~365일 이전 (무제한 fetch 차단)
+  const resOlder = new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+  const resOldest = new Date(Date.now()-365*86400000).toISOString().slice(0,10);
+  const salBefore = new Date(Date.now()-14*86400000).toISOString().slice(0,10);
+  const salSince  = new Date(Date.now()-180*86400000).toISOString().slice(0,10);
   try {
     const [oldRes, oldSal] = await Promise.all([
-      sb.getAll("reservations", `&business_id=eq.${bizId}&is_beta=eq.false&date=lt.${resBefore}&order=date.desc,time.asc`).catch(()=>[]),
+      sb.getAll("reservations", `&business_id=eq.${bizId}&is_beta=eq.false&date=gte.${resOldest}&date=lt.${resOlder}&order=date.desc,time.asc&select=${RES_SELECT}`).catch(()=>[]),
       sb.getAll("sales", `&business_id=eq.${bizId}&date=gte.${salSince}&date=lt.${salBefore}&order=date.desc`).catch(()=>[]),
     ]);
     if (!oldRes.length && !oldSal.length) return;
@@ -66,9 +73,10 @@ async function loadAllFromDb(bizId) {
     sb.get("customers", `&business_id=eq.${bizId}&is_hidden=eq.false&order=join_date.desc.nullslast,created_at.desc&limit=100`).catch(()=>[]),
     // SNS 실제 연결된 고객만 (빈 배열 제외) — 부분 인덱스로 빠름
     sb.get("customers", `&business_id=eq.${bizId}&is_hidden=eq.false&sns_accounts=neq.${encodeURIComponent('[]')}&limit=500`).catch(()=>[]),
-    // 과거 6개월 이후 예약 + 미래 전체 로드 (이전: limit 3000으로 4/19 이전 데이터 누락 사고)
-    sb.get("reservations", `&business_id=eq.${bizId}&is_beta=eq.false&date=gte.${new Date(Date.now()-180*86400000).toISOString().slice(0,10)}&order=date.desc,time.asc&limit=20000`).catch(()=>[]),
-    sb.get("sales", `&business_id=eq.${bizId}&date=gte.${new Date(Date.now()-90*86400000).toISOString().slice(0,10)}&order=date.desc&limit=5000`).catch(()=>[]),
+    // ⚡ 초기 로드: 최근 30일만 (이전: 180일 → 7900건 응답 ~ 수십 MB → 모바일에서 몇 분 지연)
+    // 30일 이전은 loadHistoricalInBackground가 백그라운드로 보충, viewport navigate 시 자동 fetch
+    sb.get("reservations", `&business_id=eq.${bizId}&is_beta=eq.false&date=gte.${new Date(Date.now()-30*86400000).toISOString().slice(0,10)}&order=date.desc,time.asc&limit=10000&select=${RES_SELECT}`).catch(()=>[]),
+    sb.get("sales", `&business_id=eq.${bizId}&date=gte.${new Date(Date.now()-14*86400000).toISOString().slice(0,10)}&order=date.desc&limit=3000`).catch(()=>[]),
     sb.getByBiz("products", bizId).catch(()=>[]),
     sb.getByBiz("branch_groups", bizId).catch(()=>[]),
   ]);
