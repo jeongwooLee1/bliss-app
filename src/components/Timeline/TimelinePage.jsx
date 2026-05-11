@@ -385,6 +385,43 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   // 직원 목록: employees_v1 (schedule_data 테이블)에서 동적 로드 + Realtime + 폴링
   const [empList, setEmpList] = useState([]);
   const [empSettings, setEmpSettings] = useState({});
+  // 공지 미확인 직원 표시용 — 빨간점
+  const [notices, setNotices] = useState([]);
+  useEffect(() => {
+    const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
+    const loadNotices = () => {
+      fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.bliss_notices_v1&select=value`, { headers: H, cache:"no-store" })
+        .then(r => r.json()).then(rows => {
+          const v = rows?.[0]?.value;
+          const arr = typeof v === 'string' ? JSON.parse(v) : (Array.isArray(v) ? v : []);
+          setNotices(arr || []);
+        }).catch(()=>{});
+    };
+    loadNotices();
+    let ch = null;
+    if (window._sbClient) {
+      ch = window._sbClient.channel("tl_notices")
+        ?.on("postgres_changes",{event:"*",schema:"public",table:"schedule_data",filter:"key=eq.bliss_notices_v1"}, loadNotices)
+        ?.subscribe();
+    }
+    const poll = setInterval(loadNotices, 120_000);
+    return () => { try{ch?.unsubscribe();}catch(e){} clearInterval(poll); };
+  }, [_activeBizId]);
+  // 직원 이름 → 미확인 공지 개수
+  // 여러 키 후보 (id, name, name without "(원장)" 등) 중 하나라도 acks에 있으면 ack로 인정
+  const unackCountFor = React.useCallback((...names) => {
+    const keys = names.flatMap(n => {
+      if (!n) return [];
+      const stripped = String(n).replace(/\s*\([^)]*\)\s*$/, '').trim(); // "미진(원장)" → "미진"
+      return stripped !== n ? [n, stripped] : [n];
+    });
+    if (!keys.length || !notices?.length) return 0;
+    return notices.filter(n => {
+      if (!n) return false;
+      const acks = n.acks || {};
+      return !keys.some(k => acks[k]);
+    }).length;
+  }, [notices]);
   useEffect(() => {
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
     const parseEmps = (empVal) => {
@@ -440,13 +477,14 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     return empList
       .filter(e => !empSettings[e.id]?.excludeFromSchedule)
       .map(e => {
+        // name 보존 — 일반 직원은 id===name이라 무관, 프리랜서(fl_xxx)는 name이 따로 있어서 column 헤더 표시에 필수
         if (e.isMale) {
           const rotBranch = getRotationBranch(e.id, selDate);
           if (rotBranch && SCH_BRANCH_MAP[rotBranch]) {
-            return { id: e.id, branch_id: SCH_BRANCH_MAP[rotBranch] };
+            return { id: e.id, name: e.name || e.id, branch_id: SCH_BRANCH_MAP[rotBranch], isFreelancer: !!e.isFreelancer };
           }
         }
-        return { id: e.id, branch_id: SCH_BRANCH_MAP[e.branch] || e.branch };
+        return { id: e.id, name: e.name || e.id, branch_id: SCH_BRANCH_MAP[e.branch] || e.branch, isFreelancer: !!e.isFreelancer };
       });
   }, [empList, empSettings, maleRotation, selDate]);
 
@@ -4006,9 +4044,13 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                       {(() => {
                         const _isFreelancer = !!empList.find(e => e.id === room.staffId)?.isFreelancer;
                         const _nameColor = room.hideName ? T.gray400 : (_isFreelancer ? "#4CAF50" : T.text);
-                        return <span className="tl-room-sub" style={{fontSize:14,fontWeight:800,color:_nameColor,fontStyle:room.hideName?"italic":"normal",cursor:"pointer"}}
+                        const _unack = unackCountFor(room.name, room.staffId);
+                        return <span className="tl-room-sub" style={{position:"relative",fontSize:14,fontWeight:800,color:_nameColor,fontStyle:room.hideName?"italic":"normal",cursor:"pointer",display:"inline-block"}}
                           onClick={e=>{e.stopPropagation();setEmpMovePopup(p=>(p?.empId===room.staffId && p?.branchId===room.branch_id)?null:{empId:room.staffId,branchId:room.branch_id,date:selDate,x:e.clientX,y:e.clientY});}}>
                           {room.hideName ? "(이동)" : room.name}
+                          {/* 미확인 공지 빨간점 — 우상단 */}
+                          {!room.hideName && _unack > 0 && <span title={`미확인 공지 ${_unack}건`}
+                            style={{position:"absolute",top:-1,right:-5,width:5,height:5,borderRadius:"50%",background:"#ef4444"}}/>}
                         </span>;
                       })()}
                       {!room.hideName && <button title="오른쪽으로" onClick={e=>{e.stopPropagation();moveEmpCol(room.branch_id,room.staffId,1);}}
@@ -4962,10 +5004,12 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                             background: isBlocked ? BLOCK_GRAY : NAVER_GREEN,
                           }}/>;
                         });
+                        // 점선 → 실선 (점은 그대로 유지)
                         const cellBg = fullyBlocked ? "rgba(0,0,0,.06)" : "rgba(156,163,175,.10)";
-                        const cellBorder = fullyBlocked ? "2px dashed rgba(0,0,0,.12)" : "1px solid rgba(0,0,0,.06)";
+                        const cellBorder = fullyBlocked ? "1px solid rgba(0,0,0,.18)" : "1px solid rgba(0,0,0,.06)";
                         out.push(
-                          <div key={`s${slotIdx}`} style={{position:"absolute",top,left:0,right:0,height:slotPx,background:cellBg,borderTop:cellBorder,pointerEvents:"none",zIndex:3,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3}}>
+                          <div key={`s${slotIdx}`} title={fullyBlocked?`전체 ${slotTotal}건 막힘`:`${blockedCount}/${slotTotal} 막힘`}
+                            style={{position:"absolute",top,left:0,right:0,height:slotPx,background:cellBg,borderTop:cellBorder,pointerEvents:"none",zIndex:3,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3}}>
                             {dots}
                           </div>
                         );

@@ -710,12 +710,22 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
     setCustSnapshot(null);
   };
   const [custPkgsInfo, setCustPkgsInfo] = useState([]); // 보유권 요약 표시용
-  // 고객의 보유권(다담권/다회권) 로드 — 고객이 변경되거나 custId 백필될 때마다
+  const [custPointBal, setCustPointBal] = useState(0);  // 보유 포인트 잔액
+  // 고객의 보유권(다담권/다회권) + 포인트 잔액 로드 — 고객이 변경되거나 custId 백필될 때마다
   useEffect(() => {
-    if (!f.custId) { setCustPkgsInfo([]); return; }
-    sb.get("customer_packages", `&customer_id=eq.${f.custId}`).then(rows => {
-      setCustPkgsInfo(Array.isArray(rows) ? rows : []);
-    }).catch(() => setCustPkgsInfo([]));
+    if (!f.custId) { setCustPkgsInfo([]); setCustPointBal(0); return; }
+    Promise.all([
+      sb.get("customer_packages", `&customer_id=eq.${f.custId}`).catch(()=>[]),
+      sb.get("point_transactions", `&customer_id=eq.${f.custId}&select=type,amount`).catch(()=>[]),
+    ]).then(([pkgs, ptxs]) => {
+      setCustPkgsInfo(Array.isArray(pkgs) ? pkgs : []);
+      let bal = 0;
+      (Array.isArray(ptxs) ? ptxs : []).forEach(t => {
+        if (t.type === 'earn') bal += +t.amount || 0;
+        else if (t.type === 'deduct' || t.type === 'expire') bal -= +t.amount || 0;
+      });
+      setCustPointBal(Math.max(0, bal));
+    }).catch(() => { setCustPkgsInfo([]); setCustPointBal(0); });
   }, [f.custId]);
 
   // 자동 부여 트리거 평가 — service_tags.auto_trigger에 설정된 트리거 조건 만족 시 태그 자동 부여
@@ -1784,8 +1794,14 @@ ${naverText}
                           ))}
                         </div>
                       )}
-                      {/* PKG 칩 */}
-                      {activePkgSummary.length > 0 && <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:5}}>
+                      {/* PKG 칩 + 포인트 잔액 */}
+                      {(activePkgSummary.length > 0 || custPointBal > 0) && <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:5}}>
+                        {custPointBal > 0 && (
+                          <span style={{display:"inline-flex",alignItems:"stretch",borderRadius:8,overflow:"hidden",fontSize:10,fontWeight:700,border:"1px solid #B2EBF2",whiteSpace:"nowrap"}}>
+                            <span style={{padding:"2px 6px",background:"#fff",color:T.gray700}}>포인트</span>
+                            <span style={{padding:"2px 6px",background:"#E0F7FA",color:"#006064",fontWeight:800}}>{custPointBal.toLocaleString()}P</span>
+                          </span>
+                        )}
                         {activePkgSummary.map((pkg,i) => {
                           const c = pkg.type==="prepaid"
                             ? { val:"#fffde7", txt:"#7a5a00", bdr:"#f3d77a" }
@@ -2920,10 +2936,16 @@ ${naverText}
                 </div>;
               })()}
 
-              {/* 보유 패키지 */}
-              {(custPkgsInfo||[]).length > 0 && activePkgSummary.length > 0 && <div style={{marginBottom:12}}>
-                <div style={{fontSize:11,fontWeight:700,color:T.textSub,marginBottom:6,display:"flex",alignItems:"center",gap:4}}><I name="wallet" size={12}/>보유권</div>
+              {/* 보유 패키지 + 포인트 */}
+              {(((custPkgsInfo||[]).length > 0 && activePkgSummary.length > 0) || custPointBal > 0) && <div style={{marginBottom:12}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.textSub,marginBottom:6,display:"flex",alignItems:"center",gap:4}}><I name="wallet" size={12}/>보유 현황</div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                  {custPointBal > 0 && (
+                    <span style={{display:"inline-flex",alignItems:"stretch",borderRadius:8,overflow:"hidden",fontSize:11,fontWeight:700,border:"1px solid #B2EBF2",whiteSpace:"nowrap"}}>
+                      <span style={{padding:"3px 8px",background:"#fff",color:T.gray700}}>포인트</span>
+                      <span style={{padding:"3px 8px",background:"#E0F7FA",color:"#006064",fontWeight:800}}>{custPointBal.toLocaleString()}P</span>
+                    </span>
+                  )}
                   {activePkgSummary.map((pkg,i) => {
                     const c = pkg.type==="prepaid"
                       ? { val:"#fffde7", txt:"#7a5a00", bdr:"#f3d77a" }

@@ -1337,8 +1337,19 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   // PKG 패키지 (왁싱PKG, 토탈PKG 등 — name에서 회수 파싱), 연간회원권 제외
   const newPkgPurchases = SVC_LIST.filter(s => (s.cat === PKG_CAT_ID || /PKG|패키지/i.test(s.name||"")) && s.cat !== PREPAID_CAT_ID && !_isAnnualSvc(s) && items[s.id]?.checked);
   const newAnnualPurchases = SVC_LIST.filter(s => _isAnnualSvc(s) && items[s.id]?.checked);
-  // 패키지 회수 파싱: "왁싱 PKG 5회" → 5
-  const parsePkgCount = (name) => { const m = (name||"").match(/(\d+)\s*회/); return m ? parseInt(m[1]) : 5; };
+  // 패키지 회수 결정 — 우선순위:
+  //   1) services.pkgCount > 0 (관리자가 시술상품관리에서 명시 입력)
+  //   2) 시술명 정규식 "5회" 추출 (legacy)
+  //   3) fallback 5회
+  // ⚠ 신규 발급 패키지부터 적용. 기존 customer_packages 데이터는 무영향.
+  const parsePkgCount = (svcOrName) => {
+    const svc = typeof svcOrName === 'object' ? svcOrName : null;
+    const name = svc ? svc.name : svcOrName;
+    const dbCount = Number(svc?.pkgCount || svc?.pkg_count || 0);
+    if (dbCount > 0) return dbCount;
+    const m = (name||"").match(/(\d+)\s*회/);
+    return m ? parseInt(m[1]) : 5;
+  };
   // 신규 구매 다담권/패키지/연간권 총 액면가
   const newPrepaidActiveTotal = newPrepaidPurchases.reduce((sum, s) => sum + (items[s.id]?.amount || 0), 0);
   const newPkgPurchaseTotal = newPkgPurchases.reduce((sum, s) => sum + (items[s.id]?.amount || 0), 0);
@@ -2513,17 +2524,26 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     // ── 신규 PKG 패키지 구매 + 오늘 N회 사용 처리 ──
     if (cust.id && newPkgPurchases.length > 0) {
       newPkgPurchases.forEach(svc => {
-        const total = parsePkgCount(svc.name);
+        const total = parsePkgCount(svc);
         const used = Math.max(0, Math.min(total, Number(usePkgToday[svc.id] || 0)));
         const newPkgId = uid();
         // 구매지점 기록 (id_imgr471swt-3 수정요청)
         const _pkgBranchShort = (data?.branches||[]).find(b=>b.id===branchId)?.short || "";
+        // 구매 + 즉시 사용 시 유효기간 자동 시작 (오늘 + 1년 - 1일)
+        // — 다담권(line ~2488) / 연간회원권(line ~2591) 패턴과 동일
+        // — 사용 안 하고 보유만 하면 첫 사용 시점에 자동 부여 (line ~2410 로직)
+        let _pkgNote = _pkgBranchShort ? `매장:${_pkgBranchShort.replace(/점$|본점$/,'')}` : "";
+        if (used > 0) {
+          const _expD = new Date(); _expD.setFullYear(_expD.getFullYear()+1); _expD.setDate(_expD.getDate()-1);
+          const _expStr = `${_expD.getFullYear()}-${String(_expD.getMonth()+1).padStart(2,"0")}-${String(_expD.getDate()).padStart(2,"0")}`;
+          _pkgNote = _pkgNote ? `${_pkgNote} | 유효:${_expStr}` : `유효:${_expStr}`;
+        }
         const newPkg = {
           id: newPkgId, business_id: _activeBizId, customer_id: cust.id,
           service_id: svc.id, service_name: svc.name,
           total_count: total, used_count: used,
           purchased_at: new Date().toISOString(),
-          note: _pkgBranchShort ? `매장:${_pkgBranchShort.replace(/점$|본점$/,'')}` : "",
+          note: _pkgNote,
           branch_id: branchId || null,
         };
         sb.insert("customer_packages", newPkg).catch(console.error);
@@ -3335,7 +3355,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
               <div style={{fontSize:11,fontWeight:T.fw.bolder,color:"#4338CA",marginBottom:6,display:"flex",alignItems:"center",gap:5}}><I name="pkg" size={12}/>오늘 구매한 패키지 — 1회 사용</div>
               {newPkgPurchases.map(svc => {
                 const used = Number(usePkgToday[svc.id] || 0);
-                const total = parsePkgCount(svc.name);
+                const total = parsePkgCount(svc);
                 const isActive = used > 0;
                 return <div key={svc.id} className="sale-svc-row"
                   onClick={()=>setUsePkgToday(p=>({...p, [svc.id]: isActive ? 0 : 1}))}

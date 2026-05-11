@@ -42,6 +42,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   const [loading, setLoading] = useState(true);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiBookLoading, setAiBookLoading] = useState(false);
+  const [endCounselLoading, setEndCounselLoading] = useState(false);
   // 번역 모드: "auto" (기본, 고객 언어 감지) / "force_en" (강제 영어) / "off" (번역 안 함)
   const [autoTranslate, setAutoTranslate] = useState(true);  // 기존 호환
   const [translateMode, setTranslateMode] = useState("auto");
@@ -1029,6 +1030,66 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     finally{setAiBookLoading(false);}
   };
 
+  // 🟢 상담완료 — 네이버 톡톡 파트너센터 [상담완료] 자동 호출
+  // 우리 메시지함 내부에서도 모두 읽음 처리. 네이버 채널에서만 노출.
+  // confirm() 제거 — iOS PWA·모바일 일부 환경에서 차단되어 동작 불가하던 문제 해결 (aiBook과 동일 패턴)
+  const endCounsel = async()=>{
+    if(!sel||endCounselLoading) return;
+    if((sel.channel||"naver") !== "naver") return;
+    setEndCounselLoading(true);
+    try{
+      // 우리 메시지함의 user_name + 마지막 out/in 메시지 추출 (매칭 힌트)
+      // last_msg_text는 우리가 보낸 마지막 OUT 메시지 (naver chat list의 text와 동일)
+      const lastIn = [...convo].reverse().find(m=>m.direction==="in");
+      const lastOut = [...convo].reverse().find(m=>m.direction==="out" && m.message_text);
+      const lastAny = [...convo].reverse().find(m=>m.message_text);
+      const hintName = (sel.user_name || lastIn?.user_name || "").trim();
+      const refMsg = lastOut || lastAny;
+      const hintTs = refMsg?.created_at ? Math.floor(new Date(refMsg.created_at).getTime()/1000) : null;
+      const hintText = (refMsg?.message_text || "").trim();
+      const res = await fetch("https://blissme.ai/naver-talk/end-counsel",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          account_id: sel.account_id,
+          user_id: sel.user_id,
+          user_name: hintName,
+          last_msg_ts: hintTs,
+          last_msg_text: hintText
+        }),
+      });
+      const dd = await res.json().catch(()=>({}));
+      if(!dd?.ok){
+        const err = dd?.error||"unknown";
+        if(err==="no_match"){
+          // 디버그 정보 포함 — 어떻게 매칭 시도했는지 + 네이버 chat list 미리보기
+          let dbg = `\n\n[검색]\n- 이름: ${dd.user_name||"(없음)"}\n- 마지막 메시지: ${(dd.last_text||"").slice(0,30)}`;
+          if (Array.isArray(dd.debug_chats) && dd.debug_chats.length > 0) {
+            dbg += `\n\n[네이버 파트너센터 최근 대화]\n` + dd.debug_chats.map(c=>`• ${c.name||"(이름없음)"}: ${(c.text||"").slice(0,25)}`).join("\n");
+          }
+          alert("⚠️ 네이버 파트너센터에서 일치하는 대화방을 찾지 못했습니다."+dbg+"\n\n파트너센터에서 직접 [상담완료] 눌러주세요.");
+        } else if(err==="no_naver_session"){
+          alert("⚠️ 네이버 세션이 만료됐습니다.\n관리자에게 세션 갱신 요청 필요.");
+        } else {
+          alert("상담완료 실패: "+err);
+        }
+        return;
+      }
+      // 우리 쪽도 모두 읽음 처리
+      try{ markRead(sel.user_id, sel.channel||"naver"); }catch(e){}
+      if (dd.skipped) {
+        alert(`✅ 메시지함 읽음 처리됨\n${dd.note||""}`);
+      } else {
+        alert(`✅ 상담완료 처리됨\n매칭: ${dd.matchedName||"?"} (${dd.chatUrl})`);
+      }
+    }catch(e){
+      console.error("[endCounsel]",e);
+      alert("상담완료 오류: "+e.message);
+    }finally{
+      setEndCounselLoading(false);
+    }
+  };
+
   const sendTranslated = async()=>{
     if(!reply.trim()||!sel) return;
     setSending(true);
@@ -1232,7 +1293,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             </div>
           )}
         </div>
-        {(()=>{const res=chatLatestRes[sel.channel+"_"+sel.user_id];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"대기":res.status==="completed"?"완료":res.status==="reserved"?"예약":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":res.status==="completed"?"#9E9E9E":res.status==="no_show"?"#EF5350":T.primary;return<button onClick={()=>{if(setPendingOpenRes&&setPage){setPendingOpenRes({...res});setPage("timeline");}}} title={`${st} ${res.date?.slice(5)} ${res.time} — 예약 모달 열기`} style={{fontSize:forceCompact?10:11,fontWeight:700,color:clr,background:clr+"15",border:"1px solid "+clr+"40",borderRadius:6,padding:forceCompact?"3px 6px":"4px 8px",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}><I name="calendar" size={11}/>{forceCompact?"":st}</button>;})()}
+        {(()=>{const res=chatLatestRes[sel.channel+"_"+sel.user_id];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"대기":res.status==="completed"?"완료":res.status==="reserved"?"예약":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":res.status==="completed"?"#9E9E9E":res.status==="no_show"?"#EF5350":T.primary;return<button onClick={()=>{if(setPendingOpenRes&&setPage){setPendingOpenRes({...res, _highlightOnly:true});setPage("timeline");}}} title={`${st} ${res.date?.slice(5)} ${res.time} — 타임라인 바로가기 (예약 강조)`} style={{fontSize:forceCompact?10:11,fontWeight:700,color:clr,background:clr+"15",border:"1px solid "+clr+"40",borderRadius:6,padding:forceCompact?"3px 6px":"4px 8px",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}><I name="calendar" size={11}/>{forceCompact?"":st}</button>;})()}
         {_extLink && <a href={_extLink.url} target="_blank" rel="noopener noreferrer" title={_extLink.label} style={{fontSize:forceCompact?10:11,fontWeight:700,color:_extLink.color,background:_extLink.color+"18",border:"1px solid "+_extLink.color+"44",borderRadius:6,padding:forceCompact?"3px 6px":"4px 8px",textDecoration:"none",flexShrink:0,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}>{forceCompact?"↗":_extLink.short+" ↗"}</a>}
       </div>
       {/* 메시지 */}
@@ -1256,8 +1317,13 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                 {m.message_text}
                 {m.translated_text&&<div style={{marginTop:5,paddingTop:5,borderTop:isOut?"1px solid rgba(255,255,255,0.45)":"1px solid rgba(0,0,0,0.18)",fontSize:forceCompact?11:12,color:isOut?"rgba(255,255,255,0.95)":"rgba(0,0,0,0.78)",fontWeight:500}}>🔤 {m.translated_text}</div>}
               </div>
-              <div style={{fontSize:forceCompact?9:10,color:T.textMuted,marginTop:2,textAlign:isOut?"right":"left"}}>
-                {fmtTime(m.created_at)}
+              <div style={{fontSize:forceCompact?9:10,color:T.textMuted,marginTop:2,textAlign:isOut?"right":"left",display:"flex",justifyContent:isOut?"flex-end":"flex-start",alignItems:"center",gap:6}}>
+                {isOut && m.status === 'failed' && (
+                  <span title={m.error_reason || '24시간 응답 윈도우 만료 등'} style={{color:"#D32F2F",fontWeight:700,background:"#FFEBEE",border:"1px solid #FFCDD2",borderRadius:4,padding:"1px 5px",fontSize:forceCompact?9:10,display:"inline-flex",alignItems:"center",gap:3}}>
+                    <I name="alert" size={forceCompact?9:10}/>발송실패
+                  </span>
+                )}
+                <span>{fmtTime(m.created_at)}</span>
               </div>
             </div>
           </div>;
@@ -1291,6 +1357,12 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             style={{padding:forceCompact?"5px 10px":"6px 12px",background:aiBookLoading?T.gray400:T.primary,color:"#fff",border:"1px solid "+(aiBookLoading?T.gray400:T.primaryDk),borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:aiBookLoading?"wait":"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
             <I name={aiBookLoading?"loader":"calendar"} size={13} color="#fff"/> {aiBookLoading?"분석 중…":"AI 예약등록"}
           </button>
+          {/* 상담완료 — 네이버 톡톡 파트너센터 [상담완료] 자동 호출 (네이버 채널만) */}
+          {(sel.channel||"naver") === "naver" && <button onClick={endCounsel} disabled={endCounselLoading}
+            title="네이버 톡톡 파트너센터에 [상담완료] 자동 적용 + 메시지함 모두 읽음 처리"
+            style={{padding:forceCompact?"5px 10px":"6px 12px",background:endCounselLoading?T.gray400:"#10B981",color:"#fff",border:"1px solid "+(endCounselLoading?T.gray400:"#059669"),borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:endCounselLoading?"wait":"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
+            <I name={endCounselLoading?"loader":"check"} size={13} color="#fff"/> {endCounselLoading?"처리 중…":"상담완료"}
+          </button>}
           {/* 발신 직원 선택 — 디폴트: 지점명, 수동 선택 시 localStorage 저장 */}
           <select value={selStaff} onChange={e=>updateSelStaff(e.target.value)}
             title="답장 발신자 — 메시지 머리에 표시됩니다 (디폴트: 지점명, 변경 시 자동 저장)"
@@ -1456,9 +1528,14 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                     {m.message_text}
                     {m.translated_text&&<div style={{marginTop:6,paddingTop:6,borderTop:isOut?"1px solid rgba(255,255,255,0.45)":"1px solid rgba(0,0,0,0.18)",fontSize:12,color:isOut?"rgba(255,255,255,0.95)":"rgba(0,0,0,0.78)",fontWeight:500}}>🔤 {m.translated_text}</div>}
                   </div>
-                  <div style={{fontSize:10,color:T.textMuted,marginTop:3,textAlign:isOut?"right":"left"}}>
-                    {m.is_ai&&<span style={{background:"#7C3AED",color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,marginRight:4}}>AI</span>}
-                    {fmtTime(m.created_at)}
+                  <div style={{fontSize:10,color:T.textMuted,marginTop:3,textAlign:isOut?"right":"left",display:"flex",justifyContent:isOut?"flex-end":"flex-start",alignItems:"center",gap:6}}>
+                    {m.is_ai&&<span style={{background:"#7C3AED",color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700}}>AI</span>}
+                    {isOut && m.status === 'failed' && (
+                      <span title={m.error_reason || '24시간 응답 윈도우 만료 등'} style={{color:"#D32F2F",fontWeight:700,background:"#FFEBEE",border:"1px solid #FFCDD2",borderRadius:4,padding:"1px 5px",fontSize:10,display:"inline-flex",alignItems:"center",gap:3}}>
+                        <I name="alert" size={10}/>발송실패
+                      </span>
+                    )}
+                    <span>{fmtTime(m.created_at)}</span>
                   </div>
                 </div>
               </div>;

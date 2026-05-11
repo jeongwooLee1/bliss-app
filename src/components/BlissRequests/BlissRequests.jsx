@@ -47,7 +47,15 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
       const empList = (() => { const v=empRow?.value; return typeof v==='string'?JSON.parse(v):(Array.isArray(v)?v:[]); })();
       setRequests(Array.isArray(reqList) ? reqList.sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||"")) : []);
       setNotices(Array.isArray(ntcList) ? ntcList.sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||"")) : []);
-      setEmployees(Array.isArray(empList) ? empList : []);
+      // 확인 명단 — 정규 출근 직원만 (프리랜서·근무표 제외 직원 필터)
+      const filteredEmps = (Array.isArray(empList) ? empList : []).filter(e => {
+        if (!e) return false;
+        if (e.isFreelancer) return false;
+        if (e.excludeFromSchedule) return false;
+        if (typeof e.id === 'string' && e.id.startsWith('fl_')) return false;
+        return true;
+      });
+      setEmployees(filteredEmps);
     } catch (e) { console.error("Load failed:", e); }
     setLoading(false);
   };
@@ -240,8 +248,16 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
   };
 
   const saveReply = async (id) => {
-    if (!replyText.trim()) return;
-    const next = requests.map(r => r.id === id ? { ...r, reply: replyText.trim(), status: r.status === "pending" ? "reviewing" : r.status } : r);
+    // 답변 텍스트 비어있어도 등록 가능 — 상태만 pending → reviewing으로 진행
+    const txt = replyText.trim();
+    const next = requests.map(r => {
+      if (r.id !== id) return r;
+      const u = { ...r };
+      if (txt) u.reply = txt;
+      // pending → reviewing 자동 전환 (답변 유무 무관)
+      if (u.status === "pending") u.status = "reviewing";
+      return u;
+    });
     await saveAll(next);
     setReplyText("");
   };
@@ -260,31 +276,45 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
   return <div style={{padding:"16px 20px",maxWidth:900,margin:"0 auto"}}>
     {/* 헤더 */}
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-      <div>
-        <h2 style={{margin:0,fontSize:22,fontWeight:T.fw.black,color:T.text}}>📢 공지 & 요청</h2>
-        <div style={{fontSize:T.fs.xs,color:T.textMuted,marginTop:3}}>새 기능·업데이트 안내 및 개선 요청</div>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <div style={{width:38,height:38,borderRadius:10,background:T.primary,color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 6px rgba(124,58,237,.25)"}}>
+          <I name="bell" size={19} color="#fff"/>
+        </div>
+        <div>
+          <h2 style={{margin:0,fontSize:22,fontWeight:T.fw.black,color:T.text,lineHeight:1.2}}>공지 & 요청</h2>
+          <div style={{fontSize:T.fs.xs,color:T.textMuted,marginTop:2}}>업데이트 안내 · 직원 게시판 · 개선 요청</div>
+        </div>
       </div>
       {tab === "requests" && <button onClick={()=>setShowForm(true)} style={{padding:"10px 18px",borderRadius:10,border:"none",background:T.primary,color:"#fff",fontSize:T.fs.sm,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
         <I name="plus" size={14}/> 새 요청
       </button>}
-      {tab === "notices" && isMaster && <button onClick={()=>setShowNoticeForm(true)} style={{padding:"10px 18px",borderRadius:10,border:"none",background:"#7C3AED",color:"#fff",fontSize:T.fs.sm,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
+      {tab === "notices" && isMaster && <button onClick={()=>setShowNoticeForm(true)} style={{padding:"10px 18px",borderRadius:10,border:"none",background:T.primary,color:"#fff",fontSize:T.fs.sm,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
         <I name="plus" size={14}/> 새 공지
       </button>}
     </div>
     {/* 탭 */}
     <div style={{display:"flex",gap:0,borderBottom:`2px solid ${T.border}`,marginBottom:18}}>
-      {[["notices",`📢 공지사항 (${notices.length})`],["requests",`📝 수정 요청 (${requests.length})`]].map(([k,l])=>(
+      {[
+        ["notices", "공지사항", notices.length, "bell"],
+        ["requests", "수정 요청", requests.length, "edit"]
+      ].map(([k, label, n, ic])=>(
         <button key={k} onClick={()=>setTab(k)}
           style={{padding:"10px 18px",fontSize:13,fontWeight:700,border:"none",background:"transparent",
             color: tab===k ? T.primary : T.textSub,
             borderBottom: tab===k ? `3px solid ${T.primary}` : "3px solid transparent",
-            marginBottom:-2, cursor:"pointer", fontFamily:"inherit"}}>{l}</button>
+            marginBottom:-2, cursor:"pointer", fontFamily:"inherit",
+            display:"inline-flex", alignItems:"center", gap:6}}>
+          <I name={ic} size={14}/> {label}
+          <span style={{fontSize:11,padding:"1px 7px",borderRadius:10,background:tab===k?T.primaryLt:T.gray100,color:tab===k?T.primary:T.gray500,fontWeight:700}}>{n}</span>
+        </button>
       ))}
     </div>
     {/* 공지사항 */}
     {tab==="notices" && <>
       {showNoticeForm && <div style={{background:"#F5F3FF",border:"1.5px solid #C4B5FD",borderRadius:12,padding:18,marginBottom:18}}>
-        <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#5B21B6",marginBottom:12}}>📢 새 공지 작성</div>
+        <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#5B21B6",marginBottom:12,display:"flex",alignItems:"center",gap:6}}>
+          <I name="bell" size={14} color="#5B21B6"/> 새 공지 작성
+        </div>
         <div style={{display:"flex",gap:8,marginBottom:8}}>
           <input value={noticeForm.title} onChange={e=>setNoticeForm(p=>({...p,title:e.target.value}))} placeholder="제목 *"
             style={{flex:1,padding:"9px 12px",fontSize:13,border:"1.5px solid "+T.border,borderRadius:8,fontFamily:"inherit"}}/>
@@ -297,8 +327,8 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
           style={{width:"100%",padding:"9px 12px",fontSize:13,border:"1px solid "+T.border,borderRadius:8,fontFamily:"inherit",resize:"vertical",minHeight:140,boxSizing:"border-box",marginBottom:8}}/>
         {/* 이미지 첨부 영역 */}
         <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:10}}>
-          <label style={{padding:"6px 12px",fontSize:12,fontWeight:700,borderRadius:6,border:"1px dashed #8B5CF6",background:"#fff",color:"#5B21B6",cursor:"pointer",fontFamily:"inherit"}}>
-            📷 이미지 첨부
+          <label style={{padding:"6px 12px",fontSize:12,fontWeight:700,borderRadius:6,border:"1px dashed #8B5CF6",background:"#fff",color:"#5B21B6",cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
+            <I name="upload" size={12} color="#5B21B6"/> 이미지 첨부
             <input type="file" accept="image/*" multiple onChange={onNoticeImagePick} style={{display:"none"}}/>
           </label>
           <span style={{fontSize:10,color:T.textMuted}}>여러 장 가능 · 각 2MB 이하 · Ctrl+V로 붙여넣기 OK</span>
@@ -308,7 +338,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
             <div key={i} style={{position:"relative",border:"1px solid "+T.border,borderRadius:6,overflow:"hidden",background:"#fff"}}>
               <img src={img} alt={`첨부${i+1}`} style={{display:"block",height:80,maxWidth:140,objectFit:"cover"}}/>
               <button onClick={()=>setMarkupIdx(i)} title="마킹 편집"
-                style={{position:"absolute",top:2,left:2,padding:"2px 6px",borderRadius:4,border:"none",background:"rgba(124,58,237,.9)",color:"#fff",fontSize:10,fontWeight:700,cursor:"pointer",lineHeight:1,fontFamily:"inherit"}}>✏️ 편집</button>
+                style={{position:"absolute",top:2,left:2,padding:"2px 6px",borderRadius:4,border:"none",background:"rgba(124,58,237,.9)",color:"#fff",fontSize:10,fontWeight:700,cursor:"pointer",lineHeight:1,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:3}}><I name="edit" size={9} color="#fff"/> 편집</button>
               <button onClick={()=>removeNoticeImage(i)} title="제거"
                 style={{position:"absolute",top:2,right:2,width:20,height:20,borderRadius:"50%",border:"none",background:"rgba(0,0,0,.7)",color:"#fff",fontSize:12,cursor:"pointer",lineHeight:1,padding:0,fontFamily:"inherit"}}>×</button>
             </div>
@@ -348,15 +378,34 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
             const isOpen = openNoticeId === n.id;
             // 과거 데이터 호환 — imageData(단일) 또는 images(배열) 모두 지원
             const imgs = Array.isArray(n.images) ? n.images : (n.imageData ? [n.imageData] : []);
-            return <div key={n.id} style={{background:T.bgCard,border:"1px solid "+T.border,borderRadius:12,overflow:"hidden"}}>
-              <div onClick={()=>setOpenNoticeId(isOpen?null:n.id)} style={{padding:"12px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
-                <span style={{fontSize:11,fontWeight:700,padding:"3px 8px",borderRadius:10,background:"#F5F3FF",color:"#5B21B6",whiteSpace:"nowrap"}}>📢 공지</span>
-                {n.version && <span style={{fontSize:10,padding:"2px 6px",borderRadius:4,background:T.gray100,color:T.textSub,fontFamily:"monospace",fontWeight:700}}>{n.version}</span>}
+            // 작성자 이니셜
+            const author = n.author || "관리자";
+            const initial = author.slice(0, 1);
+            return <div key={n.id} style={{background:T.bgCard,border:"1px solid "+T.border,borderRadius:12,overflow:"hidden",boxShadow:isOpen?"0 4px 12px rgba(124,58,237,0.08)":"0 1px 2px rgba(0,0,0,0.03)",transition:"box-shadow .15s"}}>
+              <div onClick={()=>setOpenNoticeId(isOpen?null:n.id)} style={{padding:"14px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
+                {/* 작성자 아바타 */}
+                <div style={{width:36,height:36,borderRadius:"50%",background:"linear-gradient(135deg,#7C3AED,#5B21B6)",color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:T.fw.black,flexShrink:0}}>
+                  {initial}
+                </div>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:13,fontWeight:T.fw.bolder,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                    {n.title}{imgs.length > 0 && <span style={{marginLeft:6,fontSize:11,color:"#5B21B6"}}>📷 {imgs.length}</span>}
+                  {/* 라벨 + 버전 + 첨부 카운트 */}
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
+                    <span style={{fontSize:10,fontWeight:T.fw.bolder,padding:"2px 7px",borderRadius:4,background:"#F5F3FF",color:"#5B21B6",letterSpacing:0.3,display:"inline-flex",alignItems:"center",gap:3}}>
+                      <I name="bell" size={9} color="#5B21B6"/> 공지
+                    </span>
+                    {n.version && <span style={{fontSize:9,padding:"2px 5px",borderRadius:3,background:T.gray100,color:T.textSub,fontFamily:"monospace",fontWeight:700}}>{n.version}</span>}
+                    {imgs.length > 0 && <span style={{fontSize:10,color:T.gray500,fontWeight:600,display:"inline-flex",alignItems:"center",gap:3}}>
+                      <I name="upload" size={10} color={T.gray500}/> {imgs.length}
+                    </span>}
                   </div>
-                  <div style={{fontSize:11,color:T.textMuted,marginTop:2}}>{n.author||"관리자"} · {fmtDate(n.createdAt)}</div>
+                  <div style={{fontSize:14,fontWeight:T.fw.bolder,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.3}}>
+                    {n.title}
+                  </div>
+                  <div style={{fontSize:11,color:T.textMuted,marginTop:3,display:"flex",alignItems:"center",gap:5}}>
+                    <I name="user" size={10} color={T.textMuted}/> {author}
+                    <span style={{color:T.gray300}}>·</span>
+                    <I name="clock" size={10} color={T.textMuted}/> {fmtDate(n.createdAt)}
+                  </div>
                 </div>
                 <I name={isOpen?"chevD":"chevR"} size={14} color={T.gray400}/>
               </div>
@@ -371,25 +420,34 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
                       {isMaster && <div style={{position:"absolute",top:8,right:8,display:"flex",gap:4}}>
                         <button onClick={(e)=>{e.stopPropagation(); setExistingMarkup({noticeId: n.id, idx: i});}}
                           title="이미지 마킹 편집"
-                          style={{padding:"4px 10px",borderRadius:6,border:"none",background:"rgba(124,58,237,0.95)",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 6px rgba(0,0,0,0.3)"}}>
-                          ✏️ 편집
+                          style={{padding:"4px 10px",borderRadius:6,border:"none",background:"rgba(124,58,237,0.95)",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 6px rgba(0,0,0,0.3)",display:"inline-flex",alignItems:"center",gap:4}}>
+                          <I name="edit" size={11} color="#fff"/> 편집
                         </button>
                         <button onClick={(e)=>{e.stopPropagation(); removeExistingNoticeImage(n.id, i);}}
                           title="이미지 삭제"
-                          style={{padding:"4px 10px",borderRadius:6,border:"none",background:"rgba(220,38,38,0.95)",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 6px rgba(0,0,0,0.3)"}}>
-                          🗑 삭제
+                          style={{padding:"4px 10px",borderRadius:6,border:"none",background:"rgba(220,38,38,0.95)",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 6px rgba(0,0,0,0.3)",display:"inline-flex",alignItems:"center",gap:4}}>
+                          <I name="trash" size={11} color="#fff"/> 삭제
                         </button>
                       </div>}
                     </div>
                   ))}
                 </div>}
                 {/* 직원 확인 명단 */}
-                {employees.length > 0 && <div style={{marginTop:14,paddingTop:12,borderTop:"1px dashed "+T.gray100}}>
+                {employees.length > 0 && <div style={{marginTop:14,paddingTop:12,borderTop:"1px dashed "+T.gray200}}>
                   {(() => {
                     const acks = n.acks || {};
                     const ackedCount = employees.filter(e => acks[e.id]).length;
-                    return <div style={{fontSize:12,fontWeight:T.fw.bolder,color:T.text,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
-                      📋 확인 명단 <span style={{fontSize:11,color:T.textMuted,fontWeight:600}}>({ackedCount}/{employees.length})</span>
+                    const pct = employees.length > 0 ? Math.round((ackedCount / employees.length) * 100) : 0;
+                    return <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,gap:10}}>
+                      <div style={{fontSize:12,fontWeight:T.fw.bolder,color:T.text,display:"flex",alignItems:"center",gap:6}}>
+                        <I name="clipboard" size={13} color={T.primary}/> 확인 명단
+                        <span style={{fontSize:11,color:T.textMuted,fontWeight:600}}>({ackedCount}/{employees.length})</span>
+                      </div>
+                      {/* 진행률 바 */}
+                      <div style={{flex:1,maxWidth:180,height:6,background:T.gray100,borderRadius:3,overflow:"hidden"}}>
+                        <div style={{width:`${pct}%`,height:"100%",background:pct===100?"#10B981":T.primary,borderRadius:3,transition:"width .3s"}}/>
+                      </div>
+                      <div style={{fontSize:10,color:T.textMuted,fontWeight:600,minWidth:30,textAlign:"right"}}>{pct}%</div>
                     </div>;
                   })()}
                   <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
@@ -401,21 +459,22 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
                         title={acked ? `확인 ${fmtDate(acked)} — 클릭하면 해제` : "클릭해서 확인 처리"}
                         style={{
                           padding:"5px 10px",borderRadius:16,fontSize:11,fontWeight:700,
-                          border: acked ? `1px solid #10B98166` : `1.5px dashed ${T.primary}`,
-                          background: acked ? "#D1FAE5" : (T.primaryLt||"#EEF2FF"),
+                          border: acked ? `1px solid #10B98166` : `1.5px dashed ${T.primary}66`,
+                          background: acked ? "#D1FAE5" : "#fff",
                           color: acked ? "#065F46" : T.primary,
                           cursor: "pointer",
-                          fontFamily:"inherit", display:"inline-flex", alignItems:"center", gap:4
+                          fontFamily:"inherit", display:"inline-flex", alignItems:"center", gap:5
                         }}>
-                        {acked ? "✅" : "👉"} {e.id}
+                        <I name={acked?"check":"clock"} size={10} color={acked?"#065F46":T.primary}/>
+                        {e.id}
                         {acked && <span style={{fontSize:9,color:"#065F46",opacity:.8,fontWeight:500}}>{fmtDate(acked)}</span>}
                       </button>;
                     })}
                   </div>
                 </div>}
                 {isMaster && <button onClick={()=>removeNotice(n.id)}
-                  style={{marginTop:12,padding:"4px 10px",borderRadius:6,border:"1px solid "+T.danger+"66",background:"#fff5f5",color:T.danger,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                  공지 전체 삭제
+                  style={{marginTop:12,padding:"4px 10px",borderRadius:6,border:"1px solid "+T.danger+"66",background:"#fff5f5",color:T.danger,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:4}}>
+                  <I name="trash" size={11} color={T.danger}/> 공지 전체 삭제
                 </button>}
               </div>}
             </div>;
@@ -430,7 +489,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
     {showForm && <div style={{background:"#FFFBEB",border:"1.5px solid #FCD34D",borderRadius:12,padding:18,marginBottom:18}}>
       <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#B45309",marginBottom:12}}>새 요청 작성</div>
       <div style={{display:"flex",gap:8,marginBottom:8}}>
-        <input value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} placeholder="✏️ 요청자 이름을 입력하세요 *"
+        <input value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} placeholder="요청자 이름 *"
           style={{flex:1,padding:"9px 12px",fontSize:13,border:"1.5px solid "+T.border,borderRadius:8,fontFamily:"inherit"}}/>
         {(data?.branches||[]).filter(b=>userBranches.includes(b.id)).length > 0 &&
           <select value={form.branchId} onChange={e=>setForm(p=>({...p,branchId:e.target.value}))}
@@ -452,7 +511,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
           <div key={i} style={{position:"relative",display:"flex",alignItems:"center",gap:4,padding:"4px 6px",border:"1px solid "+T.border,borderRadius:8,background:"#fff"}}>
             <img src={img} alt={"preview-"+i} style={{height:40,borderRadius:6}}/>
             <button onClick={()=>setReqMarkupIdx(i)} title="마킹 편집"
-              style={{padding:"4px 10px",borderRadius:6,border:"none",background:"#7C3AED",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✏️</button>
+              style={{padding:"4px 10px",borderRadius:6,border:"none",background:"#7C3AED",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:3}}><I name="edit" size={11} color="#fff"/></button>
             <button onClick={()=>removeReqImage(i)} style={{border:"none",background:"none",color:T.danger,cursor:"pointer",fontSize:14}}>×</button>
           </div>
         ))}
@@ -482,18 +541,29 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
         {requests.map(r => {
           const st = STATUS[r.status] || STATUS.pending;
           const isOpen = openId === r.id;
-          return <div key={r.id} style={{background:T.bgCard,border:"1px solid "+T.border,borderRadius:12,overflow:"hidden"}}>
-            <div onClick={()=>setOpenId(isOpen?null:r.id)} style={{padding:"12px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
-              <span style={{fontSize:11,fontWeight:700,padding:"3px 8px",borderRadius:10,background:st.bg,color:st.color,whiteSpace:"nowrap"}}>{st.label}</span>
+          const reqInitial = (r.name || "?").slice(0, 1);
+          const imgCount = Array.isArray(r.images) ? r.images.length : (r.imageData ? 1 : 0);
+          return <div key={r.id} style={{background:T.bgCard,border:"1px solid "+T.border,borderRadius:12,overflow:"hidden",boxShadow:isOpen?"0 4px 12px rgba(124,58,237,0.08)":"0 1px 2px rgba(0,0,0,0.03)",transition:"box-shadow .15s"}}>
+            <div onClick={()=>setOpenId(isOpen?null:r.id)} style={{padding:"14px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
+              {/* 작성자 아바타 */}
+              <div style={{width:36,height:36,borderRadius:"50%",background:`linear-gradient(135deg, ${T.gray400}, ${T.gray700})`,color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:T.fw.black,flexShrink:0}}>
+                {reqInitial}
+              </div>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:13,fontWeight:T.fw.bolder,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                  <span style={{color:T.primary,marginRight:6}}>{r.name}</span>
-                  {(r.description||"").split("\n")[0].slice(0,60)}
+                {/* 상태 배지 + 첨부 + 답변 표시 */}
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
+                  <span style={{fontSize:10,fontWeight:T.fw.bolder,padding:"2px 7px",borderRadius:4,background:st.bg,color:st.color,letterSpacing:0.3}}>{st.label}</span>
+                  {imgCount > 0 && <span style={{fontSize:10,color:T.gray500,fontWeight:600,display:"inline-flex",alignItems:"center",gap:3}}><I name="upload" size={10} color={T.gray500}/> {imgCount}</span>}
+                  {r.reply && <span style={{fontSize:10,color:T.primary,fontWeight:600,display:"inline-flex",alignItems:"center",gap:3}}><I name="msgSq" size={10} color={T.primary}/> 답변</span>}
                 </div>
-                <div style={{fontSize:11,color:T.textMuted,marginTop:2}}>
-                  {r.branchId ? branchName(r.branchId) + " · " : ""}{fmtDate(r.createdAt)}
-                  {((Array.isArray(r.images) && r.images.length > 0) || r.imageData) && " · 📷" + (Array.isArray(r.images) && r.images.length > 1 ? r.images.length : "")}
-                  {r.reply && " · 💬 답변있음"}
+                <div style={{fontSize:14,fontWeight:T.fw.bolder,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.3}}>
+                  {(r.description||"").split("\n")[0].slice(0, 70)}
+                </div>
+                <div style={{fontSize:11,color:T.textMuted,marginTop:3,display:"flex",alignItems:"center",gap:5}}>
+                  <I name="user" size={10} color={T.textMuted}/> {r.name}
+                  {r.branchId && <><span style={{color:T.gray300}}>·</span><I name="building" size={10} color={T.textMuted}/> {branchName(r.branchId)}</>}
+                  <span style={{color:T.gray300}}>·</span>
+                  <I name="clock" size={10} color={T.textMuted}/> {fmtDate(r.createdAt)}
                 </div>
               </div>
               <I name={isOpen?"chevD":"chevR"} size={14} color={T.gray400}/>
@@ -508,7 +578,9 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
                 </div>;
               })()}
               {r.reply && <div style={{marginTop:12,padding:"10px 14px",background:T.primaryLt||"#EEF2FF",borderRadius:8,borderLeft:"3px solid "+T.primary}}>
-                <div style={{fontSize:11,fontWeight:T.fw.bolder,color:T.primary,marginBottom:4}}>💬 답변</div>
+                <div style={{fontSize:11,fontWeight:T.fw.bolder,color:T.primary,marginBottom:4,display:"flex",alignItems:"center",gap:5}}>
+                  <I name="msgSq" size={11} color={T.primary}/> 답변
+                </div>
                 <div style={{fontSize:13,color:T.text,whiteSpace:"pre-wrap"}}>{r.reply}</div>
               </div>}
               {/* 관리자 전용: 상태 변경 + 답변 */}
@@ -523,7 +595,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
                 <div style={{display:"flex",gap:6}}>
                   <input value={replyText} onChange={e=>setReplyText(e.target.value)} placeholder={r.reply?"답변 수정...":"답변 작성..."}
                     style={{flex:1,padding:"7px 10px",fontSize:12,border:"1px solid "+T.border,borderRadius:6,fontFamily:"inherit"}}/>
-                  <button onClick={()=>saveReply(r.id)} disabled={!replyText.trim()} style={{padding:"7px 14px",borderRadius:6,border:"none",background:replyText.trim()?T.primary:T.gray300,color:"#fff",fontSize:12,fontWeight:700,cursor:replyText.trim()?"pointer":"not-allowed",fontFamily:"inherit"}}>등록</button>
+                  <button onClick={()=>saveReply(r.id)} title={replyText.trim()?"답변 등록":"답변 없이 검토중으로 전환"} style={{padding:"7px 14px",borderRadius:6,border:"none",background:T.primary,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>등록</button>
                 </div>
               </div>}
             </div>}

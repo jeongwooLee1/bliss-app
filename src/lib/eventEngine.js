@@ -231,6 +231,12 @@ export function evaluateConditions(evt, ctx) {
     qAny.forEach(q => pairs.push(['any', q]))
     if (ctx.customerGender === 'M') qM.forEach(q => pairs.push(['M', q]))
     else if (ctx.customerGender === 'F') qF.forEach(q => pairs.push(['F', q]))
+    else {
+      // 성별 미상 — M/F 양쪽 모두 평가 (둘 중 하나라도 통과하면 OK)
+      // 시술가가 성별별로 다른 케이스가 아니면 매출등록 시 성별 미입력해도 자격 통과되도록
+      qM.forEach(q => pairs.push(['M', q]))
+      qF.forEach(q => pairs.push(['F', q]))
+    }
     if (pairs.length === 0) return false
     const getPct = (col) => Number((c.prepaidMinRatioPct||{})[col] || 0)
     const getBal = (col) => Number((c.prepaidMinBalance||{})[col] || 0)
@@ -500,6 +506,11 @@ export function getQualifyReason(evt, ctx) {
     qAny.forEach(q => pairs.push(['any', q]))
     if (ctx.customerGender === 'M') qM.forEach(q => pairs.push(['M', q]))
     else if (ctx.customerGender === 'F') qF.forEach(q => pairs.push(['F', q]))
+    else {
+      // 성별 미상 — M/F 양쪽 평가
+      qM.forEach(q => pairs.push(['M', q]))
+      qF.forEach(q => pairs.push(['F', q]))
+    }
     if (!pairs.length) return null
     const getPct = (col) => Number((c.prepaidMinRatioPct||{})[col] || 0)
     const getBal = (col) => Number((c.prepaidMinBalance||{})[col] || 0)

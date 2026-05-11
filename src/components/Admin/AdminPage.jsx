@@ -9,6 +9,7 @@ import UsersPage from './UsersPage'
 import AdminPlaces from './AdminPlaces'
 // AdminWorkers 제거 — 담당자는 근무표에서 자동 관리
 import AdminSaleItems from './AdminSaleItems'
+import AdminPkgCount from './AdminPkgCount'
 import AdminCoupons from './AdminCoupons'
 import AdminEvents from './AdminEvents'
 import AdminProductItems from './AdminProductItems'
@@ -362,7 +363,7 @@ function AdminJoinBrand({ currentUser, onBack }) {
 function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userBranches=[], setPage }) {
   const navTo = useNavigate();
   const loc = useLocation();
-  const TAB_SLUGS = {places:"places",saleitems:"services",coupons:"coupons",prodmgmt:"products",svctags:"tags",ressrc:"sources",extplatforms:"ext-platforms",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",branchgroups:"branch-groups",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",branchaudit:"branch-audit",pointmig:"point-migration",memberrules:"member-rules",joinbrand:"join-brand",kiosks:"kiosks",alimtalkLog:"alimtalk-log",smsLog:"sms-log",longValidity:"long-validity",plan:"plan",paymentSettings:"payments"};
+  const TAB_SLUGS = {places:"places",saleitems:"services",pkgcount:"pkg-count",coupons:"coupons",prodmgmt:"products",svctags:"tags",ressrc:"sources",extplatforms:"ext-platforms",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",branchgroups:"branch-groups",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",branchaudit:"branch-audit",pointmig:"point-migration",memberrules:"member-rules",joinbrand:"join-brand",kiosks:"kiosks",alimtalkLog:"alimtalk-log",smsLog:"sms-log",longValidity:"long-validity",plan:"plan",paymentSettings:"payments"};
   const SLUG_TO_TAB = Object.fromEntries(Object.entries(TAB_SLUGS).map(([k,v])=>[v,k]));
   const tab = SLUG_TO_TAB[loc.pathname.replace(/^\/settings\/?/,"").split("/")[0]] || null;
   const setTab=t=>{ if(t) navTo(`/settings/${TAB_SLUGS[t]||t}`); else navTo("/settings"); };
@@ -382,6 +383,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     ]},
     ...(isMaster ? [{section:"사업장 관리",items:[
       {key:"saleitems",   icon:"scissors", label:"시술 상품 관리", desc:"시술 항목 및 가격 설정"},
+      {key:"pkgcount",    icon:"archive",  label:"패키지 회수 관리", desc:"패키지 카테고리 시술의 회수 일괄 입력"},
       {key:"coupons",     icon:"gift",     label:"혜택 관리",      desc:"이벤트·쿠폰·회원가 자격 통합 관리"},
       {key:"kiosks",      icon:"mobile",   label:"📲 태블릿 (키오스크)", desc:"매장 비치 태블릿 등록 — 동의서 서명용"},
       {key:"prodmgmt",    icon:"clipboard",label:"제품 관리",      desc:"판매 제품 관리"},
@@ -437,6 +439,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     <BackBtn/>
     {tab==="places"       && <AdminPlaces data={data} setData={setData} bizId={bizId} userBranches={userBranches} isMaster={isOwner}/>}
     {tab==="saleitems"    && isMaster &&<AdminSaleItems    data={data} setData={setData}/>}
+    {tab==="pkgcount"     && isMaster &&<AdminPkgCount     data={data} setData={setData}/>}
     {tab==="coupons"      && isMaster &&<AdminEvents       data={data} setData={setData} bizId={bizId}/>}
     {tab==="prodmgmt"     && isMaster &&<AdminProductItems data={data} setData={setData}/>}
     {tab==="svctags"      && isMaster &&<AdminServiceTags  data={data} setData={setData}/>}

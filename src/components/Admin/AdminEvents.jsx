@@ -485,10 +485,33 @@ function ConditionsSection({ data, draft, setDraft }) {
             {k:'annual', label:'연간권 보유'},
           ]
           const toggle = (colKey, qualKey) => {
-            const list = Array.isArray(cq[colKey]) ? cq[colKey] : []
+            const cur = {
+              any: Array.isArray(cq.any) ? [...cq.any] : [],
+              M:   Array.isArray(cq.M)   ? [...cq.M]   : [],
+              F:   Array.isArray(cq.F)   ? [...cq.F]   : [],
+            }
+            const list = cur[colKey]
             const on = list.includes(qualKey)
-            const next = on ? list.filter(x=>x!==qualKey) : [...list, qualKey]
-            setC({customerQualify: { ...cq, [colKey]: next }})
+            // 토글 처리
+            cur[colKey] = on ? list.filter(x=>x!==qualKey) : [...list, qualKey]
+            // 자동 정규화 — 무관 vs 남/여 동시 선택 방지
+            if (!on) {
+              if (colKey === 'any') {
+                // 무관 새로 체크 → 남/여에서 같은 자격 제거
+                cur.M = cur.M.filter(x=>x!==qualKey)
+                cur.F = cur.F.filter(x=>x!==qualKey)
+              } else {
+                // 남 또는 여 새로 체크 → 무관에서 같은 자격 제거
+                cur.any = cur.any.filter(x=>x!==qualKey)
+                // 남+여 둘 다 체크되면 무관으로 통합
+                if (cur.M.includes(qualKey) && cur.F.includes(qualKey)) {
+                  cur.M = cur.M.filter(x=>x!==qualKey)
+                  cur.F = cur.F.filter(x=>x!==qualKey)
+                  cur.any = [...cur.any, qualKey]
+                }
+              }
+            }
+            setC({customerQualify: cur})
           }
           const prepaidChecked = cols.some(col => (cq[col.k]||[]).includes('prepaid'))
           const barfChecked = cols.some(col => (cq[col.k]||[]).includes('barf'))
@@ -518,44 +541,58 @@ function ConditionsSection({ data, draft, setDraft }) {
                 const setPct = (col, v) => setC({[pctKey]: { ...pctObj, [col]: v }})
                 const setBal = (col, v) => setC({[balKey]: { ...balObj, [col]: v }})
                 return <div style={{paddingLeft:16,marginBottom:4,background:T.gray100,borderRadius:6,padding:"6px 10px"}}>
+                  <div style={{fontSize:10,color:T.gray700,fontWeight:700,marginBottom:6,lineHeight:1.4}}>
+                    추가 잔액 임계값 (선택) — 비워두면 잔액 양수+유효기간 내면 통과
+                  </div>
                   {cols.map(col => {
                     const colChecked = (cq[col.k]||[]).includes(row.k)
                     if (!colChecked) return null
                     return <div key={col.k} style={{marginBottom:4}}>
                       <div style={{fontSize:10,fontWeight:700,color:T.gray700,marginBottom:2}}>[{col.label}]</div>
                       <div style={{display:"flex",alignItems:"center",gap:6,padding:"2px 0 2px 10px",fontSize:11}}>
-                        <span style={{color:T.textMuted}}>↳ 잔액 비율</span>
+                        <span style={{color:T.textMuted,minWidth:88}}>↳ 최소 잔액 비율</span>
                         <input type="text" inputMode="numeric"
                           value={pctObj[col.k]?String(pctObj[col.k]):""}
                           onChange={e=>{
                             const raw=String(e.target.value).replace(/[^0-9]/g,"");
                             setPct(col.k, raw===""?0:Math.max(0,Math.min(100,Number(raw)||0)));
                           }}
-                          placeholder="0" style={{width:60,padding:"3px 6px",fontSize:11,border:"1px solid "+T.border,borderRadius:6,fontFamily:"inherit",textAlign:"right"}}/>
-                        <span style={{color:T.textMuted}}>% 이상</span>
+                          placeholder="없음" style={{width:64,padding:"3px 6px",fontSize:11,border:"1px solid "+T.border,borderRadius:6,fontFamily:"inherit",textAlign:"right"}}/>
+                        <span style={{color:T.textMuted}}>%</span>
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:6,padding:"2px 0 2px 10px",fontSize:11}}>
-                        <span style={{color:T.textMuted}}>↳ 잔액</span>
+                        <span style={{color:T.textMuted,minWidth:88}}>↳ 최소 잔액 금액</span>
                         <input type="text" inputMode="numeric"
                           value={balObj[col.k]?Number(balObj[col.k]).toLocaleString():""}
                           onChange={e=>{
                             const raw=String(e.target.value).replace(/[^0-9]/g,"");
                             setBal(col.k, raw===""?0:Math.max(0,Number(raw)||0));
                           }}
-                          placeholder="0" style={{width:110,padding:"3px 6px",fontSize:11,border:"1px solid "+T.border,borderRadius:6,fontFamily:"inherit",textAlign:"right"}}/>
-                        <span style={{color:T.textMuted}}>원 이상</span>
+                          placeholder="없음" style={{width:114,padding:"3px 6px",fontSize:11,border:"1px solid "+T.border,borderRadius:6,fontFamily:"inherit",textAlign:"right"}}/>
+                        <span style={{color:T.textMuted}}>원</span>
                       </div>
                     </div>
                   })}
-                  <div style={{fontSize:10,color:T.textMuted,lineHeight:1.4,marginTop:2}}>둘 다 지정하면 AND · 0 = 무관</div>
+                  <div style={{fontSize:10,color:T.textMuted,lineHeight:1.4,marginTop:4}}>
+                    둘 다 입력하면 AND (모두 만족) · 빈칸 = 임계값 없음 (잔액 양수만 체크)
+                  </div>
                 </div>
               })()}
             </React.Fragment>)}
-            <div style={{fontSize:10,color:T.textMuted,marginTop:8,lineHeight:1.5,paddingTop:6,borderTop:`1px solid ${T.border}`}}>
-              • <b style={{color:T.danger}}>이 섹션 전체가 OR 평가</b>: 어느 행/컬럼이든 하나만 충족하면 통과<br/>
-              • <b>무관</b> 컬럼: 남녀 구분 없이 적용<br/>
-              • <b>남자 / 여자</b> 컬럼: 해당 성별만 적용<br/>
-              • 예) 신규 ☑ + 다담권 잔액 110만 → "신규고객" OR "다담권 110만+ 보유" 둘 중 하나면 통과<br/>
+            <div style={{fontSize:10,color:T.textMuted,marginTop:8,lineHeight:1.6,paddingTop:6,borderTop:`1px solid ${T.border}`}}>
+              <b style={{color:T.danger}}>이 섹션 전체는 OR 평가</b> — 체크된 행 중 <b>하나만</b> 충족하면 통과<br/>
+              <br/>
+              <b>📌 무관 컬럼 vs 남자+여자 컬럼 차이</b><br/>
+              • <b>무관</b>: 남녀 구분 없이 동일 조건 (잔액 임계값도 하나만)<br/>
+              • <b>남자 / 여자</b>: 성별별 따로 — 임계값을 다르게 두려면 이쪽 (예: 남 110,000원 / 여 88,000원)<br/>
+              <br/>
+              <b>📌 "유효한 보유권" 정의</b><br/>
+              • 잔액 &gt; 0 AND 유효기간 안 지남 = 활성 보유권<br/>
+              • "잔액 비율/금액" 칸에 추가 임계값 입력 시: 그 이상 잔액 있어야 통과<br/>
+              • 임계값 0 또는 빈칸 = 잔액 양수면 자동 통과<br/>
+              <br/>
+              <b>📌 예시</b><br/>
+              • 신규 ☑(남,여) + 다담권 ☑(남,여) 잔액 11만/8.8만 → "신규고객" OR "다담권 11만(여 8.8만)+ 보유" 둘 중 하나 통과<br/>
               • 전부 비어있으면 조건 무시 (모든 고객 통과)
             </div>
           </div>

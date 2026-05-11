@@ -216,7 +216,11 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
       if (rawPc.consumeOnUse !== undefined) cleanPc.consumeOnUse = !!rawPc.consumeOnUse;
       if (rawPc.priority !== undefined && rawPc.priority !== null && rawPc.priority !== "") cleanPc.priority = Number(rawPc.priority) || 0;
       if (rawPc.expiryMonths !== undefined && rawPc.expiryMonths !== null && rawPc.expiryMonths !== "" && Number(rawPc.expiryMonths) > 0) cleanPc.expiryMonths = Number(rawPc.expiryMonths);
-      const baseCommon = {cat:form.cat,note:form.note,isPackage:form.isPackage,pkgCount:+form.pkgCount,pkgPriceF:+form.pkgPriceF,pkgPriceM:+form.pkgPriceM,badgeText:form.badgeText||null,badgeColor:form.badgeColor||null,badgeBg:form.badgeBg||null,promoConfig:Object.keys(cleanPc).length>0?cleanPc:null,isActive:form.isActive!==false,grantsMemberPrice:!!form.grantsMemberPrice};
+      // 카테고리=패키지면 isPackage 강제 true (다회권 발급 시 회수 정확성 보장)
+      const _saveCat = (data?.categories||[]).find(cc => cc.id === form.cat);
+      const _saveIsPkg = _saveCat?.name === '패키지' ? true : !!form.isPackage;
+      // pkgPriceF/M 폐기 (메인 가격 사용으로 통일) — 호환성 위해 0으로 저장
+      const baseCommon = {cat:form.cat,note:form.note,isPackage:_saveIsPkg,pkgCount:+form.pkgCount||0,pkgPriceF:0,pkgPriceM:0,badgeText:form.badgeText||null,badgeColor:form.badgeColor||null,badgeBg:form.badgeBg||null,promoConfig:Object.keys(cleanPc).length>0?cleanPc:null,isActive:form.isActive!==false,grantsMemberPrice:!!form.grantsMemberPrice};
       if (useOptions && editPair) {
         // 페어 편집: 양쪽 record 동시 업데이트, [pair:XX] 플래그 보존
         const pairId = _getPairId(editPair.full.note) || _getPairId(editPair.half.note) || uid().slice(0,8);
@@ -380,8 +384,11 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
               <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5,flexWrap:"wrap"}}>
                 <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.text,textDecoration:s.isActive===false?"line-through":"none"}}>{s.name}</span>
                 {s.isActive===false&&<ABadge color={T.danger} bg={T.dangerLt||"#fee2e2"}>판매중단</ABadge>}
-                {s.isPackage&&<ABadge color={T.primary}>다회권</ABadge>}
-                {qtyOn(s.note)&&<ABadge color={T.female} bg={T.femaleLt}>수량허용</ABadge>}
+                {s.isPackage && (s.pkgCount > 0
+                  ? <ABadge color={T.primary}>{`다회권 ${s.pkgCount}회`}</ABadge>
+                  : <ABadge color={T.danger} bg={T.dangerLt||"#fee2e2"}>다회권 · 회수미설정</ABadge>)}
+                {qtyOn(s.note)&&<ABadge color={T.female} bg={T.femaleLt}>복수 추가</ABadge>}
+                {s.grantsMemberPrice&&<ABadge color="#6B21A8" bg="#F3E8FF">⭐ 회원가</ABadge>}
                 {s.badgeText&&<span style={{display:"inline-block",padding:"2px 8px",borderRadius:10,fontSize:10,fontWeight:700,color:s.badgeColor||"#fff",background:s.badgeBg||T.primary}}>{s.badgeText}</span>}
               </div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:6}}>
@@ -462,29 +469,38 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
           ))}
         </>
       )}
-      <div style={{display:"flex",gap:20,padding:"12px 0",borderTop:"1px solid "+T.gray100,borderBottom:"1px solid "+T.gray100,marginBottom:14,flexWrap:"wrap"}}>
-        <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
-          <AToggle size="sm" on={form.isActive!==false} onChange={v=>set("isActive",v)}/>
-          <span style={{fontSize:T.fs.sm,color:form.isActive===false?T.danger:T.text,fontWeight:form.isActive===false?700:400}}>{form.isActive===false?"판매중단":"판매중"}</span>
-        </label>
-        <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
-          <AToggle size="sm" on={qtyOn(form.note)} onChange={v=>{const n=(form.note||"").replace("[qty]","").trim();set("note",v?n+"[qty]":n);}}/>
-          <span style={{fontSize:T.fs.sm}}>수량허용</span>
-        </label>
-        <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
-          <AToggle size="sm" on={!!form.isPackage} onChange={v=>set("isPackage",v)}/>
-          <span style={{fontSize:T.fs.sm}}>다회권</span>
-        </label>
-        <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} title="이 상품을 보유한 고객에게 회원가 적용 자격 부여 (연간권·다담권·패키지 등)">
-          <AToggle size="sm" on={!!form.grantsMemberPrice} onChange={v=>set("grantsMemberPrice",v)}/>
-          <span style={{fontSize:T.fs.sm,color:form.grantsMemberPrice?"#6B21A8":T.text,fontWeight:form.grantsMemberPrice?700:400}}>⭐ 회원가 자격 부여</span>
-        </label>
-      </div>
-      {form.isPackage&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
-        <AField label="회수"><input style={AInp} type="number" value={form.pkgCount} onChange={e=>set("pkgCount",e.target.value)} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
-        <AField label="다회권 여성가"><input style={AInp} type="number" value={form.pkgPriceF} onChange={e=>set("pkgPriceF",e.target.value)} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
-        <AField label="다회권 남성가"><input style={AInp} type="number" value={form.pkgPriceM} onChange={e=>set("pkgPriceM",e.target.value)} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
-      </div>}
+      {(() => {
+        // 카테고리=패키지면 다회권 강제 ON (고객 보유권 발급 시 회수 정확성 보장)
+        const _selectedCat = (data?.categories||[]).find(cc => cc.id === form.cat);
+        const _isPkgCat = _selectedCat?.name === '패키지';
+        const _isCouponCat = _selectedCat?.name === '쿠폰';
+        // 패키지 카테고리면 isPackage 강제 동기화 (form 직접 변경하지 않고 toggle UI만 잠금)
+        return <>
+        <div style={{display:"flex",gap:20,padding:"12px 0",borderTop:"1px solid "+T.gray100,borderBottom:"1px solid "+T.gray100,marginBottom:14,flexWrap:"wrap"}}>
+          <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+            <AToggle size="sm" on={form.isActive!==false} onChange={v=>set("isActive",v)}/>
+            <span style={{fontSize:T.fs.sm,color:form.isActive===false?T.danger:T.text,fontWeight:form.isActive===false?700:400}}>{form.isActive===false?"판매중단":"판매중"}</span>
+          </label>
+          <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} title="한 예약에 같은 시술을 여러 번 추가할 수 있게 허용 (예: 케어 60분 ×2 = 120분)">
+            <AToggle size="sm" on={qtyOn(form.note)} onChange={v=>{const n=(form.note||"").replace("[qty]","").trim();set("note",v?n+"[qty]":n);}}/>
+            <span style={{fontSize:T.fs.sm}}>같은 시술 여러 번 추가</span>
+          </label>
+          <label style={{display:"flex",alignItems:"center",gap:8,cursor:_isPkgCat?"not-allowed":"pointer",opacity:_isPkgCat?0.7:1}}
+            title={_isPkgCat?"패키지 카테고리는 항상 다회권 (자동 ON)":"이 시술을 N회권으로 발급"}>
+            <AToggle size="sm" on={_isPkgCat ? true : !!form.isPackage} onChange={v=>{ if(_isPkgCat) return; set("isPackage",v); }}/>
+            <span style={{fontSize:T.fs.sm,color:_isPkgCat?T.primary:T.text,fontWeight:_isPkgCat?700:400}}>다회권{_isPkgCat?" (자동)":""}</span>
+          </label>
+          <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} title="이 상품을 보유한 고객에게 회원가 적용 자격 부여 (연간권·다담권·패키지 등)">
+            <AToggle size="sm" on={!!form.grantsMemberPrice} onChange={v=>set("grantsMemberPrice",v)}/>
+            <span style={{fontSize:T.fs.sm,color:form.grantsMemberPrice?"#6B21A8":T.text,fontWeight:form.grantsMemberPrice?700:400}}>⭐ 회원가 자격 부여</span>
+          </label>
+        </div>
+        {(_isPkgCat || form.isPackage) && <div style={{marginBottom:14}}>
+          <AField label="회수 (다회권 발급 시 사용)"><input style={AInp} type="number" min="1" value={form.pkgCount||""} onChange={e=>set("pkgCount",e.target.value)} placeholder="예: 5, 10" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
+          <div style={{fontSize:T.fs.xxs,color:T.textMuted,marginTop:4}}>※ 가격은 위 정상가/회원가 입력란을 그대로 사용합니다 (메인 가격 = 다회권 가격)</div>
+        </div>}
+        </>;
+      })()}
 
       {/* ─── 배지 + 이벤트/쿠폰 설정 (쿠폰 모드 전용 — 일반 시술 이벤트는 이벤트 관리 페이지에서) ─── */}
       {couponMode && <div style={{marginTop:4,paddingTop:12,borderTop:"1px dashed "+T.border}}>
