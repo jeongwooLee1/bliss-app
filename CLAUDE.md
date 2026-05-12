@@ -1081,3 +1081,96 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - **언어 룰**: 마지막 inbound 메시지 기준 + 영어 5자 이상 + en ≥ ko → "영어". reply_lang 결정 후 prompt에 강하게 박힘. 단발 단답(en<5)은 한국어로 fallback.
 - **콜라보 게이트는 영구**: outbound에 한 번이라도 키워드 들어가면 그 thread는 영구 콜라보 분기. 해제하려면 `messages` 테이블에서 해당 outbound row 삭제 또는 키워드 제거.
 - **잔여 미반영 (낮은 우선순위)**: ① "before/after Npm" 같은 시간 **범위 표현**은 ask_info 강제 룰 미적용 (현재 AI가 booking date에 그대로 넣을 가능성). ② 5/7~5/9 변경 중 LINE 메시지 처리 / detect_lang LINE 분기.
+
+### v3.7.643 → v3.7.710 (2026-05-12 ~ 13)
+
+#### 헤더 시계 + 로비 풀스크린 (v3.7.643~645)
+- **`public/clock.html`** 매장 로비 디스플레이용 풀스크린 시계 (Orbitron 디지털 폰트, 다크 블루 #0F1E5C)
+- 좌우 반전 토글(셀카 호환), 화면 클릭 시 자동 풀스크린, 1초 단위 갱신
+- TimelinePage 헤더 14일 탭 끝(`월 25`)에 🕐 버튼 — 클릭 시 `/clock.html` iframe 풀스크린 오버레이, ESC로 닫힘
+
+#### 토스페이먼츠 풀스택 결제 (v3.7.700, 2026-05-12)
+- **AdminPaymentSettings 탭 분리**: [토스페이먼츠 직결 (추천)] / [포트원 V2 (다중 PG)]. 매장별 `branches.payment_settings.tosspayments = { client_key, secret_key, is_test }` 입력.
+- **ReservationModal 예약금 청구·환불 UI 활성화**: `chargeDeposit` 결제링크 발송 + `refundDeposit` 환불 버튼. `{false && ...}` 숨김 제거.
+- **PaymentApp.jsx 토스 V2 SDK 분기**: `info.provider === 'tosspayments'`면 `TossPayments(clientKey).payment({customerKey:'ANONYMOUS'}).requestPayment({method:'CARD', amount:{currency,value}, ..., successUrl, failUrl})` 호출, redirect 방식. 기존 PortOne SDK fallback 유지.
+- **Edge Functions 7개 신규/업데이트**:
+  - `payment-info` v3 — 토스 키 우선 반환 (없으면 포트원 fallback). `provider` 필드 추가
+  - `payment-confirm` v3 — `paymentKey` 받으면 `POST /v1/payments/confirm` + Basic auth (`btoa(secret_key+':')`) 호출. status `DONE` 검증 후 `reservations.deposit_paid_at` 기록
+  - `payment-webhook` 신규 — 토스 webhook 수신 (PAYMENT_STATUS_CHANGED / CANCEL_STATUS_CHANGED / DEPOSIT_CALLBACK / BILLING_DELETED). paymentKey로 토스 결제 조회 API 재호출하여 검증 (토스 추천 방식). `payment_webhook_log` 테이블에 멱등성 로그
+  - `payment-cancel` 신규 — 환불 전액/부분. `Idempotency-Key: cancel-{order_id}-{amount|full}` 중복 방지
+  - `billing-issue` 신규 — SDK `requestBillingAuth`로 받은 `authKey` → `POST /v1/billing/authorizations/issue`로 `billingKey` 발급 + `billings` 테이블 INSERT + `customers.sns_accounts` 매핑
+  - `billing-charge` 신규 — `POST /v1/billing/{billingKey}` 자동청구 + `billing_charges` 트랜잭션 로그
+  - `payment-lookup` 신규 — `paymentKey`/`orderId`로 토스 조회 + DB 대조 (매장 디버그용)
+- **DB 테이블 3개 신규**:
+  - `payment_webhook_log` (event_type, payload jsonb, received_at) — 멱등성·디버깅
+  - `billings` (billing_key, customer_key, card_company, card_number_masked, status, purpose) — 충전형 자동결제용 키 저장
+  - `billing_charges` (billing_id FK, order_id UNIQUE, amount, status, payment_key, approved_at, raw_response) — SaaS 구독·자동충전 트랜잭션
+- **`reservation_payments`** 컬럼 `payment_provider` 디폴트 `'tosspayments'` 확정
+
+#### 브랜드 + SEO (v3.7.700)
+- **파비콘 하우스왁싱 → Bliss 보라 B**: `favicon.svg` (보라 그라데이션 #5b21b6→#a78bfa + 흰 B), `favicon.ico` 다중 해상도(16/32/48/64), `logo.png` 512px, `icon-192.png`, `icon-512.png`, `apple-touch-icon.png` 180px 모두 재생성
+- **`manifest.json` 일반화**: name "Bliss · 뷰티샵 예약관리" (하우스왁싱 제거), maskable purpose 추가
+- **`index.html` 풀 SEO**: title + description + keywords (예약프로그램·뷰티샵 예약관리·매출관리·살롱 예약 시스템·왁싱샵·미용실·네일샵·알림톡 자동발송·AI 예약·카카오·인스타 DM 등) + Open Graph(11개 메타) + Twitter Card + JSON-LD `SoftwareApplication`(featureList 11개 + Offer 3개 Trial/Starter/Pro + publisher 테라포트)
+- **정적 페이지 5개 SEO 보강**: about/pricing/privacy/terms/refund — description/keywords/OG/canonical/favicon 링크. pricing.html에 Product/AggregateOffer JSON-LD 추가
+- **`robots.txt`** 신규 — 공개 페이지만 index, `/pay/` `/admin` 등 disallow
+- **`sitemap.xml`** 신규 — 6 URL (메인 + 정적 5개)
+
+#### 보유권 유효기간 검토 메뉴 (v3.7.710, 2026-05-13)
+- **`AdminLongValidityReview.jsx` 신규** — 1년 초과 잔존 보유권 검토·수정·삭제 도구
+- `customer_packages.note`의 `유효:YYYY-MM-DD`가 cutoff(오늘 + 364일) 이후 + 잔액 ≥ 1 활성 보유권 필터
+- 지점별·검색·편집 모달
+- 관리설정 → 사업장 관리 → "보유권 유효기간 검토" (slug `long-validity`)
+
+#### 서버 ai_booking.py 5종 버그 fix (2026-05-13, React 변경 0)
+**증상**:
+- 외국인 손님(McKayla, Bebe 등) WhatsApp 변경 요청에 반복 질문 + 새 예약 잡아버림
+- AI 예약 시 customer 매칭 안 됨
+
+**fix**:
+1. **`find_existing_booking`에 `channel + user_id` 1순위 매칭 추가** — 외국인·신규 고객도 phone 없이 변경 처리 가능. `reservations?chat_channel=eq.{ch}&chat_user_id=eq.{uid}&status=in.(confirmed,reserved,pending,request)&date=gte.{today}` 쿼리 추가
+2. **`_enrich_service_name` 신규** — reservation의 `selected_services`(UUID 배열) → `services` 테이블에서 이름 조회 후 `service_name` 필드에 주입. 변경 시 AI가 시술 인식 가능
+3. **[기존 예약] 블록에 `_ex.bid` 기반 branch 이름 재조회** — WA 공통 채널처럼 prompt의 `branch_name`이 "(미정)"이어도 기존 예약의 bid로부터 정확한 지점명 주입
+4. **외국인 이메일 강제 요구 룰 #12 약화** — "WhatsApp/IG/카카오/LINE 채널은 user_id로 식별. phone/email 둘 다 없어도 book 가능. 이메일/연락처 강제 요청 금지"
+5. **변경 요청 가드 (#9 + ★)** — [기존 예약] 블록 있으면 → `action=book` 직행, branch/service/date/time/custName/custPhone 모두 기존 값 그대로 복사 + 변경된 부분만 새 값. [기존 예약] 없으면 → `action=chat`, "예약 변경은 담당자가 직접 확인 후 안내드릴게요". **새 예약 임의 생성 금지**
+6. **`dur` int 안전 처리** — `int(booking.get("dur","")) or 45` → 빈 문자열일 때 ValueError 차단
+
+**검증**:
+- 로컬 자동 prompt 검증 22건 중 17 PASS (핵심 4건 — TEST 1 외국인 첫 예약 / TEST 2 변경 시 [기존 예약] 주입 / TEST 3 변경 가드 / TEST 4 한국인 첫 예약 — 모두 ✅)
+- 라이브에서 즉시 작동 확인 — WhatsApp `19254081516` (미국 손님 Bebe) 변경 요청을 `find_existing chat 매칭: whatsapp/19254081516 → ai_6xzb4m5t0fwy` 로그로 정확히 처리, 기존 cancel + 새 예약 등록 + customer + sns_accounts 동반 생성
+- Bebe 4 시나리오 read-only 시뮬레이션 — 변경/확인/취소/단순 인사 모두 정상
+
+**서버 백업**:
+- `/home/ubuntu/naver-sync/ai_booking.py.bak_pre_bugfix_<timestamp>` (롤백용)
+
+#### Claude 모델: Sonnet → Haiku 전환 (2026-05-13, 비용 70% 절감)
+**발견**:
+- `ai_booking.py` + `bliss_naver.py` 기본값이 `claude-sonnet-4-5`로 박혀 있어, 메모리에 "Haiku 메인"이라 적힌 것과 달리 실제로 Sonnet 호출 중
+- 5/7~5/8 시점 ai_analyze + 메시지함 작업 등으로 Sonnet 호출 폭증 → 이번 달 5/13 기준 누적 **$26.29** (Sonnet 4.6 분이 대부분)
+- 1회당 Sonnet 4.6 ~$0.062 vs Haiku 4.5 ~$0.020 (3배 차이)
+
+**적용**:
+- **env.conf** (`/etc/systemd/system/bliss-naver.service.d/env.conf`)에 `Environment=CLAUDE_MODEL=claude-haiku-4-5` 추가
+- `ai_booking.py:80` + `bliss_naver.py:68` 디폴트값을 `claude-haiku-4-5`로 변경 (env 누락 대비 이중 안전)
+- `bliss_naver.py.bak_pre_haiku_<timestamp>` 백업
+- `daemon-reload` + `systemctl restart bliss-naver` 적용
+
+**예상 효과**:
+- 월간 480건 호출 가정: $30 → **$9.6** (70% 절감, 월 ~$20 절감)
+- Anthropic Console에서 1시간 후 Haiku 4.5 그래프 증가 + Sonnet 그래프 멈춤으로 확인 가능
+
+#### MCP 추가 + 메모리 업데이트
+- `tosspayments-integration-guide` MCP 추가 (`~/.claude.json`) — V2 SDK·결제승인·빌링·링크페이 docs 검색 가능
+- memory `reference_tosspayments.md` 신규 — 송정윤(010-4928-1242), 수수료 영세 1.6% 등 메인 PG 정보
+- memory `reference_nhn_kcp.md` → "(보류/폐기 검토)"로 변경 — 정기결제만 허가, 일반결제 불가
+- `MEMORY.md` 인덱스 토스/KCP 두 줄 교체
+
+### 주의사항 (v3.7.710 이후 참고)
+- **결제 PG: 토스페이먼츠 직결이 메인** — 매장이 토스 가맹 후 client_key/secret_key 직접 입력. NHN KCP는 사실상 폐기 검토 단계
+- **결제 흐름**: `chargeDeposit` (reservation_payments INSERT + send_queue로 결제링크 카톡/SMS 발송) → 손님 결제 → `payment-webhook` 자동 수신 → 매장 DB `deposit_paid_at` 반영. success page 안 봐도 처리됨
+- **빌링키 발급 흐름**: SDK `payment.requestBillingAuth({customerKey, successUrl, failUrl})` → successUrl로 `authKey` 받음 → `POST /functions/v1/billing-issue` → `billingKey` 발급 + `billings` 테이블 + `customers.sns_accounts` 매핑
+- **빌링 자동청구**: SaaS 월구독료(매장→Bliss) 또는 멤버십 자동충전(손님→매장)에 활용. `POST /functions/v1/billing-charge` 호출. **스케줄링은 매장이 직접** (pg_cron 활용)
+- **토스 webhook URL**: `https://dpftlrsuqxqqeouwbfjd.supabase.co/functions/v1/payment-webhook` — 매장이 토스 개발자센터에서 직접 등록 필요
+- **find_existing_booking** — channel+user_id 1순위 매칭 추가. AI 예약 시 chat_user_id로 정확히 매칭
+- **CLAUDE_MODEL 환경변수 + 코드 디폴트 모두 `claude-haiku-4-5`** — Sonnet 호출 차단. 응답 품질 떨어지면 `env.conf` 한 줄 변경으로 다시 Sonnet 가능
+- **이번 달 누계 비용**: $26.29 (Sonnet 위주) → 다음 달부터 ~$10 예상 (Haiku 전환 효과)
+- **5/7~5/8 비용 폭증의 진짜 원인**: 외부플랫폼 도입 + 영수증 기능 + 메시지함 작업 + 시뮬레이션 등으로 ai_analyze + ai_booking 호출이 평소 대비 5~10배. Sonnet 4.6 사용까지 겹쳐 일평균 $0.5 → $10 으로 폭증. Haiku 전환 + rescrape 차단 (selected_services 있으면 재분석 금지)으로 재발 방지

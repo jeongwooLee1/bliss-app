@@ -3,220 +3,38 @@
 ## 현재 버전
 - **라이브: v3.7.710** (https://blissme.ai/version.txt) — 2026-05-13 배포
 - 다음 빌드 시 `BLISS_V` (AppShell.jsx) + `public/version.txt` 둘 다 함께 bump 필수
-- 변경 이력은 [CLAUDE.md "v3.7.503 → v3.7.710"](./CLAUDE.md) 섹션 참고
+- 변경 이력은 [CLAUDE.md "v3.7.643 → v3.7.710"](./CLAUDE.md) 섹션 참고
 
-## 2026-05-12~13 작업 (v3.7.643 → v3.7.710)
+## 2026-05-12 ~ 13 작업 (v3.7.642 → v3.7.710)
 
-### v3.7.643~645 — 헤더 시계 + 로비 풀스크린 시계
-- **`public/clock.html`**: 매장 로비 디스플레이용 풀스크린 시계 페이지 (Orbitron 디지털 폰트, 다크 블루 #0F1E5C)
-  - 좌우 반전 (`transform: scaleX(-1)`) — 셀카로 찍었을 때 똑바로 나오게
-  - 우상단 [↔ 반전] 토글 버튼 (localStorage `bliss_clock_no_flip` 기억)
-  - 화면 클릭 시 자동 풀스크린 (`requestFullscreen`)
-  - 1초 단위 갱신, `YYYY년 M월 D일 / 요일 / 오전·오후 HH:MM :SS`
-- **TimelinePage 헤더 시계 아이콘** (v3.7.644~645):
-  - 14일 탭 마지막(`월 25`) 우측에 🕐 시계 버튼 추가
-  - 클릭 → 풀스크린 오버레이(iframe `/clock.html`) 띄움
-  - ESC 또는 close 버튼으로 닫힘 — `fullscreenchange` 이벤트로도 잡음
-  - state: `showClockOverlay` + ref `clockOverlayRef`
-- v3.7.643에서 잠깐 날짜 라벨 옆에 칩으로 넣었던 시각 표시는 v3.7.644에서 제거
+### v3.7.643~645 (5/12) — 헤더 시계 + 로비 풀스크린
+- `public/clock.html` 로비 디스플레이용 시계 (Orbitron, 좌우 반전 토글, 자동 풀스크린)
+- TimelinePage 14일 탭 끝에 🕐 버튼 → iframe 풀스크린 오버레이
 
-### v3.7.700 — 토스페이먼츠 풀스택 + 브랜드 파비콘 + SEO 메타
-**토스페이먼츠 결제 시스템**
-- `AdminPaymentSettings`: [토스페이먼츠 직결 / 포트원 V2] 탭 분리, 매장별 `client_key + secret_key` 입력
-- `ReservationModal`: 예약금 청구 UI 활성화(`chargeDeposit`) + 환불 버튼 추가(`refundDeposit`)
-- `src/pages/PaymentApp.jsx`: 토스 V2 SDK 분기 (`TossPayments.payment + requestPayment`, successUrl redirect)
-- **Edge Functions**:
-  - `payment-info` v3, `payment-confirm` v3 — 토스 confirm + Basic auth
-  - 신규: `payment-webhook`, `payment-cancel`, `billing-issue`, `billing-charge`, `payment-lookup`
-- **DB 신규 테이블**: `payment_webhook_log` + `billings` + `billing_charges` (정기결제 빌링키 + 자동 청구 히스토리)
+### v3.7.700 (5/12) — 🔵 토스페이먼츠 풀스택 + SEO + 파비콘
+- **결제 시스템 풀세트**: AdminPaymentSettings 토스 직결 탭, ReservationModal 예약금 청구/환불 UI, PaymentApp 토스 V2 SDK 분기
+- **Edge Functions 7개** (payment-info v3 + confirm v3 + webhook + cancel + billing-issue + billing-charge + payment-lookup) 라이브 배포
+- **DB 테이블 3개 신규**: payment_webhook_log, billings, billing_charges
+- **파비콘 하우스왁싱 → Bliss 보라 B** (svg/png/ico 5개 + manifest 일반화)
+- **SEO 풀세트**: index.html + 정적 5개 페이지 title/description/keywords/OG/JSON-LD + robots.txt + sitemap.xml
+- memory `reference_tosspayments.md` 신규, `reference_nhn_kcp.md` "보류/폐기 검토"로 변경
 
-**브랜드 파비콘**
-- 하우스왁싱 매장 로고 → **Bliss 보라 B** 일반화
-- 파일: `favicon.svg` + `favicon.ico` + `logo.png` 512x / 192x + `apple-touch-icon` 180x
-- `manifest.json` 이름: `Bliss 뷰티샵 예약관리`로 일반화 (멀티테넌트 대비)
+### v3.7.710 (5/13) — 보유권 유효기간 검토 메뉴
+- `AdminLongValidityReview.jsx` 신규 (344줄) — 1년 초과 잔존 보유권 검토·수정·삭제 도구
+- 관리설정 → 사업장 관리 → "보유권 유효기간 검토"
 
-**SEO 메타**
-- `index.html`: title / description / keywords / OG / Twitter / JSON-LD `SoftwareApplication` 풀세트
-- 정적 페이지 5개 (about, pricing, privacy, terms, refund): description + keywords + OG + canonical + favicon
-- `pricing.html`: Product / AggregateOffer JSON-LD
-- `robots.txt` + `sitemap.xml` 신규
+### 서버 ai_booking.py 5종 fix (5/13, React 변경 0)
+1. `find_existing_booking`에 channel+user_id 1순위 매칭 추가 — 외국인·신규 고객 변경 처리 정확
+2. `_enrich_service_name` 신규 — selected_services UUID → 시술명 변환
+3. [기존 예약] 블록에 `_ex.bid` 기반 branch 이름 재조회 — WA 공통 채널 보강
+4. 외국인 이메일 강제 요구 룰 제거 — WhatsApp/IG/카카오/LINE은 user_id로 식별
+5. 변경 요청 가드 — [기존 예약] 없으면 새 예약 임의 생성 금지, "담당자 안내" 분기
+- 라이브 검증: 미국 손님 Bebe(`19254081516`) 변경 요청 정확 처리 ✅
 
-### v3.7.710 — 보유권 유효기간 검토 메뉴
-- `src/components/Admin/AdminLongValidityReview.jsx` (신규, 344줄)
-- 관리설정 → **보유권 유효기간 검토** (`longValidity` 슬러그)
-- `note`의 `유효:YYYY-MM-DD` 값이 cutoff(오늘 + 364일) 이후 + 잔액 >= 1인 보유권 필터
-- 기능: 지점별 필터 + 검색 + 편집 모달 (잔액·유효기간·삭제 가능)
-- 1년 초과 잔존 보유권 위험 분석·정리 도구
-
-### 미커밋 사이드 파일 (정리 보류)
-- `_jieun_req.png` (개별 요청 이미지)
-- `patch_visitor.py`, `tmp_book_endpoint.py`, `tmp_kakao_endpoint.py` (서버 임시 스크립트)
-- 위 4개는 untracked 상태로 두고 다음 세션에서 처리 여부 결정
-
-## 🔐 자격증명 (2026-05-12 변경 — v3.7.641 시점)
-- **8개 지점 매니저 계정** (`gang`/`hongdae`/`magok`/`wangsimni`/`yongsan`/`jamsil`/`wirye`/`cheonho`) — **PW: `060512`**
-- **하우스왁싱 오너** (`housewaxing`) — **PW: `cripiss2358*`**
-- DB에 평문 NULL, bcrypt hash만 보관(트리거 `app_users_password_to_hash`가 INSERT/UPDATE 시 자동 해시 + 평문 NULL 처리)
-- **공지·메모 등 노출 가능한 채널에 비번 적기 금지** (2026-05-12 사고: 직원 3명 노출됨 → 비번 재변경 + 공지 sanitize)
-
-## 🛑 원격 세션 킬 스위치 (v3.7.642+)
-한 줄 SQL로 전 디바이스 즉시 로그아웃:
-```sql
-UPDATE schedule_data
-SET value = to_jsonb((extract(epoch from now())*1000)::bigint), updated_at = now()
-WHERE key = 'bliss_session_kill_v1';
-```
-- 작동: AuthContext.jsx의 Realtime 구독이 schedule_data.bliss_session_kill_v1 변경 감지 → localStorage/sessionStorage 비우고 `window.location.reload()` → 로그인 화면.
-- Mount 시점에도 체크: `remote_ts > localStorage.bliss_session_kill_last_ts` 면 즉시 wipe+reload. 백그라운드 탭/재접속도 잡음.
-- v3.7.641 이하 옛 번들에는 listener 없음 — 기존 폴링 idle reload로 v3.7.642 올라온 직후 mount 체크에서 잡힘.
-
-## 2026-05-12 인증·로그아웃 회귀 + 킬 스위치 작업
-**배경**
-- worktree-password-hash 머지(v3.7.637 시점) — `auth_login` RPC + `app_users_safe` view + 평문 컬럼 anon 차단 + bcrypt 비교
-- 라이브에서 8개 지점 로그인 전부 실패 회귀 발생
-
-**근인**
-- `AuthContext.jsx login()`은 RPC 경로로 옮겨졌으나 **`AppShell.jsx` 안의 `Login` 컴포넌트는 별개**였음
-- `users.find(u => (u.loginId||u.login_id)===loginId && (u.pw||u.password)===pw)` — `app_users_safe` view에서 로드한 users 배열에 password 컬럼이 아예 없어서(`undefined === pw` → false) 전 지점 무한 실패
-- 다른 세션이 "라이브 코드는 옛 SELECT+평문이라 DB schema 새거랑 충돌" 진단했지만 라이브 코드도 RPC였음. 실제 충돌은 AppShell.jsx의 Login 컴포넌트 단독 회귀
-
-**fix 시퀀스**
-| 버전 | 변경 |
-|---|---|
-| v3.7.638 | marquee 9-step keyframe + 카카오/예약폼/가격표 종합 공지(`ntc_v3_7_638_2026_05_12`) — 6/1 12:00 전직원 테스트 안내 |
-| v3.7.639 | AuthContext 모바일 한정 FORCE_KEY v1 → 전 디바이스 v2 확장 + supabase.auth.signOut() 추가. 8지점 비번 `025155141`로 일괄 변경 |
-| v3.7.640 | **회귀 fix**: AppShell `Login.handleLogin`을 `auth_login` RPC 호출로 교체. 응답을 snake/camel/branches 3종 키 모두 채워 다운스트림 호환 |
-| v3.7.641 | 비번 재변경 `060512` (이전 비번 `025155141`이 공지에 노출됐던 사고 대응) + FORCE_KEY v3로 전 디바이스 재 강제 로그아웃 |
-| v3.7.642 | **원격 세션 킬 스위치**: AuthContext에 schedule_data.bliss_session_kill_v1 Realtime 구독 + mount-시 ts 비교. 한 줄 SQL UPDATE로 전 디바이스 즉시 로그아웃 |
-
-**공지 정리**
-- 카카오 섹션 본문 단순화 (장황한 흐름 → 4줄 요약: "📅 예약하기 → 미배정 자동 등록 / 드래그 → 예약중 / 확정 → 알림톡 자동")
-- 비번 적힌 공지(`ntc_v3_7_639_pw_reset`) sanitize — 제목·본문에서 비번 제거, "마스터에게 카톡으로 받으세요"로 교체
-- 비번 노출된 공지를 이미 ACK한 직원: 경아·민아·지은 (09:33-09:39 KST). 그래서 비번 재변경 시행
-
-**서버 nginx access log**
-- log_format 기본값이라 client IP가 안 잡힘 — Cloudflare 프록시 IP만 보임(`172.x`/`162.x`/`104.x`)
-- 진짜 client IP 필요 시: nginx log_format에 `$http_cf_connecting_ip` 추가 + mod_realip CF IP 화이트리스트 (미적용, 보류)
-
-**주의사항 (v3.7.642 이후 참고)**
-- **AppShell.jsx의 `Login` 컴포넌트는 자체 handleLogin 보유** — AuthContext와 별개 경로. 인증 흐름 수정 시 양쪽 함께 봐야 함
-- **`app_users_safe` view에는 password/password_hash 컬럼 없음** — 옛 평문 비교 코드가 살아있으면 즉시 회귀
-- **bcrypt 트리거**: `app_users_password_to_hash`(BEFORE INSERT/UPDATE) — `password` 컬럼에 값 들어오면 자동 hash 후 평문 NULL 처리
-- **킬 스위치는 v3.7.642+ 번들만 적용** — 이하 번들은 idle reload로 v3.7.642 올라온 후 잡힘
-- **모바일 갤럭시**: 탭 closing은 background일 뿐, 진짜 종료가 아님 → 강제 로그아웃 코드 안 발사. 1) 탭 자체 ❌ 닫기 2) 최근앱에서 Chrome 스와이프 종료 3) 사이트 데이터 삭제 순으로 안내
-
-
-
-## 2026-05-12 서버 ai_booking.py 응급 복구 (React 변경 0)
-**증상**
-- 자동응답이 이미 받은 정보(시술/이름/날짜)를 다시 물어봄 — Monique WhatsApp thread에서 발견
-- 메시지함 [예약] 버튼 클릭 시 reservations INSERT 0건 (실제 500 에러)
-
-**원인**
-- 2026-05-10 11:52 UTC 서버 `ai_booking.py`가 90KB → 41KB로 대규모 롤백
-- 사라진 기능: `chat_booking_state` load/save (시스템 메모리), `force/manual/suggest_only` kwargs, 멀티턴 messages 배열, 3-tier 모델, BRANCH_KEYWORDS, 영→한 시술명 매핑
-- /ai-book endpoint가 `ai_booking_agent(force=True, manual=True)` 호출 → `unexpected keyword argument 'force'` → 500
-- chat_booking_state 테이블 마지막 row 2026-05-09 22:46 KST 이후 0건 누적 (코드에 INSERT/UPDATE 자체 없음)
-
-**fix (서버 직접 적용 — ssh + scp + systemctl restart bliss-naver)**
-- `bak_addr_20260506_162116` (5/6 07:21 풀버전 1664줄) 베이스로 복원
-- 5/7~5/9 surgical 변경 cherry-pick:
-  - 콜라보/체험단 사전 게이트 (체험단/collab/influencer/Reels 키워드, manual 우회, 한·영 자동 분기 canned 응답)
-  - 상담 후 매칭 차단 (prompt 룰 + create_booking_from_ai에서 "X 상담"·"X 상담후"·"X consult" 패턴 regex로 제거)
-  - manual=True 호출 시 [미디어]/[reaction] 가드 우회
-  - 언어 룰 마지막 inbound 메시지 기준 + en≥5 영어 우선 (v3.7.547)
-- 언어 회귀 보강 (재배포):
-  - prompt `[⛔ 응답 언어]` 블록 강조 (양 언어 병기 금지, reply_lang 100% 준수)
-  - `[말투]` 섹션에 한국어/영어 예시 분리 추가
-  - `[규칙] 8` 의 이중언어 옵션 제거
-
-**검증**
-- 직접 호출 10건 smoke test (KR/EN/혼용/멀티턴/콜라보/상담후/Monique 재현) → 모두 PASS
-- 언어 재테스트 10건 → 9 PASS / 1 edge case (단답 "Yes"는 en=3<5라 한국어로 fallback, 의도된 동작)
-
-**서버 백업 (롤백 시 복원)**
-- `/home/ubuntu/naver-sync/ai_booking.py.bak_pre_restore_20260511_231750` (롤백된 41KB 상태)
-- `/home/ubuntu/naver-sync/ai_booking.py.bak_pre_langfix_20260511_234159` (lang fix 직전 1697줄)
-
-**잔여 작업 (낮은 우선순위)**
-- "before/after Npm" 같은 시간 **범위 표현**은 ask_info 강제 룰 미적용 (현재 AI가 그대로 booking date에 넣을 수 있음). prompt `[⛔ 금지 — 모호한 표현]` 블록에 추가 필요 시 별도 작업
-- 5/7~5/9 변경 중 LINE 메시지 처리 / detect_lang LINE 분기는 미반영
-
-## v3.7.556 변경 (2026-05-09)
-- **음역 결과 너무 짧게 잘리는 버그 fix** (`nameTransliterate.js`):
-  - 증상: `John Do → 존`, `Sini Juutilainen → 시니`처럼 첫 한두 글자만 나옴.
-  - 원인: Gemini 2.5 Flash는 thinking 모델이라 `maxOutputTokens=50`에 thinking 토큰까지 포함 → 실제 출력 거의 안 남음.
-  - fix: `thinkingConfig.thinkingBudget=0` (thinking 비활성) + `maxOutputTokens` 50 → 200.
-  - 효과: 완전한 음역(예: `John Do → 존 도`, `Sini Juutilainen → 시니 유틸라이넨`).
-
-## v3.7.555 변경 (2026-05-09)
-- **TimelinePage 신규 고객 INSERT 경로에 자동 음역 추가** (TimelinePage.jsx:2336~):
-  - 새 예약 저장 시 cust_id 없는 외국 이름이 customers 테이블에 INSERT되는 흐름에 `transliterateName()` 호출 추가. v3.7.554가 CustomersPage handleSave에만 음역을 걸어둔 누락 fix.
-  - Gemini 키 없거나 호출 실패 시 빈 채로 INSERT (UX 막지 않음).
-- **고객관리 [⚡ 외국 이름 일괄 음역] 도구**:
-  - 고객관리 페이지 헤더 우측 노란 버튼.
-  - `name_kor IS NULL` 손님 중 영문 이름만 추출 → `transliterateBatch()` (concurrency 3) → 미리보기 표 → [모두 적용] / [취소].
-  - DB UPDATE batch + 로컬 state 동시 갱신.
-  - Gemini 키 없으면 안내.
-
-## v3.7.554 변경 (2026-05-09)
-- **외국 이름 한글 음역 (`customers.name_kor` 신규 컬럼)**:
-  - DB: `customers.name_kor text` 컬럼 추가. `name2`(사용자 자유 별칭)와 분리 — 시스템 음역 전용.
-  - db.js DBMAP/DB_COLS 매핑 (`name_kor → nameKor`).
-  - `src/lib/nameTransliterate.js` 신규: Gemini Flash 호출 + 메모리 캐시. `transliterateName(name, geminiKey)` 단건 호출 + `transliterateBatch(names, key, {concurrency,onProgress})` 배치.
-  - **CustModal**: "한글 음역 (외국인 이름용)" 입력 필드 + ⚡ 자동 버튼 (영문 이름일 때 노출). 사용자 직접 수정 가능.
-  - **자동 채움**: 고객 저장 시 `name`이 영문 + `nameKor` 비었으면 자동 음역(handleSave에서 호출).
-  - **인라인 표시** (영문 + name_kor 있을 때, 회색 작은 글씨로 영문 옆에):
-    - TimelinePage 블록 cust 이름 — `John Smith  존 스미스 #54485`
-    - CustomersPage 메인 리스트 이름 셀
-    - CustomersPage 검색 드롭다운 결과
-    - ReservationModal 고객 카드 — 캡처 시안과 동일 패턴
-  - fallback: name_kor 비어있고 name2가 한글이면 그것을 인라인 표시.
-  - v3.7.553 hover 방식은 인라인으로 대체됨.
-
-## v3.7.553 변경 (2026-05-09)
-- **네이버 막기 — 같은 브랜드(business_id) 소속이면 모두 변경 가능** (TimelinePage):
-  - `canEditBlock` 식: `accessibleBids` 기반 → `data.branches에 그 bid가 있으면 true`. 활성 비즈의 모든 지점은 변경 가능. 다른 브랜드(super 모드 진입 등)는 차단.
-  - 강남점 직원·매니저·owner 모두 마곡·홍대 등 같은 브랜드 지점 막기/풀기 가능.
-- **영어 고객명 hover 시 한글 별칭 표시**:
-  - 룰: `name`이 영문(한글 없음) + `name2`에 한글 있으면 hover로 `name2` 표시 (cursor: help).
-  - 적용: TimelinePage 블록 cust 이름 + CustomersPage 메인 리스트 이름 셀 + 검색 드롭다운(ShareCustModal 등에서 쓰는).
-
-## v3.7.552 변경 (2026-05-09)
-- **네이버 막기 — 표시는 전체 / 변경은 권한 내** (TimelinePage):
-  - **표시(현황 fetch)**: `isMaster`(브랜드 owner/매니저)이면 전 지점의 막기 상태를 fetch. 일반 직원은 종전대로 `accessibleBids`만.
-  - **변경(toggleOne / 전체 막기·풀기)**: `accessibleBids` (본인 지점 + branchGroups 연계지점)에 속한 지점만 가능. 그 외 지점은 alert + 토글 disabled.
-  - **막기 팝업 UI**: 권한 외 지점 클릭 시 `👁 타지점 — 조회 전용 (변경 불가)` 노란 배너 + 시술 토글·전체 버튼 모두 비활성. 기존 "🔒 타지점이라 막기 불가" 메시지(빈 itemIds일 때)는 정리.
-  - 효과: 강남점 owner도 모든 지점 슬롯 현황을 보면서, 변경은 강남+왕십리(연계) 한정.
-- **자동태그 service_multi UI 카테고리 헤더 토글** — 카테고리 헤더(✓/◐/○) 클릭 시 그 카테고리 시술 전체 선택/해제. 시각적 상태 3종(전체/일부/없음).
-- **[⚡ 미래 예약 일괄 평가] 도구** (AdminServiceTags 메인 페이지):
-  - 오늘 이후 미종결 예약을 모두 평가해 자동 부여될 태그 dry-run 표시 — 날짜·시간·지점·고객·추가될 태그 리스트
-  - customer_packages는 cust_id IN(100건씩 chunk)로 batch fetch
-  - `evaluateTagTriggers()` 활용 (서버 ai_analyze 로직과 동일)
-  - 결과 검토 후 [모두 적용] 버튼으로 selected_tags 일괄 UPDATE (이미 있는 태그는 보존, 자동태그만 추가)
-  - 추가 only — 자동 룰에 안 맞는 태그를 제거하지는 않음 (안전 모드)
-
-## v3.7.550 변경 (2026-05-09)
-- **자동태그 설정 가시성 향상** (AdminServiceTags):
-  - 메인 태그 리스트의 각 행에 `⚡ 자동` 노란 배지 + 자연어 한 줄 설명 추가 (`describeTrigger`로 변환. 예: "마지막 방문이 90일 이상 지난 손님에게 ★기존상담가 자동으로 붙어요")
-  - 자동태그 설정 ASheet의 태그 드롭다운 옵션에 `⚡` prefix + `(자동)` suffix — 어떤 태그가 트리거 설정됐는지 한눈에 식별
-
-## v3.7.549 변경 (2026-05-09)
-- **features 적재 race condition fix** (`features.js` + `useFeaturesVersion.js` 신규):
-  - 증상: 직원근무표(SchedulePage)에서 `hasFeature('schedule_advanced')` 게이트에 묶인 자동배치·규칙 설정·배치확정·백업 메뉴 등이 안 보임. DB는 `schedule_advanced=true` 정상.
-  - 원인: `_features`가 module-level 변수라 `setFeatures(...)` 호출이 SchedulePage 리렌더를 자동 트리거 안 함. 첫 렌더가 적재 전에 일어나면 false 그대로 남음.
-  - fix: `subscribeFeatures(fn)` listener 패턴 추가 + `useFeaturesVersion` hook을 별도 파일(vite Fast Refresh 충돌 회피)로 분리. SchedulePage 함수 본문에 `useFeaturesVersion()` 한 줄 호출 → setFeatures 시 자동 리렌더 → hasFeature 정확히 평가.
-
-## v3.7.548 변경 (2026-05-09)
-- **네이버 확정 친절 처리** (ReservationModal onConfirm):
-  - `409 ALREADY_CONFIRMED` 받으면 → 자동으로 `status='reserved'`로 DB sync + "이미 네이버에서 확정된 예약이라 블리스 상태만 동기화했어요" 안내. 알림바·[대기] 배지에서 즉시 빠짐.
-  - `409 RT65 ITEM_NOT_SALE` 받으면 → raw JSON 노출 대신 "이 시간/시술이 네이버 예약관리에서 판매 중지(막기) 상태라 확정할 수 없어요" 친절 안내.
-- **자동태그 설정 라벨 친화 + 미리보기** (`tagAutoTrigger.js` + AdminServiceTags ASheet):
-  - 트리거 카탈로그 라벨 평어체로 ("📦 패키지 잔여 회수 ≤ N" → "📦 보유권 횟수가 거의 다 됐을 때" 등 5종 전체)
-  - param 라벨도 친화화 ("회 이하" → "회 이하 남았을 때", "예약 시술과 같은 카테고리/시술만 평가" → "오늘 예약한 시술과 같은 종류만 따지기")
-  - `describeTrigger(trigger, ctx)` 헬퍼 추가 — 트리거+params를 자연어 한 문장으로 변환
-  - ASheet에 👀 미리보기 박스 — 입력값에 따라 "마지막 방문이 90일 이상 지난 손님에게 ★기존상담가 자동으로 붙어요" 같은 한 줄이 실시간 갱신
-- **김기덕 #1231261029 DB 정상화**: `pkxavrdf0y`(네이버, pending) → `reserved` UPDATE + `id_atub9qxu8d`(수동 빈 row, 매출 연결 0건) DELETE. 알림바 확정대기에서 자연 제거.
+### Claude Sonnet → Haiku 전환 (5/13, 비용 70% 절감)
+- 실제로는 `CLAUDE_MODEL=claude-sonnet-4-5`가 디폴트였음 (Haiku 메인이라던 메모리와 불일치)
+- env.conf + ai_booking.py + bliss_naver.py 모두 `claude-haiku-4-5`로 변경
+- 5/13 누적 $26.29 → 다음 달부터 ~$10 예상
 
 ---
 
@@ -229,88 +47,73 @@ WHERE key = 'bliss_session_kill_v1';
 
 ## PENDING 작업 (우선순위 순)
 
-### 1. 📧 Zoho Workplace 메일 — 사이트 교체만 남음
+### 1. 💳 토스페이먼츠 컨펌 받기 → 매장 키 입력 (사용자 작업)
+- ✅ 코드·Edge Functions·DB 모두 라이브 깔림 (v3.7.700)
+- ⏳ **토스페이먼츠 가맹 컨펌 대기** (송정윤 010-4928-1242, 2026-05-13 컨펌 예정)
+- 다음 행동:
+  1. 사용자: 토스 개발자센터 → API 키 (테스트 또는 라이브) 발급
+  2. Bliss 로그인 → 관리설정 → 결제 설정 → 토스페이먼츠 직결 탭에 client_key + secret_key 입력
+  3. 토스 개발자센터 → 웹훅 등록: `https://dpftlrsuqxqqeouwbfjd.supabase.co/functions/v1/payment-webhook` (이벤트: PAYMENT_STATUS_CHANGED, CANCEL_STATUS_CHANGED, DEPOSIT_CALLBACK, BILLING_DELETED 체크)
+  4. ReservationModal [💳 결제 링크 발송] 테스트 → 흐름 검증
+- 자격증명: memory `reference_tosspayments.md`
+
+### 2. 🔍 Google Search Console + Naver Search Advisor 등록 (사용자 작업)
+- ✅ SEO 풀세트 + robots.txt + sitemap.xml 라이브 (v3.7.700)
+- ⏳ 사용자 액션:
+  1. https://search.google.com/search-console → 속성 추가 (URL 접두어 `https://blissme.ai`) → HTML 태그 검증
+  2. 검증 토큰(`<meta name="google-site-verification" content="...">`) 받아서 작업세션에 전달 → 코드에 박고 다음 배포에 반영 (index.html에 `google-site-verification` meta 자리 비워둠)
+  3. (선택) https://searchadvisor.naver.com — 네이버 노출용 별도 등록
+  4. sitemap 제출: `https://blissme.ai/sitemap.xml`
+  5. URL 검사 → "색인 등록 요청" 클릭
+
+### 3. 📧 Zoho Workplace 메일 — 사이트 교체만 남음
 **상태**:
 - ✅ Zoho 가입(테라포트, Free Plan), contact@blissme.ai 메일박스 생성
 - ✅ Cloudflare DNS 5개 레코드 (MX 3개 + SPF + DKIM)
 - ✅ 도메인 검증 통과
 
 **남은 작업**:
-1. 사용자: Zoho [모든 레코드 확인] 클릭 + contact@blissme.ai 첫 로그인 + 비번 변경 (1분)
+1. 사용자: Zoho [모든 레코드 확인] 클릭 + contact@blissme.ai 첫 로그인 + 비번 변경
 2. 송수신 테스트
-3. **Bliss 사이트 일괄 교체**: `cripiss@naver.com` → `contact@blissme.ai`
-   - public/about.html / privacy.html / terms.html / refund.html / pricing.html
-   - AppShell footer
-   - 빌드 + 배포 + CF 퍼지
+3. **Bliss 사이트 일괄 교체**: `cripiss@naver.com` → `contact@blissme.ai` (about/privacy/terms/refund/pricing.html + AppShell footer)
 
 **자격증명**: memory `reference_zoho_workplace.md`
 
----
+### 4. 🌐 루트 정적 랜딩페이지 신규 작성 (SEO 큰 도약)
+- 현재 `/`는 SPA 로그인 화면 → Googlebot이 키워드 풍부한 컨텐츠 못 봄
+- 신규 정적 HTML 랜딩페이지 (`/` 또는 `/landing.html`) — Hero + 기능 6~8개 카드 + 비교표 + FAQ + 가격 + CTA
+- 본문 1,500자+ 키워드 자연 포함, h1/h2/h3 구조, FAQ Schema JSON-LD
+- 로그인은 `/login`으로 이동, SPA는 `/app/*`
+- 색인 + 검색 노출에서 가장 큰 효과 예상
 
-### 2. 💳 NHN KCP 카드사 심사 통과 후 → 포트원 V2 채널 등록
-**현재 상태 (2026-05-08)**:
-- ✅ NHN KCP 가맹점 + 카드사 심사 통과 (영세 수수료, 신용카드 건당 100만, 정산 월4회, 등록비/연회비 0)
-- ✅ 포트원 가입 + 비즈니스 인증 완료 (테라포트 법인 / 632-81-02070 / 권신영)
-- ✅ blissme.ai PG 심사용 정적 페이지 깔림 (about/terms/privacy/refund/pricing.html)
-- ⏳ 계약서 제출 → 보증보험 200만원 가입 → 포트원 채널 등록 → Bliss 키 입력 → 테스트 결제
-
-**다음 단계** (사용자 작업 + Bliss 키 입력):
-1. KCP 계약 구비서류 제출 (파트너관리자 → 상점정보관리)
-2. 서울보증보험 마포지점 1599-5209 — 보증보험 200만원 가입
-3. 포트원 V2 대시보드 → KCP 채널 활성화 → Store ID + Channel Key + API Secret 복사
-4. Bliss 관리설정 → 결제 설정 → 매장 키 입력 (테스트 모드)
-5. ReservationModal [💳 예약금 청구] 테스트 결제 → 흐름 검증
-6. 라이브 키로 교체
-
-**참고**: KG이니시스 가맹점 검토 회신 대기 중 (병행)
-
-**문서**: memory `reference_nhn_kcp.md`
-
----
-
-### 3. 🔵 네이버 톡톡 상담완료 자동 연동 — 정식 챗봇 통합으로 전환 (1~2주 일정)
-**현재 상태**: 비공식 우회 보류
-- ✅ POST `/chatapi/ct/partner/{handle}/chat/{chatId}/end` (200 OK 확인) + 매장 핸들 8개 확보
+### 5. 🔵 네이버 톡톡 상담완료 자동 연동 — 정식 챗봇 통합 (1~2주)
+- ✅ POST `/chatapi/ct/partner/{handle}/chat/{chatId}/end` (200 OK) + 매장 핸들 8개 확보
   - 강남 w4jmdh, 마곡 w4lf15, 왕십리 w4h6dw, 용산 w4gsgn, 위례 w4l272, 잠실 w4ls78, 천호 w45f9j, 홍대 w5wyqh
-- ❌ chat_id(4자) ↔ messages.user_id(22자) 매핑이 nchat socket 통신으로만 전달되어 HTTP 추출 불가
+- ❌ chat_id(4자) ↔ messages.user_id(22자) 매핑이 nchat socket 통신으로만 → HTTP 추출 불가
+- 전환 방향: 정식 챗봇(handover_v1) 통합. 메시지 수신/발송/상담완료 모두 공식 API. 작업 양 1~2주
 
-**전환 방향**: 정식 챗봇(handover_v1) 통합
-- 네이버 톡톡 챗봇 API 정식 등록
-- 메시지 수신/발송/상담완료 모두 공식 API
-- 작업 양: 1~2주
-
----
-
-### 4. 🟡 네이버 "전체 막기/풀기" 1건 누락 (2026-05-09)
+### 6. 🟡 네이버 "전체 막기/풀기" 1건 누락 (2026-05-09)
 - 증상: 슬롯 막기 팝업의 [전체 막기]·[전체 풀기] 누르면 3건 중 1건이 빠짐
-- 후보 원인 (TimelinePage.jsx:5550 `toggleAll`):
-  1. `is_active === false` (네이버 노출 X) skip
-  2. `bit !== '0' && '1'` (운영 외 시간) skip
-  3. `toggleOne` fetch 실패 → 옵티미스틱 롤백 + alert (가장 흔한 케이스 — 그 시간/시술에 이미 네이버 예약이 들어있어 막기 거부)
-- 사용자 추가 정보 필요: 못 막힌 항목 이름 + alert 떴는지 + 그 슬롯에 이미 예약 있는지
+- 후보 원인 (TimelinePage.jsx `toggleAll`): is_active false skip / bit 값 / toggleOne fetch 실패 옵티미스틱 롤백
+- 추가 정보 필요: 못 막힌 항목 이름 + alert 떴는지 + 그 슬롯에 이미 예약 있는지
 
-### 5. 🟡 네이버 확정 시 dateTimes 03:30 (15:30 예약인데) — 시간 매핑 의심
-- 증상: 김기덕 #1231261029 (15:30) 확정 시 네이버 응답 `dateTimes:["2026-05-09T03:30:00+09:00"]` (12시간 차이)
-- 03:30은 **네이버 API 응답값**이지 클라이언트가 만든 게 아님 ([bliss_naver_tmp.py:1131](../naver-sync/bliss_naver.py:1131))
-- 가능성: 서버 hour_bit slot_idx 계산 → 네이버에 보낼 때 12h 변환 발생, 또는 네이버 측 타임존 인식 버그
-- 우선순위 낮음 — v3.7.548 친절 메시지로 운영 영향은 제거. root cause는 다음 세션에서 디버깅
+### 7. 🟡 네이버 확정 시 dateTimes 03:30 — 12h 변환 의심
+- 김기덕 #1231261029 (15:30) 확정 시 네이버 응답 `dateTimes:["2026-05-09T03:30:00+09:00"]` (12시간 차이)
+- 03:30은 네이버 API 응답값 (bliss_naver.py:1131)
+- 우선순위 낮음. 친절 메시지(v3.7.548)로 운영 영향은 제거됨
 
----
+### 8. 다음 세션 검토할 만한 기능 추가
+- **결제 내역 페이지** (매장이 자기 매장 결제 이력 조회) — 토스 컨펌 후
+- **충전형 자동결제 UI** (멤버십 자동충전 + SaaS 월구독) — Edge Functions billing-issue/charge는 깔림, UI만 필요
+- **결제수단 다양화**: 현재 'CARD' 고정 → 계좌이체/간편결제 옵션
+- **체험단 콜라보 마케팅팀 텔레그램 알림** (콜라보 키워드 즉시 알림)
+- **이모티콘 → I 아이콘 Phase B** (BlissAI / Admin / SalesPage / CustomersPage 잔여)
 
-### 6. 다음 세션에서 검토할 만한 기능 추가
-- **PortOne webhook 처리** (현재는 success redirect로만 동작)
-- **SaaS 정기결제** (매달 Bliss → 매장) — 기존 `billing_payments`/`billing_payment_methods` 활용
-- **결제 청구 UI 개선** — prompt → 모달, 메시지 템플릿 사용자 정의
-- **결제수단 선택 UI** — 현재 'CARD' 고정, 계좌이체/간편결제 옵션 추가
-- **결제 내역 페이지** — 매장이 자기 매장 결제 이력 조회
-- **체험단 콜라보 — 마케팅팀 텔레그램 알림** (콜라보 키워드 메시지 도착 시 즉시 알림)
-- **이모티콘 → I 아이콘 Phase B** (BlissAI / Admin / SalesPage / CustomersPage 등 잔여 곳)
-
----
-
-## 최근 사용자 요청 처리 상태 (bliss_requests_v1)
-
-전체 done 상태. 마지막 처리 (id_b72koaxcft 현아 — 네이버 톡톡 자동완료)는 정식 챗봇 통합 예정으로 안내.
+### 9. ⛔ NHN KCP / 포트원 V2 — 사실상 폐기 검토
+- KCP가 정기결제만 허가, 일반결제 미허가 (2026-05-12 확인)
+- 토스페이먼츠가 일반+충전형+결제링크 모두 가능 + 수수료 더 저렴
+- 단, 코드 차원 포트원 V2 fallback 분기는 유지 (매장이 원하면 사용 가능)
+- memory `reference_nhn_kcp.md` → "보류/폐기 검토" 표시 완료
 
 ---
 
@@ -321,8 +124,12 @@ WHERE key = 'bliss_session_kill_v1';
 - **CF**: blissme.ai (Cloudflare Proxy)
 - **로컬 dev**: `npx vite --force` → http://localhost:5173
 - **배포**: `rm -rf dist && npx vite build && scp dist/* bliss-server:/tmp/bliss-app/ && ssh bliss-server "sudo cp -r /tmp/bliss-app/* /var/www/html/bliss-app/"` + CF 퍼지
+- **AI 모델**: `CLAUDE_MODEL=claude-haiku-4-5` (env.conf + 코드 디폴트) — 메인. fallback: gpt-4o-mini → gemini-2.5-flash
+- **결제 PG**: 토스페이먼츠 직결 (메인). NHN KCP/포트원 V2 (보조, 폐기 검토)
+- **MCP**: `tosspayments-integration-guide` 추가됨 — V2 SDK·결제승인·빌링·링크페이 docs 검색
 
 ## 배포 룰 (memory)
 - BLISS_V + version.txt **둘 다** 같은 값으로 bump (불일치 시 무한 reload 루프)
 - 수동 배포 시도 마지막에 CF 캐시 퍼지 자동 실행
 - 수정 누적 → "배포" 신호 시 한 번에 빌드·서버·퍼지·버전업
+- 작업세션(worktree) 배포 금지 — 배포세션(main 폴더)에서만. 단 사용자 명시 동의 시 우회 가능
