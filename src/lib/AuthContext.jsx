@@ -133,16 +133,22 @@ export function AuthProvider({ children }) {
     }
   }
 
-  // ID/PW 로그인
+  // ID/PW 로그인 — DB RPC `auth_login`에서 bcrypt 해시 비교
   const login = async (loginId, password) => {
-    const res = await fetch(
-      `${SB_URL}/rest/v1/app_users?login_id=eq.${encodeURIComponent(loginId)}&select=*&limit=1`,
-      { headers: H }
-    )
-    const users = await res.json()
-    if (!users?.length) throw new Error('아이디를 찾을 수 없습니다')
-    const user = users[0]
-    if (user.password !== password) throw new Error('비밀번호가 틀렸습니다')
+    const res = await fetch(`${SB_URL}/rest/v1/rpc/auth_login`, {
+      method: 'POST',
+      headers: H,
+      body: JSON.stringify({ p_login_id: loginId, p_password: password }),
+    })
+    if (!res.ok) {
+      // 28000(invalid_credentials)·PostgREST 400/401 모두 동일 메시지
+      throw new Error('아이디 또는 비밀번호가 맞지 않습니다')
+    }
+    const user = await res.json()
+    if (!user || !user.id) throw new Error('아이디 또는 비밀번호가 맞지 않습니다')
+    // password_hash 필드는 클라이언트에 보관하지 않음
+    if ('password_hash' in user) delete user.password_hash
+    if ('password' in user) delete user.password
     sessionStorage.setItem('bliss_user', JSON.stringify(user))
     setCurrentUser(user)
     setPhase('app')
