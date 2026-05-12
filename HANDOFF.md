@@ -1,9 +1,63 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.556** (https://blissme.ai/version.txt) — 2026-05-09 배포
+- **라이브: v3.7.642** (https://blissme.ai/version.txt) — 2026-05-12 배포
 - 다음 빌드 시 `BLISS_V` (AppShell.jsx) + `public/version.txt` 둘 다 함께 bump 필수
-- 변경 이력은 [CLAUDE.md "v3.7.503 → v3.7.556"](./CLAUDE.md) 섹션 참고
+- 변경 이력은 [CLAUDE.md "v3.7.503 → v3.7.642"](./CLAUDE.md) 섹션 참고
+
+## 🔐 현재 자격증명 (2026-05-12 변경)
+- **8개 지점 매니저 계정** (`gang`/`hongdae`/`magok`/`wangsimni`/`yongsan`/`jamsil`/`wirye`/`cheonho`) — **PW: `060512`**
+- **하우스왁싱 오너** (`housewaxing`) — **PW: `cripiss2358*`**
+- DB에 평문 NULL, bcrypt hash만 보관(트리거 `app_users_password_to_hash`가 INSERT/UPDATE 시 자동 해시 + 평문 NULL 처리)
+- **공지·메모 등 노출 가능한 채널에 비번 적기 금지** (2026-05-12 사고: 직원 3명 노출됨 → 비번 재변경 + 공지 sanitize)
+
+## 🛑 원격 세션 킬 스위치 (v3.7.642+)
+한 줄 SQL로 전 디바이스 즉시 로그아웃:
+```sql
+UPDATE schedule_data
+SET value = to_jsonb((extract(epoch from now())*1000)::bigint), updated_at = now()
+WHERE key = 'bliss_session_kill_v1';
+```
+- 작동: AuthContext.jsx의 Realtime 구독이 schedule_data.bliss_session_kill_v1 변경 감지 → localStorage/sessionStorage 비우고 `window.location.reload()` → 로그인 화면.
+- Mount 시점에도 체크: `remote_ts > localStorage.bliss_session_kill_last_ts` 면 즉시 wipe+reload. 백그라운드 탭/재접속도 잡음.
+- v3.7.641 이하 옛 번들에는 listener 없음 — 기존 폴링 idle reload로 v3.7.642 올라온 직후 mount 체크에서 잡힘.
+
+## 2026-05-12 인증·로그아웃 회귀 + 킬 스위치 작업
+**배경**
+- worktree-password-hash 머지(v3.7.637 시점) — `auth_login` RPC + `app_users_safe` view + 평문 컬럼 anon 차단 + bcrypt 비교
+- 라이브에서 8개 지점 로그인 전부 실패 회귀 발생
+
+**근인**
+- `AuthContext.jsx login()`은 RPC 경로로 옮겨졌으나 **`AppShell.jsx` 안의 `Login` 컴포넌트는 별개**였음
+- `users.find(u => (u.loginId||u.login_id)===loginId && (u.pw||u.password)===pw)` — `app_users_safe` view에서 로드한 users 배열에 password 컬럼이 아예 없어서(`undefined === pw` → false) 전 지점 무한 실패
+- 다른 세션이 "라이브 코드는 옛 SELECT+평문이라 DB schema 새거랑 충돌" 진단했지만 라이브 코드도 RPC였음. 실제 충돌은 AppShell.jsx의 Login 컴포넌트 단독 회귀
+
+**fix 시퀀스**
+| 버전 | 변경 |
+|---|---|
+| v3.7.638 | marquee 9-step keyframe + 카카오/예약폼/가격표 종합 공지(`ntc_v3_7_638_2026_05_12`) — 6/1 12:00 전직원 테스트 안내 |
+| v3.7.639 | AuthContext 모바일 한정 FORCE_KEY v1 → 전 디바이스 v2 확장 + supabase.auth.signOut() 추가. 8지점 비번 `025155141`로 일괄 변경 |
+| v3.7.640 | **회귀 fix**: AppShell `Login.handleLogin`을 `auth_login` RPC 호출로 교체. 응답을 snake/camel/branches 3종 키 모두 채워 다운스트림 호환 |
+| v3.7.641 | 비번 재변경 `060512` (이전 비번 `025155141`이 공지에 노출됐던 사고 대응) + FORCE_KEY v3로 전 디바이스 재 강제 로그아웃 |
+| v3.7.642 | **원격 세션 킬 스위치**: AuthContext에 schedule_data.bliss_session_kill_v1 Realtime 구독 + mount-시 ts 비교. 한 줄 SQL UPDATE로 전 디바이스 즉시 로그아웃 |
+
+**공지 정리**
+- 카카오 섹션 본문 단순화 (장황한 흐름 → 4줄 요약: "📅 예약하기 → 미배정 자동 등록 / 드래그 → 예약중 / 확정 → 알림톡 자동")
+- 비번 적힌 공지(`ntc_v3_7_639_pw_reset`) sanitize — 제목·본문에서 비번 제거, "마스터에게 카톡으로 받으세요"로 교체
+- 비번 노출된 공지를 이미 ACK한 직원: 경아·민아·지은 (09:33-09:39 KST). 그래서 비번 재변경 시행
+
+**서버 nginx access log**
+- log_format 기본값이라 client IP가 안 잡힘 — Cloudflare 프록시 IP만 보임(`172.x`/`162.x`/`104.x`)
+- 진짜 client IP 필요 시: nginx log_format에 `$http_cf_connecting_ip` 추가 + mod_realip CF IP 화이트리스트 (미적용, 보류)
+
+**주의사항 (v3.7.642 이후 참고)**
+- **AppShell.jsx의 `Login` 컴포넌트는 자체 handleLogin 보유** — AuthContext와 별개 경로. 인증 흐름 수정 시 양쪽 함께 봐야 함
+- **`app_users_safe` view에는 password/password_hash 컬럼 없음** — 옛 평문 비교 코드가 살아있으면 즉시 회귀
+- **bcrypt 트리거**: `app_users_password_to_hash`(BEFORE INSERT/UPDATE) — `password` 컬럼에 값 들어오면 자동 hash 후 평문 NULL 처리
+- **킬 스위치는 v3.7.642+ 번들만 적용** — 이하 번들은 idle reload로 v3.7.642 올라온 후 잡힘
+- **모바일 갤럭시**: 탭 closing은 background일 뿐, 진짜 종료가 아님 → 강제 로그아웃 코드 안 발사. 1) 탭 자체 ❌ 닫기 2) 최근앱에서 Chrome 스와이프 종료 3) 사이트 데이터 삭제 순으로 안내
+
+
 
 ## 2026-05-12 서버 ai_booking.py 응급 복구 (React 변경 0)
 **증상**
