@@ -3153,17 +3153,16 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
               bid: movedBid, staff_id: movedStaffId || null
             }).catch(console.error);
           }
-          // 🆕 자동 네이버 확정: 네이버 pending 예약을 직원 칼럼으로 이동 시 → API로 확정
+          // 🆕 자동 확정: pending/request 예약을 직원 칼럼으로 이동 시 → status=reserved
           (() => {
-            // 미배정 → 직원칸 이동 시 자동 reserved 처리
-            // - 네이버 예약 (status=pending/request, reservationId 일반): naverConfirmBooking + status=reserved
-            // - AI 예약 (status=request, reservationId가 ai*로 시작): API 호출 없이 status=reserved
             const isPending = (block.status === "pending" || block.status === "request") && !(block.memo && block.memo.includes("확정완료"));
-            const ridStr = String(block.reservationId || "");
-            const isNaverRes = !!block.reservationId && !ridStr.startsWith("ai") && !ridStr.startsWith("manual_");
-            const isAiRes = ridStr.startsWith("ai_") || ridStr.startsWith("aibook_") || ridStr.startsWith("ai");
             const movedToStaff = !toNaverCol2 && !!movedStaffId;
             if (!isPending || !movedToStaff) return;
+            const ridStr = String(block.reservationId || "");
+            // 외부 플랫폼/AI/카카오 폼/수동 예약 — reservationId prefix로 판정
+            const isExternalOrAi = /^(ai_?|aibook_|manual_|kakao_|trazy_|creatrip_|seoulbeauty_|cusmetic_)/.test(ridStr);
+            // 진짜 네이버 예약 = reservationId 있고 외부 prefix 아님
+            const isNaverRes = !!ridStr && !isExternalOrAi;
             if (isNaverRes) {
               const targetBranch = (data?.branches||[]).find(b => b.id === movedBid);
               const bizId = targetBranch?.naverBizId;
@@ -3176,8 +3175,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                   console.warn('[auto naver-confirm] fail:', rr.msg || rr.error);
                 }
               });
-            } else if (isAiRes) {
-              // AI 예약: 외부 API 호출 없이 바로 reserved 변경
+            } else {
+              // AI/카카오 폼/외부 플랫폼/수동: 외부 API 호출 없이 바로 reserved 변경
               setData(prev => ({...prev, reservations:(prev?.reservations||[]).map(x => x.id === block.id ? {...x, status:'reserved'} : x)}));
               sb.update("reservations", block.id, {status:'reserved'}).catch(console.error);
             }
