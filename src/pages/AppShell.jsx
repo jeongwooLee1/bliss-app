@@ -25,7 +25,7 @@ import FloatingAI from '../components/BlissAI/FloatingAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.639"
+const BLISS_V = "3.7.640"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -284,11 +284,39 @@ function Login({ users, onLogin, onSignup }) {
   const [pw, setPw] = useState("");
   const [saveId, setSaveId] = useState(() => {try{return localStorage.getItem("savedLoginId")!==null;}catch(e){return false;}});
   const [err, setErr] = useState("");
-  const handleLogin = () => {
-    const u = users.find(u => (u.loginId||u.login_id) === loginId && (u.pw||u.password) === pw);
-    if (!u) { setErr("아이디 또는 비밀번호가 일치하지 않습니다."); return; }
-    try{if(saveId)localStorage.setItem("savedLoginId",loginId);else localStorage.removeItem("savedLoginId");}catch(e){}
-    onLogin(u);
+  const handleLogin = async () => {
+    setErr("");
+    try {
+      const { SB_URL, SB_KEY } = await import('../lib/supabase');
+      const res = await fetch(`${SB_URL}/rest/v1/rpc/auth_login`, {
+        method: "POST",
+        headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ p_login_id: loginId, p_password: pw }),
+      });
+      if (!res.ok) { setErr("아이디 또는 비밀번호가 일치하지 않습니다."); return; }
+      const u = await res.json();
+      if (!u || !u.id) { setErr("아이디 또는 비밀번호가 일치하지 않습니다."); return; }
+      // snake/camel 양쪽 키 포함 (다운스트림 호환). branch_ids는 string/array 모두 지원
+      const parseArr = (v) => typeof v === 'string' ? (()=>{try{return JSON.parse(v)}catch{return []}})() : (Array.isArray(v) ? v : []);
+      const branches = parseArr(u.branch_ids);
+      const viewBranches = parseArr(u.view_branch_ids);
+      const mapped = {
+        id: u.id,
+        business_id: u.business_id, businessId: u.business_id,
+        login_id: u.login_id, loginId: u.login_id,
+        name: u.name, role: u.role,
+        branch_ids: branches, branchIds: branches, branches,
+        view_branch_ids: viewBranches, viewBranchIds: viewBranches, viewBranches,
+        created_at: u.created_at, createdAt: u.created_at,
+        timeline_settings: u.timeline_settings, timelineSettings: u.timeline_settings,
+        email: u.email,
+      };
+      try{if(saveId)localStorage.setItem("savedLoginId",loginId);else localStorage.removeItem("savedLoginId");}catch(e){}
+      onLogin(mapped);
+    } catch (e) {
+      console.error('[login] error', e);
+      setErr("로그인 중 오류가 발생했습니다.");
+    }
   };
   const bgGrad = "linear-gradient(135deg,#e8e8f0 0%,#d8d8e8 50%,#c8c8d8 100%)";
   const cardStyle = {background:T.bgCard,borderRadius:T.radius.lg,border:`1px solid ${T.border}`,boxShadow:T.shadow.md,animation:"slideUp .6s cubic-bezier(.22,1,.36,1)"};
