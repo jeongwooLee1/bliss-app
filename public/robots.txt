@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Disallow: /pay/
+Disallow: /timeline
+Disallow: /reservations
+Disallow: /customers
+Disallow: /sales
+Disallow: /messages
+Disallow: /admin
+Disallow: /api/
+
+Sitemap: https://blissme.ai/sitemap.xml

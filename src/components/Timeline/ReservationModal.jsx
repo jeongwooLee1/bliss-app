@@ -390,6 +390,43 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   const [savingCustMemo, setSavingCustMemo] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [depositCharging, setDepositCharging] = useState(false);
+  const [refunding, setRefunding] = useState(false);
+
+  // 💸 예약금 환불 — payment-cancel Edge Function 호출
+  const refundDeposit = async () => {
+    if (!item?.depositPaymentId) {
+      // depositPaymentId 컬럼이 없으면 reservation_payments에서 역조회
+      const fallback = await sb.get('reservation_payments', { reservation_id: 'eq.' + item.id, status: 'eq.paid', limit: 1 });
+      const rp = Array.isArray(fallback) ? fallback[0] : null;
+      if (!rp) { alert('환불할 결제 기록을 찾을 수 없습니다.'); return; }
+      item.depositPaymentId = rp.id;
+    }
+    const reason = window.prompt('환불 사유를 입력하세요', '고객 요청');
+    if (!reason) return;
+    if (!confirm(`예약금 ${Number(item.depositAmount||0).toLocaleString()}원을 전액 환불할까요?`)) return;
+    setRefunding(true);
+    try {
+      const r = await fetch(SB_URL + '/functions/v1/payment-cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (window._sbAnonKey || '') },
+        body: JSON.stringify({ orderId: item.depositPaymentId, cancelReason: reason }),
+      });
+      const j = await r.json();
+      if (!r.ok || j.error) {
+        alert('환불 실패: ' + (j.error || r.status));
+      } else {
+        alert(`✓ 환불 완료 (${Number(j.cancelledAmount||0).toLocaleString()}원)`);
+        // reservation 메모리 갱신
+        if (j.status === 'cancelled') {
+          item.depositPaidAt = null;
+        }
+      }
+    } catch (e) {
+      alert('환불 요청 실패: ' + (e?.message || e));
+    } finally {
+      setRefunding(false);
+    }
+  };
 
   // 💳 예약금 청구 — 매장이 고객한테 결제 링크 발송 (토스페이먼츠)
   const chargeDeposit = async () => {
@@ -2519,15 +2556,21 @@ ${naverText}
               </div>
             </div>
 
-            {/* 💳 예약금 청구 — 매장 → 고객 결제 링크 (토스페이먼츠). 일단 숨김 (사용자 요청) */}
-            {false && item?.id && !isReadOnly && !isSchedule && (
+            {/* 💳 예약금 청구 — 매장 → 고객 결제 링크 (토스페이먼츠) */}
+            {item?.id && !isReadOnly && !isSchedule && (
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",marginTop:6,flexWrap:"wrap",gap:6,background:item.depositPaidAt?"#E8F5E9":"#F5F3FF",borderRadius:8,border:`1px solid ${item.depositPaidAt?"#A5D6A7":"#D8B4FE"}`}}>
                 <span style={{fontSize:T.fs.sm,fontWeight:700,color:item.depositPaidAt?"#1B5E20":"#5B21B6",display:"inline-flex",alignItems:"center",gap:4}}>
                   <I name="wallet" size={13}/>{item.depositPaidAt?"예약금 결제완료":"예약금 청구"}
                 </span>
                 {item.depositPaidAt ? (
-                  <span style={{fontSize:T.fs.sm,color:"#1B5E20",fontWeight:600}}>
-                    {Number(item.depositAmount||0).toLocaleString()}원 · {new Date(item.depositPaidAt).toLocaleDateString('ko')}
+                  <span style={{display:"inline-flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:T.fs.sm,color:"#1B5E20",fontWeight:600}}>
+                      {Number(item.depositAmount||0).toLocaleString()}원 · {new Date(item.depositPaidAt).toLocaleDateString('ko')}
+                    </span>
+                    <button type="button" onClick={refundDeposit} disabled={refunding}
+                      style={{padding:"4px 10px",fontSize:11,fontWeight:700,background:refunding?"#fca5a5":"#dc2626",color:"#fff",border:"none",borderRadius:6,cursor:refunding?"wait":"pointer",fontFamily:"inherit"}}>
+                      {refunding?"환불 중…":"환불"}
+                    </button>
                   </span>
                 ) : (
                   <button type="button" onClick={chargeDeposit} disabled={depositCharging}
