@@ -59,6 +59,56 @@ export function AuthProvider({ children }) {
     return () => subscription?.unsubscribe()
   }, [])
 
+  // 원격 세션 킬 스위치 — schedule_data.bliss_session_kill_v1 갱신 시 전 클라이언트 즉시 로그아웃
+  useEffect(() => {
+    const KILL_LAST_KEY = 'bliss_session_kill_last_ts'
+    const wipeAndReload = (remoteTs) => {
+      try { localStorage.setItem(KILL_LAST_KEY, String(remoteTs)) } catch {}
+      try { localStorage.removeItem('bliss_session') } catch {}
+      try { sessionStorage.removeItem('bliss_user') } catch {}
+      try { sessionStorage.removeItem('bliss_new_oauth_user') } catch {}
+      try { supabase.auth.signOut().catch(() => {}) } catch {}
+      try { window.location.reload() } catch {}
+    }
+    const extractTs = (v) => {
+      if (v == null) return 0
+      if (typeof v === 'number') return v
+      if (typeof v === 'string') {
+        const n = Number(v); if (!Number.isNaN(n)) return n
+        try { const o = JSON.parse(v); if (o && typeof o.ts !== 'undefined') return Number(o.ts) || 0 } catch {}
+        return 0
+      }
+      if (typeof v === 'object' && typeof v.ts !== 'undefined') return Number(v.ts) || 0
+      return 0
+    }
+    // 1) Mount 시점 체크: kill ts > local ts → 즉시 로그아웃
+    const checkOnMount = async () => {
+      try {
+        const r = await fetch(`${SB_URL}/rest/v1/schedule_data?key=eq.bliss_session_kill_v1&select=value&limit=1`, {
+          headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Cache-Control': 'no-cache' },
+          cache: 'no-store',
+        })
+        if (!r.ok) return
+        const rows = await r.json()
+        const remoteTs = extractTs(rows?.[0]?.value)
+        const localTs = Number(localStorage.getItem(KILL_LAST_KEY) || '0') || 0
+        if (remoteTs && remoteTs > localTs) wipeAndReload(remoteTs)
+      } catch {}
+    }
+    checkOnMount()
+    // 2) Realtime 구독: 라이브 UPDATE/INSERT → 즉시 로그아웃
+    const SB = window._sbClient
+    if (!SB) return
+    const ch = SB.channel('session_kill_v1_' + Date.now())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule_data', filter: 'key=eq.bliss_session_kill_v1' },
+        (payload) => {
+          const remoteTs = extractTs(payload?.new?.value) || Date.now()
+          wipeAndReload(remoteTs)
+        })
+      .subscribe()
+    return () => { try { SB.removeChannel(ch) } catch {} }
+  }, [])
+
   // OAuth 유저 → app_users 매핑 (없으면 자동 생성)
   const handleOAuthUser = async (authUser) => {
     const email = authUser.email
