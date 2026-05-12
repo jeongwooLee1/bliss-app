@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#5B21B6">
+<link rel="icon" href="/favicon.ico">
+<title>하우스왁싱 예약하기</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin:0; font-family:-apple-system,"Apple SD Gothic Neo",Pretendard,system-ui,sans-serif; background:#f5f6f8; color:#1a1a2e; min-height:100vh; padding:16px; }
+  .wrap { max-width:480px; margin:0 auto; }
+  .header { text-align:center; padding:16px 0 20px; }
+  .header .brand { display:inline-flex; align-items:center; gap:12px; }
+  .header .brand img { width:46px; height:46px; border-radius:11px; box-shadow:0 6px 18px rgba(91,33,182,.18); }
+  .header h1 { margin:0; font-size:22px; font-weight:800; color:#5B21B6; letter-spacing:-.3px; }
+  .header .sub { font-size:13px; color:#666; margin-top:10px; }
+
+  /* 모든 카드 공통: 테두리 없음, 부드러운 그림자 */
+  .card { border:none; border-radius:14px; padding:16px 18px; margin-bottom:12px; box-shadow:0 4px 14px rgba(17,24,39,.05); }
+  .card label.lbl { display:block; font-size:13px; font-weight:700; color:#1a1a2e; margin-bottom:9px; }
+  .card label.lbl .req { color:#dc2626; margin-left:3px; }
+  .card .err-msg { font-size:12px; color:#dc2626; margin-top:6px; display:none; font-weight:600; }
+  .card.err .err-msg { display:block; }
+
+  /* 카드별 은은한 톤 */
+  .c-store    { background:#F5F3FF; }
+  .c-date     { background:#EFF6FF; }
+  .c-time     { background:#EFF6FF; }
+  .c-service  { background:#FDF2F8; }
+  .c-gender   { background:#FEFCE8; }
+  .c-name     { background:#ECFDF5; }
+  .c-phone    { background:#ECFDF5; }
+  .c-memo     { background:#F8FAFC; }
+
+  .branch-pill { display:inline-block; padding:6px 14px; background:#fff; color:#5B21B6; border-radius:20px; font-size:13px; font-weight:700; box-shadow:0 2px 6px rgba(91,33,182,.12); }
+
+  /* 입력 필드 공통 */
+  input[type="date"], input[type="time"], input[type="text"], input[type="tel"], select {
+    width:100%; padding:13px 14px; font-size:15px; border:none; border-radius:10px;
+    background:#fff; font-family:inherit; color:#1a1a2e; outline:none; -webkit-appearance:none; appearance:none;
+    box-shadow:0 1px 3px rgba(17,24,39,.06);
+  }
+  input:focus, select:focus { box-shadow:0 0 0 3px rgba(91,33,182,.15); }
+  select { background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%235B21B6' d='M6 8L0 0h12z'/></svg>"); background-repeat:no-repeat; background-position:right 14px center; padding-right:36px; }
+
+  /* 라디오 / chip 공통 */
+  .radio-group, .chip-group { display:flex; flex-wrap:wrap; gap:8px; }
+  .radio-group label, .chip-group label {
+    flex:1 1 auto; display:flex; align-items:center; justify-content:center; padding:10px 14px; border:none;
+    border-radius:10px; cursor:pointer; font-weight:600; font-size:14px; transition:all .15s;
+    background:#fff; color:#444; box-shadow:0 1px 3px rgba(17,24,39,.06);
+  }
+  .radio-group input, .chip-group input { display:none; }
+  .radio-group label:has(input:checked),
+  .chip-group label:has(input:checked) {
+    background:linear-gradient(135deg,#5B21B6,#7C3AED); color:#fff; box-shadow:0 4px 12px rgba(91,33,182,.28);
+  }
+  .chip-group label { flex:0 1 auto; }
+
+  .sub-hint { font-size:11px; color:#6b7280; margin:10px 2px 6px; font-weight:600; letter-spacing:.2px; }
+
+  .submit-btn {
+    width:100%; padding:16px; margin-top:8px; font-size:16px; font-weight:800;
+    background:linear-gradient(135deg,#5B21B6,#4C1D95); color:#fff; border:none; border-radius:12px;
+    cursor:pointer; box-shadow:0 8px 20px rgba(91,33,182,.28); font-family:inherit;
+  }
+  .submit-btn:disabled { opacity:.55; cursor:not-allowed; box-shadow:none; }
+
+  /* 완료 화면 */
+  .done-card { background:#fff; text-align:center; padding:36px 20px 24px; }
+  .done-card .done-ico { width:60px; height:60px; border-radius:50%; background:linear-gradient(135deg,#5B21B6,#4C1D95); display:flex; align-items:center; justify-content:center; margin:0 auto 16px; box-shadow:0 8px 20px rgba(91,33,182,.25); }
+  .done-card h2 { color:#1a1a2e; font-size:17px; margin:0 0 20px; font-weight:800; letter-spacing:-.3px; }
+  .summary { background:#fafbfd; border-radius:10px; padding:14px 16px; text-align:left; }
+  .summary .item { display:flex; align-items:flex-start; gap:10px; padding:7px 0; font-size:14px; color:#1a1a2e; line-height:1.4; }
+  .summary .item .ico { color:#5B21B6; flex-shrink:0; display:inline-flex; align-items:center; margin-top:2px; }
+  .summary .item.branch { font-weight:800; color:#5B21B6; padding-bottom:9px; margin-bottom:3px; border-bottom:1px solid #eceff3; }
+  .summary .item .sub { color:#6b7280; font-weight:500; }
+
+  .footer-note { font-size:12px; color:#888; text-align:center; padding:14px 8px 24px; line-height:1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="header">
+    <div class="brand">
+      <img src="/logo.png" alt="하우스왁싱">
+      <h1>하우스왁싱</h1>
+    </div>
+    <div class="sub">정보를 입력해 주시면 매장에서 확인 후 알림톡을 보내드립니다.</div>
+  </div>
+
+  <form id="bookForm" autocomplete="off">
+
+    <div class="card c-store">
+      <label class="lbl">매장</label>
+      <div class="branch-pill" id="branchLabel">지점 선택중…</div>
+    </div>
+
+    <div class="card c-date">
+      <label class="lbl">방문 날짜<span class="req">*</span></label>
+      <input type="date" id="date" required>
+      <div class="err-msg">날짜를 선택해주세요</div>
+    </div>
+
+    <div class="card c-time">
+      <label class="lbl">방문 시간<span class="req">*</span></label>
+      <select id="time" required>
+        <option value="">시간 선택</option>
+      </select>
+      <div class="err-msg">시간을 선택해주세요</div>
+    </div>
+
+    <div class="card c-service">
+      <label class="lbl">시술 부위<span class="req">*</span></label>
+      <div class="sub-hint">자주 찾는 시술 (복수 선택 가능)</div>
+      <div class="chip-group">
+        <label><input type="checkbox" name="svc" value="브라질리언"><span>브라질리언</span></label>
+        <label><input type="checkbox" name="svc" value="케어"><span>케어</span></label>
+        <label><input type="checkbox" name="svc" value="겨드랑이"><span>겨드랑이</span></label>
+        <label><input type="checkbox" name="svc" value="눈썹"><span>눈썹</span></label>
+        <label><input type="checkbox" name="svc" value="다리 전체"><span>다리 전체</span></label>
+        <label><input type="checkbox" name="svc" value="팔"><span>팔</span></label>
+        <label><input type="checkbox" name="svc" value="헤어라인"><span>헤어라인</span></label>
+      </div>
+      <div class="sub-hint">기타 (직접 입력)</div>
+      <input type="text" id="svcCustom" placeholder="예: 풀페이스+음모, 등 전체 등">
+      <div class="err-msg">시술을 1개 이상 선택하거나 직접 입력해주세요</div>
+    </div>
+
+    <div class="card c-gender">
+      <label class="lbl">성별<span class="req">*</span></label>
+      <div class="radio-group">
+        <label><input type="radio" name="gender" value="여성" required><span>여성</span></label>
+        <label><input type="radio" name="gender" value="남성"><span>남성</span></label>
+      </div>
+      <div class="err-msg">성별을 선택해주세요</div>
+    </div>
+
+    <div class="card c-name">
+      <label class="lbl">예약자 이름<span class="req">*</span></label>
+      <input type="text" id="name" placeholder="이름" required>
+      <div class="err-msg">이름을 입력해주세요</div>
+    </div>
+
+    <div class="card c-phone">
+      <label class="lbl">연락처<span class="req">*</span></label>
+      <input type="tel" id="phone" placeholder="010-1234-5678" inputmode="tel" required>
+      <div class="err-msg">연락처를 입력해주세요</div>
+    </div>
+
+    <div class="card c-memo">
+      <label class="lbl">요청사항 (선택)</label>
+      <input type="text" id="memo" placeholder="예: 첫 방문, 동반자 1명 등">
+    </div>
+
+    <button type="submit" class="submit-btn" id="submitBtn">예약 신청하기</button>
+
+    <div class="footer-note">
+      신청 후 매장에서 확인되면 알림톡으로 안내드립니다.<br>
+      문의: 매장 전화로 직접 연락 부탁드립니다.
+    </div>
+  </form>
+
+  <div class="card done-card" id="doneCard" style="display:none">
+    <div class="done-ico">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
+    <h2>예약 신청이 접수되었습니다</h2>
+    <div class="summary" id="doneSummary"></div>
+    <div class="footer-note">매장에서 확인되면 알림톡으로 안내드립니다.</div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  // ─── 매장 매핑 ───
+  const BRANCHES = {
+    "강남": "하우스왁싱 강남본점",
+    "마곡": "하우스왁싱 마곡점",
+    "홍대": "하우스왁싱 홍대점",
+    "왕십리": "하우스왁싱 왕십리점",
+    "용산": "하우스왁싱 용산점",
+    "위례": "하우스왁싱 위례점",
+    "잠실": "하우스왁싱 잠실점",
+    "천호": "하우스왁싱 천호점",
+  };
+  const qs = new URLSearchParams(location.search);
+  const branchKey = (qs.get("branch") || "").trim();
+  const branchName = BRANCHES[branchKey] || "지점 정보 없음";
+  document.getElementById("branchLabel").textContent = branchName;
+
+  // ─── 날짜: 오늘 이후만 ───
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth()+1).padStart(2,"0");
+  const dd = String(today.getDate()).padStart(2,"0");
+  document.getElementById("date").min = `${yyyy}-${mm}-${dd}`;
+
+  // ─── 시간 옵션 (영업시간 11:00 ~ 21:00) ───
+  const timeSel = document.getElementById("time");
+  for (let h=11; h<=21; h++) {
+    for (let m of [0,30]) {
+      if (h===21 && m===30) continue;
+      const t = `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+      const opt = document.createElement("option");
+      opt.value = t; opt.textContent = t;
+      timeSel.appendChild(opt);
+    }
+  }
+
+  // ─── 전화번호 자동 하이픈 ───
+  const phoneInp = document.getElementById("phone");
+  phoneInp.addEventListener("input", e=>{
+    let v = e.target.value.replace(/[^0-9]/g,"");
+    if (v.length > 11) v = v.slice(0,11);
+    if (v.length >= 7) e.target.value = `${v.slice(0,3)}-${v.slice(3,7)}-${v.slice(7)}`;
+    else if (v.length >= 4) e.target.value = `${v.slice(0,3)}-${v.slice(3)}`;
+    else e.target.value = v;
+  });
+
+  // ─── 제출 ───
+  const form = document.getElementById("bookForm");
+  const submitBtn = document.getElementById("submitBtn");
+  form.addEventListener("submit", async e=>{
+    e.preventDefault();
+    if (!branchKey || !BRANCHES[branchKey]) {
+      alert("매장 정보가 없습니다. 카카오 채널의 예약하기 버튼을 다시 눌러주세요.");
+      return;
+    }
+    const svcChips = Array.from(form.querySelectorAll('input[name="svc"]:checked')).map(i=>i.value);
+    const svcCustom = document.getElementById("svcCustom").value.trim();
+    const serviceFinal = [
+      svcChips.join(", "),
+      svcCustom
+    ].filter(s=>s).join(" / ");
+    const data = {
+      branch: branchKey,
+      date: document.getElementById("date").value,
+      time: document.getElementById("time").value,
+      services: svcChips,
+      service_custom: svcCustom,
+      service: serviceFinal,
+      gender: form.querySelector("input[name=gender]:checked")?.value || "",
+      name: document.getElementById("name").value.trim(),
+      phone: document.getElementById("phone").value.trim(),
+      memo: document.getElementById("memo").value.trim(),
+    };
+    // 검증
+    if (!data.date || !data.time || !data.gender || !data.name || !data.phone) {
+      alert("필수 항목을 입력해주세요");
+      return;
+    }
+    if (!serviceFinal) {
+      alert("시술을 1개 이상 선택하거나 직접 입력해주세요");
+      return;
+    }
+    if (!/^010-\d{4}-\d{4}$/.test(data.phone)) {
+      alert("연락처 형식이 올바르지 않습니다 (010-1234-5678)");
+      return;
+    }
+    submitBtn.disabled = true; submitBtn.textContent = "전송 중…";
+    // 미리보기 모드 (localhost / LAN / ?preview=1) — 실제 fetch 없이 done 화면 표시
+    const _isPreview = location.hostname === 'localhost' || location.hostname.startsWith('192.168.') || location.hostname.startsWith('10.') || qs.get('preview') === '1';
+    try {
+      const r = _isPreview
+        ? {ok:true, json: async()=>({ok:true})}
+        : await fetch("/book-submit", {
+            method: "POST",
+            headers: {"Content-Type":"application/json; charset=utf-8"},
+            body: JSON.stringify(data),
+          });
+      const j = await r.json().catch(()=>({}));
+      if (r.ok && j.ok) {
+        form.style.display = "none";
+        const sum = document.getElementById("doneSummary");
+        const _ico = (s) => `<span class="ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${s}</svg></span>`;
+        const _icoMap  = _ico('<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>');
+        const _icoCal  = _ico('<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>');
+        const _icoStar = _ico('<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>');
+        const _icoUser = _ico('<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>');
+        const _icoNote = _ico('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>');
+        sum.innerHTML =
+          `<div class="item branch">${_icoMap}<span>${branchName}</span></div>` +
+          `<div class="item">${_icoCal}<span>${data.date} ${data.time}</span></div>` +
+          `<div class="item">${_icoStar}<span>${serviceFinal} <span class="sub">(${data.gender})</span></span></div>` +
+          `<div class="item">${_icoUser}<span>${data.name} <span class="sub">${data.phone}</span></span></div>` +
+          (data.memo ? `<div class="item">${_icoNote}<span class="sub">${data.memo}</span></div>` : "");
+        document.getElementById("doneCard").style.display = "block";
+        window.scrollTo({top:0, behavior:"smooth"});
+      } else {
+        alert("예약 신청 중 오류가 발생했습니다. 매장에 전화로 문의해주세요.");
+        submitBtn.disabled = false; submitBtn.textContent = "예약 신청하기";
+      }
+    } catch (err) {
+      alert("네트워크 오류입니다. 잠시 후 다시 시도해주세요.");
+      submitBtn.disabled = false; submitBtn.textContent = "예약 신청하기";
+    }
+  });
+})();
+</script>
+</body>
+</html>
