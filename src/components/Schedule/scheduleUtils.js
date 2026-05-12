@@ -5,7 +5,7 @@ export function validateSch(schData, empList, days, ruleConfig, empSettings) {
   const getV = (id, ds) => schData[id]?.[ds] ?? ''
   const isWorkV = (id, ds) => {
     const s = getV(id, ds)
-    return s === STATUS.WORK || (s && s.startsWith('지원')) || s === STATUS.SHARE
+    return s === STATUS.WORK || (typeof s === 'string' && s.startsWith('지원')) || s === STATUS.SHARE
   }
   const ruleEnabled = (key) => {
     const r = ruleConfig?.rulesMeta?.[key]
