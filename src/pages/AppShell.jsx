@@ -25,7 +25,7 @@ import FloatingAI from '../components/BlissAI/FloatingAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.637"
+const BLISS_V = "3.7.638"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -795,7 +795,17 @@ function AnnouncesMarquee({ overrideItems }) {
         ))}
       </div>
       <style>{`
-        @keyframes marquee-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
+        @keyframes marquee-scroll {
+          0%   { transform: translateX(0); }
+          22%  { transform: translateX(-25%); }
+          28%  { transform: translateX(-25%); }
+          47%  { transform: translateX(-50%); }
+          53%  { transform: translateX(-50%); }
+          72%  { transform: translateX(-75%); }
+          78%  { transform: translateX(-75%); }
+          97%  { transform: translateX(-100%); }
+          100% { transform: translateX(-100%); }
+        }
         @keyframes cat-bob { 0% { transform: translateY(0); } 100% { transform: translateY(-3px); } }
       `}</style>
     </div>

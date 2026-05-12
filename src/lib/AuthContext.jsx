@@ -11,6 +11,19 @@ export function AuthProvider({ children }) {
   const [phase, setPhase] = useState('loading')
 
   useEffect(() => {
+    // 모바일/패드 1회 강제 로그아웃 (2026-05-12)
+    const FORCE_KEY = 'bliss_mobile_logout_20260512'
+    const ua = navigator.userAgent
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|Tablet/i.test(ua)
+      || (/Mac/.test(ua) && navigator.maxTouchPoints > 1)
+    if (isMobile && !localStorage.getItem(FORCE_KEY)) {
+      localStorage.setItem(FORCE_KEY, '1')
+      sessionStorage.removeItem('bliss_user')
+      sessionStorage.removeItem('bliss_new_oauth_user')
+      setPhase('login')
+      return
+    }
+
     // 1. 기존 세션 복원
     try {
       const saved = sessionStorage.getItem('bliss_user')
