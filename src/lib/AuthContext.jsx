@@ -11,8 +11,8 @@ export function AuthProvider({ children }) {
   const [phase, setPhase] = useState('loading')
 
   useEffect(() => {
-    // 전 디바이스(모바일+PC) 1회 강제 로그아웃 (2026-05-12 비번 일괄 변경)
-    const FORCE_KEY = 'bliss_force_logout_20260512_v2'
+    // 전 디바이스(모바일+PC) 1회 강제 로그아웃 (2026-05-12 비번 재변경 v3)
+    const FORCE_KEY = 'bliss_force_logout_20260512_v3'
     if (!localStorage.getItem(FORCE_KEY)) {
       localStorage.setItem(FORCE_KEY, '1')
       sessionStorage.removeItem('bliss_user')
