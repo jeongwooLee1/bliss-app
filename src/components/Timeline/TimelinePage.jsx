@@ -1244,6 +1244,23 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   const [showSettings, setShowSettings] = useState(false);
   const [showCal, setShowCal] = useState(false);
   const [showBranchPicker, setShowBranchPicker] = useState(false);
+  // 헤더 시계 아이콘 → 풀스크린 시계 오버레이
+  const [showClockOverlay, setShowClockOverlay] = useState(false);
+  const clockOverlayRef = useRef(null);
+  useEffect(() => {
+    if (!showClockOverlay) return;
+    // 브라우저 풀스크린 진입 시도 (실패해도 CSS overlay로 화면 가득 차임)
+    try { clockOverlayRef.current?.requestFullscreen?.().catch(()=>{}); } catch {}
+    const onKey = (e) => { if (e.key === "Escape") setShowClockOverlay(false); };
+    const onFsChange = () => { if (!document.fullscreenElement) setShowClockOverlay(false); };
+    window.addEventListener("keydown", onKey);
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.removeEventListener("fullscreenchange", onFsChange);
+      if (document.fullscreenElement) { try { document.exitFullscreen?.().catch(()=>{}); } catch {} }
+    };
+  }, [showClockOverlay]);
   const scrollRef = useRef(null);
   const topbarRef = useRef(null);
   const pendingClickIdx = useRef(0);
@@ -3494,6 +3511,15 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
 
   return (
     <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0}}>
+      {/* 풀스크린 시계 오버레이 — ESC로 닫음 */}
+      {showClockOverlay && (
+        <div ref={clockOverlayRef} style={{position:"fixed",inset:0,zIndex:99999,background:"#0F1E5C"}}>
+          <iframe src="/clock.html" title="시계" style={{width:"100%",height:"100%",border:"none",display:"block"}}/>
+          <button onClick={()=>setShowClockOverlay(false)}
+            title="닫기 (ESC)"
+            style={{position:"absolute",top:16,left:16,zIndex:1,background:"rgba(255,255,255,.12)",color:"#fff",border:"1px solid rgba(255,255,255,.25)",borderRadius:8,padding:"6px 14px",fontSize:14,cursor:"pointer",fontFamily:"inherit",backdropFilter:"blur(4px)"}}>✕ 닫기 (ESC)</button>
+        </div>
+      )}
       {/* 모바일 롱프레스 시 텍스트 선택/콜아웃 메뉴 차단 (드래그 UX 보호) */}
       <style>{`
         .tl-block, .tl-block *, .tl-room-col, .tl-room-col * {
@@ -3754,9 +3780,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
               <span>{dt.getDate()}</span>
             </button>;
           })}
-          {/* 14일 탭 마지막(월 25) 옆 — 시계 아이콘 버튼. 클릭 시 /clock.html 새 탭 오픈 (매장 로비 풀스크린 시계) */}
-          <button onClick={()=>window.open('/clock.html','_blank','noopener')}
-            title="로비 시계 (새 탭)"
+          {/* 14일 탭 마지막(월 25) 옆 — 시계 아이콘 버튼. 클릭 시 풀스크린 시계 오버레이 (ESC로 닫기) */}
+          <button onClick={()=>setShowClockOverlay(true)}
+            title="시계 (ESC로 닫기)"
             style={{minWidth:38,height:32,borderRadius:T.radius.md,border:"1px solid #e8e8e8",background:T.bgCard,color:T.primary,cursor:"pointer",fontFamily:"inherit",padding:0,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginLeft:6}}>
             <I name="clock" size={16} color={T.primary}/>
           </button>
