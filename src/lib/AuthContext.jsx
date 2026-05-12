@@ -11,15 +11,13 @@ export function AuthProvider({ children }) {
   const [phase, setPhase] = useState('loading')
 
   useEffect(() => {
-    // 모바일/패드 1회 강제 로그아웃 (2026-05-12)
-    const FORCE_KEY = 'bliss_mobile_logout_20260512'
-    const ua = navigator.userAgent
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|Tablet/i.test(ua)
-      || (/Mac/.test(ua) && navigator.maxTouchPoints > 1)
-    if (isMobile && !localStorage.getItem(FORCE_KEY)) {
+    // 전 디바이스(모바일+PC) 1회 강제 로그아웃 (2026-05-12 비번 일괄 변경)
+    const FORCE_KEY = 'bliss_force_logout_20260512_v2'
+    if (!localStorage.getItem(FORCE_KEY)) {
       localStorage.setItem(FORCE_KEY, '1')
       sessionStorage.removeItem('bliss_user')
       sessionStorage.removeItem('bliss_new_oauth_user')
+      try { supabase.auth.signOut().catch(() => {}) } catch {}
       setPhase('login')
       return
     }
