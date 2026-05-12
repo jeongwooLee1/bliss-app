@@ -53,7 +53,7 @@ export const S_COLOR = {
 
 export const DNAMES = ['월','화','수','목','금','토','일']
 
-export function isSupport(s) { return s && (s === '지원' || s.startsWith('지원(')) }
+export function isSupport(s) { return typeof s === 'string' && (s === '지원' || s.startsWith('지원(')) }
 export function getSColor(s) {
   if (isSupport(s)) return S_COLOR['지원']
   return S_COLOR[s] || { bg:'#f8f5f0', text:T.gray400, border:'#eee' }

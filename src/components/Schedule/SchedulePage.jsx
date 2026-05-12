@@ -129,6 +129,7 @@ export default function SchedulePage({ employees: propEmps }) {
         table: 'schedule_data', filter: `business_id=eq.${_activeBizId}`
       }, ({ new: n }) => {
         if (cancelled || !n?.value) return
+        if (n?.key !== DB_KEYS.schHistory) return
         try {
           const val = typeof n.value === 'string' ? JSON.parse(n.value) : n.value
           setSchHistory(val)
@@ -1096,7 +1097,7 @@ export default function SchedulePage({ employees: propEmps }) {
 function EmpLabel({ emp, branch, sch, year, month, curMonthStr }) {
   const supportMap = {}
   Object.values(sch[emp.id] || {}).forEach(s => {
-    if (s?.startsWith('지원(')) { const bn = s.replace('지원(','').replace(')',''); supportMap[bn] = (supportMap[bn]||0)+1 }
+    if (typeof s === 'string' && s.startsWith('지원(')) { const bn = s.replace('지원(','').replace(')',''); supportMap[bn] = (supportMap[bn]||0)+1 }
   })
   const entries = Object.entries(supportMap)
   const workDays = Object.entries(sch[emp.id]||{}).filter(([ds,s]) => ds.startsWith(curMonthStr) && (s===STATUS.WORK || isSupport(s) || s===STATUS.SHARE || s==='')).length
