@@ -68,7 +68,7 @@ async function loadAllFromDb(bizId) {
     sb.getByBiz("service_categories", bizId).catch(()=>[]),
     sb.getByBiz("service_tags", bizId).catch(()=>[]),
     sb.getByBiz("reservation_sources", bizId).catch(()=>[]),
-    sb.getByBiz("app_users", bizId).catch(()=>[]),
+    sb.getByBiz("app_users_safe", bizId).catch(()=>[]),
     sb.getByBiz("rooms", bizId).catch(()=>[]),
     sb.get("customers", `&business_id=eq.${bizId}&is_hidden=eq.false&order=join_date.desc.nullslast,created_at.desc&limit=100`).catch(()=>[]),
     // SNS 실제 연결된 고객만 (빈 배열 제외) — 부분 인덱스로 빠름
@@ -552,7 +552,7 @@ function SignupWizard({ onComplete, onBack }) {
     const finalBranches = branches.length > 0 ? branches : [{name: bizName.trim(), phone: ''}];
     setSaving(true);
     try {
-      const ex = await sb.get('app_users','&login_id=eq.'+encodeURIComponent(acct.loginId));
+      const ex = await sb.get('app_users_safe','&login_id=eq.'+encodeURIComponent(acct.loginId));
       if (ex.length > 0) { alert('이미 사용 중인 아이디입니다.'); setSaving(false); return; }
       const bizId = 'biz_'+uid();
       const oId = 'acc_'+uid();
@@ -1449,7 +1449,7 @@ function App() {
             if (m.system_gemini_key) { window.__systemGeminiKey = m.system_gemini_key; }
           }
         } catch(e) {}
-        const users = fromDb("app_users", await sb.get("app_users"));
+        const users = fromDb("app_users", await sb.get("app_users_safe"));
         if (users.length === 0) {
           setAllUsers([{id:"acc_super", loginId:"admin", pw:"1234", name:"Bliss 관리자", role:"super", branches:[], viewBranches:[]}]);
           setPhase("login");
@@ -1494,7 +1494,7 @@ function App() {
               await sb.insert('businesses', { id: bizId, name: bizName, code: loginId, phone: '', settings: JSON.stringify({ plan:'trial', planExpiry: exp.toISOString().slice(0,10) }), use_yn: true });
               await sb.insert('branches', { id: brId, business_id: bizId, name: bizName, short: name.slice(0,5), phone: '', sort: 0, use_yn: true });
               await sb.insert('app_users', { id: accId, business_id: bizId, login_id: loginId, password: uid(), name, role: 'owner', email: email || null, branch_ids: JSON.stringify([brId]), view_branch_ids: JSON.stringify([brId]) });
-              const newUsers = fromDb("app_users", await sb.get("app_users"));
+              const newUsers = fromDb("app_users", await sb.get("app_users_safe"));
               setAllUsers(newUsers);
               oauthUser = newUsers.find(u => u.id === accId);
               sessionStorage.setItem('bliss_new_oauth_user', 'true');
