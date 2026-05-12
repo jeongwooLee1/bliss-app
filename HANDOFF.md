@@ -1,11 +1,59 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.642** (https://blissme.ai/version.txt) — 2026-05-12 배포
+- **라이브: v3.7.710** (https://blissme.ai/version.txt) — 2026-05-13 배포
 - 다음 빌드 시 `BLISS_V` (AppShell.jsx) + `public/version.txt` 둘 다 함께 bump 필수
-- 변경 이력은 [CLAUDE.md "v3.7.503 → v3.7.642"](./CLAUDE.md) 섹션 참고
+- 변경 이력은 [CLAUDE.md "v3.7.503 → v3.7.710"](./CLAUDE.md) 섹션 참고
 
-## 🔐 현재 자격증명 (2026-05-12 변경)
+## 2026-05-12~13 작업 (v3.7.643 → v3.7.710)
+
+### v3.7.643~645 — 헤더 시계 + 로비 풀스크린 시계
+- **`public/clock.html`**: 매장 로비 디스플레이용 풀스크린 시계 페이지 (Orbitron 디지털 폰트, 다크 블루 #0F1E5C)
+  - 좌우 반전 (`transform: scaleX(-1)`) — 셀카로 찍었을 때 똑바로 나오게
+  - 우상단 [↔ 반전] 토글 버튼 (localStorage `bliss_clock_no_flip` 기억)
+  - 화면 클릭 시 자동 풀스크린 (`requestFullscreen`)
+  - 1초 단위 갱신, `YYYY년 M월 D일 / 요일 / 오전·오후 HH:MM :SS`
+- **TimelinePage 헤더 시계 아이콘** (v3.7.644~645):
+  - 14일 탭 마지막(`월 25`) 우측에 🕐 시계 버튼 추가
+  - 클릭 → 풀스크린 오버레이(iframe `/clock.html`) 띄움
+  - ESC 또는 close 버튼으로 닫힘 — `fullscreenchange` 이벤트로도 잡음
+  - state: `showClockOverlay` + ref `clockOverlayRef`
+- v3.7.643에서 잠깐 날짜 라벨 옆에 칩으로 넣었던 시각 표시는 v3.7.644에서 제거
+
+### v3.7.700 — 토스페이먼츠 풀스택 + 브랜드 파비콘 + SEO 메타
+**토스페이먼츠 결제 시스템**
+- `AdminPaymentSettings`: [토스페이먼츠 직결 / 포트원 V2] 탭 분리, 매장별 `client_key + secret_key` 입력
+- `ReservationModal`: 예약금 청구 UI 활성화(`chargeDeposit`) + 환불 버튼 추가(`refundDeposit`)
+- `src/pages/PaymentApp.jsx`: 토스 V2 SDK 분기 (`TossPayments.payment + requestPayment`, successUrl redirect)
+- **Edge Functions**:
+  - `payment-info` v3, `payment-confirm` v3 — 토스 confirm + Basic auth
+  - 신규: `payment-webhook`, `payment-cancel`, `billing-issue`, `billing-charge`, `payment-lookup`
+- **DB 신규 테이블**: `payment_webhook_log` + `billings` + `billing_charges` (정기결제 빌링키 + 자동 청구 히스토리)
+
+**브랜드 파비콘**
+- 하우스왁싱 매장 로고 → **Bliss 보라 B** 일반화
+- 파일: `favicon.svg` + `favicon.ico` + `logo.png` 512x / 192x + `apple-touch-icon` 180x
+- `manifest.json` 이름: `Bliss 뷰티샵 예약관리`로 일반화 (멀티테넌트 대비)
+
+**SEO 메타**
+- `index.html`: title / description / keywords / OG / Twitter / JSON-LD `SoftwareApplication` 풀세트
+- 정적 페이지 5개 (about, pricing, privacy, terms, refund): description + keywords + OG + canonical + favicon
+- `pricing.html`: Product / AggregateOffer JSON-LD
+- `robots.txt` + `sitemap.xml` 신규
+
+### v3.7.710 — 보유권 유효기간 검토 메뉴
+- `src/components/Admin/AdminLongValidityReview.jsx` (신규, 344줄)
+- 관리설정 → **보유권 유효기간 검토** (`longValidity` 슬러그)
+- `note`의 `유효:YYYY-MM-DD` 값이 cutoff(오늘 + 364일) 이후 + 잔액 >= 1인 보유권 필터
+- 기능: 지점별 필터 + 검색 + 편집 모달 (잔액·유효기간·삭제 가능)
+- 1년 초과 잔존 보유권 위험 분석·정리 도구
+
+### 미커밋 사이드 파일 (정리 보류)
+- `_jieun_req.png` (개별 요청 이미지)
+- `patch_visitor.py`, `tmp_book_endpoint.py`, `tmp_kakao_endpoint.py` (서버 임시 스크립트)
+- 위 4개는 untracked 상태로 두고 다음 세션에서 처리 여부 결정
+
+## 🔐 자격증명 (2026-05-12 변경 — v3.7.641 시점)
 - **8개 지점 매니저 계정** (`gang`/`hongdae`/`magok`/`wangsimni`/`yongsan`/`jamsil`/`wirye`/`cheonho`) — **PW: `060512`**
 - **하우스왁싱 오너** (`housewaxing`) — **PW: `cripiss2358*`**
 - DB에 평문 NULL, bcrypt hash만 보관(트리거 `app_users_password_to_hash`가 INSERT/UPDATE 시 자동 해시 + 평문 NULL 처리)
