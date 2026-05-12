@@ -1,10 +1,11 @@
-// 익명 결제 페이지 — AuthProvider/AppShell 우회 (PortOne V2)
+// 익명 결제 페이지 — AuthProvider/AppShell 우회 (토스페이먼츠 직결 + 포트원 V2 분기)
 // 라우트: /pay/:orderId / /pay/success / /pay/fail
 import React, { useState, useEffect } from 'react'
 import { Routes, Route, useParams, useSearchParams, useNavigate } from 'react-router-dom'
 
 const SB_URL = 'https://dpftlrsuqxqqeouwbfjd.supabase.co'
 const PORTONE_SDK = 'https://cdn.portone.io/v2/browser-sdk.js'
+const TOSS_SDK = 'https://js.tosspayments.com/v2/standard'
 
 function loadPortOneSDK() {
   return new Promise((resolve, reject) => {
@@ -17,12 +18,23 @@ function loadPortOneSDK() {
   })
 }
 
+function loadTossSDK() {
+  return new Promise((resolve, reject) => {
+    if (typeof window !== 'undefined' && window.TossPayments) return resolve(window.TossPayments)
+    const s = document.createElement('script')
+    s.src = TOSS_SDK
+    s.onload = () => resolve(window.TossPayments)
+    s.onerror = () => reject(new Error('토스페이먼츠 SDK 로드 실패'))
+    document.head.appendChild(s)
+  })
+}
+
 function Page({ children }) {
   return <div style={{ minHeight: '100vh', background: '#fafafe', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 20, fontFamily: 'system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif' }}>
     <div style={{ width: '100%', maxWidth: 420, background: '#fff', borderRadius: 16, padding: 28, boxShadow: '0 4px 24px rgba(0,0,0,0.06)', marginTop: 40 }}>
       {children}
       <div style={{ marginTop: 28, paddingTop: 16, borderTop: '1px solid #f0f0f5', textAlign: 'center', fontSize: 11, color: '#bbb' }}>
-        Powered by Bliss × PortOne
+        Powered by Bliss
       </div>
     </div>
   </div>
@@ -48,8 +60,40 @@ function PaymentLanding() {
     return () => { cancelled = true }
   }, [orderId])
 
-  const pay = async (payMethod = 'CARD') => {
-    if (!info?.store_id || !info?.channel_key) { setError('결제 정보가 없습니다'); return }
+  const payToss = async () => {
+    if (!info?.client_key) { setError('토스 키 없음'); return }
+    setLoading(true)
+    try {
+      const TossPayments = await loadTossSDK()
+      const tp = TossPayments(info.client_key)
+      // 비회원 결제(ANONYMOUS) — 빌링은 별도 customerKey 발급 필요
+      const payment = tp.payment({ customerKey: 'ANONYMOUS' })
+      const orderName = info.purpose === 'deposit' ? `${info.branch_name} 예약금` : (info.purpose || '결제')
+      const successUrl = `${window.location.origin}/pay/success?orderId=${encodeURIComponent(info.orderId)}`
+      const failUrl = `${window.location.origin}/pay/fail?orderId=${encodeURIComponent(info.orderId)}`
+      await payment.requestPayment({
+        method: 'CARD',
+        amount: { currency: 'KRW', value: Number(info.amount) },
+        orderId: info.orderId,
+        orderName,
+        successUrl,
+        failUrl,
+        customerName: info.cust_name || undefined,
+        customerEmail: info.cust_email || undefined,
+        customerMobilePhone: (info.cust_phone || '').replace(/[^0-9]/g, '') || undefined,
+        card: { useEscrow: false, flowMode: 'DEFAULT', useCardPoint: false, useAppCardOnly: false },
+      })
+      // requestPayment는 successUrl로 redirect되므로 여기 이후 코드는 실패 시에만 실행
+    } catch (e) {
+      const msg = e?.message || e?.code || '결제창 호출 실패'
+      // 사용자가 결제창 닫은 경우는 무시
+      if (!/PAY_PROCESS_CANCELED|USER_CANCEL/i.test(String(e?.code || ''))) setError(msg)
+      setLoading(false)
+    }
+  }
+
+  const payPortOne = async (payMethod = 'CARD') => {
+    if (!info?.store_id || !info?.channel_key) { setError('포트원 키 없음'); return }
     setLoading(true)
     try {
       const PortOne = await loadPortOneSDK()
@@ -72,7 +116,6 @@ function PaymentLanding() {
         redirectUrl: `${window.location.origin}/pay/success?orderId=${encodeURIComponent(info.orderId)}`,
       })
 
-      // PC web — 결과가 res로 반환됨 (모바일은 redirectUrl로 redirect)
       if (res?.code) {
         navigate(`/pay/fail?code=${encodeURIComponent(res.code)}&message=${encodeURIComponent(res.message || '')}`)
         return
@@ -83,6 +126,8 @@ function PaymentLanding() {
       setLoading(false)
     }
   }
+
+  const pay = () => info?.provider === 'tosspayments' ? payToss() : payPortOne('CARD')
 
   if (error) return <Page>
     <div style={{ fontSize: 40, textAlign: 'center', marginBottom: 12 }}>⚠️</div>
@@ -128,7 +173,7 @@ function PaymentLanding() {
     {info.is_test && <div style={{ background: '#fef9c3', color: '#854d0e', padding: '10px 12px', borderRadius: 8, fontSize: 12, marginBottom: 14, textAlign: 'center', fontWeight: 600 }}>
       ⚠️ 테스트 모드 — 실제 결제되지 않습니다
     </div>}
-    <button onClick={() => pay('CARD')} disabled={loading} style={{
+    <button onClick={pay} disabled={loading} style={{
       width: '100%', padding: 16, borderRadius: 12, border: 'none',
       background: loading ? '#a78bfa' : '#7C3AED', color: '#fff',
       fontSize: 16, fontWeight: 700, cursor: loading ? 'wait' : 'pointer',
@@ -137,7 +182,7 @@ function PaymentLanding() {
       {loading ? '결제창 여는 중...' : '카드로 결제하기'}
     </button>
     <p style={{ fontSize: 11, color: '#aaa', marginTop: 12, textAlign: 'center' }}>
-      포트원(PortOne)으로 안전하게 결제됩니다
+      {info.provider === 'tosspayments' ? '토스페이먼츠로 안전하게 결제됩니다' : '포트원(PortOne)으로 안전하게 결제됩니다'}
     </p>
   </Page>
 }
@@ -146,6 +191,9 @@ function PaymentSuccess() {
   const [params] = useSearchParams()
   const orderId = params.get('orderId') || params.get('paymentId')
   const paymentId = params.get('paymentId') || params.get('orderId')
+  // 토스 successUrl 표준 파라미터: paymentKey, orderId, amount
+  const paymentKey = params.get('paymentKey')
+  const amount = params.get('amount')
   const code = params.get('code')
   const message = params.get('message')
 
@@ -156,10 +204,13 @@ function PaymentSuccess() {
   useEffect(() => {
     if (code) { setError(message || code); setStatus('error'); return }
     if (!orderId && !paymentId) { setError('주문번호 누락'); setStatus('error'); return }
+    const body = paymentKey
+      ? { provider: 'tosspayments', paymentKey, orderId: orderId || paymentId, amount: amount ? Number(amount) : undefined }
+      : { paymentId: paymentId || orderId, orderId: orderId || paymentId }
     fetch(`${SB_URL}/functions/v1/payment-confirm`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paymentId: paymentId || orderId, orderId: orderId || paymentId })
+      body: JSON.stringify(body)
     })
       .then(r => r.json())
       .then(d => {
@@ -167,7 +218,7 @@ function PaymentSuccess() {
         else { setResult(d); setStatus('paid') }
       })
       .catch(e => { setError(e?.message || '승인 실패'); setStatus('error') })
-  }, [orderId, paymentId, code, message])
+  }, [orderId, paymentId, paymentKey, amount, code, message])
 
   if (status === 'confirming') return <Page>
     <div style={{ textAlign: 'center', padding: '40px 0' }}>
