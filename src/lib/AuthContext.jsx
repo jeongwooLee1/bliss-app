@@ -53,9 +53,9 @@ export function AuthProvider({ children }) {
     const email = authUser.email
     if (!email) return null
     try {
-      // 1. 기존 app_users에서 이메일로 검색
+      // 1. 기존 app_users에서 이메일로 검색 (read-only view 사용 — password_hash 미노출)
       const res = await fetch(
-        `${SB_URL}/rest/v1/app_users?email=eq.${encodeURIComponent(email)}&select=*&limit=1`,
+        `${SB_URL}/rest/v1/app_users_safe?email=eq.${encodeURIComponent(email)}&select=*&limit=1`,
         { headers: H }
       )
       const users = await res.json()
@@ -110,14 +110,15 @@ export function AuthProvider({ children }) {
         name, role: 'owner', email,
         branch_ids: JSON.stringify([brId]), view_branch_ids: JSON.stringify([brId])
       }
+      // INSERT는 minimal 응답 (response에 password_hash 노출 방지). 바로 아래 view 조회로 채움
       await fetch(`${SB_URL}/rest/v1/app_users`, {
-        method: 'POST', headers: { ...H, 'Prefer': 'return=representation' },
+        method: 'POST', headers: { ...H, 'Prefer': 'return=minimal' },
         body: JSON.stringify(newUser)
       })
 
-      // 생성된 유저 조회
+      // 생성된 유저 조회 (read-only view 사용)
       const res2 = await fetch(
-        `${SB_URL}/rest/v1/app_users?id=eq.${accId}&select=*&limit=1`,
+        `${SB_URL}/rest/v1/app_users_safe?id=eq.${accId}&select=*&limit=1`,
         { headers: H }
       )
       const created = await res2.json()
