@@ -3690,11 +3690,6 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0,flexWrap:"wrap",maxWidth:"100%"}}>
           <button onClick={()=>changeDate(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:T.fs.sm,color:T.gray600,padding:"2px 4px",flexShrink:0}}><I name="chevL" size={14}/></button>
           <span className="tl-date-label" onClick={()=>setShowCal(!showCal)} style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.text,flexShrink:0,whiteSpace:"nowrap",cursor:"pointer"}}>{dateLabel}</span>
-          {/* 헤더 현재 시각 표시 (날짜 라벨 옆) — nowTick 1분 단위 갱신 */}
-          <span title="현재 시각" style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.primary,flexShrink:0,whiteSpace:"nowrap",padding:"2px 8px",borderRadius:T.radius.md,background:T.primaryLt,fontVariantNumeric:"tabular-nums",letterSpacing:0.5,display:"inline-flex",alignItems:"center",gap:4}}>
-            <I name="clock" size={12} color={T.primary}/>
-            {String(now.getHours()).padStart(2,"0")}:{String(now.getMinutes()).padStart(2,"0")}
-          </span>
           <div style={{position:"relative",flexShrink:0}}>
             
             {showCal && <MiniCal selDate={selDate} onSelect={d=>{setSelDate(d);setShowCal(false);}} onClose={()=>setShowCal(false)}/>}
@@ -3759,6 +3754,12 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
               <span>{dt.getDate()}</span>
             </button>;
           })}
+          {/* 14일 탭 마지막(월 25) 옆 — 시계 아이콘 버튼. 클릭 시 /clock.html 새 탭 오픈 (매장 로비 풀스크린 시계) */}
+          <button onClick={()=>window.open('/clock.html','_blank','noopener')}
+            title="로비 시계 (새 탭)"
+            style={{minWidth:38,height:32,borderRadius:T.radius.md,border:"1px solid #e8e8e8",background:T.bgCard,color:T.primary,cursor:"pointer",fontFamily:"inherit",padding:0,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginLeft:6}}>
+            <I name="clock" size={16} color={T.primary}/>
+          </button>
         </div>
         {/* 📣 팀채팅 공지 말풍선 — 7-day 버튼 오른쪽 빈 공간에 배치 */}
         {/* TopAnnounceBubble 제거 — AnnouncesMarquee로 통합 (AppShell 상단) */}
