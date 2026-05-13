@@ -497,8 +497,8 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   // 네이버 예약 판정: reservationId 있음 + ai_/manual_/외부플랫폼 접두사 아님 + source != 외부플랫폼
   const _resIdStr = String(item?.reservationId || "");
   const _srcStr = String(item?.source || "").toLowerCase();
-  const _EXT_PREFIXES = ["ai_","manual_","trazy_","creatrip_","seoulbeauty_","cusmetic_"];
-  const _EXT_SOURCES = ["trazy","creatrip","seoulbeauty","cusmetic","서울뷰티","크리에이트립"];
+  const _EXT_PREFIXES = ["ai_","manual_","trazy_","creatrip_","seoulbeauty_","cusmetic_","kakao_"];
+  const _EXT_SOURCES = ["trazy","creatrip","seoulbeauty","cusmetic","서울뷰티","크리에이트립","kakao","카톡","카카오"];
   const isNaverItem = !!(item?.reservationId)
     && !_EXT_PREFIXES.some(p => _resIdStr.startsWith(p))
     && !_EXT_SOURCES.some(p => _srcStr.includes(p));
