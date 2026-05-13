@@ -11,42 +11,56 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
     width: 100%; height: 100%; overflow: hidden;
-    background: #0F1E5C;
     color: #fff;
     font-family: 'Pretendard', system-ui, -apple-system, sans-serif;
     -webkit-user-select: none; user-select: none;
   }
   body {
     display: flex; align-items: center; justify-content: center;
-    transform: scaleX(-1); /* 좌우 반전 — 셀카로 찍었을 때 똑바로 보이게 */
+    transform: scaleX(-1); /* 셀카 보정 */
+    position: relative;
+    background: #0F1E5C;
+  }
+  /* 배경 — 그라데이션이 입혀지는 레이어 (body 자식, fixed) */
+  .bg {
+    position: fixed; inset: 0;
+    z-index: 0;
+    transition: opacity 1.2s ease;
+  }
+  /* 본문 가독성용 어두운 오버레이 (콘텐츠 잘 보이게) */
+  .bg::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(0,0,0,.25) 0%, rgba(0,0,0,.55) 100%);
   }
   .stage {
     text-align: center;
     line-height: 1.05;
+    position: relative; z-index: 1;
+    text-shadow: 0 4px 24px rgba(0,0,0,.5), 0 1px 2px rgba(0,0,0,.4);
   }
   .date {
-    font-size: clamp(48px, 9vw, 128px);
-    font-weight: 700;
-    color: #93C5FD;
-    margin-bottom: 14px;
+    font-size: clamp(72px, 12vw, 180px);
+    font-weight: 800;
+    color: #fff;
+    margin-bottom: 18px;
     letter-spacing: 1px;
   }
   .dow {
-    font-size: clamp(32px, 5vw, 72px);
-    font-weight: 600;
-    color: #93C5FD;
-    margin-bottom: 30px;
+    font-size: clamp(44px, 7vw, 100px);
+    font-weight: 700;
+    color: #E0E7FF;
+    margin-bottom: 36px;
     letter-spacing: 3px;
   }
   .ampm {
-    font-size: clamp(20px, 3.5vw, 44px);
+    font-size: clamp(24px, 4vw, 52px);
     font-weight: 600;
-    color: #BFDBFE;
-    margin-bottom: 8px;
+    color: #DBEAFE;
+    margin-bottom: 10px;
   }
   .time-wrap {
     display: inline-flex; align-items: baseline; justify-content: center;
-    gap: 8px;
+    gap: 10px;
   }
   .time {
     font-family: 'Orbitron', 'Pretendard', sans-serif;
@@ -54,38 +68,61 @@
     font-weight: 900;
     letter-spacing: 6px;
     color: #fff;
-    text-shadow: 0 0 24px rgba(147,197,253,.35);
+    text-shadow: 0 0 32px rgba(255,255,255,.25), 0 4px 24px rgba(0,0,0,.5);
     line-height: 1;
   }
   .sec {
     font-family: 'Orbitron', 'Pretendard', sans-serif;
-    font-size: clamp(28px, 5vw, 64px);
+    font-size: clamp(32px, 5.5vw, 72px);
     font-weight: 700;
-    color: #93C5FD;
+    color: #E0E7FF;
     letter-spacing: 2px;
   }
-  /* 우상단 미니 토글: 좌우 반전 ON/OFF (직원이 콘솔 없이도 조정 가능) */
+  /* 우상단 미니 토글 */
   .toggle {
     position: fixed; top: 16px; right: 16px;
-    transform: scaleX(-1); /* 모체가 뒤집혀 있으므로 다시 뒤집어 정방향으로 보이게 */
-    background: rgba(255,255,255,.08);
-    color: #BFDBFE;
-    border: 1px solid rgba(147,197,253,.3);
+    transform: scaleX(-1);
+    background: rgba(255,255,255,.12);
+    backdrop-filter: blur(8px);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,.25);
     border-radius: 8px;
     padding: 6px 10px;
     font-size: 12px;
     font-family: inherit;
     cursor: pointer;
-    opacity: .4;
+    opacity: .35;
     transition: opacity .2s;
+    z-index: 10;
   }
   .toggle:hover { opacity: 1; }
+  /* 좌하단 다음 배경 버튼 */
+  .next-bg {
+    position: fixed; bottom: 16px; right: 16px;
+    transform: scaleX(-1);
+    background: rgba(255,255,255,.12);
+    backdrop-filter: blur(8px);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,.25);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    opacity: .35;
+    transition: opacity .2s;
+    z-index: 10;
+  }
+  .next-bg:hover { opacity: 1; }
   body.no-flip { transform: none; }
-  body.no-flip .toggle { transform: none; }
+  body.no-flip .toggle,
+  body.no-flip .next-bg { transform: none; }
 </style>
 </head>
 <body>
+  <div class="bg" id="bg"></div>
   <button class="toggle" id="flipBtn" title="좌우 반전 토글">↔ 반전</button>
+  <button class="next-bg" id="nextBgBtn" title="배경 바꾸기">🎨 배경</button>
   <div class="stage">
     <div class="date" id="date">—</div>
     <div class="dow" id="dow">—</div>
@@ -113,17 +150,104 @@
   tick();
   setInterval(tick, 1000);
 
+  // ── 배경 그라데이션 풀 (메쉬 그라데이션 — 사진 같은 깊이감) ──
+  const BACKGROUNDS = [
+    // 1. 일출 (피치+로즈)
+    `radial-gradient(at 20% 30%, #FFB088 0%, transparent 50%),
+     radial-gradient(at 80% 20%, #FF7A95 0%, transparent 50%),
+     radial-gradient(at 70% 80%, #C24B6E 0%, transparent 50%),
+     radial-gradient(at 30% 70%, #8B3A62 0%, transparent 50%),
+     linear-gradient(135deg, #4A1D3F 0%, #2D0F2A 100%)`,
+    // 2. 보라 라벤더 (몽환)
+    `radial-gradient(at 30% 20%, #C4A7E7 0%, transparent 50%),
+     radial-gradient(at 80% 60%, #9D7BD8 0%, transparent 50%),
+     radial-gradient(at 20% 80%, #6B4A9E 0%, transparent 50%),
+     linear-gradient(135deg, #3D2466 0%, #1F1140 100%)`,
+    // 3. 민트 + 블루 (시원함)
+    `radial-gradient(at 25% 35%, #5EEAD4 0%, transparent 50%),
+     radial-gradient(at 75% 25%, #38BDF8 0%, transparent 50%),
+     radial-gradient(at 65% 75%, #0EA5E9 0%, transparent 50%),
+     linear-gradient(135deg, #0C4A6E 0%, #082F49 100%)`,
+    // 4. 야경 (네이비 + 골드)
+    `radial-gradient(at 60% 20%, #FCD34D 0%, transparent 35%),
+     radial-gradient(at 30% 70%, #6366F1 0%, transparent 55%),
+     radial-gradient(at 75% 80%, #A78BFA 0%, transparent 50%),
+     linear-gradient(135deg, #1E1B4B 0%, #0F0E2E 100%)`,
+    // 5. 라일락 핑크 (부드러움)
+    `radial-gradient(at 20% 25%, #FBCFE8 0%, transparent 50%),
+     radial-gradient(at 80% 30%, #DDA0DD 0%, transparent 50%),
+     radial-gradient(at 70% 80%, #C084FC 0%, transparent 50%),
+     linear-gradient(135deg, #831843 0%, #4A0E2E 100%)`,
+    // 6. 일몰 (오렌지 + 보라)
+    `radial-gradient(at 30% 80%, #FB923C 0%, transparent 50%),
+     radial-gradient(at 70% 30%, #F97316 0%, transparent 50%),
+     radial-gradient(at 20% 30%, #BE185D 0%, transparent 50%),
+     linear-gradient(135deg, #7C2D12 0%, #431407 100%)`,
+    // 7. 오로라 (시안 + 그린 + 보라)
+    `radial-gradient(at 30% 20%, #67E8F9 0%, transparent 45%),
+     radial-gradient(at 70% 50%, #A5F3FC 0%, transparent 45%),
+     radial-gradient(at 50% 80%, #818CF8 0%, transparent 50%),
+     linear-gradient(135deg, #134E4A 0%, #042F2E 100%)`,
+    // 8. 로즈골드 (분홍 + 골드)
+    `radial-gradient(at 25% 30%, #FBA8C9 0%, transparent 50%),
+     radial-gradient(at 75% 25%, #FCD34D 0%, transparent 45%),
+     radial-gradient(at 60% 75%, #DB2777 0%, transparent 50%),
+     linear-gradient(135deg, #831843 0%, #500724 100%)`,
+    // 9. 깊은 바다 (틸 + 블루)
+    `radial-gradient(at 20% 30%, #2DD4BF 0%, transparent 50%),
+     radial-gradient(at 80% 30%, #06B6D4 0%, transparent 50%),
+     radial-gradient(at 50% 80%, #0EA5E9 0%, transparent 50%),
+     linear-gradient(135deg, #134E4A 0%, #022C22 100%)`,
+    // 10. 베이지 + 모카 (따뜻한 살롱톤)
+    `radial-gradient(at 30% 25%, #FED7AA 0%, transparent 50%),
+     radial-gradient(at 75% 30%, #FCA5A5 0%, transparent 50%),
+     radial-gradient(at 50% 80%, #A78BFA 0%, transparent 45%),
+     linear-gradient(135deg, #7C2D12 0%, #44280E 100%)`,
+    // 11. 자색 안개
+    `radial-gradient(at 25% 40%, #C4B5FD 0%, transparent 50%),
+     radial-gradient(at 75% 60%, #F0ABFC 0%, transparent 50%),
+     radial-gradient(at 50% 30%, #818CF8 0%, transparent 50%),
+     linear-gradient(135deg, #3B0764 0%, #1E0140 100%)`,
+    // 12. 인디고 별빛
+    `radial-gradient(at 30% 25%, #818CF8 0%, transparent 50%),
+     radial-gradient(at 75% 70%, #6366F1 0%, transparent 50%),
+     radial-gradient(at 20% 80%, #4338CA 0%, transparent 50%),
+     linear-gradient(135deg, #1E1B4B 0%, #0F0E2E 100%)`,
+  ];
+
+  let bgIdx = Math.floor(Math.random() * BACKGROUNDS.length);
+  function applyBg(idx) {
+    bgIdx = (idx + BACKGROUNDS.length) % BACKGROUNDS.length;
+    $("bg").style.background = BACKGROUNDS[bgIdx];
+  }
+  applyBg(bgIdx);
+
+  // 5분마다 자동 배경 변경
+  setInterval(() => {
+    let next;
+    do { next = Math.floor(Math.random() * BACKGROUNDS.length); }
+    while (next === bgIdx && BACKGROUNDS.length > 1);
+    applyBg(next);
+  }, 5 * 60 * 1000);
+
+  // 수동 변경 (🎨 버튼)
+  $("nextBgBtn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    applyBg(bgIdx + 1);
+  });
+
   // 좌우 반전 토글 (localStorage 기억)
   const KEY = "bliss_clock_no_flip";
   if (localStorage.getItem(KEY) === "1") document.body.classList.add("no-flip");
-  $("flipBtn").addEventListener("click", () => {
+  $("flipBtn").addEventListener("click", (e) => {
+    e.stopPropagation();
     document.body.classList.toggle("no-flip");
     localStorage.setItem(KEY, document.body.classList.contains("no-flip") ? "1" : "0");
   });
 
-  // 풀스크린 (사용자 첫 클릭 시)
+  // 풀스크린 (사용자 첫 클릭 시, 버튼 제외)
   document.addEventListener("click", (e) => {
-    if (e.target.id === "flipBtn") return;
+    if (e.target.id === "flipBtn" || e.target.id === "nextBgBtn") return;
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen?.().catch(()=>{});
     }
