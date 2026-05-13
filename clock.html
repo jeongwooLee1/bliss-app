@@ -215,24 +215,46 @@
      linear-gradient(135deg, #1E1B4B 0%, #0F0E2E 100%)`,
   ];
 
-  let bgIdx = Math.floor(Math.random() * BACKGROUNDS.length);
+  // ── 배경 선택 — KST 날짜 기반 (하루 1번, 자정 00:00 KST에 변경) ──
+  function kstDateStr() {
+    const d = new Date();
+    // 현재 UTC ms + KST offset (9h) → KST 시각을 UTC 메서드로 추출
+    const k = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+    return `${k.getUTCFullYear()}-${k.getUTCMonth()+1}-${k.getUTCDate()}`;
+  }
+  function hashStr(s) {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = ((h * 31) + s.charCodeAt(i)) | 0;
+    return Math.abs(h);
+  }
+  function bgIdxForDate(dateStr) {
+    return hashStr(dateStr) % BACKGROUNDS.length;
+  }
+
+  let lastKstDate = kstDateStr();
+  let bgIdx = bgIdxForDate(lastKstDate);
+  let manualOverride = false;  // 🎨 버튼 누른 경우 자정 전까지 자동 변경 차단
+
   function applyBg(idx) {
     bgIdx = (idx + BACKGROUNDS.length) % BACKGROUNDS.length;
     $("bg").style.background = BACKGROUNDS[bgIdx];
   }
   applyBg(bgIdx);
 
-  // 5분마다 자동 배경 변경
+  // 1분마다 KST 날짜 체크 — 자정 넘어가면 새 배경 적용
   setInterval(() => {
-    let next;
-    do { next = Math.floor(Math.random() * BACKGROUNDS.length); }
-    while (next === bgIdx && BACKGROUNDS.length > 1);
-    applyBg(next);
-  }, 5 * 60 * 1000);
+    const now = kstDateStr();
+    if (now !== lastKstDate) {
+      lastKstDate = now;
+      manualOverride = false;
+      applyBg(bgIdxForDate(now));
+    }
+  }, 60 * 1000);
 
-  // 수동 변경 (🎨 버튼)
+  // 수동 변경 (🎨 버튼) — 그날 한정으로 다른 배경 보기, 다음날 자정에 deterministic 복귀
   $("nextBgBtn").addEventListener("click", (e) => {
     e.stopPropagation();
+    manualOverride = true;
     applyBg(bgIdx + 1);
   });
 
