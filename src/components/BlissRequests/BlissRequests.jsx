@@ -31,6 +31,9 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
   const [submitting, setSubmitting] = useState(false);
   // Reply form (master only)
   const [replyText, setReplyText] = useState("");
+  // 요청 본문(description) 인라인 편집
+  const [editingDescId, setEditingDescId] = useState(null);
+  const [editingDescText, setEditingDescText] = useState("");
 
   const loadData = async () => {
     try {
@@ -260,6 +263,44 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
     });
     await saveAll(next);
     setReplyText("");
+  };
+
+  // 답변 수정 시작 — 기존 reply를 input에 미리 채움
+  const startEditReply = (r) => {
+    setReplyText(r.reply || "");
+    setOpenId(r.id);
+    // 다음 paint 후 input에 포커스
+    setTimeout(() => {
+      const el = document.getElementById(`reply-input-${r.id}`);
+      if (el) { el.focus(); el.select?.(); }
+    }, 80);
+  };
+
+  // 답변 삭제
+  const deleteReply = async (id) => {
+    if (!confirm("이 답변을 삭제할까요?")) return;
+    const next = requests.map(r => {
+      if (r.id !== id) return r;
+      const u = { ...r }; delete u.reply; return u;
+    });
+    await saveAll(next);
+  };
+
+  // 요청 본문(description) 수정
+  const startEditDesc = (r) => {
+    setEditingDescId(r.id);
+    setEditingDescText(r.description || "");
+  };
+  const cancelEditDesc = () => {
+    setEditingDescId(null);
+    setEditingDescText("");
+  };
+  const saveEditDesc = async (id) => {
+    const txt = editingDescText.trim();
+    if (!txt) { alert("내용을 입력해주세요."); return; }
+    const next = requests.map(r => r.id === id ? { ...r, description: txt } : r);
+    await saveAll(next);
+    cancelEditDesc();
   };
 
   const removeReq = async (id) => {
@@ -569,7 +610,24 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
               <I name={isOpen?"chevD":"chevR"} size={14} color={T.gray400}/>
             </div>
             {isOpen && <div style={{padding:"0 16px 16px",borderTop:"1px solid "+T.gray100}}>
-              <div style={{fontSize:13,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap",padding:"12px 0"}}>{r.description}</div>
+              {editingDescId === r.id ? (
+                <div style={{padding:"12px 0"}}>
+                  <textarea value={editingDescText} onChange={e=>setEditingDescText(e.target.value)}
+                    style={{width:"100%",minHeight:90,padding:"8px 10px",fontSize:13,border:"1.5px solid "+T.primary,borderRadius:8,fontFamily:"inherit",resize:"vertical",lineHeight:1.5}}/>
+                  <div style={{display:"flex",gap:6,marginTop:6}}>
+                    <button onClick={()=>saveEditDesc(r.id)} style={{padding:"5px 14px",fontSize:11,fontWeight:700,background:T.primary,color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontFamily:"inherit"}}>저장</button>
+                    <button onClick={cancelEditDesc} style={{padding:"5px 12px",fontSize:11,background:"#fff",color:T.textSub,border:"1px solid "+T.border,borderRadius:6,cursor:"pointer",fontFamily:"inherit"}}>취소</button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{display:"flex",alignItems:"flex-start",gap:8,padding:"12px 0"}}>
+                  <div style={{flex:1,fontSize:13,color:T.text,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{r.description}</div>
+                  {(isMaster || r.name === currentUser?.name) && (
+                    <button onClick={()=>startEditDesc(r)} title="요청 본문 수정"
+                      style={{padding:"3px 8px",fontSize:10,fontWeight:600,background:"#fff",color:T.textSub,border:"1px solid "+T.border,borderRadius:6,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>✏️ 수정</button>
+                  )}
+                </div>
+              )}
               {(() => {
                 const imgs = Array.isArray(r.images) ? r.images : (r.imageData ? [r.imageData] : []);
                 if (imgs.length === 0) return null;
@@ -580,6 +638,12 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
               {r.reply && <div style={{marginTop:12,padding:"10px 14px",background:T.primaryLt||"#EEF2FF",borderRadius:8,borderLeft:"3px solid "+T.primary}}>
                 <div style={{fontSize:11,fontWeight:T.fw.bolder,color:T.primary,marginBottom:4,display:"flex",alignItems:"center",gap:5}}>
                   <I name="msgSq" size={11} color={T.primary}/> 답변
+                  {isMaster && <span style={{marginLeft:"auto",display:"inline-flex",gap:4}}>
+                    <button onClick={()=>startEditReply(r)} title="답변 수정"
+                      style={{padding:"2px 7px",fontSize:10,fontWeight:600,background:"#fff",color:T.primary,border:"1px solid "+T.primary+"55",borderRadius:5,cursor:"pointer",fontFamily:"inherit"}}>✏️ 수정</button>
+                    <button onClick={()=>deleteReply(r.id)} title="답변 삭제"
+                      style={{padding:"2px 7px",fontSize:10,fontWeight:600,background:"#fff",color:T.danger,border:"1px solid "+T.danger+"55",borderRadius:5,cursor:"pointer",fontFamily:"inherit"}}>🗑</button>
+                  </span>}
                 </div>
                 <div style={{fontSize:13,color:T.text,whiteSpace:"pre-wrap"}}>{r.reply}</div>
               </div>}
@@ -593,7 +657,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
                   <button onClick={()=>removeReq(r.id)} style={{marginLeft:"auto",padding:"4px 10px",borderRadius:6,border:"1px solid "+T.danger+"66",background:"#fff5f5",color:T.danger,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>삭제</button>
                 </div>
                 <div style={{display:"flex",gap:6}}>
-                  <input value={replyText} onChange={e=>setReplyText(e.target.value)} placeholder={r.reply?"답변 수정...":"답변 작성..."}
+                  <input id={`reply-input-${r.id}`} value={replyText} onChange={e=>setReplyText(e.target.value)} placeholder={r.reply?"답변 수정 — ✏️ 버튼으로 기존 답변 불러오기":"답변 작성..."}
                     style={{flex:1,padding:"7px 10px",fontSize:12,border:"1px solid "+T.border,borderRadius:6,fontFamily:"inherit"}}/>
                   <button onClick={()=>saveReply(r.id)} title={replyText.trim()?"답변 등록":"답변 없이 검토중으로 전환"} style={{padding:"7px 14px",borderRadius:6,border:"none",background:T.primary,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>등록</button>
                 </div>

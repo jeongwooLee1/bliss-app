@@ -2341,6 +2341,10 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   };
 
   const handleSave = async (item) => {
+    // 🔴 빨간 강조(highlightedBlockId) 자동 해제 — 블록을 손대면(이동·시간변경·저장 등) 강조 사라짐
+    if (highlightedBlockId && (highlightedBlockId === item.id || highlightedBlockId === item.reservationId)) {
+      setHighlightedBlockId(null);
+    }
     // 베타 모드: 모든 신규/수정 예약에 isBeta=true 강제 마킹 (라이브 격리)
     if (betaGroupMode) item.isBeta = true;
     // 🔒 race-condition 방어: 네이버 서버가 비동기로 갱신하는 필드(status, naver_*_dt)는
