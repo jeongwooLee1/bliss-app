@@ -1879,10 +1879,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   const sortStaffByOrder = (staffList, branchId) => {
     // 룰:
     //  - empColOrder가 있으면 사용자 ◀▶ 순서 절대 안 건드림 (강제 정렬 X)
-    //  - empColOrder에 없는 직원(첫 근무표·새 이동)만 자동 끼워넣기:
-    //      · base 비남자/guest 비남자 → 남직원 직전에
-    //      · 남직원 → 항상 끝
-    //  예: 경아·지은·도윤 + 민정 이동 → 경아·지은·민정·도윤
+    //  - empColOrder에 없는 직원(첫 근무표·새 이동)만 자동 끼워넣기
+    //  - 그룹 내 순서는 empList 절대 인덱스 기준 stable sort (매 렌더마다 같은 순서 보장)
     const isBase = (e) => {
       const emp = BASE_EMP_LIST.find(b => b.id === e.id);
       return emp && emp.branch_id === branchId;
@@ -1891,19 +1889,25 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       const emp = empList.find(x => x.id === e.id);
       return emp?.isMale === true || emp?.gender === 'M';
     };
-    // 룰:
-    //  - 디폴트(empColOrder 비어있음): 비남자 base → guest → 남직원 순서로 자동 배치
-    //  - 유저 ◀▶ 변경(empColOrder 있음): 그 순서 그대로 절대 안 건드림. newcomers는 ordered 끝.
+    // 🔑 stable sort key — empList 절대 인덱스 (없으면 이름 알파벳 fallback)
+    // → staffList 입력 순서·realtime 갱신 등 외부 요인이 바뀌어도 항상 동일한 순서
+    const stableKey = (e) => {
+      const idx = empList.findIndex(x => x.id === e.id);
+      return idx >= 0 ? idx : 9999 + (e.name || e.id || "").charCodeAt(0);
+    };
+    const stableSort = (arr) => arr.slice().sort((a, b) => stableKey(a) - stableKey(b));
+
     const order = Array.isArray(empColOrder[branchId]) ? empColOrder[branchId] : [];
     if (order.length === 0) {
-      const nonMaleBase = staffList.filter(e => isBase(e) && !isMaleEmp(e));
-      const guests = staffList.filter(e => !isBase(e) && !isMaleEmp(e));
-      const males = staffList.filter(e => isMaleEmp(e));
+      const nonMaleBase = stableSort(staffList.filter(e => isBase(e) && !isMaleEmp(e)));
+      const guests = stableSort(staffList.filter(e => !isBase(e) && !isMaleEmp(e)));
+      const males = stableSort(staffList.filter(e => isMaleEmp(e)));
       return [...nonMaleBase, ...guests, ...males];
     }
     const orderSet = new Set(order);
     const ordered = order.map(id => staffList.find(e => e.id === id)).filter(Boolean);
-    const newcomers = staffList.filter(e => !orderSet.has(e.id));
+    // newcomers도 stable sort 적용 (empColOrder 안에 없는 신규 직원의 끼워넣기 순서 안정화)
+    const newcomers = stableSort(staffList.filter(e => !orderSet.has(e.id)));
     return [...ordered, ...newcomers];
   };
   // pendingSeedRef effect 제거 — empColOrder 자동 갱신 X (룰)
