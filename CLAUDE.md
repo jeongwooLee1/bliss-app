@@ -1338,3 +1338,22 @@ for (const k of deletedKeys) delete finalToSave[k];
 **비용**: Gemini 2.5 Flash 무료 한도 안 (월 ~30~50건 추가 호출 예상). 추가 비용 없음.
 
 **적용**: 서버 직접 patch + `systemctl restart bliss-naver`. 백업 `bak_pre_kakao_ai_*`. React 변경 0건.
+
+### /book-submit 카카오 예약 폼 AI 분석 추가 (2026-05-15)
+**배경**: `/kakao-booking`(챗봇) 외에 `/book-submit` (카카오 채널 예약 폼)도 별도 endpoint. 손님이 `service` 카테고리 + `memo`(요청사항 자유텍스트) 둘 다 입력 가능. 기존엔 memo가 그냥 평문으로만 들어가고 시술 매칭 안 됨.
+
+**fix**: `/book-submit`에도 동일 `_ai_extract_booking_info(service+memo)` 호출 → reservation INSERT body에:
+- `selected_services` ← AI 매칭 시술 ID
+- `selected_tags` ← AI 매칭 태그 (시스템 메타 차단)
+- `cust_gender` ← 폼 입력 우선, AI fallback
+- `memo` ← `[AI 특이사항] ...` 추가
+
+**검증** (6 form 케이스 — service+memo 조합):
+- "페이스 + 눈썹+인중+턱" → 시술 3건 ✅
+- "바디 + 겨드랑이+다리. 알레르기" → 시술 2건 + 특이사항 "알레르기" ✅
+- **"브라질리언 + memo에 '풀바디 영어 가능한 분'" → 풀바디로 재매칭** + 특이사항 ✅
+- "(service 비움) + 비키니라인만" → 비키니 ✅
+
+손님이 카테고리는 잘못 골랐어도 memo의 자유텍스트로 정확히 시술 매칭됨.
+
+**비용**: 같은 Gemini 2.5 Flash 무료. 백업 `bak_pre_book_submit_ai_*`.
