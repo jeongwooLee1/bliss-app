@@ -1285,3 +1285,16 @@ for (const k of deletedKeys) delete finalToSave[k];
 - **chat.db `text` vs `attributedBody`**: macOS Data Detector가 시간 지난 메시지를 attributedBody(NSKeyedArchiver bplist)로 재인코딩 → 한글 멀티바이트 추출 어려움. 폴링 60초 주기로 fresh 메시지(text 형식)일 때 잡는 게 핵심. attributedBody 백필 필요 시 `typedstream` Python 라이브러리 검토
 - **18일 신규고객 RPC는 신규 판정을 `MIN(date)=p_target_date`로 함** — 같은 고객의 모든 매출 중 가장 이른 날짜가 18일 전이면 신규로 인정. 따라서 18일 전 첫 매출 + 그 이후 추가 매출 없는 케이스만 잡힘. 18일 전 첫 매출 + 17일 전 재방문은 제외 (첫 매출 날짜만 보고 판정 못 함 → 알림 보내야 할 시점에는 오늘 = first_date+18 이라 다른 매출 있는지 별도 검증 안 함; 본 룰의 의도는 "신규고객 + 1회만 받음"이므로 RPC가 정확)
 - **공지 편집 시 acks 보존** — 직원이 이미 확인 누른 공지를 마스터가 수정해도 acks는 그대로. 단순 오타 수정용. 핵심 변경이면 새 공지로 등록 권장
+
+### 서버 ai_booking.py — history regex fallback (2026-05-14, React 변경 0)
+**증상**: Mckayla(5/13 05:08 KST) 사례 재발견 — AI가 history에서 service/branch 추출 못 해 booking JSON에 빈값으로 줌 → `_state_merge`가 누적 못함 → 다음 turn에서 같은 정보 또 묻기 → 손님 짜증
+
+**원인**: 5/13 02:16 UTC fix(state_block + lang 마지막 메시지 기준 재판정)는 적용됐지만, AI가 추출 자체를 안 한 정보는 `[현재 누적 정보]` 블록에도 안 들어감 → 안전장치 부재
+
+**fix**: `_state_merge` 호출 직전 (1832줄) history regex fallback 추가 — booking이 None/빈 dict여도 history_text에서 service/branch 직접 매칭해 booking dict 채움. `_state_merge`는 채워진 booking을 그대로 누적
+- service: services_cache 한국어 시술명 매칭 → 영어 키워드(eyebrow/brazilian/bikini/full body/full face/underarm/leg/arm) → 한국어 매핑
+- branch: 영문(gangnam/wangsimni 등) + 한글(강남본점/왕십리점 등) 양방향 키워드 매칭
+
+**적용**: 서버 직접 (백업 `bak_pre_regex_fb_20260514_225502`, `systemctl restart bliss-naver`). React 변경 0건이라 BLISS_V/version.txt bump 불필요, CF 퍼지 무관.
+
+**효과**: AI Haiku가 history에서 키워드를 놓쳐도 코드가 booking에 강제 주입 → state 누적 보장 → 다음 turn에서 같은 정보 재질문 차단. Mckayla 같은 사고 재발 방지.
