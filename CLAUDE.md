@@ -1357,3 +1357,26 @@ for (const k of deletedKeys) delete finalToSave[k];
 손님이 카테고리는 잘못 골랐어도 memo의 자유텍스트로 정확히 시술 매칭됨.
 
 **비용**: 같은 Gemini 2.5 Flash 무료. 백업 `bak_pre_book_submit_ai_*`.
+
+### 번역 메인을 GPT-4o-mini로 변경 (2026-05-15)
+**배경**: 번역 4모델 시뮬 결과:
+- DeepL (기존 1차): "Yes please" → "네, 그렇게 해주세요" (추측 오류) / "Можете 10:00" → "오전 10시" (동사 누락) / "tidy up" → "정리만 했을 뿐이에요" (시제 오류) 등 **다수 오류**
+- Sonnet 4.5: 가장 자연스럽지만 ~₩4,000/월
+- Gemini 2.5 Flash: 짧은 문장 OK, 긴 문장 maxOutputTokens 짤림
+- Gemini 2.5 Pro: **빈 응답 10/10** (reasoning 모델이라 thinking에 토큰 소진, 출력 part 비어있음)
+- **GPT-4o-mini: 자연스러움 100% 정확 + 0.8-2초 + 월 ~₩170**
+
+**fix**: `translate_to_korean`에서 DeepL 호출 부분 통째로 제거 → GPT-4o-mini가 메인.
+- 메인: GPT-4o-mini (자연 구어체)
+- 폴백: Claude Sonnet 4.5 (CLAUDE_TRANSLATE_MODEL — 기존 폴백 경로 유지)
+
+**비용 절감**: ~₩3,975/월 → ~₩170/월 (DeepL 무료였지만 품질 낮아 GPT-4o-mini로 교체. 절감보단 품질 향상이 핵심). 전체 합계 **~₩11,420/월** (한도 57%).
+
+**검증** (실제 함수 호출):
+- "Thank you!" → "감사합니다!"
+- "Yes please" → "네, 부탁해요."
+- "Можете 10:00" → "10시 가능해요." (DeepL은 "오전 10시"로 동사 누락했던 것)
+- "5/13 5pm Gangnam eyebrows" → "5월 13일 오후 5시 강남에서 눈썹 왁싱 예약이에요."
+- "I am a woman! And juste a bikini Line tidy up!" → "저는 여성이고, 비키니 라인 정리만 하고 싶어요!" (시제 정확)
+
+**적용**: 서버 직접 patch + `systemctl restart bliss-naver`. 백업 `bak_pre_translate_gpt_*`. React 변경 0건.
