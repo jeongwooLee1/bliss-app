@@ -381,8 +381,11 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     }).catch(console.error);
   }, []);
   const setEmpWorkHours = React.useCallback(async (updater) => {
-    // race condition fix — 저장 직전 서버 latest fetch → merge → 저장
+    // race condition fix — 저장 직전 서버 latest fetch → diff 기반 merge → 저장
     // (다중 사용자 동시 편집 시 옛 데이터로 덮어쓰던 버그: "출근시간 종종 12:10으로 회귀" 사고)
+    // 2026-05-14 (지은 id_4dd4t9na07): 기존 `{...serverLatest, ...localPrev}` spread는 localPrev가
+    //   serverLatest를 통째로 덮어 다른 사용자 변경이 사라지던 버그(서현·수연 출근시간 swap 회귀).
+    //   → 사용자가 이번 호출에서 실제로 변경한 key만 추출해 serverLatest 위에 overlay (diff merge).
     let serverLatest = {};
     try {
       const r = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.empWorkHours_v1&select=value`, {
@@ -393,15 +396,24 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       serverLatest = v ? (typeof v === "string" ? JSON.parse(v) : v) : {};
     } catch {}
     _setEmpWorkHours(localPrev => {
-      // 서버 baseline + 내 로컬 변경 우선 적용 (다른 사용자 변경 보존)
-      const merged = { ...serverLatest, ...localPrev };
-      const next = typeof updater === "function" ? updater(merged) : updater;
+      const next = typeof updater === "function" ? updater(localPrev) : updater;
+      // 1) 이번 호출에서 사용자가 실제로 변경/추가한 key 추출 (localPrev → next diff)
+      const changedKeys = new Set();
+      for (const k of Object.keys(next)) {
+        if (JSON.stringify(next[k]) !== JSON.stringify(localPrev[k])) changedKeys.add(k);
+      }
+      const deletedKeys = Object.keys(localPrev).filter(k => !(k in next));
+      // 2) 서버 baseline 위에 내 변경만 overlay → 다른 사용자 변경 100% 보존
+      const finalToSave = { ...serverLatest };
+      for (const k of changedKeys) finalToSave[k] = next[k];
+      for (const k of deletedKeys) delete finalToSave[k];
+      // 3) POST finalToSave (전체 next 아님) + state도 finalToSave로 → 다른 사용자 변경 즉시 UI 반영
       const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
       fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
         method: "POST", headers: H,
-        body: JSON.stringify({ business_id: _activeBizId, id: "empWorkHours_v1", key: "empWorkHours_v1", value: JSON.stringify(next) })
+        body: JSON.stringify({ business_id: _activeBizId, id: "empWorkHours_v1", key: "empWorkHours_v1", value: JSON.stringify(finalToSave) })
       }).catch(console.error);
-      return next;
+      return finalToSave;
     });
   }, []);
 
