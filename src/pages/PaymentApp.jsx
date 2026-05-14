@@ -68,7 +68,9 @@ function PaymentLanding() {
       const tp = TossPayments(info.client_key)
       // 비회원 결제(ANONYMOUS) — 빌링은 별도 customerKey 발급 필요
       const payment = tp.payment({ customerKey: 'ANONYMOUS' })
-      const orderName = info.purpose === 'deposit' ? `${info.branch_name} 예약금` : (info.purpose || '결제')
+      const orderName = info.purpose === 'deposit' ? `${info.branch_name} 예약금`
+                      : info.purpose === 'topup' ? `${info.branch_name}`
+                      : (info.purpose || '결제')
       const successUrl = `${window.location.origin}/pay/success?orderId=${encodeURIComponent(info.orderId)}`
       const failUrl = `${window.location.origin}/pay/fail?orderId=${encodeURIComponent(info.orderId)}`
       await payment.requestPayment({
@@ -102,7 +104,9 @@ function PaymentLanding() {
       if (info.cust_phone) customer.phoneNumber = info.cust_phone.replace(/[^0-9]/g, '')
       if (info.cust_email) customer.email = info.cust_email
 
-      const orderName = info.purpose === 'deposit' ? `${info.branch_name} 예약금` : (info.purpose || '결제')
+      const orderName = info.purpose === 'deposit' ? `${info.branch_name} 예약금`
+                      : info.purpose === 'topup' ? `${info.branch_name}`
+                      : (info.purpose || '결제')
 
       const res = await PortOne.requestPayment({
         storeId: info.store_id,
@@ -157,7 +161,9 @@ function PaymentLanding() {
     <div style={{ textAlign: 'center', marginBottom: 4 }}>
       <div style={{ fontSize: 13, color: '#999', marginBottom: 4 }}>{info.branch_name}</div>
       <div style={{ fontSize: 17, fontWeight: 700, color: '#222' }}>
-        {info.purpose === 'deposit' ? '예약금 결제' : '결제'}
+        {info.purpose === 'deposit' ? '예약금 결제'
+          : info.purpose === 'topup' ? '포인트 충전'
+          : '결제'}
       </div>
     </div>
     <div style={{ background: '#f5f3ff', borderRadius: 12, padding: 22, margin: '20px 0', textAlign: 'center' }}>

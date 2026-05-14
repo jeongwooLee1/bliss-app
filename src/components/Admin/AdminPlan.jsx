@@ -22,6 +22,11 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
   const [history, setHistory] = useState([])  // 최근 사용 히스토리 (시간순 50건)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
+  // 포인트 충전·환불 모달 (2026-05-14 v3.7.718)
+  const [topupModal, setTopupModal] = useState(null)  // { branchId, branchName, amount }
+  const [refundModal, setRefundModal] = useState(null)  // { branchId, branchName, balance, amount, reason }
+  const [topupBusy, setTopupBusy] = useState(false)
+  const [refundBusy, setRefundBusy] = useState(false)
 
   useEffect(() => {
     setPlan(biz.plan || 'trial')
@@ -119,6 +124,68 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
       setMsg('변경 실패: ' + e.message)
     } finally {
       setSaving(false)
+    }
+  }
+
+  // ─── 포인트 충전: reservation_payments에 purpose='topup' row INSERT 후 새 탭 결제 ───
+  const handleTopup = async () => {
+    if (!topupModal || topupBusy) return
+    const { branchId, amount } = topupModal
+    if (!amount || amount < 1000) { alert('충전 금액을 선택해주세요'); return }
+    setTopupBusy(true)
+    try {
+      const orderId = 'topup_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+      const H = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=representation' }
+      const r = await fetch(`${SB_URL}/rest/v1/reservation_payments`, {
+        method: 'POST', headers: H,
+        body: JSON.stringify({
+          id: orderId,
+          business_id: biz.id,
+          branch_id: branchId,
+          amount,
+          purpose: 'topup',
+          status: 'pending',
+          payment_provider: 'tosspayments',
+          notes: `${PLANS[plan]?.label || plan} 매장 포인트 충전`,
+        })
+      })
+      if (!r.ok) { const t = await r.text().catch(()=>''); throw new Error(t || '주문 생성 실패') }
+      // 새 탭으로 결제 페이지 열기 (PaymentApp.jsx 재사용)
+      window.open(`/pay/${orderId}`, '_blank', 'noopener,noreferrer')
+      setTopupModal(null)
+      alert('새 탭에서 결제를 완료해주세요. 결제 후 이 페이지를 새로고침하면 잔액에 반영됩니다.')
+    } catch (e) {
+      alert('충전 시작 실패: ' + (e?.message || e))
+    } finally {
+      setTopupBusy(false)
+    }
+  }
+
+  // ─── 포인트 환불: 잔액 한도내만 (사용분 제외). point-refund Edge Function 호출 ───
+  const handleRefund = async () => {
+    if (!refundModal || refundBusy) return
+    const { branchId, balance, amount, reason } = refundModal
+    const refundAmount = Number(amount)
+    if (!refundAmount || refundAmount < 1) { alert('환불 금액을 입력해주세요'); return }
+    if (refundAmount > balance) { alert(`환불 금액이 잔액(${balance.toLocaleString()}P)을 초과합니다`); return }
+    if (!reason || !reason.trim()) { alert('환불 사유를 입력해주세요'); return }
+    if (!confirm(`${refundAmount.toLocaleString()}원 환불 신청합니다.\n\n사용한 포인트는 환불되지 않습니다.\n토스 결제 취소로 영업일 1~3일 내 카드 환불됩니다.\n진행하시겠습니까?`)) return
+    setRefundBusy(true)
+    try {
+      const r = await fetch(`${SB_URL}/functions/v1/point-refund`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SB_KEY}` },
+        body: JSON.stringify({ business_id: biz.id, branch_id: branchId, amount: refundAmount, reason: reason.trim() })
+      })
+      const d = await r.json().catch(()=>({}))
+      if (!r.ok) throw new Error(d?.error || `환불 실패 (${r.status})`)
+      alert(`환불 완료: ${(d.refunded_amount||refundAmount).toLocaleString()}원\n토스 결제 ${d.cancelled_count||1}건 취소됨`)
+      setRefundModal(null)
+      await loadBilling()
+    } catch (e) {
+      alert('환불 실패: ' + (e?.message || e))
+    } finally {
+      setRefundBusy(false)
     }
   }
 
@@ -253,6 +320,20 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
                 <div style={{textAlign:'right'}}>
                   <div style={{fontSize:T.fs.lg,fontWeight:T.fw.black,color:T.primary}}>{(bal?.balance||0).toLocaleString()}P</div>
                   <div style={{fontSize:T.fs.xxs,color:T.textMuted}}>이번 달 사용 {u.total.toLocaleString()}P</div>
+                  {isOwner && (
+                    <div style={{display:'flex',gap:6,marginTop:6,justifyContent:'flex-end'}}>
+                      <button onClick={()=>setTopupModal({branchId:br.id,branchName:br.short||br.name,amount:30000})}
+                        style={{padding:'4px 10px',borderRadius:6,border:`1px solid ${T.primary}`,background:T.primary,color:'#fff',fontSize:T.fs.xxs,fontWeight:T.fw.bolder,cursor:'pointer',fontFamily:'inherit'}}>
+                        + 충전
+                      </button>
+                      {(bal?.balance||0) > 0 && (
+                        <button onClick={()=>setRefundModal({branchId:br.id,branchName:br.short||br.name,balance:bal.balance,amount:'',reason:''})}
+                          style={{padding:'4px 10px',borderRadius:6,border:`1px solid ${T.border}`,background:'#fff',color:T.textSub,fontSize:T.fs.xxs,fontWeight:T.fw.medium,cursor:'pointer',fontFamily:'inherit'}}>
+                          환불 신청
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
               {Object.keys(u.kinds).length > 0 && (
@@ -311,6 +392,82 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
     <div style={{fontSize:T.fs.xxs,color:T.textMuted,marginTop:12,padding:'8px 12px',background:T.gray100,borderRadius:T.radius.md}}>
       💡 기능별 개별 토글은 추후 추가됩니다. 현재는 plan 단위로 일괄 적용됩니다.
     </div>
+
+    {/* ─── 포인트 충전 모달 ─── */}
+    {topupModal && (
+      <div onClick={()=>!topupBusy && setTopupModal(null)}
+        style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:20}}>
+        <div onClick={e=>e.stopPropagation()}
+          style={{background:'#fff',borderRadius:T.radius.lg,padding:24,maxWidth:420,width:'100%',boxShadow:'0 10px 40px rgba(0,0,0,0.15)'}}>
+          <div style={{fontSize:T.fs.lg,fontWeight:T.fw.black,marginBottom:4}}>포인트 충전</div>
+          <div style={{fontSize:T.fs.sm,color:T.textMuted,marginBottom:16}}>{topupModal.branchName}</div>
+          <div style={{fontSize:T.fs.xs,color:T.textSub,marginBottom:8,fontWeight:T.fw.bolder}}>충전 금액 (1원 = 1P)</div>
+          <div style={{display:'flex',gap:8,marginBottom:16}}>
+            {[10000,30000,50000].map(amt => (
+              <button key={amt} onClick={()=>setTopupModal({...topupModal,amount:amt})}
+                style={{flex:1,padding:'14px 8px',borderRadius:T.radius.md,
+                  border:`1px solid ${topupModal.amount===amt?T.primary:T.border}`,
+                  background:topupModal.amount===amt?T.primaryLt:'#fff',
+                  color:topupModal.amount===amt?T.primary:T.text,
+                  fontSize:T.fs.md,fontWeight:T.fw.black,cursor:'pointer',fontFamily:'inherit'}}>
+                {(amt/10000)}만원
+              </button>
+            ))}
+          </div>
+          <div style={{fontSize:T.fs.xxs,color:T.textMuted,padding:'8px 12px',background:T.gray100,borderRadius:T.radius.md,marginBottom:16,lineHeight:1.6}}>
+            • 결제 완료 시 즉시 충전됩니다.<br/>
+            • 환불은 잔액 한도내만 가능 (사용한 포인트는 환불 불가).<br/>
+            • 토스페이먼츠로 결제되며, 카드 영수증이 발급됩니다.
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <button onClick={()=>setTopupModal(null)} disabled={topupBusy}
+              style={{flex:1,padding:'12px',borderRadius:T.radius.md,border:`1px solid ${T.border}`,background:'#fff',color:T.text,fontSize:T.fs.sm,fontWeight:T.fw.bolder,cursor:topupBusy?'not-allowed':'pointer',fontFamily:'inherit'}}>
+              취소
+            </button>
+            <button onClick={handleTopup} disabled={topupBusy}
+              style={{flex:2,padding:'12px',borderRadius:T.radius.md,border:'none',background:T.primary,color:'#fff',fontSize:T.fs.sm,fontWeight:T.fw.black,cursor:topupBusy?'not-allowed':'pointer',fontFamily:'inherit',opacity:topupBusy?0.6:1}}>
+              {topupBusy ? '진행 중...' : `${topupModal.amount?.toLocaleString()}원 결제하기`}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* ─── 환불 신청 모달 ─── */}
+    {refundModal && (
+      <div onClick={()=>!refundBusy && setRefundModal(null)}
+        style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:20}}>
+        <div onClick={e=>e.stopPropagation()}
+          style={{background:'#fff',borderRadius:T.radius.lg,padding:24,maxWidth:420,width:'100%',boxShadow:'0 10px 40px rgba(0,0,0,0.15)'}}>
+          <div style={{fontSize:T.fs.lg,fontWeight:T.fw.black,marginBottom:4}}>포인트 환불 신청</div>
+          <div style={{fontSize:T.fs.sm,color:T.textMuted,marginBottom:16}}>{refundModal.branchName} · 잔액 {refundModal.balance.toLocaleString()}P</div>
+          <div style={{fontSize:T.fs.xs,color:T.textSub,marginBottom:6,fontWeight:T.fw.bolder}}>환불 금액 (P · 잔액 한도 내)</div>
+          <input type="number" value={refundModal.amount} onChange={e=>setRefundModal({...refundModal,amount:e.target.value})}
+            placeholder={`최대 ${refundModal.balance.toLocaleString()}`}
+            style={{width:'100%',padding:'10px 12px',borderRadius:T.radius.md,border:`1px solid ${T.border}`,fontSize:T.fs.md,fontFamily:'inherit',marginBottom:12,boxSizing:'border-box'}}/>
+          <div style={{fontSize:T.fs.xs,color:T.textSub,marginBottom:6,fontWeight:T.fw.bolder}}>환불 사유</div>
+          <textarea value={refundModal.reason} onChange={e=>setRefundModal({...refundModal,reason:e.target.value})}
+            placeholder="예: 사용하지 않는 잔액 환불 요청"
+            rows={3}
+            style={{width:'100%',padding:'10px 12px',borderRadius:T.radius.md,border:`1px solid ${T.border}`,fontSize:T.fs.sm,fontFamily:'inherit',marginBottom:16,boxSizing:'border-box',resize:'vertical'}}/>
+          <div style={{fontSize:T.fs.xxs,color:T.textMuted,padding:'8px 12px',background:T.gray100,borderRadius:T.radius.md,marginBottom:16,lineHeight:1.6}}>
+            • 사용한 포인트는 환불 대상에서 제외됩니다.<br/>
+            • 토스 결제 취소로 처리되며, 영업일 1~3일 내 카드사로 환불됩니다.<br/>
+            • 가장 최근 충전 건부터 역순으로 취소됩니다.
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <button onClick={()=>setRefundModal(null)} disabled={refundBusy}
+              style={{flex:1,padding:'12px',borderRadius:T.radius.md,border:`1px solid ${T.border}`,background:'#fff',color:T.text,fontSize:T.fs.sm,fontWeight:T.fw.bolder,cursor:refundBusy?'not-allowed':'pointer',fontFamily:'inherit'}}>
+              취소
+            </button>
+            <button onClick={handleRefund} disabled={refundBusy}
+              style={{flex:2,padding:'12px',borderRadius:T.radius.md,border:'none',background:T.danger,color:'#fff',fontSize:T.fs.sm,fontWeight:T.fw.black,cursor:refundBusy?'not-allowed':'pointer',fontFamily:'inherit',opacity:refundBusy?0.6:1}}>
+              {refundBusy ? '처리 중...' : '환불 신청'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   </div>
 }
 
