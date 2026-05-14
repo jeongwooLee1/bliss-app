@@ -1595,16 +1595,47 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   );
 }
 
-// 모바일 전용 탭 래퍼: 받은메시지 / 팀 채팅
+// 모바일/사이드패널 탭 래퍼: 받은메시지 / 팀 채팅 / 입금문자
 import { TeamChat, useTeamChat } from '../Chat'
+import BankDeposits from './BankDeposits'
 function MessagesWithTeamTab(props) {
-  const [tab, setTab] = useState('inbox');
+  const [tab, setTab] = useState(() => {
+    // 외부에서 입금문자 탭 강제 오픈 (배너 클릭 등)
+    if (typeof window !== 'undefined' && window.__bliss_inbox_initial_tab === 'deposits') {
+      window.__bliss_inbox_initial_tab = null;
+      return 'deposits';
+    }
+    return 'inbox';
+  });
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+  const [depositPending, setDepositPending] = useState(0);
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+  // 외부에서 강제 탭 전환 신호 듣기 (window 이벤트)
+  useEffect(() => {
+    const onSwitch = (e) => { if (e?.detail?.tab) setTab(e.detail.tab); };
+    window.addEventListener('bliss:inbox_tab', onSwitch);
+    return () => window.removeEventListener('bliss:inbox_tab', onSwitch);
+  }, []);
+  // 미매칭 입금 카운트 (badge용) — 폴링으로 가벼운 count 쿼리
+  useEffect(() => {
+    const userBranches = props.userBranches || [];
+    if (!userBranches.length) { setDepositPending(0); return; }
+    let alive = true;
+    const fetchCount = async () => {
+      const bidIn = userBranches.map(b=>`"${b}"`).join(',');
+      const url = `${SB_URL}/rest/v1/bank_deposits?select=id&status=eq.pending&bid=in.(${bidIn})&limit=999`;
+      const r = await fetch(url, { headers:{...sbHeaders,'Cache-Control':'no-cache'}, cache:'no-store' });
+      if (!alive) return;
+      if (r.ok) { const rows = await r.json(); setDepositPending(Array.isArray(rows)?rows.length:0); }
+    };
+    fetchCount();
+    const t = setInterval(fetchCount, 10000);
+    return () => { alive = false; clearInterval(t); };
+  }, [props.userBranches]);
   const teamChat = useTeamChat();
   // 사이드 패널 모드(forceCompact): 모바일 UI(좁은 폭, 리스트↔개별 토글) 강제
   const compact = !!props.forceCompact;
@@ -1626,14 +1657,23 @@ function MessagesWithTeamTab(props) {
   return (
     <div style={{display:'flex', flexDirection:'column', height:'100%', minHeight:0}}>
       <div style={{display:'flex', borderBottom:`1px solid ${T.border}`, background: T.bgCard, flexShrink:0}}>
-        {tabBtn('inbox', '📥 받은메시지')}
-        {tabBtn('team', '💬 팀 채팅', teamUnread)}
+        {tabBtn('inbox', <span style={{display:'inline-flex',alignItems:'center',gap:5}}><I name="msgSq" size={14}/>받은메시지</span>)}
+        {tabBtn('team', <span style={{display:'inline-flex',alignItems:'center',gap:5}}><I name="users" size={14}/>팀 채팅</span>, teamUnread)}
+        {tabBtn('deposits', <span style={{display:'inline-flex',alignItems:'center',gap:5}}><I name="building" size={14}/>입금문자</span>, depositPending)}
       </div>
       <div style={{flex:1, minHeight:0, display: tab==='inbox' ? 'flex' : 'none', flexDirection:'column'}}>
         <AdminInbox {...props} />
       </div>
       <div style={{flex:1, minHeight:0, display: tab==='team' ? 'flex' : 'none', flexDirection:'column'}}>
         <TeamChat scrollTrigger={tab==='team'} />
+      </div>
+      <div style={{flex:1, minHeight:0, display: tab==='deposits' ? 'flex' : 'none', flexDirection:'column'}}>
+        <BankDeposits
+          data={props.data}
+          branches={props.branches}
+          userBranches={props.userBranches}
+          currentUser={props.currentUser}
+        />
       </div>
     </div>
   );

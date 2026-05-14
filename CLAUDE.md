@@ -1247,4 +1247,41 @@ for (const k of deletedKeys) delete finalToSave[k];
 - **충전 결제 받는 주체 = 테라포트 본사** (각 매장 결제 키 ≠ 본사 결제 키). 본사 키는 ENV `TOSS_BLISS_*`에 별도 등록
 - **충전·환불은 AdminPlan에서만** (관리설정 → 요금제·잔액). 손님 결제 페이지(PaymentApp)는 동일 SDK 재사용
 - **point-refund 멱등성**: `Idempotency-Key`로 중복 환불 방지. 토스 `ALREADY_CANCELED_PAYMENT` 응답 시 skip
-- **다음 큰 작업 (HANDOFF.md 참조)**: KB 입금문자 자동 파싱 — 계좌 `KB 809101-04-203812` (강남점), Mac launchd 데몬 + 상단 배너 + 별도 페이지. v3.7.719에 배포 예정
+### v3.7.719 → v3.7.720 (2026-05-14)
+
+#### KB 입금문자 자동 동기화 (v3.7.719)
+- **DB 신규 `bank_deposits`**: id/business_id/bid/account_masked/transferer_name/amount/balance/sms_sent_at/parsed_at/status(pending|matched|ignored)/matched_sale_id/matched_reservation_id/matched_at/matched_by/raw_text/source. UNIQUE(account_masked,sms_sent_at,amount,balance)로 중복 INSERT 차단. RLS+anon_all_bank_deposits 정책. Realtime publication 추가
+- **Mac launchd 데몬** `mac-daemon/kb_sms_poll.py` + `com.bliss.kb-sync.plist` (60초 주기) — `~/Library/Messages/chat.db` sqlite 폴링 → KB SMS 정규식 파싱 → 강남점 매핑 계좌(`809101**812`) + 입금만 필터 → Supabase REST `Prefer: resolution=ignore-duplicates`로 INSERT. state는 `~/.bliss-kb-sync/state.json`의 last_rowid로 증분. 로그 `~/.bliss-kb-sync/poll.log`. TG_TOKEN/TG_CHAT 재사용해 에러 알림
+- **Full Disk Access**: `/usr/bin/python3`은 stub이라 무용 → 실제 바이너리 `/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app`에 부여 필요. plist도 직접 binary 경로로 호출
+- **bliss UI**:
+  - 메시지함 3번째 탭 `🏦 입금문자` (`MessagesPage.jsx`의 `MessagesWithTeamTab`만 — forceCompact/모바일에서 노출). pending count badge
+  - 신규 `BankDeposits.jsx` — 미매칭/매칭됨/무시 필터 칩, 카드(잔액 비공개), [매출 매칭] [무시] 버튼
+  - 매칭 모달 — 매출 + 예약 동시 후보, 금액 일치 매출 강조, 입금시각 ±3h 예약 자동 표시, 검색어 입력 시 ±30일 이름 검색으로 확장 (서버 ilike). [매출 매칭]/[예약 매칭] 분리
+  - `AppShell.jsx` 상단 노란 배너 — 미매칭 입금 N건 + 최근 입금자 미리보기, 클릭 시 메시지함 사이드 패널 + 입금문자 탭 자동 오픈 (`window.__bliss_inbox_initial_tab` + `bliss:inbox_tab` 이벤트)
+  - 사이드바 받은메시지함 배지 합산 — `unreadMsgCount + teamChatUnread + pendingDepositCount` (10초 폴링 + Realtime)
+  - 폴링 깜빡임 fix — 30초 주기 + 동일 데이터면 setState 스킵 + initial-only loading
+- **이모지 → Bliss SVG 통일**: 메시지함 탭 3개(msgSq/users/building) + 배너(building) + 매칭 모달(clock/calendar/banknote)
+
+#### 토스 심사 응답 (v3.7.719 동시 처리)
+- **`billing_balances` 13개 row balance=0 일괄 reset** (실제 결제 충전 0건 확인 후 진행)
+- **trial 매장 6개 monthly_credit 0** (Pro 매장 7개는 7000 유지). features.js 정책 변경 + DB 동기화로 "기본제공 P 환불 모호" 항목 해소
+
+#### 공지 글 편집 (v3.7.720, 신영 요청)
+- `BlissRequests.jsx` `editingNoticeId` state + `startEditNotice` 함수. 마스터 권한으로 공지 카드 아래 `[공지 수정]` 버튼 → 폼에 기존 데이터 prefill + 편집 모드. acks/createdAt 보존 + editedAt/editedBy 추가. 폼 헤더/등록 버튼 라벨 동적 분기
+
+#### 18일 신규고객 케어 SMS (v3.7.720, 지은 요청)
+- **DB 신규 RPC `get_care_sms_targets_first_only(p_bid, p_target_date)`** — 신규 고객(첫 매출일=p_target_date) AND 첫 매출에 패키지/회원권/선불권 카테고리(`c1fbbbff-`/`sc_membership`/`1s18w2l46`) 또는 `is_package=true` 시술 미포함. 010~ phone + 강남점 bid 필터. sale_details는 service_id 없음 → service_name ILIKE 매칭으로 카테고리 판정
+- **서버 `bliss_naver.py`**: `CARE_DAYS = [5, 10, 18, 21, 35, 53]` + `CARE_KEY_MAP`에 `18: "after_18d_first_only"`. `process_branch`에서 `n == 18` 분기 — `get_care_sms_targets_first_only` 호출. 백업 `bak_pre_after18d_*`. `systemctl restart bliss-naver` 적용
+- **UI `AdminNoti.jsx`**: 시술후 케어 알림에 `after_18d_first_only` 항목 추가 (라벨 "시술 후 18일 (신규·1회)", 설명 "신규 고객 + 패키지/금액권 미구매 + 1회만 방문한 고객 대상", hasTime+sms)
+- **강남점 `noti_config.after_18d_first_only`**: `on=true` + sendTime `10:00` + msgTpl(지은 요청 본문 그대로) DB 직접 세팅
+
+#### 처리 완료 요청 (status=done)
+- id_c5xc851cdd 신영 (공지 글 편집)
+- id_jw8gbhs0x7 지은 (18일 신규고객 SMS)
+
+### 주의사항 (v3.7.720 이후 참고)
+- **bank_deposits 매장↔계좌 매핑은 데몬 `.env`의 `BLISS_KB_ACCOUNTS` JSON에서 관리** — Phase 2(다른 매장 추가) 때 `branches.bank_accounts jsonb` 컬럼 추가하면서 데몬이 DB 조회하도록 전환 예정
+- **launchd 데몬 위치**: `mac-daemon/` 폴더에 `kb_sms_poll.py` + `com.bliss.kb-sync.plist` + `install.sh`. `~/Library/LaunchAgents/`에 plist 복사 + `launchctl load`로 등록. 60초 주기. plist의 `ProgramArguments`는 진짜 Python 바이너리 경로 사용 (Xcode CLT의 stub `/usr/bin/python3` 아님)
+- **chat.db `text` vs `attributedBody`**: macOS Data Detector가 시간 지난 메시지를 attributedBody(NSKeyedArchiver bplist)로 재인코딩 → 한글 멀티바이트 추출 어려움. 폴링 60초 주기로 fresh 메시지(text 형식)일 때 잡는 게 핵심. attributedBody 백필 필요 시 `typedstream` Python 라이브러리 검토
+- **18일 신규고객 RPC는 신규 판정을 `MIN(date)=p_target_date`로 함** — 같은 고객의 모든 매출 중 가장 이른 날짜가 18일 전이면 신규로 인정. 따라서 18일 전 첫 매출 + 그 이후 추가 매출 없는 케이스만 잡힘. 18일 전 첫 매출 + 17일 전 재방문은 제외 (첫 매출 날짜만 보고 판정 못 함 → 알림 보내야 할 시점에는 오늘 = first_date+18 이라 다른 매출 있는지 별도 검증 안 함; 본 룰의 의도는 "신규고객 + 1회만 받음"이므로 RPC가 정확)
+- **공지 편집 시 acks 보존** — 직원이 이미 확인 누른 공지를 마스터가 수정해도 acks는 그대로. 단순 오타 수정용. 핵심 변경이면 새 공지로 등록 권장

@@ -23,6 +23,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [showNoticeForm, setShowNoticeForm] = useState(false);
+  const [editingNoticeId, setEditingNoticeId] = useState(null); // null = 신규, 그 외 = 편집 중인 공지 id
   const [openId, setOpenId] = useState(null);
   const [openNoticeId, setOpenNoticeId] = useState(null);
   // Form state
@@ -84,16 +85,44 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
   };
   const submitNotice = async () => {
     if (!noticeForm.title.trim() || !noticeForm.content.trim()) { alert("제목과 내용을 입력하세요"); return; }
-    const row = {
-      id: genId(), title: noticeForm.title.trim(), version: noticeForm.version.trim(),
-      content: noticeForm.content.trim(),
-      images: Array.isArray(noticeForm.images) ? noticeForm.images : [],
-      createdAt: new Date().toISOString(),
-      author: currentUser?.name || "관리자",
-    };
-    await saveNotices([row, ...notices]);
+    if (editingNoticeId) {
+      // 편집 모드 — 기존 공지 업데이트 (acks/createdAt 등 보존)
+      const next = notices.map(n => n.id !== editingNoticeId ? n : ({
+        ...n,
+        title: noticeForm.title.trim(),
+        version: noticeForm.version.trim(),
+        content: noticeForm.content.trim(),
+        images: Array.isArray(noticeForm.images) ? noticeForm.images : [],
+        editedAt: new Date().toISOString(),
+        editedBy: currentUser?.name || "관리자",
+      }));
+      await saveNotices(next);
+    } else {
+      // 신규 등록
+      const row = {
+        id: genId(), title: noticeForm.title.trim(), version: noticeForm.version.trim(),
+        content: noticeForm.content.trim(),
+        images: Array.isArray(noticeForm.images) ? noticeForm.images : [],
+        createdAt: new Date().toISOString(),
+        author: currentUser?.name || "관리자",
+      };
+      await saveNotices([row, ...notices]);
+    }
     setNoticeForm({ title:"", version:"", content:"", images:[] });
     setShowNoticeForm(false);
+    setEditingNoticeId(null);
+  };
+  const startEditNotice = (n) => {
+    setNoticeForm({
+      title: n.title || "",
+      version: n.version || "",
+      content: n.content || "",
+      images: Array.isArray(n.images) ? [...n.images] : (n.imageData ? [n.imageData] : []),
+    });
+    setEditingNoticeId(n.id);
+    setShowNoticeForm(true);
+    // 폼 위치로 스크롤
+    setTimeout(() => window.scrollTo({ top:0, behavior:'smooth' }), 50);
   };
   const removeNotice = async (id) => {
     if (!confirm("이 공지를 삭제할까요?")) return;
@@ -354,7 +383,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
     {tab==="notices" && <>
       {showNoticeForm && <div style={{background:"#F5F3FF",border:"1.5px solid #C4B5FD",borderRadius:12,padding:18,marginBottom:18}}>
         <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#5B21B6",marginBottom:12,display:"flex",alignItems:"center",gap:6}}>
-          <I name="bell" size={14} color="#5B21B6"/> 새 공지 작성
+          <I name={editingNoticeId?"edit":"bell"} size={14} color="#5B21B6"/> {editingNoticeId?"공지 수정":"새 공지 작성"}
         </div>
         <div style={{display:"flex",gap:8,marginBottom:8}}>
           <input value={noticeForm.title} onChange={e=>setNoticeForm(p=>({...p,title:e.target.value}))} placeholder="제목 *"
@@ -392,8 +421,8 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
           onClose={()=>setMarkupIdx(null)}
         />}
         <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
-          <button onClick={()=>{setShowNoticeForm(false); setNoticeForm({title:"",version:"",content:"",images:[]});}} style={{padding:"8px 16px",borderRadius:8,border:"1px solid "+T.border,background:"#fff",color:T.textSub,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>취소</button>
-          <button onClick={submitNotice} style={{padding:"8px 18px",borderRadius:8,border:"none",background:"#7C3AED",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>등록</button>
+          <button onClick={()=>{setShowNoticeForm(false); setEditingNoticeId(null); setNoticeForm({title:"",version:"",content:"",images:[]});}} style={{padding:"8px 16px",borderRadius:8,border:"1px solid "+T.border,background:"#fff",color:T.textSub,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>취소</button>
+          <button onClick={submitNotice} style={{padding:"8px 18px",borderRadius:8,border:"none",background:"#7C3AED",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{editingNoticeId?"저장":"등록"}</button>
         </div>
       </div>}
       {/* 등록된 공지 이미지 마킹 편집 모달 */}
@@ -513,10 +542,16 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
                     })}
                   </div>
                 </div>}
-                {isMaster && <button onClick={()=>removeNotice(n.id)}
-                  style={{marginTop:12,padding:"4px 10px",borderRadius:6,border:"1px solid "+T.danger+"66",background:"#fff5f5",color:T.danger,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:4}}>
-                  <I name="trash" size={11} color={T.danger}/> 공지 전체 삭제
-                </button>}
+                {isMaster && <div style={{marginTop:12,display:"flex",gap:6,flexWrap:"wrap"}}>
+                  <button onClick={()=>startEditNotice(n)}
+                    style={{padding:"4px 10px",borderRadius:6,border:"1px solid #C4B5FD",background:"#F5F3FF",color:"#5B21B6",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:4}}>
+                    <I name="edit" size={11} color="#5B21B6"/> 공지 수정
+                  </button>
+                  <button onClick={()=>removeNotice(n.id)}
+                    style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+T.danger+"66",background:"#fff5f5",color:T.danger,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:4}}>
+                    <I name="trash" size={11} color={T.danger}/> 공지 전체 삭제
+                  </button>
+                </div>}
               </div>}
             </div>;
           })}

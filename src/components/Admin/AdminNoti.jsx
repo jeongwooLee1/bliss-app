@@ -61,6 +61,7 @@ function AdminNoti({ data, setData, sb, bizId, branches }) {
     {label:"시술후 케어 알림 (SMS 발송)", sms:true, items:[
       {key:"after_5d", label:"시술 후 5일", desc:"시술 5일 후 스크럽 안내", hasTime:true, sms:true},
       {key:"after_10d",label:"시술 후 10일",desc:"시술 10일 후 관리 안내", hasTime:true, sms:true},
+      {key:"after_18d_first_only",label:"시술 후 18일 (신규·1회)",desc:"신규 고객 + 패키지/금액권 미구매 + 1회만 방문한 고객 대상", hasTime:true, sms:true},
       {key:"after_21d",label:"시술 후 21일",desc:"시술 21일 후 재방문 안내", hasTime:true, sms:true},
       {key:"after_35d",label:"시술 후 35일",desc:"시술 35일 후 재방문 안내", hasTime:true, sms:true},
       {key:"after_53d",label:"시술 후 53일",desc:"시술 53일 후 재방문 안내", hasTime:true, sms:true},

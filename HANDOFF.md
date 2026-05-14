@@ -58,33 +58,8 @@
 
 키 없는 상태에서 매장이 충전 시도하면 `503 TOSS_BLISS_* not configured` 표시.
 
-## 📋 다음 세션 작업 (별도 큰 작업) — KB 입금문자 자동 파싱
-
-**컨텍스트**:
-- 매장 (하우스왁싱 강남점) 입금 받는 계좌: **KB 809101-04-203812** (404계좌에서 완전 전환 예정)
-- 매장 사장(이정우) 폰에 `#국민은행`발 SMS 옴 (`[Web발신] [KB]MM/DD HH:MM / 거래자명 / 입금|출금 / 금액 / 잔액`)
-- 매장 사장 폰 → iCloud Messages sync → Mac `~/Library/Messages/chat.db`에 저장됨
-- 이걸 파싱해서 Bliss에 입금 내역 + 매출 매칭으로 자동 표시
-
-**UI 디자인 (확정)**:
-- ✅ A. **상단 배너막대** (확정대기 패턴) — 새 입금 즉시 알림 + 클릭하면 매칭 모달
-- ✅ B. **별도 페이지 "은행 입금"** (사이드바 신규 메뉴) — 전체 입금 내역 관리·검색
-- ❌ C. 메시지함 입금 탭 — 사용자 결정: 비추 (메시지함은 손님 대화만 유지, 분리 명확)
-
-**구현 단계** (예상 2~3시간):
-1. DB 테이블 `bank_deposits` 신규 — `id, business_id, branch_id, account_last4, transferer_name, kind('deposit'|'withdraw'), amount, balance, sms_sent_at, parsed_at, matched_sale_id?, raw_text`
-2. **Mac 백그라운드 데몬**: Node 또는 Python — `~/Library/Messages/chat.db` SQLite 5분 폴링 → `#국민은행` + `[KB]` + `809101-04-203812` 관련 메시지 추출 → 정규식 파싱 → Supabase REST INSERT (Full Disk Access 권한 필요)
-3. **launchd plist**: `~/Library/LaunchAgents/com.bliss.kb-sync.plist` — 부팅 시 자동 시작 + 5분 간격
-4. **상단 배너**: `BannerHost` 또는 AppShell에 신규 입금 알림 (Realtime 구독으로 새 row 감지)
-5. **별도 페이지**: `BankDeposits.jsx` 신규 컴포넌트 + 라우트 `/deposits` + 사이드바 메뉴 (강남점만 노출하다가 다른 매장 추가 시 확장)
-6. **매출 매칭**: SaleForm에 "입금(계좌이체)" 결제수단 선택 시 최근 미매칭 입금 후보 추천 (이름·금액 fuzzy match)
-7. v3.7.719 빌드·배포
-
-**새 세션 시작 시 사용자가 챙길 것**:
-1. KB 809101-04-203812 계좌 활성화 + 매장 사장 폰에 SMS 도착 확인
-2. **샘플 SMS 1~2건 캡처** (입금 패턴 + 다른 패턴 비교)
-3. Mac에 KB 메시지 sync 환경 확인 (현재 OK)
-4. 다른 매장 (왕십리·마곡 등)은 Phase 2로 별도 작업 (각 매장 사장 폰·계좌별 셋업 필요)
+## 📋 다음 세션 작업
+없음 (현재 라이브: v3.7.720)
 
 ## 인수인계 체계
 3계층 분리. 자세한 내용은 CLAUDE.md 참고.

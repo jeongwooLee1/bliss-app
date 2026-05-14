@@ -10,6 +10,7 @@ export const DBMAP = {
   branches:{business_id:"businessId",use_yn:"useYn",naver_email:"naverEmail",naver_biz_id:"naverBizId",naver_col_count:"naverColCount",noti_config:"notiConfig",staff_col_count:"staffColCount",naver_account_id:"naverAccountId",instagram_account_id:"instagramAccountId",whatsapp_account_id:"whatsappAccountId",booking_notice:"bookingNotice",alt_phone:"altPhone",timeline_settings:"timelineSettings"},
   reservation_sources:{business_id:"businessId",use_yn:"useYn"},
   reservation_groups:{business_id:"businessId",leader_cust_id:"leaderCustId",room_type:"roomType"},
+  bank_deposits:{business_id:"businessId",account_masked:"accountMasked",transferer_name:"transfererName",sms_sent_at:"smsSentAt",parsed_at:"parsedAt",matched_sale_id:"matchedSaleId",matched_reservation_id:"matchedReservationId",matched_at:"matchedAt",matched_by:"matchedBy",raw_text:"rawText"},
 };
 
 // ─── 시스템 보호 태그/경로 (삭제 불가 디폴트) ─────────────────────────────────
@@ -68,6 +69,7 @@ export const DB_COLS={
   app_users:["id","business_id","login_id","password","name","role","branch_ids","view_branch_ids"],
   reservation_sources:["id","business_id","name","color","sort","use_yn"],
   reservation_groups:["id","business_id","bid","leader_cust_id","room_type","memo"],
+  bank_deposits:["id","business_id","bid","account_masked","transferer_name","amount","balance","sms_sent_at","parsed_at","status","matched_sale_id","matched_reservation_id","matched_at","matched_by","raw_text","source","created_at"],
 };
 // Global active business context - auto-injected into DB writes
 export let _activeBizId = null;

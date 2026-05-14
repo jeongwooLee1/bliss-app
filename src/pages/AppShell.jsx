@@ -25,7 +25,7 @@ import FloatingAI from '../components/BlissAI/FloatingAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.718"
+const BLISS_V = "3.7.720"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -840,6 +840,59 @@ function AnnouncesMarquee({ overrideItems }) {
   );
 }
 
+// ── 🏦 미매칭 입금 배너 — bank_deposits 폴링 + Realtime ──
+function DepositsAlertBanner({ userBranches=[], onOpen }) {
+  const [count, setCount] = useState(0);
+  const [latest, setLatest] = useState(null); // 가장 최근 미매칭 1건 (미리보기)
+  useEffect(() => {
+    if (!userBranches?.length) { setCount(0); setLatest(null); return; }
+    let alive = true;
+    const bidIn = userBranches.map(b=>`"${b}"`).join(',');
+    const fetchPending = async () => {
+      try {
+        const url = `${SB_URL}/rest/v1/bank_deposits?select=id,transferer_name,amount,sms_sent_at&status=eq.pending&bid=in.(${bidIn})&order=sms_sent_at.desc&limit=20`;
+        const r = await fetch(url, { headers:{...sbHeaders,'Cache-Control':'no-cache'}, cache:'no-store' });
+        if (!alive) return;
+        if (!r.ok) return;
+        const rows = await r.json();
+        setCount(Array.isArray(rows) ? rows.length : 0);
+        setLatest(rows?.[0] || null);
+      } catch {}
+    };
+    fetchPending();
+    const t = setInterval(fetchPending, 10000);
+    let ch = null;
+    if (window._sbClient) {
+      ch = window._sbClient.channel('rt_deposits_banner_'+Date.now())
+        .on('postgres_changes',{event:'*',schema:'public',table:'bank_deposits'}, fetchPending)
+        .subscribe();
+    }
+    return () => { alive=false; clearInterval(t); if (ch && window._sbClient) window._sbClient.removeChannel(ch); };
+  }, [userBranches?.join('|')]);
+  if (count === 0) return null;
+  const fmt = n => Number(n||0).toLocaleString();
+  return (
+    <div onClick={onOpen} style={{
+      flexShrink:0,
+      cursor:'pointer',
+      background:'#FFF8E1',
+      borderBottom:'1px solid #f0e3a6',
+      padding:'7px 16px',
+      display:'flex', alignItems:'center', gap:10,
+      fontSize:13, color:'#7a5a00', fontWeight:600,
+    }}>
+      <I name="building" size={15} color="#7a5a00"/>
+      <span><b>미매칭 입금 {count}건</b></span>
+      {latest && (
+        <span style={{opacity:.75,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+          · 최근: {latest.transferer_name || '(이름없음)'} +{fmt(latest.amount)}원
+        </span>
+      )}
+      <span style={{marginLeft:'auto',fontSize:12,color:'#8a6900'}}>확인 →</span>
+    </div>
+  );
+}
+
 // ── 공지 배너 디자인 갤러리 (테스트용) ──
 function AnnounceDesignGallery() {
   const fakeItems = [
@@ -1065,6 +1118,8 @@ function App() {
   const [unreadMsgCount, setUnreadMsgCount] = useState(0);
   const [unreadDelayedCount, setUnreadDelayedCount] = useState(0); // 1분 이상 미응답 (타임라인 배너용)
   const [unreadSample, setUnreadSample] = useState([]); // 배너용: [{user_id, channel, user_name, message_text, created_at, account_id}]
+  const [teamChatUnread, setTeamChatUnread] = useState(0); // 팀채팅 안읽음 (사이드바 합산용)
+  const [pendingDepositCount, setPendingDepositCount] = useState(0); // 미매칭 입금 (사이드바 합산용)
   const [pendingReqCount, setPendingReqCount] = useState(0);
   const [unackNoticesPopup, setUnackNoticesPopup] = useState(null); // {count, ids}
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -1277,6 +1332,53 @@ function App() {
     return () => { try{rt?.unsubscribe();}catch(e){} clearInterval(poll); };
   }, [currentUser?.name]);
   // 팀채팅 공지(📣) — 상단 마퀴 배너로 통합 (AnnouncesMarquee 컴포넌트). 우상단 플로팅 팝업 제거.
+
+  // 팀채팅 안읽음 카운트 (사이드바 합산용) — last_read_at 이후 메시지 수
+  useEffect(() => {
+    let alive = true;
+    const fetchCount = async () => {
+      try {
+        const lastRead = (typeof window !== 'undefined' && localStorage.getItem('bliss_team_chat_last_read_at')) || '1970-01-01T00:00:00Z';
+        const url = `${SB_URL}/rest/v1/team_chat_messages?select=id&created_at=gt.${encodeURIComponent(lastRead)}&limit=999`;
+        const r = await fetch(url, { headers:{...sbHeaders,'Cache-Control':'no-cache'}, cache:'no-store' });
+        if (!alive) return;
+        if (r.ok) { const rows = await r.json(); setTeamChatUnread(Array.isArray(rows) ? rows.length : 0); }
+      } catch {}
+    };
+    fetchCount();
+    const t = setInterval(fetchCount, 10000);
+    let ch = null;
+    if (window._sbClient) {
+      ch = window._sbClient.channel('rt_team_chat_badge_'+Date.now())
+        .on('postgres_changes',{event:'INSERT',schema:'public',table:'team_chat_messages'}, fetchCount)
+        .subscribe();
+    }
+    return () => { alive=false; clearInterval(t); if (ch && window._sbClient) window._sbClient.removeChannel(ch); };
+  }, []);
+
+  // 미매칭 입금 카운트 (사이드바 합산용)
+  useEffect(() => {
+    if (!userBranches?.length) { setPendingDepositCount(0); return; }
+    let alive = true;
+    const bidIn = userBranches.map(b=>`"${b}"`).join(',');
+    const fetchPending = async () => {
+      try {
+        const url = `${SB_URL}/rest/v1/bank_deposits?select=id&status=eq.pending&bid=in.(${bidIn})&limit=999`;
+        const r = await fetch(url, { headers:{...sbHeaders,'Cache-Control':'no-cache'}, cache:'no-store' });
+        if (!alive) return;
+        if (r.ok) { const rows = await r.json(); setPendingDepositCount(Array.isArray(rows) ? rows.length : 0); }
+      } catch {}
+    };
+    fetchPending();
+    const t = setInterval(fetchPending, 10000);
+    let ch = null;
+    if (window._sbClient) {
+      ch = window._sbClient.channel('rt_deposits_badge_'+Date.now())
+        .on('postgres_changes',{event:'*',schema:'public',table:'bank_deposits'}, fetchPending)
+        .subscribe();
+    }
+    return () => { alive=false; clearInterval(t); if (ch && window._sbClient) window._sbClient.removeChannel(ch); };
+  }, [userBranches?.join('|')]);
 
   // App Badge API — 홈화면 아이콘 배지 (미읽 메시지 + 확정대기 예약)
   useEffect(() => {
@@ -1901,7 +2003,7 @@ function App() {
     { id:"sales", label:"매출관리", icon:<I name="wallet" size={16}/> },
     { id:"customers", label:"고객관리", icon:<I name="users" size={16}/> },
     ...((role==="owner"||role==="super")?[{ id:"users", label:"사용자관리", icon:<I name="user" size={16}/> }]:[]),
-    { id:"messages", label:"받은메시지함", icon:<I name="msgSq" size={16}/>, badge:unreadMsgCount },
+    { id:"messages", label:"받은메시지함", icon:<I name="msgSq" size={16}/>, badge: unreadMsgCount + teamChatUnread + pendingDepositCount },
     { id:"admin", label:"관리설정", icon:<I name="settings" size={16}/> },
     { id:"requests", label:"공지 & 요청", icon:"📢", badge:pendingReqCount },
   ];
@@ -1933,7 +2035,7 @@ function App() {
           <div style={{padding:"8px 12px",borderBottom:"1px solid "+T.border,background:T.bgCard,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
             <div style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:T.fw.bolder}}>
               <I name="msgSq" size={14}/> 받은메시지함
-              {unreadMsgCount > 0 && <span style={{background:T.danger,color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px"}}>{unreadMsgCount}</span>}
+              {(unreadMsgCount + teamChatUnread + pendingDepositCount) > 0 && <span style={{background:T.danger,color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px"}}>{unreadMsgCount + teamChatUnread + pendingDepositCount}</span>}
             </div>
             <button onClick={()=>setMessagesPanelOpen(false)} title="닫기" style={{width:24,height:24,borderRadius:12,border:"none",background:T.gray100,color:T.textSub,cursor:"pointer",fontSize:16,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>×</button>
           </div>
@@ -1987,6 +2089,16 @@ function App() {
       <main className="main-c" style={{...S.main, marginLeft: 200 + (messagesPanelOpen ? 340 : 0), transition:"margin-left .25s cubic-bezier(.22,1,.36,1)"}}>
         <div className="mob-hdr" style={{display:"none"}}></div>
         <AnnouncesMarquee/>
+        <DepositsAlertBanner
+          userBranches={userBranches}
+          onOpen={() => {
+            window.__bliss_inbox_initial_tab = 'deposits';
+            setMessagesPanelOpen(true);
+            setTimeout(() => {
+              try { window.dispatchEvent(new CustomEvent('bliss:inbox_tab', { detail:{ tab:'deposits' } })); } catch {}
+            }, 60);
+          }}
+        />
         <div className="page-pad" style={{flex:1,padding:(page==="timeline"||page==="messages"||page==="schedule")?"0":"16px 20px 16px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
           <Routes>
             <Route path="/announce-test" element={<AnnounceDesignGallery/>}/>
