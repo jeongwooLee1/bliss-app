@@ -1313,3 +1313,28 @@ for (const k of deletedKeys) delete finalToSave[k];
 **예상 비용**: 월 ₩13,000~20,000 (한도 65~100%, prompt caching hit률 따라). cache hit 50% 가정 시 ~₩15,700. 프로세스 재시작으로 즉시 적용. React 변경 0건.
 
 **백업**: `ai_booking.py.bak_pre_sonnet_*`, `env.conf.bak_*`
+
+### 카카오 챗봇 자유텍스트 AI 분석 (2026-05-15, React 변경 0)
+**배경**: 카카오 챗봇 `/kakao-booking` 기존엔 BRANCH_MAP·CAT_MAP 정형 매핑만 (4개 카테고리). "비키니라인 정리만", "음모+겨드랑이", "풀바디 5/18 오후3시" 같은 자유 텍스트엔 시술 매칭 실패 → memo만 등록되고 selected_services 빈값.
+
+**fix**: bliss_naver.py에 새 helper 함수 + /kakao-booking patch
+- `_ai_extract_booking_info(text, cust_name, visit_count) -> dict` 신규 — `ai_analyze_reservation`과 동일 prompt·로직 (Gemini 2.5 Flash, 무료) 재사용. 반환: `{service_ids, tag_ids, gender, requested_time, special_notes}`
+- `/kakao-booking` 수정 — `utterance + service_name` 합쳐서 helper 호출 → 결과를 reservation INSERT body에 반영:
+  - `selected_services` ← AI 매칭 시술 ID 배열
+  - `selected_tags` ← AI 매칭 태그 ID (체험/리뷰/이벤트/인플/기존상담 자동 차단)
+  - `cust_gender` ← 정형 매핑 우선, AI fallback
+  - `time` ← `requested_time` 추출됐으면 사용 (안 되면 "10:00" 디폴트)
+  - `memo` ← `[AI 특이사항] ...` 추가
+
+**검증** (8가지 자연어 케이스):
+- "음모왁싱이랑 겨드랑이" → 시술 2건 (브라질리언+겨드랑이) ✅
+- "풀바디. 5월 18일 오후 3시" → 시술 1건 + 시각 15:00 자동 추출 ✅
+- "비키니라인 정리만" → 비키니 ✅
+- "브라질리언 + 풀페이스 패키지" → 패키지 1건 ✅
+- "음부쪽 처음. 영어 가능한 분?" → 시술 + 특이사항 "첫 시술이라 무서워함. 영어 직원 필요" ✅
+- "I want a brazilian wax with eyebrows" → 시술 2건 (한+영 혼용) ✅
+- "눈썹만 5/18 오후 5시" → 시술 1건 + 시각 17:00 ✅
+
+**비용**: Gemini 2.5 Flash 무료 한도 안 (월 ~30~50건 추가 호출 예상). 추가 비용 없음.
+
+**적용**: 서버 직접 patch + `systemctl restart bliss-naver`. 백업 `bak_pre_kakao_ai_*`. React 변경 0건.
