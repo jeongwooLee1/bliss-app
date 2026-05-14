@@ -1298,3 +1298,18 @@ for (const k of deletedKeys) delete finalToSave[k];
 **적용**: 서버 직접 (백업 `bak_pre_regex_fb_20260514_225502`, `systemctl restart bliss-naver`). React 변경 0건이라 BLISS_V/version.txt bump 불필요, CF 퍼지 무관.
 
 **효과**: AI Haiku가 history에서 키워드를 놓쳐도 코드가 booking에 강제 주입 → state 누적 보장 → 다음 turn에서 같은 정보 재질문 차단. Mckayla 같은 사고 재발 방지.
+
+### 모델 전환: Haiku → Sonnet 4.5 (2026-05-14, React 변경 0)
+**배경**: 4모델(Haiku/Sonnet/Gemini 2.5 Flash/Gemini 3.1 Pro) × 10 실제 메시지 시뮬레이션 결과:
+- 응답 빈 응답(parse fail) 카운트: Sonnet 0건 / Haiku 1건 / Gemini 3.1 Pro 4건 / Gemini 2.5 Flash 5건
+- Gemini 계열이 한국어 복잡 history + ai_booking JSON 형식에서 불안정 (40-50% 빈 응답)
+- 번역 정확도: Sonnet > Gemini 3.1 Pro > GPT-4o-mini > DeepL (DeepL 시제·동사 누락·추측 오류 다수 → 사용자가 "엉망"이라 평가한 원인)
+
+**변경**:
+- `env.conf`: `CLAUDE_MODEL=claude-sonnet-4-5` + `CLAUDE_TRANSLATE_MODEL=claude-sonnet-4-5` 추가
+- `ai_booking.py:334`: `_ai_ask_msgs` 메인 호출 모델 `claude-haiku-4-5` → `claude-sonnet-4-5`
+- 폴백 chain (변경 없음): Sonnet → gpt-4o-mini → Gemini Flash
+
+**예상 비용**: 월 ₩13,000~20,000 (한도 65~100%, prompt caching hit률 따라). cache hit 50% 가정 시 ~₩15,700. 프로세스 재시작으로 즉시 적용. React 변경 0건.
+
+**백업**: `ai_booking.py.bak_pre_sonnet_*`, `env.conf.bak_*`
