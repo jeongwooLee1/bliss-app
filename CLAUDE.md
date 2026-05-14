@@ -1174,3 +1174,77 @@ source .env && curl -s "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d 
 - **CLAUDE_MODEL 환경변수 + 코드 디폴트 모두 `claude-haiku-4-5`** — Sonnet 호출 차단. 응답 품질 떨어지면 `env.conf` 한 줄 변경으로 다시 Sonnet 가능
 - **이번 달 누계 비용**: $26.29 (Sonnet 위주) → 다음 달부터 ~$10 예상 (Haiku 전환 효과)
 - **5/7~5/8 비용 폭증의 진짜 원인**: 외부플랫폼 도입 + 영수증 기능 + 메시지함 작업 + 시뮬레이션 등으로 ai_analyze + ai_booking 호출이 평소 대비 5~10배. Sonnet 4.6 사용까지 겹쳐 일평균 $0.5 → $10 으로 폭증. Haiku 전환 + rescrape 차단 (selected_services 있으면 재분석 금지)으로 재발 방지
+
+### v3.7.717 → v3.7.718 (2026-05-13 ~ 14)
+
+#### v3.7.717 — TimelinePage empWorkHours race condition fix (지은 id_4dd4t9na07)
+**증상**: 지은 "서현, 수연 출근시간이 계속 체인지됩니다. 오늘만 3번째 바꿨는데 계속 둘이 바껴염"
+
+**원인**: `setEmpWorkHours`의 race fix가 `{ ...serverLatest, ...localPrev }` spread로 의도와 반대 작동 — 뒤가 앞을 덮는 JS spread 규칙 때문에 stale localPrev가 serverLatest를 통째로 덮어 다른 사용자 변경이 매번 소실. (코드 주석엔 "다른 사용자 변경 보존"이라 적혀있지만 실제 동작은 정반대)
+
+**Diff-based merge로 교체**:
+```js
+const next = typeof updater === "function" ? updater(localPrev) : updater;
+const changedKeys = new Set();
+for (const k of Object.keys(next)) {
+  if (JSON.stringify(next[k]) !== JSON.stringify(localPrev[k])) changedKeys.add(k);
+}
+const deletedKeys = Object.keys(localPrev).filter(k => !(k in next));
+const finalToSave = { ...serverLatest };
+for (const k of changedKeys) finalToSave[k] = next[k];
+for (const k of deletedKeys) delete finalToSave[k];
+// POST finalToSave (전체 next 아님) + return finalToSave (UI도 다른 사용자 변경 즉시 반영)
+```
+
+**효과**: 다중 사용자 동시 편집 시 누구의 변경도 손실 X. 지은 요청 status=`reviewing` 답글 박고 배포 후 `done`으로 전환.
+
+#### v3.7.718 — 🔵 포인트 충전·환불 시스템 (토스 가맹 심사 대응)
+
+토스페이먼츠 가맹 심사 피드백 2건 (블리스 이용자→테라포트 본사 크레딧 결제):
+1. "기본 제공 포인트 환불 모호" → 해결
+2. "포인트 구매 로직 없음" → 신규 구현
+
+**1. 무료 P 제거 — features.js**:
+- `trial.monthly_credit: 1000 → 0` (무료 체험은 P 미제공)
+- Starter(3000P)/Pro(7000P)는 월 구독료 결제 대가라 유지
+
+**2. AdminPlan UI**:
+- 지점별 잔액 카드에 `+충전` / `환불 신청` 버튼
+- 충전 모달: 1만/3만/5만 칩 → `reservation_payments` INSERT (`purpose='topup'`) → `/pay/{orderId}` 새탭 결제 (PaymentApp.jsx 재사용)
+- 환불 모달: 잔액 한도내 금액 + 사유 입력 → `point-refund` Edge Function 호출
+
+**3. Edge Functions** (Dashboard 직접 배포):
+- **`payment-info` v4**: `rp.purpose === 'topup'` 분기 → 매장 키 대신 `TOSS_BLISS_CLIENT_KEY` ENV 사용. `branch_name`을 "{지점명} 포인트 충전"으로 가공
+- **`payment-confirm` v5**: topup 분기 — 토스 confirm + `billing_payments` INSERT (`pg_tx_id` UNIQUE 멱등성) + `billing_balances` 가산 (없으면 INSERT, 있으면 balance += amount)
+- **`point-refund` v1 신규** (verify_jwt=true):
+  - 잔액 한도내 검증 → `billing_payments` topup completed row를 created_at 역순 조회 → 환불 잔여액만큼 차례대로 토스 cancel API 호출
+  - Partial cancel (`cancelAmount`) 또는 full cancel 자동 선택
+  - `Idempotency-Key: refund-{paymentId}-{cancelAmt}` 중복 방지
+  - billing_payments에 refund row INSERT (`kind='refund'`, `amount_krw=-N`, `points_credited=-N`)
+  - billing_balances balance 차감
+
+**4. PaymentApp.jsx**: `purpose === 'topup'` 분기 — 결제 화면 제목 "포인트 충전", orderName은 `${branch_name}` (이미 v4에서 가공)
+
+**5. DB**:
+- `billing_payments.pg_tx_id UNIQUE` 제약 (webhook 중복 호출 방지)
+- `idx_reservation_payments_purpose_topup` partial 인덱스 (`WHERE purpose='topup'`)
+
+**6. 환불 정책** (refund.html — 기존에 이미 적합):
+- 충전일 1년 이내 미사용분만 환불, 사용분 제외
+- 영업일 1~3일 카드 환불
+
+**라이브 키 발급 후 활성화 — Supabase Edge Functions ENV 3개**:
+- `TOSS_BLISS_CLIENT_KEY` = `live_ck_*` (또는 테스트 모드 시 `test_ck_*`)
+- `TOSS_BLISS_SECRET_KEY` = `live_sk_*`
+- `TOSS_BLISS_IS_TEST` = `false`
+
+키 없을 때 충전 시도하면 `503 TOSS_BLISS_* not configured` 응답.
+
+**토스 답변 메일 발송 완료** (5/14, 송정윤 매니저 010-4928-1242). 답변 대기 중.
+
+### 주의사항 (v3.7.718 이후 참고)
+- **`monthly_credit` 의미**: SaaS 월 구독료 결제 대가로 받는 P. **무료 제공 X** (Trial은 0). 환불 정책상 잔여분만 환불 가능
+- **충전 결제 받는 주체 = 테라포트 본사** (각 매장 결제 키 ≠ 본사 결제 키). 본사 키는 ENV `TOSS_BLISS_*`에 별도 등록
+- **충전·환불은 AdminPlan에서만** (관리설정 → 요금제·잔액). 손님 결제 페이지(PaymentApp)는 동일 SDK 재사용
+- **point-refund 멱등성**: `Idempotency-Key`로 중복 환불 방지. 토스 `ALREADY_CANCELED_PAYMENT` 응답 시 skip
+- **다음 큰 작업 (HANDOFF.md 참조)**: KB 입금문자 자동 파싱 — 계좌 `KB 809101-04-203812` (강남점), Mac launchd 데몬 + 상단 배너 + 별도 페이지. v3.7.719에 배포 예정
