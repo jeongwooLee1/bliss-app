@@ -8,23 +8,27 @@
 <title>하우스왁싱 예약하기</title>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  body { margin:0; font-family:-apple-system,"Apple SD Gothic Neo",Pretendard,system-ui,sans-serif; background:#f5f6f8; color:#1a1a2e; min-height:100vh; padding:16px; }
+  body { margin:0; font-family:-apple-system,"Apple SD Gothic Neo",Pretendard,system-ui,sans-serif; background:#f5f6f8; color:#1a1a2e; min-height:100vh; padding:14px; }
   .wrap { max-width:480px; margin:0 auto; }
-  .header { text-align:center; padding:16px 0 20px; }
-  .header .brand { display:inline-flex; align-items:center; gap:12px; }
-  .header .brand img { width:46px; height:46px; border-radius:11px; box-shadow:0 6px 18px rgba(91,33,182,.18); }
-  .header h1 { margin:0; font-size:22px; font-weight:800; color:#5B21B6; letter-spacing:-.3px; }
-  .header .sub { font-size:13px; color:#666; margin-top:10px; }
+  .header { text-align:center; padding:4px 0 10px; }
+  .header .brand { display:inline-flex; align-items:center; gap:8px; }
+  .header img.logo { width:32px; height:32px; border-radius:7px; box-shadow:0 2px 6px rgba(120,80,140,.22); display:block; }
+  .header h1 { margin:0; font-size:20px; font-weight:800; color:#5B21B6; letter-spacing:-.3px; }
+  .header .branch-name { font-size:14px; color:#1a1a2e; font-weight:700; margin-top:3px; }
+  .header .sub { font-size:11px; color:#666; margin-top:6px; line-height:1.4; }
 
-  /* 모든 카드 공통: 테두리 없음, 부드러운 그림자 */
-  .card { border:none; border-radius:14px; padding:16px 18px; margin-bottom:12px; box-shadow:0 4px 14px rgba(17,24,39,.05); }
-  .card label.lbl { display:block; font-size:13px; font-weight:700; color:#1a1a2e; margin-bottom:9px; }
-  .card label.lbl .req { color:#dc2626; margin-left:3px; }
+  /* 모든 카드 공통: 테두리 없음, 부드러운 그림자, 한 줄 row 레이아웃 */
+  .card { border:none; border-radius:12px; padding:11px 14px; margin-bottom:8px; box-shadow:0 3px 10px rgba(17,24,39,.05); }
+  .card.row { display:flex; align-items:center; gap:10px; }
+  .card.row > .lbl { flex-shrink:0; width:78px; font-size:13px; font-weight:700; color:#1a1a2e; margin:0; line-height:1.3; }
+  .card.row > .lbl .req { color:#dc2626; margin-left:2px; }
+  .card.row > input, .card.row > select, .card.row > .radio-group { flex:1; min-width:0; }
+  .card label.lbl { display:block; font-size:13px; font-weight:700; color:#1a1a2e; margin-bottom:8px; }
+  .card label.lbl .req { color:#dc2626; margin-left:2px; }
   .card .err-msg { font-size:12px; color:#dc2626; margin-top:6px; display:none; font-weight:600; }
   .card.err .err-msg { display:block; }
 
   /* 카드별 은은한 톤 */
-  .c-store    { background:#F5F3FF; }
   .c-date     { background:#EFF6FF; }
   .c-time     { background:#EFF6FF; }
   .c-service  { background:#FDF2F8; }
@@ -32,8 +36,6 @@
   .c-name     { background:#ECFDF5; }
   .c-phone    { background:#ECFDF5; }
   .c-memo     { background:#F8FAFC; }
-
-  .branch-pill { display:inline-block; padding:6px 14px; background:#fff; color:#5B21B6; border-radius:20px; font-size:13px; font-weight:700; box-shadow:0 2px 6px rgba(91,33,182,.12); }
 
   /* 입력 필드 공통 */
   input[type="date"], input[type="time"], input[type="text"], input[type="tel"], select {
@@ -85,27 +87,23 @@
 
   <div class="header">
     <div class="brand">
-      <img src="/logo.png" alt="하우스왁싱">
+      <img src="/logo-housewaxing.png" alt="하우스왁싱" class="logo">
       <h1>하우스왁싱</h1>
     </div>
+    <div class="branch-name" id="branchLabel">지점 확인중…</div>
     <div class="sub">정보를 입력해 주시면 매장에서 확인 후 알림톡을 보내드립니다.</div>
   </div>
 
   <form id="bookForm" autocomplete="off">
 
-    <div class="card c-store">
-      <label class="lbl">매장</label>
-      <div class="branch-pill" id="branchLabel">지점 선택중…</div>
-    </div>
-
-    <div class="card c-date">
-      <label class="lbl">방문 날짜<span class="req">*</span></label>
+    <div class="card c-date row">
+      <span class="lbl">방문 날짜<span class="req">*</span></span>
       <input type="date" id="date" required>
       <div class="err-msg">날짜를 선택해주세요</div>
     </div>
 
-    <div class="card c-time">
-      <label class="lbl">방문 시간<span class="req">*</span></label>
+    <div class="card c-time row">
+      <span class="lbl">방문 시간<span class="req">*</span></span>
       <select id="time" required>
         <option value="">시간 선택</option>
       </select>
@@ -129,8 +127,8 @@
       <div class="err-msg">시술을 1개 이상 선택하거나 직접 입력해주세요</div>
     </div>
 
-    <div class="card c-gender">
-      <label class="lbl">성별<span class="req">*</span></label>
+    <div class="card c-gender row">
+      <span class="lbl">성별<span class="req">*</span></span>
       <div class="radio-group">
         <label><input type="radio" name="gender" value="여성" required><span>여성</span></label>
         <label><input type="radio" name="gender" value="남성"><span>남성</span></label>
@@ -138,20 +136,20 @@
       <div class="err-msg">성별을 선택해주세요</div>
     </div>
 
-    <div class="card c-name">
-      <label class="lbl">예약자 이름<span class="req">*</span></label>
+    <div class="card c-name row">
+      <span class="lbl">예약자 이름<span class="req">*</span></span>
       <input type="text" id="name" placeholder="이름" required>
       <div class="err-msg">이름을 입력해주세요</div>
     </div>
 
-    <div class="card c-phone">
-      <label class="lbl">연락처<span class="req">*</span></label>
+    <div class="card c-phone row">
+      <span class="lbl">연락처<span class="req">*</span></span>
       <input type="tel" id="phone" placeholder="010-1234-5678" inputmode="tel" required>
       <div class="err-msg">연락처를 입력해주세요</div>
     </div>
 
-    <div class="card c-memo">
-      <label class="lbl">요청사항 (선택)</label>
+    <div class="card c-memo row">
+      <span class="lbl">요청사항</span>
       <input type="text" id="memo" placeholder="예: 첫 방문, 동반자 1명 등">
     </div>
 
@@ -201,15 +199,48 @@
 
   // ─── 시간 옵션 (영업시간 11:00 ~ 21:00) ───
   const timeSel = document.getElementById("time");
+  const TIME_LIST = [];
   for (let h=11; h<=21; h++) {
     for (let m of [0,30]) {
       if (h===21 && m===30) continue;
-      const t = `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
-      const opt = document.createElement("option");
-      opt.value = t; opt.textContent = t;
-      timeSel.appendChild(opt);
+      TIME_LIST.push(`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`);
     }
   }
+  function rebuildTimeOptions(blocked){
+    const blockedSet = new Set(blocked||[]);
+    const cur = timeSel.value;
+    timeSel.innerHTML = '<option value="">시간 선택</option>';
+    for (const t of TIME_LIST) {
+      const opt = document.createElement("option");
+      opt.value = t;
+      const isBlocked = blockedSet.has(t);
+      opt.textContent = isBlocked ? `${t} (예약 마감)` : t;
+      if (isBlocked) opt.disabled = true;
+      timeSel.appendChild(opt);
+    }
+    if (cur && !blockedSet.has(cur)) timeSel.value = cur;
+  }
+  rebuildTimeOptions([]); // 초기 — 모두 활성
+
+  // 날짜 변경 시 막힌 시간 fetch
+  const dateInp = document.getElementById("date");
+  let _slotsAbort = null;
+  async function refreshBlockedSlots(){
+    const d = dateInp.value;
+    if (!d || !branchKey) return;
+    if (_slotsAbort) _slotsAbort.abort();
+    _slotsAbort = new AbortController();
+    try {
+      const r = await fetch(`/book-slots?branch=${encodeURIComponent(branchKey)}&date=${encodeURIComponent(d)}`,
+        { signal: _slotsAbort.signal });
+      if (!r.ok) { rebuildTimeOptions([]); return; }
+      const j = await r.json();
+      rebuildTimeOptions(j.blocked || []);
+    } catch (e) {
+      if (e.name !== "AbortError") rebuildTimeOptions([]);
+    }
+  }
+  dateInp.addEventListener("change", refreshBlockedSlots);
 
   // ─── 전화번호 자동 하이픈 ───
   const phoneInp = document.getElementById("phone");
