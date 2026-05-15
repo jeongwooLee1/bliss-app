@@ -10,16 +10,20 @@
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body { margin:0; font-family:-apple-system,"Apple SD Gothic Neo",Pretendard,system-ui,sans-serif; background:#f5f6f8; color:#1a1a2e; min-height:100vh; padding:14px; }
   .wrap { max-width:480px; margin:0 auto; }
-  .header { text-align:center; padding:4px 0 10px; }
-  .header .brand { display:inline-flex; align-items:center; gap:8px; }
-  .header img.logo { width:32px; height:32px; border-radius:7px; box-shadow:0 2px 6px rgba(120,80,140,.22); display:block; }
-  .header h1 { margin:0; font-size:20px; font-weight:800; color:#5B21B6; letter-spacing:-.3px; }
-  .header .branch-name { font-size:14px; color:#1a1a2e; font-weight:700; margin-top:3px; }
-  .header .sub { font-size:11px; color:#666; margin-top:6px; line-height:1.4; }
+  .header { text-align:center; }
+  .brand-band {
+    background:linear-gradient(135deg,#5B21B6,#7C3AED);
+    border-radius:14px; padding:16px; margin-bottom:9px;
+    box-shadow:0 6px 18px rgba(91,33,182,.25);
+    display:flex; align-items:center; justify-content:center; gap:10px;
+  }
+  .brand-band img.logo { width:32px; height:32px; border-radius:8px; background:#fff; padding:3px; box-shadow:0 2px 8px rgba(0,0,0,.16); display:block; flex-shrink:0; }
+  .brand-band .branch-name { margin:0; font-size:19px; font-weight:800; color:#fff; letter-spacing:-.3px; }
+  .header .sub { font-size:11px; color:#6b7280; line-height:1.5; padding:0 8px; }
 
   /* 모든 카드 공통: 테두리 없음, 부드러운 그림자, 한 줄 row 레이아웃 */
   .card { border:none; border-radius:12px; padding:11px 14px; margin-bottom:8px; box-shadow:0 3px 10px rgba(17,24,39,.05); }
-  .card.row { display:flex; align-items:center; gap:10px; }
+  .card.row { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
   .card.row > .lbl { flex-shrink:0; width:78px; font-size:13px; font-weight:700; color:#1a1a2e; margin:0; line-height:1.3; }
   .card.row > .lbl .req { color:#dc2626; margin-left:2px; }
   .card.row > input, .card.row > select, .card.row > .radio-group { flex:1; min-width:0; }
@@ -27,6 +31,7 @@
   .card label.lbl .req { color:#dc2626; margin-left:2px; }
   .card .err-msg { font-size:12px; color:#dc2626; margin-top:6px; display:none; font-weight:600; }
   .card.err .err-msg { display:block; }
+  .card.row .err-msg { flex-basis:100%; margin-top:0; }
 
   /* 카드별 은은한 톤 */
   .c-date     { background:#EFF6FF; }
@@ -39,12 +44,21 @@
 
   /* 입력 필드 공통 */
   input[type="date"], input[type="time"], input[type="text"], input[type="tel"], select {
-    width:100%; padding:13px 14px; font-size:15px; border:none; border-radius:10px;
+    width:100%; height:46px; padding:0 14px; font-size:15px; border:none; border-radius:10px;
     background:#fff; font-family:inherit; color:#1a1a2e; outline:none; -webkit-appearance:none; appearance:none;
     box-shadow:0 1px 3px rgba(17,24,39,.06);
   }
   input:focus, select:focus { box-shadow:0 0 0 3px rgba(91,33,182,.15); }
   select { background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%235B21B6' d='M6 8L0 0h12z'/></svg>"); background-repeat:no-repeat; background-position:right 14px center; padding-right:36px; }
+
+  /* 방문 날짜 — 네이티브 달력 유지, 표시 텍스트만 커스텀(년도 제거) */
+  .date-field { position:relative; flex:1; min-width:0; height:46px; background:#fff; border-radius:10px;
+    box-shadow:0 1px 3px rgba(17,24,39,.06); display:flex; align-items:center; gap:8px; padding:0 12px 0 14px; }
+  .date-field .date-display { flex:1; font-size:15px; color:#1a1a2e; }
+  .date-field .date-display.placeholder { color:#9aa0a8; }
+  .date-field .date-ico { flex-shrink:0; }
+  .date-field input[type="date"] { position:absolute; inset:0; width:100%; height:100%;
+    padding:0; margin:0; opacity:0; background:transparent; box-shadow:none; }
 
   /* 라디오 / chip 공통 */
   .radio-group, .chip-group { display:flex; flex-wrap:wrap; gap:8px; }
@@ -58,7 +72,17 @@
   .chip-group label:has(input:checked) {
     background:linear-gradient(135deg,#5B21B6,#7C3AED); color:#fff; box-shadow:0 4px 12px rgba(91,33,182,.28);
   }
-  .chip-group label { flex:0 1 auto; }
+  .chip-group label { flex:0 1 auto; font-size:13px; padding:8px 11px; }
+
+  /* 시간 선택 버튼 그리드 */
+  .time-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .time-btn {
+    padding:11px 4px; border:none; border-radius:10px; cursor:pointer;
+    font-weight:600; font-size:14px; font-family:inherit; transition:all .15s;
+    background:#fff; color:#444; box-shadow:0 1px 3px rgba(17,24,39,.06);
+  }
+  .time-btn.sel { background:linear-gradient(135deg,#5B21B6,#7C3AED); color:#fff; box-shadow:0 4px 12px rgba(91,33,182,.28); }
+  .time-btn.blocked { background:#c7cad1; color:#83868f; cursor:not-allowed; box-shadow:none; }
 
   .sub-hint { font-size:11px; color:#6b7280; margin:10px 2px 6px; font-weight:600; letter-spacing:.2px; }
 
@@ -86,27 +110,29 @@
 <div class="wrap">
 
   <div class="header">
-    <div class="brand">
+    <div class="brand-band">
       <img src="/logo-housewaxing.png" alt="하우스왁싱" class="logo">
-      <h1>하우스왁싱</h1>
+      <h1 class="branch-name" id="branchLabel">지점 확인중…</h1>
     </div>
-    <div class="branch-name" id="branchLabel">지점 확인중…</div>
     <div class="sub">정보를 입력해 주시면 매장에서 확인 후 알림톡을 보내드립니다.</div>
   </div>
 
-  <form id="bookForm" autocomplete="off">
+  <form id="bookForm" autocomplete="off" novalidate>
 
     <div class="card c-date row">
       <span class="lbl">방문 날짜<span class="req">*</span></span>
-      <input type="date" id="date" required>
+      <div class="date-field">
+        <span class="date-display placeholder" id="dateDisplay">날짜 선택</span>
+        <svg class="date-ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5B21B6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <input type="date" id="date" required>
+      </div>
       <div class="err-msg">날짜를 선택해주세요</div>
     </div>
 
-    <div class="card c-time row">
-      <span class="lbl">방문 시간<span class="req">*</span></span>
-      <select id="time" required>
-        <option value="">시간 선택</option>
-      </select>
+    <div class="card c-time">
+      <label class="lbl">방문 시간<span class="req">*</span></label>
+      <div class="time-grid" id="timeGroup"></div>
+      <input type="hidden" id="time">
       <div class="err-msg">시간을 선택해주세요</div>
     </div>
 
@@ -115,12 +141,18 @@
       <div class="sub-hint">자주 찾는 시술 (복수 선택 가능)</div>
       <div class="chip-group">
         <label><input type="checkbox" name="svc" value="브라질리언"><span>브라질리언</span></label>
+        <label><input type="checkbox" name="svc" value="비키니"><span>비키니</span></label>
         <label><input type="checkbox" name="svc" value="케어"><span>케어</span></label>
         <label><input type="checkbox" name="svc" value="겨드랑이"><span>겨드랑이</span></label>
         <label><input type="checkbox" name="svc" value="눈썹"><span>눈썹</span></label>
-        <label><input type="checkbox" name="svc" value="다리 전체"><span>다리 전체</span></label>
-        <label><input type="checkbox" name="svc" value="팔"><span>팔</span></label>
+        <label><input type="checkbox" name="svc" value="인중"><span>인중</span></label>
+        <label><input type="checkbox" name="svc" value="다리반"><span>다리반</span></label>
+        <label><input type="checkbox" name="svc" value="다리전체"><span>다리전체</span></label>
+        <label><input type="checkbox" name="svc" value="팔반"><span>팔반</span></label>
+        <label><input type="checkbox" name="svc" value="팔전체"><span>팔전체</span></label>
         <label><input type="checkbox" name="svc" value="헤어라인"><span>헤어라인</span></label>
+        <label><input type="checkbox" name="svc" value="에너지테라피"><span>에너지테라피</span></label>
+        <label><input type="checkbox" name="svc" value="스킨케어"><span>스킨케어</span></label>
       </div>
       <div class="sub-hint">기타 (직접 입력)</div>
       <input type="text" id="svcCustom" placeholder="예: 풀페이스+음모, 등 전체 등">
@@ -188,7 +220,7 @@
   const qs = new URLSearchParams(location.search);
   const branchKey = (qs.get("branch") || "").trim();
   const branchName = BRANCHES[branchKey] || "지점 정보 없음";
-  document.getElementById("branchLabel").textContent = branchName;
+  document.getElementById("branchLabel").textContent = branchName.replace(/^하우스왁싱\s*/, "");
 
   // ─── 날짜: 오늘 이후만 ───
   const today = new Date();
@@ -197,8 +229,9 @@
   const dd = String(today.getDate()).padStart(2,"0");
   document.getElementById("date").min = `${yyyy}-${mm}-${dd}`;
 
-  // ─── 시간 옵션 (영업시간 11:00 ~ 21:00) ───
-  const timeSel = document.getElementById("time");
+  // ─── 시간 버튼 (영업시간 11:00 ~ 21:00) ───
+  const timeInp = document.getElementById("time");        // 선택값 보관 (hidden)
+  const timeGroup = document.getElementById("timeGroup");
   const TIME_LIST = [];
   for (let h=11; h<=21; h++) {
     for (let m of [0,30]) {
@@ -206,24 +239,57 @@
       TIME_LIST.push(`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`);
     }
   }
-  function rebuildTimeOptions(blocked){
+  function rebuildTimeButtons(blocked){
     const blockedSet = new Set(blocked||[]);
-    const cur = timeSel.value;
-    timeSel.innerHTML = '<option value="">시간 선택</option>';
+    const cur = timeInp.value;
+    timeGroup.innerHTML = "";
     for (const t of TIME_LIST) {
-      const opt = document.createElement("option");
-      opt.value = t;
-      const isBlocked = blockedSet.has(t);
-      opt.textContent = isBlocked ? `${t} (예약 마감)` : t;
-      if (isBlocked) opt.disabled = true;
-      timeSel.appendChild(opt);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "time-btn";
+      btn.textContent = t;
+      if (blockedSet.has(t)) {
+        btn.classList.add("blocked");
+        btn.disabled = true;
+      } else {
+        btn.addEventListener("click", ()=>{
+          timeInp.value = t;
+          timeGroup.querySelectorAll(".time-btn.sel").forEach(b=>b.classList.remove("sel"));
+          btn.classList.add("sel");
+          clearErr(".c-time");
+        });
+      }
+      timeGroup.appendChild(btn);
     }
-    if (cur && !blockedSet.has(cur)) timeSel.value = cur;
+    // 기존 선택 복원 (마감되지 않았을 때만)
+    if (cur && !blockedSet.has(cur)) {
+      timeInp.value = cur;
+      const m = Array.from(timeGroup.children).find(b=>b.textContent===cur);
+      if (m) m.classList.add("sel");
+    } else {
+      timeInp.value = "";
+    }
   }
-  rebuildTimeOptions([]); // 초기 — 모두 활성
+  rebuildTimeButtons([]); // 초기 — 날짜 선택 전 모두 활성
 
   // 날짜 변경 시 막힌 시간 fetch
   const dateInp = document.getElementById("date");
+  const dateDisplay = document.getElementById("dateDisplay");
+  // 방문 날짜 표시 — 년도 빼고 "M월 D일" 로 (네이티브 input은 년도 숨김이 불가능)
+  function updateDateDisplay(){
+    const v = dateInp.value;
+    if (v) {
+      const p = v.split("-");
+      dateDisplay.textContent = `${Number(p[1])}월 ${Number(p[2])}일`;
+      dateDisplay.classList.remove("placeholder");
+    } else {
+      dateDisplay.textContent = "날짜 선택";
+      dateDisplay.classList.add("placeholder");
+    }
+  }
+  dateInp.addEventListener("change", updateDateDisplay);
+  // appearance:none + 투명 오버레이라 탭만으론 안 열리는 브라우저 대응 — 클릭 시 달력 명시 호출
+  dateInp.addEventListener("click", ()=>{ try { dateInp.showPicker(); } catch(_){} });
   let _slotsAbort = null;
   async function refreshBlockedSlots(){
     const d = dateInp.value;
@@ -233,11 +299,11 @@
     try {
       const r = await fetch(`/book-slots?branch=${encodeURIComponent(branchKey)}&date=${encodeURIComponent(d)}`,
         { signal: _slotsAbort.signal });
-      if (!r.ok) { rebuildTimeOptions([]); return; }
+      if (!r.ok) { rebuildTimeButtons([]); return; }
       const j = await r.json();
-      rebuildTimeOptions(j.blocked || []);
+      rebuildTimeButtons(j.blocked || []);
     } catch (e) {
-      if (e.name !== "AbortError") rebuildTimeOptions([]);
+      if (e.name !== "AbortError") rebuildTimeButtons([]);
     }
   }
   dateInp.addEventListener("change", refreshBlockedSlots);
@@ -255,6 +321,16 @@
   // ─── 제출 ───
   const form = document.getElementById("bookForm");
   const submitBtn = document.getElementById("submitBtn");
+
+  // 입력 시 해당 항목 경고 해제
+  function clearErr(sel){ const c = document.querySelector(sel); if (c) c.classList.remove("err"); }
+  dateInp.addEventListener("change", ()=>clearErr(".c-date"));
+  document.getElementById("name").addEventListener("input", ()=>clearErr(".c-name"));
+  phoneInp.addEventListener("input", ()=>clearErr(".c-phone"));
+  form.querySelectorAll('input[name="gender"]').forEach(r=>r.addEventListener("change",()=>clearErr(".c-gender")));
+  form.querySelectorAll('input[name="svc"]').forEach(c=>c.addEventListener("change",()=>clearErr(".c-service")));
+  document.getElementById("svcCustom").addEventListener("input", ()=>clearErr(".c-service"));
+
   form.addEventListener("submit", async e=>{
     e.preventDefault();
     if (!branchKey || !BRANCHES[branchKey]) {
