@@ -1417,3 +1417,10 @@ for (const k of deletedKeys) delete finalToSave[k];
 - 비용은 본사가 부담 (Anthropic Claude / OpenAI 직접 결제)
 
 **migration**: `disable_deduct_billing_balance`. 검증: deduct_billing 호출 후 balance 여전히 0 ✅.
+
+### v3.7.722 — 사이드바 보유 P/플랜 표시 hide (2026-05-15)
+**배경**: 차감 비활성화 + balance 0이라도 사이드바에 "프로 ~12/31 0P" 같은 표시 남음 → 토스 심사 답변 일관성 위해 표시 자체 제거.
+
+**fix**: `Sidebar.jsx` line 48-61 plan/balance 카드 블록을 `{false && ...}`로 감쌈. UI에서 안 보임. 부활 시 false → true.
+
+**적용**: v3.7.722 라이브 배포 (https://blissme.ai/version.txt 검증). AdminPlan(충전·환불 페이지)은 토스 심사 본문 화면이라 그대로 유지.

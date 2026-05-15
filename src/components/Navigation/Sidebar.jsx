@@ -45,7 +45,8 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
         </div>
         <button onClick={onLogout} title="로그아웃" style={{flexShrink:0,padding:"4px 9px",fontSize:10,fontWeight:T.fw.bolder,border:`1px solid ${T.border}`,background:T.bgCard,color:T.textSub,borderRadius:6,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>로그아웃</button>
       </div>
-      {(billingState.planKey || billingState.totalBalance >= 0) && (
+      {/* 토스 심사 대응 (2026-05-15) — 보유 P/플랜 표시 hide. 부활 시 false → true */}
+      {false && (billingState.planKey || billingState.totalBalance >= 0) && (
         <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:T.bgCard,border:`1px solid ${T.border}`,borderRadius:8}}>
           <span style={{
             fontSize:10,fontWeight:T.fw.black,letterSpacing:.3,
