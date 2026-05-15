@@ -1401,3 +1401,19 @@ for (const k of deletedKeys) delete finalToSave[k];
 **검증**: "강남점 주소가 어떻게 되나요?" → "하우스왁싱 강남본점 주소는 서울시 강남구 학동로30길 16 남강빌딩 5층입니다!" ✅. 영어 케이스는 시뮬 시점 Anthropic Sonnet API Overloaded(529)로 GPT 폴백, GPT는 default fallback 답변. Sonnet 회복 시 정상 동작 기대.
 
 **적용**: 서버 직접 patch + `systemctl restart bliss-naver`. 백업 `bak_pre_branch_addr_*`. React 변경 0건.
+
+### 차감 로직 비활성화 (2026-05-15, 토스 심사 응답)
+**배경**: 5/14에 billing_balances 모두 0으로 reset했으나 24시간 만에 AI 사용 차감으로 다시 음수(-110~-3,030)로 빠짐. 토스 심사 답변 일관성 위해 "balance 영영 0" 보장 필요.
+
+**fix**: `deduct_billing` RPC 수정 — validation 유지, billing_usage_logs는 기록(사용량 트래킹) but **balance UPDATE 부분만 제거**.
+- INSERT billing_usage_logs ... points_charged=0 (무료 표시)
+- UPDATE/INSERT billing_balances 부분 통째로 삭제
+- balance·monthly_credit 모두 0 유지
+- 부활 시 RPC 정의를 원래 형태로 복원하면 됨 (코드는 동일)
+
+**효과**:
+- billing_balances 영영 0
+- 토스 심사 "기본 제공 P 환불 모호" 항목 완전 해소 (balance 0 + 차감 없음 = 환불 대상 없음)
+- 비용은 본사가 부담 (Anthropic Claude / OpenAI 직접 결제)
+
+**migration**: `disable_deduct_billing_balance`. 검증: deduct_billing 호출 후 balance 여전히 0 ✅.
