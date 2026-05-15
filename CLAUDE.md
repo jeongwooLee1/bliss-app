@@ -1380,3 +1380,24 @@ for (const k of deletedKeys) delete finalToSave[k];
 - "I am a woman! And juste a bikini Line tidy up!" → "저는 여성이고, 비키니 라인 정리만 하고 싶어요!" (시제 정확)
 
 **적용**: 서버 직접 patch + `systemctl restart bliss-naver`. 백업 `bak_pre_translate_gpt_*`. React 변경 0건.
+
+### Irina 사고 fix — 8개 지점 전체 주소 + 정보문의 룰 강화 (2026-05-15)
+**사고**: Irina Costea (WhatsApp +41774030638) — 이미 5/15 10:00 강남본점 예약 확정.
+- 5/14 23:13 주소 문의 → AI가 "Address: Gangnam Main Branch, Seoul" 모호하게만 답
+- 23:14 손님 "complete address" 재문의 → AI가 "10:00은 어렵습니다, 09:30은?" **시간 변경 제안으로 오해**
+- 5/15 07:58 손님 "What is the correct address" → AI가 "8F, 652 Nonhyeon-ro" hallucination (실제: 5층, 학동로30길 16)
+- 5/15 08:03 손님 정확한 주소 제시 → AI "Yes correct!" + "새 예약 받겠다" — 이미 예약 있는데도
+
+**원인 2건**:
+1. **WhatsApp 공통 채널은 `account_id → branch_id` 매핑 없음** → `branch_info` 빈값 → `branch_detail_block` 비어있음 → AI가 주소 모름 → 추측
+2. AI prompt에 "변경 요청 가드" 룰만 강력하고 "정보 문의 ≠ 변경" 룰 없음 → 주소 문의를 변경 요청으로 오해
+
+**fix**:
+- `ai_booking.py`에 **`all_branches_block`** 추가 (line 1135 부근) — 8개 지점 전체 주소·전화를 매 prompt에 포함. branch_id 결정 안 돼도 모든 지점 주소 답변 가능
+- "[모든 지점 주소·전화 — 손님이 어느 지점이든 정확히 답할 것. 절대 추측·생성·hallucinate 금지]" 헤더로 강조
+- 변경 요청 룰에 ★ 단순 정보 문의(주소·전화·영업시간·가격·지점위치)는 변경 요청 아님 명시. "What's the address?", "주소가 뭐예요?", "complete address" 등 예시 추가. action=chat 강제
+- 손님이 이미 예약 있고 주소 묻는 경우 → "이미 예약된 [지점] 주소: [정확한 주소]" 형식 응답 룰
+
+**검증**: "강남점 주소가 어떻게 되나요?" → "하우스왁싱 강남본점 주소는 서울시 강남구 학동로30길 16 남강빌딩 5층입니다!" ✅. 영어 케이스는 시뮬 시점 Anthropic Sonnet API Overloaded(529)로 GPT 폴백, GPT는 default fallback 답변. Sonnet 회복 시 정상 동작 기대.
+
+**적용**: 서버 직접 patch + `systemctl restart bliss-naver`. 백업 `bak_pre_branch_addr_*`. React 변경 0건.
