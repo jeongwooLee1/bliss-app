@@ -306,8 +306,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     _viewportFetchedRef.current.add(_windowKey);
     (async () => {
       try {
-        const rows = await sb.get("reservations",
-          `&business_id=eq.${_activeBizId}&is_beta=eq.false&date=gte.${_from}&date=lte.${_to}&order=date.desc,time.asc&limit=5000`);
+        // sb.getAll: PostgREST db-max-rows(1000) 우회 — 14일 윈도우가 1000건 넘으면 selDate 데이터 누락됨
+        const rows = await sb.getAll("reservations",
+          `&business_id=eq.${_activeBizId}&is_beta=eq.false&date=gte.${_from}&date=lte.${_to}&order=date.desc,time.asc`);
         if (!Array.isArray(rows) || !rows.length) return;
         const mapped = fromDb("reservations", rows);
         setData(prev => {

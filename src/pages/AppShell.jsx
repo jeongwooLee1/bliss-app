@@ -25,7 +25,7 @@ import FloatingAI from '../components/BlissAI/FloatingAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.727"
+const BLISS_V = "3.7.728"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -33,33 +33,9 @@ function ScrollArea({ storageKey, children }) {
   return <div ref={ref} className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}>{children}</div>
 }
 const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", users:"/users", messages:"/messages", admin:"/settings", schedule:"/schedule", requests:"/requests", blissai:"/blissai" };
-// 과거 데이터 백그라운드 로드 (초기 14d/30d 이전 예약/매출) — UI 렌더 후 머지
 // reservations 테이블엔 대용량 JSONB 없음 (snapshot_data는 sales 테이블에만 존재)
 // type/is_schedule/source/repeat 등 필터링 필수 컬럼이 누락되면 화면 비어짐 → * 사용이 안전
 const RES_SELECT = "*";
-
-async function loadHistoricalInBackground(bizId, setData) {
-  // 초기 로드 범위(30일) 밖 데이터를 백그라운드로 천천히 가져옴
-  // 범위 명시: 30일~365일 이전 (무제한 fetch 차단)
-  const resOlder = new Date(Date.now()-30*86400000).toISOString().slice(0,10);
-  const resOldest = new Date(Date.now()-365*86400000).toISOString().slice(0,10);
-  const salBefore = new Date(Date.now()-14*86400000).toISOString().slice(0,10);
-  const salSince  = new Date(Date.now()-180*86400000).toISOString().slice(0,10);
-  try {
-    const [oldRes, oldSal] = await Promise.all([
-      sb.getAll("reservations", `&business_id=eq.${bizId}&is_beta=eq.false&date=gte.${resOldest}&date=lt.${resOlder}&order=date.desc,time.asc&select=${RES_SELECT}`).catch(()=>[]),
-      sb.getAll("sales", `&business_id=eq.${bizId}&date=gte.${salSince}&date=lt.${salBefore}&order=date.desc`).catch(()=>[]),
-    ]);
-    if (!oldRes.length && !oldSal.length) return;
-    const mappedRes = fromDb("reservations", oldRes);
-    const mappedSal = fromDb("sales", oldSal);
-    setData(prev => prev ? {
-      ...prev,
-      reservations: [...(prev.reservations||[]), ...mappedRes.filter(r => !(prev.reservations||[]).some(x => x.id === r.id))],
-      sales: [...(prev.sales||[]), ...mappedSal.filter(s => !(prev.sales||[]).some(x => x.id === s.id))],
-    } : prev);
-  } catch(e) { console.warn("[historical load]", e); }
-}
 
 async function loadAllFromDb(bizId) {
   const [branches, services, categories, tags, sources, users, rooms, customers, snsCustomers, reservations, sales, products, branchGroups] = await Promise.all([
@@ -75,7 +51,7 @@ async function loadAllFromDb(bizId) {
     sb.get("customers", `&business_id=eq.${bizId}&is_hidden=eq.false&sns_accounts=neq.${encodeURIComponent('[]')}&limit=500`).catch(()=>[]),
     // ⚡ 초기 로드: 최근 30일. getAll 페이지네이션 필수 — sb.get은 PostgREST db-max-rows(1000)에 잘려
     // 30일치(~8000건) 중 최신 1000건만 와서 며칠 전 데이터가 통째로 누락됨 (5/2 등 안 보임 버그)
-    // 30일 이전은 loadHistoricalInBackground가 백그라운드로 보충, viewport navigate 시 자동 fetch
+    // 30일 이전은 TimelinePage가 날짜 이동 시 on-demand로 보충 (전역 백그라운드 로드 없음)
     sb.getAll("reservations", `&business_id=eq.${bizId}&is_beta=eq.false&date=gte.${new Date(Date.now()-30*86400000).toISOString().slice(0,10)}&order=date.desc,time.asc&select=${RES_SELECT}`).catch(()=>[]),
     sb.getAll("sales", `&business_id=eq.${bizId}&date=gte.${new Date(Date.now()-14*86400000).toISOString().slice(0,10)}&order=date.desc`).catch(()=>[]),
     sb.getByBiz("products", bizId).catch(()=>[]),
@@ -1852,9 +1828,15 @@ function App() {
     const onVisible = async () => {
       if (!document.hidden) {
         try {
-          const rows = await sb.getAll("reservations", `&business_id=eq.${currentBizId}&is_beta=eq.false&order=date.desc,time.asc`);
+          // 최근 30일 범위만 갱신 (전체 history reload 방지) — 윈도우 안은 교체(삭제 반영), 밖은 on-demand 로드분 보존
+          const _since = new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+          const rows = await sb.getAll("reservations", `&business_id=eq.${currentBizId}&is_beta=eq.false&date=gte.${_since}&order=date.desc,time.asc`);
           const parsed = fromDb("reservations", rows);
-          setData(prev => prev ? {...prev, reservations: parsed} : prev);
+          setData(prev => {
+            if (!prev) return prev;
+            const kept = (prev.reservations||[]).filter(r => !r.date || r.date < _since);
+            return {...prev, reservations: [...kept, ...parsed]};
+          });
         } catch(e) {}
       }
     };
@@ -1924,9 +1906,15 @@ function App() {
     // 연결 복귀 시 1회 재동기화 (네트워크 끊김 후 재연결용)
     const onOnline = async () => {
       try {
-        const rows = await sb.getAll("reservations", `&business_id=eq.${currentBizId}&is_beta=eq.false&order=date.desc,time.asc`);
+        // 최근 30일 범위만 갱신 (전체 history reload 방지) — 윈도우 안은 교체(삭제 반영), 밖은 on-demand 로드분 보존
+        const _since = new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+        const rows = await sb.getAll("reservations", `&business_id=eq.${currentBizId}&is_beta=eq.false&date=gte.${_since}&order=date.desc,time.asc`);
         const parsed = fromDb("reservations", rows);
-        setData(prev => prev ? {...prev, reservations: parsed} : prev);
+        setData(prev => {
+          if (!prev) return prev;
+          const kept = (prev.reservations||[]).filter(r => !r.date || r.date < _since);
+          return {...prev, reservations: [...kept, ...parsed]};
+        });
       } catch(e) {}
     };
     window.addEventListener("online", onOnline);

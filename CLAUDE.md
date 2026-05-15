@@ -1439,3 +1439,30 @@ for (const k of deletedKeys) delete finalToSave[k];
 **예상 효과**: 일일 ai_call 3,127건 → ~50건 (98% 감소). 예약당 정확히 1번 분석. 실제 사용량 통계도 정상화 (어드민이 logs로 추적).
 
 **유의**: deduct_billing은 이미 비활성화 상태라 매장 balance엔 영향 X. logs는 어드민 사용량 추적용으로 유지.
+
+### v3.7.727 — 토스 심사 응답 + 예약폼 UI + 초기로드 버그 fix (2026-05-15)
+- features.js/pricing.html: Starter/Pro `monthly_credit` 0, 크레딧 포함 문구 제거 (토스 구독형 빌링 정책 — 구독료에 크레딧 미포함, P는 별도 충전)
+- book.html: 예약 폼 한 줄 row 레이아웃 컴팩트화 + 지점명 헤더 + 로고 `logo-housewaxing.png` 교체
+- TimelinePage: 취소 예약(cancelled/naver_cancelled)은 당일 취소만 표시(위약금 판단용), 사전 취소는 숨김. naver_changed 구예약은 항상 숨김
+- SaleForm: 쿠폰/동시발행 보유권 만료일 = 발행일+N개월의 하루 전 (패키지 규칙과 일치)
+- AppShell: 초기 reservations/sales 로드 `sb.get` → `sb.getAll` 페이지네이션 (db-max-rows 1000 잘림으로 5/2 등 과거 데이터 누락 버그 fix). team_chat 미읽 카운트에 business_id 필터 추가
+
+### v3.7.728 — 데이터 로딩 on-demand fetch 버그 3건 fix (2026-05-15)
+**배경**: HANDOFF에 "on-demand 데이터 로딩 전환 대규모 리팩토링"이 다음 작업으로 적혀 있었으나, 실제 코드 조사 결과 on-demand 메커니즘은 이미 구현돼 있었음 (TimelinePage selDate fetch / SalesPage 기간 fetch). 전제가 outdated → 대규모 리팩토링 대신 실제 버그 3건만 핀포인트 수정.
+
+**Fix A — TimelinePage on-demand fetch 잘림** (TimelinePage.jsx:309)
+- selDate ±7일 윈도우 fetch가 `sb.get(limit=5000)` 사용 → PostgREST db-max-rows(1000) 서버 캡에 잘림
+- 14일 윈도우(~3700건)가 1000건 넘으면 date.desc 정렬상 최신 ~4일치만 와서 selDate(윈도우 중앙) 데이터 누락
+- `sb.getAll` 페이지네이션으로 교체 (SalesPage 기간 fetch는 이미 getAll — 동일하게 통일)
+
+**Fix B — 포그라운드/온라인 복귀 시 전체 reservations 통째 reload** (AppShell.jsx onVisible/onOnline)
+- visibilitychange·online 핸들러가 날짜 필터 없는 `sb.getAll("reservations")` → 전 history 매번 reload. 모바일 PWA 백그라운드 복귀마다 발생 → 데이터 늘수록 느려짐 + Egress 낭비 (실제 "통째 로드" 문제)
+- 최근 30일 범위(`date=gte`)로 제한 + replace→윈도우 분할 merge: 30일 윈도우 안은 fetch 결과로 교체(삭제 반영), 윈도우 밖(on-demand 로드분)은 보존
+
+**Fix C — 죽은 코드 제거** (AppShell.jsx)
+- `loadHistoricalInBackground` 함수가 정의만 있고 호출 0건 → 제거
+- loadAllFromDb 주석의 "30일 이전은 loadHistoricalInBackground가 백그라운드로 보충" → 사실과 다름 → "TimelinePage가 날짜 이동 시 on-demand로 보충"으로 정정
+
+**적용**: v3.7.728 라이브 배포 (version.txt 검증, CF 퍼지 success). 로컬 빌드 검증 후 배포. 화면 변화 없는 데이터 로딩 내부 로직.
+
+**유의**: 전역 `data.reservations`는 세션 캐시로 유지 (on-demand가 이미 동작하므로 들어낼 필요 없음). HANDOFF의 "on-demand 대규모 리팩토링" 항목은 폐기.
