@@ -25,7 +25,7 @@ import FloatingAI from '../components/BlissAI/FloatingAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.722"
+const BLISS_V = "3.7.727"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -73,10 +73,11 @@ async function loadAllFromDb(bizId) {
     sb.get("customers", `&business_id=eq.${bizId}&is_hidden=eq.false&order=join_date.desc.nullslast,created_at.desc&limit=100`).catch(()=>[]),
     // SNS 실제 연결된 고객만 (빈 배열 제외) — 부분 인덱스로 빠름
     sb.get("customers", `&business_id=eq.${bizId}&is_hidden=eq.false&sns_accounts=neq.${encodeURIComponent('[]')}&limit=500`).catch(()=>[]),
-    // ⚡ 초기 로드: 최근 30일만 (이전: 180일 → 7900건 응답 ~ 수십 MB → 모바일에서 몇 분 지연)
+    // ⚡ 초기 로드: 최근 30일. getAll 페이지네이션 필수 — sb.get은 PostgREST db-max-rows(1000)에 잘려
+    // 30일치(~8000건) 중 최신 1000건만 와서 며칠 전 데이터가 통째로 누락됨 (5/2 등 안 보임 버그)
     // 30일 이전은 loadHistoricalInBackground가 백그라운드로 보충, viewport navigate 시 자동 fetch
-    sb.get("reservations", `&business_id=eq.${bizId}&is_beta=eq.false&date=gte.${new Date(Date.now()-30*86400000).toISOString().slice(0,10)}&order=date.desc,time.asc&limit=10000&select=${RES_SELECT}`).catch(()=>[]),
-    sb.get("sales", `&business_id=eq.${bizId}&date=gte.${new Date(Date.now()-14*86400000).toISOString().slice(0,10)}&order=date.desc&limit=3000`).catch(()=>[]),
+    sb.getAll("reservations", `&business_id=eq.${bizId}&is_beta=eq.false&date=gte.${new Date(Date.now()-30*86400000).toISOString().slice(0,10)}&order=date.desc,time.asc&select=${RES_SELECT}`).catch(()=>[]),
+    sb.getAll("sales", `&business_id=eq.${bizId}&date=gte.${new Date(Date.now()-14*86400000).toISOString().slice(0,10)}&order=date.desc`).catch(()=>[]),
     sb.getByBiz("products", bizId).catch(()=>[]),
     sb.getByBiz("branch_groups", bizId).catch(()=>[]),
   ]);
@@ -1338,8 +1339,9 @@ function App() {
     let alive = true;
     const fetchCount = async () => {
       try {
+        if (!_activeBizId) { setTeamChatUnread(0); return; }
         const lastRead = (typeof window !== 'undefined' && localStorage.getItem('bliss_team_chat_last_read_at')) || '1970-01-01T00:00:00Z';
-        const url = `${SB_URL}/rest/v1/team_chat_messages?select=id&created_at=gt.${encodeURIComponent(lastRead)}&limit=999`;
+        const url = `${SB_URL}/rest/v1/team_chat_messages?business_id=eq.${_activeBizId}&select=id&created_at=gt.${encodeURIComponent(lastRead)}&limit=999`;
         const r = await fetch(url, { headers:{...sbHeaders,'Cache-Control':'no-cache'}, cache:'no-store' });
         if (!alive) return;
         if (r.ok) { const rows = await r.json(); setTeamChatUnread(Array.isArray(rows) ? rows.length : 0); }

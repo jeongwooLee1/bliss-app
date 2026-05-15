@@ -98,14 +98,14 @@ export const PLANS = {
     label: '스타터',
     desc: '메시지 발송 + 멤버십 + 마케팅',
     price: 33000,
-    monthly_credit: 3000,
+    monthly_credit: 0,  // 토스 정책: 구독형 빌링에 크레딧 포함 불가. P는 별도 충전.
     features: STARTER_FEATURES,
   },
   pro: {
     label: '프로',
     desc: '메시지함 + AI + 동의서 + 자동배정 + 케어SMS + 외부플랫폼',
     price: 77000,
-    monthly_credit: 7000,
+    monthly_credit: 0,  // 토스 정책: 구독형 빌링에 크레딧 포함 불가. P는 별도 충전.
     features: PRO_FEATURES,
   },
 }

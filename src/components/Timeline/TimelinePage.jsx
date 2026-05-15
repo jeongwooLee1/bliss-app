@@ -2021,11 +2021,26 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   
   const allRoomIds = new Set(allRooms.map(r => r.id));
 
+  // 취소 시각(naver_cancelled_dt 우선, 없으면 updated_at) → KST 날짜 YYYY-MM-DD
+  const _cancelKstDate = (r) => {
+    const ts = r.naverCancelledDt || r._ua || "";
+    if (!ts) return "";
+    const d = new Date(typeof ts === "string" && ts.indexOf("T") < 0 ? ts.replace(" ", "T") : ts);
+    if (isNaN(d.getTime())) return "";
+    return new Date(d.getTime() + 9*3600*1000).toISOString().slice(0,10);
+  };
+
   const blocks = (data?.reservations||[]).filter(r => {
     if (r.date !== selDate) return false;
     if (!branchesToShow.some(b=>b.id===r.bid)) return false;
-    // 변경으로 인한 구예약(naver_changed)은 숨김, 일반 취소는 "취소됨" 표시로 남김
+    // 변경으로 인한 구예약(naver_changed)은 항상 숨김 (메일로 정상 변경된 케이스 포함)
     if (r.status === "naver_changed") return false;
+    // 취소(cancelled/naver_cancelled): 당일 취소만 표시(위약금 판단용), 사전 취소는 숨김
+    if (r.status === "cancelled" || r.status === "naver_cancelled") {
+      const _cd = _cancelKstDate(r);
+      if (_cd && _cd !== r.date) return false;  // 취소일 ≠ 예약일 → 사전 취소 → 숨김
+      // 당일 취소(또는 취소시각 불명) → 표시
+    }
     const isNaver = r.source === "naver" || r.source === "네이버";
     // 네이버 스크래퍼 예약만 스크래핑 완료 대기 (수동 예약/manual_ 접두사는 즉시 표시)
     const isManual = !r.reservationId || String(r.reservationId).startsWith("manual_") || String(r.reservationId).startsWith("ai_");

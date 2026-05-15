@@ -2869,6 +2869,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
               const expM = m ? Number(m[1]) : 3;
               const start = new Date(firstUseDate);
               start.setMonth(start.getMonth() + expM);
+              start.setDate(start.getDate() - 1);  // 만료일 = 시작일+N개월의 하루 전 (패키지·보유권과 동일 규칙)
               const expStr = `${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,"0")}-${String(start.getDate()).padStart(2,"0")}`;
               const newNote = noteStr
                 .replace(/유효대기/, `유효:${expStr}`)
@@ -2889,7 +2890,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
         let pc = svc.promoConfig;
         if (typeof pc === "string") { try { pc = JSON.parse(pc); } catch { pc = {}; } }
         const expM = Number(pc?.expiryMonths) > 0 ? Number(pc.expiryMonths) : 3;
-        const exp = new Date(today); exp.setMonth(exp.getMonth() + expM);
+        const exp = new Date(today); exp.setMonth(exp.getMonth() + expM); exp.setDate(exp.getDate() - 1);  // 만료일 = 발행일+N개월의 하루 전
         const note = `발행:${fmtD(today)} | 유효:${fmtD(exp)} | 매출${sale.id} 동시발행`;
         for (let i = 0; i < count; i++) {
           sb.insert("customer_packages", {

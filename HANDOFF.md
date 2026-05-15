@@ -1,7 +1,7 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.718** (https://blissme.ai/version.txt) — 2026-05-14 배포
+- **라이브: v3.7.727** (https://blissme.ai/version.txt) — 2026-05-15 배포
 - 다음 빌드 시 `BLISS_V` (AppShell.jsx) + `public/version.txt` 둘 다 함께 bump 필수
 - 변경 이력은 [CLAUDE.md](./CLAUDE.md) 참고
 
@@ -58,8 +58,31 @@
 
 키 없는 상태에서 매장이 충전 시도하면 `503 TOSS_BLISS_* not configured` 표시.
 
-## 📋 다음 세션 작업
-없음 (현재 라이브: v3.7.720)
+## 📋 다음 세션 작업 — on-demand 데이터 로딩 전환 (대규모 리팩토링)
+
+### 배경 / 왜
+- 현재 AppShell이 앱 시작 시 reservations/sales를 **전역 `data` 객체에 통째 로드** → 데이터 늘면 범위를 잘라야 함 (현재 reservations 30일 / sales 14일)
+- 자른 범위 밖은 빵꾸 → 지은 요청(id_oqxnamev8r): "5/2 이전 기록 전부 안 보임" 버그
+- 추가로 Supabase `db-max-rows=1000` 제약 — `sb.get`은 1000건에서 잘림 (v3.7.727에서 초기 로드를 `sb.getAll` 페이지네이션으로 우선 fix, 30일은 정상화)
+- 사용자 결정(2026-05-15): 근본 해결 = **화면이 필요한 범위만 그때그때 fetch (on-demand)**
+
+### 목표 구조
+- 앱 시작 → 최소만 로드 (오늘 ±7일 정도)
+- 타임라인: `selDate` 바뀌면 그 주변 ±N일 fetch + 날짜별 캐시
+- 매출관리: 조회 기간 선택 시 그 기간 fetch
+- 고객관리: 이미 on-demand (서버 페이지네이션) — 그대로
+
+### 단계 (각 단계 로컬 dev server 검증 → 배포)
+1. **타임라인 on-demand** — TimelinePage가 `selDate` 기준 fetch. AppShell 전역 `data.reservations` 의존 제거. 예약 모달·블록 이동·Realtime 갱신이 전역 data에 묶여있어 연쇄 수정 필요. 규모 중간.
+2. **매출관리 on-demand** — SalesPage 조회 기간 기준 fetch. 규모 중간.
+3. **정리** — 전역 `data.reservations/sales` 통째 로드 제거. 규모 작음.
+
+### 주의
+- 라이브 데이터 흐름 변경이라 단계마다 로컬 검증 필수 (memory feedback_bliss_local_first)
+- worktree 작업세션에서 집중 작업 권장 (memory reference_bliss_workflow)
+- 지은 요청(id_oqxnamev8r)은 1단계 완료 시 status=done 전환
+
+## 현재 라이브: v3.7.727
 
 ## 인수인계 체계
 3계층 분리. 자세한 내용은 CLAUDE.md 참고.
