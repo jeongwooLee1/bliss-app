@@ -1424,3 +1424,18 @@ for (const k of deletedKeys) delete finalToSave[k];
 **fix**: `Sidebar.jsx` line 48-61 plan/balance 카드 블록을 `{false && ...}`로 감쌈. UI에서 안 보임. 부활 시 false → true.
 
 **적용**: v3.7.722 라이브 배포 (https://blissme.ai/version.txt 검증). AdminPlan(충전·환불 페이지)은 토스 심사 본문 화면이라 그대로 유지.
+
+### ai_analyze_reservation 무한 재호출 버그 fix (2026-05-15, 서버)
+**증상**: billing_usage_logs에서 ai_call이 폭증. 같은 reservation_id가 48시간에 284-309번 호출 (10분에 1번 꼴). 5/14 일일 3,127건 / 예약 52건 = **예약당 평균 60번** 분석.
+
+**원인**: bliss_naver.py line 1515 SELECT 쿼리 버그
+- `?id=eq.{rid}` ← 잘못. `rid`는 **`reservation_id`** (네이버 ID)
+- reservations 테이블의 `id`는 다른 값 (`ai_xxx` 등)
+- 항상 빈 결과 반환 → `_existing={}` → `_has_analyzed=False` & `_existing_hash=""` → `_should_analyze=True` 항상 → 매 cron마다 재분석
+- PATCH (line 2050)는 `reservation_id=eq.{rid}`로 정상이라 hash는 저장됐지만 SELECT 시 못 찾음 → 가드 무효화
+
+**fix**: `?id=eq.{rid}` → `?reservation_id=eq.{rid}` 한 줄 수정. `sed -i` + `systemctl restart bliss-naver`. 백업 `bak_pre_aigate_fix_*`.
+
+**예상 효과**: 일일 ai_call 3,127건 → ~50건 (98% 감소). 예약당 정확히 1번 분석. 실제 사용량 통계도 정상화 (어드민이 logs로 추적).
+
+**유의**: deduct_billing은 이미 비활성화 상태라 매장 balance엔 영향 X. logs는 어드민 사용량 추적용으로 유지.
