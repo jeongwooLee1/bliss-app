@@ -1466,3 +1466,13 @@ for (const k of deletedKeys) delete finalToSave[k];
 **적용**: v3.7.728 라이브 배포 (version.txt 검증, CF 퍼지 success). 로컬 빌드 검증 후 배포. 화면 변화 없는 데이터 로딩 내부 로직.
 
 **유의**: 전역 `data.reservations`는 세션 캐시로 유지 (on-demand가 이미 동작하므로 들어낼 필요 없음). HANDOFF의 "on-demand 대규모 리팩토링" 항목은 폐기.
+
+### 카카오 예약폼(book.html) 전면 개편 (2026-05-15)
+React 앱과 무관한 정적 페이지(`public/book.html`)만 수정 — BLISS_V/version.txt bump 없음 (라이브 React 앱은 v3.7.728 유지).
+
+- **헤더**: 퍼플 그라데이션 브랜드 밴드 + 로고 흰 타일. "하우스왁싱" 텍스트 중복 제거 — 카카오 상단바·h1·매장명 3회 노출 → 1회(상단바)만. 헤더는 `[로고] 강남본점`(매장명 단축, `replace(/^하우스왁싱\s*/,"")`)
+- **방문 날짜**: 입력칸 높이 46px 통일. 네이티브 `<input type=date>`는 년도 숨김 불가 → 투명 오버레이(`.date-field`) + 커스텀 표시("M월 D일", 년도 제거) + 달력 아이콘 + `showPicker()` (appearance:none이라 탭만으론 안 열림)
+- **방문 시간**: `<select>` 드롭다운 → 4열 버튼 그리드(`.time-grid`/`.time-btn`). 막힌 시간(`/book-slots` 응답)은 회색 비활성 버튼. 선택값은 hidden input
+- **시술 부위**: 7개 → 13개 (브라질리언·비키니·케어·겨드랑이·눈썹·인중·다리반·다리전체·팔반·팔전체·헤어라인·에너지테라피·스킨케어), 칩 폰트 13px
+- **누락 항목 경고**: `novalidate` + 항목별 인라인 빨간 문구(`.err-msg`) 노출 + 첫 누락 항목으로 스크롤. 입력 시 경고 자동 해제
+- **적용**: 빌드·서버 배포·CF 퍼지. `blissme.ai/book.html` 검증 완료. `/book-slots` 서버 엔드포인트(naver_block_state 기반 막힌시간 반환)는 기존 구현 그대로 사용
