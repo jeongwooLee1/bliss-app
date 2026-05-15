@@ -12,13 +12,13 @@
   .wrap { max-width:480px; margin:0 auto; }
   .header { text-align:center; }
   .brand-band {
-    background:linear-gradient(135deg,#5B21B6,#7C3AED);
+    background:linear-gradient(135deg,#C4B5FD,#DDD6FE);
     border-radius:14px; padding:16px; margin-bottom:9px;
-    box-shadow:0 6px 18px rgba(91,33,182,.25);
+    box-shadow:0 4px 14px rgba(124,58,237,.18);
     display:flex; align-items:center; justify-content:center; gap:10px;
   }
-  .brand-band img.logo { width:32px; height:32px; border-radius:8px; background:#fff; padding:3px; box-shadow:0 2px 8px rgba(0,0,0,.16); display:block; flex-shrink:0; }
-  .brand-band .branch-name { margin:0; font-size:19px; font-weight:800; color:#fff; letter-spacing:-.3px; }
+  .brand-band img.logo { width:32px; height:32px; border-radius:8px; display:block; flex-shrink:0; }
+  .brand-band .branch-name { margin:0; font-size:19px; font-weight:800; color:#5B21B6; letter-spacing:-.3px; }
   .header .sub { font-size:11px; color:#6b7280; line-height:1.5; padding:0 8px; }
 
   /* 모든 카드 공통: 테두리 없음, 부드러운 그림자, 한 줄 row 레이아웃 */
@@ -104,6 +104,7 @@
   .summary .item .sub { color:#6b7280; font-weight:500; }
 
   .footer-note { font-size:12px; color:#888; text-align:center; padding:14px 8px 24px; line-height:1.6; }
+  .footer-note .tel-link { display:inline-flex; align-items:center; gap:3px; color:#5B21B6; font-weight:800; text-decoration:none; vertical-align:middle; }
 </style>
 </head>
 <body>
@@ -111,7 +112,7 @@
 
   <div class="header">
     <div class="brand-band">
-      <img src="/logo-housewaxing.png" alt="하우스왁싱" class="logo">
+      <img src="/logo-housewaxing.png" alt="하우스왁싱" class="logo" fetchpriority="high">
       <h1 class="branch-name" id="branchLabel">지점 확인중…</h1>
     </div>
     <div class="sub">정보를 입력해 주시면 매장에서 확인 후 알림톡을 보내드립니다.</div>
@@ -189,7 +190,7 @@
 
     <div class="footer-note">
       신청 후 매장에서 확인되면 알림톡으로 안내드립니다.<br>
-      문의: 매장 전화로 직접 연락 부탁드립니다.
+      문의 <a href="tel:02-515-5141" class="tel-link"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg> 02-515-5141</a>
     </div>
   </form>
 
