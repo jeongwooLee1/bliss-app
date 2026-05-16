@@ -3072,7 +3072,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
         {/* 고객정보 + 남녀 — 강조 (큰 영역) */}
         <div style={{padding:"10px 14px",borderBottom:"1px solid #e0e0e0",background:T.dangerLt,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
           <span style={{color:T.textSub,fontWeight:700,fontSize:12,flexShrink:0}}>고객명</span>
-          <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",flex:1}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",flex:1,minWidth:200}}>
             {_visitorDiffers && (
               <div style={{ display: "flex", gap: 0, border: "1px solid " + T.gray400, borderRadius: 6, overflow: "hidden", flexShrink: 0 }}>
                 {[

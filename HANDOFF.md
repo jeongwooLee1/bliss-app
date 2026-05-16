@@ -1,12 +1,15 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.732** (https://blissme.ai/version.txt) — 2026-05-16 배포
+- **라이브: v3.7.733** (https://blissme.ai/version.txt) — 2026-05-16 배포
 - 다음 빌드 시 `BLISS_V` (AppShell.jsx) + `public/version.txt` 둘 다 함께 bump 필수
 - 변경 이력은 [CLAUDE.md](./CLAUDE.md) 참고
 
 ## 진행 중 작업
-없음. (RT47 확정 거부 + 새로고침 동기화 + source 컨벤션 — 2026-05-16 모두 처리, CLAUDE.md 참고)
+없음. (모바일 레이아웃 2건 + 진행중 status 회귀 fix — 2026-05-16 v3.7.733 처리, CLAUDE.md 참고)
+
+## 미처리 — 현아 커플패키지 질문 (id_eih96ttwa0, pending)
+"커플패키지 3회: 한 분 매출로 3회 등록 + 다른 분 고객관리에서 3회 등록? 아니면 6회로 쉐어 사용?" — 운영 방식 결정 필요. 답변 미작성.
 
 ## 참고 — 라이브 키 대기 (별도 트랙, 외부 의존)
 토스 라이브 키 발급 시 Supabase Edge Functions ENV 3개 등록 필요:

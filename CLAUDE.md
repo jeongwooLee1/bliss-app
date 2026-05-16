@@ -1596,3 +1596,22 @@ React 앱과 무관한 정적 페이지(`public/book.html`)만 수정 — BLISS_
 **증상**: 다담권 잔액 있는 고객인데 매출관리 → 매출등록에서 다담권(선불잔액) 사용 UI가 안 뜸. 타임라인 매출등록은 정상.
 **원인**: `SaleForm`의 `activePkgs`(현 지점 사용가능 보유권)가 `canUsePkgAtBranch(p, branchId, …)` — `branchId` **prop**으로 지점 필터. 매출관리는 다지점 권한(연계지점 머지 포함)이면 `branchId`로 빈 값(`_defaultBid=""`)을 넘김 → 보유권 전부 inactive로 걸러짐 → `prepaidPkgs` 0건 → 다담권 UI `if(prepaidBal<=0) return null`로 숨김. 타임라인은 예약 지점이 `branchId`로 박혀 정상.
 **fix**: `SaleForm.jsx:757/759` — `canUsePkgAtBranch(p, branchId, …)` → `canUsePkgAtBranch(p, (selBranch || branchId), …)`. 폼에서 직원이 고른 지점(`selBranch`) 기준으로 보유권 사용 가능 판정. 타임라인은 `selBranch`가 `branchId`로 초기화되므로 동일 동작(무회귀).
+
+### v3.7.733 — 모바일 레이아웃 2건 + 진행중 status 회귀 fix (2026-05-16)
+
+#### 매출입력 폼 모바일 상단 행 찌그러짐 (SaleForm)
+- 증상: 모바일(375px) 매출입력에서 `[고객명 라벨][고객검색][시술자][지점]` 4개가 한 줄 flex라, 시술자(142px)·지점(112px) 고정폭이 줄을 다 차지 → 고객검색 입력칸이 32px로 찌그러짐 → 드롭다운도 32px라 "이정우"가 한 글자씩 세로로 깨짐
+- fix: `SaleForm.jsx:3075` 고객정보 래퍼 div에 `minWidth:200` 추가 → 모바일에서 1행 `고객명+검색칸(전체폭)`, 2행 `시술자+지점`으로 자동 줄바꿈. 데스크탑(780px 모달)은 `flex:1`이 200을 넘겨 늘어나 무영향(무회귀)
+
+#### 고객 상세 모달이 테이블 프레임에 갇힘 (CustomersPage, iOS Safari)
+- 증상: 고객관리 → 고객 클릭 → 상세 모달이 모바일에서 페이지 헤더·필터 아래에 끼어 렌더링, 모달 헤더(이름+닫기 ✕)가 화면 밖으로 밀려 안 보임 ("프레임 속에 갇힘")
+- 원인: 상세 모달이 고객 테이블의 `<tr><td>` 안에서 렌더링됨. `position:fixed`인데 iOS Safari에서 테이블 조상(transform/스크롤 컨테이너)이 fixed 기준을 viewport→조상으로 바꿔 모달이 셀 프레임에 갇힘
+- fix: `CustomersPage.jsx:1860` 모달 오버레이를 `createPortal(…, document.body)`로 감쌈 → 테이블 조상 체인 탈출, `position:fixed`가 viewport 기준 정상 동작. (타임라인 설정 바텀시트와 동일 패턴, `createPortal` 이미 import됨)
+
+#### 진행중(confirmed) status가 네이버 재스크랩으로 예약중 회귀 (서버, 현아 id_52i0ud24c9)
+- 증상: 직원이 고객 방문 시 예약을 '진행중'으로 바꾸면 자꾸 '예약중'으로 되돌아감
+- 원인: `bliss_naver.py` 재스크랩 UPDATE 가드 [보호1~4]에 **DB=confirmed → 스크랩 reserved 회귀**를 막는 가드 없음. `confirmed`(진행중)는 네이버 STATUS_MAP에 없는 Bliss 전용 수동 상태인데 `status`가 `BLISS_PRESERVE_FIELDS`에 없어 매 재스크랩(5분 폴링·새로고침)마다 네이버 상태(`reserved`)로 덮어써짐
+- fix: `bliss_naver.py`에 **[보호5]** 추가 — `cur_status=="confirmed"` & `new_status in ("reserved","pending")`이면 `data`에서 `status` 키 제거 → 진행중 보존. 네이버 취소/변경(`naver_cancelled`/`naver_changed`)은 그대로 confirmed 덮어쓰기 허용. 서버 직접 패치(백업 `bak_pre_confirm_protect_*`) + `systemctl restart bliss-naver`
+- 처리 완료: 현아 `id_52i0ud24c9` status=done + reply
+
+**적용**: v3.7.733 라이브 배포(version.txt 검증, CF 퍼지 success). 서버 패치는 같은 타이밍에 별도 적용(React 빌드와 무관 트랙).

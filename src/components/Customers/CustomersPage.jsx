@@ -1857,6 +1857,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
 
                 {/* 상세 패널 — 풀스크린 모달 (펼침 → 화면 전체 덮음, 한 페이지에서 매출내역까지 다 보이게) */}
                 {isOpen && <tr><td colSpan={11} style={{padding:0}}>
+                  {createPortal(
                   <div onClick={e=>{if(e.target===e.currentTarget) setDetailCust(null);}}
                     style={{position:"fixed",inset:0,zIndex:3000,background:"rgba(0,0,0,.5)",display:"flex",padding:window.innerWidth<768?"0":"1.5vh 20px",alignItems:"flex-start",justifyContent:"center"}}>
                   <div onClick={e=>e.stopPropagation()} className="cust-fs-modal"
@@ -2143,6 +2144,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                   </div>
                   </div>
                   </div>
+                  , document.body)}
                 </td></tr>}
               </React.Fragment>;
             })}
