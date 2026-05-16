@@ -1557,4 +1557,21 @@ React 앱과 무관한 정적 페이지(`public/book.html`)만 수정 — BLISS_
 - `bliss_naver.py` UPDATE: `source`를 `BLISS_PRESERVE_FIELDS`에 추가 → scrape이 `source` 덮어쓰지 않음
 - 유정민 `1237756370`: status `pending → reserved` (실제 예약 건, 확정대기 배너 즉시 해제)
 **적용**: 서버 직접 (백업 `bliss_naver.py.bak_pre_source_*`) + `systemctl restart bliss-naver`. React 변경 0.
-**⚠️ 미해결 (별도 트랙)**: 로그에 `[naver-confirm] rid=1237756370 → 409 RT47 MANDATORY_VALIDATOR_ERRORS` 2회 — 블리스가 네이버 확정 API 호출 시 거부당함. 변경예약 확정 관련 추정. 추가 조사 필요 (HANDOFF 기록).
+**⚠️ 미해결 (별도 트랙)**: 로그에 `[naver-confirm] rid=1237756370 → 409 RT47 MANDATORY_VALIDATOR_ERRORS` 2회 — 블리스가 네이버 확정 API 호출 시 거부당함. 변경예약 확정 관련 추정. 추가 조사 필요 (HANDOFF 기록). → **아래 항목에서 해결**
+
+### 네이버 확정 + 새로고침 동기화 + source 컨벤션 정리 (2026-05-16, React 변경 0)
+**RT47 정체**: `1237756370` 재확인 결과 — 네이버에서 `RC03`(확정됨). RT47은 변경예약이 **갓 생성된 직후** 네이버 확정 API가 잠깐 거부하는 일시 현상. 시간이 지나거나 직원이 네이버에서 직접 확정하면 풀림.
+
+**확정 함수(`naver_confirm_booking`) fix**:
+- `409 ALREADY_CONFIRMED` → 성공 처리(`return True`). 이전엔 실패(HTTP 500) — 직원이 네이버에서 먼저 확정했거나 확정 버튼 두 번 누르면 에러로 보이던 버그
+- `409 RT47 / MANDATORY_VALIDATOR_ERRORS` → raw JSON 대신 안내 메시지 ("네이버에서 아직 확정 전, 잠시 후 자동 반영 또는 직접 확정")
+
+**타임라인 새로고침 버튼 = 새로고침 + 동기화**: `TimelinePage.jsx:3762` → `naverPollNow` → `/naver-poll-now` → `naver_poll_branch_now`. 그런데 `naver_poll_branch_now`가 **신규 예약 INSERT + prev-chain만** 처리하고, **기존 예약의 status는 재확인 안 함** → 새로고침해도 확정대기 안 풀리던 진짜 이유.
+- fix: `naver_poll_branch_now`에 — 네이버 목록의 예약이 DB에 이미 있고 status가 `pending`/`request`면 → 그 자리에서 인라인 재스크랩(`_process_one(..., via_queue=False)`). 보통 1~3건이라 새로고침 +1~2초. 이제 새로고침 = 확정대기 즉시 정리
+- `_process_one`에 `via_queue` 파라미터 추가 — 큐 워커 외 인라인 호출 시 `task_done()` 스킵 (`task_done() called too many times` 방지)
+
+**source 컨벤션 불일치 (중요)**: `reservations.source`는 두 값이 공존 — 네이버 스크래퍼(`_process_one`)는 `naver`(영문), React 앱 예약경로 드롭다운(`ReservationModal.jsx` `DEFAULT_SOURCES`)은 `네이버`(한글). 즉 직원이 네이버 예약을 모달에서 저장하면 `source`가 `네이버`로 바뀜 — 버그 아니라 설계 불일치.
+- fix: 서버 재스크랩 쿼리 3곳(`pending_rescrape_thread` ×2 + 미래취소 동기화) `source=eq.naver` → `source=in.(naver,네이버)`. 어느 컨벤션이든 재스크랩이 잡음 → 확정대기 stuck 영구 차단
+- `source` 한 컨벤션으로 통일(앱 라벨/값 분리)은 추후 과제 — 재스크랩 관대화로 기능상 무해해서 시급하지 않음
+
+**적용**: 서버 직접 (`bliss_naver.py` 백업 `bak_pre_confirm_*`/`bak_pre_pollresc_*`) + `systemctl restart`. React 변경 0. 검증: `naver_poll_branch_now` 인라인 재스크랩 — pending 예약 status 갱신 + `source` 보존 정상.
