@@ -1510,4 +1510,19 @@ React 앱과 무관한 정적 페이지(`public/book.html`)만 수정 — BLISS_
 ### AI FAQ 마취크림 안내 추가 + 수정요청 id_o6tib4mrmq 완료 (2026-05-16)
 - `businesses.settings.ai_faq`에 마취크림 FAQ 2건(한·영) 추가 — "마취크림 사용 안 함, 한국 살롱에서 사용 금지". 자동응답 AI(`ai_booking.py`)가 `ai_faq`를 최우선 참조 → 서버 5분 캐시 후 반영 (배포·재시작 불필요)
 - 정우님 수정요청 `id_o6tib4mrmq` 2건(메시지 배지 / AI 마취크림) 모두 처리 → `bliss_requests_v1`에서 status=done + reply 작성
-- ⚠️ 발견: FAQ 추가 전 `ai_faq`가 **0개**였음 — 2026-04-21 등록한 250개 FAQ가 현재 DB에 없음 (원인 불명, 별도 확인 필요)
+- 참고: `ai_faq`가 비어 있던 건 사고가 아님 — FAQ가 2026-05-03에 RAG 학습문서(`documents`/`document_chunks`)로 이전됐기 때문. 아래 RAG 항목 참고
+
+### ai_booking.py RAG 학습문서 연동 (2026-05-16, React 변경 0)
+**배경**: FAQ 250개가 2026-05-03에 `ai_faq`(settings 필드) → RAG 학습문서로 이전됨 (`documents`/`document_chunks` 테이블 — `housewaxing_faq.md` 19청크 + 왁싱교재 PDF + 이미지). 하지만 RAG 검색(`aiDocs.js` searchDocs / `match_documents` RPC)을 쓰는 건 BlissAI(직원 인앱 도구)뿐 — 고객 자동응답 AI(`ai_booking.py`)는 `ai_faq`만 읽고 RAG 코드가 없어, FAQ 지식을 통째로 잃은 상태였음 (임산부·사후관리·통증 등에 "담당자 확인 후 안내"만 응답).
+
+**fix**: `ai_booking.py`에 `_rag_search_docs(question)` 추가 —
+- 질문을 Gemini 임베딩(`gemini-embedding-001` 768차원, 폴백 `text-embedding-004`) → `match_documents` RPC(threshold 0.45 / top 5)로 관련 청크 검색
+- 결과를 `docs_block`으로 만들어 프롬프트 `{faq_block}` 다음에 주입. 헤더에 "FAQ와 동일 효력" 명시 + 지어내기금지 규칙도 `[FAQ]/[학습 문서]`로 보강
+- 실패 시 빈 문자열 반환 → 자동응답 막지 않음 (graceful). `aiDocs.js` searchDocs와 동일 임베딩 모델·우선순위 사용(쿼리/문서 임베딩 공간 일치)
+- 매 메시지마다 임베딩 1회 + RPC 1회 (~0.5초, 비용 미미)
+
+**검증**: `_rag_search_docs` 단독 3건(임산부/사후관리/마취크림) 정상 청크 회수. end-to-end(`ai_booking_agent` suggest_only) — "임산부 왁싱 돼요?" → 학습문서 기반 자연스러운 실답변 생성 확인 (이전엔 "담당자 확인").
+
+**적용**: 서버 직접 (백업 `ai_booking.py.bak_pre_rag_20260516_135830`) + `systemctl restart bliss-naver`. React 변경 0 → 버전업·CF 퍼지 불필요.
+
+**유의**: 자동응답 AI는 이제 `ai_faq`(faq_block) + RAG 학습문서(`docs_block`) 둘 다 사용. 마취크림 같은 빠른 단건은 `ai_faq`, 대량 지식은 RAG 학습문서 업로드(관리설정 → AI 학습문서)가 권장 경로. RAG는 `ai_booking.py`(자동응답)·BlissAI(직원 인앱) 양쪽에서 동작.
