@@ -1,16 +1,15 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.737** (https://blissme.ai/version.txt) — 2026-05-16 배포
+- **라이브: v3.7.738** (https://blissme.ai/version.txt) — 2026-05-16 배포
 - 다음 빌드 시 `BLISS_V` (AppShell.jsx) + `public/version.txt` 둘 다 함께 bump 필수
 - 변경 이력은 [CLAUDE.md](./CLAUDE.md) 참고
 
 ## 진행 중 작업
-없음. (새로고침 초기 로딩 속도 개선 — 2026-05-16 v3.7.737 처리, CLAUDE.md 참고)
+없음. (고객 상세 동의서 모달 가려짐 fix — 2026-05-16 v3.7.738 처리, CLAUDE.md 참고)
 
 ## 기타 미해결
 - 카카오 예약 확정 알림톡: 실발송 테스트 미실시 — 카카오 테스트 예약 1건으로 검증 권장
-- 고객 상세에서 동의서(ConsentModal z1000)·매출편집(SaleForm z200/500)은 고객 모달(z3000)에 가려짐 (v3.7.733 이전부터 있던 z-index 이슈, portal+z 조정 필요)
 
 ## 미처리 — 현아 커플패키지 질문 (id_eih96ttwa0, pending)
 "커플패키지 3회: 한 분 매출로 3회 등록 + 다른 분 고객관리에서 3회 등록? 아니면 6회로 쉐어 사용?" — 운영 방식 결정 필요. 답변 미작성.

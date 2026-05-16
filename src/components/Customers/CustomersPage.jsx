@@ -2191,11 +2191,11 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       onPick={addShare}
       onClose={()=>setShowShareModal(false)}
       setData={setData}/>, document.body)}
-    {consentCust && <ConsentModal
+    {consentCust && createPortal(<ConsentModal
       cust={consentCust}
       bizId={_activeBizId}
       data={data}
-      onClose={()=>setConsentCust(null)}/>}
+      onClose={()=>setConsentCust(null)}/>, document.body)}
     {smsOpen && createPortal(<SendSmsModal
       open={smsOpen}
       onClose={()=>{ setSmsOpen(false); setSmsCusts([]); }}

@@ -1657,3 +1657,11 @@ React 앱과 무관한 정적 페이지(`public/book.html`)만 수정 — BLISS_
 **효과**: 첫 화면 렌더에서 ~3.3초 제거. 예약목록·신규예약 배너·배지는 첫 렌더 2~3초 뒤 채워짐(트레이드오프 — 타임라인 동작엔 무영향).
 **검증**: 로컬 — 타임라인 정상 렌더, 신규고객 배너 정상 표시(백그라운드 로드 확인), 콘솔 에러 0.
 **적용**: v3.7.737 라이브 배포(version.txt 검증, CF 퍼지 success). React only.
+
+### v3.7.738 — 고객 상세 동의서 모달(ConsentModal) 가려짐 fix (2026-05-16)
+**증상**: 고객 상세 → 동의서 탭 → "새 동의서 요청" 눌러도 모달이 고객 모달 뒤에 가려짐.
+**원인**: v3.7.736의 ShareCustModal과 동일 — v3.7.733에서 고객 모달을 body로 portal(z 3000) 후, ConsentModal은 CustomersPage 안(앱 레이아웃 `position:fixed` stacking context)에 그대로 렌더. 게다가 ConsentModal z가 1000이라 portal해도 3000보다 낮음.
+**fix**: `ConsentModal.jsx` 오버레이 z `1000 → 9000`. `CustomersPage.jsx`의 ConsentModal 렌더를 `createPortal(…, document.body)`로 감쌈. 루트 컨텍스트 + z 9000 > 3000 → 정상 노출.
+**참고**: "매출 편집"도 가려진다고 추정했으나 — `openSaleFullEdit`(고객 모달에서 매출 전체편집 여는 함수)는 **호출처 없는 죽은 코드**. 고객 상세 매출 내역 패널은 펼쳐 보기 전용(편집 버튼 없음). 매출 편집은 고객 모달 위로 안 뜸 → 수정 불필요(SaleForm zIndex prop 추가 시도는 되돌림). `editSale`은 고객목록 우클릭 메뉴(`_newMode`)로만 열리며 그땐 고객 모달 없음.
+**검증**: 로컬 모바일 — 동의서 요청 모달 정상 노출(`elementsFromPoint` 최상위 = ConsentModal).
+**적용**: v3.7.738 라이브 배포(version.txt 검증, CF 퍼지 success). React only.
