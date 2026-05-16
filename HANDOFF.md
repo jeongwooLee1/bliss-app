@@ -1,7 +1,7 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.729** (https://blissme.ai/version.txt) — 2026-05-16 배포
+- **라이브: v3.7.730** (https://blissme.ai/version.txt) — 2026-05-16 배포
 - 다음 빌드 시 `BLISS_V` (AppShell.jsx) + `public/version.txt` 둘 다 함께 bump 필수
 - 변경 이력은 [CLAUDE.md](./CLAUDE.md) 참고
 

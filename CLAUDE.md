@@ -1494,3 +1494,15 @@ React 앱과 무관한 정적 페이지(`public/book.html`)만 수정 — BLISS_
 #### 매출입력 시술자 드롭다운 — 휴무 직원 노출
 - 증상: 휴무 직원도 매출 등록 대상이 될 수 있는데, 시술자 선택 드롭다운에서 완전히 제외(`getEffBranch`가 null 반환 → skip)돼 선택 불가
 - fix: `SaleForm.jsx` — 휴무/휴무(꼭)/무급 직원을 `getOffInfo`로 홈 지점 판정해서 해당 지점 그룹 맨 아래에 `(휴무)`/`(무급)` 표시로 노출. 근무 직원이 위, 휴무 직원이 아래. 선택 가능(매출 등록 가능)
+
+### v3.7.730 — 매출 강조 버그 2건 (2026-05-16)
+
+#### 신규 매출이 타임라인 강조에 실시간 미반영 (새로고침해야 강조됨)
+- 증상: 39만원+ 결제 시 강조색을 설정해도 새로고침 전엔 타임라인 블록에 강조 안 됨
+- 원인: 타임라인 매출 강조는 `data.sales`로 판정하는데, `data.sales`는 앱 시작 시 1회만 로드(`AppShell.jsx`) + `sales` Realtime 구독 없음 + `SaleForm`이 매출 등록 후 `setData` 미호출 → 새 매출이 전역 `data.sales`에 안 들어감
+- fix: `SaleForm.jsx` — `sb.insert("sales")` 성공 직후 `fromDb`로 변환해 `setData`로 `data.sales`에 추가. 강조 판정(`salesByResId` memo + `saleDetailsByResId` effect)이 즉시 재계산됨. (편집 모드의 금액 수정은 별도 — 미적용)
+
+#### 매출 강조 시술 체크박스(svcIds/catIds) 저장 안 됨
+- 증상: 매출 강조 설정에서 시술 체크박스를 체크해도 저장 안 되고 사라짐
+- 원인: `TimelinePage.jsx:2191` 초기 로드 — 매출 강조가 🌐(전 지점 공통)인 경우 DB의 `s.hl`에서 `min/color/mode`만 복원하고 `svcIds`/`catIds`를 누락. DB엔 정상 저장돼 있으나 로드 코드가 버림
+- fix: 로드 시 `svcIds`/`catIds`도 함께 복원 (화면 내부 state 모양과 일치)

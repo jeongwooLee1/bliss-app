@@ -2188,7 +2188,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         if (sharedKeys.fs && s.fs !== undefined) { setBlockFsRaw(Number(s.fs)); dbTl.current.fs = Number(s.fs); }
         if (sharedKeys.op && s.op !== undefined) { setBlockOpRaw(Number(s.op)); dbTl.current.op = Number(s.op); }
         if (sharedKeys.sc && s.sc) { setStatusClrRaw({...STATUS_CLR_DEFAULT, ...s.sc}); dbTl.current.sc = s.sc; }
-        if (sharedKeys.hl && s.hl && typeof s.hl === "object") { setSalesHighlightRaw({ min: Number(s.hl.min)||0, color: s.hl.color || "#FFD700", mode: s.hl.mode || "border" }); dbTl.current.hl = s.hl; }
+        if (sharedKeys.hl && s.hl && typeof s.hl === "object") { setSalesHighlightRaw({ min: Number(s.hl.min)||0, color: s.hl.color || "#FFD700", mode: s.hl.mode || "border", svcIds: Array.isArray(s.hl.svcIds)?s.hl.svcIds:[], catIds: Array.isArray(s.hl.catIds)?s.hl.catIds:[] }); dbTl.current.hl = s.hl; }
         tlSaveLocal(dbTl.current);
       }).catch(console.error);
   }, []);

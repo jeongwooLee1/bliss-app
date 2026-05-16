@@ -2784,6 +2784,11 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
         // sb.insert가 이미 alert 띄움
         return;
       }
+      // 신규 매출을 data.sales에 즉시 반영 — 타임라인 매출 강조가 새로고침 없이 동작
+      if (setData && Array.isArray(inserted) && inserted.length) {
+        const _newSales = fromDb("sales", inserted);
+        setData(prev => ({ ...prev, sales: [...(prev?.sales||[]), ..._newSales] }));
+      }
     } catch (e) {
       showAlert("매출 저장 실패: " + (e?.message || e));
       return;
