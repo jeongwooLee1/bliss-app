@@ -1627,3 +1627,13 @@ React 앱과 무관한 정적 페이지(`public/book.html`)만 수정 — BLISS_
 - 헤더는 `position:sticky`로 스크롤 중 상단 고정 → 닫기(✕) 항상 노출
 **검증**: 로컬 375px — 단일 스크롤(위아래 자유, 멈춤 없음), 헤더 고정, ✕ 닫기 작동. 데스크탑 1280px — 2단 grid 레이아웃 그대로(미디어쿼리 `max-width:767px` 스코프라 무영향).
 **적용**: v3.7.734 라이브 배포(version.txt 검증, CF 퍼지 success). React only.
+
+### v3.7.735 — 카카오 채널 예약 확정 알림톡 미발송 fix (2026-05-16, 현아 보고)
+**증상**: 카카오 채널(챗봇·예약폼)로 예약한 고객한테 알림톡이 안 감.
+**원인**: 카카오 예약은 서버 엔드포인트(`/kakao-booking`, `/book-submit`)가 `status='request'`로 reservations INSERT만 하고 알림톡을 큐에 안 넣음. `rsv_confirm`(예약 확정) 알림톡은 직원이 확정할 때 큐에 들어가야 하는데 — 수동 예약은 앱이 넣고, 네이버는 자체 알림이 있음 — 카카오 예약을 확정하는 경로(타임라인 칼럼 배정 / 모달 상태변경+저장)엔 그 코드가 없었음. 모달 "예약 확정" 버튼만 원래부터 `rsv_confirm` 적재.
+**fix** (앱 — 기존 `rsv_cancel` 전환감지 패턴 동일):
+- `ReservationModal.jsx` — 카카오 예약(`reservationId` `kakao_*`)이 `item.status==='request'` → `f.status` `reserved/confirmed`로 저장될 때 `queueAlimtalk('rsv_confirm')`
+- `TimelinePage.jsx` — 카카오 예약을 직원 칼럼으로 드래그해 자동확정(request→reserved)할 때 동일 적재
+- 두 경로 상호배타(확정 후엔 status가 request 아님) → 중복발송 없음. `queueAlimtalk`이 010 번호만 통과시킴
+**유의**: `rsv_confirm`은 수동 예약과 같은 noti_key·params·큐를 씀 → 강남점 noti_config에 이미 켜져 있어 동일하게 발송됨. 실발송 테스트는 실고객 알림톡 우려로 미실시 — 카카오 테스트 예약으로 확인 권장.
+**적용**: v3.7.735 라이브 배포(version.txt 검증, CF 퍼지 success). React only.

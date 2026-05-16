@@ -3232,6 +3232,17 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
               // AI/카카오 폼/외부 플랫폼/수동: 외부 API 호출 없이 바로 reserved 변경
               setData(prev => ({...prev, reservations:(prev?.reservations||[]).map(x => x.id === block.id ? {...x, status:'reserved'} : x)}));
               sb.update("reservations", block.id, {status:'reserved'}).catch(console.error);
+              // 카카오 채널 예약 — 직원이 칼럼 배정으로 확정 시 rsv_confirm 알림톡
+              if (/^kakao_/.test(ridStr) && block.custPhone) {
+                const _br = (data?.branches||[]).find(b => b.id === (movedBid || block.bid));
+                const _rsvUrlId = block.reservationId || block.id || "";
+                queueAlimtalk(_br?.id, "rsv_confirm", block.custPhone, {
+                  "#{사용자명}":_br?.name||"", "#{날짜}":block.date||"", "#{시간}":(snap?.time)||block.time||"",
+                  "#{작업자}":"", "#{작업장소}":_br?.name||"",
+                  "#{대표전화번호}":_br?.phone||"",
+                  "#{예약URL}":_rsvUrlId?"https://blissme.ai/r.html?"+encodeURIComponent(_rsvUrlId):""
+                });
+              }
             }
           })();
         }

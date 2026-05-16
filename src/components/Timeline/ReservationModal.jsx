@@ -2911,6 +2911,23 @@ ${naverText}
                     "#{대표전화번호}":branch?.phone||""
                   });
                 }
+                // 카카오 채널 예약 — 직원이 확정(request → reserved/confirmed) 시 rsv_confirm 알림톡
+                // 카카오 예약은 서버가 status='request'로 INSERT만 함 → 직원 확정 시점에 큐 적재
+                {
+                  const _rid = String(f.reservationId || item?.reservationId || "");
+                  if(_rid.startsWith("kakao_") && item?.status==="request"
+                     && (f.status==="reserved" || f.status==="confirmed")
+                     && f.custPhone && !isSchedule && !betaGroupMode){
+                    const branch = (data?.branches||[]).find(b=>b.id===f.bid);
+                    const _rsvUrlId = f.reservationId || f.id || item?.id || "";
+                    queueAlimtalk(f.bid, "rsv_confirm", f.custPhone, {
+                      "#{사용자명}":branch?.name||"", "#{날짜}":f.date||"", "#{시간}":f.time||"",
+                      "#{작업자}":"", "#{작업장소}":branch?.name||"",
+                      "#{대표전화번호}":branch?.phone||"",
+                      "#{예약URL}":_rsvUrlId?"https://blissme.ai/r.html?"+encodeURIComponent(_rsvUrlId):""
+                    });
+                  }
+                }
                 // 취소·노쇼 페널티 결정 — 모달이 결정 책임 (v3.7.210 리팩토링)
                 // 페널티 정의 (v3.7.289): 예약일 전일 21:00 ~ 예약시각 사이 취소만 페널티
                 // 예외: 당일 예약 + 생성 후 1시간 이내 취소·변경 = grace (실수 보호)
