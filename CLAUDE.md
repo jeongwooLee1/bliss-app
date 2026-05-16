@@ -1645,3 +1645,15 @@ React 앱과 무관한 정적 페이지(`public/book.html`)만 수정 — BLISS_
 **검증**: 로컬 데스크탑·모바일 — 쉐어 추가 모달·검색창 정상 노출(`elementsFromPoint` 최상위 = ShareCustModal 검색 input).
 **미해결(별도·기존 이슈)**: ConsentModal(z 1000)·매출편집 SaleForm(z 200/500)은 고객 모달(3000)보다 z가 낮아 — v3.7.733 이전부터 고객 상세에서 열면 가려짐. portal + z 조정 필요(이번 회귀 아님, 별도 처리).
 **적용**: v3.7.736 라이브 배포(version.txt 검증, CF 퍼지 success). React only.
+
+### v3.7.737 — 새로고침 초기 로딩 속도 개선 (2026-05-16)
+**증상**: 새로고침 후 화면 뜨는 시간이 예전보다 훨씬 느림.
+**원인**: v3.7.727에서 `loadAllFromDb`의 초기 reservations 로드를 `sb.get`(1회·1000건 cap) → `sb.getAll`(전체 페이지네이션)로 변경. 측정 결과 — 최근 30일+미래 예약 8,320건, `getAll`이 1000건씩 **9회 연속 요청**, **10.2MB**(`select=*`), 이 fetch만 **~3.3초**. 이게 `Promise.all` 안에 묶여 첫 렌더를 막음.
+**fix** (`AppShell.jsx`):
+- `loadAllFromDb` 블로킹 `Promise.all`에서 reservations 제거 → `reservations: []` 반환. 나머지 12개 쿼리(전부 소규모)는 빠르게 끝남
+- `loadReservations(bizId)` 함수 신설 — 30일+미래 reservations getAll
+- `handleLogin`·`handleEnterBiz`에서 `setPhase("app")`(첫 렌더) **직후** `loadReservations()`를 백그라운드 호출 → 완료 시 `setData`로 `data.reservations` 보충 (id 기준 merge — TimelinePage on-demand 로드분 보존)
+- 첫 화면(타임라인)은 자체 on-demand fetch로 동작 → 전역 reservations 없어도 정상
+**효과**: 첫 화면 렌더에서 ~3.3초 제거. 예약목록·신규예약 배너·배지는 첫 렌더 2~3초 뒤 채워짐(트레이드오프 — 타임라인 동작엔 무영향).
+**검증**: 로컬 — 타임라인 정상 렌더, 신규고객 배너 정상 표시(백그라운드 로드 확인), 콘솔 에러 0.
+**적용**: v3.7.737 라이브 배포(version.txt 검증, CF 퍼지 success). React only.

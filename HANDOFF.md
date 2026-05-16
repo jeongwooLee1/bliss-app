@@ -1,15 +1,12 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.736** (https://blissme.ai/version.txt) — 2026-05-16 배포
+- **라이브: v3.7.737** (https://blissme.ai/version.txt) — 2026-05-16 배포
 - 다음 빌드 시 `BLISS_V` (AppShell.jsx) + `public/version.txt` 둘 다 함께 bump 필수
 - 변경 이력은 [CLAUDE.md](./CLAUDE.md) 참고
 
 ## 진행 중 작업
-**새로고침 초기 로딩 느림 — 최적화 예정** (유저 "알아서 하고" 지시)
-- 원인: v3.7.727에서 초기 reservations 로드를 `sb.get`→`sb.getAll`로 변경 → 30일+미래 8,320건(10MB, 9회 요청, ~3.3초)을 첫 렌더 전에 다 받음
-- 방향: 예약 전체 로딩을 첫 렌더에서 분리(백그라운드화). 타임라인은 자체 on-demand fetch라 첫 화면엔 불필요. `loadAllFromDb`의 reservations getAll을 Promise.all에서 빼고 비동기 보충
-- `AppShell.jsx:40 loadAllFromDb`, `AppShell.jsx:55` reservations getAll
+없음. (새로고침 초기 로딩 속도 개선 — 2026-05-16 v3.7.737 처리, CLAUDE.md 참고)
 
 ## 기타 미해결
 - 카카오 예약 확정 알림톡: 실발송 테스트 미실시 — 카카오 테스트 예약 1건으로 검증 권장

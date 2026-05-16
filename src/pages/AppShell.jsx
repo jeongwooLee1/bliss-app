@@ -25,7 +25,7 @@ import FloatingAI from '../components/BlissAI/FloatingAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.736"
+const BLISS_V = "3.7.737"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -38,7 +38,10 @@ const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:
 const RES_SELECT = "*";
 
 async function loadAllFromDb(bizId) {
-  const [branches, services, categories, tags, sources, users, rooms, customers, snsCustomers, reservations, sales, products, branchGroups] = await Promise.all([
+  // ⚡ 초기 블로킹 로드 — reservations 제외. 30일+미래 ~8천건/10MB/~3.3초라 첫 렌더를 막음.
+  // 예약은 setPhase("app") 직후 loadReservations()로 백그라운드 보충.
+  // (타임라인 첫 화면은 자체 on-demand fetch로 동작 → 전역 reservations 없어도 무방)
+  const [branches, services, categories, tags, sources, users, rooms, customers, snsCustomers, sales, products, branchGroups] = await Promise.all([
     sb.getByBiz("branches", bizId).catch(()=>[]),
     sb.getByBiz("services", bizId).catch(()=>[]),
     sb.getByBiz("service_categories", bizId).catch(()=>[]),
@@ -49,10 +52,6 @@ async function loadAllFromDb(bizId) {
     sb.get("customers", `&business_id=eq.${bizId}&is_hidden=eq.false&order=join_date.desc.nullslast,created_at.desc&limit=100`).catch(()=>[]),
     // SNS 실제 연결된 고객만 (빈 배열 제외) — 부분 인덱스로 빠름
     sb.get("customers", `&business_id=eq.${bizId}&is_hidden=eq.false&sns_accounts=neq.${encodeURIComponent('[]')}&limit=500`).catch(()=>[]),
-    // ⚡ 초기 로드: 최근 30일. getAll 페이지네이션 필수 — sb.get은 PostgREST db-max-rows(1000)에 잘려
-    // 30일치(~8000건) 중 최신 1000건만 와서 며칠 전 데이터가 통째로 누락됨 (5/2 등 안 보임 버그)
-    // 30일 이전은 TimelinePage가 날짜 이동 시 on-demand로 보충 (전역 백그라운드 로드 없음)
-    sb.getAll("reservations", `&business_id=eq.${bizId}&is_beta=eq.false&date=gte.${new Date(Date.now()-30*86400000).toISOString().slice(0,10)}&order=date.desc,time.asc&select=${RES_SELECT}`).catch(()=>[]),
     sb.getAll("sales", `&business_id=eq.${bizId}&date=gte.${new Date(Date.now()-14*86400000).toISOString().slice(0,10)}&order=date.desc`).catch(()=>[]),
     sb.getByBiz("products", bizId).catch(()=>[]),
     sb.getByBiz("branch_groups", bizId).catch(()=>[]),
@@ -73,11 +72,20 @@ async function loadAllFromDb(bizId) {
       const extras = sns.filter(c => !seen.has(c.id));
       return [...main, ...extras];
     })(),
-    reservations: fromDb("reservations", reservations),
+    reservations: [],  // 백그라운드 로드 — loadReservations() 참고
     sales: fromDb("sales", sales),
     products: fromDb("services", products),
     branchGroups: Array.isArray(branchGroups) ? branchGroups : [],
   };
+}
+
+// 예약 백그라운드 로더 — 첫 렌더(setPhase("app")) 직후 호출. 최근 30일 + 미래 전체.
+// getAll 페이지네이션 필수 (sb.get은 PostgREST db-max-rows 1000에 잘림 → 과거 데이터 누락)
+async function loadReservations(bizId) {
+  if (!bizId) return [];
+  const since = new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+  const rows = await sb.getAll("reservations", `&business_id=eq.${bizId}&is_beta=eq.false&date=gte.${since}&order=date.desc,time.asc&select=${RES_SELECT}`).catch(()=>[]);
+  return fromDb("reservations", rows);
 }
 function SuperDashboard({ superData, setSuperData, currentUser, onLogout, onEnterBiz }) {
   const [tab, setTab] = useState("businesses");
@@ -1734,6 +1742,12 @@ function App() {
         setViewBranches([]);
         // page is derived from URL via useLocation()
         setPhase("app");
+        // 예약 백그라운드 로드 — 첫 화면 렌더 후 보충 (예약목록·신규예약 배지용)
+        loadReservations(bizId).then(res => { if (res.length) setData(prev => {
+          const map = new Map(res.map(r => [r.id, r]));
+          (prev?.reservations||[]).forEach(r => { if (!map.has(r.id)) map.set(r.id, r); });
+          return { ...prev, reservations: Array.from(map.values()) };
+        }); }).catch(()=>{});
         // 새 OAuth 유저 → 블리스 AI 설정 마법사 자동 시작
         if (sessionStorage.getItem('bliss_new_oauth_user')) {
           sessionStorage.removeItem('bliss_new_oauth_user');
@@ -1792,6 +1806,12 @@ function App() {
       setViewBranches([]);
       // page is already restored from sessionStorage("bliss_page") via useState initializer
       setPhase("app");
+      // 예약 백그라운드 로드 — 첫 화면 렌더 후 보충
+      loadReservations(bizId).then(res => { if (res.length) setData(prev => {
+        const map = new Map(res.map(r => [r.id, r]));
+        (prev?.reservations||[]).forEach(r => { if (!map.has(r.id)) map.set(r.id, r); });
+        return { ...prev, reservations: Array.from(map.values()) };
+      }); }).catch(()=>{});
     } catch(e) { console.error(e); setPhase("super"); }
   };
 
