@@ -1545,3 +1545,16 @@ React 앱과 무관한 정적 페이지(`public/book.html`)만 수정 — BLISS_
 **검증**: suggest_only 5케이스 — 단순문의/지점목록/가격문의 → 표 없이 대화형, 예약확정 → 표 1회, 2턴째 → 재인사 없음. 모두 정상.
 
 **적용**: 서버 직접 (백업 `ai_booking.py.bak_pre_prompt_*`) + `systemctl restart bliss-naver`. React 변경 0 → 버전업·CF 퍼지 불필요.
+
+### 네이버 예약 source='네이버'(한글) 혼입 → 확정대기 안 풀림 fix (2026-05-16, React 변경 0)
+**증상**: 유정민(강남, 예약 `1237756370`) 변경예약이 네이버에서 확정돼도 블리스 타임라인 "확정대기"가 안 사라짐. 새로고침해도 무효.
+**원인**:
+- 해당 예약의 `reservations.source`가 `네이버`(한글) — 정상은 `naver`(영문). 30분 재스크랩(`pending_rescrape_thread`)이 `source=eq.naver`만 조회 → 한글 source 예약을 영영 못 찾음 → 네이버 상태 변화 미반영. 타임라인 새로고침은 DB 재조회일 뿐이라 무효
+- 769건이 `source=네이버`로 잘못 저장돼 있었음. `bliss_naver.py` `_process_one`의 `new_row`에서 `"source":"naver"`가 `**data` **앞**에 있어, scrape `data`에 `source` 키가 섞이면 덮어씀. UPDATE 경로(`update = data - PRESERVE_FIELDS`)도 동일하게 한글 source를 씀
+**fix**:
+- DB: `source='네이버'` → `'naver'` 일괄 정정 (769건)
+- `bliss_naver.py` INSERT: `new_row`에서 `"source":"naver"`를 `**data` **뒤로** 이동 → 항상 `naver`
+- `bliss_naver.py` UPDATE: `source`를 `BLISS_PRESERVE_FIELDS`에 추가 → scrape이 `source` 덮어쓰지 않음
+- 유정민 `1237756370`: status `pending → reserved` (실제 예약 건, 확정대기 배너 즉시 해제)
+**적용**: 서버 직접 (백업 `bliss_naver.py.bak_pre_source_*`) + `systemctl restart bliss-naver`. React 변경 0.
+**⚠️ 미해결 (별도 트랙)**: 로그에 `[naver-confirm] rid=1237756370 → 409 RT47 MANDATORY_VALIDATOR_ERRORS` 2회 — 블리스가 네이버 확정 API 호출 시 거부당함. 변경예약 확정 관련 추정. 추가 조사 필요 (HANDOFF 기록).
