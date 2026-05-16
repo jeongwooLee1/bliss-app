@@ -1858,7 +1858,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                 {/* 상세 패널 — 풀스크린 모달 (펼침 → 화면 전체 덮음, 한 페이지에서 매출내역까지 다 보이게) */}
                 {isOpen && <tr><td colSpan={11} style={{padding:0}}>
                   {createPortal(
-                  <div onClick={e=>{if(e.target===e.currentTarget) setDetailCust(null);}}
+                  <div className="cust-fs-overlay" onClick={e=>{if(e.target===e.currentTarget) setDetailCust(null);}}
                     style={{position:"fixed",inset:0,zIndex:3000,background:"rgba(0,0,0,.5)",display:"flex",padding:window.innerWidth<768?"0":"1.5vh 20px",alignItems:"flex-start",justifyContent:"center"}}>
                   <div onClick={e=>e.stopPropagation()} className="cust-fs-modal"
                     style={{background:"#F4F5F7",borderRadius:16,width:"100%",maxWidth:1280,height:"97vh",overflow:"hidden",border:"1px solid "+T.border,position:"relative",display:"flex",flexDirection:"column"}}>
@@ -1871,14 +1871,17 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                     .cust-fs-modal .tab-btn{transition:color .15s, border-color .15s, background-color .15s;}
                     .cust-fs-modal .tab-btn:hover{color:${T.primary}!important;background:${T.primary}08!important;}
                     .cust-fs-modal .chip-btn{transition:background-color .15s, border-color .15s;}
-                    /* 모바일: 2컬럼 → 단일컬럼 세로 흐름, 모달 자체가 스크롤 */
+                    /* 모바일: 단일 스크롤 — 오버레이 한 겹만 스크롤 (중첩 스크롤 = iOS 멈춤 버그 방지) */
                     @media (max-width: 767px) {
-                      .cust-fs-modal { height: 100vh !important; max-height: 100vh !important; max-width: 100vw !important; width: 100vw !important; border-radius: 0 !important; }
+                      .cust-fs-overlay { display: block !important; overflow-y: auto !important; overflow-x: hidden !important; -webkit-overflow-scrolling: touch !important; padding: 0 !important; }
+                      .cust-fs-modal { height: auto !important; min-height: 100% !important; max-height: none !important; max-width: 100vw !important; width: 100vw !important; border-radius: 0 !important; overflow: visible !important; }
                       .cust-fs-modal * { max-width: 100% !important; box-sizing: border-box !important; }
-                      .cust-fs-grid { display: block !important; grid-template-columns: 1fr !important; padding: 6px 8px 10px !important; gap: 0 !important; overflow-y: auto !important; overflow-x: hidden !important; -webkit-overflow-scrolling: touch !important; }
+                      .cust-fs-grid { display: block !important; grid-template-columns: 1fr !important; padding: 6px 8px 10px !important; gap: 0 !important; overflow: visible !important; }
+                      /* 내부 div 중첩 스크롤 전부 해제 → 오버레이만 스크롤 */
+                      .cust-fs-grid div { overflow: visible !important; max-height: none !important; }
                       .cust-fs-left, .cust-fs-right { display: flex !important; flex-direction: column !important; gap: 8px !important; min-height: 0 !important; height: auto !important; grid-template-rows: none !important; margin-bottom: 8px !important; }
-                      .cust-fs-left > *, .cust-fs-right > * { min-height: 0 !important; height: auto !important; max-height: none !important; overflow: visible !important; }
-                      .cust-fs-pkg-card { min-height: 0 !important; max-height: none !important; overflow: visible !important; }
+                      .cust-fs-left > *, .cust-fs-right > * { min-height: 0 !important; height: auto !important; }
+                      .cust-fs-pkg-card { min-height: 0 !important; }
                       .cust-fs-modal .cust-fs-header { padding: 10px 14px !important; flex-wrap: wrap !important; gap: 6px !important; }
                       .cust-fs-modal .cust-fs-stats { padding: 4px 8px !important; gap: 8px !important; flex-wrap: wrap !important; margin-left: 0 !important; width: 100% !important; }
                       /* 보유권 그리드 — 3열 → 2열 (모바일 좁아서) */

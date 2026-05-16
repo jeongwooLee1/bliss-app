@@ -1615,3 +1615,15 @@ React 앱과 무관한 정적 페이지(`public/book.html`)만 수정 — BLISS_
 - 처리 완료: 현아 `id_52i0ud24c9` status=done + reply
 
 **적용**: v3.7.733 라이브 배포(version.txt 검증, CF 퍼지 success). 서버 패치는 같은 타이밍에 별도 적용(React 빌드와 무관 트랙).
+
+### v3.7.734 — 고객 상세 모달 모바일 스크롤 멈춤 fix (2026-05-16)
+**증상**: 모바일 고객 상세 모달에서 스크롤이 내려가다 멈춰서 위아래로 안 움직임 (iOS).
+**원인**: 모달 안에 스크롤 영역이 5겹 중첩 — `cust-fs-grid`(메인) + `cust-fs-info-grid`(정보카드) + 메모 div + 포인트내역 div + 매출내역 div 각각 `overflow:auto`. iOS Safari가 터치 스크롤을 안쪽 영역에 가둬 멈춤. 기존 모바일 CSS(`.cust-fs-left > *` overflow:visible)는 카드(직계 자식)만 해제하고 그 안쪽 콘텐츠 div는 못 잡았음.
+**fix**: 모바일(`@media max-width:767px`)에서 단일 스크롤 구조로 전환 — 매출입력 모달과 동일 패턴.
+- 오버레이 div에 `className="cust-fs-overlay"` 부여 → 모바일에서 `display:block; overflow-y:auto`로 **유일한 스크롤 컨테이너**
+- `.cust-fs-modal`: `height:100vh` → `height:auto; min-height:100%` (콘텐츠 높이만큼 자라고 오버레이가 스크롤). `overflow:visible` 추가 — 모달의 `overflow:hidden`(데스크탑 라운드 클리핑용)이 sticky 헤더의 기준을 모달로 잡아버려 헤더가 안 따라오던 것 해제
+- `.cust-fs-grid`: `overflow-y:auto` → `overflow:visible` (더 이상 스크롤러 아님)
+- `.cust-fs-grid div { overflow:visible; max-height:none }` — 내부 div 중첩 스크롤 전부 해제 (div만 타겟 → input/textarea/select/button 높이 무영향)
+- 헤더는 `position:sticky`로 스크롤 중 상단 고정 → 닫기(✕) 항상 노출
+**검증**: 로컬 375px — 단일 스크롤(위아래 자유, 멈춤 없음), 헤더 고정, ✕ 닫기 작동. 데스크탑 1280px — 2단 grid 레이아웃 그대로(미디어쿼리 `max-width:767px` 스코프라 무영향).
+**적용**: v3.7.734 라이브 배포(version.txt 검증, CF 퍼지 success). React only.
