@@ -2185,24 +2185,24 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       data={data} setData={setData}
       editMode={!editSale._newMode}
       existingSaleId={editSale._newMode ? null : editSale.id}/>}
-    {showShareModal && detailCust && <ShareCustModal
+    {showShareModal && detailCust && createPortal(<ShareCustModal
       baseCust={detailCust}
       existingShareIds={shareCusts.map(s=>s.id)}
       onPick={addShare}
       onClose={()=>setShowShareModal(false)}
-      setData={setData}/>}
+      setData={setData}/>, document.body)}
     {consentCust && <ConsentModal
       cust={consentCust}
       bizId={_activeBizId}
       data={data}
       onClose={()=>setConsentCust(null)}/>}
-    {smsOpen && <SendSmsModal
+    {smsOpen && createPortal(<SendSmsModal
       open={smsOpen}
       onClose={()=>{ setSmsOpen(false); setSmsCusts([]); }}
       customers={smsCusts}
       branches={data?.branches || []}
       userBranches={userBranches}
-      defaultBranchId={(smsCusts[0]?.bid) || (vb!=='all'?vb:userBranches[0]) || ''}/>}
+      defaultBranchId={(smsCusts[0]?.bid) || (vb!=='all'?vb:userBranches[0]) || ''}/>, document.body)}
     {ctxMenu && <CustCtxMenu menu={ctxMenu} onClose={()=>setCtxMenu(null)}
       onReserve={c=>{
         // 현재 시각을 5분 단위로 올림

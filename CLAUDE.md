@@ -1637,3 +1637,11 @@ React 앱과 무관한 정적 페이지(`public/book.html`)만 수정 — BLISS_
 - 두 경로 상호배타(확정 후엔 status가 request 아님) → 중복발송 없음. `queueAlimtalk`이 010 번호만 통과시킴
 **유의**: `rsv_confirm`은 수동 예약과 같은 noti_key·params·큐를 씀 → 강남점 noti_config에 이미 켜져 있어 동일하게 발송됨. 실발송 테스트는 실고객 알림톡 우려로 미실시 — 카카오 테스트 예약으로 확인 권장.
 **적용**: v3.7.735 라이브 배포(version.txt 검증, CF 퍼지 success). React only.
+
+### v3.7.736 — 고객 상세 모달 하위 모달(쉐어·문자발송) 가려짐 fix (2026-05-16, 긴급)
+**증상**: 고객 상세에서 보유권 쉐어 "+ 쉐어 고객 추가" 눌러도 아무것도 안 뜸.
+**원인**: v3.7.733에서 고객 상세 모달을 `createPortal`로 `document.body`에 올림(z 3000, 루트 stacking context). 그런데 ShareCustModal(z 9999)은 CustomersPage 안에 그대로 렌더 → 앱 레이아웃 컨테이너가 `position:fixed`(= stacking context, z auto≈0)라 ShareCustModal의 9999가 그 안에 갇힘 → 컨텍스트 전체가 body의 고객 모달(z 3000)보다 아래 → 떠 있지만 가려짐. SendSmsModal(z 9000)도 동일 회귀.
+**fix**: `CustomersPage.jsx` — `ShareCustModal`·`SendSmsModal` 렌더를 `createPortal(…, document.body)`로 감쌈. 루트 컨텍스트로 나가 각자 z(9999/9000) > 3000 → 고객 모달 위에 정상 표시.
+**검증**: 로컬 데스크탑·모바일 — 쉐어 추가 모달·검색창 정상 노출(`elementsFromPoint` 최상위 = ShareCustModal 검색 input).
+**미해결(별도·기존 이슈)**: ConsentModal(z 1000)·매출편집 SaleForm(z 200/500)은 고객 모달(3000)보다 z가 낮아 — v3.7.733 이전부터 고객 상세에서 열면 가려짐. portal + z 조정 필요(이번 회귀 아님, 별도 처리).
+**적용**: v3.7.736 라이브 배포(version.txt 검증, CF 퍼지 success). React only.
