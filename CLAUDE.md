@@ -1591,3 +1591,8 @@ React 앱과 무관한 정적 페이지(`public/book.html`)만 수정 — BLISS_
 **원인**: v3.7.730 Bug A 수정 때 `SaleForm`에 `setData(data.sales += inserted)`를 추가했는데 — 부모 onSubmit 핸들러(`SalesPage.handleSave` / `ReservationModal.handleSaleSubmit`)가 **이미** `data.sales`에 매출을 추가하고 있었음. SaleForm + 부모 = 이중 추가 → 중복.
 **fix**: `SaleForm`의 v3.7.730 `setData` 블록 제거. `data.sales` 로컬 반영은 부모 핸들러 전담 (원래 설계 — `handleSave` 주석 "여기선 로컬 state 갱신만").
 **참고**: v3.7.730 Bug A("신규 매출 타임라인 강조 미반영") 진단이 불완전했음 — 부모 핸들러가 `data.sales`를 갱신하므로 강조는 원래 동작함. SaleForm 추가는 불필요했고 중복 회귀만 유발.
+
+### v3.7.732 — 매출관리 매출등록 시 다담권/보유권 미표시 fix (2026-05-16, 지은 id_cmpqb28taa)
+**증상**: 다담권 잔액 있는 고객인데 매출관리 → 매출등록에서 다담권(선불잔액) 사용 UI가 안 뜸. 타임라인 매출등록은 정상.
+**원인**: `SaleForm`의 `activePkgs`(현 지점 사용가능 보유권)가 `canUsePkgAtBranch(p, branchId, …)` — `branchId` **prop**으로 지점 필터. 매출관리는 다지점 권한(연계지점 머지 포함)이면 `branchId`로 빈 값(`_defaultBid=""`)을 넘김 → 보유권 전부 inactive로 걸러짐 → `prepaidPkgs` 0건 → 다담권 UI `if(prepaidBal<=0) return null`로 숨김. 타임라인은 예약 지점이 `branchId`로 박혀 정상.
+**fix**: `SaleForm.jsx:757/759` — `canUsePkgAtBranch(p, branchId, …)` → `canUsePkgAtBranch(p, (selBranch || branchId), …)`. 폼에서 직원이 고른 지점(`selBranch`) 기준으로 보유권 사용 가능 판정. 타임라인은 `selBranch`가 `branchId`로 초기화되므로 동일 동작(무회귀).

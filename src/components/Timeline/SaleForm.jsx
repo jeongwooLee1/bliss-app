@@ -754,9 +754,9 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     return (p.total_count - p.used_count) > 0 && _pkgNotExpired(p);
   });
   // 현재 지점에서 사용 가능한 보유권 (차감/사용용). 구매지점 외에선 차단됨.
-  const activePkgs = validPkgs.filter(p => canUsePkgAtBranch(p, branchId, data?.branches, data?.branchGroups));
+  const activePkgs = validPkgs.filter(p => canUsePkgAtBranch(p, (selBranch || branchId), data?.branches, data?.branchGroups));
   // 타지점 구매로 현 지점에서 사용 차단된 보유권 — 표시만 하고 차감/체크 비활성 (직원이 보유 현황 인지용)
-  const inactivePkgs = validPkgs.filter(p => !canUsePkgAtBranch(p, branchId, data?.branches, data?.branchGroups));
+  const inactivePkgs = validPkgs.filter(p => !canUsePkgAtBranch(p, (selBranch || branchId), data?.branches, data?.branchGroups));
   // 활성 다회권 목록 (패키지 사용 자동 차감용)
   const activeMultiPkgs = activePkgs.filter(p => _pkgType(p) === "package");
   const inactiveMultiPkgs = inactivePkgs.filter(p => _pkgType(p) === "package");
