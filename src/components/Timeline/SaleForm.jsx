@@ -3185,25 +3185,53 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
                   return null;
                 };
 
+                // 휴무 직원도 홈 지점 그룹 맨 아래에 노출 — 휴무여도 매출 등록은 가능해야 함
+                const OFF_STATUSES = ["휴무", "휴무(꼭)", "무급"];
+                const getOffInfo = (staff) => {
+                  if (!staff?.dn) return null;
+                  const st = schHistory?.[staff.dn]?.[saleDate];
+                  if (!OFF_STATUSES.includes(st)) return null;
+                  const empInfo = employeesV1?.[staff.dn];
+                  let homeBid = staff.bid;
+                  if (empInfo?.isMale) {
+                    const rotBid = getRotationBranchId(staff.dn, saleDate);
+                    if (rotBid) homeBid = rotBid;
+                  }
+                  return homeBid ? { branchId: homeBid, status: st } : null;
+                };
+
                 const staffByBranch = {};
+                const offByBranch = {};
                 augmentedStaff.forEach(s => {
                   if (!s.dn) return;
                   const eff = getEffBranch(s);
-                  if (!eff) return; // 휴무/미등록 → 표시 안 함
-                  if (!staffByBranch[eff]) staffByBranch[eff] = [];
-                  staffByBranch[eff].push(s);
+                  if (eff) {
+                    if (!staffByBranch[eff]) staffByBranch[eff] = [];
+                    staffByBranch[eff].push(s);
+                    return;
+                  }
+                  // 휴무 직원 → 홈 지점 그룹 맨 아래로
+                  const off = getOffInfo(s);
+                  if (off) {
+                    if (!offByBranch[off.branchId]) offByBranch[off.branchId] = [];
+                    offByBranch[off.branchId].push({ ...s, _offStatus: off.status });
+                  }
                 });
 
                 const renderStaff = (s) => <option key={s.id} value={s.id}>{s.dn}</option>;
-                const currentGroup = staffByBranch[selBranch] || [];
-                const otherBranches = (data.branches||[]).filter(b => b.id !== selBranch && staffByBranch[b.id]?.length);
+                const renderOffStaff = (s) => <option key={s.id} value={s.id}>{s.dn} ({s._offStatus === "무급" ? "무급" : "휴무"})</option>;
+                const currentWork = staffByBranch[selBranch] || [];
+                const currentOff = offByBranch[selBranch] || [];
+                const otherBranches = (data.branches||[]).filter(b => b.id !== selBranch && ((staffByBranch[b.id]?.length||0) + (offByBranch[b.id]?.length||0) > 0));
                 return <>
-                  {currentGroup.length > 0 && <optgroup label={`현재 지점 근무`}>
-                    {currentGroup.map(s => renderStaff(s))}
+                  {(currentWork.length + currentOff.length) > 0 && <optgroup label={`현재 지점 근무`}>
+                    {currentWork.map(s => renderStaff(s))}
+                    {currentOff.map(s => renderOffStaff(s))}
                   </optgroup>}
                   {otherBranches.map(br => (
                     <optgroup key={br.id} label={`${br.short||br.name} (타지점)`}>
-                      {staffByBranch[br.id].map(s => renderStaff(s))}
+                      {(staffByBranch[br.id]||[]).map(s => renderStaff(s))}
+                      {(offByBranch[br.id]||[]).map(s => renderOffStaff(s))}
                     </optgroup>
                   ))}
                 </>;

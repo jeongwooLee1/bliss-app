@@ -1483,3 +1483,14 @@ React 앱과 무관한 정적 페이지(`public/book.html`)만 수정 — BLISS_
 - `BRANCH_TEL` 맵 8개 지점 — `branches.sms_callback`(문자 발신번호) 값 (DB 대조 검증 완료, 하이픈만 추가)
 - 지점 미지정(`?branch=` 없음) 시 푸터 문의 줄(`#telWrap`) 숨김
 - 정적 페이지(`public/book.html`)만 수정 — React 앱 v3.7.728 유지, BLISS_V/version.txt bump 없음. 배포는 서버 복사 + CF 퍼지
+
+### v3.7.729 — 팀채팅 배지 본인글 제외 + 매출입력 시술자 휴무 노출 (2026-05-16)
+
+#### 사이드바 "받은메시지함" 배지 — 팀채팅 본인 글 제외
+- 증상: 팀 채팅에 본인이 글을 쓰면 본인 사이드바 배지에 미읽 1로 잡혀 안 사라짐 (받은메시지·입금 0건인데 배지 1)
+- 원인: 사이드바 합산 배지의 팀채팅 카운트 쿼리(`AppShell.jsx`)가 `created_at > last_read`만 보고 본인 글을 제외 안 함. 팀채팅 화면 내부 카운트(`useTeamChat.unreadCount`)는 `user_id !== currentUserId`로 제외하는데 사이드바용 별도 쿼리만 누락
+- fix: 쿼리에 `user_id=neq.{localStorage.bliss_team_chat_user_id}` 필터 추가 — 화면 내부 로직과 일치
+
+#### 매출입력 시술자 드롭다운 — 휴무 직원 노출
+- 증상: 휴무 직원도 매출 등록 대상이 될 수 있는데, 시술자 선택 드롭다운에서 완전히 제외(`getEffBranch`가 null 반환 → skip)돼 선택 불가
+- fix: `SaleForm.jsx` — 휴무/휴무(꼭)/무급 직원을 `getOffInfo`로 홈 지점 판정해서 해당 지점 그룹 맨 아래에 `(휴무)`/`(무급)` 표시로 노출. 근무 직원이 위, 휴무 직원이 아래. 선택 가능(매출 등록 가능)

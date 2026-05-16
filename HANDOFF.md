@@ -1,17 +1,15 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.728** (https://blissme.ai/version.txt) — 2026-05-15 배포
+- **라이브: v3.7.729** (https://blissme.ai/version.txt) — 2026-05-16 배포
 - 다음 빌드 시 `BLISS_V` (AppShell.jsx) + `public/version.txt` 둘 다 함께 bump 필수
 - 변경 이력은 [CLAUDE.md](./CLAUDE.md) 참고
 
 ## 진행 중 작업
-없음.
-
-> 직전 HANDOFF의 "on-demand 데이터 로딩 전환 대규모 리팩토링"은 폐기됨.
-> 조사 결과 on-demand 메커니즘(TimelinePage selDate fetch / SalesPage 기간 fetch)이 이미 구현돼 있었고,
-> 실제 버그 3건(A: 타임라인 on-demand fetch 1000건 잘림 / B: 포그라운드 복귀 시 전체 reload / C: 죽은 코드)만
-> v3.7.728로 핀포인트 수정 완료. 전역 `data.reservations`는 세션 캐시로 유지. 자세한 내용 CLAUDE.md v3.7.728 참고.
+정우님 수정요청 `id_o6tib4mrmq` 2건 중 1건 미처리:
+- **AI 마취크림 안내** — 자동응답 AI가 "마취크림 사용 안 함 (한국 살롱 금지)"라고 답하도록.
+  서버/DB 작업(AI FAQ 또는 ai_booking 프롬프트)이라 React 배포와 별개. 유저 컨펌 대기 중.
+- (배지 버그·시술자 휴무 노출은 v3.7.729로 처리 완료)
 
 ## 참고 — 라이브 키 대기 (별도 트랙, 외부 의존)
 토스 라이브 키 발급 시 Supabase Edge Functions ENV 3개 등록 필요:

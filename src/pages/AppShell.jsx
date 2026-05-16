@@ -25,7 +25,7 @@ import FloatingAI from '../components/BlissAI/FloatingAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.728"
+const BLISS_V = "3.7.729"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1317,7 +1317,9 @@ function App() {
       try {
         if (!_activeBizId) { setTeamChatUnread(0); return; }
         const lastRead = (typeof window !== 'undefined' && localStorage.getItem('bliss_team_chat_last_read_at')) || '1970-01-01T00:00:00Z';
-        const url = `${SB_URL}/rest/v1/team_chat_messages?business_id=eq.${_activeBizId}&select=id&created_at=gt.${encodeURIComponent(lastRead)}&limit=999`;
+        const tcUserId = (typeof window !== 'undefined' && localStorage.getItem('bliss_team_chat_user_id')) || '';
+        let url = `${SB_URL}/rest/v1/team_chat_messages?business_id=eq.${_activeBizId}&select=id&created_at=gt.${encodeURIComponent(lastRead)}&limit=999`;
+        if (tcUserId) url += `&user_id=neq.${encodeURIComponent(tcUserId)}`;
         const r = await fetch(url, { headers:{...sbHeaders,'Cache-Control':'no-cache'}, cache:'no-store' });
         if (!alive) return;
         if (r.ok) { const rows = await r.json(); setTeamChatUnread(Array.isArray(rows) ? rows.length : 0); }
