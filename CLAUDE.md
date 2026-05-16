@@ -1506,3 +1506,8 @@ React 앱과 무관한 정적 페이지(`public/book.html`)만 수정 — BLISS_
 - 증상: 매출 강조 설정에서 시술 체크박스를 체크해도 저장 안 되고 사라짐
 - 원인: `TimelinePage.jsx:2191` 초기 로드 — 매출 강조가 🌐(전 지점 공통)인 경우 DB의 `s.hl`에서 `min/color/mode`만 복원하고 `svcIds`/`catIds`를 누락. DB엔 정상 저장돼 있으나 로드 코드가 버림
 - fix: 로드 시 `svcIds`/`catIds`도 함께 복원 (화면 내부 state 모양과 일치)
+
+### AI FAQ 마취크림 안내 추가 + 수정요청 id_o6tib4mrmq 완료 (2026-05-16)
+- `businesses.settings.ai_faq`에 마취크림 FAQ 2건(한·영) 추가 — "마취크림 사용 안 함, 한국 살롱에서 사용 금지". 자동응답 AI(`ai_booking.py`)가 `ai_faq`를 최우선 참조 → 서버 5분 캐시 후 반영 (배포·재시작 불필요)
+- 정우님 수정요청 `id_o6tib4mrmq` 2건(메시지 배지 / AI 마취크림) 모두 처리 → `bliss_requests_v1`에서 status=done + reply 작성
+- ⚠️ 발견: FAQ 추가 전 `ai_faq`가 **0개**였음 — 2026-04-21 등록한 250개 FAQ가 현재 DB에 없음 (원인 불명, 별도 확인 필요)
