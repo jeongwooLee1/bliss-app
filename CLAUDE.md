@@ -1585,3 +1585,9 @@ React 앱과 무관한 정적 페이지(`public/book.html`)만 수정 — BLISS_
 **미구현**: 일반 2-of-3(전화/이메일/이름 2개 일치) 매칭 — 카카오 예약폼·AI 예약 경로용, 별도 트랙
 **적용**: 서버 직접 (백업 `bak_pre_custmatch_*`) + `systemctl restart`. React 변경 0.
 **미해결**: ★기존상담 태그가 만료보유권 아닌 케이스(재방문 선언)에도 붙는 트리거 버그 — 별도 확인 필요
+
+### v3.7.731 — 매출 등록 시 리스트 중복 표시 fix (2026-05-16)
+**증상**: 매출 등록 시 매출관리 리스트에 같은 매출이 2개로 떴다가 1개로 정리됨 (중복 깜빡임).
+**원인**: v3.7.730 Bug A 수정 때 `SaleForm`에 `setData(data.sales += inserted)`를 추가했는데 — 부모 onSubmit 핸들러(`SalesPage.handleSave` / `ReservationModal.handleSaleSubmit`)가 **이미** `data.sales`에 매출을 추가하고 있었음. SaleForm + 부모 = 이중 추가 → 중복.
+**fix**: `SaleForm`의 v3.7.730 `setData` 블록 제거. `data.sales` 로컬 반영은 부모 핸들러 전담 (원래 설계 — `handleSave` 주석 "여기선 로컬 state 갱신만").
+**참고**: v3.7.730 Bug A("신규 매출 타임라인 강조 미반영") 진단이 불완전했음 — 부모 핸들러가 `data.sales`를 갱신하므로 강조는 원래 동작함. SaleForm 추가는 불필요했고 중복 회귀만 유발.
