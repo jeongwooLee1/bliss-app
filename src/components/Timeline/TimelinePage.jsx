@@ -3030,6 +3030,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       if (rect.bottom - pt.clientY < edgeZone) { sr.scrollTop += stepY; moved = true; }
       if (pt.clientX - rect.left < edgeZone) { sr.scrollLeft -= stepX; moved = true; }
       if (rect.right - pt.clientX < edgeZone) { sr.scrollLeft += stepX; moved = true; }
+      // 스크롤이 일어났으면 그만큼 블록 미리보기·드롭 대상도 재계산 — 손가락이 멈춰 있어도 블록이 스크롤을 따라감
+      if (moved) onDragMove(isTouch ? { touches: [pt], preventDefault: () => {} } : pt);
       _autoScrollRAF = requestAnimationFrame(_autoScrollLoop);
     };
     const _stopAutoScroll = () => {

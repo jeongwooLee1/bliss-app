@@ -1768,3 +1768,9 @@ v3.7.740의 대화 시각 추출(`_timeGuess`)에 — 추출 시각을 타임라
 **fix** (`bliss_naver.py`): `_augment_out_translation(text, orig_ko, account_id, user_id)` — `orig_ko`(send_queue row의 `translated_text`)가 한국어면 역번역 없이 그대로 사용, 없을 때만 `_thread_context` 대화 맥락 넣어 역번역. 호출부 3곳(WhatsApp/LINE/Naver send_queue_thread) + echo 핸들러 2곳(Naver echo·IG echo)의 `translate_to_korean`에 `prev_context` 주입.
 **적용**: 서버 직접 패치(백업 `bliss_naver.py.bak_pre_outtr_*`) + `systemctl restart bliss-naver`. React 변경 0 → 버전업·CF퍼지 불필요.
 **유의**: "AI 답변 추천" + 번역자동 모드는 앱(`MessagesPage.sendTranslated`)이 AI 영어를 send_queue `translated_text`로 보내서 `orig_ko` 재사용이 안 됨 → 맥락 역번역으로 폴백(이전보다는 개선). 앱이 AI 한국어 원본(`aiKoDraft`)을 넘기게 하는 건 별도 React 작업.
+
+### v3.7.746 — 모바일 타임라인 드래그 자동 스크롤 시 블록 추적 fix (2026-05-17)
+**증상**: 모바일에서 예약 블록을 잡고 화면 가장자리로 끌면 타임라인은 자동 스크롤되는데, 블록 미리보기·드롭 대상이 스크롤을 안 따라감 → 손가락 멈춘 채 스크롤되면 블록이 제자리에 멈춰 보이고 놓으면 엉뚱한 위치에 떨어짐.
+**원인**: `TimelinePage.handleDragStart`의 `_autoScrollLoop`가 `sr.scrollTop/scrollLeft`만 변경하고, 드래그 스냅·미리보기 계산(`onDragMove`)을 재실행하지 않음. `onDragMove`는 `touchmove`에서만 호출되는데, 손가락이 가장자리에서 멈추면 `touchmove`가 안 와서 스크롤만 진행되고 블록 위치는 고정.
+**fix**: `_autoScrollLoop`에서 스크롤이 일어나면(`moved`) 저장된 포인터로 `onDragMove`를 재호출(터치는 `{touches:[pt]}` 합성 이벤트) — 스크롤 델타가 스냅 계산(`scrollDeltaY`)에 반영돼 블록·드롭 대상이 스크롤을 따라감.
+**적용**: v3.7.746 라이브 배포(version.txt 검증, CF 퍼지 success). React only. 터치 드래그라 브라우저 자동검증은 미실시 — 실제 모바일에서 확인 권장.
