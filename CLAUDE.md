@@ -1726,3 +1726,11 @@ v3.7.740의 대화 시각 추출(`_timeGuess`)에 — 추출 시각을 타임라
 **효과**: 메인 번들 `index-*.js` **2,932KB → 2,098KB** (−834KB, gzip 849→606KB, ~28%↓). xlsx(429KB)·jszip(97KB)·mammoth(~398KB)는 별도 청크로 분리 — 학습문서 업로드 시에만 로드. 콜드 로드 시 JS 파싱량 ~834KB 감소.
 **유의**: 학습문서 업로드(`AdminAIDocs`)는 첫 1회 lib 청크 다운로드(~1초) 후 정상 동작. 추가 경량화는 관리설정·BlissAI 페이지 `React.lazy` 코드스플릿(별도 작업).
 **적용**: v3.7.743 라이브 배포(version.txt 검증, CF 퍼지 success). React only.
+
+### 서버(nginx) — 빌드 에셋 캐싱 활성화 → 앱 로딩 속도 대폭 개선 (2026-05-17, React 변경 0)
+**증상**: 앱 새로고침이 느림. v3.7.743 번들 경량화로도 체감이 안 됨.
+**원인**: `/etc/nginx/sites-enabled/bliss`의 `location /`가 **모든 파일**에 `Cache-Control: no-cache, no-store`를 붙임 — 해시 파일명의 빌드 에셋(`/assets/*.js,css`)까지. → 브라우저·Cloudflare 둘 다 JS를 캐시 안 함 → 앱 열 때마다 605KB JS를 매번 재다운로드(`cf-cache-status: BYPASS`). v3.7.743으로 번들을 줄여도 "매번 재다운로드"라 체감 안 됐던 것.
+**fix**: `location /assets/` 블록 추가 — `Cache-Control: public, max-age=31536000, immutable`. Vite 빌드 에셋은 콘텐츠 해시 파일명이라 내용 바뀌면 이름도 바뀜 → 영구 캐시 안전. `index.html`은 `location /`에서 `no-cache` 유지(새 배포 정상 반영).
+**효과**: 에셋이 브라우저 캐시(1년 immutable) + Cloudflare 엣지(`cf-cache-status: HIT`)에 저장 → 첫 방문 후 모든 재방문·새로고침은 JS 재다운로드 없이 즉시. 배포 시엔 index.html(no-cache)이 새 해시 에셋을 가리켜 자동 갱신.
+**적용**: nginx 설정 직접 수정(백업 `/home/ubuntu/bliss_nginx.bak_20260517_150158`) + `nginx -t` 통과 + `systemctl reload nginx`. React·버전 변경 0.
+**유의**: nginx `sites-enabled/`에 백업 파일을 두면 nginx가 그 파일까지 로드해 `duplicate default server` 충돌 → 백업은 반드시 `sites-enabled/` 밖에 둘 것.
