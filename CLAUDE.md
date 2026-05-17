@@ -1774,3 +1774,12 @@ v3.7.740의 대화 시각 추출(`_timeGuess`)에 — 추출 시각을 타임라
 **원인**: `TimelinePage.handleDragStart`의 `_autoScrollLoop`가 `sr.scrollTop/scrollLeft`만 변경하고, 드래그 스냅·미리보기 계산(`onDragMove`)을 재실행하지 않음. `onDragMove`는 `touchmove`에서만 호출되는데, 손가락이 가장자리에서 멈추면 `touchmove`가 안 와서 스크롤만 진행되고 블록 위치는 고정.
 **fix**: `_autoScrollLoop`에서 스크롤이 일어나면(`moved`) 저장된 포인터로 `onDragMove`를 재호출(터치는 `{touches:[pt]}` 합성 이벤트) — 스크롤 델타가 스냅 계산(`scrollDeltaY`)에 반영돼 블록·드롭 대상이 스크롤을 따라감.
 **적용**: v3.7.746 라이브 배포(version.txt 검증, CF 퍼지 success). React only. 터치 드래그라 브라우저 자동검증은 미실시 — 실제 모바일에서 확인 권장.
+
+### 서버 — 백엔드 시크릿 키 6종 env 우선 전환 (businesses.settings 노출 차단) (2026-05-17, React 변경 0)
+**배경**: `businesses.settings`가 Supabase anon 공개라 거기 저장된 API 키가 외부 노출됨. 백엔드(Python)에서만 쓰는 키 6종을 환경변수로 이전.
+**대상 키 6종**: `openai_key`, `anthropic_key`(=claude_key), `wa_token`, `telegram_token`, `line_channel_token`, `line_channel_secret`. (`gemini_key`/`deepl_key`는 클라이언트도 사용 → 이번 범위 외)
+**코드** (`bliss_naver.py` 8곳 + `ai_booking.py` 2곳): `cfg.get("X")` → `os.environ.get("BLISS_X","") or cfg.get("X")` (env 우선·settings 폴백). `_load_ai_settings` 캐시 빌드 6곳 + `api_key_val` + TG_TOKEN + `get_anthropic_key()` + ai_booking `_cache` 2곳. settings 폴백이 살아있어 무중단.
+**env**: 오라클 서버 systemd drop-in `/etc/systemd/system/bliss-naver.service.d/secrets.conf` (root 600) 신규 작성 — `BLISS_OPENAI_KEY`·`BLISS_ANTHROPIC_KEY`·`BLISS_WA_TOKEN`·`BLISS_TELEGRAM_TOKEN`·`BLISS_LINE_CHANNEL_TOKEN`·`BLISS_LINE_CHANNEL_SECRET` 6개. 값은 현 `businesses.settings`에서 그대로 복사(서버 스크립트가 Supabase→파일 직접 기록). `daemon-reload` + `bliss-naver` 재시작.
+**검증**: 6키 전부 라이브 read-only API 검증 PASS — OpenAI `/v1/models`, Anthropic `/v1/messages`, WhatsApp Graph `/me`, Telegram `getMe`, LINE `/bot/info`. 서비스 active, 로그 정상.
+**백업**: `bliss_naver.py.bak_pre_envkeys_*`, `ai_booking.py.bak_pre_envkeys_*`
+**미완(별도 트랙 — 동의서 세션)**: `businesses.settings`에서 위 6키 제거 + RLS 정리. 제거 전까지는 settings·env 둘 다 유효(env 우선). `mac-daemon`은 이 키들과 무관(KB 입금문자 폴러).
