@@ -1386,15 +1386,19 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     const batches = [];
     for (let i = 0; i < custIds.length; i += batchSize) batches.push(custIds.slice(i, i + batchSize));
     Promise.all(batches.map(batch =>
-      fetch(`${SB_URL}/rest/v1/customer_packages?customer_id=in.(${batch.join(",")})&select=customer_id,service_name,total_count,used_count,note`, {
+      fetch(`${SB_URL}/rest/v1/customer_packages?customer_id=in.(${batch.join(",")})&select=customer_id,service_id,service_name,total_count,used_count,note`, {
         headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
       }).then(r => r.json()).catch(() => [])
     )).then(results => {
       const map = {};
       const today = new Date().toISOString().slice(0,10);
+      // 시술/쿠폰명은 마스터(services)의 현재 이름 우선 — 발급 당시 스냅샷(service_name)은 fallback
+      // → 시술·쿠폰 이름 변경 시 타임라인에 자동 반영 (service_id 있는 보유권)
+      const _svcNameById = {};
+      (data?.services||[]).forEach(s => { if (s?.id) _svcNameById[s.id] = s.name; });
       results.flat().forEach(p => {
         if (!Array.isArray(map[p.customer_id])) map[p.customer_id] = [];
-        const sn = p.service_name||"";
+        const sn = (p.service_id && _svcNameById[p.service_id]) || p.service_name || "";
         const expMatch = (p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/);
         if (expMatch && expMatch[1] < today) return;
         const isDadam = sn.includes("다담") || sn.includes("선불");
@@ -1417,7 +1421,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       });
       setCustPkgMap(map);
     });
-  }, [selDate, data?.reservations?.length]);
+  }, [selDate, data?.reservations?.length, data?.services]);
 
   const branchesToShow = allBranchList.filter(b => viewBids.includes(b.id) && (isMaster || accessibleBids.includes(b.id)));
 
