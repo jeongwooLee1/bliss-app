@@ -1792,3 +1792,10 @@ v3.7.740의 대화 시각 추출(`_timeGuess`)에 — 추출 시각을 타임라
 **검증**: `app_secrets` 3키 적재 + anon 차단 확인, Edge Function v8 ACTIVE, `bliss-naver` active + ig env 로드, base64 라운드트립 OK.
 **백업**: `bliss_naver.py.bak_pre_igenv_*`
 **미완(동의서 세션)**: `businesses.settings`에서 `wa_token`·`ig_token`·`ig_tokens` 제거 가능해짐 — 제거하면 settings엔 `gemini_key`·`deepl_key`만 남음(클라이언트가 직접 사용 → 서버화 전엔 못 뺌, 별도 큰 작업). 시크릿 0개 돼야 settings 컬럼 RLS 잠금 가능.
+
+### 서버 — db_upsert SELECT에 schedule_log/time/date 추가 (수동 시간변경 보호 가드 복구) (2026-05-18, React 변경 0)
+**배경**: 수연 요청 `id_f19sih2au8` — "블리스에서 예약 시간 옮기면 되돌아감".
+**발견**: `db_upsert`의 "수동 시간변경 보호" 가드(`if row.schedule_log: drop time/date`)가 `row.get("schedule_log")`/`time`/`date`를 비교하는데, `db_upsert`의 SELECT가 그 컬럼들을 안 가져와서 가드가 죽어 있었음(오늘 고친 status-SELECT 누락 버그와 동일 부류). `time`은 `BLISS_PRESERVE_FIELDS`에 있어 무사했지만 `date`(다른 날로 이동)는 무방비 — 재스크랩이 되돌림.
+**fix**: `db_upsert` SELECT 2곳(기본 + race 재조회)에 `schedule_log,time,date` 추가 → 가드 복구. 이제 schedule_log(수동 이동 흔적) 있으면 time·date 둘 다 재스크랩에서 보존.
+**적용**: 서버 직접 패치(백업 `bliss_naver.py.bak_pre_selfix_*`) + `systemctl restart`. React 변경 0.
+**유의**: `time` 자체는 PRESERVE_FIELDS로 4/10부터 이미 보존돼 옴 — 서버 재스크랩은 `time`을 안 되돌림(이승혜 예약 DB 데이터로 확인: 직원이 옮긴 값 그대로 살아있음). 수연이 본 'time 되돌림'은 서버 재스크랩 경로가 아니라 클라이언트(타임라인) 쪽 의심 — `handleSave`의 이동-저장이 `sb.update(...).catch(console.error)` fire-and-forget(저장 실패 시 무경고·무재시도)이라 네트워크 실패 시 조용히 유실 가능. 정확한 재현 케이스 확보 후 추가 조사 필요(별도).
