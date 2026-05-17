@@ -1689,3 +1689,11 @@ React 앱과 무관한 정적 페이지(`public/book.html`)만 수정 — BLISS_
 **안 건드림**: 예약(`reservations`) memo의 소스 태그(`[AI예약]`·`[카카오 챗봇 예약 접수]` 등)·AI 특이사항 `owner_comment` — 예약 출처 파악용이라 유지(유저 확인).
 **기존 DB 정리**: 자동텍스트만 있고 직원 메모 0건인 고객 55명(네이버신규 51·방문자 1·카카오폼 1·Trazy 2) `memo = NULL` 일괄 처리. 정리 후 잔존 0건 확인.
 **적용**: 서버 직접 패치(백업 `bliss_naver.py.bak_pre_memo_clean_20260517_100137`) + `systemctl restart bliss-naver`(scraper/gmail/alimtalk/ai 전부 alive 확인). React 변경 0 → 버전업·CF퍼지 불필요.
+
+### v3.7.740 — AI 예약등록(메시지함) 4건 fix (2026-05-17)
+메시지함 ✨ "AI 예약등록"의 "정보 부족" fallback 경로(`MessagesPage.aiBook` → 타임라인 예약 모달) 정리.
+- **A. 직원 메모 자동텍스트 제거**: fallback이 예약 모달 직원 메모에 `[AI 자동예약—정보부족 보류분]`+AI응답+`[원문]`을 자동 prefill하던 것 제거(`MessagesPage.jsx` `_prefill.memo` 삭제). 직원 메모 빈칸 시작.
+- **B. AI 예약 시간 14:00 오류**: fallback이 시간 못 받으면 `'14:00'` 하드코딩 → 엉뚱한 시각. `_parseTime`/`_timeGuess` 추가 — 대화 **전체**에서 시각 정규식 추출(HH:MM·"N시 M분"·"N시반", 영업시간 11~21시 고려해 오전/오후 표기 없는 1~9시는 오후 추정). 못 찾으면 빈칸(직원이 채움). 서버는 `time`을 REQUIRED로 정상 처리 — 서버 변경 없음.
+- **C. 예약경로 = 채널명**: fallback이 예약 `source`를 `'ai_book_fallback'`로 박던 것 제거 → 대화 채널명 매핑(`_SRC_BY_CH`: 네이버톡톡/인스타/WhatsApp/카톡/LINE/텔레그램). 서버 `ai_booking.py` `CHANNEL_SOURCE_MAP`도 `naver "네이버"→"네이버톡톡"` + kakao/line/telegram 추가(직접 AI 예약 경로도 동일). DB `reservation_sources`에 "네이버톡톡"·"텔레그램" 신규 등록.
+- **D. 받은메시지함 "연결" 버튼**: AI 예약등록 fallback으로 타임라인 모달에서 신규 고객 생성 시 `customers.sns_accounts`에 채팅 채널/user_id 미기입 → 대화↔고객 미연결("연결" 버튼 노출). `ReservationModal` `onSave`에 `chatChannel/chatAccountId/chatUserId` 전달 + `TimelinePage.handleSave` 신규 고객 `newCust.snsAccounts` 채움 → 받은메시지함 자동 매칭.
+**적용**: v3.7.740 라이브 배포(version.txt 검증, CF 퍼지 success). 서버 `ai_booking.py` 직접 패치(백업 `ai_booking.py.bak_pre_srcmap_20260517_120119`) + `systemctl restart bliss-naver`. DB `reservation_sources` INSERT 2건(네이버톡톡·텔레그램).

@@ -994,6 +994,26 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           else return parsed.date || today;
           return d.toISOString().slice(0,10);
         })();
+        // 시간 — 대화 전체에서 가장 최근 언급된 시각 추출 (마지막 메시지엔 시간이 없을 수 있음)
+        const _parseTime = s => {
+          if (!s) return '';
+          let m = s.match(/([01]?\d|2[0-3])\s*:\s*([0-5]\d)/);
+          if (m) return String(+m[1]).padStart(2,'0') + ':' + m[2];
+          m = s.match(/(오전|오후|아침|저녁|밤|낮)?\s*([01]?\d|2[0-3])\s*시\s*(반|[0-5]?\d\s*분)?/);
+          if (m) {
+            let h = +m[2]; const ap = m[1];
+            if ((ap === '오후' || ap === '저녁' || ap === '밤' || ap === '낮') && h < 12) h += 12;
+            else if (!ap && h >= 1 && h <= 9) h += 12; // 영업시간 11~21시 — 오전/오후 표기 없는 1~9시는 오후로 추정
+            let mm = 0;
+            if (m[3]) { if (m[3].includes('반')) mm = 30; else { const dd2 = m[3].match(/\d+/); if (dd2) mm = +dd2[0]; } }
+            return String(h).padStart(2,'0') + ':' + String(mm).padStart(2,'0');
+          }
+          return '';
+        };
+        const _timeGuess = [...(convo||[])].reverse().map(m=>_parseTime(m.message_text||'')).find(Boolean) || '';
+        // 예약경로 — 대화 채널명 (네이버톡톡/인스타/왓츠앱/카톡/LINE…)
+        const _SRC_BY_CH = {naver:'네이버톡톡',instagram:'인스타',whatsapp:'WhatsApp',kakao:'카톡',kakaotalk:'카톡',line:'LINE',telegram:'텔레그램'};
+        const _srcGuess = _SRC_BY_CH[sel.channel] || '';
         if (setPendingOpenRes && setPage) {
           setPendingOpenRes({
             _isNew: true,
@@ -1005,13 +1025,12 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
               custEmail: parsed.cust_email || cust.email || '',
               custGender: parsed.cust_gender || cust.gender || '',
               date: parsed.date || _dateGuess,
-              time: parsed.time || '14:00',
+              time: parsed.time || _timeGuess || '',
               dur: parsed.dur || 60,
-              memo: aiReply ? `[AI 자동예약 — 정보 부족 보류분]\n${aiReply}\n\n[원문]\n${lastInTxt}` : `[원문]\n${lastInTxt}`,
               matchedServiceIds: parsed.selected_services || [],
               matchedTagIds: parsed.selected_tags || [],
               _isNewCust: !cust.id,
-              source: 'ai_book_fallback',
+              source: _srcGuess,
             },
             bid: parsed.bid || _bid || '',
             chatChannel: sel.channel,

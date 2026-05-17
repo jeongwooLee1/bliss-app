@@ -2995,7 +2995,8 @@ ${naverText}
                     sb.insert('customer_behavior_log', _entry).catch(e => console.warn('[behavior_log] insert err:', e?.message));
                   }
                 }
-                onSave({...f, memo: memoToSave, scheduleLog: scheduleLogToSave, tsLog: newLog, selectedTags: autoTags, isSchedule, _isColTemplate: item?._isColTemplate, _templateId: item?._templateId, _initialServerSnap: initialServerSnap});
+                onSave({...f, memo: memoToSave, scheduleLog: scheduleLogToSave, tsLog: newLog, selectedTags: autoTags, isSchedule, _isColTemplate: item?._isColTemplate, _templateId: item?._templateId, _initialServerSnap: initialServerSnap,
+                  chatChannel: f.chatChannel||item?.chatChannel||"", chatAccountId: f.chatAccountId||item?.chatAccountId||"", chatUserId: f.chatUserId||item?.chatUserId||""});
               }}>{item?.id?"저장":"등록"}</button>
               {/* AI 예약 확정 버튼 */}
               {f.status==="request" && <Btn style={{padding:"10px 26px",background:"#9C27B0",boxShadow:"0 4px 14px rgba(156,39,176,.35)"}}

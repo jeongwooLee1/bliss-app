@@ -2500,6 +2500,11 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             gender: item.custGender || "", visits: 0, lastVisit: null, memo: "",
             custNum: ""
           };
+          // 채팅(네이버톡톡·인스타 등)에서 넘어온 예약이면 sns_accounts에 채널/user_id 연결
+          // → 받은메시지함이 이 대화를 새 고객과 자동 매칭 (연결 버튼 사라짐)
+          if (item.chatChannel && item.chatUserId) {
+            newCust.snsAccounts = [{ channel: item.chatChannel, account_id: item.chatAccountId || "", user_id: item.chatUserId, linked_at: new Date().toISOString() }];
+          }
           // 외국 이름이면 한글 음역 자동 채움 (Gemini 호출 — 비동기, 실패 시 빈 채로 INSERT)
           const _isEnNew = item.custName && !/[가-힣]/.test(item.custName);
           if (_isEnNew) {
