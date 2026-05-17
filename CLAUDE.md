@@ -1675,3 +1675,17 @@ React 앱과 무관한 정적 페이지(`public/book.html`)만 수정 — BLISS_
 - **보유권 드롭다운(`+패키지 추가`·`쿠폰 발행`) 14px → 12px** — iOS 줌 방지 16px 규칙에서 `select` 제외(네이티브 피커라 줌 안 일어남) → index.html 전역 `select.inp{font-size:14px!important}`가 드러남 → `.cust-fs-modal select.inp` 12px로 눌러줌
 **검증**: 로컬 dev server 로그인 → 고객 상세 모달, 모바일(375px) 4건 모두 정상 + 데스크탑(1280px) 레이아웃 무영향. 콘솔 에러 0.
 **적용**: v3.7.739 라이브 배포(version.txt 검증 3.7.739, CF 퍼지 success). React only.
+
+### 서버 — 신규 고객 자동 생성 시 customers.memo 자동텍스트 제거 (2026-05-17, React 변경 0)
+**배경**: 네이버·카카오 예약 등으로 고객이 자동 생성될 때 `customers.memo`에 "네이버 신규 예약 자동 생성" 같은 보일러플레이트가 박혀, 매출 히스토리·고객 상세의 "고객 메모"에 그대로 노출. 직원이 쓸 메모칸을 자동텍스트가 차지 — 불필요(CLAUDE.md 절대금지 "memo 필드에 네이버 데이터 쓰기"와도 배치).
+**수정** (`bliss_naver.py` — customers INSERT 5곳에서 `memo` 키 제거):
+- 네이버 신규 고객 (`"네이버 신규 예약 자동 생성"`)
+- 네이버 방문자 (`"네이버 방문자 자동 생성 (예약자: …)"`)
+- 카카오 예약폼 `/book-submit` (`"카카오 폼 신규 예약 자동 생성"`)
+- Trazy 신규 고객 (`"Trazy 유입 / 국적: …"`)
+- 크리에이트립 신규 고객 (`"크리에이트립 유입 (…)"`)
+→ 신규 고객 memo는 NULL로 생성 → 직원이 직접 작성. 국적 등은 예약(`reservations`) memo에 그대로 남아 정보 손실 없음.
+**이미 깨끗**: `ai_booking.py`의 AI 예약 고객 생성(`cust_row`)엔 memo 필드 자체가 없음 — 수정 불필요.
+**안 건드림**: 예약(`reservations`) memo의 소스 태그(`[AI예약]`·`[카카오 챗봇 예약 접수]` 등)·AI 특이사항 `owner_comment` — 예약 출처 파악용이라 유지(유저 확인).
+**기존 DB 정리**: 자동텍스트만 있고 직원 메모 0건인 고객 55명(네이버신규 51·방문자 1·카카오폼 1·Trazy 2) `memo = NULL` 일괄 처리. 정리 후 잔존 0건 확인.
+**적용**: 서버 직접 패치(백업 `bliss_naver.py.bak_pre_memo_clean_20260517_100137`) + `systemctl restart bliss-naver`(scraper/gmail/alimtalk/ai 전부 alive 확인). React 변경 0 → 버전업·CF퍼지 불필요.
