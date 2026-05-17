@@ -1697,3 +1697,10 @@ React 앱과 무관한 정적 페이지(`public/book.html`)만 수정 — BLISS_
 - **C. 예약경로 = 채널명**: fallback이 예약 `source`를 `'ai_book_fallback'`로 박던 것 제거 → 대화 채널명 매핑(`_SRC_BY_CH`: 네이버톡톡/인스타/WhatsApp/카톡/LINE/텔레그램). 서버 `ai_booking.py` `CHANNEL_SOURCE_MAP`도 `naver "네이버"→"네이버톡톡"` + kakao/line/telegram 추가(직접 AI 예약 경로도 동일). DB `reservation_sources`에 "네이버톡톡"·"텔레그램" 신규 등록.
 - **D. 받은메시지함 "연결" 버튼**: AI 예약등록 fallback으로 타임라인 모달에서 신규 고객 생성 시 `customers.sns_accounts`에 채팅 채널/user_id 미기입 → 대화↔고객 미연결("연결" 버튼 노출). `ReservationModal` `onSave`에 `chatChannel/chatAccountId/chatUserId` 전달 + `TimelinePage.handleSave` 신규 고객 `newCust.snsAccounts` 채움 → 받은메시지함 자동 매칭.
 **적용**: v3.7.740 라이브 배포(version.txt 검증, CF 퍼지 success). 서버 `ai_booking.py` 직접 패치(백업 `ai_booking.py.bak_pre_srcmap_20260517_120119`) + `systemctl restart bliss-naver`. DB `reservation_sources` INSERT 2건(네이버톡톡·텔레그램).
+
+### v3.7.741 — AI 예약등록 추출 시각, 타임라인 시간단위로 스냅 (2026-05-17)
+v3.7.740의 대화 시각 추출(`_timeGuess`)에 — 추출 시각을 타임라인 "시간단위"(`tl_settings.tu` 공유설정, 5/10/15/30/60분)에 맞춰 스냅 추가.
+- `MessagesPage.aiBook` fallback에 `_snapTime` 추가: `localStorage.tl_settings.tu`(기본 5) 단위로 가장 가까운 시각에 스냅. `parsed.time`(서버 AI 추출)·`_timeGuess`(대화 정규식 추출) 둘 다 스냅 후 모달 prefill.
+- 예: 시간단위 30분 → 11:35는 11:30, 11:50은 12:00. 5분 → 11:35 그대로(거의 무변).
+- 적용: 직원 ✨ AI 예약등록 버튼의 "정보부족 → 타임라인 모달" 경로. 서버 자동응대 AI 예약(`ai_booking.py`)은 미적용(현재 시간단위 5분이라 효과 동일 — 필요 시 별도 패치).
+**적용**: v3.7.741 라이브 배포(version.txt 검증, CF 퍼지 success). React only.

@@ -1010,7 +1010,17 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           }
           return '';
         };
-        const _timeGuess = [...(convo||[])].reverse().map(m=>_parseTime(m.message_text||'')).find(Boolean) || '';
+        // 타임라인 "시간단위"(tl_settings.tu, 기본 5분)에 맞춰 시각 스냅 — 30분 단위면 :00/:30으로
+        const _timeUnit = (() => { try { return Number(JSON.parse(localStorage.getItem('tl_settings')||'{}').tu) || 5; } catch { return 5; } })();
+        const _snapTime = t => {
+          if (!t) return '';
+          const [h,mm] = t.split(':').map(Number);
+          if (isNaN(h) || isNaN(mm)) return t;
+          let tot = Math.round((h*60+mm)/_timeUnit) * _timeUnit;
+          tot = Math.max(0, Math.min(tot, 23*60+55));
+          return String(Math.floor(tot/60)).padStart(2,'0') + ':' + String(tot%60).padStart(2,'0');
+        };
+        const _timeGuess = _snapTime([...(convo||[])].reverse().map(m=>_parseTime(m.message_text||'')).find(Boolean) || '');
         // 예약경로 — 대화 채널명 (네이버톡톡/인스타/왓츠앱/카톡/LINE…)
         const _SRC_BY_CH = {naver:'네이버톡톡',instagram:'인스타',whatsapp:'WhatsApp',kakao:'카톡',kakaotalk:'카톡',line:'LINE',telegram:'텔레그램'};
         const _srcGuess = _SRC_BY_CH[sel.channel] || '';
@@ -1025,7 +1035,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
               custEmail: parsed.cust_email || cust.email || '',
               custGender: parsed.cust_gender || cust.gender || '',
               date: parsed.date || _dateGuess,
-              time: parsed.time || _timeGuess || '',
+              time: _snapTime(parsed.time) || _timeGuess || '',
               dur: parsed.dur || 60,
               matchedServiceIds: parsed.selected_services || [],
               matchedTagIds: parsed.selected_tags || [],
