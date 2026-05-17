@@ -1761,3 +1761,10 @@ v3.7.740의 대화 시각 추출(`_timeGuess`)에 — 추출 시각을 타임라
 **fix (데이터 — businesses.settings)**: 이벤트 7개 `coupon_issue` 보상의 `couponName`을 현재 시술상품명으로 보정 (`제품전용 8만원쿠폰`→`제품전용 8만`, `제품전용 3만원쿠폰`→`제품전용 3만`, `에너지테라피 20분`→`에너지20분`, `에너지테라피 60분`→`에너지60분`). jsonb surgical update(이벤트 `name`·다른 설정 무변경), 이벤트 18개 유지 검증.
 **적용**: v3.7.745 라이브 배포(version.txt 검증, CF 퍼지 success). React + DB 데이터 보정.
 **유의**: 쿠폰 엔진은 이제 `customer_packages.service_id`로 쿠폰 상품을 해석 — 시술상품명을 바꿔도 안 깨짐. 단 `service_id` 없는 구버전 쿠폰 행은 이름 폴백. 이벤트 `coupon_issue` 보상은 여전히 `couponName`(문자열)로 쿠폰을 지목 — 쿠폰 상품명을 또 바꾸면 이벤트 설정의 `couponName`도 같이 바꿔야 함(ID 참조로 전환은 추후 과제).
+
+### 서버 — 발신 메시지 한국어 표시 개선 (역번역 맥락 주입 + 원본 재사용) (2026-05-17, React 변경 0)
+**증상**: 매장이 영어로 보낸 발신 메시지 밑에 표시되는 한국어(직원용)가 앞뒤 맥락 없이 어색하게 번역됨 (WhatsApp 등 외국어 고객 대화).
+**원인**: `_augment_out_translation`이 발신 영어를 `translate_to_korean(text)`로 역번역 — (a) `prev_context`(대화 맥락) 미주입: 수신 메시지 번역은 `_thread_context`를 넣는데 발신 역번역만 빠짐 → 한 메시지만 떼어 번역, (b) send_queue에 직원이 친 한국어·AI 한국어 원본(`translated_text`)이 있어도 무시하고 영어를 round-trip 기계번역 → 멀쩡한 원본 버리고 품질 저하.
+**fix** (`bliss_naver.py`): `_augment_out_translation(text, orig_ko, account_id, user_id)` — `orig_ko`(send_queue row의 `translated_text`)가 한국어면 역번역 없이 그대로 사용, 없을 때만 `_thread_context` 대화 맥락 넣어 역번역. 호출부 3곳(WhatsApp/LINE/Naver send_queue_thread) + echo 핸들러 2곳(Naver echo·IG echo)의 `translate_to_korean`에 `prev_context` 주입.
+**적용**: 서버 직접 패치(백업 `bliss_naver.py.bak_pre_outtr_*`) + `systemctl restart bliss-naver`. React 변경 0 → 버전업·CF퍼지 불필요.
+**유의**: "AI 답변 추천" + 번역자동 모드는 앱(`MessagesPage.sendTranslated`)이 AI 영어를 send_queue `translated_text`로 보내서 `orig_ko` 재사용이 안 됨 → 맥락 역번역으로 폴백(이전보다는 개선). 앱이 AI 한국어 원본(`aiKoDraft`)을 넘기게 하는 건 별도 React 작업.
