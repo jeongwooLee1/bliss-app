@@ -1718,3 +1718,11 @@ v3.7.740의 대화 시각 추출(`_timeGuess`)에 — 추출 시각을 타임라
 **fix** (`TimelinePage.jsx` 보유권 로드 effect): `customer_packages` SELECT에 `service_id` 추가 → `service_id`로 `data.services`의 **현재 이름을 우선 사용**, 매칭 안 되면 기존 스냅샷 `service_name` fallback. 의존성에 `data?.services` 추가. → 시술·쿠폰명 변경 시 (브라우저 새로고침 후) 타임라인에 자동 반영.
 **유의**: `service_id` 없는 구 보유권은 여전히 스냅샷 이름. 고객 상세 보유권 탭(`PkgCard`)·매출폼 등 다른 화면은 미적용 — 동일 증상이면 같은 패턴 적용 필요.
 **적용**: v3.7.742 라이브 배포(version.txt 검증, CF 퍼지 success). React only.
+
+### v3.7.743 — 메인 JS 번들 경량화 (앱 콜드 로드 속도 개선) (2026-05-17)
+**배경**: 앱 새로고침(콜드 로드)이 느리다는 보고. 조사 — `loadAllFromDb`(데이터 로드)는 이미 가벼움(sales 14일·customers 100·예약은 백그라운드). 진짜 원인은 메인 JS 번들 2.9MB.
+**원인**: `aiDocs.js`가 `mammoth`·`xlsx`·`jszip`(문서 파싱 라이브러리, "AI 학습문서 업로드" 전용)을 top-level static import → `aiDocs.js`를 MessagesPage·BlissAI·FloatingAI도 import하므로 이 무거운 libs가 자주 쓰는 화면 경로를 통해 항상 메인 번들에 포함됨.
+**fix**: `aiDocs.js`의 mammoth/xlsx/jszip을 각 추출 함수(`extractDOCX`/`extractXLSX`/`extractPPTX`/`extractHWPX`) 안에서 `await import(...)` dynamic import로 변경. 문서를 실제 파싱할 때만 로드.
+**효과**: 메인 번들 `index-*.js` **2,932KB → 2,098KB** (−834KB, gzip 849→606KB, ~28%↓). xlsx(429KB)·jszip(97KB)·mammoth(~398KB)는 별도 청크로 분리 — 학습문서 업로드 시에만 로드. 콜드 로드 시 JS 파싱량 ~834KB 감소.
+**유의**: 학습문서 업로드(`AdminAIDocs`)는 첫 1회 lib 청크 다운로드(~1초) 후 정상 동작. 추가 경량화는 관리설정·BlissAI 페이지 `React.lazy` 코드스플릿(별도 작업).
+**적용**: v3.7.743 라이브 배포(version.txt 검증, CF 퍼지 success). React only.

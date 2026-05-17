@@ -9,9 +9,7 @@
  *   5. searchDocs()       — 질문 임베딩 + match_documents RPC로 top K 검색
  */
 import * as pdfjsLib from 'pdfjs-dist'
-import mammoth from 'mammoth'
-import * as XLSX from 'xlsx'
-import JSZip from 'jszip'
+// mammoth / xlsx / jszip — 문서 파싱 함수 안에서 dynamic import (메인 번들 경량화: 학습문서 업로드 때만 로드)
 import { sb, SB_URL, sbHeaders } from './sb'
 import { genId } from './utils'
 
@@ -35,12 +33,15 @@ async function extractPDF(file) {
 
 async function extractDOCX(file) {
   const buf = await file.arrayBuffer()
+  const mammoth = (await import('mammoth')).default
   const r = await mammoth.extractRawText({ arrayBuffer: buf })
   return r.value || ''
 }
 
 async function extractXLSX(file) {
   const buf = await file.arrayBuffer()
+  const _xlsx = await import('xlsx')
+  const XLSX = _xlsx.read ? _xlsx : _xlsx.default
   const wb = XLSX.read(buf, { type: 'array' })
   const out = []
   wb.SheetNames.forEach(name => {
@@ -58,6 +59,7 @@ async function extractTXT(file) {
 // 파워포인트 .pptx — zip 풀어서 ppt/slides/slide*.xml의 <a:t> 텍스트 추출
 async function extractPPTX(file) {
   const buf = await file.arrayBuffer()
+  const JSZip = (await import('jszip')).default
   const zip = await JSZip.loadAsync(buf)
   const slides = []
   // slide*.xml 파일 정렬 (slide1, slide2, ...)
@@ -81,6 +83,7 @@ async function extractPPTX(file) {
 // 한글 .hwpx (zip 기반) — Contents/section*.xml의 <hp:t> 텍스트 추출
 async function extractHWPX(file) {
   const buf = await file.arrayBuffer()
+  const JSZip = (await import('jszip')).default
   const zip = await JSZip.loadAsync(buf)
   const sectionFiles = Object.keys(zip.files)
     .filter(n => /^Contents\/section\d+\.xml$/.test(n))
