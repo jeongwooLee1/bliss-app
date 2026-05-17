@@ -17,7 +17,7 @@
 
 ## 기타 미해결
 - 카카오 예약 확정 알림톡: 실발송 테스트 미실시 — 카카오 테스트 예약 1건으로 검증 권장
-- 백엔드 시크릿 키 6종 env 전환 완료(2026-05-17, CLAUDE.md 참고) — **남은 일: `businesses.settings`에서 6키 제거 + RLS 정리는 동의서 세션이 마무리**. 제거 전까지 settings·env 둘 다 유효(env 우선)라 무중단
+- 시크릿 키 settings 탈출(2026-05-17, CLAUDE.md 참고): 6키 env 전환 완료 + `wa_token`·`ig` 토큰도 settings 의존 제거(Edge Function→`app_secrets` 테이블 / bliss_naver.py→env). **남은 일(동의서 세션)**: `businesses.settings`에서 6키 + `wa_token`·`ig_token`·`ig_tokens` 제거. 그 후 settings엔 `gemini_key`·`deepl_key`만 남음(클라이언트 사용, 서버화는 별도 큰 작업) → 그게 끝나야 settings RLS 잠금 가능
 
 ## 미처리 — 현아 커플패키지 질문 (id_eih96ttwa0, reviewing)
 "커플패키지 3회: 한 분 매출로 3회 등록 + 다른 분 고객관리에서 3회 등록? 아니면 6회로 쉐어 사용?" — 운영 방식 결정 필요. **유저가 보류 지시 (2026-05-17)** — 제품쿠폰 건 우선 처리 후 보류. 답변 미작성.

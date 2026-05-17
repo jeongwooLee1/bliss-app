@@ -1783,3 +1783,12 @@ v3.7.740의 대화 시각 추출(`_timeGuess`)에 — 추출 시각을 타임라
 **검증**: 6키 전부 라이브 read-only API 검증 PASS — OpenAI `/v1/models`, Anthropic `/v1/messages`, WhatsApp Graph `/me`, Telegram `getMe`, LINE `/bot/info`. 서비스 active, 로그 정상.
 **백업**: `bliss_naver.py.bak_pre_envkeys_*`, `ai_booking.py.bak_pre_envkeys_*`
 **미완(별도 트랙 — 동의서 세션)**: `businesses.settings`에서 위 6키 제거 + RLS 정리. 제거 전까지는 settings·env 둘 다 유효(env 우선). `mac-daemon`은 이 키들과 무관(KB 입금문자 폴러).
+
+### 서버/Supabase — wa_token·ig 토큰 settings 의존 제거 (send-message Edge Function + bliss_naver.py) (2026-05-17, React 변경 0)
+**배경**: 위 6키 env 전환의 후속. `wa_token`·`ig_token`·`ig_tokens`는 `send-message` Edge Function이 `businesses.settings`에서 읽고 있어 settings에서 못 지웠음 — 이번에 그 의존도 제거.
+**`app_secrets` 테이블 신규**: `(key, value, updated_at)`. **RLS ON + 정책 없음**(의도) — anon/publishable 키로 못 읽고 `service_role`만 우회. `wa_token`·`ig_token`·`ig_tokens`를 `settings→app_secrets`로 **DB 내부 복사**(셸에 값 노출 0). anon(publishable) 읽기 시도 → `[]` 차단 확인. ※ 이 테이블엔 `anon_all` 정책 추가 금지(시크릿 저장소).
+**`send-message` Edge Function v8**: `wa_token`·`ig_token`·`ig_tokens`를 `app_secrets`(service_role)에서 읽고 settings 폴백. `wa_phone_number_id`(비-시크릿)·`naver_messages` insert 등 나머지 로직 무변경.
+**`bliss_naver.py`**: `ig_token`→`BLISS_IG_TOKEN`(env), `ig_tokens`(dict)→`BLISS_IG_TOKENS_B64`(base64 — systemd Environment에 JSON 직접 못 넣어 base64) env 우선·settings 폴백. systemd `secrets.conf`에 2개 추가(총 8개), `bliss-naver` 재시작.
+**검증**: `app_secrets` 3키 적재 + anon 차단 확인, Edge Function v8 ACTIVE, `bliss-naver` active + ig env 로드, base64 라운드트립 OK.
+**백업**: `bliss_naver.py.bak_pre_igenv_*`
+**미완(동의서 세션)**: `businesses.settings`에서 `wa_token`·`ig_token`·`ig_tokens` 제거 가능해짐 — 제거하면 settings엔 `gemini_key`·`deepl_key`만 남음(클라이언트가 직접 사용 → 서버화 전엔 못 뺌, 별도 큰 작업). 시크릿 0개 돼야 settings 컬럼 RLS 잠금 가능.
