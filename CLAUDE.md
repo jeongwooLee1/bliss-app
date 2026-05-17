@@ -1734,3 +1734,9 @@ v3.7.740의 대화 시각 추출(`_timeGuess`)에 — 추출 시각을 타임라
 **효과**: 에셋이 브라우저 캐시(1년 immutable) + Cloudflare 엣지(`cf-cache-status: HIT`)에 저장 → 첫 방문 후 모든 재방문·새로고침은 JS 재다운로드 없이 즉시. 배포 시엔 index.html(no-cache)이 새 해시 에셋을 가리켜 자동 갱신.
 **적용**: nginx 설정 직접 수정(백업 `/home/ubuntu/bliss_nginx.bak_20260517_150158`) + `nginx -t` 통과 + `systemctl reload nginx`. React·버전 변경 0.
 **유의**: nginx `sites-enabled/`에 백업 파일을 두면 nginx가 그 파일까지 로드해 `duplicate default server` 충돌 → 백업은 반드시 `sites-enabled/` 밖에 둘 것.
+
+### v3.7.744 — 타임라인 당일 예약 즉시 로드 (블록 표시 속도 개선) (2026-05-17)
+**증상**: nginx 캐싱(v3.7.743 후속)으로 앱 셸은 빨라졌으나 — 타임라인 예약 블록이 여전히 늦게(~3초) 뜸.
+**원인**: 타임라인 블록은 `data.reservations`(AppShell 백그라운드 `loadReservations`)에 의존 — 이건 30일 전~미래 전체 8,247건/~10MB를 한 번에 받음(무거운 컬럼 하나가 아니라 건수×컬럼수). 그게 다 와야 블록 표시. ※ 이 전체 로드는 v3.7.727 "과거 날짜(5/1·5/2 등) 예약 누락" fix로 도입된 것 — 유지 필수.
+**fix**: `TimelinePage`에 effect 1개 추가(additive) — `selDate` **당일 예약만**(`date=eq.selDate`, 수백 건) 먼저 빠르게 fetch → `setData` merge → 당일 블록 즉시 표시. 기존 전체 백그라운드 로딩·on-demand fetch는 **그대로 유지** → 과거 날짜 누락 fix 영향 0. 중복은 id로 dedup, betaGroupMode 제외.
+**적용**: v3.7.744 라이브 배포(version.txt 검증, CF 퍼지 success). React only.

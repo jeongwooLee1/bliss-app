@@ -323,6 +323,27 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       }
     })();
   }, [selDate, betaGroupMode]);
+
+  // ── selDate 당일 예약 즉시 로드 — 백그라운드 전체 로딩(~8천건/10MB) 기다리지 않고 당일 블록 먼저 표시 ──
+  // 전체 로딩(loadReservations)·on-demand fetch는 그대로 유지 → 과거 날짜(5/1 등) 누락 fix 영향 없음 (additive)
+  useEffect(() => {
+    if (betaGroupMode || !selDate || !_activeBizId) return;
+    if ((data?.reservations || []).some(r => r && r.date === selDate)) return;
+    let cancelled = false;
+    (async () => {
+      const rows = await sb.getAll("reservations",
+        `&business_id=eq.${_activeBizId}&is_beta=eq.false&date=eq.${selDate}&order=time.asc`).catch(() => []);
+      if (cancelled || !Array.isArray(rows) || !rows.length) return;
+      const mapped = fromDb("reservations", rows);
+      setData(prev => {
+        if (!prev) return prev;
+        const existing = new Set((prev.reservations || []).map(r => r.id));
+        const fresh = mapped.filter(r => !existing.has(r.id));
+        return fresh.length ? { ...prev, reservations: [...(prev.reservations || []), ...fresh] } : prev;
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [selDate, betaGroupMode]);
   // ── 네이버 막기 상태: { [bizId]: { [date]: { [itemId]: {name, hour_bit(48자)} } } } ──
   const [naverBlockState, setNaverBlockState] = useState({});
   const [blockSlotPopup, setBlockSlotPopup] = useState(null); // {bizId, branchId, date, slotIdx, time, x, y}
