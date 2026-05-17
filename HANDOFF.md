@@ -1,12 +1,12 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.738** (https://blissme.ai/version.txt) — 2026-05-16 배포
+- **라이브: v3.7.739** (https://blissme.ai/version.txt) — 2026-05-17 배포
 - 다음 빌드 시 `BLISS_V` (AppShell.jsx) + `public/version.txt` 둘 다 함께 bump 필수
 - 변경 이력은 [CLAUDE.md](./CLAUDE.md) 참고
 
 ## 진행 중 작업
-없음. (고객 상세 동의서 모달 가려짐 fix — 2026-05-16 v3.7.738 처리, CLAUDE.md 참고)
+없음. (고객 상세 모달 모바일 디자인 정리 — 2026-05-17 v3.7.739 처리, CLAUDE.md 참고)
 
 ## 기타 미해결
 - 카카오 예약 확정 알림톡: 실발송 테스트 미실시 — 카카오 테스트 예약 1건으로 검증 권장

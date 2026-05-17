@@ -1665,3 +1665,13 @@ React 앱과 무관한 정적 페이지(`public/book.html`)만 수정 — BLISS_
 **참고**: "매출 편집"도 가려진다고 추정했으나 — `openSaleFullEdit`(고객 모달에서 매출 전체편집 여는 함수)는 **호출처 없는 죽은 코드**. 고객 상세 매출 내역 패널은 펼쳐 보기 전용(편집 버튼 없음). 매출 편집은 고객 모달 위로 안 뜸 → 수정 불필요(SaleForm zIndex prop 추가 시도는 되돌림). `editSale`은 고객목록 우클릭 메뉴(`_newMode`)로만 열리며 그땐 고객 모달 없음.
 **검증**: 로컬 모바일 — 동의서 요청 모달 정상 노출(`elementsFromPoint` 최상위 = ConsentModal).
 **적용**: v3.7.738 라이브 배포(version.txt 검증, CF 퍼지 success). React only.
+
+### v3.7.739 — 고객 상세 모달 모바일 디자인 정리 (2026-05-17)
+**배경**: 고객 상세 풀스크린 모달이 모바일에서 — 폰트 크기 제각각, 정보 입력칸 폭 좁음(이메일 잘림), 포인트 메모칸이 글 못 쓸 만큼 찌그러짐.
+**수정** (`CustomersPage.jsx` — 전부 `@media max-width:767px` 스코프, 데스크탑 무영향):
+- **정보 입력 grid 2열 → 1열** — 390px를 둘로 쪼개 칸당 ~160px라 이메일 등 잘리던 것 해소. 각 칸 전체폭 + 줄간격 5→9px
+- **정보 라벨 폰트 9px → 12px 통일** — iOS 줌 방지로 입력값은 16px 강제인데 라벨만 9px이라 제각각. `.cust-fs-info-grid span/button` 12px
+- **포인트 입력줄 줄바꿈** — `금액` input이 `flex:0 0 90px`인데도 기본 `size=20`×16px로 193px로 벌어져 메모칸이 74px로 찌그러짐. `.pt-row` flex-wrap + `.pt-amt`/`.pt-note`(order·`flex:1 1 100%`)로 1줄 `금액·P·저장` / 2줄 `메모 전체폭(327px)`
+- **보유권 드롭다운(`+패키지 추가`·`쿠폰 발행`) 14px → 12px** — iOS 줌 방지 16px 규칙에서 `select` 제외(네이티브 피커라 줌 안 일어남) → index.html 전역 `select.inp{font-size:14px!important}`가 드러남 → `.cust-fs-modal select.inp` 12px로 눌러줌
+**검증**: 로컬 dev server 로그인 → 고객 상세 모달, 모바일(375px) 4건 모두 정상 + 데스크탑(1280px) 레이아웃 무영향. 콘솔 에러 0.
+**적용**: v3.7.739 라이브 배포(version.txt 검증 3.7.739, CF 퍼지 success). React only.

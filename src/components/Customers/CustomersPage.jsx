@@ -1886,10 +1886,19 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                       .cust-fs-modal .cust-fs-stats { padding: 4px 8px !important; gap: 8px !important; flex-wrap: wrap !important; margin-left: 0 !important; width: 100% !important; }
                       /* 보유권 그리드 — 3열 → 2열 (모바일 좁아서) */
                       .cust-fs-modal .cust-fs-pkg-grid { grid-template-columns: 1fr 1fr !important; }
-                      /* 정보 카드 입력 grid 3열 → 2열 */
-                      .cust-fs-modal .cust-fs-info-grid { grid-template-columns: 1fr 1fr !important; }
-                      /* iOS 자동 zoom 방지 */
-                      .cust-fs-modal input, .cust-fs-modal textarea, .cust-fs-modal select { font-size: 16px !important; }
+                      /* 정보 카드 입력 grid — 모바일은 1열 (필드 폭 확보) */
+                      .cust-fs-modal .cust-fs-info-grid { grid-template-columns: 1fr !important; gap: 9px !important; }
+                      /* 정보 카드 라벨·버튼 폰트 통일 (9·10px 제각각 → 12px) */
+                      .cust-fs-modal .cust-fs-info-grid span { font-size: 12px !important; }
+                      .cust-fs-modal .cust-fs-info-grid button { font-size: 12px !important; }
+                      /* 포인트 입력줄 — 메모칸이 좁아서 줄바꿈: 1줄 금액·저장 / 2줄 메모 전체폭 */
+                      .cust-fs-modal .pt-row { flex-wrap: wrap !important; }
+                      .cust-fs-modal .pt-amt { flex: 1 1 auto !important; min-width: 0 !important; }
+                      .cust-fs-modal .pt-note { order: 9 !important; flex: 1 1 100% !important; min-width: 0 !important; }
+                      /* iOS 자동 zoom 방지 — select 제외 (네이티브 피커라 줌 안 됨, 16px 강제 불필요) */
+                      .cust-fs-modal input, .cust-fs-modal textarea { font-size: 16px !important; }
+                      /* 보유권 드롭다운 — index.html 전역 select.inp 14px 강제를 눌러 12px로 */
+                      .cust-fs-modal select.inp { font-size: 12px !important; }
                     }
                   `}</style>
                   <div className="cust-fs-header" style={{position:"sticky",top:0,zIndex:2,background:"#fff",borderBottom:"1px solid "+T.border,padding:"14px 22px",display:"flex",alignItems:"center",gap:10}}>
@@ -2457,12 +2466,12 @@ function PointPanel({ cust, txList, balance, onReload }) {
           style={{flex:1,padding:"5px 0",fontSize:11,fontWeight:700,borderRadius:6,border:"1px solid "+(mode===m?PRI:T.border),background:mode===m?PRI:"#fff",color:mode===m?"#fff":T.gray600,cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}>{l}</button>
       ))}
     </div>
-    <div style={{display:"flex",gap:4,alignItems:"center",marginBottom:6}}>
-      <input type="text" inputMode="numeric" value={amt} placeholder="금액"
+    <div className="pt-row" style={{display:"flex",gap:4,alignItems:"center",marginBottom:6}}>
+      <input type="text" inputMode="numeric" value={amt} placeholder="금액" className="pt-amt"
         onChange={e=>{const v=e.target.value.replace(/[^0-9]/g,""); setAmt(v?Number(v).toLocaleString():"");}}
         style={{flex:"0 0 90px",padding:"5px 8px",fontSize:11,borderRadius:5,border:"1px solid "+T.border,textAlign:"right",fontFamily:"inherit"}}/>
       <span style={{fontSize:10,color:T.textSub}}>P</span>
-      <input type="text" value={note} placeholder="메모 (선택)"
+      <input type="text" value={note} placeholder="메모 (선택)" className="pt-note"
         onChange={e=>setNote(e.target.value)}
         style={{flex:1,padding:"5px 8px",fontSize:11,borderRadius:5,border:"1px solid "+T.border,fontFamily:"inherit",minWidth:0}}/>
       <button onClick={submit} disabled={saving||!amt}
