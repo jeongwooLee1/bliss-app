@@ -718,7 +718,8 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     }
   }, [cust?.id, cust?.phone, _snapshotData]);
   const _pkgType = (p) => {
-    const svc = (data?.services||[]).find(s => s.name === p.service_name);
+    const svc = (p.service_id && (data?.services||[]).find(s => s.id === p.service_id))
+             || (data?.services||[]).find(s => s.name === p.service_name);
     if (svc) {
       const catName = (data?.categories||[]).find(c => c.id === svc.cat)?.name;
       if (catName === '쿠폰') return "coupon";
@@ -771,7 +772,8 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     const _couponSvcs = (data?.services||[]).filter(s => s.cat === _couponCatId);
     const map = {}; // svcId → [pkgId,...]
     activeCustCoupons.forEach(pkg => {
-      const svc = _couponSvcs.find(s => s.name === pkg.service_name);
+      const svc = (pkg.service_id && _couponSvcs.find(s => s.id === pkg.service_id))
+               || _couponSvcs.find(s => s.name === pkg.service_name);
       let pc = svc?.promoConfig;
       if (typeof pc === "string") { try { pc = JSON.parse(pc); } catch { return; } }
       if (!pc || typeof pc !== "object") return;
@@ -1450,15 +1452,15 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     const today = new Date().toISOString().slice(0,10);
     // 쿠폰 카테고리 시술만 매핑 (같은 이름이 정상 카테고리에도 있으면 정상 시술이 잡혀 promoConfig=null로 떨어짐)
     const _couponCatId = (data?.categories||[]).find(c => c.name === '쿠폰')?.id;
-    const svcByName = new Map(
-      (data?.services||[]).filter(s => s.cat === _couponCatId).map(s => [s.name, s])
-    );
+    const _couponSvcList = (data?.services||[]).filter(s => s.cat === _couponCatId);
+    const svcByName = new Map(_couponSvcList.map(s => [s.name, s]));
+    const svcById = new Map(_couponSvcList.map(s => [s.id, s]));
     const list = [];
     const extraSvcAmt = _extraSvcAddTotal;
     const extraProdAmt = _extraProdAddTotal;
     (custPkgs||[]).forEach(pkg => {
       if (pkg.total_count && pkg.used_count >= pkg.total_count) return;
-      const svc = svcByName.get(pkg.service_name);
+      const svc = (pkg.service_id && svcById.get(pkg.service_id)) || svcByName.get(pkg.service_name);
       if (!svc) return;
       let pc = svc.promoConfig;
       if (typeof pc === "string") { try { pc = JSON.parse(pc); } catch(e) { return; } }
@@ -1679,6 +1681,64 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     } catch (e) { console.warn('[eventEngine]', e); return { pointEarn:0, pointExpiresAt:null, discountFlat:0, discountFlatPkg:0, discountFlatPrepaid:0, discountFlatAnnual:0, discountPct:0, prepaidBonus:0, issueCoupons:[], virtualCoupons:[], appliedEvents:[] }; }
   }, [data?.businesses, cust.id, custHasSale, custPkgs, custSvcUsageMap, newPrepaidPurchases, newPkgPurchases, newAnnualPurchases, svcTotal, prodTotal, items, extraRows, payMethod.svcCash, payMethod.svcCard, payMethod.prodCash, payMethod.prodCard, gender]);
 
+  // ─── 이벤트 발행 쿠폰 즉시 사용 — 다담권/패키지 구매로 증정되는 쿠폰을 같은 매출에서 바로 사용 ───
+  // eventResult.issueCoupons(이번 매출에서 발행될 쿠폰)를 쿠폰 상품의 promoConfig로 해석 → 같은 매출에서 할인 적용.
+  const [eventCouponOff, setEventCouponOff] = useState({}); // {key:true} = 즉시사용 해제
+  const eventIssuedCoupons = React.useMemo(() => {
+    if (editMode || _suppressEngineDiscount) return [];
+    const issue = eventResult?.issueCoupons || [];
+    if (!issue.length) return [];
+    const _couponCatId = (data?.categories||[]).find(c => c.name === '쿠폰')?.id;
+    const _couponSvcs = (data?.services||[]).filter(s => s.cat === _couponCatId);
+    const extraSvcAmt = _extraSvcAddTotal, extraProdAmt = _extraProdAddTotal;
+    const out = [];
+    issue.forEach((ic, idx) => {
+      // 쿠폰 이름으로 쿠폰 상품 해석 (이름이 정확히 같거나, 한쪽이 다른쪽으로 시작 — 짧은이름/긴이름 호환)
+      const svc = _couponSvcs.find(s => s.name === ic.name)
+               || _couponSvcs.find(s => ic.name && (ic.name.startsWith(s.name) || s.name.startsWith(ic.name)));
+      if (!svc) return;
+      let pc = svc.promoConfig;
+      if (typeof pc === "string") { try { pc = JSON.parse(pc); } catch { return; } }
+      if (!pc || typeof pc !== "object" || !pc.couponType) return;
+      const target = pc.couponTarget || 'all';
+      let baseAmt = 0;
+      if (target === 'all') {
+        SVC_LIST.forEach(s => { const it=items[s.id]; if (it?.checked) baseAmt += it.amount||0; });
+        PROD_LIST.forEach(p => { const it=items[p.id]; if (it?.checked) baseAmt += it.amount||0; });
+        baseAmt += extraSvcAmt + extraProdAmt;
+      } else if (target === 'products') {
+        PROD_LIST.forEach(p => { const it=items[p.id]; if (it?.checked) baseAmt += it.amount||0; });
+        baseAmt += extraProdAmt;
+      } else if (target === 'services') {
+        SVC_LIST.forEach(s => { const it=items[s.id]; if (it?.checked) baseAmt += it.amount||0; });
+        baseAmt += extraSvcAmt;
+      } else if (target === 'category') {
+        const catIds = pc.couponTargetCategoryIds || [];
+        SVC_LIST.forEach(s => { if (catIds.includes(s.cat)) { const it=items[s.id]; if (it?.checked) baseAmt += it.amount||0; } });
+      } else if (target === 'specific_service') {
+        const sids = pc.couponTargetServiceIds || (pc.couponTargetServiceId ? [pc.couponTargetServiceId] : []);
+        sids.forEach(sid => { const it=items[sid]; if (it?.checked) baseAmt += it.amount||0; });
+      }
+      if (baseAmt <= 0) return;
+      let discount = 0;
+      if (pc.couponType === 'flat') discount = Math.min(pc.couponValue||0, baseAmt);
+      else if (pc.couponType === 'percent') discount = Math.round(baseAmt * (pc.couponValue||0) / 100);
+      else if (pc.couponType === 'free_service') {
+        const sids = pc.couponTargetServiceIds || (pc.couponTargetServiceId ? [pc.couponTargetServiceId] : []);
+        let amt = 0;
+        sids.forEach(sid => { const it=items[sid]; if (it?.checked) amt += it.amount||0; });
+        discount = amt;
+      }
+      if (discount <= 0) return;
+      out.push({ key:'evtic_'+idx, idx, name: svc.name, svcId: svc.id, discount, applyTo: target, evtName: ic.evtName });
+    });
+    return out;
+  }, [eventResult, data?.services, data?.categories, items, _extraSvcAddTotal, _extraProdAddTotal, editMode, _suppressEngineDiscount]);
+  const activeEventCoupons = eventIssuedCoupons.filter(c => !eventCouponOff[c.key]);
+  const evtCouponDiscountOnProd = activeEventCoupons.filter(c => c.applyTo === 'products').reduce((s,c)=>s+(c.discount||0),0);
+  const evtCouponDiscountOnSvc = activeEventCoupons.filter(c => c.applyTo !== 'products').reduce((s,c)=>s+(c.discount||0),0);
+  const evtCouponDiscountTotal = evtCouponDiscountOnProd + evtCouponDiscountOnSvc;
+
   // 레거시 호환: 기존 UI/로직에서 참조하던 newCustEventEarn 형태 유지
   // 신규 스키마(rewards[])와 레거시(rewardType) 모두 지원
   const newCustEventEarn = React.useMemo(() => {
@@ -1727,18 +1787,18 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   const externalToNewPrepaid = Math.min(externalDeduct, Math.max(0, newPrepaidActiveTotal - eventDiscountPrepaid));
   const externalToSvc = externalDeduct - externalToNewPrepaid;
   // 할인·보유권 차감 후 순수 시술·제품 잔액 (= 다담권 즉시차감 가능 상한)
-  const svcAfterAllDiscounts = Math.max(0, pureSvcTotal + prodTotal - discount - promoDiscountTotal - couponDiscountTotal - eventDiscountSvc - naverDeduct - externalToSvc - pkgDeduct);
+  const svcAfterAllDiscounts = Math.max(0, pureSvcTotal + prodTotal - discount - promoDiscountTotal - couponDiscountTotal - evtCouponDiscountOnSvc - eventDiscountSvc - naverDeduct - externalToSvc - pkgDeduct);
   // 새 다담권 즉시차감: 할인 후 시술잔액과 (선결제 적용 후) 다담권 잔액 중 작은 값
   newPkgInstantDeduct = newPrepaidActiveTotal > 0 ? Math.min(svcAfterAllDiscounts, Math.max(0, newPrepaidActiveTotal - eventDiscountPrepaid)) : 0;
-  const grandTotal = Math.max(0, svcTotal + prodTotal - discount - promoDiscountTotal - couponDiscountTotal - eventDiscountTotal - naverDeduct - externalDeduct - pkgDeduct - newPkgInstantDeduct - pointDeduct - svcCompedTotal - prodCompedTotal);
+  const grandTotal = Math.max(0, svcTotal + prodTotal - discount - promoDiscountTotal - couponDiscountTotal - evtCouponDiscountTotal - eventDiscountTotal - naverDeduct - externalDeduct - pkgDeduct - newPkgInstantDeduct - pointDeduct - svcCompedTotal - prodCompedTotal);
   // 실제 결제할 금액 (예약금·할인·이벤트·쿠폰·보유권·신규다담권즉시차감·체험단제공 차감)
   // 시술쪽 모든 차감(일반할인·보유권·외부선결제·포인트·이벤트 등)을 합산해서 svcTotal을 초과하면 잉여분이 제품으로 spill됨.
   // grandTotal과 svcPay+prodPay를 항상 일치시키기 위함 (예: 다담권 잔액이 시술+제품 통합 결제하는 케이스).
   // svc 전용 쿠폰은 그대로 svc에서, prod 전용 쿠폰은 그대로 prod에서 차감.
-  const _svcDeductsAll = discount + promoDiscountTotal + couponDiscountOnSvc + eventDiscountTotal + naverDeduct + externalDeduct + pkgDeduct + newPkgInstantDeduct + pointDeduct + svcCompedTotal;
+  const _svcDeductsAll = discount + promoDiscountTotal + couponDiscountOnSvc + evtCouponDiscountOnSvc + eventDiscountTotal + naverDeduct + externalDeduct + pkgDeduct + newPkgInstantDeduct + pointDeduct + svcCompedTotal;
   const _svcSpillToProd = Math.max(0, _svcDeductsAll - svcTotal);
   const svcPayTotal = Math.max(0, svcTotal - _svcDeductsAll);
-  const prodPayTotal = Math.max(0, prodTotal - couponDiscountOnProd - prodCompedTotal - _svcSpillToProd);
+  const prodPayTotal = Math.max(0, prodTotal - couponDiscountOnProd - evtCouponDiscountOnProd - prodCompedTotal - _svcSpillToProd);
 
   // Count checked
   const checkedSvc = SVC_LIST.filter(s => items[s.id]?.checked).length + _extraSvcAddCount;
@@ -2750,6 +2810,10 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       if (c.discount > 0) pushDetail(`[쿠폰 할인] ${c.name}`, c.discount, 1, 'coupon_discount');
       if (c.earn > 0) pushDetail(`[쿠폰 적립] ${c.name}`, c.earn, 1, 'coupon_earn');
     });
+    // 이벤트 발행 쿠폰 즉시 사용 기록 (이번 매출에서 증정+사용된 쿠폰)
+    activeEventCoupons.forEach(c => {
+      if (c.discount > 0) pushDetail(`[쿠폰 할인] ${c.name}`, c.discount, 1, 'coupon_discount');
+    });
     // 보유권 사용 (다회권 차감 횟수 및 다담권 차감 금액) — 수동 등록 툴 포맷과 통일
     // pkgItems: { "pkg__{pkgId}": {qty} }, pkgUse: {pkgId: number|true}
     try {
@@ -2825,32 +2889,37 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     // 이벤트 자동 쿠폰 발행 (trigger 충족 시)
     // 트리거가 prepaid/pkg/annual_purchase면 → 발행된 보유권에 연결, 첫 사용일에 유효기간 시작
     if (cust.id && eventResult?.issueCoupons?.length) {
-      eventResult.issueCoupons.forEach(c => {
-        const svc = (data?.services||[]).find(s => s.name === c.name);
+      eventResult.issueCoupons.forEach((c, _icIdx) => {
+        const svc = (data?.services||[]).find(s => s.name === c.name)
+                 || (data?.services||[]).find(s => c.name && (c.name.startsWith(s.name) || s.name.startsWith(c.name)));
         if (!svc) return;
+        // 이번 매출에서 즉시 사용된 이벤트 쿠폰(첫 장)이면 발행+소진(used_count:1) 처리
+        const usedSameSale = activeEventCoupons.some(ec => ec.idx === _icIdx && ec.discount > 0);
         const trigger = c.trigger;
         const isPurchaseTrigger = trigger === 'prepaid_purchase' || trigger === 'pkg_purchase' || trigger === 'annual_purchase';
         const linkPkgId = isPurchaseTrigger ? (_newTriggerPkgIds[trigger] || [])[0] : null;
         // 보유권 연결 발행: 유효대기 + 연결 + 만료개월 메타. 첫 사용일에 활성화
         // 일반 발행: 발행 시점 + N개월 만료 (기존 동작)
-        let noteCore;
-        if (linkPkgId) {
-          const expM = Number(c.expiryMonths) > 0 ? Number(c.expiryMonths) : 3;
-          noteCore = `유효대기 | 연결:${linkPkgId} | 만료개월:${expM}`;
-        } else {
-          const expNote = c.expiresAt ? ` | 유효:${c.expiresAt.slice(0,10)}` : '';
-          noteCore = `이벤트 자동 발행(${c.evtName})${expNote}`;
-        }
+        // 즉시 사용: 발행과 동시에 소진 처리 (유효대기 연결 없음)
         for (let i = 0; i < (c.qty||1); i++) {
+          const useThis = usedSameSale && i === 0;
+          let note;
+          if (useThis) {
+            note = `이벤트 자동 발행(${c.evtName}) | 매출${sale.id} 동시사용`;
+          } else if (linkPkgId) {
+            const expM = Number(c.expiryMonths) > 0 ? Number(c.expiryMonths) : 3;
+            note = `이벤트 자동 발행(${c.evtName}) | 유효대기 | 연결:${linkPkgId} | 만료개월:${expM} | 매출${sale.id}`;
+          } else {
+            const expNote = c.expiresAt ? ` | 유효:${c.expiresAt.slice(0,10)}` : '';
+            note = `이벤트 자동 발행(${c.evtName})${expNote} | 매출${sale.id}`;
+          }
           sb.insert("customer_packages", {
             id: "cpn_evt_" + uid(),
             business_id: _activeBizId, customer_id: cust.id,
             service_id: svc.id, service_name: svc.name,
-            total_count: 1, used_count: 0,
+            total_count: 1, used_count: useThis ? 1 : 0,
             purchased_at: new Date().toISOString(),
-            note: linkPkgId
-              ? `이벤트 자동 발행(${c.evtName}) | ${noteCore} | 매출${sale.id}`
-              : `${noteCore} | 매출${sale.id}`,
+            note,
             branch_id: branchId || null,
           }).catch(console.error);
         }
@@ -3754,6 +3823,13 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
                 <label key={c.pkgId} style={{display:"flex",alignItems:"center",gap:4,padding:"4px 6px",marginBottom:4,background:"#fff8e1",border:"1px solid #f59e0b",borderRadius:6,fontSize:10,color:"#78350f",cursor:"pointer",whiteSpace:"nowrap",overflow:"hidden"}} title={`${c.name}${c.consumeOnUse?" (1회 소진)":""} -${fmt(c.discount)}원`}>
                   <input type="checkbox" checked={!couponOff[c.pkgId]} onChange={e=>setCouponOff(p=>({...p,[c.pkgId]:!e.target.checked}))} style={{accentColor:"#b45309",flexShrink:0}}/>
                   <span style={{fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",minWidth:0,flex:"1 1 auto",display:"inline-flex",alignItems:"center",gap:4}}><I name="gift" size={11}/>{c.name}</span>
+                  <span style={{marginLeft:"auto",fontWeight:800,color:"#b45309",flexShrink:0}}>-{fmt(c.discount)}</span>
+                </label>
+              ))}
+              {activeEventCoupons.filter(c=>c.discount>0).map(c => (
+                <label key={c.key} style={{display:"flex",alignItems:"center",gap:4,padding:"4px 6px",marginBottom:4,background:"#fff8e1",border:"1px solid #f59e0b",borderRadius:6,fontSize:10,color:"#78350f",cursor:"pointer",whiteSpace:"nowrap",overflow:"hidden"}} title={`${c.name} — 이번 구매로 증정되는 쿠폰, 같은 매출에서 즉시 사용 -${fmt(c.discount)}원`}>
+                  <input type="checkbox" checked={!eventCouponOff[c.key]} onChange={e=>setEventCouponOff(p=>({...p,[c.key]:!e.target.checked}))} style={{accentColor:"#b45309",flexShrink:0}}/>
+                  <span style={{fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",minWidth:0,flex:"1 1 auto",display:"inline-flex",alignItems:"center",gap:4}}><I name="gift" size={11}/>{c.name}<span style={{fontSize:8,fontWeight:800,color:"#fff",background:"#16a34a",borderRadius:4,padding:"1px 4px",flexShrink:0}}>증정·즉시사용</span></span>
                   <span style={{marginLeft:"auto",fontWeight:800,color:"#b45309",flexShrink:0}}>-{fmt(c.discount)}</span>
                 </label>
               ))}

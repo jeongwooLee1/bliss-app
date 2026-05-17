@@ -1747,3 +1747,17 @@ v3.7.740의 대화 시각 추출(`_timeGuess`)에 — 추출 시각을 타임라
 **fix**: `reply_lang`을 `"한국어"` / `"고객 언어"`로 재정의 — 한글이 우세하면 한국어, 아니면 "고객 언어"(AI가 고객 메시지 언어를 직접 판별·매칭). 프롬프트 `[⛔ 응답 언어]` 블록·`[말투]` 예시·예약 템플릿 라벨을 "고객 언어면 고객이 쓴 그 언어로 100% 답(영/일/중/러/네덜란드어 등), 한국어 금지, 한 답변 내 언어 혼용 금지"로 수정.
 **검증**: `suggest_only` 스모크 6건 — 네덜란드어/러시아어/일본어/중국어/한국어/영어 입력 → 전부 해당 언어로 응답 확인(일·중은 지점명·예약 7항목 양식까지 그 언어로 번역).
 **적용**: 서버 직접 패치(백업 `ai_booking.py.bak_pre_multilang_20260517_152244`) + `systemctl restart bliss-naver`. React 변경 0 → 버전업·CF퍼지 불필요.
+
+### v3.7.745 — 증정 쿠폰 즉시 사용 + 보유 쿠폰 ID 매칭 (2026-05-17, 현아 id_tp4i4vym0m)
+**증상**: 다담권 100만원권 구매 시 딸려오는 8만원 제품쿠폰을 매출등록에서 못 씀. 보유 중이던 제품전용 쿠폰도 적용 안 됨.
+**원인 1 — 쿠폰 이름 불일치**: 매출등록 쿠폰 엔진이 `customer_packages.service_name`으로 쿠폰 상품(`services`)을 **이름 매칭**. 유저가 시술상품명을 짧게(`제품전용 8만원쿠폰`→`제품전용 8만`) 바꿔서, 보유 쿠폰 행(835장)·이벤트 설정의 옛 이름이 현재 상품명과 안 맞음 → `promoConfig`(80,000원 제품할인) 로드 실패 → 적용 안 됨. `_pkgType`/`couponEligibleMap`/`couponResults` 3곳 전부 이름 매칭.
+**원인 2 — 발행 자체 실패**: 이벤트 `coupon_issue` 보상의 `couponName`이 옛 이름이라, 매출 저장 시 `find(s=>s.name===couponName)`이 쿠폰 상품을 못 찾고 발행을 조용히 건너뜀.
+**원인 3 — 같은 매출 사용 불가**: 발행돼도 쿠폰 엔진은 `custPkgs`(기존 보유분)만 봄. 이번 매출에서 막 발행된 쿠폰은 목록에 없어 같은 건에서 못 씀.
+**fix (SaleForm.jsx)**:
+- 쿠폰→상품 해석을 **이름 대신 `service_id` 우선**(폴백 이름)으로 변경 — `_pkgType`·`couponEligibleMap`·`couponResults`. 보유 쿠폰 835장이 이름 길이와 무관하게 정상 적용.
+- **`eventIssuedCoupons` 신규** — `eventResult.issueCoupons`(이번 매출에서 발행될 쿠폰)를 쿠폰 상품 `promoConfig`로 해석 → 같은 매출에서 즉시 할인 적용. `evtCouponDiscountOnProd/OnSvc`를 `grandTotal`/`prodPayTotal`/`svcPayTotal`/`svcAfterAllDiscounts`에 반영(spill 불변식 유지). 매출등록 쿠폰 칸에 `[증정·즉시사용]` 라벨 + 체크 토글(`eventCouponOff`).
+- 저장 시: 같은 매출 즉시사용분(첫 장)은 `customer_packages` `used_count:1` + note `매출{id} 동시사용`(유효대기 연결 건너뜀), `[쿠폰 할인]` sale_detail 기록. 미사용분은 기존 유효대기 로직 유지.
+- 다담권 100만뿐 아니라 **모든 패키지 구매 증정 쿠폰**(에너지 등)이 동일하게 같은 매출 즉시 사용.
+**fix (데이터 — businesses.settings)**: 이벤트 7개 `coupon_issue` 보상의 `couponName`을 현재 시술상품명으로 보정 (`제품전용 8만원쿠폰`→`제품전용 8만`, `제품전용 3만원쿠폰`→`제품전용 3만`, `에너지테라피 20분`→`에너지20분`, `에너지테라피 60분`→`에너지60분`). jsonb surgical update(이벤트 `name`·다른 설정 무변경), 이벤트 18개 유지 검증.
+**적용**: v3.7.745 라이브 배포(version.txt 검증, CF 퍼지 success). React + DB 데이터 보정.
+**유의**: 쿠폰 엔진은 이제 `customer_packages.service_id`로 쿠폰 상품을 해석 — 시술상품명을 바꿔도 안 깨짐. 단 `service_id` 없는 구버전 쿠폰 행은 이름 폴백. 이벤트 `coupon_issue` 보상은 여전히 `couponName`(문자열)로 쿠폰을 지목 — 쿠폰 상품명을 또 바꾸면 이벤트 설정의 `couponName`도 같이 바꿔야 함(ID 참조로 전환은 추후 과제).

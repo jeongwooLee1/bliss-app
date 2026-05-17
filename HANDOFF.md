@@ -1,12 +1,12 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.744** (https://blissme.ai/version.txt) — 2026-05-17 배포
+- **라이브: v3.7.745** (https://blissme.ai/version.txt) — 2026-05-17 배포
 - 다음 빌드 시 `BLISS_V` (AppShell.jsx) + `public/version.txt` 둘 다 함께 bump 필수
 - 변경 이력은 [CLAUDE.md](./CLAUDE.md) 참고
 
 ## 진행 중 작업
-없음. (앱 로딩 속도 개선: 번들 경량화·nginx 캐싱·타임라인 당일 예약 즉시로드 — 2026-05-17 v3.7.743~744, CLAUDE.md 참고)
+없음. (증정 쿠폰 즉시 사용 + 보유 쿠폰 ID 매칭 — 2026-05-17 v3.7.745, 현아 id_tp4i4vym0m 처리완료, CLAUDE.md 참고)
 
 ## 동의서 요청→서명 흐름 점검 — 워크트리 작업세션 예정 (2026-05-17)
 **상태**: 코드 흐름(요청 `ConsentModal` → `consent_tokens` INSERT → `sign.blissme.ai` 서명 → `html2canvas`+`jsPDF` PDF → Storage → `customer_consents` INSERT → `consent_tokens.used_at` 마킹 → `ConsentPanel` realtime 이력)은 완성·정상 구현 확인. 단 **실사용 0건** — `customer_consents` 14건 전부 테스트 데이터(홍길동 `cust_test_hgd` · ilayda), 2026-04-24 이후 서명 기록 없음.
@@ -18,8 +18,8 @@
 ## 기타 미해결
 - 카카오 예약 확정 알림톡: 실발송 테스트 미실시 — 카카오 테스트 예약 1건으로 검증 권장
 
-## 미처리 — 현아 커플패키지 질문 (id_eih96ttwa0, pending)
-"커플패키지 3회: 한 분 매출로 3회 등록 + 다른 분 고객관리에서 3회 등록? 아니면 6회로 쉐어 사용?" — 운영 방식 결정 필요. 답변 미작성.
+## 미처리 — 현아 커플패키지 질문 (id_eih96ttwa0, reviewing)
+"커플패키지 3회: 한 분 매출로 3회 등록 + 다른 분 고객관리에서 3회 등록? 아니면 6회로 쉐어 사용?" — 운영 방식 결정 필요. **유저가 보류 지시 (2026-05-17)** — 제품쿠폰 건 우선 처리 후 보류. 답변 미작성.
 
 ## 참고 — 라이브 키 대기 (별도 트랙, 외부 의존)
 토스 라이브 키 발급 시 Supabase Edge Functions ENV 3개 등록 필요:
