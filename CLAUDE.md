@@ -1676,6 +1676,13 @@ React 앱과 무관한 정적 페이지(`public/book.html`)만 수정 — BLISS_
 **검증**: 로컬 dev server 로그인 → 고객 상세 모달, 모바일(375px) 4건 모두 정상 + 데스크탑(1280px) 레이아웃 무영향. 콘솔 에러 0.
 **적용**: v3.7.739 라이브 배포(version.txt 검증 3.7.739, CF 퍼지 success). React only.
 
+### 서버 — 진행중(confirmed) 상태 보호 로직 전체 무력화 버그 fix (2026-05-17, React 변경 0)
+**증상**: 직원이 예약을 '진행중'으로 바꿔도 네이버 갱신·새로고침·5분 스크랩마다 '예약중'으로 되돌아감 (수연 `id_x5suun048w` / 앞서 현아 `id_52i0ud24c9`도 동일 증상).
+**원인**: `bliss_naver.py` `db_upsert`의 기존 예약 조회 SELECT가 `id,room_id,staff_id,cust_id,selected_tags`만 가져오고 **`status`를 안 가져옴** → `cur_status = row.get("status","")`가 **항상 빈 문자열** → 상태 보호 로직 [보호1~5] 전부 `cur_status=="..."` 조건이 거짓 → 단 한 번도 작동 안 함. v3.7.733에서 [보호5](confirmed→reserved 회귀 차단)를 넣었지만 이 SELECT 누락 때문에 죽어 있었음.
+**fix**: `db_upsert`의 SELECT 2곳(기본 조회 + race 재조회)에 `status, naver_confirmed_dt, naver_cancelled_dt` 추가 → [보호1~5] 전부 정상 작동.
+**검증**: 서버 로그 — `[protect5] #1238365148 confirmed → reserved 회귀 차단 → status 보존`이 스크랩마다(04:07·08·12) 정상 발화(문지수 + #1238047503 등). 유저가 타임라인 네이버갱신·새로고침으로 진행중 유지 직접 확인.
+**적용**: 서버 직접 패치(백업 `bliss_naver.py.bak_pre_status_select_20260517_130428`) + `systemctl restart bliss-naver`. React 변경 0 → 버전업·CF퍼지 불필요. 수정요청 `id_x5suun048w`(수연) status=done + reply 처리.
+
 ### 서버 — 신규 고객 자동 생성 시 customers.memo 자동텍스트 제거 (2026-05-17, React 변경 0)
 **배경**: 네이버·카카오 예약 등으로 고객이 자동 생성될 때 `customers.memo`에 "네이버 신규 예약 자동 생성" 같은 보일러플레이트가 박혀, 매출 히스토리·고객 상세의 "고객 메모"에 그대로 노출. 직원이 쓸 메모칸을 자동텍스트가 차지 — 불필요(CLAUDE.md 절대금지 "memo 필드에 네이버 데이터 쓰기"와도 배치).
 **수정** (`bliss_naver.py` — customers INSERT 5곳에서 `memo` 키 제거):
