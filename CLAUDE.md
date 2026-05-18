@@ -1892,3 +1892,10 @@ v3.7.740의 대화 시각 추출(`_timeGuess`)에 — 추출 시각을 타임라
 - **fix**: `find_cust_by_phone` `_candidates`에 원본 전화(`_raw_phone` — `+` 포함)와 `'+' + _digits` 추가 → 외국 번호도 정상 매칭. `/book-submit`·AI예약·방문자 매칭 등 `find_cust_by_phone` 호출 전부 혜택
 - **정리**: Taevion 32→1, rania 12→1. 가장 오래된 레코드(= 예약·매출이 가리키던 것) 유지, 나머지 삭제. sales/customer_packages/customer_shares 참조는 전부 keeper를 가리켜 안전
 - **적용**: 서버 직접 패치(백업 `bliss_naver.py.bak_pre_intlphone_*`) + `systemctl restart bliss-naver`. React 변경 0 → 버전업·배포 불필요
+
+### mac-daemon — 입금문자 데몬 수협은행 파서 추가 (2026-05-18)
+- 입금문자 데몬(`kb_sms_poll.py`)에 **수협은행** 파서 추가 — KB·하나·수협 3개 은행 지원
+- 수협 SMS 형식: `수협MM/DD,HH:MM \n 계좌마스킹 \n 입금{금액}원 \n 잔액{잔액}원 \n 입금자명` — KB·하나와 또 다름(헤더 `수협`, **입금자명이 잔액 뒤 맨 끝 줄**). `SH_PATTERN` 신규, `BANKS`에 수협(`+8215881515`, `sh_sms`) 추가
+- 등록 계좌 6개(`.env BLISS_KB_ACCOUNTS`): 강남 `809101**812`·왕십리 `924501**300`·잠실 `651401**014`(KB) / 천호 `129******15407`·위례 `364******62607`(하나) / 용산 `001*-****-*088`(수협)
+- 검증: 수협 1원 테스트(이정우) → `bank_deposits` 용산점 정상 기록
+- `bank_deposits.source`: KB=`kb_sms`, 하나=`hana_sms`, 수협=`sh_sms`

@@ -128,6 +128,18 @@ HANA_PATTERN = re.compile(
     re.DOTALL,
 )
 
+# 수협은행 입금 SMS:
+#   [Web발신] / 수협MM/DD,HH:MM / {계좌마스킹} / 입금|출금{금액}원 / 잔액{잔액}원 / {입금자명}
+#   — KB·하나와 다름: 헤더가 "수협MM/DD,HH:MM", 입금자명이 잔액 뒤 맨 끝 줄
+SH_PATTERN = re.compile(
+    r'수협\s*(\d{2})/(\d{2})\s*,\s*(\d{2}):(\d{2})\s*\n+'
+    r'([\d\*\-]+)\s*\n+'
+    r'(입금|출금)\s*([\d,]+)\s*원?\s*\n+'
+    r'잔액\s*([\d,]+)\s*원?\s*\n+'
+    r'(.+?)\s*(?:\n|$)',
+    re.DOTALL,
+)
+
 
 def parse_kb(text):
     if not text:
@@ -161,10 +173,27 @@ def parse_hana(text):
     }
 
 
+def parse_sh(text):
+    if not text:
+        return None
+    m = SH_PATTERN.search(text)
+    if not m:
+        return None
+    _, _, _, _, masked, kind, amount_s, balance_s, name = m.groups()
+    return {
+        'account_masked': masked,
+        'transferer_name': name.strip(),
+        'kind': kind,
+        'amount': int(amount_s.replace(',', '')),
+        'balance': int(balance_s.replace(',', '')),
+    }
+
+
 # 은행 정의 — 발신번호 → 파서 매핑
 BANKS = [
     {'name': 'KB',   'sender': '+8216449999', 'parse': parse_kb,   'source': 'kb_sms'},
     {'name': '하나', 'sender': '+8215991111', 'parse': parse_hana, 'source': 'hana_sms'},
+    {'name': '수협', 'sender': '+8215881515', 'parse': parse_sh,   'source': 'sh_sms'},
 ]
 
 
