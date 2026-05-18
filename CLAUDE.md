@@ -1870,3 +1870,13 @@ v3.7.740의 대화 시각 추출(`_timeGuess`)에 — 추출 시각을 타임라
 - 수정요청 3건 전부 done 처리 (현아 `id_eih96ttwa0` 커플 패키지 — v3.7.749~752로 구현 완료)
 - **적용**: v3.7.753 라이브 배포(version.txt 검증, CF 퍼지 success)
 - **유의**: 수연 시간이동 건은 명확한 재현 케이스 없이 코드 분석으로 잡은 fix(팝업 경로의 stale-state 읽기) — 재발 시 추가 조사 필요
+
+### mac-daemon — 입금문자 데몬 다중 은행 확장 (KB + 하나) (2026-05-18)
+입금문자 데몬(`mac-daemon/kb_sms_poll.py`)이 KB 전용 → KB·하나은행 다중 은행 지원으로 확장. (React 앱 무관 — 버전업·배포 없음)
+- **하나은행 입금 SMS 형식**: `하나,MM/DD HH:MM \n 계좌마스킹 \n 입금{금액}원 \n 입금자명 \n 잔액{잔액}원` — 발신번호 `+8215991111`. KB와 다름(입금+금액 한 줄, 이름이 금액 뒤, "원" 접미사). `HANA_PATTERN` 신규
+- `BANKS` 리스트 구조 — `{name, sender, parse, source}`. 발신번호로 은행 판별, 은행 추가 쉬움. `fetch_messages`는 `h.id IN (KB,하나 발신번호)` 조회
+- **천호점 하나은행 계좌** `129******15407` → `br_xu60omgdf` 매핑 (`.env BLISS_KB_ACCOUNTS` — 은행 무관 공용 맵, 마스킹 계좌번호가 키)
+- **attributedBody fallback 추가** — macOS가 수신 직후 본문을 `text`→`attributedBody`(NSKeyedArchiver 바이너리)로 옮겨, `text`만 읽던 기존 데몬은 폴링 타이밍 놓친 문자를 누락했음. `msg_body()`가 `text` 비면 attributedBody에서 UTF-8 본문 런 추출. `fetch_messages`에서 `text IS NOT NULL` 필터 제거
+- 검증: 하나 1원 테스트 입금(이정우) → `bank_deposits` 천호점(`br_xu60omgdf`) 정상 기록 확인
+- launchd 재등록 불필요 — plist는 동일 스크립트를 60초마다 실행, 다음 주기에 새 코드·`.env` 자동 적용
+- `bank_deposits.source`: KB=`kb_sms`, 하나=`hana_sms`

@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """
-Bliss KB SMS 폴링 데몬
+Bliss 은행 입금 SMS 폴링 데몬 (KB국민은행 · 하나은행)
 
 목적
-- ~/Library/Messages/chat.db에서 KB(국민은행) 입금 SMS 추출
+- ~/Library/Messages/chat.db에서 은행 입금 SMS 추출
 - bank_deposits 테이블에 INSERT (UNIQUE 제약으로 중복 자동 무시)
 - launchd로 60초 주기 실행
 
 요구
-- Full Disk Access (chat.db 읽기) — /usr/bin/python3에 부여
+- Full Disk Access (chat.db 읽기) — plist의 Python 바이너리에 부여
 - ~/.bliss-kb-sync/ 에 state·로그 저장
+
+비고
+- 메시지 본문은 m.text 우선, 비어있으면 m.attributedBody(바이너리)에서 추출.
+  macOS가 수신 직후 본문을 attributedBody로 옮겨버려 text만 읽으면 누락됨.
+- 계좌 매핑(BLISS_KB_ACCOUNTS)은 은행 무관 — 마스킹된 계좌번호 문자열이 키.
 """
 import os
 import re
@@ -19,7 +24,7 @@ import urllib.request
 import urllib.parse
 import urllib.error
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 # ─── 설정 ────────────────────────────────────────────
 HOME = Path.home()
@@ -30,7 +35,6 @@ STATE_FILE = STATE_DIR / 'state.json'
 LOG_FILE = STATE_DIR / 'poll.log'
 CHAT_DB = HOME / 'Library' / 'Messages' / 'chat.db'
 
-KB_SENDER = '+8216449999'  # 국민은행 발신 번호
 APPLE_EPOCH = 978307200    # 2001-01-01 UTC seconds (chat.db 시간 기준점)
 
 STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -100,17 +104,12 @@ def save_state(state):
     STATE_FILE.write_text(json.dumps(state, indent=2))
 
 
-# ─── KB SMS 파싱 ──────────────────────────────────────
-# [Web발신]
-# [KB]MM/DD HH:MM
-# {계좌마스킹}
-# {입금자명 or 가맹점}
-# 입금|출금
-# {금액}
-# 잔액{잔액}
+# ─── 은행별 SMS 파싱 ──────────────────────────────────
+# KB국민은행 입금 SMS:
+#   [Web발신] / [KB]MM/DD HH:MM / {계좌마스킹} / {입금자명} / 입금|출금 / {금액} / 잔액{잔액}
 KB_PATTERN = re.compile(
     r'\[KB\]\s*(\d{2})/(\d{2})\s+(\d{2}):(\d{2})\s*\n+'
-    r'([\w\*]+)\s*\n+'
+    r'([\w\*\-]+)\s*\n+'
     r'(.+?)\s*\n+'
     r'(입금|출금)\s*\n+'
     r'([\d,]+)\s*\n+'
@@ -118,8 +117,19 @@ KB_PATTERN = re.compile(
     re.DOTALL,
 )
 
+# 하나은행 입금 SMS:
+#   [Web발신] / 하나,MM/DD HH:MM / {계좌마스킹} / 입금|출금{금액}원 / {입금자명} / 잔액{잔액}원
+HANA_PATTERN = re.compile(
+    r'하나\s*,\s*(\d{2})/(\d{2})\s+(\d{2}):(\d{2})\s*\n+'
+    r'([\d\*\-]+)\s*\n+'
+    r'(입금|출금)\s*([\d,]+)\s*원?\s*\n+'
+    r'(.+?)\s*\n+'
+    r'잔액\s*([\d,]+)\s*원?',
+    re.DOTALL,
+)
 
-def parse_kb_text(text):
+
+def parse_kb(text):
     if not text:
         return None
     m = KB_PATTERN.search(text)
@@ -135,35 +145,72 @@ def parse_kb_text(text):
     }
 
 
+def parse_hana(text):
+    if not text:
+        return None
+    m = HANA_PATTERN.search(text)
+    if not m:
+        return None
+    _, _, _, _, masked, kind, amount_s, name, balance_s = m.groups()
+    return {
+        'account_masked': masked,
+        'transferer_name': name.strip(),
+        'kind': kind,
+        'amount': int(amount_s.replace(',', '')),
+        'balance': int(balance_s.replace(',', '')),
+    }
+
+
+# 은행 정의 — 발신번호 → 파서 매핑
+BANKS = [
+    {'name': 'KB',   'sender': '+8216449999', 'parse': parse_kb,   'source': 'kb_sms'},
+    {'name': '하나', 'sender': '+8215991111', 'parse': parse_hana, 'source': 'hana_sms'},
+]
+
+
+# ─── 메시지 본문 추출 (text 우선, attributedBody fallback) ──
+def msg_body(text, ab):
+    if text and text.strip():
+        return text
+    if not ab:
+        return ''
+    # attributedBody = NSKeyedArchiver/typedstream 바이너리.
+    # 본문이 UTF-8 연속 구간으로 박혀 있음 → 한글/괄호 포함 가장 긴 런 추출.
+    s = ab.decode('utf-8', errors='replace')
+    runs = re.findall(r'[가-힣A-Za-z0-9\s/:.,()\[\]\*\-+~%]{4,}', s)
+    runs = [r for r in runs if ('[' in r or any('가' <= c <= '힣' for c in r))]
+    return max(runs, key=len) if runs else ''
+
+
 # ─── chat.db 조회 ─────────────────────────────────────
 def fetch_messages(min_rowid):
     if not CHAT_DB.exists():
         log(f'chat.db 없음: {CHAT_DB}')
         return []
+    senders = [b['sender'] for b in BANKS]
+    placeholders = ','.join('?' for _ in senders)
     try:
         conn = sqlite3.connect(f'file:{CHAT_DB}?mode=ro', uri=True)
         cur = conn.execute(
-            '''
-            SELECT m.ROWID, m.text, m.date
+            f'''
+            SELECT m.ROWID, h.id, m.text, m.attributedBody, m.date
             FROM message m
             JOIN handle h ON h.ROWID = m.handle_id
             WHERE m.ROWID > ?
-              AND h.id = ?
-              AND m.text IS NOT NULL
-              AND m.text != ''
+              AND h.id IN ({placeholders})
               AND m.is_from_me = 0
               AND m.item_type = 0
             ORDER BY m.ROWID ASC
             LIMIT 500
             ''',
-            (min_rowid, KB_SENDER),
+            (min_rowid, *senders),
         )
         rows = cur.fetchall()
         conn.close()
         return rows
     except sqlite3.OperationalError as e:
         log(f'sqlite OperationalError (Full Disk Access?): {e}')
-        tg_alert(f'chat.db 읽기 거부 — Full Disk Access 부여 필요')
+        tg_alert('chat.db 읽기 거부 — Full Disk Access 부여 필요')
         return []
     except sqlite3.Error as e:
         log(f'sqlite 에러: {e}')
@@ -217,15 +264,19 @@ def main():
     skipped_withdraw = 0
     max_rowid = min_rowid
 
-    for rowid, text, raw_date in rows:
+    for rowid, sender_id, text, ab, raw_date in rows:
         max_rowid = max(max_rowid, rowid)
 
-        parsed = parse_kb_text(text)
+        bank = next((b for b in BANKS if b['sender'] == sender_id), None)
+        if not bank:
+            continue
+
+        parsed = bank['parse'](msg_body(text, ab))
         if not parsed:
             skipped_unmatched += 1
             continue
 
-        # 등록된 계좌만 (강남점 등 .env에 매핑)
+        # 등록된 계좌만 (.env BLISS_KB_ACCOUNTS에 마스킹 계좌→지점 매핑)
         acct_cfg = ACCOUNTS.get(parsed['account_masked'])
         if not acct_cfg:
             skipped_other_account += 1
@@ -252,13 +303,13 @@ def main():
             'amount': parsed['amount'],
             'balance': parsed['balance'],
             'sms_sent_at': ts.isoformat(),
-            'raw_text': text,
-            'source': 'kb_sms',
+            'raw_text': msg_body(text, ab),
+            'source': bank['source'],
         }
         if insert_deposit(rec):
             inserted += 1
             log(
-                f'  + {parsed["transferer_name"]} '
+                f'  + [{bank["name"]}] {parsed["transferer_name"]} '
                 f'+{parsed["amount"]:,}원 '
                 f'(잔액 {parsed["balance"]:,}) ROWID={rowid}'
             )
