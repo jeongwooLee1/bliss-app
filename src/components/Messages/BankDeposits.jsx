@@ -342,7 +342,6 @@ export default function BankDeposits({ data, branches=[], userBranches=[], curre
   };
 
   const ignoreDeposit = (d) => {
-    if (!window.confirm('이 입금을 무시 처리할까요?')) return;
     setStatus(d, 'ignored');
   };
 
@@ -387,41 +386,41 @@ export default function BankDeposits({ data, branches=[], userBranches=[], curre
           const brName = _br ? (_br.short || _br.name || '') : '';
           return (
             <div key={d.id} style={{
-              padding:'10px 12px',
-              marginBottom:6,
+              padding:'7px 10px',
+              marginBottom:5,
               borderRadius:8,
               background: status==='pending' ? '#FFFBF0' : '#fff',
               border: `1px solid ${T.border}`,
-              display:'flex',flexDirection:'column',gap:6,
+              display:'flex',flexDirection:'column',gap:5,
             }}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
-                <div style={{display:'flex',alignItems:'center',gap:6,flex:1,minWidth:0}}>
-                  <span style={{fontSize:T.fs.xs,padding:'2px 7px',borderRadius:4,background:STATUS_BG[status],color:STATUS_FG[status],fontWeight:T.fw.bold,whiteSpace:'nowrap'}}>
+                <div style={{display:'flex',alignItems:'center',gap:5,flex:1,minWidth:0}}>
+                  <span style={{fontSize:T.fs.nano,padding:'2px 6px',borderRadius:4,background:STATUS_BG[status],color:STATUS_FG[status],fontWeight:T.fw.bold,whiteSpace:'nowrap'}}>
                     {STATUS_LABEL[status]}
                   </span>
-                  {brName && <span style={{fontSize:T.fs.nano,padding:'2px 6px',borderRadius:4,background:T.gray100,color:T.textSub,fontWeight:T.fw.bold,whiteSpace:'nowrap'}}>{brName}</span>}
+                  {brName && <span style={{fontSize:T.fs.nano,padding:'2px 5px',borderRadius:4,background:T.gray100,color:T.textSub,fontWeight:T.fw.bold,whiteSpace:'nowrap'}}>{brName}</span>}
                   <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bold,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
                     {d.transfererName || '(이름없음)'}
                   </span>
                 </div>
-                <div style={{fontSize:T.fs.xs,color:T.textSub,whiteSpace:'nowrap'}}>{fmtSmsTime(d.smsSentAt)}</div>
+                <div style={{display:'flex',alignItems:'baseline',gap:7,flexShrink:0}}>
+                  <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bold,color:T.primaryDk,whiteSpace:'nowrap'}}>+{fmt(d.amount)}원</span>
+                  <span style={{fontSize:T.fs.nano,color:T.textSub,whiteSpace:'nowrap'}}>{fmtSmsTime(d.smsSentAt)}</span>
+                </div>
               </div>
-              <div style={{fontSize:T.fs.md,fontWeight:T.fw.bold,color:T.primaryDk}}>
-                +{fmt(d.amount)}원
-              </div>
-              <div style={{display:'flex',gap:6,marginTop:2}}>
+              <div style={{display:'flex',gap:6}}>
                 {status === 'pending' && (
                   <>
-                    <button onClick={()=>setMatchTarget(d)} style={{flex:1,padding:'6px 0',border:'none',background:T.primary,color:'#fff',borderRadius:6,fontSize:T.fs.xs,fontWeight:T.fw.bold,cursor:'pointer'}}>
+                    <button onClick={()=>setMatchTarget(d)} style={{flex:1,padding:'5px 0',border:'none',background:T.primary,color:'#fff',borderRadius:6,fontSize:T.fs.xs,fontWeight:T.fw.bold,cursor:'pointer'}}>
                       매출 매칭
                     </button>
-                    <button onClick={()=>ignoreDeposit(d)} style={{padding:'6px 12px',border:`1px solid ${T.border}`,background:'#fff',color:T.textSub,borderRadius:6,fontSize:T.fs.xs,cursor:'pointer'}}>
+                    <button onClick={()=>ignoreDeposit(d)} style={{padding:'5px 14px',border:`1px solid ${T.border}`,background:'#fff',color:T.textSub,borderRadius:6,fontSize:T.fs.xs,cursor:'pointer'}}>
                       무시
                     </button>
                   </>
                 )}
                 {status !== 'pending' && (
-                  <button onClick={()=>reopenDeposit(d)} style={{flex:1,padding:'6px 0',border:`1px solid ${T.border}`,background:'#fff',color:T.textSub,borderRadius:6,fontSize:T.fs.xs,cursor:'pointer'}}>
+                  <button onClick={()=>reopenDeposit(d)} style={{flex:1,padding:'5px 0',border:`1px solid ${T.border}`,background:'#fff',color:T.textSub,borderRadius:6,fontSize:T.fs.xs,cursor:'pointer'}}>
                     미매칭으로 되돌리기
                   </button>
                 )}

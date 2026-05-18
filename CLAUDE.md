@@ -1908,3 +1908,8 @@ v3.7.740의 대화 시각 추출(`_timeGuess`)에 — 추출 시각을 타임라
 - 검증: 우리·KB·하나·수협 1원 테스트 전부 `bank_deposits` 해당 지점 정상 기록
 - ⚠️ launchd가 데몬을 주기 실행하므로, 데몬 코드 편집 중에는 구버전 코드가 메시지를 소비할 수 있음 — 편집 후 누락분은 `~/.bliss-kb-sync/state.json`의 `last_rowid`를 되돌려 재처리(UNIQUE 제약으로 중복 INSERT는 무시됨)
 - **폴링 간격 60초 → 15초 단축** (입금문자 반영 지연 최소화). `com.bliss.kb-sync.plist` `StartInterval`. 변경 시 `~/Library/LaunchAgents/`에 복사 후 `launchctl unload`+`load` 재등록 필요
+
+### v3.7.755 — 입금문자 탭 콤팩트 + 무시 경고창 제거 (2026-05-18)
+- `BankDeposits` 카드 콤팩트화 — 금액을 헤더 줄(이름·시각 옆)로 합쳐 한 줄 제거, padding 10→7·gap 6→5·배지 폰트 축소
+- `ignoreDeposit` — "무시" 버튼 클릭 시 `window.confirm` 제거 → 즉시 무시 처리 (되돌리기 버튼 confirm은 유지)
+- **적용**: v3.7.755 라이브 배포(version.txt 검증, CF 퍼지 success)
