@@ -1830,3 +1830,14 @@ v3.7.740의 대화 시각 추출(`_timeGuess`)에 — 추출 시각을 타임라
 - **AdminPlan.jsx — "지점별 잔액 + 사용량" 섹션에 `[이번 달][지난달]` 토글**: `monthSel` state, 선택 월 경계로 `p_since`/`p_until` 계산해 usage 재집계. `loadBilling`(월 무관: 구독·잔액·차감히스토리)과 `loadUsage`(월 의존) 분리, `loadUsage`는 `[biz.id, monthSel]` effect. 섹션 라벨·지점별 "사용 NNN P" 문구도 선택 월 반영. (참고: `billing_usage_logs`가 5/4부터라 지난달=4월은 0P 표시 — 정상)
 - **CustomersPage.jsx ShareCustModal — 쉐어 고객 추가 검색을 메인 고객검색과 동일하게**: 검색 필드 `["name","name2","phone","phone2","email","cust_num"]`→`["name","name2","phone","phone2","email","memo","cust_num"]`(`memo` 추가, buildFilter와 동일 필드셋), `limit` 20→200(메인 검색 `PAGE_SIZE×4`와 동일). 증상="회원번호 검색 안 됨" — 번호는 `phone`/`phone2` 부분일치 충돌이 심해 `created_at` 최신순 `limit=20`에서 실제 `cust_num` 매칭이 밀려나던 게 핵심 원인. `memo`에 적힌 번호도 이제 검색됨.
 - **적용**: v3.7.748 라이브 배포(version.txt 검증 3.7.748, CF 퍼지 success). RPC·migration은 DB에 이미 적용됨.
+
+### v3.7.749 — 커플 패키지 (멀티테넌트, 2026-05-18)
+커플 패키지 = 패키지(다회권) 상품 중 "커플" 플래그가 켜진 것. 매출등록 시 구매자 + 상대방을 지정하면 각자에게 회수가 분리 발급됨.
+- **DB**: `services.is_couple boolean default false` 컬럼 추가 (migration `services_add_is_couple`). `db.js` DBMAP/DB_COLS에 `is_couple↔isCouple` 매핑.
+- **AdminSaleItems**: 패키지(다회권) 상품 편집 시 "커플 패키지" 토글. `is_couple` 저장(패키지 아니면 false 강제). 목록에 "커플 패키지" 배지.
+- **SaleForm**: `newCouplePkgs` 감지 → 커플 패키지 체크 시 "커플 상대방 지정" UI(ShareCustModal 재사용). 저장 시 `customer_packages` **2행** — 구매자 N회 + 상대방 N회(각자 독립), 둘 다 note에 `커플:<gid>`(8자 그룹ID `cg*`). `customer_shares` 1행 연결(중복 시 생략). 상대방 행은 `_newTriggerPkgIds`에 미포함 → 이벤트/쿠폰은 구매자 1건만. 상대방 미선택 시 저장 차단. editMode/viewOnly에선 커플 UI 숨김.
+- **CustomersPage**: 커플 보유권 카드(note에 `커플:`)에 "파트너변경" 버튼 → ShareCustModal로 새 상대방 선택 → 짝(sibling) 보유권 행을 새 고객으로 이전(`customer_id` UPDATE) + `customer_shares` 재지정. sibling이 이미 사용한 회차 있으면 경고.
+- **ShareCustModal 분리**: CustomersPage 인라인 정의를 `src/components/Customers/ShareCustModal.jsx`로 추출(CustomersPage↔SaleForm 순환 import 회피). `titleLabel` prop 추가. 검색 필드는 메인 고객검색과 동일(`memo` 포함, limit 200).
+- **멀티테넌트**: 코드에 특정 상품 ID·매장명 하드코딩 0. `is_couple` 플래그로만 분기 — 어느 매장이든 자기 패키지 상품을 시술상품관리에서 커플로 지정.
+- **적용**: v3.7.749 라이브 배포(version.txt 검증, CF 퍼지 success).
+- **유의**: 커플 보유권 2행은 note의 `커플:<gid>`로 묶임 — 파트너 변경 시 이 gid로 짝 행 식별. 신규 구매분만 적용 — 기존 커플 패키지 구매자 소급 적용은 별도 마이그레이션 페이지(진행 중, HANDOFF 참고).

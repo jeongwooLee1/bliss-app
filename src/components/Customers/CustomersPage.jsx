@@ -9,6 +9,7 @@ import { Btn, FLD, Empty, fmt, Spinner, DataTable } from '../common'
 import SendSmsModal from '../common/SendSmsModal'
 import I from '../common/I'
 import { DetailedSaleForm } from '../Timeline/SaleForm'
+import { ShareCustModal } from './ShareCustModal'
 import { ColHeader as ExcelColHeader } from '../Sales/SalesGridPage'
 import ConsentModal from '../Consent/ConsentModal'
 import ConsentPanel from '../Consent/ConsentPanel'
@@ -181,6 +182,8 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
   // 쉐어 — 보유권/패키지를 공유하는 고객 페어
   const [shareCusts, setShareCusts] = useState([]); // [{id, name, phone, cust_num, shareRowId}]
   const [showShareModal, setShowShareModal] = useState(false);
+  // 커플 패키지 파트너 변경 — { pkg, gid, sibling } 또는 null
+  const [coupleRepartner, setCoupleRepartner] = useState(null);
   const [editingMemo, setEditingMemo] = useState(false);
   const [memoDraft, setMemoDraft] = useState("");
   const [memoSaving, setMemoSaving] = useState(false);
@@ -949,6 +952,44 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
     } catch(e) { alert("해제 실패: "+e.message); }
   };
 
+  // ── 커플 패키지 파트너 변경 ──
+  // 커플 보유권 2행은 note의 "커플:<gid>"로 묶임. 짝(sibling) 행을 찾아 새 상대방으로 이전.
+  const openCoupleRepartner = async (pkg) => {
+    const gid = (pkg?.note||"").match(/커플:([A-Za-z0-9]+)/)?.[1];
+    if (!gid) { alert("커플 패키지 정보를 찾을 수 없습니다."); return; }
+    try {
+      const rows = await sb.get("customer_packages", `&note=ilike.*${encodeURIComponent("커플:"+gid)}*`);
+      const sibling = (rows||[]).find(r => r.id !== pkg.id && r.customer_id !== detailCust?.id)
+        || (rows||[]).find(r => r.id !== pkg.id);
+      if (!sibling) { alert("연결된 커플 상대방 보유권을 찾을 수 없습니다.\n(상대방 보유권이 삭제되었을 수 있습니다)"); return; }
+      setCoupleRepartner({ pkg, gid, sibling });
+    } catch(e) { alert("커플 정보 조회 실패: " + (e?.message||e)); }
+  };
+  const applyCoupleRepartner = async (newPartner) => {
+    if (!coupleRepartner || !newPartner?.id) return;
+    const { sibling } = coupleRepartner;
+    if (newPartner.id === detailCust?.id) { alert("현재 고객 본인은 상대방이 될 수 없습니다."); return; }
+    if (newPartner.id === sibling.customer_id) { setCoupleRepartner(null); return; }
+    if ((sibling.used_count||0) > 0 && !confirm(`현재 상대방이 이미 ${sibling.used_count}회 사용했습니다.\n사용 이력을 포함해 새 상대방에게 그대로 이전됩니다. 계속할까요?`)) return;
+    try {
+      const oldOwner = sibling.customer_id;
+      await sb.update("customer_packages", sibling.id, { customer_id: newPartner.id });
+      // customer_shares 갱신 — detailCust ↔ oldOwner 연결을 newPartner로 재지정
+      if (detailCust?.id) {
+        const shares = await sb.get("customer_shares", `&or=(and(cust_id_a.eq.${detailCust.id},cust_id_b.eq.${oldOwner}),and(cust_id_a.eq.${oldOwner},cust_id_b.eq.${detailCust.id}))`);
+        if (shares && shares[0]) {
+          const sh = shares[0];
+          await sb.update("customer_shares", sh.id, sh.cust_id_a === oldOwner ? { cust_id_a: newPartner.id } : { cust_id_b: newPartner.id });
+        } else {
+          await sb.insert("customer_shares", { id:"share_"+Math.random().toString(36).slice(2,10), business_id:_activeBizId, cust_id_a: detailCust.id, cust_id_b: newPartner.id });
+        }
+      }
+      setCoupleRepartner(null);
+      if (detailCust?.id) loadShares(detailCust.id);
+      alert(`커플 상대방이 '${newPartner.name}'(으)로 변경되었습니다.`);
+    } catch(e) { alert("파트너 변경 실패: " + (e?.message||e)); }
+  };
+
   useEffect(() => {
     if (!detailCust) { setCustSales([]); setCustPkgsServer([]); setCustResStats({total:0,noshow:0,samedayCancel:0,samedayChange:0}); setCustPointTx([]); setShareCusts([]); setLoadingDetail(false); return; }
     loadShares(detailCust.id);
@@ -1171,6 +1212,17 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
               color:isShared?"#fff":T.gray500,
               cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",letterSpacing:0.3}}>
             쉐어
+          </button>;
+        })()}
+        {(() => {
+          const _cgid = (p.note||"").match(/커플:([A-Za-z0-9]+)/)?.[1];
+          if (!_cgid) return null;
+          return <button onClick={(e)=>{e.stopPropagation(); openCoupleRepartner(p);}}
+            title="커플 패키지 — 상대방 변경"
+            style={{padding:"1px 6px",fontSize:9,fontWeight:T.fw.bolder,borderRadius:8,
+              border:"1px solid #8B5CF6",background:"#fff",color:"#7C3AED",
+              cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",letterSpacing:0.3}}>
+            파트너변경
           </button>;
         })()}
       </div>
@@ -2200,6 +2252,13 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       onPick={addShare}
       onClose={()=>setShowShareModal(false)}
       setData={setData}/>, document.body)}
+    {coupleRepartner && detailCust && createPortal(<ShareCustModal
+      baseCust={detailCust}
+      existingShareIds={[]}
+      titleLabel="커플 상대방 변경"
+      onPick={applyCoupleRepartner}
+      onClose={()=>setCoupleRepartner(null)}
+      setData={setData}/>, document.body)}
     {consentCust && createPortal(<ConsentModal
       cust={consentCust}
       bizId={_activeBizId}
@@ -2286,120 +2345,6 @@ function CustCtxMenu({ menu, onClose, onReserve, onMessage, onSale }) {
     </div>,
     document.body
   );
-}
-
-// ═══════════════════════════════════════════
-// 쉐어 고객 검색·추가 모달
-// ═══════════════════════════════════════════
-function ShareCustModal({ baseCust, existingShareIds, onPick, onClose, setData }) {
-  const [q, setQ] = useState("");
-  const [results, setResults] = useState([]);
-  const [newName, setNewName] = useState("");
-  const [newPhone, setNewPhone] = useState("");
-  const [newGender, setNewGender] = useState("");
-  const [creating, setCreating] = useState(false);
-  const downOnOverlayRef = React.useRef(false);
-
-  useEffect(() => {
-    if (q.trim().length < 2) { setResults([]); return; }
-    const t = setTimeout(async () => {
-      try {
-        const cond = buildTokenSearch(q.trim(), ["name","name2","phone","phone2","email","memo","cust_num"]);
-        const rows = await sb.get("customers", `&business_id=eq.${_activeBizId}${cond}&limit=200`);
-        setResults(fromDb("customers", rows||[]));
-      } catch(e) { console.warn("share search fail", e); setResults([]); }
-    }, 300);
-    return () => clearTimeout(t);
-  }, [q]);
-
-  const filteredResults = results.filter(c => c.id !== baseCust.id && !existingShareIds.includes(c.id));
-  const showNewForm = q.trim().length >= 2 && filteredResults.length === 0;
-
-  // 검색어에서 이름(한글)/전화(숫자) 자동 파싱 → 신규등록 폼 프리필
-  useEffect(() => {
-    if (!showNewForm) return;
-    const tokens = q.trim().split(/\s+/);
-    const nameTok = tokens.find(t => /[가-힣]/.test(t));
-    const phoneTok = tokens.find(t => /^[\d-]{3,}$/.test(t));
-    if (nameTok && !newName) setNewName(nameTok);
-    if (phoneTok && !newPhone) setNewPhone(phoneTok);
-  }, [showNewForm, q]);
-
-  const createNew = async () => {
-    if (!newName.trim()) { alert("이름을 입력하세요"); return; }
-    setCreating(true);
-    try {
-      const id = genId('cust');
-      const phoneVal = newPhone.trim() || ("no_phone_"+id.slice(-6));
-      const row = {
-        id, business_id: _activeBizId,
-        name: newName.trim(), phone: phoneVal, gender: newGender||null,
-        sms_consent: true, is_hidden: false,
-      };
-      await sb.insert("customers", row);
-      const parsed = fromDb("customers", [row])[0];
-      if (setData) setData(p => p ? {...p, customers: [parsed, ...(p.customers||[])]} : p);
-      onPick(parsed);
-    } catch(e) { alert("신규 등록 실패: "+e.message); }
-    setCreating(false);
-  };
-
-  return <div
-    onMouseDown={e=>{downOnOverlayRef.current=(e.target===e.currentTarget);}}
-    onClick={e=>{if(downOnOverlayRef.current && e.target===e.currentTarget)onClose(); downOnOverlayRef.current=false;}}
-    style={{position:"fixed",inset:0,background:"rgba(0,0,0,.35)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-    <div onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,width:"100%",maxWidth:460,boxShadow:"0 12px 40px rgba(0,0,0,.25)",overflow:"hidden"}}>
-      <div style={{padding:"14px 16px",borderBottom:"1px solid "+T.border,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <strong style={{fontSize:14,color:"#5B21B6",display:"inline-flex",alignItems:"center",gap:5}}><I name="users" size={14}/> 쉐어 추가 — {baseCust?.name}</strong>
-        <button onClick={onClose} style={{border:"none",background:"none",fontSize:20,cursor:"pointer",color:T.textMuted}}>×</button>
-      </div>
-      <div style={{padding:14}}>
-        <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="이름·전화·고객번호 (공백으로 여러 조건)"
-          style={{width:"100%",padding:"8px 10px",fontSize:13,border:"1px solid "+T.border,borderRadius:8,fontFamily:"inherit",boxSizing:"border-box"}}/>
-        <div style={{marginTop:10,maxHeight:240,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
-          {q.trim().length < 2 && <div style={{fontSize:11,color:T.textMuted,textAlign:"center",padding:20}}>검색어 2자 이상 입력 (예: "권신영 8008")</div>}
-          {filteredResults.map(c => (
-            <button key={c.id} onClick={()=>onPick(c)}
-              style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",border:"1px solid "+T.border,borderRadius:8,background:"#fff",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-              {(() => {
-                // 영문 이름이면 한글 음역(name_kor)만 인라인 표시. name2는 직원 별칭용이라 음역 fallback으로 쓰지 않음.
-                const _isEn = c.name && !/[가-힣]/.test(c.name);
-                const _kor = _isEn && c.name_kor && /[가-힣]/.test(c.name_kor) ? c.name_kor : '';
-                return <span style={{fontSize:12,fontWeight:700,color:T.text,flex:1}}>
-                  {c.name}
-                  {_kor && <span style={{color:T.primaryDk||"#5B21B6",fontWeight:700,marginLeft:5}}>{_kor}</span>}
-                  {c.name2 ? <span style={{color:T.textSub,fontWeight:500,marginLeft:4}}>({c.name2})</span> : null}
-                </span>;
-              })()}
-              {c.cust_num && <span style={{fontSize:10,color:T.textMuted,fontFamily:"monospace"}}>#{c.cust_num}</span>}
-              {c.phone && !c.phone.startsWith("no_phone") && <span style={{fontSize:11,color:T.textSub}}>{c.phone}</span>}
-            </button>
-          ))}
-        </div>
-        {showNewForm && (
-          <div style={{marginTop:14,paddingTop:12,borderTop:"1px dashed "+T.border}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#5B21B6",marginBottom:8}}>🔎 검색 결과 없음 — 바로 신규 등록</div>
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="이름 *"
-                style={{width:"100%",padding:"8px 10px",fontSize:13,border:"1px solid "+T.border,borderRadius:8,fontFamily:"inherit",boxSizing:"border-box"}}/>
-              <input value={newPhone} onChange={e=>setNewPhone(e.target.value)} placeholder="연락처 (선택)"
-                style={{width:"100%",padding:"8px 10px",fontSize:13,border:"1px solid "+T.border,borderRadius:8,fontFamily:"inherit",boxSizing:"border-box"}}/>
-              <div style={{display:"flex",gap:6}}>
-                {[["","?"],["F","여"],["M","남"]].map(([v,l])=>(
-                  <button key={v} type="button" onClick={()=>setNewGender(v)}
-                    style={{flex:1,padding:"6px",fontSize:12,fontWeight:700,borderRadius:6,border:"1px solid "+(newGender===v?"#8B5CF6":T.border),background:newGender===v?"#F5F3FF":"#fff",color:newGender===v?"#5B21B6":T.textSub,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
-                ))}
-              </div>
-              <button onClick={createNew} disabled={creating||!newName.trim()}
-                style={{padding:"10px",fontSize:13,fontWeight:700,borderRadius:8,border:"none",background:(creating||!newName.trim())?T.gray300:"#8B5CF6",color:"#fff",cursor:(creating||!newName.trim())?"default":"pointer",fontFamily:"inherit",marginTop:4}}>
-                {creating?"등록 중...":"신규 등록 후 쉐어"}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  </div>;
 }
 
 // ═══════════════════════════════════════════

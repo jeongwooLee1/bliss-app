@@ -5,7 +5,9 @@ import { fromDb, toDb, _activeBizId } from '../../lib/db'
 import { todayStr, genId, getPkgPurchaseBranchShort, canUsePkgAtBranch } from '../../lib/utils'
 import { applyEvents } from '../../lib/eventEngine'
 import { isNewCustomer as _isNewCustomerSSOT } from '../../lib/customerStatus'
+import { createPortal } from 'react-dom'
 import I from '../common/I'
+import { ShareCustModal } from '../Customers/ShareCustModal'
 
 const uid = genId;
 // 금액 콤마 포맷 유틸
@@ -544,6 +546,9 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   const [custSearch, setCustSearch] = useState("");
   const [showCustDrop, setShowCustDrop] = useState(false);
   const [custResults, setCustResults] = useState([]);
+  // 커플 패키지 상대방 (구매자 외 1명)
+  const [couplePartner, setCouplePartner] = useState(null); // {id, name, phone, gender}
+  const [showPartnerModal, setShowPartnerModal] = useState(false);
   useEffect(() => {
     if (custSearch.trim().length < 2) { setCustResults([]); return; }
     const timer = setTimeout(async () => {
@@ -1338,6 +1343,8 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   const newPrepaidPurchases = SVC_LIST.filter(s => s.cat === PREPAID_CAT_ID && items[s.id]?.checked);
   // PKG 패키지 (왁싱PKG, 토탈PKG 등 — name에서 회수 파싱), 연간회원권 제외
   const newPkgPurchases = SVC_LIST.filter(s => (s.cat === PKG_CAT_ID || /PKG|패키지/i.test(s.name||"")) && s.cat !== PREPAID_CAT_ID && !_isAnnualSvc(s) && items[s.id]?.checked);
+  // 커플 패키지 — 구매 시 상대방 지정 → 보유권 2행 분리 발급
+  const newCouplePkgs = newPkgPurchases.filter(s => s.isCouple || s.is_couple);
   const newAnnualPurchases = SVC_LIST.filter(s => _isAnnualSvc(s) && items[s.id]?.checked);
   // 패키지 회수 결정 — 우선순위:
   //   1) services.pkgCount > 0 (관리자가 시술상품관리에서 명시 입력)
@@ -2273,6 +2280,19 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       _submitLock.current = false;
       return;
     }
+    // 커플 패키지 — 상대방 선택 필수 (구매자·상대방 각자에게 보유권 분리 발급)
+    if (newCouplePkgs.length > 0) {
+      if (!couplePartner || !couplePartner.id) {
+        showAlert("커플 패키지는 상대방을 선택해주세요.");
+        _submitLock.current = false;
+        return;
+      }
+      if (couplePartner.id === cust.id) {
+        showAlert("커플 패키지 상대방은 구매자와 다른 고객이어야 합니다.");
+        _submitLock.current = false;
+        return;
+      }
+    }
     // 결제수단 미선택 차단 — 실결제금액이 남아있으면 카드/현금/입금 중 하나 이상 필수
     const _svcMethodSum = (payMethod.svcCard||0) + (payMethod.svcCash||0) + (payMethod.svcTransfer||0) + (payMethod.svcPoint||0);
     // 결제 통합: 시술+제품 합산 기준으로 svc 결제수단에 입력
@@ -2598,6 +2618,10 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
           const _expStr = `${_expD.getFullYear()}-${String(_expD.getMonth()+1).padStart(2,"0")}-${String(_expD.getDate()).padStart(2,"0")}`;
           _pkgNote = _pkgNote ? `${_pkgNote} | 유효:${_expStr}` : `유효:${_expStr}`;
         }
+        const _isCouple = !!(svc.isCouple || svc.is_couple);
+        // 커플 그룹 ID — 구매자·상대방 두 보유권 행을 같은 ID로 묶어 파트너 변경 시 짝 식별
+        const _coupleGid = _isCouple ? ("cg" + Math.random().toString(36).slice(2,9)) : "";
+        if (_isCouple) _pkgNote = _pkgNote ? `${_pkgNote} | 커플:${_coupleGid}` : `커플:${_coupleGid}`;
         const newPkg = {
           id: newPkgId, business_id: _activeBizId, customer_id: cust.id,
           service_id: svc.id, service_name: svc.name,
@@ -2621,7 +2645,38 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
             balance_before: total, balance_after: total - used, note: "구매 즉시 사용"
           });
         }
+        // 커플 패키지 — 상대방에게도 동일 회수 보유권 발급 (각자 독립).
+        // 이벤트/쿠폰 트리거(_newTriggerPkgIds)에는 미포함 → 쿠폰은 구매자 1건만 발행.
+        if (_isCouple && couplePartner?.id) {
+          const partnerPkgId = uid();
+          const _cpNote = _pkgBranchShort ? `매장:${_pkgBranchShort.replace(/점$|본점$/,'')} | 커플:${_coupleGid}` : `커플:${_coupleGid}`;
+          sb.insert("customer_packages", {
+            id: partnerPkgId, business_id: _activeBizId, customer_id: couplePartner.id,
+            service_id: svc.id, service_name: svc.name,
+            total_count: total, used_count: 0,
+            purchased_at: new Date().toISOString(),
+            note: _cpNote,
+            branch_id: branchId || null,
+          }).catch(console.error);
+          _pkgTxRecords.push({
+            package_id: partnerPkgId, service_name: svc.name,
+            type: "charge", unit: "count", amount: total,
+            balance_before: 0, balance_after: total, note: "커플 패키지 — 상대방 발급"
+          });
+        }
       });
+      // 커플 패키지 — 구매자·상대방 customer_shares 연결 (이미 연결돼 있으면 생략)
+      if (couplePartner?.id && newCouplePkgs.length > 0 && cust.id && couplePartner.id !== cust.id) {
+        const _a = cust.id, _b = couplePartner.id;
+        (async () => {
+          try {
+            const ex = await sb.get("customer_shares", `&or=(and(cust_id_a.eq.${_a},cust_id_b.eq.${_b}),and(cust_id_a.eq.${_b},cust_id_b.eq.${_a}))`);
+            if (!ex || ex.length === 0) {
+              await sb.insert("customer_shares", { id: "share_"+Math.random().toString(36).slice(2,10), business_id: _activeBizId, cust_id_a: _a, cust_id_b: _b });
+            }
+          } catch(e) { console.warn("[couple share] failed", e); }
+        })();
+      }
     }
 
     // ── 신규 연간회원권/연간할인권 구매 처리 ──
@@ -3471,6 +3526,38 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
                 </div>;
               })}
             </div>}
+            {/* 커플 패키지 — 상대방 지정 (구매자·상대방 각자에게 회수 분리 발급) */}
+            {newCouplePkgs.length > 0 && !editMode && !viewOnly && <div style={{marginBottom:8,padding:"8px 12px",background:"#F5F3FF",border:"1.5px dashed #8B5CF6",borderRadius:T.radius.md}}>
+              <div style={{fontSize:11,fontWeight:T.fw.bolder,color:"#6B21A8",marginBottom:6,display:"flex",alignItems:"center",gap:5}}>
+                <I name="users" size={12}/>커플 패키지 — 상대방 지정 (구매자·상대방 각자 회수 발급)
+              </div>
+              {couplePartner ? (
+                <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"#fff",borderRadius:6,border:"1px solid #DDD6FE"}}>
+                  <span style={{flex:1,fontSize:13,fontWeight:700,color:T.text}}>
+                    {couplePartner.name}
+                    {couplePartner.phone && !String(couplePartner.phone).startsWith("no_phone") && <span style={{marginLeft:6,fontSize:11,color:T.textSub,fontWeight:400}}>{couplePartner.phone}</span>}
+                  </span>
+                  <button type="button" onClick={()=>setShowPartnerModal(true)}
+                    style={{border:"none",background:"none",color:T.primary,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>변경</button>
+                  <button type="button" onClick={()=>setCouplePartner(null)}
+                    style={{border:"none",background:"none",color:T.textMuted,cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>×</button>
+                </div>
+              ) : (
+                <button type="button" onClick={()=>setShowPartnerModal(true)}
+                  style={{width:"100%",padding:"8px",fontSize:13,fontWeight:700,borderRadius:6,border:"1.5px solid #8B5CF6",background:"#fff",color:"#6B21A8",cursor:"pointer",fontFamily:"inherit"}}>
+                  + 커플 상대방 선택
+                </button>
+              )}
+            </div>}
+            {showPartnerModal && createPortal(
+              <ShareCustModal
+                baseCust={cust}
+                existingShareIds={[]}
+                titleLabel="커플 상대방"
+                onPick={(c)=>{ setCouplePartner({id:c.id,name:c.name,phone:c.phone,gender:c.gender||""}); setShowPartnerModal(false); }}
+                onClose={()=>setShowPartnerModal(false)}
+                setData={setData}
+              />, document.body)}
             <div style={{ color:T.primary, padding: "6px 0 4px", marginBottom: 6, fontSize:14, fontWeight:800 }}>시술 ({SVC_LIST.length})</div>
             {hasCompedTag && <div style={{marginBottom:8,padding:"7px 10px",background:"#FFF3E0",border:"1.5px solid #E65100",borderRadius:8,fontSize:11,color:"#E65100",fontWeight:700,lineHeight:1.5}}>
               🎁 체험단 예약 — 체크한 시술·제품 행 오른쪽 <span style={{background:"#fff",padding:"1px 6px",borderRadius:4,border:"1px solid #E65100",fontWeight:800}}>🎁</span> 버튼을 눌러 무료 제공으로 전환하세요

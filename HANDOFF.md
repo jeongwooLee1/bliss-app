@@ -1,12 +1,13 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.748** (https://blissme.ai/version.txt) — 2026-05-18 배포
+- **라이브: v3.7.749** (https://blissme.ai/version.txt) — 2026-05-18 배포
 - 다음 빌드 시 `BLISS_V` (AppShell.jsx) + `public/version.txt` 둘 다 함께 bump 필수
 - 변경 이력은 [CLAUDE.md](./CLAUDE.md) 참고
 
-## 진행 중 작업
-없음. (요금제 사용내역 이번달/지난달 토글 + 쉐어 고객검색 메인검색과 동일화 + billing 데이터 정리 — 2026-05-18 v3.7.748, CLAUDE.md 참고)
+## 진행 중 작업 — 커플 패키지 기존 구매자 소급 적용 페이지
+**상태**: 커플 패키지 신규 판매 흐름은 v3.7.749 배포 완료 (CLAUDE.md 참고). 다음으로 **기존 커플 패키지 구매자 소급 적용 페이지** 구현 중.
+**할 일**: 이미 커플 패키지(`services.is_couple=true`)를 구매했지만 구버전 방식이라 보유권이 구매자 1명한테만 있는 케이스 — 관리 페이지에서 행별로 상대방을 지정하면 상대방 N회 보유권 + `customer_shares` + 양쪽 note `커플:<gid>`를 소급 생성. 식별: `customer_packages` 중 service가 커플 패키지인데 note에 `커플:` 없는 행. 관리설정 → 사업장 관리 하위 페이지로(`AdminLongValidityReview` 패턴 참고).
 
 ## 동의서 요청→서명 흐름 점검 — 워크트리 작업세션 예정 (2026-05-17)
 **상태**: 코드 흐름(요청 `ConsentModal` → `consent_tokens` INSERT → `sign.blissme.ai` 서명 → `html2canvas`+`jsPDF` PDF → Storage → `customer_consents` INSERT → `consent_tokens.used_at` 마킹 → `ConsentPanel` realtime 이력)은 완성·정상 구현 확인. 단 **실사용 0건** — `customer_consents` 14건 전부 테스트 데이터(홍길동 `cust_test_hgd` · ilayda), 2026-04-24 이후 서명 기록 없음.

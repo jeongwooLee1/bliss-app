@@ -54,7 +54,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
   const [sheet,setSheet]=useState(false);
   const [edit,setEdit]=useState(null);
   const [editPair,setEditPair]=useState(null); // 페어 편집 시 {half, full}
-  const [form,setForm]=useState({cat:"",name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0,badgeText:"",badgeColor:"#ffffff",badgeBg:"#f97316",promoConfig:{},isActive:true,grantsMemberPrice:false});
+  const [form,setForm]=useState({cat:"",name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,isCouple:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0,badgeText:"",badgeColor:"#ffffff",badgeBg:"#f97316",promoConfig:{},isActive:true,grantsMemberPrice:false});
   // 옵션 그룹 (절반/전체 같은 한 부위에 변형 옵션)
   const [useOptions, setUseOptions] = useState(false);
   const [opt1, setOpt1] = useState({name:"절반", dur:25, priceF:0, priceM:0, memberPriceF:0, memberPriceM:0});
@@ -103,7 +103,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
     if (typeof pc === "string") { try { pc = JSON.parse(pc); } catch(e) { pc = {}; } }
     setEdit(null);
     setEditPair({half: g.half, full: g.full});
-    setForm({cat:g.full.cat||"", name:g.base, dur:0, priceF:0, priceM:0, memberPriceF:0, memberPriceM:0, note:_stripPairTag(g.full.note||g.half.note||""), isPackage:false, pkgCount:10, pkgPriceF:0, pkgPriceM:0, badgeText:g.full.badgeText||"", badgeColor:g.full.badgeColor||"#ffffff", badgeBg:g.full.badgeBg||"#f97316", promoConfig:pc||{}, isActive:g.full.isActive!==false, grantsMemberPrice:!!g.full.grantsMemberPrice});
+    setForm({cat:g.full.cat||"", name:g.base, dur:0, priceF:0, priceM:0, memberPriceF:0, memberPriceM:0, note:_stripPairTag(g.full.note||g.half.note||""), isPackage:false, isCouple:false, pkgCount:10, pkgPriceF:0, pkgPriceM:0, badgeText:g.full.badgeText||"", badgeColor:g.full.badgeColor||"#ffffff", badgeBg:g.full.badgeBg||"#f97316", promoConfig:pc||{}, isActive:g.full.isActive!==false, grantsMemberPrice:!!g.full.grantsMemberPrice});
     const halfBo = _getBaseAndOpt(g.half.name);
     const fullBo = _getBaseAndOpt(g.full.name);
     setOpt1({name: halfBo?.opt||"절반", dur:g.half.dur||0, priceF:g.half.priceF||0, priceM:g.half.priceM||0, memberPriceF:g.half.memberPriceF||0, memberPriceM:g.half.memberPriceM||0});
@@ -151,7 +151,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
   const openNew=()=>{
     setEdit(null);
     setEditPair(null);
-    setForm({cat:defaultCatId,name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0,badgeText:"",badgeColor:"#ffffff",badgeBg:"#f97316",promoConfig:{},isActive:true,grantsMemberPrice:false});
+    setForm({cat:defaultCatId,name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,isCouple:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0,badgeText:"",badgeColor:"#ffffff",badgeBg:"#f97316",promoConfig:{},isActive:true,grantsMemberPrice:false});
     setUseOptions(false);
     setOpt1({name:"절반", dur:25, priceF:0, priceM:0, memberPriceF:0, memberPriceM:0});
     setOpt2({name:"전체", dur:40, priceF:0, priceM:0, memberPriceF:0, memberPriceM:0});
@@ -162,7 +162,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
     if (typeof pc === "string") { try { pc = JSON.parse(pc); } catch(e) { pc = {}; } }
     setEdit(s);
     setEditPair(null);
-    setForm({cat:s.cat||"",name:s.name||"",dur:s.dur||20,priceF:s.priceF||0,priceM:s.priceM||0,memberPriceF:s.memberPriceF||0,memberPriceM:s.memberPriceM||0,note:s.note||"",isPackage:!!s.isPackage,pkgCount:s.pkgCount||10,pkgPriceF:s.pkgPriceF||0,pkgPriceM:s.pkgPriceM||0,badgeText:s.badgeText||"",badgeColor:s.badgeColor||"#ffffff",badgeBg:s.badgeBg||"#f97316",promoConfig:pc||{},isActive:s.isActive!==false,grantsMemberPrice:!!s.grantsMemberPrice});
+    setForm({cat:s.cat||"",name:s.name||"",dur:s.dur||20,priceF:s.priceF||0,priceM:s.priceM||0,memberPriceF:s.memberPriceF||0,memberPriceM:s.memberPriceM||0,note:s.note||"",isPackage:!!s.isPackage,isCouple:!!s.isCouple,pkgCount:s.pkgCount||10,pkgPriceF:s.pkgPriceF||0,pkgPriceM:s.pkgPriceM||0,badgeText:s.badgeText||"",badgeColor:s.badgeColor||"#ffffff",badgeBg:s.badgeBg||"#f97316",promoConfig:pc||{},isActive:s.isActive!==false,grantsMemberPrice:!!s.grantsMemberPrice});
     setUseOptions(false);
     setSheet(true);
   };
@@ -220,7 +220,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
       const _saveCat = (data?.categories||[]).find(cc => cc.id === form.cat);
       const _saveIsPkg = _saveCat?.name === '패키지' ? true : !!form.isPackage;
       // pkgPriceF/M 폐기 (메인 가격 사용으로 통일) — 호환성 위해 0으로 저장
-      const baseCommon = {cat:form.cat,note:form.note,isPackage:_saveIsPkg,pkgCount:+form.pkgCount||0,pkgPriceF:0,pkgPriceM:0,badgeText:form.badgeText||null,badgeColor:form.badgeColor||null,badgeBg:form.badgeBg||null,promoConfig:Object.keys(cleanPc).length>0?cleanPc:null,isActive:form.isActive!==false,grantsMemberPrice:!!form.grantsMemberPrice};
+      const baseCommon = {cat:form.cat,note:form.note,isPackage:_saveIsPkg,isCouple:_saveIsPkg?!!form.isCouple:false,pkgCount:+form.pkgCount||0,pkgPriceF:0,pkgPriceM:0,badgeText:form.badgeText||null,badgeColor:form.badgeColor||null,badgeBg:form.badgeBg||null,promoConfig:Object.keys(cleanPc).length>0?cleanPc:null,isActive:form.isActive!==false,grantsMemberPrice:!!form.grantsMemberPrice};
       if (useOptions && editPair) {
         // 페어 편집: 양쪽 record 동시 업데이트, [pair:XX] 플래그 보존
         const pairId = _getPairId(editPair.full.note) || _getPairId(editPair.half.note) || uid().slice(0,8);
@@ -387,6 +387,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
                 {s.isPackage && (s.pkgCount > 0
                   ? <ABadge color={T.primary}>{`다회권 ${s.pkgCount}회`}</ABadge>
                   : <ABadge color={T.danger} bg={T.dangerLt||"#fee2e2"}>다회권 · 회수미설정</ABadge>)}
+                {s.isCouple && <ABadge color="#6B21A8" bg="#F3E8FF">커플 패키지</ABadge>}
                 {qtyOn(s.note)&&<ABadge color={T.female} bg={T.femaleLt}>복수 추가</ABadge>}
                 {s.grantsMemberPrice&&<ABadge color="#6B21A8" bg="#F3E8FF">⭐ 회원가</ABadge>}
                 {s.badgeText&&<span style={{display:"inline-block",padding:"2px 8px",borderRadius:10,fontSize:10,fontWeight:700,color:s.badgeColor||"#fff",background:s.badgeBg||T.primary}}>{s.badgeText}</span>}
@@ -498,6 +499,12 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
         {(_isPkgCat || form.isPackage) && <div style={{marginBottom:14}}>
           <AField label="회수 (다회권 발급 시 사용)"><input style={AInp} type="number" min="1" value={form.pkgCount||""} onChange={e=>set("pkgCount",e.target.value)} placeholder="예: 5, 10" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
           <div style={{fontSize:T.fs.xxs,color:T.textMuted,marginTop:4}}>※ 가격은 위 정상가/회원가 입력란을 그대로 사용합니다 (메인 가격 = 다회권 가격)</div>
+          <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginTop:12}}
+            title="커플 패키지 — 매출등록 시 구매자 + 상대방을 지정하면 각자에게 회수가 따로 발급됩니다">
+            <AToggle size="sm" on={!!form.isCouple} onChange={v=>set("isCouple",v)}/>
+            <span style={{fontSize:T.fs.sm,color:form.isCouple?T.primary:T.text,fontWeight:form.isCouple?700:400}}>커플 패키지</span>
+            <span style={{fontSize:T.fs.xxs,color:T.textMuted}}>구매 시 상대방 지정 → 구매자·상대방 각자 {(+form.pkgCount||0)}회씩 발급</span>
+          </label>
         </div>}
         </>;
       })()}
