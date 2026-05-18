@@ -1906,4 +1906,5 @@ v3.7.740의 대화 시각 추출(`_timeGuess`)에 — 추출 시각을 타임라
 - **발견**: 계좌마다 SMS의 잔액 표시 여부가 다름 — 새로 개통한 계좌(잠실 KB·위례 하나)는 잔액 줄이 없음. KB·하나·수협 패턴의 잔액 매칭을 전부 **옵셔널**로 변경(`_money()` 헬퍼 — None이면 0)
 - **8개 지점 전 계좌 등록 완료** (`.env BLISS_KB_ACCOUNTS`): 강남·왕십리·잠실·홍대(KB) / 천호·위례(하나) / 용산(수협) / 마곡(우리)
 - 검증: 우리·KB·하나·수협 1원 테스트 전부 `bank_deposits` 해당 지점 정상 기록
-- ⚠️ launchd가 60초마다 데몬을 실행하므로, 데몬 코드 편집 중에는 구버전 코드가 메시지를 소비할 수 있음 — 편집 후 누락분은 `~/.bliss-kb-sync/state.json`의 `last_rowid`를 되돌려 재처리(UNIQUE 제약으로 중복 INSERT는 무시됨)
+- ⚠️ launchd가 데몬을 주기 실행하므로, 데몬 코드 편집 중에는 구버전 코드가 메시지를 소비할 수 있음 — 편집 후 누락분은 `~/.bliss-kb-sync/state.json`의 `last_rowid`를 되돌려 재처리(UNIQUE 제약으로 중복 INSERT는 무시됨)
+- **폴링 간격 60초 → 15초 단축** (입금문자 반영 지연 최소화). `com.bliss.kb-sync.plist` `StartInterval`. 변경 시 `~/Library/LaunchAgents/`에 복사 후 `launchctl unload`+`load` 재등록 필요

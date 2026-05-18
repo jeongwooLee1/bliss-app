@@ -12,7 +12,7 @@
   <key>WorkingDirectory</key>
   <string>/Users/cripiss/TP005/bliss-app/mac-daemon</string>
   <key>StartInterval</key>
-  <integer>60</integer>
+  <integer>15</integer>
   <key>RunAtLoad</key>
   <true/>
   <key>StandardOutPath</key>
