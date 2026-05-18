@@ -105,40 +105,52 @@ def save_state(state):
 
 
 # ─── 은행별 SMS 파싱 ──────────────────────────────────
-# KB국민은행 입금 SMS:
-#   [Web발신] / [KB]MM/DD HH:MM / {계좌마스킹} / {입금자명} / 입금|출금 / {금액} / 잔액{잔액}
+# 은행마다 SMS 형식·발신번호 다름. 계좌별로 잔액 표시 여부도 갈림 → 잔액은 전부 옵셔널.
+#
+# KB국민은행 : [KB]MM/DD HH:MM / 계좌 / 입금자명 / 입금|출금 / 금액 [/ 잔액X]
 KB_PATTERN = re.compile(
     r'\[KB\]\s*(\d{2})/(\d{2})\s+(\d{2}):(\d{2})\s*\n+'
     r'([\w\*\-]+)\s*\n+'
-    r'(.+?)\s*\n+'
+    r'([^\n]+?)\s*\n+'
     r'(입금|출금)\s*\n+'
-    r'([\d,]+)\s*\n+'
-    r'잔액\s*([\d,]+)',
+    r'([\d,]+)'
+    r'(?:\s*\n+잔액\s*([\d,]+))?',
     re.DOTALL,
 )
 
-# 하나은행 입금 SMS:
-#   [Web발신] / 하나,MM/DD HH:MM / {계좌마스킹} / 입금|출금{금액}원 / {입금자명} / 잔액{잔액}원
+# 하나은행 : 하나,MM/DD HH:MM / 계좌 / 입금|출금{금액}원 / 입금자명 [/ 잔액{X}원]
 HANA_PATTERN = re.compile(
     r'하나\s*,\s*(\d{2})/(\d{2})\s+(\d{2}):(\d{2})\s*\n+'
     r'([\d\*\-]+)\s*\n+'
     r'(입금|출금)\s*([\d,]+)\s*원?\s*\n+'
-    r'(.+?)\s*\n+'
-    r'잔액\s*([\d,]+)\s*원?',
+    r'([^\n]+?)'
+    r'(?:\s*\n+잔액\s*([\d,]+)\s*원?)?'
+    r'\s*(?:\n|$)',
     re.DOTALL,
 )
 
-# 수협은행 입금 SMS:
-#   [Web발신] / 수협MM/DD,HH:MM / {계좌마스킹} / 입금|출금{금액}원 / 잔액{잔액}원 / {입금자명}
-#   — KB·하나와 다름: 헤더가 "수협MM/DD,HH:MM", 입금자명이 잔액 뒤 맨 끝 줄
+# 수협은행 : 수협MM/DD,HH:MM / 계좌 / 입금|출금{금액}원 [/ 잔액{X}원] / 입금자명(맨 끝)
 SH_PATTERN = re.compile(
     r'수협\s*(\d{2})/(\d{2})\s*,\s*(\d{2}):(\d{2})\s*\n+'
     r'([\d\*\-]+)\s*\n+'
     r'(입금|출금)\s*([\d,]+)\s*원?\s*\n+'
-    r'잔액\s*([\d,]+)\s*원?\s*\n+'
-    r'(.+?)\s*(?:\n|$)',
+    r'(?:잔액\s*([\d,]+)\s*원?\s*\n+)?'
+    r'([^\n]+?)\s*(?:\n|$)',
     re.DOTALL,
 )
+
+# 우리은행 : 우리 MM/DD HH:MM / 계좌 / 입금|출금 {금액}원 / 입금자명  (잔액 줄 없음)
+WOORI_PATTERN = re.compile(
+    r'우리\s+(\d{2})/(\d{2})\s+(\d{2}):(\d{2})\s*\n+'
+    r'([\d\*\-]+)\s*\n+'
+    r'(입금|출금)\s*([\d,]+)\s*원?\s*\n+'
+    r'([^\n]+?)\s*(?:\n|$)',
+    re.DOTALL,
+)
+
+
+def _money(s):
+    return int(s.replace(',', '')) if s else 0
 
 
 def parse_kb(text):
@@ -148,13 +160,8 @@ def parse_kb(text):
     if not m:
         return None
     _, _, _, _, masked, name, kind, amount_s, balance_s = m.groups()
-    return {
-        'account_masked': masked,
-        'transferer_name': name.strip(),
-        'kind': kind,
-        'amount': int(amount_s.replace(',', '')),
-        'balance': int(balance_s.replace(',', '')),
-    }
+    return {'account_masked': masked, 'transferer_name': name.strip(), 'kind': kind,
+            'amount': _money(amount_s), 'balance': _money(balance_s)}
 
 
 def parse_hana(text):
@@ -164,13 +171,8 @@ def parse_hana(text):
     if not m:
         return None
     _, _, _, _, masked, kind, amount_s, name, balance_s = m.groups()
-    return {
-        'account_masked': masked,
-        'transferer_name': name.strip(),
-        'kind': kind,
-        'amount': int(amount_s.replace(',', '')),
-        'balance': int(balance_s.replace(',', '')),
-    }
+    return {'account_masked': masked, 'transferer_name': name.strip(), 'kind': kind,
+            'amount': _money(amount_s), 'balance': _money(balance_s)}
 
 
 def parse_sh(text):
@@ -180,20 +182,27 @@ def parse_sh(text):
     if not m:
         return None
     _, _, _, _, masked, kind, amount_s, balance_s, name = m.groups()
-    return {
-        'account_masked': masked,
-        'transferer_name': name.strip(),
-        'kind': kind,
-        'amount': int(amount_s.replace(',', '')),
-        'balance': int(balance_s.replace(',', '')),
-    }
+    return {'account_masked': masked, 'transferer_name': name.strip(), 'kind': kind,
+            'amount': _money(amount_s), 'balance': _money(balance_s)}
+
+
+def parse_woori(text):
+    if not text:
+        return None
+    m = WOORI_PATTERN.search(text)
+    if not m:
+        return None
+    _, _, _, _, masked, kind, amount_s, name = m.groups()
+    return {'account_masked': masked, 'transferer_name': name.strip(), 'kind': kind,
+            'amount': _money(amount_s), 'balance': 0}
 
 
 # 은행 정의 — 발신번호 → 파서 매핑
 BANKS = [
-    {'name': 'KB',   'sender': '+8216449999', 'parse': parse_kb,   'source': 'kb_sms'},
-    {'name': '하나', 'sender': '+8215991111', 'parse': parse_hana, 'source': 'hana_sms'},
-    {'name': '수협', 'sender': '+8215881515', 'parse': parse_sh,   'source': 'sh_sms'},
+    {'name': 'KB',   'sender': '+8216449999', 'parse': parse_kb,    'source': 'kb_sms'},
+    {'name': '하나', 'sender': '+8215991111', 'parse': parse_hana,  'source': 'hana_sms'},
+    {'name': '수협', 'sender': '+8215881515', 'parse': parse_sh,    'source': 'sh_sms'},
+    {'name': '우리', 'sender': '+8215885000', 'parse': parse_woori, 'source': 'woori_sms'},
 ]
 
 
