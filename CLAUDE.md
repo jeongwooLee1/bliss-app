@@ -1885,3 +1885,10 @@ v3.7.740의 대화 시각 추출(`_timeGuess`)에 — 추출 시각을 타임라
 - 메시지함 입금문자 탭(`BankDeposits`)의 입금 카드가 어느 지점 입금인지 안 보이던 문제 — 상태 배지 옆에 지점명 칩 추가 (`branches`에서 `d.bid`로 조회). `[미매칭] [천호점] 이정우` 형태
 - 입금문자 목록은 기존부터 `userBranches` 기준 지점 필터 (`bid=in.(userBranches)`) — 다른 지점 입금은 안 보이고, 연계지점(branchGroup 자동 머지)은 함께 보임. 대표 계정은 userBranches가 전 지점이라 모두 표시 → 지점 칩이 특히 유용
 - **적용**: v3.7.754 라이브 배포(version.txt 검증, CF 퍼지 success)
+
+### 서버 — 외국 번호 고객 중복 생성 버그 fix (2026-05-18, React 변경 0)
+- **증상**: 네이버 예약 외국 고객이 고객관리에 수십 건 중복 — Taevion(태국 `+66837777677`) 32건, rania(미국 `+16146877948`) 12건. 5분 재스크랩마다 1건씩 신규 생성
+- **원인**: `bliss_naver.py` `find_cust_by_phone` 전화 정규화가 한국 번호 위주 — 외국 번호의 `+`를 떼고 숫자만으로 조회 후보 생성. DB 저장값은 `+` 포함(`+66...`)이라 후보와 불일치 → 매번 "기존 고객 없음" → 신규 INSERT. (`+82`만 국제형식 후보 추가, 그 외 국가번호 미처리). 중복이 쌓이면 멀티매칭으로 더 못 잡아 폭주
+- **fix**: `find_cust_by_phone` `_candidates`에 원본 전화(`_raw_phone` — `+` 포함)와 `'+' + _digits` 추가 → 외국 번호도 정상 매칭. `/book-submit`·AI예약·방문자 매칭 등 `find_cust_by_phone` 호출 전부 혜택
+- **정리**: Taevion 32→1, rania 12→1. 가장 오래된 레코드(= 예약·매출이 가리키던 것) 유지, 나머지 삭제. sales/customer_packages/customer_shares 참조는 전부 keeper를 가리켜 안전
+- **적용**: 서버 직접 패치(백업 `bliss_naver.py.bak_pre_intlphone_*`) + `systemctl restart bliss-naver`. React 변경 0 → 버전업·배포 불필요
