@@ -1799,3 +1799,16 @@ v3.7.740의 대화 시각 추출(`_timeGuess`)에 — 추출 시각을 타임라
 **fix**: `db_upsert` SELECT 2곳(기본 + race 재조회)에 `schedule_log,time,date` 추가 → 가드 복구. 이제 schedule_log(수동 이동 흔적) 있으면 time·date 둘 다 재스크랩에서 보존.
 **적용**: 서버 직접 패치(백업 `bliss_naver.py.bak_pre_selfix_*`) + `systemctl restart`. React 변경 0.
 **유의**: `time` 자체는 PRESERVE_FIELDS로 4/10부터 이미 보존돼 옴 — 서버 재스크랩은 `time`을 안 되돌림(이승혜 예약 DB 데이터로 확인: 직원이 옮긴 값 그대로 살아있음). 수연이 본 'time 되돌림'은 서버 재스크랩 경로가 아니라 클라이언트(타임라인) 쪽 의심 — `handleSave`의 이동-저장이 `sb.update(...).catch(console.error)` fire-and-forget(저장 실패 시 무경고·무재시도)이라 네트워크 실패 시 조용히 유실 가능. 정확한 재현 케이스 확보 후 추가 조사 필요(별도).
+
+### v3.7.747 — 새로고침 로딩 오버레이 + 요금제 지점별 사용내역 정확 집계 (2026-05-18)
+
+#### 새로고침 버튼 중앙 로딩 표시
+상단 네이버 갱신 버튼 클릭 시 — 아무 피드백이 없어 "안 되는 줄" 오해. `isRefreshing`(선언만 돼 있고 미사용이던 state) 재활용 → 클릭 시 화면 중앙에 회전 스피너 + "네이버 갱신 중…" 오버레이(`createPortal`로 body에). 갱신 끝나 `window.location.reload()` 될 때까지 유지.
+
+#### 요금제 지점별 사용내역 — 1000행 캡 버그 fix
+**증상**: 요금제 화면 지점별 사용내역에서 홍대점 알림톡 0·SMS 없음 등 집계가 엉망.
+**원인**: `AdminPlan`이 `billing_usage_logs`를 이번 달 전체·행 제한 없이 fetch → PostgREST가 1000행에서 잘림. 이번 달 로그 ~23,000건 중 `ai_call`이 ~94%(약 22,000건)라 그 1000칸을 ai_call이 거의 다 차지 → alimtalk·sms·whatsapp 지점별 집계가 사실상 랜덤·대부분 0. (DB 데이터는 정상 — 표시만 깨짐)
+**fix**: RPC `get_billing_usage_summary(p_business_id, p_since)` 신규 — `billing_usage_logs`를 서버에서 per-branch·per-kind로 집계(`sum(count)`/`sum(points_charged)`, 결과 ~32행)해 반환. `AdminPlan`이 행 fetch 대신 이 RPC 사용 + `usageByBranch`를 `cnt`/`points`로. 1000행 캡 무관, 전 지점 정확.
+**검수**: 전 8지점 알림톡·SMS·AI호출 데이터 정상 확인(홍대점 알림톡 111·SMS 30 등). WhatsApp은 강남점만(205) — 공통 단일번호라 발송 과금이 전부 강남 귀속(설계), 비강남 0이 정상.
+**적용**: v3.7.747 라이브 배포(version.txt 검증, CF 퍼지 success). RPC는 DB에 이미 생성됨.
+**미완(별도)**: `AdminAlimtalkLog`(`limit=500`)·`AdminSmsLog` 상세 탭도 같은 부류 — `alimtalk_queue`를 캡된 목록으로 받아 지점별 정산 합계를 내므로 긴 기간 조회 시 부정확. 같은 식으로 집계 RPC화 필요.

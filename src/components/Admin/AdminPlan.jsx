@@ -41,7 +41,7 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
     const [s, b, u, h] = await Promise.all([
       fetch(`${SB_URL}/rest/v1/billing_subscriptions?business_id=eq.${biz.id}&select=*`, { headers: H }).then(r => r.json()),
       fetch(`${SB_URL}/rest/v1/billing_balances?business_id=eq.${biz.id}&select=*`, { headers: H }).then(r => r.json()),
-      fetch(`${SB_URL}/rest/v1/billing_usage_logs?business_id=eq.${biz.id}&select=branch_id,kind,count,points_charged&created_at=gte.${new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()}`, { headers: H }).then(r => r.json()),
+      fetch(`${SB_URL}/rest/v1/rpc/get_billing_usage_summary`, { method: 'POST', headers: { ...H, 'Content-Type': 'application/json' }, body: JSON.stringify({ p_business_id: biz.id, p_since: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString() }) }).then(r => r.json()),
       fetch(`${SB_URL}/rest/v1/billing_usage_logs?business_id=eq.${biz.id}&select=branch_id,kind,count,points_charged,ref_table,created_at&order=created_at.desc&limit=100`, { headers: H }).then(r => r.json()),
     ])
     setSubs(Array.isArray(s) ? s : [])
@@ -68,8 +68,8 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
     const byBr = {}
     for (const u of usage) {
       if (!byBr[u.branch_id]) byBr[u.branch_id] = { total: 0, kinds: {} }
-      byBr[u.branch_id].total += u.points_charged || 0
-      byBr[u.branch_id].kinds[u.kind] = (byBr[u.branch_id].kinds[u.kind] || 0) + (u.count || 0)
+      byBr[u.branch_id].total += u.points || 0
+      byBr[u.branch_id].kinds[u.kind] = (byBr[u.branch_id].kinds[u.kind] || 0) + (u.cnt || 0)
     }
     return byBr
   }, [usage])

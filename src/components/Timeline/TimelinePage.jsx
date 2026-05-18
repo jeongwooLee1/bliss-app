@@ -3804,6 +3804,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           {/* 새로고침 + 네이버 갱신 통합 — 네이버 list + 막기 상태 즉시 동기화 후 페이지 reload */}
           <button onClick={async (e)=>{
             const btn = e.currentTarget; btn.disabled = true;
+            setIsRefreshing(true);
             try {
               const currentBranches = (data?.branches||[]).filter(b => userBranches.includes(b.id) && b.naverBizId);
               const targets = currentBranches.length ? currentBranches : (data?.branches||[]).filter(b => b.naverBizId);
@@ -5627,6 +5628,20 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       </div>}
 
       {showModal && <TimelineModal item={modalData} onSave={handleSave} onDelete={handleDelete} onDeleteRequest={handleDeleteRequest} naverColShow={naverColShow} onClose={()=>_mc(()=>{setShowModal(false);setModalData(null)})} selBranch={userBranches[0]} userBranches={userBranches} data={{...data, staff: BASE_EMP_LIST.map(e=>({id:e.id,bid:e.branch_id,dn:e.id,name:e.id,branch_id:e.branch_id})), workingStaffIds: (() => { const ws = getWorkingStaff(modalData?.bid || userBranches[0], selDate); return ws ? ws.map(e=>e.id) : null; })() }} setData={setData} setPage={setPage} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust} betaGroupMode={betaGroupMode}/>}
+
+      {isRefreshing && createPortal(
+        <div style={{position:"fixed",inset:0,zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.35)"}}>
+          <style>{`@keyframes tlRefreshSpin{to{transform:rotate(360deg)}}`}</style>
+          <div style={{background:"#fff",borderRadius:16,padding:"30px 40px",display:"flex",flexDirection:"column",alignItems:"center",gap:14,boxShadow:"0 10px 36px rgba(0,0,0,0.28)"}}>
+            <svg width="46" height="46" viewBox="0 0 24 24" style={{animation:"tlRefreshSpin 0.85s linear infinite"}}>
+              <g fill="none" stroke="#03C75A" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></g>
+            </svg>
+            <div style={{fontSize:15,fontWeight:800,color:"#333"}}>네이버 갱신 중…</div>
+            <div style={{fontSize:12,color:"#999"}}>잠시만 기다려 주세요</div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {showQuickBook && <QuickBookModal
         onClose={()=>setShowQuickBook(false)}
