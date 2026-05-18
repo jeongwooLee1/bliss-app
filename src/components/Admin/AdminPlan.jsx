@@ -18,8 +18,9 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
   const [features, setFeaturesLocal] = useState(() => extractFeatures(biz.settings, biz.id, biz.plan))
   const [subs, setSubs] = useState([])      // billing_subscriptions
   const [balances, setBalances] = useState([]) // billing_balances
-  const [usage, setUsage] = useState([])    // 이번 달 usage 집계
+  const [usage, setUsage] = useState([])    // 선택 월 usage 집계
   const [history, setHistory] = useState([])  // 최근 사용 히스토리 (시간순 50건)
+  const [monthSel, setMonthSel] = useState('this')  // 'this' | 'last' — 지점별 사용량 조회 월
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
   // 포인트 충전·환불 모달 (2026-05-14 v3.7.718)
@@ -34,22 +35,37 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
     setFeaturesLocal(extractFeatures(biz.settings, biz.id, biz.plan))
   }, [biz.id, biz.plan, biz.settings, biz.industry])
 
-  // billing 데이터 로드
+  // billing 데이터 로드 (월 무관: 구독·잔액·차감 히스토리)
   const loadBilling = async () => {
     if (!biz.id) return
     const H = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }
-    const [s, b, u, h] = await Promise.all([
+    const [s, b, h] = await Promise.all([
       fetch(`${SB_URL}/rest/v1/billing_subscriptions?business_id=eq.${biz.id}&select=*`, { headers: H }).then(r => r.json()),
       fetch(`${SB_URL}/rest/v1/billing_balances?business_id=eq.${biz.id}&select=*`, { headers: H }).then(r => r.json()),
-      fetch(`${SB_URL}/rest/v1/rpc/get_billing_usage_summary`, { method: 'POST', headers: { ...H, 'Content-Type': 'application/json' }, body: JSON.stringify({ p_business_id: biz.id, p_since: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString() }) }).then(r => r.json()),
       fetch(`${SB_URL}/rest/v1/billing_usage_logs?business_id=eq.${biz.id}&select=branch_id,kind,count,points_charged,ref_table,created_at&order=created_at.desc&limit=100`, { headers: H }).then(r => r.json()),
     ])
     setSubs(Array.isArray(s) ? s : [])
     setBalances(Array.isArray(b) ? b : [])
-    setUsage(Array.isArray(u) ? u : [])
     setHistory(Array.isArray(h) ? h : [])
   }
   useEffect(() => { loadBilling() }, [biz.id])
+
+  // 지점별 사용량 — 선택 월(이번 달/지난달) 기준 재집계
+  const loadUsage = async () => {
+    if (!biz.id) { setUsage([]); return }
+    const now = new Date()
+    const y = now.getFullYear(), m = now.getMonth()
+    const since = (monthSel === 'last' ? new Date(y, m - 1, 1) : new Date(y, m, 1)).toISOString()
+    const until = monthSel === 'last' ? new Date(y, m, 1).toISOString() : null
+    const body = { p_business_id: biz.id, p_since: since }
+    if (until) body.p_until = until
+    const H = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' }
+    const u = await fetch(`${SB_URL}/rest/v1/rpc/get_billing_usage_summary`, {
+      method: 'POST', headers: H, body: JSON.stringify(body),
+    }).then(r => r.json()).catch(() => [])
+    setUsage(Array.isArray(u) ? u : [])
+  }
+  useEffect(() => { loadUsage() }, [biz.id, monthSel])
 
   const groupedFeatures = useMemo(() => {
     return [
@@ -305,7 +321,21 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
     {/* 지점별 잔액 + 이번 달 사용량 */}
     {balances.length > 0 && (
       <div style={{marginBottom:16}}>
-        <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.text,marginBottom:8}}>지점별 잔액 + 이번 달 사용량</div>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap',marginBottom:8}}>
+          <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.text}}>지점별 잔액 + 사용량</div>
+          <div style={{display:'flex',gap:4}}>
+            {[['this','이번 달'],['last','지난달']].map(([k,lbl]) => (
+              <button key={k} onClick={()=>setMonthSel(k)}
+                style={{
+                  padding:'4px 12px',borderRadius:6,
+                  border:`1px solid ${monthSel===k?T.primary:T.border}`,
+                  background:monthSel===k?T.primaryLt:'#fff',
+                  color:monthSel===k?T.primary:T.textSub,
+                  fontSize:T.fs.xxs,fontWeight:T.fw.bolder,cursor:'pointer',fontFamily:'inherit',
+                }}>{lbl}</button>
+            ))}
+          </div>
+        </div>
         <div className="card" style={{overflow:'hidden'}}>
           {branches.map((br, i) => {
             const sub = subs.find(s => s.branch_id === br.id)
@@ -319,7 +349,7 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
                 </div>
                 <div style={{textAlign:'right'}}>
                   <div style={{fontSize:T.fs.lg,fontWeight:T.fw.black,color:T.primary}}>{(bal?.balance||0).toLocaleString()}P</div>
-                  <div style={{fontSize:T.fs.xxs,color:T.textMuted}}>이번 달 사용 {u.total.toLocaleString()}P</div>
+                  <div style={{fontSize:T.fs.xxs,color:T.textMuted}}>{monthSel==='last'?'지난달':'이번 달'} 사용 {u.total.toLocaleString()}P</div>
                   {isOwner && (
                     <div style={{display:'flex',gap:6,marginTop:6,justifyContent:'flex-end'}}>
                       <button onClick={()=>setTopupModal({branchId:br.id,branchName:br.short||br.name,amount:30000})}

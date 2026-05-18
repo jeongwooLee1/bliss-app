@@ -1812,3 +1812,21 @@ v3.7.740의 대화 시각 추출(`_timeGuess`)에 — 추출 시각을 타임라
 **검수**: 전 8지점 알림톡·SMS·AI호출 데이터 정상 확인(홍대점 알림톡 111·SMS 30 등). WhatsApp은 강남점만(205) — 공통 단일번호라 발송 과금이 전부 강남 귀속(설계), 비강남 0이 정상.
 **적용**: v3.7.747 라이브 배포(version.txt 검증, CF 퍼지 success). RPC는 DB에 이미 생성됨.
 **미완(별도)**: `AdminAlimtalkLog`(`limit=500`)·`AdminSmsLog` 상세 탭도 같은 부류 — `alimtalk_queue`를 캡된 목록으로 받아 지점별 정산 합계를 내므로 긴 기간 조회 시 부정확. 같은 식으로 집계 RPC화 필요.
+
+### billing 데이터 정리 + v3.7.748 (2026-05-18)
+
+#### billing_usage_logs `ai_call` 버그 중복분 21,334행 삭제 (DB only, 코드 변경 0)
+- 요금제 페이지 지점별 `ai_call`이 실제의 ~130배로 부풀려 보인다는 보고. 조사 결과 — 5/15에 고친 `ai_analyze_reservation` 무한 재호출 버그(`?id=eq.{rid}`→`?reservation_id=eq.{rid}`)가 5/4~5/15 동안 쌓은 과거 잔재.
+- `ai_analyze_reservation` 21,728행 = 실제 분석 예약 394건 + 중복 21,334행 (예: 예약 #1220472177 한 건이 908번 청구). 5/15 14시 이후 재호출 0건 → fix는 정상 작동 중.
+- `ref_table='ai_analyze_reservation'`에서 `ref_id`당 가장 이른 1행만 남기고 21,334행 DELETE. 이번달 `ai_call` 21,882→548, `ai_analyze_reservation` 394행. `deduct_billing` 비활성이라 재무 영향 0(순수 어드민 사용량 표시 정확화).
+- **유의**: `billing_usage_logs`는 5/4부터 기록 시작 + 5/4~5/15 구간은 중복 삭제됨 → 그 구간 `ai_call` 통계는 지점당 1건/예약만 남음(정상).
+
+#### billing_balances 음수 잔액 3개 지점 → 0 (DB only)
+- 요금제 페이지 왕십리·천호·용산점 잔액이 `-5P`로 표시. 5/14 전 지점 0 리셋 후 `deduct_billing` 비활성화(5/15) 직전 틈에 3개 지점이 5P씩 차감된 채 멈춤.
+- `billing_balances`에서 `biz_khvurgshb` 음수 3행 → `balance=0`. 토스 심사 "balance 영영 0" 정책과 일치, 실결제 0건이라 환불 무관.
+
+#### v3.7.748 — 요금제 사용내역 이번달/지난달 + 쉐어 검색
+- **RPC `get_billing_usage_summary`에 `p_until timestamptz default null` 상한 인자 추가** — `created_at < p_until` 조건. default null이라 기존 2-arg 호출 호환. DROP + 3-arg로 재생성(migration `billing_usage_summary_add_until`).
+- **AdminPlan.jsx — "지점별 잔액 + 사용량" 섹션에 `[이번 달][지난달]` 토글**: `monthSel` state, 선택 월 경계로 `p_since`/`p_until` 계산해 usage 재집계. `loadBilling`(월 무관: 구독·잔액·차감히스토리)과 `loadUsage`(월 의존) 분리, `loadUsage`는 `[biz.id, monthSel]` effect. 섹션 라벨·지점별 "사용 NNN P" 문구도 선택 월 반영. (참고: `billing_usage_logs`가 5/4부터라 지난달=4월은 0P 표시 — 정상)
+- **CustomersPage.jsx ShareCustModal — 쉐어 고객 추가 검색을 메인 고객검색과 동일하게**: 검색 필드 `["name","name2","phone","phone2","email","cust_num"]`→`["name","name2","phone","phone2","email","memo","cust_num"]`(`memo` 추가, buildFilter와 동일 필드셋), `limit` 20→200(메인 검색 `PAGE_SIZE×4`와 동일). 증상="회원번호 검색 안 됨" — 번호는 `phone`/`phone2` 부분일치 충돌이 심해 `created_at` 최신순 `limit=20`에서 실제 `cust_num` 매칭이 밀려나던 게 핵심 원인. `memo`에 적힌 번호도 이제 검색됨.
+- **적용**: v3.7.748 라이브 배포(version.txt 검증 3.7.748, CF 퍼지 success). RPC·migration은 DB에 이미 적용됨.

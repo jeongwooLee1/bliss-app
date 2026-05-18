@@ -2304,8 +2304,8 @@ function ShareCustModal({ baseCust, existingShareIds, onPick, onClose, setData }
     if (q.trim().length < 2) { setResults([]); return; }
     const t = setTimeout(async () => {
       try {
-        const cond = buildTokenSearch(q.trim(), ["name","name2","phone","phone2","email","cust_num"]);
-        const rows = await sb.get("customers", `&business_id=eq.${_activeBizId}${cond}&limit=20`);
+        const cond = buildTokenSearch(q.trim(), ["name","name2","phone","phone2","email","memo","cust_num"]);
+        const rows = await sb.get("customers", `&business_id=eq.${_activeBizId}${cond}&limit=200`);
         setResults(fromDb("customers", rows||[]));
       } catch(e) { console.warn("share search fail", e); setResults([]); }
     }, 300);
