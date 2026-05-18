@@ -2891,6 +2891,16 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
         pushDetail(`[보유권 차감] ${baseName}`, v, 1, 'pkg_deduct');
       });
     } catch(e) { console.warn("[sale_details pkgUse]", e); }
+    // 구매 즉시 사용 — 오늘 산 패키지를 같은 매출에서 N회 사용한 기록 (매출 상세 표시용)
+    try {
+      newPkgPurchases.forEach(svc => {
+        const _u = Math.max(0, Math.min(parsePkgCount(svc), Number(usePkgToday[svc.id] || 0)));
+        if (_u > 0) {
+          const baseName = (svc.name||"").split("(")[0].replace(/\s*\d+회$/,"").trim() || svc.name || "다회권";
+          pushDetail(`[보유권 사용] ${baseName}`, 0, _u, 'pkg_use');
+        }
+      });
+    } catch(e) { console.warn("[sale_details usePkgToday]", e); }
     // 쉐어 남녀 보정금 기록 (id_nfv71exl14 수정요청)
     if (shareSurchargeTotal > 0) {
       pushDetail("[쉐어 보정금] 여→남 추가금", shareSurchargeTotal, 1, 'share_surcharge');

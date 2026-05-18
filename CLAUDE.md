@@ -1863,3 +1863,10 @@ v3.7.740의 대화 시각 추출(`_timeGuess`)에 — 추출 시각을 타임라
 - 상태: 미적용 행은 주황 배경 + `[상대방 지정]` 버튼 / 연결완료는 초록 배지 `커플 연결 완료 · ↔ 상대방이름`(같은 `커플:<gid>` sibling 조회로 상대방 표시)
 - `applyPartner`: 처리 후 행 제거 대신 로컬 state 업데이트(해당 행 상태 갱신 + 상대방 행 추가) → 처리해도 목록에 남아 현황 확인 가능
 - **적용**: v3.7.752 라이브 배포(version.txt 검증, CF 퍼지 success)
+
+### v3.7.753 — 수정요청 fix: 매출 상세 보유권 사용 라인 / 시간 이동 되돌림 (2026-05-18)
+- **민정 `id_xzq2s91ewv`** — 패키지 구매 + 즉시 1회 사용 시 매출 상세에 `[보유권 사용]` 라인이 안 뜨던 문제(보유권 차감 자체는 정상). `SaleForm` sale_details 생성에 `usePkgToday`(구매 즉시 사용) 기반 `[보유권 사용]` 라인 추가 — 0원, qty=사용수, `item_kind=pkg_use`. 편집 모드는 `^\[보유권` 가드로 items 프리필 제외 + sale_details 재생성 안 함 → 무영향
+- **수연 `id_f19sih2au8`** — 타임라인 시간 이동 시 이전으로 되돌아감. 원인: `confirmChange`(알림톡 팝업 경로 이동 저장)가 이동값을 state(`data.reservations`의 `r`)에서 읽는데, 팝업이 떠 있는 동안 폴링/Realtime이 state를 이동 전 DB값으로 덮으면 옛 시간이 저장됨. 팝업 없는 즉시저장 경로는 드래그 스냅(`snap`)을 직접 써서 정상이었음. **fix**: `confirmChange` move 블록을 스냅(`d`) 기준으로 재작성 — time/room/bid/staff/dur 전부 `d`(snap)에서 계산, `r`는 fallback. 저장 후 state도 스냅 기준 재반영
+- 수정요청 3건 전부 done 처리 (현아 `id_eih96ttwa0` 커플 패키지 — v3.7.749~752로 구현 완료)
+- **적용**: v3.7.753 라이브 배포(version.txt 검증, CF 퍼지 success)
+- **유의**: 수연 시간이동 건은 명확한 재현 케이스 없이 코드 분석으로 잡은 fix(팝업 경로의 stale-state 읽기) — 재발 시 추가 조사 필요

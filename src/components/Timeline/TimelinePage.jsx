@@ -3429,28 +3429,32 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     const { type, block, data: d } = pendingChange;
     // 이미 미리보기로 state에 반영됨 → DB만 저장
     if (type === "move") {
-      // data state에서 최신 값 읽기 (팝업 후이므로 갱신되어 있음)
-      const r = (data?.reservations||[]).find(r => r.id === block.id);
-      // d(=snap)에서 직접 계산한 값도 fallback으로 사용
-      const targetRoom = allRooms.find(rm => rm.id === d?.roomId);
-      const fallbackStaff = targetRoom?.isStaffCol ? targetRoom.staffId : "";
-      if (r) {
-        const _newTime = r.time || d?.time;
-        const _log = block.isSchedule ? null : buildScheduleChangeLog(block.date, block.time, block.date, _newTime);
-        // end_time/dur도 함께 저장 (state엔 미리보기로 반영됐지만 DB엔 보내야 함)
-        const _trueDur = blockDurMin(r);
-        const [_sh,_sm] = _newTime.split(":").map(Number);
-        const _eMin = _sh*60+_sm+_trueDur;
-        const _endTime = `${String(Math.floor(_eMin/60)).padStart(2,"0")}:${String(_eMin%60).padStart(2,"0")}`;
-        const _upd = {
-          room_id: r.roomId || d?.roomId || "", time: _newTime, end_time: _endTime, dur: _trueDur,
-          bid: r.bid || d?.bid, staff_id: r.staffId || fallbackStaff || null
-        };
-        // 일정변경 로그는 schedule_log 컬럼에 누적 (memo는 건드리지 않음)
-        if (_log) _upd.schedule_log = prependScheduleLog(_log, r.scheduleLog || "");
-        sb.update("reservations", block.id, _upd).catch(console.error);
-        if (_log) setData(prev => ({...prev, reservations: (prev?.reservations||[]).map(x => x.id===block.id ? {...x, scheduleLog: _upd.schedule_log} : x)}));
-      }
+      // ⚠️ 시간·룸·지점은 드래그 스냅(d) 기준 — 팝업이 떠 있는 동안 폴링/Realtime이
+      //    state(data.reservations)를 이동 전 DB값으로 되돌려도 저장값이 흔들리지 않도록.
+      const r = (data?.reservations||[]).find(rv => rv.id === block.id);
+      const _newTime = d?.time   || r?.time   || block.time;
+      const _newRoom = d?.roomId || r?.roomId || block.roomId || "";
+      const _newBid  = d?.bid    || r?.bid    || block.bid;
+      const _toNaver = String(_newRoom).startsWith("nv_");
+      const _tgtRoom = allRooms.find(rm => rm.id === _newRoom);
+      const _newStaff = _toNaver ? "" : (_tgtRoom?.isStaffCol ? _tgtRoom.staffId : "");
+      const _trueDur = blockDurMin(r || block);
+      const [_sh,_sm] = String(_newTime).split(":").map(Number);
+      const _eMin = _sh*60 + _sm + _trueDur;
+      const _endTime = `${String(Math.floor(_eMin/60)).padStart(2,"0")}:${String(_eMin%60).padStart(2,"0")}`;
+      const _log = block.isSchedule ? null : buildScheduleChangeLog(block.date, block.time, block.date, _newTime);
+      const _upd = {
+        room_id: _newRoom, time: _newTime, end_time: _endTime, dur: _trueDur,
+        bid: _newBid, staff_id: _newStaff || null,
+      };
+      if (_log) _upd.schedule_log = prependScheduleLog(_log, r?.scheduleLog || "");
+      sb.update("reservations", block.id, _upd).catch(console.error);
+      // state 재반영 — 팝업 중 폴링이 되돌렸을 수 있으므로 스냅 기준으로 다시 확정
+      setData(prev => ({...prev, reservations: (prev?.reservations||[]).map(x => x.id===block.id ? {
+        ...x, time:_newTime, endTime:_endTime, dur:_trueDur, roomId:_newRoom, bid:_newBid,
+        staffId: (_toNaver || _tgtRoom?.isStaffCol) ? _newStaff : x.staffId,
+        ...(_log ? { scheduleLog: _upd.schedule_log } : {}),
+      } : x)}));
     }
     if (type === "resize") {
       const r = (data?.reservations||[]).find(r => r.id === block.id);
