@@ -1840,4 +1840,12 @@ v3.7.740의 대화 시각 추출(`_timeGuess`)에 — 추출 시각을 타임라
 - **ShareCustModal 분리**: CustomersPage 인라인 정의를 `src/components/Customers/ShareCustModal.jsx`로 추출(CustomersPage↔SaleForm 순환 import 회피). `titleLabel` prop 추가. 검색 필드는 메인 고객검색과 동일(`memo` 포함, limit 200).
 - **멀티테넌트**: 코드에 특정 상품 ID·매장명 하드코딩 0. `is_couple` 플래그로만 분기 — 어느 매장이든 자기 패키지 상품을 시술상품관리에서 커플로 지정.
 - **적용**: v3.7.749 라이브 배포(version.txt 검증, CF 퍼지 success).
-- **유의**: 커플 보유권 2행은 note의 `커플:<gid>`로 묶임 — 파트너 변경 시 이 gid로 짝 행 식별. 신규 구매분만 적용 — 기존 커플 패키지 구매자 소급 적용은 별도 마이그레이션 페이지(진행 중, HANDOFF 참고).
+- **유의**: 커플 보유권 2행은 note의 `커플:<gid>`로 묶임 — 파트너 변경 시 이 gid로 짝 행 식별. 신규 구매분만 적용 — 기존 커플 패키지 구매자 소급 적용은 v3.7.750 마이그레이션 페이지 참고.
+
+### v3.7.750 — 커플 패키지 기존 구매자 소급 적용 페이지 (2026-05-18)
+- 신규 `AdminCouplePkgMigrate.jsx` — 관리설정 → 사업장 관리 → "커플 패키지 소급 적용" (slug `couple-pkg-migrate`)
+- `services.is_couple=true` 상품을 구버전 방식(보유권 1행)으로 구매한 케이스(`customer_packages` 중 service가 커플 상품인데 note에 `커플:` 없음)를 표로 모음. 고객/시술명 검색 지원
+- 행별 "상대방 지정" → `ShareCustModal`로 상대방 선택 → 상대방에게 같은 회수 보유권 INSERT(`used_count=0`) + 기존행·신규행 둘 다 note에 `커플:<gid>` + `customer_shares` 연결(중복 시 생략). 처리된 행은 목록에서 제거
+- `AdminPage.jsx`: import + `TAB_SLUGS`(`couple-pkg-migrate`) + 사업장 관리 메뉴 항목 + 렌더 등록
+- 멀티테넌트 — `is_couple` 플래그로만 대상 판별, 하드코딩 0. 어느 매장이든 자기 커플 상품 구매자가 자동으로 대상에 잡힘
+- **적용**: v3.7.750 라이브 배포(version.txt 검증, CF 퍼지 success)
