@@ -1880,3 +1880,8 @@ v3.7.740의 대화 시각 추출(`_timeGuess`)에 — 추출 시각을 타임라
 - 검증: 하나 1원 테스트 입금(이정우) → `bank_deposits` 천호점(`br_xu60omgdf`) 정상 기록 확인
 - launchd 재등록 불필요 — plist는 동일 스크립트를 60초마다 실행, 다음 주기에 새 코드·`.env` 자동 적용
 - `bank_deposits.source`: KB=`kb_sms`, 하나=`hana_sms`
+
+### v3.7.754 — 입금문자 카드에 지점명 표시 (2026-05-18)
+- 메시지함 입금문자 탭(`BankDeposits`)의 입금 카드가 어느 지점 입금인지 안 보이던 문제 — 상태 배지 옆에 지점명 칩 추가 (`branches`에서 `d.bid`로 조회). `[미매칭] [천호점] 이정우` 형태
+- 입금문자 목록은 기존부터 `userBranches` 기준 지점 필터 (`bid=in.(userBranches)`) — 다른 지점 입금은 안 보이고, 연계지점(branchGroup 자동 머지)은 함께 보임. 대표 계정은 userBranches가 전 지점이라 모두 표시 → 지점 칩이 특히 유용
+- **적용**: v3.7.754 라이브 배포(version.txt 검증, CF 퍼지 success)

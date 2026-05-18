@@ -383,6 +383,8 @@ export default function BankDeposits({ data, branches=[], userBranches=[], curre
         {!loading && list.length===0 && <div style={{padding:30,textAlign:'center',color:T.textMuted,fontSize:T.fs.sm}}>입금 내역이 없습니다.</div>}
         {!loading && list.map(d => {
           const status = d.status || 'pending';
+          const _br = branches.find(b => b.id === d.bid);
+          const brName = _br ? (_br.short || _br.name || '') : '';
           return (
             <div key={d.id} style={{
               padding:'10px 12px',
@@ -397,6 +399,7 @@ export default function BankDeposits({ data, branches=[], userBranches=[], curre
                   <span style={{fontSize:T.fs.xs,padding:'2px 7px',borderRadius:4,background:STATUS_BG[status],color:STATUS_FG[status],fontWeight:T.fw.bold,whiteSpace:'nowrap'}}>
                     {STATUS_LABEL[status]}
                   </span>
+                  {brName && <span style={{fontSize:T.fs.nano,padding:'2px 6px',borderRadius:4,background:T.gray100,color:T.textSub,fontWeight:T.fw.bold,whiteSpace:'nowrap'}}>{brName}</span>}
                   <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bold,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
                     {d.transfererName || '(이름없음)'}
                   </span>
