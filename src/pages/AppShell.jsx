@@ -25,7 +25,7 @@ import FloatingAI from '../components/BlissAI/FloatingAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.750"
+const BLISS_V = "3.7.751"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -726,6 +726,15 @@ function SignupWizard({ onComplete, onBack }) {
 // overrideItems prop 있으면 fetch 안 하고 그 데이터로만 표시 (디자인 테스트용)
 function AnnouncesMarquee({ overrideItems }) {
   const [items, setItems] = useState(overrideItems || []);
+  // 닫기 버튼이 흐르는 마퀴 안에 있어 움직이는 표적이 됨 → hover/touch 시 흐름 일시정지
+  const [paused, setPaused] = useState(false);
+  const resumeTimerRef = useRef(null);
+  const pauseOnTouch = () => {
+    setPaused(true);
+    clearTimeout(resumeTimerRef.current);
+    resumeTimerRef.current = setTimeout(() => setPaused(false), 6000);
+  };
+  useEffect(() => () => clearTimeout(resumeTimerRef.current), []);
   const SESSION_KEY = 'bliss_announce_dismissed_session';
   const getDismissed = () => {
     try { return new Set(JSON.parse(sessionStorage.getItem(SESSION_KEY) || '[]')); } catch { return new Set(); }
@@ -760,15 +769,19 @@ function AnnouncesMarquee({ overrideItems }) {
     return () => { try { supa.removeChannel(ch); } catch {} };
   }, [overrideItems]);
   if (items.length === 0) return null;
-  const dismiss = (id) => { addDismissed(id); setItems(prev => prev.filter(x => x.id !== id)); };
+  const closeAll = () => { items.forEach(it => addDismissed(it.id)); setItems([]); };
   // 흐름 속도 — 글자 길이에 비례, 최소 30s ~ 최대 90s
   const totalChars = items.reduce((s, it) => s + Math.min(200, (it.body||"").length) + 30, 0);
   const duration = Math.max(30, Math.min(90, totalChars * 0.4));
   return (
-    <div style={{position:"relative",overflow:"hidden",background:"#fafbfc",borderBottom:"1px solid #e8eaef",padding:"3px 0",zIndex:50,flexShrink:0,
-      WebkitMaskImage:"linear-gradient(to right, transparent 0, #000 60px, #000 calc(100% - 60px), transparent 100%)",
-      maskImage:"linear-gradient(to right, transparent 0, #000 60px, #000 calc(100% - 60px), transparent 100%)"}}>
-      <div style={{display:"inline-flex",alignItems:"center",animation:`marquee-scroll ${duration}s linear infinite`,paddingLeft:"100%",whiteSpace:"nowrap"}}>
+    <div style={{position:"relative",display:"flex",alignItems:"center",background:"#fafbfc",borderBottom:"1px solid #e8eaef",zIndex:50,flexShrink:0}}>
+      <div onMouseEnter={()=>{ clearTimeout(resumeTimerRef.current); setPaused(true); }}
+        onMouseLeave={()=>setPaused(false)}
+        onTouchStart={pauseOnTouch}
+        style={{flex:1,minWidth:0,overflow:"hidden",padding:"3px 0",
+        WebkitMaskImage:"linear-gradient(to right, transparent 0, #000 60px, #000 calc(100% - 60px), transparent 100%)",
+        maskImage:"linear-gradient(to right, transparent 0, #000 60px, #000 calc(100% - 60px), transparent 100%)"}}>
+        <div style={{display:"inline-flex",alignItems:"center",animation:`marquee-scroll ${duration}s linear infinite`,animationPlayState: paused ? "paused" : "running",paddingLeft:"100%",whiteSpace:"nowrap"}}>
         {/* 달리는 고양이 — 4발 swing + 꼬리 흔들 */}
         <span style={{display:"inline-block",marginRight:14,animation:"cat-bob .3s ease-in-out infinite alternate"}}>
           <svg width="36" height="22" viewBox="0 0 56 36">
@@ -802,11 +815,12 @@ function AnnouncesMarquee({ overrideItems }) {
             <span style={{fontWeight:700,color:"#5b21b6"}}>{String(it.user_id||"").slice(0,8)}</span>
             <span style={{opacity:.4}}>—</span>
             <span>{String(it.body||"").replace(/\s+/g," ").slice(0,300)}</span>
-            <button onClick={()=>dismiss(it.id)} title="공지 닫기 (이번 세션만)"
-              style={{flexShrink:0,width:18,height:18,borderRadius:"50%",border:"none",background:"rgba(0,0,0,.08)",color:"#666",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",padding:0,marginLeft:6}}>×</button>
           </span>
         ))}
+        </div>
       </div>
+      <button onClick={closeAll} title="공지 닫기 (이번 세션만)"
+        style={{flexShrink:0,width:26,height:26,marginRight:6,borderRadius:"50%",border:"none",background:"rgba(0,0,0,.14)",color:"#333",fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>×</button>
       <style>{`
         @keyframes marquee-scroll {
           0%   { transform: translateX(0); }

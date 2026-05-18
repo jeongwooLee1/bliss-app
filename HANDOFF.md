@@ -1,12 +1,12 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.750** (https://blissme.ai/version.txt) — 2026-05-18 배포
+- **라이브: v3.7.751** (https://blissme.ai/version.txt) — 2026-05-18 배포
 - 다음 빌드 시 `BLISS_V` (AppShell.jsx) + `public/version.txt` 둘 다 함께 bump 필수
 - 변경 이력은 [CLAUDE.md](./CLAUDE.md) 참고
 
 ## 진행 중 작업
-없음. (커플 패키지 신규 흐름 v3.7.749 + 기존 구매자 소급 적용 페이지 v3.7.750 — 2026-05-18, CLAUDE.md 참고)
+없음. (커플 패키지 v3.7.749~750 + 공지 배너 닫기 버튼 fix v3.7.751 — 2026-05-18, CLAUDE.md 참고)
 
 ## 동의서 요청→서명 흐름 점검 — 워크트리 작업세션 예정 (2026-05-17)
 **상태**: 코드 흐름(요청 `ConsentModal` → `consent_tokens` INSERT → `sign.blissme.ai` 서명 → `html2canvas`+`jsPDF` PDF → Storage → `customer_consents` INSERT → `consent_tokens.used_at` 마킹 → `ConsentPanel` realtime 이력)은 완성·정상 구현 확인. 단 **실사용 0건** — `customer_consents` 14건 전부 테스트 데이터(홍길동 `cust_test_hgd` · ilayda), 2026-04-24 이후 서명 기록 없음.
