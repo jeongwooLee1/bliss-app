@@ -2,6 +2,7 @@ import React from 'react'
 import { createPortal } from 'react-dom'
 import { T, STATUS_CLR_DEFAULT, STATUS_KEYS, STATUS_LABEL } from '../../lib/constants'
 import I from '../common/I'
+import ColorField from '../common/ColorField'
 
 function EyeDrop({ onPick, size=26 }) {
   const pick = async () => {
@@ -264,9 +265,9 @@ function TimelineSettings({
               </button>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6,flexWrap:"wrap"}}>
-              <input type="color" value={salesHighlight.color||"#FFD700"}
-                onChange={e=>setSalesHighlight({color: e.target.value})}
-                style={{width:32,height:26,border:"1px solid #ddd",borderRadius:T.radius.md,cursor:"pointer",padding:1}}/>
+              <ColorField value={salesHighlight.color||"#FFD700"}
+                onChange={c=>setSalesHighlight({color: c})}
+                swatchStyle={{width:32,height:26,border:"1px solid #ddd",borderRadius:T.radius.md}}/>
               <EyeDrop onPick={c=>setSalesHighlight({color:c})} size={26}/>
               {[{k:"border",label:"테두리"},{k:"fill",label:"채우기"}].map(opt => {
                 const on = (salesHighlight.mode || "border") === opt.k;
@@ -313,8 +314,8 @@ function TimelineSettings({
                     {STATUS_KEYS.map(sk => <option key={sk} value={sk}>{STATUS_LABEL[sk]}</option>)}
                   </select>
                   <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
-                    <input type="color" value={statusClr[k]||STATUS_CLR_DEFAULT[k]} onChange={e=>setStatusClr(k,e.target.value)}
-                      style={{width:42,height:32,border:"1px solid #ddd",borderRadius:T.radius.md,cursor:"pointer",padding:1}}/>
+                    <ColorField value={statusClr[k]||STATUS_CLR_DEFAULT[k]} onChange={c=>setStatusClr(k,c)}
+                      swatchStyle={{width:42,height:32,border:"1px solid #ddd",borderRadius:T.radius.md}}/>
                     <EyeDrop onPick={c=>setStatusClr(k,c)} size={32}/>
                   </div>
                 </div>
@@ -324,8 +325,8 @@ function TimelineSettings({
                 {STATUS_KEYS.map(k=><div key={k} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,padding:"4px 8px",background:T.bgCard,border:"1px solid "+T.border,borderRadius:T.radius.md}}>
                   <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bold,color:statusClr[k]}}>{STATUS_LABEL[k]}</span>
                   <div style={{display:"flex",alignItems:"center",gap:4}}>
-                    <input type="color" value={statusClr[k]||STATUS_CLR_DEFAULT[k]} onChange={e=>setStatusClr(k,e.target.value)}
-                      style={{width:34,height:28,border:"1px solid #ddd",borderRadius:T.radius.md,cursor:"pointer",padding:1}}/>
+                    <ColorField value={statusClr[k]||STATUS_CLR_DEFAULT[k]} onChange={c=>setStatusClr(k,c)}
+                      swatchStyle={{width:34,height:28,border:"1px solid #ddd",borderRadius:T.radius.md}}/>
                     <EyeDrop onPick={c=>setStatusClr(k,c)} size={28}/>
                   </div>
                 </div>)}

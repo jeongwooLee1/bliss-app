@@ -4,6 +4,7 @@ import { sb } from '../../lib/sb'
 import { _activeBizId, SYSTEM_TAG_IDS } from '../../lib/db'
 import { genId } from '../../lib/utils'
 import I from '../common/I'
+import ColorField from '../common/ColorField'
 import { AConfirm, ASheet, AField, AInp, AEmpty, APageHeader, AToggle, ABadge, APalette, useTouchDragSort } from './AdminUI'
 import { TAG_TRIGGER_TYPES, describeTrigger, evaluateTagTriggers } from '../../lib/tagAutoTrigger'
 import { todayStr } from '../../lib/utils'
@@ -355,11 +356,8 @@ function AdminServiceTags({ data, setData }) {
           <APalette value={form.color} onChange={v=>set("color",v)}/>
           <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 8px",borderRadius:8,border:"1px dashed "+T.border,background:"#fafafa"}}>
             <span style={{fontSize:T.fs.xxs,color:T.textMuted,fontWeight:T.fw.bold}}>직접 선택</span>
-            <input type="color" value={form.color||"#7c7cc8"} onChange={e=>set("color",e.target.value)}
-              style={{width:40,height:30,border:"1px solid "+T.border,borderRadius:6,cursor:"pointer",padding:0,background:"#fff"}}/>
-            <input type="text" value={form.color||""} onChange={e=>set("color",e.target.value)}
-              placeholder="#RRGGBB" maxLength={7}
-              style={{width:80,padding:"4px 6px",fontSize:T.fs.xxs,fontFamily:"monospace",border:"1px solid "+T.border,borderRadius:6}}/>
+            <ColorField value={form.color||"#7c7cc8"} onChange={v=>set("color",v)}
+              swatchStyle={{width:40,height:30,border:"1px solid "+T.border,borderRadius:6}}/>
           </div>
         </div>
       </AField>

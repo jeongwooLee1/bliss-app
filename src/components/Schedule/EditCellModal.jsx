@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { T } from '../../lib/constants'
 import { BRANCHES_SCH, STATUS, getSColor, DNAMES } from './scheduleConstants'
+import ColorField from '../common/ColorField'
 
 export default function EditCellModal({
   editCell, empSettings, onSet, onClose,
@@ -116,7 +117,7 @@ export default function EditCellModal({
           {manageMode ? (
             <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'4px 8px', border:'1.5px dashed '+T.border, borderRadius:14 }}>
               <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="태그명" style={{ border:'none', outline:'none', fontSize:12, width:60, fontFamily:'inherit' }}/>
-              <input type="color" value={newColor} onChange={e=>setNewColor(e.target.value)} style={{ width:18, height:18, border:'none', padding:0, cursor:'pointer' }}/>
+              <ColorField value={newColor} onChange={v=>setNewColor(v)} swatchStyle={{ width:18, height:18, border:'none', borderRadius:4 }}/>
               <button onClick={async()=>{ if(newName.trim()){ await onAddTagDef(newName.trim(), newColor); setNewName(''); }}} style={{ border:'none', background:'none', color:T.primary, cursor:'pointer', fontSize:13, fontWeight:700 }}>+</button>
             </span>
           ) : (

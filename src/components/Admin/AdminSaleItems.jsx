@@ -4,6 +4,7 @@ import { sb } from '../../lib/sb'
 import { _activeBizId, toDb } from '../../lib/db'
 import { genId } from '../../lib/utils'
 import I from '../common/I'
+import ColorField from '../common/ColorField'
 import { AConfirm, ASheet, AField, AInp, AEmpty, APageHeader, AToggle, ABadge, AIBtn, useTouchDragSort } from './AdminUI'
 
 const uid = genId;
@@ -517,10 +518,10 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
             <input style={AInp} value={form.badgeText} onChange={e=>set("badgeText",e.target.value)} placeholder={couponMode?"예: 제품3만원, 10%적립":"예: 신규10%, 5만P 적립"}/>
           </AField>
           <AField label="글자색">
-            <input type="color" value={form.badgeColor} onChange={e=>set("badgeColor",e.target.value)} style={{width:"100%",height:36,border:"1px solid "+T.border,borderRadius:8,cursor:"pointer",padding:2}}/>
+            <ColorField value={form.badgeColor} onChange={v=>set("badgeColor",v)} swatchStyle={{width:"100%",height:36,border:"1px solid "+T.border,borderRadius:8}}/>
           </AField>
           <AField label="배경색">
-            <input type="color" value={form.badgeBg} onChange={e=>set("badgeBg",e.target.value)} style={{width:"100%",height:36,border:"1px solid "+T.border,borderRadius:8,cursor:"pointer",padding:2}}/>
+            <ColorField value={form.badgeBg} onChange={v=>set("badgeBg",v)} swatchStyle={{width:"100%",height:36,border:"1px solid "+T.border,borderRadius:8}}/>
           </AField>
         </div>
         {form.badgeText && <div style={{marginBottom:10,display:"flex",alignItems:"center",gap:6,fontSize:T.fs.xxs,color:T.textMuted}}>
@@ -688,8 +689,8 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
       </div>
       <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr",gap:10,marginBottom:10}}>
         <AField label="배지 문구"><input style={AInp} value={bulkForm.badgeText} onChange={e=>bulkSet("badgeText",e.target.value)} placeholder="예: 신규10%"/></AField>
-        <AField label="글자색"><input type="color" value={bulkForm.badgeColor} onChange={e=>bulkSet("badgeColor",e.target.value)} style={{width:"100%",height:36,border:"1px solid "+T.border,borderRadius:8,cursor:"pointer",padding:2}}/></AField>
-        <AField label="배경색"><input type="color" value={bulkForm.badgeBg} onChange={e=>bulkSet("badgeBg",e.target.value)} style={{width:"100%",height:36,border:"1px solid "+T.border,borderRadius:8,cursor:"pointer",padding:2}}/></AField>
+        <AField label="글자색"><ColorField value={bulkForm.badgeColor} onChange={v=>bulkSet("badgeColor",v)} swatchStyle={{width:"100%",height:36,border:"1px solid "+T.border,borderRadius:8}}/></AField>
+        <AField label="배경색"><ColorField value={bulkForm.badgeBg} onChange={v=>bulkSet("badgeBg",v)} swatchStyle={{width:"100%",height:36,border:"1px solid "+T.border,borderRadius:8}}/></AField>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:6}}>
         <AField label="신규고객 할인 %"><input style={AInp} type="number" value={bulkForm.promoConfig.newCustDiscountPct||""} onChange={e=>bulkTogglePc("newCustDiscountPct",e.target.value)}/></AField>

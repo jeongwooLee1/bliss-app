@@ -3,6 +3,7 @@ import { T } from '../../lib/constants'
 import { supabase } from '../../lib/supabase'
 import { _activeBizId } from '../../lib/db'
 import Icon from '../common/Icon'
+import ColorField from '../common/ColorField'
 
 export default function BranchSettings({ data, setData, onBack }) {
   const [editing, setEditing] = useState(null)
@@ -53,8 +54,8 @@ export default function BranchSettings({ data, setData, onBack }) {
       ))}
       <div style={{ marginBottom:14 }}>
         <label style={{ fontSize:T.fs.xxs, fontWeight:T.fw.bold, color:T.textSub, display:'block', marginBottom:4 }}>색상</label>
-        <input type="color" value={form.color||'#7c7cc8'} onChange={e=>setForm(p=>({...p,color:e.target.value}))}
-          style={{ height:40, width:80, border:`1px solid ${T.border}`, borderRadius:T.radius.md, cursor:'pointer' }}/>
+        <ColorField value={form.color||'#7c7cc8'} onChange={v=>setForm(p=>({...p,color:v}))}
+          swatchStyle={{ height:40, width:80, border:`1px solid ${T.border}`, borderRadius:T.radius.md }}/>
       </div>
       <div style={{ display:'flex', gap:8, marginTop:20 }}>
         <button onClick={()=>setEditing(null)} style={{ flex:1, height:44, borderRadius:T.radius.md, border:`1px solid ${T.border}`, background:'none', cursor:'pointer' }}>취소</button>

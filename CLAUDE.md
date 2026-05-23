@@ -2295,3 +2295,10 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
 **검증** (강남 내일 실데이터, 11:30만 막힘): 11:00 dur115 → 거절·대안 12:00 ✓ / 11:00 dur25 → 받음(11:25 종료) ✓ / 11:30 → 거절·대안 12:00 ✓ / 12:00·09:30 dur115 → 받음 ✓.
 **적용**: 서버 직접 (백업 `ai_booking.py.bak_pre_avail_20260523_145452` → 윈도우 기준 재배포 `bak_pre_winblock_20260523_145834`) + restart. React 변경 0.
 **유의**: 거절 기준 = 시술 구간이 막힌 슬롯과 겹침(start만이 아니라 dur 전체 윈도우). naver_block_state는 네이버 partner API 호출(시술 item별) → 120초 캐시로 완화, 세션 만료 시 fail-open.
+
+### v3.7.833 — 색상 선택 칸 전부 자체 컬러피커(ColorField)로 통일 (2026-05-23)
+**배경**: iOS 네이티브 `<input type="color">`가 현재 색을 잘 안 보여주고(특히 격자 탭) 세밀 조정 불편 — 유저: "기존 선택된 색이 안 떠서 디테일 수정 불가". 색상 칸 전부 자체 선택기로 교체 요청.
+**fix**: `src/components/common/ColorField.jsx` 신규 — 현재색 큰 미리보기 + **hex 직접 입력** + **색조 슬라이더 + 채도/명도(SV) 박스**(디테일) + 자주 쓰는 색 팔레트(16). 터치(pointer) 드래그 지원, `createPortal`(모달 안에서도 안 잘림). hex 정규화(#abc→#aabbcc, 알파 제거). 네이티브 피커 미사용.
+- 교체 11곳/6파일: `TimelineSettings`(매출강조색·예약상태색 ×2) · `AdminServiceTags`(태그색, 중복 텍스트 입력 제거) · `AdminSaleItems`(배지 글자/배경 ×2 + 일괄 ×2) · `TagSettings` · `BranchSettings` · `EditCellModal`(근무표 셀 태그색). 핸들러 `e=>...e.target.value` → `c=>...c`로.
+**적용**: v3.7.833 라이브 배포(version.txt 검증 3.7.833, CF 퍼지 success). 로컬 dev server 후 배포. 로그인 필요 화면이라 직접 캡처검증은 못 함(빌드 통과).
+**유의**: 색 변환(hex/rgb/hsv) + SV박스/색조 드래그는 표준 구현, 외부 라이브러리 0. swatchStyle prop으로 각 위치 크기 맞춤. EyeDrop(스포이드)은 기존대로 별도 유지.
