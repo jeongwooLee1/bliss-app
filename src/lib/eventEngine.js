@@ -148,9 +148,13 @@ export function evaluateConditions(evt, ctx) {
 
   // 보유권 EXCLUSION (TriFlag false = 보유 시 제외)
   // 예: "첫방문 5만 할인" 이벤트에 customerHasActivePkg=false → 패키지 보유 고객 제외
-  if (c.customerHasActivePrepaid === false && ctx.hasActivePrepaid) return false
-  if (c.customerHasActivePkg === false && ctx.hasActivePkg) return false
-  if (c.customerHasActiveAnnual === false && ctx.hasActiveAnnual) return false
+  // 쉐어받은 보유권도 "보유"로 간주 (정우 결정 2026-05-22): 쉐어로 회원가 받는 고객은 신규 할인 중복 제외.
+  // *IncShared 미제공 시(타 호출부) 기존 owned-only 값으로 폴백.
+  // 추가 (2026-05-22): 이번 매출에서 다담권/다회권/연간권을 '구매'하는 신규 고객도 회원가를 받으므로 첫방문할인 제외
+  //   (기존 보유 X여도 이번에 사면 회원가 → 첫방문할인 중복 방지).
+  if (c.customerHasActivePrepaid === false && ((ctx.hasActivePrepaidIncShared ?? ctx.hasActivePrepaid) || ctx.hasAnyPrepaidPurchase)) return false
+  if (c.customerHasActivePkg === false && ((ctx.hasActivePkgIncShared ?? ctx.hasActivePkg) || ctx.hasAnyPkgPurchase)) return false
+  if (c.customerHasActiveAnnual === false && ((ctx.hasActiveAnnualIncShared ?? ctx.hasActiveAnnual) || ctx.hasAnyAnnualPurchase)) return false
 
   // 시술 포함 조건
   if (Array.isArray(c.servicesAny) && c.servicesAny.length) {

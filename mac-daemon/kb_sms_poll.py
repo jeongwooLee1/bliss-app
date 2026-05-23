@@ -153,6 +153,15 @@ def _money(s):
     return int(s.replace(',', '')) if s else 0
 
 
+# 카드사 정산 입금 판별 — 입금자명에 숫자 포함 또는 '카드' 키워드.
+# 실제 고객 이체는 입금자명이 사람 이름이라 숫자가 없음. 카드정산은 status='card'로
+# 저장해 입금문자 목록·미매칭 배너·배지에서 제외 (앱은 '카드정산' 필터로만 노출).
+def is_card_settlement(name):
+    if not name:
+        return False
+    return any(c.isdigit() for c in name) or ('카드' in name)
+
+
 def parse_kb(text):
     if not text:
         return None
@@ -344,10 +353,14 @@ def main():
             'raw_text': msg_body(text, ab),
             'source': bank['source'],
         }
+        if is_card_settlement(parsed['transferer_name']):
+            rec['status'] = 'card'   # 카드사 정산 입금 — 화면·알림 제외
+
         if insert_deposit(rec):
             inserted += 1
+            _tag = ' [카드정산]' if rec.get('status') == 'card' else ''
             log(
-                f'  + [{bank["name"]}] {parsed["transferer_name"]} '
+                f'  + [{bank["name"]}] {parsed["transferer_name"]}{_tag} '
                 f'+{parsed["amount"]:,}원 '
                 f'(잔액 {parsed["balance"]:,}) ROWID={rowid}'
             )

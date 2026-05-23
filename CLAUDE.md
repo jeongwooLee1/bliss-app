@@ -1913,3 +1913,326 @@ v3.7.740의 대화 시각 추출(`_timeGuess`)에 — 추출 시각을 타임라
 - `BankDeposits` 카드 콤팩트화 — 금액을 헤더 줄(이름·시각 옆)로 합쳐 한 줄 제거, padding 10→7·gap 6→5·배지 폰트 축소
 - `ignoreDeposit` — "무시" 버튼 클릭 시 `window.confirm` 제거 → 즉시 무시 처리 (되돌리기 버튼 confirm은 유지)
 - **적용**: v3.7.755 라이브 배포(version.txt 검증, CF 퍼지 success)
+
+### v3.7.756 — 예약 실시간 동기화 폴링 fallback 1000행 캡 버그 fix (2026-05-18)
+**증상**: 새 네이버 예약이 앱 화면에 자동으로 안 뜨고 새로고침해야 보임. 서버(Gmail push→DB)는 정상(예약 9초 만에 DB 수신 확인) — 클라이언트 표시 문제.
+**원인**: `AppShell.jsx` 예약 실시간 동기화는 Realtime 구독 + 60초 폴링 fallback 2중 구조. Realtime 웹소켓은 태블릿 백그라운드 전환·네트워크 끊김으로 자주 죽음 → 폴링이 받쳐줘야 하는데, 폴링 쿼리가 `sb.get(...limit=5000)` 사용. `sb.get`은 PostgREST `db-max-rows`(1000) 서버 캡에 잘림(v3.7.728·744에서 고친 것과 동일 부류) + `order` 절도 없음. 폴링 범위(오늘-3 ~ 오늘+60일) 예약이 1,074건 → 최신 예약 ~74건이 폴링이 가져오는 1000건 밖으로 밀려나 Realtime 죽은 상태에선 영영 미반영.
+**fix**: 폴링 쿼리 `sb.get` → `sb.getAll`(전체 페이지네이션) + `order=date.desc,time.asc` 추가. `onVisible`/`onOnline` 핸들러는 이미 `getAll` 사용 — 폴링만 누락이었음. 이제 Realtime이 죽어도 새 예약이 최대 60초 안에 자동 반영.
+- **적용**: v3.7.756 라이브 배포(version.txt 검증 3.7.756, CF 퍼지 success). 화면 변화 없는 내부 데이터 로직.
+
+### v3.7.757 — 받은메시지함 사이드 패널 모바일 화면 잘림 fix (2026-05-18)
+**증상**: 모바일에서 상단 노란 "미매칭 입금 N건" 배너를 누르면 받은메시지함 사이드 패널이 화면 오른쪽으로 잘려 나옴.
+**원인**: 사이드 패널(`AppShell.jsx` `.msg-panel`)이 데스크탑 기준 인라인 스타일 `left:200`(사이드바 폭)·`width:340`로 고정. `setPage("messages")`는 모바일이면 풀스크린 라우팅으로 분기하지만, `DepositsAlertBanner onOpen`(입금 배너 클릭)은 분기 없이 `setMessagesPanelOpen(true)` 직접 호출 → 폰(~390px)에서 패널이 `x=200`부터 `340px` 폭으로 그려져 ~150px 잘림.
+**fix**: `index.html`에 `.msg-panel` 모바일 미디어쿼리 추가 — `@media (max-width:767px)`에서 `left:0 / width:100% / max-width:100% !important`로 풀스크린. 인라인 스타일을 `!important`로 오버라이드. JS 변경 0, 데스크탑(≥768px) 무영향.
+- **적용**: v3.7.757 라이브 배포(version.txt 검증 3.7.757, CF 퍼지 success).
+
+### v3.7.758 — 입금문자 카드사 정산 입금 분류·숨김 (2026-05-18)
+**배경**: 입금문자 탭에 카드사 정산 입금(`KB109251201`·`NH16699618`·`신한13028239` 등)이 미매칭으로 떠 배너·배지 알림 발생. 매장은 고객 계좌이체 입금만 확인하면 됨 → 카드정산은 화면·알림에서 제외 요청.
+**분류 규칙 (시스템 규칙, AI 불필요)**: 카드사 정산 입금은 입금자명에 **숫자 포함** 또는 **'카드' 키워드** — 실제 고객 이체는 사람 이름이라 숫자 없음. 결정적(deterministic) 분류라 AI 불필요. 오분류 시 입금문자 탭 '카드정산' 필터에서 [미매칭으로 되돌리기]로 복구 가능(안전밸브).
+**구현**:
+- DB: `bank_deposits_status_check` 제약에 `'card'` 값 추가(migration `bank_deposits_status_add_card`). 기존 카드정산 3건 `status='pending'→'card'` 일괄 전환.
+- 데몬 `mac-daemon/kb_sms_poll.py`: `is_card_settlement(name)` 분류기 추가 — 카드정산이면 INSERT 시 `status='card'`. 로그에 `[카드정산]` 태그.
+- `BankDeposits.jsx`: `STATUS_LABEL/BG/FG`에 `card` 추가(인디고 배지), 필터 칩에 '카드정산' 추가. 기본 '전체' 필터·카운트는 `status='card'` 제외 → 카드정산은 '카드정산' 칩에서만 노출.
+- 배너(`DepositsAlertBanner`)·배지(`pendingDepositCount`)는 이미 `status=eq.pending`만 조회 → `status='card'`는 **자동 제외**, AppShell 변경 0.
+- **적용**: v3.7.758 라이브 배포(version.txt 검증 3.7.758, CF 퍼지 success). 데몬은 launchd 다음 주기에 새 코드 자동 적용(재등록 불필요).
+**유의**: 분류 규칙은 데몬 INSERT 시점에 1회 적용(`status` 고정). 규칙 변경 시 과거 행은 별도 UPDATE 필요. 숫자·'카드' 둘 다 없는 카드정산(드묾)은 고객 입금으로 분류됨 → '무시'하거나 키워드 추가.
+
+### v3.7.759 — 모바일 하단 탭바 사라짐 fix (2026-05-18)
+**증상**: 모바일에서 하단 탭바(타임라인/매출/메시지함/고객/더보기)가 사라져 안 돌아옴.
+**원인**: `MobileBottomNav`는 `isChatOpen`이 true면 `return null`. `isChatOpen`은 받은메시지함에서 대화 스레드를 열 때(`MessagesPage.selectThread`) true가 되는데, false 복귀는 대화 안의 ← 뒤로가기 버튼 1곳뿐. 받은메시지함 패널을 × 버튼으로 닫으면(`onClosePanel`) `isChatOpen`이 true로 남아 → 타임라인 등 다른 페이지에서도 하단바가 영영 숨김. v3.7.757(모바일 패널 풀스크린)로 패널이 실제로 쓰이게 되면서 노출된 기존 버그.
+**fix**: `AppShell.jsx`에서 `MobileBottomNav`에 넘기는 값을 `isChatOpen && (messagesPanelOpen || page === "messages")`로 좁힘 — 메시지함을 보고 있지 않으면 stale 플래그와 무관하게 하단바 표시. 파생값 한 줄, stale state 자체는 안 건드림(메시지함 안 볼 땐 영향 0).
+- **적용**: v3.7.759 라이브 배포(version.txt 검증 3.7.759, CF 퍼지 success).
+
+### v3.7.760 — 타지점 이동 시 직원 근무시간이 지점 운영시간보다 우선 (2026-05-18)
+**증상**: 12~22시 근무 직원이 강남점→왕십리점(운영 11~21시)으로 이동하면 퇴근 시각이 21시로 잘림. 직원 본인 근무시간 무시.
+**원인** (TimelinePage 3곳 — 타지점(비-홈) 컬럼만 직원 시간을 지점 운영시간으로 클립. 홈 지점은 클립 없음):
+- `segHoursOf`: 이동 세그먼트의 시작/끝 시각 fallback이 `직원+지점별 → branchDefault`라 직원 본인 일반 근무시간(`empWorkHours[empId]`/`_date`)이 누락 → 지점 운영시간이 채워짐.
+- `getEmpActiveSegments`: `branchId !== baseBid`이면 `start=max(직원,지점)`, `end=min(직원,지점)` 교집합 클립 → `end=min(22,21)=21`.
+- 근무시간 설정 팝업: 동일 min/max 클립.
+**fix** (유저 확정 — "직원 근무시간이 더 강하게", 시작·종료 모두 직원 우선):
+- `segHoursOf` fallback 체인에 `empWorkHours[empId+"_"+date] || empWorkHours[empId]` 추가(branchDefault 앞) → `getEmpBaseHours`와 동일 우선순위.
+- `getEmpActiveSegments`: 비-base 클립 블록 제거 → `wh = empWh || branchHours`.
+- 설정 팝업: 클립 분기 제거 → `savedWh = explicitWh || empBaseWh || branchHours || 기본값`. 미사용 `_baseBid` 제거.
+- 결과: 직원 근무시간이 있으면 타지점에서도 그대로 사용, 지점 운영시간은 직원 시간이 아예 없을 때만 fallback (홈 지점과 동일 규칙).
+- **적용**: v3.7.760 라이브 배포(version.txt 검증 3.7.760, CF 퍼지 success).
+
+### v3.7.761 — 멤버십 모델 + 직원 모바일 계정 (2026-05-19)
+직원이 모바일에서 본인 근무시간(타임라인)을 확인하는 기능. 인증 레이어를 계정↔멤버십 모델로 재구축.
+
+**모델 전환** — 기존 `app_users` 한 행이 [계정+사업장+역할]을 묶던 구조 → 분리:
+- **`accounts`** (신규, 신원): `id, login_id(unique), password_hash, password, name, email`. 자격증명 테이블이라 **RLS 켜고 정책 없음**(기본 거부) — `SECURITY DEFINER` RPC로만 접근.
+- **`app_users`** = 이제 "멤버십"(계정↔사업장 관계). 컬럼 추가: `account_id`(→accounts), `emp_name`(근무표 직원 연결), `status`(`active`/`pending`/`rejected`, 기본 active). 한 account가 멤버십 N개 → 한 사람이 A매장 직원·B매장 사장 가능. 테이블명 유지(33곳 참조 보존). `login_id` unique 제약 없음 → 멤버십이 계정 login_id 공유.
+- 기존 17행 마이그레이션: 행마다 account 1 + membership 1, 전부 active. status 컬럼 default로 기존 행 자동 active.
+- 별도 "요청 테이블" 없음 — `status='pending'` 멤버십 행 자체가 곧 등록 요청.
+
+**RPC 4종** (전부 SECURITY DEFINER):
+- `auth_login_v2(login_id, password)` → `{account, memberships[]}`. 기존 `auth_login`은 유지(미사용).
+- `account_signup(login_id, password, name, email)` → accounts 행만 생성(사업장 미생성). 중복 시 `login_id_taken`.
+- `staff_join_request(account_id, store_code)` → `businesses.code`로 사업장 찾아 pending 멤버십 INSERT. `store_not_found`/`already_member`.
+- `auth_oauth(email, provider_login, name)` → OAuth용. account 찾기/생성(사업장 미생성).
+
+**클라이언트** (`AppShell.jsx` — 실제 인증은 전부 AppShell, `AuthContext.jsx`는 죽은 코드):
+- `mapMembership(m, account)` — 멤버십+계정 → currentUser 형태(기존 필드 유지, 앱 나머지 무변경).
+- `handleAccountLogin(account, memberships)` — 활성 1개 → 바로 진입 / 여러개 → `pick_membership` / pending만 → `staff_pending` / 0개 → `no_membership`.
+- `Login` — `auth_login_v2` 호출. `SignupWizard` — 단일 스텝 account 생성(구 2스텝 사업장 등록 제거). OAuth 핸들러 — `auth_oauth` 사용, 자동 사업장생성 제거.
+- `AccountGate` 신규 — pick_membership(매장 선택) / staff_pending(승인 대기) / no_membership(매장코드 합류 요청 + 내 사업장 만들기) 3화면.
+- `StaffRequestsBanner` 신규 — owner/manager/super에게 pending 멤버십 배너+모달, 수락(근무표 직원 선택→active·emp_name·branch_ids 전지점)/거절. `app_users` anon-writable이라 PATCH 직결.
+- 직원 권한: `role==='staff'` → nav = 타임라인·공지만, 라우트 가드(그 외 경로 → /timeline), DepositsAlertBanner 미노출, 타임라인 날짜탭 D-3~D+3(7일)·changeDate 클램프.
+
+**검증**: 로컬 dev server(라이브 Supabase 연결)로 가입→합류요청→승인대기→승인후 앱로드→직원 nav제한→타임라인 7일 전 경로 통과, 콘솔 에러 0. 테스트 계정 정리 완료.
+- **적용**: v3.7.761 라이브 배포(version.txt 검증 3.7.761, CF 퍼지 success). DB 마이그레이션 4건은 additive로 이미 적용됨.
+**유의**:
+- `app_users`는 이제 의미상 "멤버십" (테이블명만 유지). `currentUser.id` = 멤버십 id, `currentUser.account_id` = 계정 id.
+- `accounts`는 RLS 정책 없음(잠금) — 직접 SELECT/INSERT 불가, RPC로만. `anon_all` 정책 추가 금지(시크릿).
+- 매장코드 = `businesses.code`. 직원에게 코드를 알려줘야 합류 요청 가능. 마스터/지점계정 누구든 수락 가능.
+- 미검증(별도): OAuth 실계정 로그인, pick_membership(현재 멤버십 2개 이상 계정 없음). 모바일 하단탭에서 직원 공지는 '더보기' 안쪽.
+- 구 `auth_login` RPC·`SignupWizard` 사업장 생성 로직은 제거/대체됨 — 신규 사업장은 AccountGate "내 사업장 만들기"로.
+
+### 서버 — AI 자동응대 콧속 왁싱 시술 안 함 룰 추가 (2026-05-19, React 변경 0)
+**증상**: 자동응대 AI가 "콧속/코 안쪽 왁싱 되나요?" 질문에 "한다"고 잘못 답함. 메뉴에 없는 부위 + 점막 염증·감염 위험으로 어느 지점에서도 시술 안 함.
+**fix 2겹**:
+1. **`businesses.settings.ai_faq` 한·영 1쌍 추가** (jsonb append, 4건으로 증가) — Q "콧속 왁싱 되나요?"/"Do you do inner nose waxing?" + A "콧속 점막 염증 위험으로 시술 안 함, 안전상 메뉴에 없음". `category="위생안전"`. 마취크림 룰(2026-05-16)과 동일 패턴, 5분 캐시 후 자동 반영
+2. **`ai_booking.py` 프롬프트 본문에 `[⛔ 콧속 왁싱 = 시술 안 함]` 블록 추가** — "상담" 키워드 매칭 금지 룰(v3.7.408) 다음·확정 멘트 금지 룰 앞. 콧속/코 안쪽/콧털/코털/nose hair/nostril/inner nose 키워드 시 ① service 매칭 금지(풀페이스/눈썹/인중 등으로 잘못 매칭 차단) ② action=chat 강제 ③ 한·영 응답 예시 박음 ④ ★ 눈썹·인중·입술 주변 등 코 바깥 얼굴 부위 매칭은 정상(콧속 한정 룰 명시)
+**검증** (suggest_only 5건): KR 콧속 2건 → "콧속 왁싱은 점막 염증 위험으로 시술 안 해요, 안전상 메뉴에 없음" / EN 2건 → "We don't offer inner nose (nostril) waxing, mucous membrane is sensitive, not on our menu" / 회귀 "눈썹 왁싱 가격" → 정상가 45,000원 매칭 ✅. 5/5 PASS.
+**적용**: ai_faq는 Supabase 직접 jsonb update (5분 캐시 후 반영). `ai_booking.py` 서버 직접 패치(백업 `ai_booking.py.bak_pre_nose_20260519_231537`) + `systemctl restart bliss-naver` 즉시 반영. React 변경 0 → 버전업·배포 불필요.
+**유의**: 자동응대 AI는 `ai_faq`(빠른 단건) + RAG 학습문서(`documents`/`document_chunks`, 대량 지식) 둘 다 우선 참조. 콧속 같은 단건 안전 룰은 ai_faq가 표준 경로 — 코드 변경 없이 캐시만 만료되면 반영. 프롬프트 본문 박기는 매칭 차단(service_ids에 잘못 들어가는 것 방지)까지 강제할 때 추가로 함.
+
+### v3.7.770 — 회원번호(cust_num) 폰트 통일 + 누적 묶음 배포 (2026-05-19)
+
+#### 회원번호 폰트 통일 (ReservationModal 4곳)
+**증상**: 예약 모달 상단 고객정보의 `#50976` (cust_num)이 흐린 회색 + 0에 사선 있는 monospace 폰트라 가독성 낮음.
+**fix** (`ReservationModal.jsx` 4곳):
+- 사진 위치 [:1912](src/components/Timeline/ReservationModal.jsx:1912) (CopySpan `#{custNum}`): `color:#999 → T.text`, `fontFamily:"monospace"` 제거, `fontWeight:700` 추가
+- 고객 검색 후보 칩 [:1975](src/components/Timeline/ReservationModal.jsx:1975), [:2120](src/components/Timeline/ReservationModal.jsx:2120) (배경 있는 pill): `color:T.textSub → T.text`, `monospace` 제거, `fontWeight:600 → 700`
+- 매출 모드 상단 [:3313](src/components/Timeline/ReservationModal.jsx:3313) (이름 옆 `#{custNum}`): `color:#999 → T.text`, `monospace` 제거, `fontWeight:600 → 700`
+- **시행착오**: 첫 시도에 `fontVariantNumeric:"tabular-nums"`로 자릿수 정렬 보존하려 했는데 — iOS/macOS SF Pro에서 `tabular-nums`가 **SF Pro Tabular 변형(슬래시드 제로)** 트리거. 다시 사선이 들어왔음. `tabular-nums` 빼고 본문 폰트 기본 0(사선 없음) 사용. 5자리 cust_num은 자릿수 정렬 효과 미미해서 빼도 무해
+- 결과: 본문 시스템 폰트(-apple-system/Pretendard 등) 상속 + 700 굵게 + T.text 진한색. 0에 사선 없음
+
+#### 누적 묶음 배포 (이번 배포에 같이 나간 코드 완료분)
+- **`BankDeposits.jsx` 입금문자 매칭 실액션** (HANDOFF에 "코드 완료, 다음 배포 때 반영"이었던 것): 매칭이 status='matched'만 찍던 no-op → 실제 액션 — 입금→예약 매칭 시 `external_prepaid` 자동 가산 + `external_platform="계좌이체"` + `schedule_log`에 `[예약금] {입금자} {액}원 입금 · MM/DD HH:mm` + `예약금완료` 태그(`PREPAID_TAG_ID`) 자동 추가. 매칭 카드에 `→ 예약 {date time 이름}` / `→ 매출 {date 이름}` 연결정보 표시(`matchedInfo` batch fetch). `rollbackReservation()`으로 매칭 해제 시 선결제 차감 원복 + 로그 라인 제거 + 태그/계좌이체 경로 제거
+- **케어 카탈로그 변경** (`AdminNoti.jsx`): `after_53d` 항목 제거, `after_1d_first_only`·`after_18d_first_only`·`after_60d` 추가. 18일 신규고객 SMS는 RPC `get_care_sms_targets_first_only` 기반(2026-05-18 작업과 연결)
+- **주의 사항 (네이버 예약 external_prepaid race)**: 네이버 예약에 매칭 시 서버 재스크랩이 `external_prepaid`를 덮을 수 있음. `schedule_log`는 PRESERVE라 안전. 입금문자 매칭은 대부분 카운터/카카오 예약 대상이라 실무 영향 적음. 필요 시 서버 `BLISS_PRESERVE_FIELDS`에 `external_prepaid` 추가 검토 (별도)
+
+**적용**: v3.7.770 라이브 배포(version.txt 검증 3.7.770, CF 퍼지 success). React only. cust_num 폰트는 데스크탑·모바일 모두 ReservationModal 진입 시 즉시 반영(자동 새로고침 로직 따라). HANDOFF의 "예약 알림톡 엑셀 본문 전환 — 카카오 검수 대기" 항목은 외부 의존이라 그대로 유지.
+
+### v3.7.771 — 회원번호 폰트 앱 전역 통일 + 커플 메모 검수 페이지 (2026-05-19)
+
+#### cust_num monospace 제거 — 앱 전역 9곳
+v3.7.770의 ReservationModal 4곳에 이어 — 나머지 화면도 통일. `fontFamily:"monospace"`만 제거(SF Pro 기본 0 = 사선 없음). 색·굵기·크기는 각 위치 원래 의도 유지. `tabular-nums` 미추가 (SF Pro Tabular = 슬래시드 제로 회피, v3.7.770 시행착오 학습).
+- [ShareCustModal.jsx:89](src/components/Customers/ShareCustModal.jsx:89) (쉐어 검색 결과 nano)
+- [CustomersPage.jsx:1854](src/components/Customers/CustomersPage.jsx:1854) (테이블 td xs/800) · [:1964](src/components/Customers/CustomersPage.jsx:1964) (이름 옆 sm/textSub) · [:2185](src/components/Customers/CustomersPage.jsx:2185) (쉐어 칩)
+- [SalesGridPage.jsx:557](src/components/Sales/SalesGridPage.jsx:557) (매출 그리드 테이블)
+- [SaleSummary.jsx:136](src/components/Sales/SaleSummary.jsx:136) (제목 옆 13/textSub)
+- [AdminLongValidityReview.jsx:210](src/components/Admin/AdminLongValidityReview.jsx:210), [AdminCouplePkgMigrate.jsx:200](src/components/Admin/AdminCouplePkgMigrate.jsx:200) (관리 페이지 테이블)
+- [TimelinePage.jsx:5385](src/components/Timeline/TimelinePage.jsx:5385) (타임라인 예약 블록 안 cust_num)
+- [SaleForm.jsx:3247](src/components/Timeline/SaleForm.jsx:3247) (매출 폼 고객 헤더)
+
+#### 커플 메모 검수 페이지 신규 — `AdminCoupleMemoReview.jsx`
+**배경**: 정식 customer_shares·`customer_packages.note`의 `커플:<gid>` 마킹 시스템(v3.7.749~752)이 도입되기 전 — 매장 직원이 `customers.memo`에 "커플패키지/커플 프리패스/<번호 이름>님과 커플..." 같은 자유 텍스트로 커플 관계를 적어두던 케이스가 존재. 정식 데이터로 안 옮겨진 짝꿍 연결을 검수·마이그레이션할 도구 필요.
+**구현**: 관리설정 → 사업장 관리 → "커플 메모 검수" (slug `couple-memo-review`, `AdminCouplePkgMigrate` 옆)
+- 키워드 5종 ILIKE OR 검색: `커플패키지`/`커플 패키지`/`커플프리패스`/`커플 프리패스`/`커패`
+- 테이블 컬럼: 고객 · 연락처 · 매장 · 메모 발췌(키워드 노란 형광펜·"전체 보기" 토글) · 활성 보유권(💑 = note에 `커플:` 이미 마킹) · 짝꿍 연결
+- 짝꿍 미연결 행은 주황 배경 + `[짝꿍 지정]` 버튼. 연결 완료는 `↔ 짝꿍 이름` 배지 + 복수 짝꿍 지원(`+추가`)
+- 짝꿍 지정 = `ShareCustModal` 재사용 → `customer_shares` UPSERT (중복 시 생략, 양방향 a/b lookup)
+- 검색·매장 필터 + 상단 카운트(매칭 N명·짝꿍 미연결 M명) + `userBranches` 자동 필터
+- **분업 원칙**: 이 페이지는 **메모 텍스트 기반 짝꿍 연결만 담당**. `customer_packages.note`의 `커플:<gid>` 마킹 + 상대방 보유권 분리 발급은 별도 페이지(`AdminCouplePkgMigrate` — `services.is_couple=true` 상품 기반)
+- 데이터 규모 — 키워드 매칭 ~6건 내외(현재 강남점 기준)
+- 권한: `isMaster`만 (owner/manager)
+
+**적용**: v3.7.771 라이브 배포(version.txt 검증 3.7.771, CF 퍼지 success). React only. 신규 페이지 진입 시 자동으로 매칭 고객·짝꿍 관계·활성 보유권 일괄 fetch. 콘솔 에러 0건 확인.
+
+### v3.7.772 — 타임라인 직원 설정 팝업 화면 밖 잘림 fix (2026-05-20, 지은 id_sq9lg62bn6)
+**증상**: 데스크탑 타임라인에서 **마지막 직원 컬럼(우측 끝)** 헤더 클릭 시 뜨는 "○○ · 직원 이동/근무" 설정 팝업이 화면 밖으로 밀려 잘림. 취소·변경 없음·오늘 휴무 등 하단 버튼이 viewport 밖으로 나가서 누를 수 없음.
+**원인** ([TimelinePage.jsx:4237](src/components/Timeline/TimelinePage.jsx:4237)): 데스크탑 분기에서 left 보정이 `Math.min(x, innerWidth-200)`로 200px만 확보. 실제 패널 폭이 ~360px이라 ~160px가 잘림. 세로 잘림 안전장치(maxHeight)도 없었음.
+**fix**: 데스크탑 분기 스타일 한 줄 보정 — left/top 클램프 + 패널 폭 명시 + 세로 스크롤.
+- `left: Math.max(8, Math.min(x, innerWidth-388))` (380 패널 폭 + 8 마진 기준, 최소 8)
+- `top: Math.max(8, Math.min(y+8, innerHeight-120))` (세로도 화면 안 클램프)
+- `width: 'min(360px, calc(100vw - 16px))'` (`minWidth:200` 대체 — 명시 폭으로 콘텐츠 길어져도 일정)
+- `maxHeight: 'calc(100vh - 24px)' + overflowY:'auto'` (콘텐츠 긴 케이스 세로 잘림 차단)
+- 모바일(`<768px`) 풀스크린 분기는 기존 그대로 무영향
+**적용**: v3.7.772 라이브 배포(version.txt 검증 3.7.772, CF 퍼지 success). React only. 콘솔 에러 0건 확인. 지은 요청 `id_sq9lg62bn6` status=done + reply 처리.
+
+### v3.7.773 — AI 자동응답 미응답 N분 후 지연 답변 (2026-05-20)
+**배경**: 기존 자동응답은 메시지 인입 즉시 발송 (채널 ON + 시간 윈도우 안). 정우님 요청 — "직원이 N분 안에 답하지 않을 때만 AI가 폴백 답변" 기능 추가. 직원이 응대할 기회 우선 보장 + 누락 시 AI가 받쳐줌.
+**설계 — 지연 큐 + worker**:
+1. 메시지 인입 webhook이 `ai_booking_agent` 호출 → 기존 채널/시간 게이트 통과 후 **delay 분기**: `ai_auto_reply_delay.enabled && minutes>0`이면 즉시 응답 대신 `pending_ai_replies` 테이블에 row INSERT(`scheduled_at=now+N분`), `return ""`. 같은 thread(channel+account_id+user_id)에 이미 pending row 있으면 `canceled_by_followup` 마킹(=새 메시지 인입 시 카운트 재시작)
+2. 새 worker thread `pending_ai_replies_worker` (60초 주기): `status=pending & scheduled_at<=now` 행 가져와 처리 — (a) `trigger_created_at` 이후 같은 thread 직원 outbound 발송 있으면 `canceled_by_staff` (b) 없으면 마지막 inbound 메시지 + `ai_booking_agent(_from_worker=True)` 재호출 → 응답 발송 + `status=sent`
+3. `_from_worker=True`/`force=True`/`manual=True`/`suggest_only=True`는 delay 분기 우회 (직원 [추천]/[예약등록] 클릭 등 수동 호출 즉시 동작)
+4. 채널·시간 게이트는 그대로 유지 (worker 호출 시점에도 한 번 더 적용 — 시간 윈도우 밖이면 `canceled_by_gate`로 폐기)
+**구현**:
+- DB: 신규 테이블 `pending_ai_replies` (id/business_id/channel/account_id/user_id/trigger_msg_id/trigger_created_at/scheduled_at/status/created_at/processed_at/response_text/error_msg) + `idx_pending_ai_replies_due`(scheduled_at, status=pending partial) + `idx_pending_ai_replies_thread` + RLS `anon_all_pending_ai_replies`. migration `pending_ai_replies_init`
+- 서버 `ai_booking.py` ([line ~932 직후](#)): signature에 `_from_worker=False` 추가, schedule check 통과 후 delay 분기 추가. 호출 사이트(IG/WA/네이버/카카오/LINE webhook 5곳) 변경 0 — 함수 안에서 분기 처리
+- 서버 `bliss_naver.py`: `pending_ai_replies_worker()` 함수 + thread 시작(`t_par`, daemon, name=`pending_ai_replies`) `t_rsv_remind` 직후
+- 앱 `MessagesPage.jsx`: AI 자동대답 패널(메시지함 사이드)에 카드 추가 — `⏳ 미응답 N분 후 자동 답변` 토글 + 분 입력 (1~60). `settings.ai_auto_reply_delay = {enabled, minutes}`. 2곳(default + forceCompact 모드) 동일 마크업
+**검증**: 서버 로그 `[pending_ai_replies_worker] 시작` 확인. 앱 콘솔 에러 0. 라이브 version.txt = 3.7.773. CF 퍼지 success.
+**백업**: `/home/ubuntu/naver-sync/ai_booking.py.bak_pre_delayreply_20260520_082922`, `bliss_naver.py.bak_pre_delayreply_20260520_082922`
+**유의**:
+- delay 설정이 **활성화돼 있는 동안엔 모든 인입 메시지가 지연 큐로 들어감** — 즉시 응답 X. OFF로 돌리면 기존 즉시 응답 동작 복귀
+- 한 thread에서 손님이 추가 메시지 보내면 기존 pending이 `canceled_by_followup`되고 새 pending으로 갱신 → N분 카운트 마지막 메시지 기준으로 재시작
+- worker 호출 시점에 채널·시간 게이트가 OFF면 답변 안 함 (`canceled_by_gate`). 즉 영업시간 종료 직전 메시지 + N분 후 영업종료 → AI 답변 X (의도된 동작)
+- `pending_ai_replies` 테이블은 디버그·감사용. status 분포로 worker 동작 확인 가능 (`sent`/`canceled_by_staff`/`canceled_by_followup`/`canceled_by_gate`/`error`)
+
+### v3.7.774 — 지연 분 input backspace 막힘 fix (2026-05-20)
+**증상** (정우님 모바일 보고): "미응답 N분 후 자동 답변" 카드의 분 input에서 "1"을 backspace로 지우려 해도 즉시 다시 "1"이 채워져 지워지지 않음 → 두 자리 숫자 입력 불가.
+**원인** ([MessagesPage.jsx](src/components/Messages/MessagesPage.jsx)): onChange가 `Number(e.target.value)||1` 폴백 + `Math.max(1, …)` 강제 → 빈 문자열 입력 순간 즉시 1로 덮어써짐. 자유 편집 불가.
+**fix**: 빈 값을 허용하는 controlled 패턴으로 교체.
+- value: `aiDelay.minutes === '' ? '' : (minutes||1)` — 빈 문자열 상태를 렌더
+- onChange: 빈 값이면 `setAiDelay({minutes:''})`만 (DB 저장 X) / 유효 숫자면 `saveAiDelay({minutes: clamp(1,60, floor(n))})`
+- onBlur: 빈 값/0이면 `saveAiDelay({minutes:1})`로 보정 (디폴트 폴백)
+- `Math.floor` 추가 — 소수점 입력(예: "1.5") 차단
+- 2곳(default + forceCompact 모드) 동일 마크업이라 `replace_all`로 일괄
+**검증**: 콘솔 에러 0, 빌드 OK, 라이브 version.txt = 3.7.774, CF 퍼지 success
+
+### 서버 — AI 자동응대 등록 고객 호칭 (2026-05-20, React 변경 0)
+**요청**: AI 자동응답이 `customers.sns_accounts`에 등록된 단골 고객한테 답할 때 이름을 호칭으로 사용 (예: "Christina님 안녕하세요" / "Hi Christina").
+**fix** (`ai_booking.py`):
+1. **등록 고객 lookup** (`_cust_history` 분기 다음): `customers.sns_accounts cs [{channel, user_id}]` PostgREST 매칭 — 채널 무관(공통/매장별 모두). 매칭되면 `{id, cust_num, name, gender, visit_count, last_visit}` 추출 (방문수·최근일은 sales 테이블 별도 조회)
+2. **prompt 블록 신설** `registered_cust_block` — `[등록 고객 — sns_accounts 자동 매칭. 정보 재질문 절대 금지]` 헤더 + 이름·고객번호·성별·이력 + 호칭 룰 (한국어 "○○님" / 영어 "Hi {first_name}" / 일·중·기타 자연스러운 호칭). prompt template `{registered_cust_block}\n{cust_history_block}` 위치 — 채널 정보 블록 다음
+3. 기존 `_cust_history`(공통 채널 + 이전 예약 lookup)와 별개로 동작 — sns_accounts 매칭이 더 강력 + 모든 채널 적용. 둘 다 매칭 시 두 블록 동시 노출 (모순 없음, 서로 보완)
+**검증** (suggest_only + force):
+- Christina(`cust_xhsbaoat9`, WhatsApp 447512320540) KR 응대 → "안녕하세요~ **Christina님**! 😊 네, 예약 가능해요!" ✅
+- EN 응대 → "**Hi Christina!** 😊 Yes, we have availability tomorrow…" ✅
+**적용**: 서버 직접 패치 (`ai_booking.py.bak_pre_namesalute_20260520_085800`) + `systemctl restart bliss-naver`. React 변경 0 → 버전업·CF 퍼지 불필요. worker thread 정상 재기동 확인.
+**유의**:
+- `sns_accounts` 매칭은 `customers` 테이블에 `[{channel, user_id, account_id, linked_at}]` JSON 배열 있을 때만. 매칭 실패 = 등록 안 된 고객 → 기존 그대로 (호칭 없음 / "고객님")
+- 외국인 이름 first name 추출은 단순 `split()[0]`. 복합 이름 등 edge case는 풀네임 대체 가능
+- 등록 고객은 prompt에 `정보 재질문 금지` 룰 포함 → AI가 이름·연락처·이메일 재질문 자동 차단
+
+### v3.7.775 — 모바일 풀스크린 패널 열려도 하단탭 표시 (2026-05-20)
+**증상** (정우님 모바일 보고): 받은메시지함 풀스크린 패널(입금문자/팀채팅/받은메시지 리스트) 상태에서 하단탭바(타임라인·매출·메시지함·고객·더보기)가 화면에서 사라짐.
+**원인**: v3.7.757에서 모바일 패널을 풀스크린(`bottom:0`)으로 만들면서 z-index 400으로 깔림 → 하단탭(z-index 100)이 패널에 가려짐. v3.7.759의 isChatOpen 분기는 채팅방 진입 시 hide 의도였는데 — 패널 열림만으로도 가려지는 부수 효과.
+**fix**:
+1. **AppShell**: `isChatOpen` state useEffect로 `document.body.dataset.msgChatOpen` 토글 (`messagesPanelOpen` 패턴과 동일)
+2. **index.html CSS**: 모바일(`max-width:767px`)에서 채팅방 미진입(`body[data-msg-chat-open="closed"]`)이면 패널 `bottom:76px` (하단탭 영역 비움), 채팅방 진입(`open`)이면 `bottom:0` (풀스크린, 하단탭은 isChatOpen으로 자동 hide)
+3. MobileBottomNav 자체는 무변경 — `isChatOpen={isChatOpen && (messagesPanelOpen || page==="messages")}` 그대로
+**결과**:
+- 받은메시지/팀채팅/입금문자 리스트 상태: 패널이 viewport 상단 ~ 하단탭 위까지 + 하단탭 동시 표시 → 다른 페이지로 즉시 이동 가능
+- 채팅방 깊이 진입 상태: 패널 풀스크린 + 하단탭 자동 hide (기존 그대로)
+**적용**: v3.7.775 라이브 배포 (version.txt 3.7.775, CF 퍼지 success). 로컬 모바일 viewport 시뮬레이션 한계로 자동 검증 부분적 — 모바일 라이브에서 직접 확인 권장.
+
+### v3.7.776 — 네이버 막기 전체 토글 일부 누락 fix (2026-05-20)
+**증상** (정우님 보고): 타임라인 네이버 예약 막기 슬롯 popup에서 "전체 막기"/"전체 풀기" 클릭 시 N개 슬롯 중 1~2개가 적용 안 되고 남음.
+**원인** ([TimelinePage.jsx:5836](src/components/Timeline/TimelinePage.jsx:5836) `toggleAll`): 각 item마다 `/naver-toggle-slot` 직렬 await 호출 → N건 read-modify-write. 일부 호출이 네이버 partner API 일시 오류로 실패하면 옵티미스틱이 그 슬롯만 롤백 → "부분 적용" 상태. alert는 떴지만 N건 N번 떠서 인지 어려움.
+**fix**:
+1. **서버 신규 endpoint** `/naver-toggle-slot-bulk` ([bliss_naver.py:4811](#)) — `{biz_id, item_ids[], date, time, block}` 받아 직렬 처리 + 결과 dict 반환 (`{ok, results:{itemId:{ok,msg}}}`). 각 item 실패는 try/except로 격리, 다른 item에 영향 0
+2. **클라이언트 `toggleAll` 재작성**:
+   - 변경 대상(`targets`) 사전 추출 — 이미 원하는 상태/비활성/운영외 제외
+   - 옵티미스틱 **일괄 적용** (한 번에 setNaverBlockState)
+   - bulk endpoint 한 번 호출 → 결과 받기
+   - 실패한 item만 핀포인트 롤백 + **알림 한 번에 통합** ("N건 막기 실패 (네이버 일시 오류): A, B, C…")
+   - 전체 fetch 실패면 전부 롤백
+3. 단일 슬롯 `toggleOne`은 기존 그대로 (popup 내 개별 토글용)
+**검증**: 콘솔 에러 0, 서버 재시작 후 `[pending_ai_replies_worker] 시작` 정상 + bulk endpoint route 등록 확인
+**적용**: v3.7.776 라이브 배포 (version.txt 3.7.776, CF 퍼지 success). 서버 `bliss_naver.py` 직접 패치(`bak_pre_toggle_bulk_20260520_101231`) + `systemctl restart bliss-naver`. 실제 동작 검증은 라이브 타임라인에서 "전체 막기/풀기" 시도로 확인 필요.
+**유의**: 옵티미스틱이 `items[itemId]` undefined인 케이스는 silent skip (popup이 그 item을 표시 안 했다는 뜻). 일반적으로 popup itemIds = 화면 노출 item 동일 → undefined 발생 안 함. 발생 시 서버 결과로 다음 popup 진입에서 최신 상태 fetch
+
+### v3.7.777 — 보유권 금액형 판정 통일 (isMoneyPkg 헬퍼) (2026-05-20)
+**증상** (정우님 보고, 방유림 #16954 화면): 예약 모달 보유권 pill에 "바프권 30만 **69950회**" 표시. 실제는 잔액 69,950원 금액형인데 "회수"로 잘못 분류.
+**원인**: 12개 callsite에 흩어져 있던 금액형 판정 키워드가 `다담`/`선불`/`10%추가적립`만 매칭 → **"바프권" 누락** → `(total_count - used_count) = 69,950`을 회수로 표시.
+**fix** (헬퍼 통일):
+1. `src/lib/utils.js`에 `isMoneyPkg(p)` 신규 헬퍼:
+   - 1순위: `note`에 `/잔액\s*:/` 패턴 → 금액형 확정 (잔액이 실제로 기록된 row = 금액 보유권의 확실한 식별자)
+   - 2순위: 이름 키워드 fallback (`다담`/`선불`/`바프`/`프리패스`/`10%추가적립`) — 발급 직후 잔액 미기입/구버전 데이터 대응
+2. callsite 12곳 일괄 교체:
+   - `ReservationModal.jsx`: 7곳 (171·178·953·1257·1469·1518·2374) — pill 표시·차감 페널티·체크박스 필터 등
+   - `CustomersPage.jsx`: 2곳 (506·1101) — 보유권 카드 타입 분류
+   - `SaleForm.jsx`: 3곳 (737·991·1084) — 매출등록 시 prepaid/multi 구분
+3. 미래에 새 금액권 이름(예: "차징권") 추가 시에도 — note에 `잔액:` 자동 기록되므로 자동 매핑
+**예상 효과**: 방유림 보유권 pill — "바프권 30만 **6.99만**" (한국식 짧은 단위) 또는 "69,950"으로 정상 표시. 매출등록 시 바프권 잔액 차감 흐름도 정상 작동.
+**검증**: 콘솔 에러 0, 빌드 OK, 라이브 version.txt = 3.7.777, CF 퍼지 success. UI 표시는 모바일·데스크탑 라이브에서 방유림 예약 모달 직접 확인 권장.
+**유의**:
+- `isMoneyPkg`는 `customer_packages.note`의 `잔액:` 패턴이 1순위라 — 매출등록·환불 시 note가 정확히 유지되는 게 전제. 이미 동작하던 패턴이라 회귀 없음
+- 비-멀티테넌트 위반 0: 키워드는 어느 매장이든 동일 (`다담/선불/바프/프리패스`는 일반적 금액권 명칭). 특정 매장 ID 하드코딩 없음
+- `tagAutoTrigger.js`, `AdminMemberPriceRules.jsx`, `BlissAI/contextBuilder.js`의 다담/바프 키워드는 별개 의미(자동태그·카테고리 매핑·AI 컨텍스트)라 통일 대상 아님
+
+### v3.7.778 — 사이드바 팀채팅 미읽 카운트 제거 (2026-05-20)
+**요청** (정우님): 사이드바 "받은메시지함" 배지에 팀채팅 미읽이 합산되던 것 → 합산에서 빼기.
+**fix** (`AppShell.jsx`):
+- `teamChatUnread` state + 10초 폴링 fetch + Realtime 구독 useEffect 통째로 제거 (dead code 정리)
+- 사이드바 배지 합산 2곳: `unreadMsgCount + teamChatUnread + pendingDepositCount` → `unreadMsgCount + pendingDepositCount`
+- 받은메시지함 안 팀채팅 탭의 미읽 표시는 별도 hook(`useTeamChat.unreadCount`)이 담당 — 영향 0
+**적용**: v3.7.778 라이브 배포(version.txt 3.7.778, CF 퍼지 success). 빌드 통과(syntax/타입 OK). dev HMR에서 일시 React 에러 보였으나 ErrorBoundary catch 후 정상 재마운트 — prod 무영향 확인.
+
+### v3.7.779 — 보유권 pill 라벨에서 trailing 충전금액 제거 (2026-05-20)
+**증상** (정우님 보고, 윤성욱 #52745 화면): 예약 모달 보유권 pill에 "다담권 47.8만" 정상 표시 / "다담권 100만 15.6만" 비정상(충전금액+잔액 둘 다 표시).
+**원인** ([ReservationModal.jsx:956](src/components/Timeline/ReservationModal.jsx:956)): `cleanName = n.split("(")[0].trim()`이 괄호만 떼고 service_name 그대로 라벨로 사용. service_name이 "다담권"이면 OK, "다담권 100만"이면 "100만"이 라벨에 그대로 포함 → 옆 잔액과 함께 "다담권 100만 15.6만"으로 보임.
+**fix** (line 957-961 prepaid 케이스): 라벨 만들 때 trailing 충전금액 정규식으로 제거.
+```js
+const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원)?\s*$/, "").trim();
+```
+- "다담권 100만" → "다담권"
+- "바프권 30만" → "바프권"
+- "프리패스권 50만" → "프리패스권"
+- "다담권 1,000,000원" → "다담권"
+- "다담권"(트레일링 금액 없음) → 변화 없음
+- "재생 PKG 5회"(회수형) → 영향 0 (회수형 라벨은 별도 분기)
+**검증** preview_eval 10/10 PASS + 빌드 syntax/타입 OK + 라이브 version.txt = 3.7.779. CF 퍼지 success. annual·multi 분기 라벨은 그대로 (회수형에 "5회" 등 의미 있는 정보라).
+
+### 다담권 pkg_pay 알림톡 유효기간 추가 — 알리고 신규 template 등록 (2026-05-20)
+**요청** (정우님): 보유권(다담권) 차감 알림톡에 남은 유효기간 안내 추가. 다회권(`tkt_pay`/`UG_6292`)은 이미 "유효 기간: 시작일 ~ 종료일" 들어있음. 다담권(`pkg_pay`/`UG_6288`)만 누락 → 신규 template 등록 + 카카오 검수.
+**제약**: 카카오 알림톡은 사전 승인 template만 발송 가능 → 본문 변경 = **신규 template 등록 + 카카오 검수**(3-5영업일). 본문 코드 수정만으로 발송 거절됨.
+**진행**:
+1. **신규 본문 합의** — 기존 `pkg_pay` 본문에 `유효 기간: ~ #{유효기간}` 한 줄 추가
+2. **8지점 × 1종 알리고 template 등록** — `kakaoapi.aligo.in/akv10/template/add/` API. 신규 tpl_code: `UI_0772`~`UI_0779`. 카카오 정책상 "채널 추가" 버튼 불가 → 버튼 미포함
+3. **8지점 검수 요청** — `kakaoapi.aligo.in/akv10/template/request/` API, param 이름 `tpl_code`. 8건 모두 "검수요청을 하였습니다" 응답
+4. **승인 대기** — 카카오 검수 3-5영업일
+**승인 후 후속**:
+- `branches.noti_config.pkg_pay`의 `tplCode`/`msgTpl` 8지점 일괄 교체
+- `SaleForm.jsx:3115` `unit==='won'` 분기 params에 `#{유효기간}` 키 추가 (`pkg.note`의 `유효:YYYY-MM-DD` 파싱, 없으면 "무제한")
+- HANDOFF.md에 매핑표 + 승인 후 작업 상세 명시
+**유의**:
+- 알리고 콘솔에 테스트 template `UI_0780-테스트조회_강남점` 1건 남음 (검수 미요청, 운영 영향 0) — 정우님 콘솔 수동 삭제 권장
+- 알리고 API 응답 `code`가 문자열 `"0"` (숫자 0이 아님). 등록 스크립트 ok 판정에 주의
+- "채널 추가" 버튼은 일부 카테고리에서 카카오 거절 — 향후 신규 template 등록 시 버튼 미포함 권장
+**스크립트 (로컬 Mac)**: `/tmp/aligo_register_pkg_pay_v2.py` (등록) + `/tmp/aligo_pkg_pay_v2_finalize.py` (list + request)
+
+### v3.7.780 — 손님 셀프 보유권/포인트 조회 페이지 (SMS 인증) (2026-05-20)
+**요청** (정우님): 카카오 채널 채팅창 하단 메뉴 2번째 "💰 가격 안내" 제거 → "🎫 내 보유권/포인트" 신규 페이지. 손님이 전화번호 인증 후 본인 보유권·포인트 셀프 확인.
+**구현 — 3개 파트**:
+1. **서버 신규 endpoint 2개** (`bliss_naver.py`):
+   - `/customer-verify-send`: 전화번호 받아 SMS 인증코드(6자리) 발송. rate limit 1분, 메모리 캐시 `_cust_verify_codes`. 발송은 `send-sms` Edge Function(UMS NPRO3, 강남점 발신번호) 재사용
+   - `/customer-verify-check`: 코드 검증 + `customers` 매칭(phone OR phone2) → `customer_packages` 활성(잔여>0 + 미만료) + `point_transactions` 잔액(earn − deduct − expire) → 응답 dict
+   - 보안: 코드 10분 만료, 5회 틀리면 lock, 사용 후 재사용 차단
+2. **신규 페이지** [`public/mypage.html`](public/mypage.html):
+   - Step 1 — 전화번호 입력(자동 하이픈) → "인증코드 받기"
+   - Step 2 — 6자리 코드 입력(`autocomplete="one-time-code"` iOS SMS 자동 채우기 지원) + 10분 카운트다운 + "번호 다시 입력"
+   - Step 3 — 결과: 고객명·고객번호 + 보유권 카드(금액형/회수형 자동 구분 + 유효기간) + 포인트 잔액 카드. "다른 번호로 다시 조회"
+   - 디자인: 블리스 보라 톤(book.html 패턴), 모바일 first(maxWidth 480), noindex/nofollow
+3. **카카오 채널 메뉴 URL 교체** (정우님 수동 작업): 8지점 채널 관리자에서 두 번째 메뉴 "💰 가격 안내" → "🎫 내 보유권/포인트" 라벨 + URL `/prices.html?bid=*` → `/mypage.html`
+**적용**: v3.7.780 라이브 배포(version.txt 3.7.780, CF 퍼지 success). 페이지 [https://blissme.ai/mypage.html](https://blissme.ai/mypage.html) 200. 서버 재시작 후 endpoint 정상 기동.
+**유의**:
+- 인증코드 캐시는 메모리(서버 재시작 시 휘발) — 10분 만료라 큰 영향 X
+- `customers` 매칭은 8지점 통합(business_id) — 매장 무관 본인 전체 보유권/포인트 표시
+- 한 전화번호에 여러 고객 매칭 시 첫 번째 행만 표시 (단순화) — 동일인 다른 매장 등록 케이스
+- SMS 1건 비용 발생(UMS NPRO3 SMS) — 인증 시도마다 발생. rate limit으로 남용 방지
+- 카카오 채널 메뉴는 카카오톡 채널 관리자 페이지 수동 변경 (8지점 각각). API 자동화 없음
+
+### v3.7.781 → v3.7.784 + AI 게이트 fix (2026-05-20 ~ 21)
+
+#### v3.7.781~783 — 대화 카드 AI 자동응대 상태 배지 (2026-05-20)
+- 메시지함 대화 카드에 AI 상태 배지 표시 — `🤖 N초 후 자동응답`(pending) / `🤖 AI 응대중`(sent + 그 후 직원 outbound 없음). 5초 폴링으로 `pending_ai_replies` 조회 후 `aiBadgeMap`.
+- **AI active 모드** 도입 (서버): 같은 thread에 최근 `sent` row 있고 그 후 직원 outbound 없으면 → delay 분기 우회 → 손님 추가 메시지 즉시 응답. 직원 개입(outbound) 시 자동 reset.
+- **outbound echo is_ai 전파 fix** (v3.7.783, 서버): 네이버·WhatsApp·LINE·Instagram 5개 outbound echo INSERT에 `is_ai` 누락 — AI 본인 outbound가 "직원 outbound"로 카운트돼 active 모드가 곧바로 reset되던 버그. `is_ai: bool(row.get("is_ai"))` 전파. 클라이언트 `hasStaffAfter` 판정에도 `&& !m.is_ai` 추가.
+
+#### v3.7.784 — AI 예약신청 라벨/카운트 분리 (2026-05-20)
+- 타임라인 상단 배너 라벨이 `request`(AI) + `pending`(네이버 확정대기) 합산 카운트로 "AI 예약신청 N건"만 표시되던 것 분리.
+- 3-way 표시: `ai>0 && nv>0 → "AI N · 확정대기 M"` / `ai만 → "AI 예약신청 N건"` / `nv만 → "확정대기 N건"`.
+
+#### AI 자동응대 게이트 순서 변경 — 영업시간 직원 미응답 fallback (2026-05-21, 서버, React 변경 0)
+**증상**: Liv (WhatsApp 447782560390) 영업시간 KST 10:05 inbound 메시지 11분 무응답. 설정상 미응답 1분 후 AI 자동 답변 ON.
+
+**원인**: `ai_booking.py`의 게이트 순서가 (1) 채널 (2) **시간 윈도우 차단** (3) delay 분기. 정우님 설정 = 야간 22:00~09:00이 윈도우 안이고 영업시간(10:18 KST)은 윈도우 밖 → (2)에서 차단되어 delay 분기 진입 자체 X → enqueue 안 됨. worker 호출 `_from_worker=True`도 같은 게이트에서 또 차단됨.
+
+**fix**: 게이트 재배치 (`ai_booking.py.bak_pre_gate_*` 백업):
+- 시간 윈도우 계산 결과를 차단 대신 `_within_schedule` 변수에 담음
+- delay 분기 재설계 — 영업시간(`_within_schedule=False`) + delay ON + not active mode → `pending_ai_replies` enqueue. 야간(`_within_schedule=True`)이거나 active mode면 즉시 응답 (delay는 영업시간 전용 fallback)
+- 영업시간 + delay OFF + not active → 차단 (기존 동작 유지)
+- worker `_from_worker=True` 호출: 시간 게이트 우회 (1분 후 영업시간이어도 정상 응답 발송) — `if not _from_worker and not suggest_only` 블록 안에서만 차단·enqueue 처리
+
+**적용**: 서버 직접 패치 + `systemctl restart bliss-naver`. React 변경 0 → 버전업·CF퍼지 불필요. 라이브 검증은 새 inbound 메시지(영업시간 + 직원 미응답) 자연 작동 관찰 또는 `pending_ai_replies` row 추적.
+
+**정책 요약**:
+- 야간(스케줄 윈도우 안): 즉시 AI 응답 (delay 무시 — 직원 부재 default라 fallback 의미 없음)
+- 영업시간(윈도우 밖) + delay ON: 1분 후 직원 미응답 시 AI fallback
+- 영업시간 + delay OFF: AI 안 함 (직원 100% 응대)
+- active mode (AI가 한 번 답한 thread + 직원 outbound 없음): 시간 무관 즉시 (대화 흐름 보존)

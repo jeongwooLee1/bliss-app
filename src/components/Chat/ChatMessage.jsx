@@ -17,7 +17,7 @@ export function fmtDateHeader(iso) {
 }
 
 // 개별 메시지 row
-function ChatMessage({ msg, user, isOwn, showHeader, pending }) {
+function ChatMessage({ msg, user, isOwn, showHeader, pending, flash }) {
   const [hover, setHover] = useState(false)
   const [copied, setCopied] = useState(false)
   const time = fmtTime(msg.created_at)
@@ -42,6 +42,7 @@ function ChatMessage({ msg, user, isOwn, showHeader, pending }) {
 
   return (
     <div
+      className={flash ? 'chat-msg-new' : undefined}
       onMouseEnter={()=>setHover(true)}
       onMouseLeave={()=>setHover(false)}
       style={{

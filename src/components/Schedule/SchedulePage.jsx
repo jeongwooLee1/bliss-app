@@ -782,7 +782,9 @@ export default function SchedulePage({ employees: propEmps }) {
       <style>{`
         *{-webkit-user-select:none;user-select:none}
         ::-webkit-scrollbar{height:5px;width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#b0b8c1;border-radius:3px}
-        .cc{cursor:pointer}.cc:hover .sch-box{transform:scale(1.06);box-shadow:0 2px 8px rgba(0,0,0,.15)!important}
+        .cc{cursor:pointer}.cc:hover .sch-box{transform:scale(1.10) translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,.22)!important}
+        .cc::after{content:'';position:absolute;left:0;right:0;top:-9999px;bottom:-9999px;background:rgba(66,133,244,.10);pointer-events:none;opacity:0;z-index:25;transition:opacity .12s}
+        .cc:hover::after{opacity:1}
         @media print{.np{display:none!important}}
         @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
       `}</style>
@@ -1204,7 +1206,7 @@ function ScheduleCell({ emp, day, dayIdx, empIdx, getS, isConfirmed, lockedDates
         background:boxBg, color:boxColor, boxShadow,
         borderRadius:6, padding:'4px 2px', fontSize:11, fontWeight:s==='휴무'||s==='휴무(꼭)'||s==='무급' ? 700 : s ? 600 : 400,
         minWidth:40, minHeight:28, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column',
-        position:'relative', border:'none', transition:'transform .1s, box-shadow .1s'
+        position:'relative', border:'none', transition:'transform .18s ease, box-shadow .18s ease'
       }}>
         {locked && !beforeStart && <span style={{ position:'absolute', top:-3, left:1, fontSize:9, lineHeight:1, zIndex:2 }}>🔒</span>}
         {s==='휴무(꼭)' && !emp.isOwner && <span style={{ position:'absolute', top:-5, right:1, fontSize:8, color:'#9060d0', fontWeight:900 }}>★</span>}

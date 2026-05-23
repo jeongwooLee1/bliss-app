@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { T } from '../../lib/constants'
 import ChatMessage, { fmtDateHeader } from './ChatMessage'
 
@@ -55,6 +55,30 @@ function EmptyState() {
 
 function ChatMessageList({ messages, userMap, currentUserId, lastReadAt, loading, scrollTrigger }) {
   const scrollRef = useRef(null)
+
+  // 새로 올라온 메시지 — 클릭(확인) 전까지 계속 깜빡임 (타인 메시지만)
+  // ★ 화면을 연(마운트) 이후 도착한 메시지만 깜빡 — 기존 히스토리는 새로고침/로딩순서와 무관하게 절대 안 깜빡임
+  const seenRef = useRef(new Set())
+  const mountTsRef = useRef(Date.now())
+  const [blinkIds, setBlinkIds] = useState(() => new Set())
+  useEffect(() => {
+    const add = []
+    let ownPosted = false
+    for (const m of messages) {
+      if (seenRef.current.has(m.id)) continue
+      seenRef.current.add(m.id)
+      // 내가 답변(전송) = 대화 전체 확인한 것 → 클릭과 동일하게 깜빡임 제거
+      if (m.user_id === currentUserId) { ownPosted = true; continue }
+      if (m._pending) continue
+      // 마운트 시각 이후 생성된 메시지(=화면 연 뒤 새로 온 것)만 깜빡임 대상
+      const t = new Date(m.created_at).getTime()
+      if (!isNaN(t) && t > mountTsRef.current) add.push(m.id)
+    }
+    if (ownPosted) setBlinkIds(s => (s.size ? new Set() : s))
+    else if (add.length) setBlinkIds(s => { const n = new Set(s); add.forEach(id => n.add(id)); return n })
+  }, [messages, currentUserId])
+  // 클릭(아무 곳이나) 시 깜빡임 전체 정지 = 확인 처리
+  const ackBlink = () => setBlinkIds(s => (s.size ? new Set() : s))
 
   // 메시지 + 구분선 렌더 리스트 계산
   const items = useMemo(() => {
@@ -125,7 +149,7 @@ function ChatMessageList({ messages, userMap, currentUserId, lastReadAt, loading
   if (!messages.length) return <EmptyState/>
 
   return (
-    <div ref={scrollRef} style={{
+    <div ref={scrollRef} onClick={ackBlink} style={{
       flex:1, overflowY:'auto', overflowX:'hidden',
       paddingTop:4, paddingBottom:4,
       scrollbarWidth:'thin',
@@ -135,6 +159,7 @@ function ChatMessageList({ messages, userMap, currentUserId, lastReadAt, loading
         if (it.type === 'unread') return <UnreadDivider key={it.key} count={it.count}/>
         const user = userMap[it.msg.user_id]
         const isOwn = it.msg.user_id === currentUserId
+        const flash = blinkIds.has(it.msg.id)
         return (
           <ChatMessage
             key={it.key}
@@ -143,6 +168,7 @@ function ChatMessageList({ messages, userMap, currentUserId, lastReadAt, loading
             isOwn={isOwn}
             showHeader={it.showHeader}
             pending={it.msg._pending}
+            flash={flash}
           />
         )
       })}

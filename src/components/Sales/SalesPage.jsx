@@ -367,8 +367,15 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
         }
       }
 
-      // 6) sales 삭제 + 로컬 state 정리
-      await sb.del("sales", id).catch(console.error);
+      // 5-b) 이 매출에 매칭된 입금문자 → 미매칭으로 되돌림 (FK 차단 방지 + 입금 재매칭 가능)
+      const matchedDeps = await sb.get("bank_deposits", `&matched_sale_id=eq.${id}`) || [];
+      for (const dp of matchedDeps) {
+        await sb.update("bank_deposits", dp.id, { status: "pending", matched_sale_id: null, matched_at: null, matched_by: null }).catch(console.error);
+      }
+
+      // 6) sales 삭제 — 성공 확인 후에만 로컬 state 정리 (실패 시 화면만 지워지고 새로고침 시 부활하던 버그 방지)
+      const _delOk = await sb.del("sales", id);
+      if (!_delOk) { alert("매출 삭제에 실패했습니다(서버 거부). 새로고침 후 다시 시도하거나 관리자에게 문의하세요."); return; }
       setData(prev => ({
         ...prev,
         sales: (prev?.sales||[]).filter(s => s.id !== id),
@@ -751,39 +758,67 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
                             <th style={{padding:"4px 8px",textAlign:"right",fontWeight:T.fw.bold,color:T.textSub,width:50}}>수량</th>
                             <th style={{padding:"4px 8px",textAlign:"center",fontWeight:T.fw.bold,color:T.textMuted,width:40}}></th>
                           </tr></thead>
-                          <tbody>{details.map((d,di)=>{
-                            return <tr key={d.id||di} style={{borderTop:"1px solid "+T.border}}>
-                              <td style={{padding:"4px 8px",color:T.text}}>
-                                {d.service_name||"-"}
-                                {d.sex_div && <span style={{fontSize:T.fs.nano,marginLeft:4,color:d.sex_div==="M"?T.male:d.sex_div==="F"?T.female:T.textMuted}}>
-                                  ({d.sex_div==="M"?"남":d.sex_div==="F"?"여":d.sex_div})
-                                </span>}
-                              </td>
-                              <td style={{padding:"4px 8px",textAlign:"right",color:T.text,fontWeight:T.fw.bold}}>{(d.unit_price||0)>0?fmt(d.unit_price):"-"}</td>
-                              <td style={{padding:"4px 8px",textAlign:"right",color:T.textSub}}>{d.qty||1}</td>
-                              <td style={{padding:"4px 8px",textAlign:"center"}}>
-                                <button
-                                  onClick={async (e)=>{
-                                    e.stopPropagation();
-                                    if(!d.id) return;
-                                    if(!confirm(`"${d.service_name||"항목"}" 항목을 삭제하시겠습니까?\n\n(매출 금액·결제수단 합계는 변경되지 않습니다. 상세내역만 제거됩니다.)`)) return;
-                                    try {
-                                      await sb.del("sale_details", d.id);
-                                      setDetailMap(prev => ({
-                                        ...prev,
-                                        [s.id]: (prev[s.id]||[]).filter(x => x.id !== d.id),
-                                      }));
-                                    } catch(err) {
-                                      alert("항목 삭제 실패: " + (err?.message || err));
-                                    }
-                                  }}
-                                  title="이 항목 삭제"
-                                  style={{background:"none",border:"none",cursor:"pointer",padding:"2px 4px",color:T.danger||"#dc2626",fontSize:T.fs.xs,lineHeight:1}}>
-                                  🗑
-                                </button>
-                              </td>
-                            </tr>;
-                          })}
+                          <tbody>{(()=>{
+                            const RED = T.danger||"#dc2626";
+                            // 할인/보유권/이벤트 등은 맨 아래로, 그 외엔 매출등록 입력순(service_no)
+                            const TRAIL = new Set(['discount','event_discount','coupon_discount','event_earn','coupon_earn','pkg_use','pkg_deduct','share_surcharge']);
+                            const isTrail = (d) => TRAIL.has(d.item_kind) || (!d.item_kind && /^\[/.test(d.service_name||''));
+                            const isDiscount = (d) => ['discount','event_discount','coupon_discount'].includes(d.item_kind) || (!d.item_kind && /할인\]/.test(d.service_name||''));
+                            const sorted = [...details].sort((a,b)=>{
+                              const ta=isTrail(a)?1:0, tb=isTrail(b)?1:0;
+                              if(ta!==tb) return ta-tb;
+                              return (a.service_no||0)-(b.service_no||0);
+                            });
+                            const rows = sorted.map((d,di)=>{
+                              const disc = isDiscount(d);
+                              const amt = d.unit_price||0;
+                              return <tr key={d.id||di} style={{borderTop:"1px solid "+T.border}}>
+                                <td style={{padding:"4px 8px",color:disc?RED:T.text}}>
+                                  {d.service_name||"-"}
+                                  {d.sex_div && <span style={{fontSize:T.fs.nano,marginLeft:4,color:d.sex_div==="M"?T.male:d.sex_div==="F"?T.female:T.textMuted}}>
+                                    ({d.sex_div==="M"?"남":d.sex_div==="F"?"여":d.sex_div})
+                                  </span>}
+                                </td>
+                                <td style={{padding:"4px 8px",textAlign:"right",fontWeight:T.fw.bold,color:disc?RED:T.text}}>{amt>0?(disc?`-${fmt(amt)}`:fmt(amt)):"-"}</td>
+                                <td style={{padding:"4px 8px",textAlign:"right",color:T.textSub}}>{d.qty||1}</td>
+                                <td style={{padding:"4px 8px",textAlign:"center"}}>
+                                  <button
+                                    onClick={async (e)=>{
+                                      e.stopPropagation();
+                                      if(!d.id) return;
+                                      if(!confirm(`"${d.service_name||"항목"}" 항목을 삭제하시겠습니까?\n\n(매출 금액·결제수단 합계는 변경되지 않습니다. 상세내역만 제거됩니다.)`)) return;
+                                      try {
+                                        await sb.del("sale_details", d.id);
+                                        setDetailMap(prev => ({
+                                          ...prev,
+                                          [s.id]: (prev[s.id]||[]).filter(x => x.id !== d.id),
+                                        }));
+                                      } catch(err) {
+                                        alert("항목 삭제 실패: " + (err?.message || err));
+                                      }
+                                    }}
+                                    title="이 항목 삭제"
+                                    style={{background:"none",border:"none",cursor:"pointer",padding:"2px 4px",color:RED,fontSize:T.fs.xs,lineHeight:1}}>
+                                    🗑
+                                  </button>
+                                </td>
+                              </tr>;
+                            });
+                            // 시술 합계 · 제품 합계 (매출 행과 동일 기준)
+                            rows.push(
+                              <tr key="_sumSvc" style={{borderTop:"2px solid "+T.border,background:T.gray100}}>
+                                <td style={{padding:"5px 8px",fontWeight:T.fw.bolder,color:T.textSub}}>시술 합계</td>
+                                <td style={{padding:"5px 8px",textAlign:"right",fontWeight:T.fw.black,color:T.primary}}>{fmt(sv)}</td>
+                                <td/><td/>
+                              </tr>,
+                              <tr key="_sumProd" style={{background:T.gray100}}>
+                                <td style={{padding:"5px 8px",fontWeight:T.fw.bolder,color:T.textSub}}>제품 합계</td>
+                                <td style={{padding:"5px 8px",textAlign:"right",fontWeight:T.fw.black,color:T.info}}>{fmt(prDisp)}</td>
+                                <td/><td/>
+                              </tr>
+                            );
+                            return rows;
+                          })()}
                           </tbody>
                         </table>
                       </div>;

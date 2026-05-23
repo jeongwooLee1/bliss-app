@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>내 보유권/포인트 확인 — 하우스왁싱</title>
+<meta name="description" content="하우스왁싱 손님 본인의 보유권·포인트 잔액을 SMS 인증으로 확인하실 수 있습니다.">
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<style>
+:root {
+  --purple: #5B21B6;
+  --purple-lt: #EDE9FE;
+  --gray-bg: #F8F7FB;
+  --gray-line: #E5E7EB;
+  --text: #1A1A2E;
+  --text-sub: #6B7280;
+  --text-mute: #9CA3AF;
+  --green: #10B981;
+  --green-lt: #D1FAE5;
+  --orange: #F59E0B;
+  --red: #EF4444;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body {
+  margin: 0; padding: 0;
+  font-family: -apple-system, "system-ui", "Apple SD Gothic Neo", "Pretendard", sans-serif;
+  background: var(--gray-bg);
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.5;
+}
+.wrap { max-width: 480px; margin: 0 auto; padding: 0 16px 32px; }
+.hdr {
+  text-align: center; padding: 22px 16px 14px;
+  background: linear-gradient(135deg, #C4B5FD, #DDD6FE);
+  border-radius: 0 0 18px 18px; margin-bottom: 20px;
+  color: var(--purple);
+}
+.hdr h1 { margin: 0 0 4px; font-size: 18px; font-weight: 800; letter-spacing: -0.3px; }
+.hdr p { margin: 0; font-size: 12px; font-weight: 500; opacity: 0.85; }
+.card {
+  background: #fff; border-radius: 12px; padding: 18px 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  margin-bottom: 12px;
+}
+.card h2 { margin: 0 0 12px; font-size: 14px; font-weight: 700; color: var(--text); }
+.field { margin-bottom: 12px; }
+.label { display: block; font-size: 12px; font-weight: 700; color: var(--text-sub); margin-bottom: 5px; }
+.input {
+  width: 100%; padding: 12px 14px; font-size: 16px;
+  border: 1.5px solid var(--gray-line); border-radius: 9px;
+  font-family: inherit; background: #fff;
+  -webkit-appearance: none; appearance: none;
+}
+.input:focus { outline: none; border-color: var(--purple); }
+.input[disabled] { background: #F3F4F6; color: var(--text-mute); }
+.btn {
+  width: 100%; padding: 13px; font-size: 15px; font-weight: 700;
+  border: none; border-radius: 9px; cursor: pointer;
+  background: var(--purple); color: #fff;
+  font-family: inherit; transition: opacity .15s, background .15s;
+}
+.btn:active { opacity: 0.8; }
+.btn[disabled] { background: #D1D5DB; cursor: not-allowed; }
+.btn-sec {
+  background: #fff; color: var(--purple); border: 1.5px solid var(--purple);
+}
+.msg { padding: 10px 12px; border-radius: 8px; font-size: 13px; margin-top: 10px; }
+.msg.err { background: #FEE2E2; color: #991B1B; }
+.msg.ok { background: var(--green-lt); color: #065F46; }
+.msg.info { background: #FEF3C7; color: #92400E; }
+
+.summary {
+  background: linear-gradient(135deg, #EDE9FE, #FCE7F3);
+  border-radius: 12px; padding: 16px;
+  margin-bottom: 12px; text-align: center;
+}
+.summary .name { font-size: 18px; font-weight: 800; color: var(--purple); }
+.summary .num { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
+
+.section { margin-bottom: 14px; }
+.section h3 {
+  margin: 0 0 8px; font-size: 13px; font-weight: 700; color: var(--text-sub);
+  display: flex; align-items: center; gap: 6px;
+}
+.pkg-row {
+  background: #fff; border: 1px solid var(--gray-line); border-radius: 9px;
+  padding: 11px 13px; margin-bottom: 6px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.pkg-row .pname { font-size: 13px; font-weight: 700; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pkg-row .pval { font-size: 13px; font-weight: 800; color: var(--purple); white-space: nowrap; }
+.pkg-row .pexp { display: block; font-size: 10px; color: var(--text-mute); margin-top: 2px; font-weight: 500; }
+.point-card {
+  background: linear-gradient(135deg, #FEF3C7, #FED7AA);
+  border-radius: 9px; padding: 14px 16px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.point-card .ptlabel { font-size: 13px; font-weight: 700; color: #92400E; }
+.point-card .ptval { font-size: 22px; font-weight: 800; color: #C2410C; letter-spacing: -0.5px; }
+.empty {
+  text-align: center; color: var(--text-mute); font-size: 13px; padding: 18px 12px;
+  background: #fff; border: 1px dashed var(--gray-line); border-radius: 9px;
+}
+.foot {
+  text-align: center; font-size: 11px; color: var(--text-mute);
+  padding: 16px 8px 8px; line-height: 1.6;
+}
+.timer { display: inline-block; font-size: 11px; color: var(--orange); font-weight: 700; margin-left: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <h1>내 보유권 / 포인트 확인</h1>
+    <p>하우스왁싱</p>
+  </div>
+
+  <!-- Step 1: 전화번호 -->
+  <div class="card" id="step1">
+    <h2>전화번호 입력</h2>
+    <div class="field">
+      <label class="label" for="inpPhone">휴대전화번호</label>
+      <input type="tel" class="input" id="inpPhone" placeholder="010-0000-0000" maxlength="13" autocomplete="tel">
+    </div>
+    <button class="btn" id="btnSend">인증코드 받기</button>
+    <div class="msg info" style="margin-top:14px;font-size:12px;">
+      📱 입력하신 번호로 SMS 인증코드가 발송돼요.<br>
+      등록되어 있는 번호로만 조회 가능합니다.
+    </div>
+    <div id="msg1"></div>
+  </div>
+
+  <!-- Step 2: 인증코드 -->
+  <div class="card" id="step2" style="display:none;">
+    <h2>인증코드 입력 <span class="timer" id="timer"></span></h2>
+    <div class="field">
+      <label class="label" for="inpCode">SMS로 받은 6자리 코드</label>
+      <input type="tel" class="input" id="inpCode" placeholder="000000" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code">
+    </div>
+    <button class="btn" id="btnCheck">확인</button>
+    <button class="btn btn-sec" id="btnResend" style="margin-top:8px;">번호 다시 입력</button>
+    <div id="msg2"></div>
+  </div>
+
+  <!-- Step 3: 결과 -->
+  <div id="step3" style="display:none;">
+    <div class="summary">
+      <div class="name" id="resName"></div>
+      <div class="num" id="resNum"></div>
+    </div>
+
+    <div class="section">
+      <h3>🎫 보유권</h3>
+      <div id="resPkgs"></div>
+    </div>
+
+    <div class="section">
+      <h3>💰 포인트</h3>
+      <div class="point-card">
+        <div class="ptlabel">사용 가능 포인트</div>
+        <div class="ptval"><span id="resPoints">0</span>P</div>
+      </div>
+    </div>
+
+    <button class="btn btn-sec" id="btnRestart">다른 번호로 다시 조회</button>
+  </div>
+
+  <div class="foot">
+    하우스왁싱 · 본인 인증 후에만 조회 가능합니다<br>
+    문의는 매장 카카오톡 채널로 부탁드려요
+  </div>
+</div>
+
+<script>
+const API = "https://blissme.ai";
+const step1 = document.getElementById('step1');
+const step2 = document.getElementById('step2');
+const step3 = document.getElementById('step3');
+const inpPhone = document.getElementById('inpPhone');
+const inpCode = document.getElementById('inpCode');
+const btnSend = document.getElementById('btnSend');
+const btnCheck = document.getElementById('btnCheck');
+const btnResend = document.getElementById('btnResend');
+const btnRestart = document.getElementById('btnRestart');
+const msg1 = document.getElementById('msg1');
+const msg2 = document.getElementById('msg2');
+const timer = document.getElementById('timer');
+
+// 전화번호 자동 하이픈
+inpPhone.addEventListener('input', e => {
+  let v = e.target.value.replace(/[^0-9]/g, '').slice(0, 11);
+  if (v.length > 7) v = v.slice(0,3)+'-'+v.slice(3,7)+'-'+v.slice(7);
+  else if (v.length > 3) v = v.slice(0,3)+'-'+v.slice(3);
+  e.target.value = v;
+});
+inpCode.addEventListener('input', e => {
+  e.target.value = e.target.value.replace(/[^0-9]/g, '').slice(0, 6);
+});
+
+function showMsg(el, text, cls) {
+  el.innerHTML = '<div class="msg '+cls+'">'+text+'</div>';
+  setTimeout(()=>{ if (el.innerHTML.includes(text)) el.innerHTML=''; }, 6000);
+}
+
+let countdownInterval = null;
+function startCountdown(seconds) {
+  if (countdownInterval) clearInterval(countdownInterval);
+  let s = seconds;
+  const upd = () => {
+    if (s <= 0) {
+      clearInterval(countdownInterval);
+      timer.textContent = '⏰ 만료됨';
+      timer.style.color = 'var(--red)';
+      return;
+    }
+    const m = Math.floor(s/60), ss = s%60;
+    timer.textContent = `${m}:${String(ss).padStart(2,'0')}`;
+    timer.style.color = s < 60 ? 'var(--red)' : 'var(--orange)';
+    s--;
+  };
+  upd();
+  countdownInterval = setInterval(upd, 1000);
+}
+
+btnSend.addEventListener('click', async () => {
+  const phone = inpPhone.value.replace(/[^0-9]/g, '');
+  if (!/^01[0-9]{8,9}$/.test(phone)) {
+    return showMsg(msg1, '올바른 휴대전화번호를 입력해주세요.', 'err');
+  }
+  btnSend.disabled = true; btnSend.textContent = '발송 중...';
+  try {
+    const r = await fetch(API + '/customer-verify-send', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({phone})
+    });
+    const j = await r.json();
+    if (j.ok) {
+      step1.style.display = 'none';
+      step2.style.display = 'block';
+      startCountdown(600);
+      inpCode.focus();
+    } else if (j.error === 'rate_limited') {
+      showMsg(msg1, `잠시 후 다시 시도해주세요 (${j.retry_after||60}초 후)`, 'err');
+    } else if (j.error === 'phone_format') {
+      showMsg(msg1, '전화번호 형식이 올바르지 않아요.', 'err');
+    } else {
+      showMsg(msg1, '발송 실패: ' + (j.error||'다시 시도해주세요'), 'err');
+    }
+  } catch(e) {
+    showMsg(msg1, '네트워크 오류: ' + e.message, 'err');
+  }
+  btnSend.disabled = false; btnSend.textContent = '인증코드 받기';
+});
+
+btnCheck.addEventListener('click', async () => {
+  const phone = inpPhone.value.replace(/[^0-9]/g, '');
+  const code = inpCode.value.trim();
+  if (!/^[0-9]{6}$/.test(code)) {
+    return showMsg(msg2, '6자리 숫자를 입력해주세요.', 'err');
+  }
+  btnCheck.disabled = true; btnCheck.textContent = '확인 중...';
+  try {
+    const r = await fetch(API + '/customer-verify-check', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({phone, code})
+    });
+    const j = await r.json();
+    if (j.ok) {
+      if (countdownInterval) clearInterval(countdownInterval);
+      renderResult(j);
+    } else if (j.error === 'wrong_code') {
+      showMsg(msg2, `인증코드가 일치하지 않아요. (${j.attempts_left||0}회 남음)`, 'err');
+    } else if (j.error === 'expired') {
+      showMsg(msg2, '인증코드가 만료됐어요. 다시 발송해주세요.', 'err');
+    } else if (j.error === 'locked') {
+      showMsg(msg2, '시도 횟수 초과. 10분 후 다시 시도해주세요.', 'err');
+    } else if (j.error === 'already_used') {
+      showMsg(msg2, '이미 사용된 코드예요. 다시 발송해주세요.', 'err');
+    } else {
+      showMsg(msg2, '확인 실패: ' + (j.error||'다시 시도해주세요'), 'err');
+    }
+  } catch(e) {
+    showMsg(msg2, '네트워크 오류: ' + e.message, 'err');
+  }
+  btnCheck.disabled = false; btnCheck.textContent = '확인';
+});
+
+btnResend.addEventListener('click', () => {
+  if (countdownInterval) clearInterval(countdownInterval);
+  step2.style.display = 'none';
+  step1.style.display = 'block';
+  inpCode.value = '';
+  msg1.innerHTML = ''; msg2.innerHTML = '';
+});
+
+btnRestart.addEventListener('click', () => {
+  step3.style.display = 'none';
+  step1.style.display = 'block';
+  inpPhone.value = ''; inpCode.value = '';
+  msg1.innerHTML = ''; msg2.innerHTML = '';
+});
+
+function renderResult(j) {
+  step2.style.display = 'none';
+  step3.style.display = 'block';
+
+  const c = j.customer;
+  if (!c) {
+    document.getElementById('resName').textContent = '등록 정보 없음';
+    document.getElementById('resNum').textContent = j.message || '하우스왁싱에 등록된 정보가 없어요. 매장에 문의해주세요.';
+    document.getElementById('resPkgs').innerHTML = '<div class="empty">보유권 없음</div>';
+    document.getElementById('resPoints').textContent = '0';
+    return;
+  }
+  document.getElementById('resName').textContent = c.name + '님';
+  document.getElementById('resNum').textContent = c.cust_num ? '#'+c.cust_num : '';
+
+  // 보유권
+  const pkgs = j.packages || [];
+  const pkgWrap = document.getElementById('resPkgs');
+  if (pkgs.length === 0) {
+    pkgWrap.innerHTML = '<div class="empty">사용 가능한 보유권이 없어요</div>';
+  } else {
+    pkgWrap.innerHTML = pkgs.map(p => {
+      let val;
+      if (p.type === 'money') {
+        val = (p.balance||0).toLocaleString() + '원';
+      } else {
+        val = `${p.remain}/${p.total}회`;
+      }
+      const exp = p.expires ? `<span class="pexp">유효 ~ ${p.expires}</span>` : '';
+      return `<div class="pkg-row"><div><div class="pname">${escapeHtml(p.name)}</div>${exp}</div><div class="pval">${val}</div></div>`;
+    }).join('');
+  }
+
+  // 포인트
+  document.getElementById('resPoints').textContent = (j.points||0).toLocaleString();
+}
+
+function escapeHtml(s) {
+  return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+// 엔터로 다음 단계
+inpPhone.addEventListener('keypress', e => { if (e.key === 'Enter') btnSend.click(); });
+inpCode.addEventListener('keypress', e => { if (e.key === 'Enter') btnCheck.click(); });
+</script>
+</body>
+</html>

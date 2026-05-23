@@ -59,6 +59,8 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   const [aiKoDraft, setAiKoDraft] = useState("");
   const [aiAutoChannels, setAiAutoChannels] = useState({});
   const [aiSchedule, setAiSchedule] = useState({enabled:false,start:"10:00",end:"22:00"}); // 전채널 공통
+  const [aiDelay, setAiDelay] = useState({enabled:false,minutes:5}); // 미응답 N분 후 자동 답변
+  const [aiBadgeMap, setAiBadgeMap] = useState({}); // key=ch+'_'+user_id → {status:'pending'|'sent', schedAt, processedAt}
   // IG 계정이 brancheas 테이블에 등록 안 된 경우를 위한 override 매핑: {igAccountId: branchId}
   // 예: 공용 "하우스왁싱 서울" IG 계정을 강남본점에 매핑
   const [igBranchOverride, setIgBranchOverride] = useState({});
@@ -217,6 +219,9 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         }
         // IG account_id → branch_id 오버라이드 매핑 (branches 미등록 IG 계정용)
         setIgBranchOverride(s.ig_branch_override || {});
+        // 미응답 N분 후 자동 답변
+        const _dl = s.ai_auto_reply_delay || {};
+        setAiDelay({enabled:!!_dl.enabled, minutes:Number(_dl.minutes)||5});
       }).catch(()=>{});
   },[]);
   const toggleAiChannel = async (ch) => {
@@ -246,6 +251,78 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       await fetch(SB_URL+`/rest/v1/businesses?id=eq.${_activeBizId}`,{method:"PATCH",headers:{...sbHeaders,"Prefer":"return=minimal"},body:JSON.stringify({settings:JSON.stringify(settings)})});
     } catch(e){ setAiSchedule(prev); }
   };
+
+  // 미응답 N분 후 자동 답변 저장
+  const saveAiDelay = async (patch) => {
+    const prev = {...aiDelay};
+    const updated = {...prev, ...patch};
+    setAiDelay(updated);
+    try {
+      const r = await fetch(SB_URL+`/rest/v1/businesses?id=eq.${_activeBizId}&select=settings`,{headers:sbHeaders});
+      const rows = await r.json();
+      const settings = _parseSettings(rows?.[0]?.settings);
+      settings.ai_auto_reply_delay = updated;
+      await fetch(SB_URL+`/rest/v1/businesses?id=eq.${_activeBizId}`,{method:"PATCH",headers:{...sbHeaders,"Prefer":"return=minimal"},body:JSON.stringify({settings:JSON.stringify(settings)})});
+    } catch(e){ setAiDelay(prev); }
+  };
+
+  // AI 자동응대 배지 — pending_ai_replies 5초 폴링, thread별 latest 1건
+  useEffect(() => {
+    if (!_activeBizId) return;
+    let alive = true;
+    const fetchBadges = async () => {
+      try {
+        const cutoff = new Date(Date.now() - 24*60*60*1000).toISOString();
+        const url = `${SB_URL}/rest/v1/pending_ai_replies?business_id=eq.${_activeBizId}&or=(status.eq.pending,and(status.eq.sent,processed_at.gte.${cutoff.replace('+','%2B')}))&order=created_at.desc&limit=500&select=channel,user_id,status,scheduled_at,processed_at`;
+        const r = await fetch(url, { headers: {...sbHeaders, 'Cache-Control':'no-cache'}, cache:'no-store' });
+        if (!alive || !r.ok) return;
+        const rows = await r.json();
+        const map = {};
+        for (const row of (rows||[])) {
+          const k = (row.channel||'') + '_' + (row.user_id||'');
+          if (!map[k]) map[k] = { status: row.status, schedAt: row.scheduled_at, processedAt: row.processed_at };
+        }
+        setAiBadgeMap(map);
+      } catch {}
+    };
+    fetchBadges();
+    const t = setInterval(fetchBadges, 5000);
+    return () => { alive=false; clearInterval(t); };
+  }, []);
+
+  // AI 자동응대 배지 렌더 helper
+  const _renderAiBadge = (key) => {
+    const b = aiBadgeMap[key];
+    if (!b) return null;
+    if (b.status === 'pending') {
+      const secs = Math.max(0, Math.round((new Date(b.schedAt).getTime() - Date.now())/1000));
+      const label = secs > 0 ? `${secs}초 후 자동응답` : `응답 발송 중...`;
+      return <span style={{fontSize:10,fontWeight:700,color:'#92400E',background:'#FEF3C7',padding:'2px 6px',borderRadius:8,whiteSpace:'nowrap',marginLeft:6,flexShrink:0,display:'inline-flex',alignItems:'center',gap:3}}><I name="bot" size={11} color="#92400E"/>{label}</span>;
+    }
+    if (b.status === 'sent') {
+      // sent 이후 직원 outbound 있으면 → AI 모드 해제, 배지 X
+      const [ch, ...uidParts] = key.split('_');
+      const uid = uidParts.join('_');
+      const sentAtMs = b.processedAt ? new Date(b.processedAt).getTime() : 0;
+      // 10분 경과 시 자동 사라짐 (대화 자연 종료로 간주)
+      if (sentAtMs > 0 && Date.now() - sentAtMs > 10 * 60 * 1000) return null;
+      const hasStaffAfter = sentAtMs > 0 && msgs.some(m => m.channel === ch && m.user_id === uid && m.direction === 'out' && !m.is_ai && new Date(m.created_at).getTime() > sentAtMs);
+      if (hasStaffAfter) return null;
+      return <span style={{fontSize:10,fontWeight:700,color:'#065F46',background:'#D1FAE5',padding:'2px 6px',borderRadius:8,whiteSpace:'nowrap',marginLeft:6,flexShrink:0,display:'inline-flex',alignItems:'center',gap:3}}><I name="bot" size={11} color="#065F46"/>AI 응대중</span>;
+    }
+    return null;
+  };
+
+  // 매 초 카운트다운 트리거 (pending) + 30초 sent 만료 체크
+  const [_aiTick, _setAiTick] = useState(0);
+  useEffect(() => {
+    const hasPending = Object.values(aiBadgeMap).some(b => b.status === 'pending');
+    const hasSent = Object.values(aiBadgeMap).some(b => b.status === 'sent');
+    if (!hasPending && !hasSent) return;
+    const interval = hasPending ? 1000 : 30000;
+    const t = setInterval(() => _setAiTick(x=>x+1), interval);
+    return () => clearInterval(t);
+  }, [aiBadgeMap]);
 
   // AI 자동대답 채널 메타 (카카오 제외)
   const _chMeta = [["naver","N 네이버","#03C75A"],["instagram","I 인스타","#E1306C"],["whatsapp","W 왓츠앱","#128C7E"],["line","L LINE","#06C755"]];
@@ -1202,11 +1279,11 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           <span style={{fontWeight:800,fontSize:18,color:T.text}}>메시지</span>
           {totalUnread>0&&<span style={{background:T.danger,color:"#fff",borderRadius:10,fontSize:11,fontWeight:700,padding:"2px 8px"}}>{totalUnread}</span>}
         </div>
-        <button onClick={()=>setShowAiSettings(v=>!v)} style={{background:Object.values(aiAutoChannels).some(v=>v)?"#7C3AED":"none",color:Object.values(aiAutoChannels).some(v=>v)?"#fff":T.textMuted,border:"1px solid "+(Object.values(aiAutoChannels).some(v=>v)?"#7C3AED":T.border),borderRadius:6,cursor:"pointer",padding:"3px 8px",fontSize:11,fontWeight:600}}>🤖 AI</button>
+        <button onClick={()=>setShowAiSettings(v=>!v)} style={{background:Object.values(aiAutoChannels).some(v=>v)?"#A78BFA":"none",color:Object.values(aiAutoChannels).some(v=>v)?"#fff":T.textMuted,border:"1px solid "+(Object.values(aiAutoChannels).some(v=>v)?"#A78BFA":T.border),borderRadius:6,cursor:"pointer",padding:"3px 8px",fontSize:11,fontWeight:600,display:"inline-flex",alignItems:"center",gap:4}}><I name="bot" size={11} color={Object.values(aiAutoChannels).some(v=>v)?"#fff":T.textMuted}/>AI</button>
       </div>
       {showAiSettings&&(()=>{ const stLabel=aiSchedule.enabled?(scheduleInWindow?"응대 시간":"OFF 시간"):"항상 응대"; const stColor=aiSchedule.enabled?(scheduleInWindow?"#059669":"#9ca3af"):"#7C3AED"; return <div style={{padding:"12px 14px",borderBottom:"1px solid "+T.border,background:"#faf5ff"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-          <span style={{fontSize:12,fontWeight:700,color:"#7C3AED",display:"inline-flex",alignItems:"center",gap:5}}><I name="bot" size={13}/>AI 자동대답</span>
+          <span style={{fontSize:12,fontWeight:700,color:"#8B5CF6",display:"inline-flex",alignItems:"center",gap:5}}><I name="bot" size={13} color="#8B5CF6"/>AI 자동대답</span>
           <span style={{fontSize:10,fontWeight:700,color:"#fff",background:stColor,padding:"2px 8px",borderRadius:10,whiteSpace:"nowrap"}}>● {stLabel}</span>
         </div>
         <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:10}}>
@@ -1214,7 +1291,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             <button key={ch} onClick={()=>toggleAiChannel(ch)} style={{padding:"5px 10px",borderRadius:14,fontSize:11,fontWeight:700,cursor:"pointer",border:"1.5px solid",borderColor:aiAutoChannels[ch]?clr:T.border,background:aiAutoChannels[ch]?clr:"#fff",color:aiAutoChannels[ch]?"#fff":T.gray500,whiteSpace:"nowrap",fontFamily:"inherit"}}>{label}</button>
           ))}
         </div>
-        <div style={{fontSize:10,fontWeight:700,color:"#6B21A8",marginBottom:5,whiteSpace:"nowrap"}}>⏰ 응대 시간 (전채널 공통)</div>
+        <div style={{fontSize:10,fontWeight:700,color:"#8B5CF6",marginBottom:5,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:4}}><I name="clock" size={11} color="#8B5CF6"/>응대 시간 (전채널 공통)</div>
         <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"#fff",border:"1px solid "+T.border,borderRadius:8}}>
           <label style={{display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
             <input type="checkbox" checked={!!aiSchedule.enabled} onChange={e=>saveAiSchedule({enabled:e.target.checked})} style={{cursor:"pointer",width:14,height:14,accentColor:"#7C3AED"}}/>
@@ -1225,6 +1302,25 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           <span style={{color:T.gray400,fontSize:11,flexShrink:0}}>~</span>
           <input type="time" value={aiSchedule.end||"22:00"} onChange={e=>saveAiSchedule({end:e.target.value})} disabled={!aiSchedule.enabled}
             style={{fontSize:12,padding:"4px 6px",border:"1px solid "+T.border,borderRadius:5,fontFamily:"inherit",minWidth:0,flex:1,opacity:aiSchedule.enabled?1:0.45,background:aiSchedule.enabled?"#fff":"#f9fafb"}}/>
+        </div>
+        <div style={{fontSize:10,fontWeight:700,color:"#8B5CF6",marginTop:8,marginBottom:5,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:4}}><I name="clock" size={11} color="#8B5CF6"/>미응답 N분 후 자동 답변</div>
+        <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"#fff",border:"1px solid "+T.border,borderRadius:8}}>
+          <label style={{display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
+            <input type="checkbox" checked={!!aiDelay.enabled} onChange={e=>saveAiDelay({enabled:e.target.checked})} style={{cursor:"pointer",width:14,height:14,accentColor:"#7C3AED"}}/>
+            <span style={{fontSize:11,fontWeight:700,color:aiDelay.enabled?"#7C3AED":T.gray500}}>지연</span>
+          </label>
+          <input type="number" min={1} max={60} value={aiDelay.minutes === '' ? '' : (aiDelay.minutes || 1)}
+            onChange={e=>{
+              const v = e.target.value;
+              if (v === '') { setAiDelay(p=>({...p, minutes:''})); return; }
+              const n = Number(v);
+              if (!Number.isFinite(n)) return;
+              saveAiDelay({minutes: Math.max(1, Math.min(60, Math.floor(n)))});
+            }}
+            onBlur={()=>{ if (aiDelay.minutes === '' || !aiDelay.minutes) saveAiDelay({minutes:1}); }}
+            disabled={!aiDelay.enabled}
+            style={{fontSize:12,padding:"4px 6px",border:"1px solid "+T.border,borderRadius:5,fontFamily:"inherit",width:54,textAlign:"center",opacity:aiDelay.enabled?1:0.45,background:aiDelay.enabled?"#fff":"#f9fafb"}}/>
+          <span style={{fontSize:11,color:T.gray500,whiteSpace:"nowrap"}}>분 후 직원 미응답 시 AI 답변</span>
         </div>
       </div>})()}
       {/* 지점 필터 (id_ebgbebctt3 Phase 2): 내 지점(연계 포함) 디폴트 / 전체 */}
@@ -1279,6 +1375,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                 <span style={{fontSize:forceCompact?11:14,color:uc>0?"#111":"#555",fontWeight:uc>0?500:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>
                   {isOut?"나: ":""}{m.message_text}
                 </span>
+                {_renderAiBadge(key)}
                 {uc>0&&<div style={{width:forceCompact?16:20,height:forceCompact?16:20,borderRadius:"50%",background:T.primary,color:"#fff",fontSize:forceCompact?9:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:4}}>{uc}</div>}
               </div>
               {(()=>{const res=chatLatestRes[key]||chatResMap[key];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"확정대기":res.status==="reserved"?"예약":res.status==="completed"?"완료":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":res.status==="reserved"?T.primary:res.status==="no_show"?"#EF5350":"#9E9E9E";return<div style={{display:"flex",alignItems:"center",gap:4,marginTop:3}}><span style={{fontSize:10,fontWeight:700,color:clr,background:clr+"18",borderRadius:3,padding:"1px 6px",display:"inline-flex",alignItems:"center",gap:3}}><I name="calendar" size={10}/>{st} {res.date?.slice(5)} {res.time}</span></div>;})()}
@@ -1331,18 +1428,18 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           if(m.direction==="system") return null;
           const isOut=m.direction==="out";
           return <div key={i} style={{display:"flex",flexDirection:isOut?"row-reverse":"row",alignItems:"flex-end",gap:forceCompact?5:8}}>
-            {/* AI 발송 메시지는 보라색 아바타 🤖 (id_imgr471swt-2 요청) */}
-            {isOut&&m.is_ai&&<div style={{width:forceCompact?22:28,height:forceCompact?22:28,borderRadius:14,background:"#7C3AED",display:"flex",alignItems:"center",justifyContent:"center",fontSize:forceCompact?11:14,flexShrink:0,color:"#fff"}}>🤖</div>}
+            {/* AI 발송 메시지는 연보라 아바타 + SVG bot 아이콘 (id_imgr471swt-2 요청) */}
+            {isOut&&m.is_ai&&<div style={{width:forceCompact?22:28,height:forceCompact?22:28,borderRadius:14,background:"#A78BFA",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:"#fff"}}><I name="bot" size={forceCompact?12:15} color="#fff"/></div>}
             <div style={{maxWidth:"82%"}}>
-              {/* AI 발송 메시지에 선명한 AI 배지 */}
+              {/* AI 발송 메시지에 연보라 AI 배지 */}
               {m.is_ai&&<div style={{display:"flex",justifyContent:isOut?"flex-end":"flex-start",marginBottom:3}}>
-                <span style={{background:"#7C3AED",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:forceCompact?9:10,fontWeight:800,letterSpacing:0.3}}>🤖 AI 자동응답</span>
+                <span style={{background:"#A78BFA",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:forceCompact?9:10,fontWeight:800,letterSpacing:0.3,display:"inline-flex",alignItems:"center",gap:3}}><I name="bot" size={forceCompact?9:10} color="#fff"/>AI 자동응답</span>
               </div>}
               {/* 직원 답장 말머리 — 고객엔 노출 안 됨, 직원만 봄 */}
               {isOut && !m.is_ai && m.sent_by_staff_name && <div style={{display:"flex",justifyContent:isOut?"flex-end":"flex-start",marginBottom:3}}>
-                <span style={{background:"#6D28D9",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:forceCompact?9:10,fontWeight:800,letterSpacing:0.3}}>👤 {m.sent_by_staff_name}</span>
+                <span style={{background:"#6D28D9",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:forceCompact?9:10,fontWeight:800,letterSpacing:0.3,display:"inline-flex",alignItems:"center",gap:3}}><I name="user" size={forceCompact?9:10} color="#fff"/>{m.sent_by_staff_name}</span>
               </div>}
-              <div data-allow-select="true" style={{padding:forceCompact?"7px 10px":"10px 14px",borderRadius:isOut?"14px 14px 4px 14px":"14px 14px 14px 4px",background:isOut?(m.is_ai?"#7C3AED":T.primary):"#fff",color:isOut?"#fff":T.text,fontSize:forceCompact?12:16,lineHeight:1.45,boxShadow:"0 1px 2px rgba(0,0,0,.08)",border:isOut?"none":"1px solid "+T.border,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
+              <div data-allow-select="true" style={{padding:forceCompact?"7px 10px":"10px 14px",borderRadius:isOut?"14px 14px 4px 14px":"14px 14px 14px 4px",background:isOut?(m.is_ai?"#A78BFA":T.primary):"#fff",color:isOut?"#fff":T.text,fontSize:forceCompact?12:16,lineHeight:1.45,boxShadow:"0 1px 2px rgba(0,0,0,.08)",border:isOut?"none":"1px solid "+T.border,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
                 {m.message_text}
                 {m.translated_text&&<div style={{marginTop:5,paddingTop:5,borderTop:isOut?"1px solid rgba(255,255,255,0.45)":"1px solid rgba(0,0,0,0.18)",fontSize:forceCompact?11:12,color:isOut?"rgba(255,255,255,0.95)":"rgba(0,0,0,0.78)",fontWeight:500}}>🔤 {m.translated_text}</div>}
               </div>
@@ -1427,11 +1524,11 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             <span style={{fontWeight:T.fw.bolder,fontSize:T.fs.md}}>메시지함</span>
             {totalUnread>0&&<span style={{background:T.danger,color:"#fff",borderRadius:10,fontSize:11,fontWeight:700,padding:"2px 7px"}}>{totalUnread}</span>}
           </div>
-          <button onClick={()=>setShowAiSettings(v=>!v)} style={{background:Object.values(aiAutoChannels).some(v=>v)?"#7C3AED":"none",color:Object.values(aiAutoChannels).some(v=>v)?"#fff":T.textMuted,border:"1px solid "+(Object.values(aiAutoChannels).some(v=>v)?"#7C3AED":T.border),borderRadius:6,cursor:"pointer",padding:"3px 8px",fontSize:11,fontWeight:600}}>🤖 AI</button>
+          <button onClick={()=>setShowAiSettings(v=>!v)} style={{background:Object.values(aiAutoChannels).some(v=>v)?"#A78BFA":"none",color:Object.values(aiAutoChannels).some(v=>v)?"#fff":T.textMuted,border:"1px solid "+(Object.values(aiAutoChannels).some(v=>v)?"#A78BFA":T.border),borderRadius:6,cursor:"pointer",padding:"3px 8px",fontSize:11,fontWeight:600,display:"inline-flex",alignItems:"center",gap:4}}><I name="bot" size={11} color={Object.values(aiAutoChannels).some(v=>v)?"#fff":T.textMuted}/>AI</button>
         </div>
         {showAiSettings&&(()=>{ const stLabel=aiSchedule.enabled?(scheduleInWindow?"응대 시간":"OFF 시간"):"항상 응대"; const stColor=aiSchedule.enabled?(scheduleInWindow?"#059669":"#9ca3af"):"#7C3AED"; return <div style={{padding:"12px 14px",borderBottom:"1px solid "+T.border,background:"#faf5ff"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-            <span style={{fontSize:12,fontWeight:700,color:"#7C3AED",display:"inline-flex",alignItems:"center",gap:5}}><I name="bot" size={13}/>AI 자동대답</span>
+            <span style={{fontSize:12,fontWeight:700,color:"#8B5CF6",display:"inline-flex",alignItems:"center",gap:5}}><I name="bot" size={13} color="#8B5CF6"/>AI 자동대답</span>
             <span style={{fontSize:10,fontWeight:700,color:"#fff",background:stColor,padding:"2px 8px",borderRadius:10,whiteSpace:"nowrap"}}>● {stLabel}</span>
           </div>
           <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:10}}>
@@ -1439,7 +1536,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
               <button key={ch} onClick={()=>toggleAiChannel(ch)} style={{padding:"5px 10px",borderRadius:14,fontSize:11,fontWeight:700,cursor:"pointer",border:"1.5px solid",borderColor:aiAutoChannels[ch]?clr:T.border,background:aiAutoChannels[ch]?clr:"#fff",color:aiAutoChannels[ch]?"#fff":T.gray500,whiteSpace:"nowrap",fontFamily:"inherit"}}>{label}</button>
             ))}
           </div>
-          <div style={{fontSize:10,fontWeight:700,color:"#6B21A8",marginBottom:5,whiteSpace:"nowrap"}}>⏰ 응대 시간 (전채널 공통)</div>
+          <div style={{fontSize:10,fontWeight:700,color:"#8B5CF6",marginBottom:5,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:4}}><I name="clock" size={11} color="#8B5CF6"/>응대 시간 (전채널 공통)</div>
           <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"#fff",border:"1px solid "+T.border,borderRadius:8}}>
             <label style={{display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
               <input type="checkbox" checked={!!aiSchedule.enabled} onChange={e=>saveAiSchedule({enabled:e.target.checked})} style={{cursor:"pointer",width:14,height:14,accentColor:"#7C3AED"}}/>
@@ -1501,6 +1598,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                   <span style={{fontSize:13,color:uc>0?T.text:T.textMuted,fontWeight:uc>0?500:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:190}}>
                     {m.direction==="out"?"나: ":""}{m.message_text}
                   </span>
+                  {_renderAiBadge(key)}
                   {uc>0&&<div style={{width:20,height:20,borderRadius:"50%",background:T.primary,color:"#fff",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:4}}>{uc>9?"9+":uc}</div>}
                 </div>
                 {(()=>{const res=chatLatestRes[key]||chatResMap[key];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="reserved"?"예약":res.status==="request"?"확정대기":res.status==="completed"?"완료":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="reserved"?T.primary:res.status==="request"?"#FF9800":res.status==="no_show"?"#EF5350":"#9E9E9E";return<div style={{marginTop:3}}><span style={{fontSize:10,fontWeight:700,color:clr,background:clr+"18",borderRadius:3,padding:"1px 6px",display:"inline-flex",alignItems:"center",gap:3}}><I name="calendar" size={10}/>{st} {res.date?.slice(5)} {res.time}</span></div>;})()}

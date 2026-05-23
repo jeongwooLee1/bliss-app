@@ -197,7 +197,7 @@ function AdminCouplePkgMigrate({ data, userBranches = [] }) {
                 return <tr key={p.id} style={linked ? {} : { background: '#FFF8F0' }}>
                   <td style={td}>
                     <div style={{ fontWeight: T.fw.bolder }}>{c?.name || '-'}{c?.name2 ? ` (${c.name2})` : ''}</div>
-                    {c?.cust_num && <div style={{ fontSize: T.fs.nano, color: T.textMuted, fontFamily: 'monospace' }}>{c.cust_num}</div>}
+                    {c?.cust_num && <div style={{ fontSize: T.fs.nano, color: T.textMuted }}>{c.cust_num}</div>}
                   </td>
                   <td style={td}>{c?.phone || '-'}</td>
                   <td style={td}>{branchShort(p.branch_id) || '미판정'}</td>

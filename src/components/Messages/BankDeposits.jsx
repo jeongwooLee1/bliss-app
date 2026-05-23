@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { T } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY, sbHeaders } from '../../lib/sb'
-import { fromDb, _activeBizId } from '../../lib/db'
+import { fromDb, _activeBizId, PREPAID_TAG_ID } from '../../lib/db'
 import { todayStr, fmtDate, fmtTime, genId, fmtLocal } from '../../lib/utils'
 import I from '../common/I'
 
@@ -21,14 +21,15 @@ const fmtSmsTime = iso => {
   } catch { return iso; }
 };
 
-const STATUS_LABEL = { pending:'미매칭', matched:'매칭됨', ignored:'무시' };
-const STATUS_BG    = { pending:'#FFF3E0', matched:'#E8F5E9', ignored:'#F5F5F5' };
-const STATUS_FG    = { pending:'#E65100', matched:'#2E7D32', ignored:'#9E9E9E' };
+const STATUS_LABEL = { pending:'미매칭', matched:'매칭됨', ignored:'무시', card:'카드정산', awaiting_sale:'고객 대기' };
+const STATUS_BG    = { pending:'#FFF3E0', matched:'#E8F5E9', ignored:'#F5F5F5', card:'#E8EAF6', awaiting_sale:'#FFF8E1' };
+const STATUS_FG    = { pending:'#E65100', matched:'#2E7D32', ignored:'#9E9E9E', card:'#3949AB', awaiting_sale:'#B45309' };
 
 // ---------- 매칭 모달 ----------
 function MatchModal({ deposit, branches, onClose, onMatched, currentUser }) {
   const [candidates, setCandidates] = useState([]);
   const [reservations, setReservations] = useState([]);
+  const [custCandidates, setCustCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState(deposit.transfererName || '');
 
@@ -81,6 +82,13 @@ function MatchModal({ deposit, branches, onClose, onMatched, currentUser }) {
       }
       const rsvRows = await sb.get('reservations', rsvFilter);
 
+      // 3) customers — 직접 고객 매칭 후보 (이름·전화·고객번호 부분일치)
+      let custRows = [];
+      if (term.length >= 1) {
+        const orFilter = `or=(name.ilike.*${encodeURIComponent(term)}*,name2.ilike.*${encodeURIComponent(term)}*,phone.ilike.*${encodeURIComponent(term)}*,phone2.ilike.*${encodeURIComponent(term)}*,cust_num.ilike.*${encodeURIComponent(term)}*)`;
+        custRows = await sb.get('customers', `&business_id=eq.${_activeBizId}&${orFilter}&select=id,name,name2,phone,phone2,cust_num&limit=20`);
+      }
+
       if (!alive) return;
 
       // sales 점수 + 정렬
@@ -97,11 +105,21 @@ function MatchModal({ deposit, branches, onClose, onMatched, currentUser }) {
       list.sort((a,b) => (b._amountScore + b._nameScore) - (a._amountScore + a._nameScore));
       setCandidates(list);
 
-      // reservations: 일반예약만 + 취소/노쇼 제외
+      // reservations: 일반예약만 + 취소/노쇼 제외 + 예약 시작시간이 입금시각 이후만 (예약 시작 후 입금=시술후결제→예약 매칭 X)
+      const depDate = timeWindow.date;
+      const depTime = timeWindow.depTime;
+      const isStarted = (r) => {
+        if (!r.time || !r.date) return false;
+        if (r.date < depDate) return true;
+        if (r.date > depDate) return false;
+        return r.time <= depTime;
+      };
       const rsv = fromDb('reservations', rsvRows || [])
         .filter(r => !r.isSchedule)
-        .filter(r => !['cancelled','no_show','naver_cancelled'].includes(r.status));
+        .filter(r => !['cancelled','no_show','naver_cancelled'].includes(r.status))
+        .filter(r => !isStarted(r));
       setReservations(rsv);
+      setCustCandidates(custRows || []);
       setLoading(false);
     })();
     return () => { alive = false; };
@@ -116,6 +134,33 @@ function MatchModal({ deposit, branches, onClose, onMatched, currentUser }) {
       (r.serviceName||'').includes(t)
     );
   }, [candidates, search]);
+
+  // kind: 'payment'=결제 입금(매출 시 입금 결제수단) | 'deposit'=예약금(매출 시 선결제)
+  const doMatchCustomer = async (cust, kind='payment') => {
+    const kindLabel = kind === 'deposit' ? '예약금(선결제)' : '결제 입금';
+    const applyHint = kind === 'deposit'
+      ? `→ 그 고객 매출 등록 시 ${fmt(deposit.amount)}원이 '선결제(예약금)'로 들어가 시술비에서 차감됩니다.`
+      : `→ 그 고객 매출 등록 시 ${fmt(deposit.amount)}원이 결제수단 '입금'으로 들어갑니다.`;
+    const ok = window.confirm(`이 입금을 다음 고객 앞으로 [${kindLabel}]로 매칭하고 매출등록 대기로 둘까요?\n\n${cust.name||'(이름없음)'} ${cust.phone||''}\n\n${applyHint}`);
+    if (!ok) return;
+    const url = `${SB_URL}/rest/v1/bank_deposits?id=eq.${deposit.id}`;
+    const r = await fetch(url, {
+      method: 'PATCH',
+      headers: { ...sbHeaders, 'Cache-Control':'no-cache' },
+      body: JSON.stringify({
+        status: 'awaiting_sale',
+        matched_cust_id: cust.id,
+        matched_sale_id: null,
+        matched_reservation_id: null,
+        deposit_kind: kind,
+        matched_at: new Date().toISOString(),
+        matched_by: currentUser?.id || null,
+      }),
+    });
+    if (!r.ok) { alert('고객 매칭 실패: ' + await r.text()); return; }
+    onMatched?.();
+    onClose?.();
+  };
 
   const doMatchSale = async (sale) => {
     const ok = window.confirm(`이 입금을 다음 매출에 매칭할까요?\n\n${sale.date} ${sale.custName} ${fmt(sale._totalPay)}원`);
@@ -138,10 +183,32 @@ function MatchModal({ deposit, branches, onClose, onMatched, currentUser }) {
   };
 
   const doMatchReservation = async (rsv) => {
-    const ok = window.confirm(`이 입금을 다음 예약에 매칭할까요?\n\n${rsv.date} ${rsv.time||''} ${rsv.custName||''}`);
+    const amt = Number(deposit.amount) || 0;
+    const ok = window.confirm(
+      `이 입금을 다음 예약에 매칭할까요?\n\n${rsv.date} ${rsv.time||''} ${rsv.custName||''}\n\n→ 예약 선결제로 ${fmt(amt)}원이 자동 등록됩니다.`
+    );
     if (!ok) return;
-    const url = `${SB_URL}/rest/v1/bank_deposits?id=eq.${deposit.id}`;
-    const r = await fetch(url, {
+
+    // 1) 예약: 선결제(external_prepaid) + 변경이력 로그 + 예약금완료 태그
+    const curPrepaid = Number(rsv.externalPrepaid) || 0;
+    const logLine = `[예약금] ${deposit.transfererName || '(이름없음)'} ${fmt(amt)}원 입금 · ${fmtSmsTime(deposit.smsSentAt)}`;
+    const curLog = (Array.isArray(rsv.scheduleLog) ? rsv.scheduleLog.join('\n') : (rsv.scheduleLog||'')).trim();
+    const curTags = Array.isArray(rsv.selectedTags) ? rsv.selectedTags : [];
+    const rsvBody = {
+      external_prepaid: curPrepaid + amt,
+      schedule_log: curLog ? `${curLog}\n${logLine}` : logLine,
+    };
+    if (!(rsv.externalPlatform||'').trim()) rsvBody.external_platform = '계좌이체';
+    if (PREPAID_TAG_ID && !curTags.includes(PREPAID_TAG_ID)) rsvBody.selected_tags = [...curTags, PREPAID_TAG_ID];
+    const rUp = await fetch(`${SB_URL}/rest/v1/reservations?id=eq.${rsv.id}`, {
+      method: 'PATCH',
+      headers: { ...sbHeaders, 'Cache-Control':'no-cache' },
+      body: JSON.stringify(rsvBody),
+    });
+    if (!rUp.ok) { alert('예약 선결제 등록 실패: ' + await rUp.text()); return; }
+
+    // 2) bank_deposits 매칭 기록
+    const r = await fetch(`${SB_URL}/rest/v1/bank_deposits?id=eq.${deposit.id}`, {
       method: 'PATCH',
       headers: { ...sbHeaders, 'Cache-Control':'no-cache' },
       body: JSON.stringify({
@@ -176,7 +243,7 @@ function MatchModal({ deposit, branches, onClose, onMatched, currentUser }) {
             style={{width:'100%',padding:'8px 10px',border:`1px solid ${T.border}`,borderRadius:6,fontSize:T.fs.sm,fontFamily:'inherit'}}
           />
           <div style={{fontSize:T.fs.xs,color:T.textMuted,marginTop:6}}>
-            매출: 최근 7일 · 금액일치 우선  /  예약: {search.trim() ? '이름검색 ±30일' : `입금시점(${timeWindow.depTime}) ±3시간`}
+            매출: 최근 7일 · 금액일치 우선  /  예약: {search.trim() ? '이름검색 ±30일' : `입금시점(${timeWindow.depTime}) ±3시간`} · 시작 후 예약 제외
           </div>
         </div>
 
@@ -227,7 +294,7 @@ function MatchModal({ deposit, branches, onClose, onMatched, currentUser }) {
               <div style={{fontSize:T.fs.xs,color:T.textMuted,fontWeight:T.fw.bold,padding:'4px 2px 6px',display:'flex',alignItems:'center',gap:5}}>
                 <I name="banknote" size={12}/> 매출 {filtered.length}건
               </div>
-              {filtered.length === 0 && <div style={{padding:14,textAlign:'center',color:T.textMuted,fontSize:T.fs.xs}}>후보 매출 없음</div>}
+              {filtered.length === 0 && <div style={{padding:'8px 10px',color:T.textMuted,fontSize:T.fs.xs,background:'#FAFAFA',borderRadius:6,marginBottom:8}}>매출 후보 없음 — 아래에서 고객 직접 매칭 가능</div>}
               {filtered.map(s => {
                 const isAmountMatch = s._amountScore > 0;
                 return (
@@ -258,6 +325,45 @@ function MatchModal({ deposit, branches, onClose, onMatched, currentUser }) {
               })}
             </div>
           )}
+
+          {/* 고객 직접 매칭 (매출 대기) */}
+          {!loading && custCandidates.length > 0 && (
+            <div style={{marginTop:14}}>
+              <div style={{fontSize:T.fs.xs,color:T.textMuted,fontWeight:T.fw.bold,padding:'4px 2px 6px',display:'flex',alignItems:'center',gap:5}}>
+                <I name="users" size={12}/> 고객 직접 매칭 (매출 등록 대기) {custCandidates.length}명
+              </div>
+              <div style={{fontSize:T.fs.xs,color:T.textMuted,padding:'2px 2px 6px'}}>
+                해당 고객 매출 등록 시 입금액이 결제수단 "계좌이체"로 자동 입력됩니다.
+              </div>
+              {custCandidates.map(c => (
+                <div key={c.id} style={{
+                  padding:'10px 12px',
+                  marginBottom:6,
+                  border:`1px solid ${T.border}`,
+                  borderRadius:8,
+                  background:'#fff',
+                  display:'flex',alignItems:'center',justifyContent:'space-between',gap:10
+                }}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bold}}>
+                      {c.name || '(이름없음)'} {c.name2 && <span style={{color:T.textMuted,fontWeight:T.fw.normal}}>({c.name2})</span>}
+                    </div>
+                    <div style={{fontSize:T.fs.xs,color:T.textSub,marginTop:2}}>
+                      {c.phone || '연락처 없음'} {c.cust_num ? ' · #' + c.cust_num : ''}
+                    </div>
+                  </div>
+                  <div style={{display:'flex',gap:5,flexShrink:0}}>
+                    <button onClick={()=>doMatchCustomer(c,'payment')} title="매출 시 결제수단 '입금'으로 들어감" style={{padding:'6px 10px',border:'1px solid #2E7D32',background:'#E8F5E9',color:'#2E7D32',borderRadius:6,fontSize:T.fs.sm,fontWeight:T.fw.bold,cursor:'pointer',whiteSpace:'nowrap'}}>
+                      결제입금
+                    </button>
+                    <button onClick={()=>doMatchCustomer(c,'deposit')} title="매출 시 '선결제(예약금)'로 들어가 시술비 차감" style={{padding:'6px 10px',border:`1px solid ${T.warning||'#F59E0B'}`,background:'#FFF8E1',color:'#B45309',borderRadius:6,fontSize:T.fs.sm,fontWeight:T.fw.bold,cursor:'pointer',whiteSpace:'nowrap'}}>
+                      예약금
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -270,6 +376,7 @@ export default function BankDeposits({ data, branches=[], userBranches=[], curre
   const [filter, setFilter] = useState('all'); // all|pending|matched|ignored
   const [matchTarget, setMatchTarget] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [matchedInfo, setMatchedInfo] = useState({}); // depositId -> 연결된 예약/매출 라벨
 
   const bidFilter = userBranches.length
     ? `&bid=in.(${userBranches.map(b=>`"${b}"`).join(',')})`
@@ -288,6 +395,29 @@ export default function BankDeposits({ data, branches=[], userBranches=[], curre
       }
       return next;
     });
+    // 매칭된 예약/매출 라벨 로드 → 입금 카드에 "→ 예약/매출 ..." 연결 정보 표시
+    try {
+      const rsvIds  = [...new Set(next.filter(d=>d.matchedReservationId).map(d=>d.matchedReservationId))];
+      const saleIds = [...new Set(next.filter(d=>d.matchedSaleId).map(d=>d.matchedSaleId))];
+      const custIds = [...new Set(next.filter(d=>d.status==='awaiting_sale' && d.matchedCustId).map(d=>d.matchedCustId))];
+      const info = {};
+      if (rsvIds.length) {
+        const rr = await sb.get('reservations', `&id=in.(${rsvIds.map(x=>`"${x}"`).join(',')})&select=id,date,time,cust_name`);
+        const rmap = {}; (rr||[]).forEach(x=>{ rmap[x.id] = { type:'rsv', date:x.date, time:x.time, name:x.cust_name }; });
+        next.forEach(d=>{ if (d.matchedReservationId && rmap[d.matchedReservationId]) info[d.id] = rmap[d.matchedReservationId]; });
+      }
+      if (saleIds.length) {
+        const sr = await sb.get('sales', `&id=in.(${saleIds.map(x=>`"${x}"`).join(',')})&select=id,date,cust_name,service_name`);
+        const smap = {}; (sr||[]).forEach(x=>{ smap[x.id] = { type:'sale', date:x.date, name:x.cust_name }; });
+        next.forEach(d=>{ if (d.matchedSaleId && smap[d.matchedSaleId]) info[d.id] = smap[d.matchedSaleId]; });
+      }
+      if (custIds.length) {
+        const cr = await sb.get('customers', `&id=in.(${custIds.map(x=>`"${x}"`).join(',')})&select=id,name,phone,cust_num`);
+        const cmap = {}; (cr||[]).forEach(x=>{ cmap[x.id] = { type:'cust', name:x.name, phone:x.phone, custNum:x.cust_num }; });
+        next.forEach(d=>{ if (d.status==='awaiting_sale' && d.matchedCustId && cmap[d.matchedCustId]) info[d.id] = cmap[d.matchedCustId]; });
+      }
+      setMatchedInfo(info);
+    } catch (e) { /* 연결 라벨 로드 실패는 무시 */ }
     if (!initialLoadRef.current) {
       initialLoadRef.current = true;
       setLoading(false);
@@ -313,15 +443,17 @@ export default function BankDeposits({ data, branches=[], userBranches=[], curre
   }, [load]);
 
   const list = useMemo(() => {
-    if (filter === 'all') return deposits;
+    if (filter === 'all') return deposits.filter(d => d.status !== 'card' && d.status !== 'ignored');
     return deposits.filter(d => d.status === filter);
   }, [deposits, filter]);
 
   const counts = useMemo(() => ({
-    all: deposits.length,
+    all: deposits.filter(d=>d.status!=='card' && d.status!=='ignored').length,
     pending: deposits.filter(d=>d.status==='pending').length,
+    awaiting_sale: deposits.filter(d=>d.status==='awaiting_sale').length,
     matched: deposits.filter(d=>d.status==='matched').length,
     ignored: deposits.filter(d=>d.status==='ignored').length,
+    card: deposits.filter(d=>d.status==='card').length,
   }), [deposits]);
 
   const setStatus = async (deposit, newStatus) => {
@@ -329,6 +461,7 @@ export default function BankDeposits({ data, branches=[], userBranches=[], curre
     const body = { status: newStatus };
     if (newStatus === 'pending') {
       body.matched_sale_id = null;
+      body.matched_reservation_id = null;
       body.matched_at = null;
       body.matched_by = null;
     }
@@ -345,8 +478,48 @@ export default function BankDeposits({ data, branches=[], userBranches=[], curre
     setStatus(d, 'ignored');
   };
 
-  const reopenDeposit = (d) => {
-    if (!window.confirm('미매칭 상태로 되돌릴까요?')) return;
+  // 입금→예약 매칭으로 넣었던 선결제·변경이력·예약금완료 태그를 원복
+  const rollbackReservation = async (deposit) => {
+    try {
+      const rid = deposit.matchedReservationId;
+      if (!rid) return;
+      const rows = await sb.get('reservations', `&id=eq.${rid}&select=external_prepaid,external_platform,schedule_log,selected_tags&limit=1`);
+      if (!rows || !rows.length) return;
+      const r0 = rows[0];
+      const amt = Number(deposit.amount) || 0;
+      const newPrepaid = Math.max(0, (Number(r0.external_prepaid)||0) - amt);
+      const logLine = `[예약금] ${deposit.transfererName || '(이름없음)'} ${fmt(amt)}원 입금 · ${fmtSmsTime(deposit.smsSentAt)}`;
+      const curLog = (Array.isArray(r0.schedule_log) ? r0.schedule_log.join('\n') : (r0.schedule_log||'')).trim();
+      const body = {
+        external_prepaid: newPrepaid,
+        schedule_log: curLog.split('\n').filter(l => l.trim() !== logLine).join('\n'),
+      };
+      if (newPrepaid === 0) {
+        let curTags = r0.selected_tags;
+        if (typeof curTags === 'string') { try { curTags = JSON.parse(curTags||'[]'); } catch { curTags = []; } }
+        if (!Array.isArray(curTags)) curTags = [];
+        if (PREPAID_TAG_ID && curTags.includes(PREPAID_TAG_ID)) body.selected_tags = curTags.filter(t => t !== PREPAID_TAG_ID);
+        if ((r0.external_platform||'') === '계좌이체') body.external_platform = null;
+      }
+      await fetch(`${SB_URL}/rest/v1/reservations?id=eq.${rid}`, {
+        method: 'PATCH', headers: { ...sbHeaders, 'Cache-Control':'no-cache' }, body: JSON.stringify(body),
+      });
+    } catch (e) { console.error('[bank] 예약 원복 실패:', e); }
+  };
+
+  const reopenDeposit = async (d) => {
+    const hadRsv = d.status === 'matched' && d.matchedReservationId;
+    const wasAwait = d.status === 'awaiting_sale';
+    if (!window.confirm('미매칭 상태로 되돌릴까요?' + (hadRsv ? '\n\n예약에 등록했던 선결제·예약금 기록도 함께 취소됩니다.' : ''))) return;
+    if (hadRsv) await rollbackReservation(d);
+    if (wasAwait) {
+      await fetch(`${SB_URL}/rest/v1/bank_deposits?id=eq.${d.id}`, {
+        method:'PATCH', headers:{...sbHeaders,'Cache-Control':'no-cache'},
+        body: JSON.stringify({ matched_cust_id:null, status:'pending', matched_at:null, matched_by:null })
+      });
+      load();
+      return;
+    }
     setStatus(d, 'pending');
   };
 
@@ -354,8 +527,8 @@ export default function BankDeposits({ data, branches=[], userBranches=[], curre
     <div style={{flex:1,display:'flex',flexDirection:'column',minHeight:0,background:T.bgCard}}>
       {/* 필터 탭 */}
       <div style={{display:'flex',gap:6,padding:'8px 12px',borderBottom:`1px solid ${T.border}`,flexShrink:0,overflowX:'auto'}}>
-        {['all','pending','matched','ignored'].map(k => {
-          const labels = { all:'전체', pending:'미매칭', matched:'매칭됨', ignored:'무시' };
+        {['all','pending','awaiting_sale','matched','ignored','card'].map(k => {
+          const labels = { all:'전체', pending:'미매칭', awaiting_sale:'고객 대기', matched:'매칭됨', ignored:'무시', card:'카드정산' };
           const active = filter === k;
           return (
             <button key={k} onClick={()=>setFilter(k)} style={{
@@ -408,6 +581,18 @@ export default function BankDeposits({ data, branches=[], userBranches=[], curre
                   <span style={{fontSize:T.fs.nano,color:T.textSub,whiteSpace:'nowrap'}}>{fmtSmsTime(d.smsSentAt)}</span>
                 </div>
               </div>
+              {matchedInfo[d.id] && (
+                <div style={{display:'flex',alignItems:'center',gap:4,fontSize:T.fs.xs,color: matchedInfo[d.id].type==='cust' ? '#B45309' : T.primaryDk,fontWeight:T.fw.bold}}>
+                  <I name={matchedInfo[d.id].type==='rsv'?'calendar':matchedInfo[d.id].type==='cust'?'users':'banknote'} size={11}/>
+                  <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                    {matchedInfo[d.id].type==='rsv'
+                      ? `예약 · ${matchedInfo[d.id].date} ${matchedInfo[d.id].time||''} ${matchedInfo[d.id].name||'(이름없음)'}`
+                      : matchedInfo[d.id].type==='cust'
+                        ? `매출등록 대기 · ${matchedInfo[d.id].name||'(이름없음)'}${matchedInfo[d.id].phone? ' · '+matchedInfo[d.id].phone : ''}`
+                        : `매출 · ${matchedInfo[d.id].date} ${matchedInfo[d.id].name||'(이름없음)'}`}
+                  </span>
+                </div>
+              )}
               <div style={{display:'flex',gap:6}}>
                 {status === 'pending' && (
                   <>

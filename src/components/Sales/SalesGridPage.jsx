@@ -554,7 +554,7 @@ function SalesGridPage({ data, userBranches = [], role }) {
           ) : filtered.map((s, i) => (
             <tr key={s.id || i} style={{background: i%2===0?'#fff':'#fafafa'}}>
               <td style={tdStyle}>{s.date || '-'}</td>
-              <td style={{...tdStyle, fontFamily:'monospace', color: s._custNum ? T.textSub : T.gray400}}>{s._custNum || '-'}</td>
+              <td style={{...tdStyle, color: s._custNum ? T.textSub : T.gray400}}>{s._custNum || '-'}</td>
               <td style={{...tdStyle, fontWeight:T.fw.bolder}}>{s.custName || '-'}</td>
               <td style={tdStyle}>{s.custPhone || '-'}</td>
               <td style={{...tdStyle, color: s._joinDate ? T.textMuted : T.danger, fontStyle: s._joinDate ? 'normal' : 'italic'}}>{s._joinDate || '(미등록)'}</td>

@@ -133,7 +133,7 @@ ${JSON.stringify(input)}`
       <div style={{ fontSize: 11, color: T.textMuted, fontWeight: 600, marginBottom: 4 }}>✨ AI 매출 요약 (TEST)</div>
       <h1 style={{ fontSize: 22, fontWeight: 800, color: T.text, margin: 0 }}>
         {cust?.name || '-'}
-        <span style={{ fontSize: 13, color: T.textSub, fontWeight: 500, marginLeft: 6, fontFamily: 'monospace' }}>#{cust?.custNum || cust?.cust_num || '-'}</span>
+        <span style={{ fontSize: 13, color: T.textSub, fontWeight: 500, marginLeft: 6 }}>#{cust?.custNum || cust?.cust_num || '-'}</span>
       </h1>
       <div style={{ marginTop: 6, fontSize: 12, color: T.textSub }}>
         매출 {sales.length}건 · 날짜 {grouped.length}일

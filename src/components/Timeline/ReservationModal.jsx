@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { T, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, SYSTEM_TAG_NAME_NEW_CUST, SYSTEM_TAG_NAME_PREPAID, SYSTEM_SRC_NAME_NAVER } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY, sbHeaders, queueAlimtalk, buildTokenSearch } from '../../lib/sb'
 import { fromDb, toDb, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS, _activeBizId } from '../../lib/db'
-import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, getDow, genId, fmtLocal, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, getCustPkgBranchInitial, naverConfirmBooking, judgePenaltyType, customerGrade } from '../../lib/utils'
+import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, getDow, genId, fmtLocal, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, getCustPkgBranchInitial, naverConfirmBooking, judgePenaltyType, customerGrade, isMoneyPkg } from '../../lib/utils'
 import I from '../common/I'
 import SendSmsModal from '../common/SendSmsModal'
 import { DetailedSaleForm } from './SaleForm'
@@ -167,15 +167,14 @@ function CancelDecisionModal({ open, onResolve, onClose, custId, custName, branc
           return exp && exp < today;
         };
         const _prepaid = myPkgs.filter(p => {
-          const n = (p.service_name||'').toLowerCase();
-          if (!(n.includes('다담') || n.includes('선불'))) return false;
+          if (!isMoneyPkg(p)) return false;
           if (isExpired(p)) return false;
           const m = (p.note||'').match(/잔액:([0-9,]+)/);
           return m && +m[1].replace(/,/g,'') > 0;
         });
         const _multi = myPkgs.filter(p => {
           const n = (p.service_name||'').toLowerCase();
-          if (n.includes('다담') || n.includes('선불') || n.includes('연간') || n.includes('할인권') || n.includes('회원권')) return false;
+          if (isMoneyPkg(p) || n.includes('연간') || n.includes('할인권') || n.includes('회원권')) return false;
           if (isExpired(p)) return false;
           return (p.total_count||0) - (p.used_count||0) > 0;
         }).sort((a,b) => {
@@ -581,6 +580,8 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
     const cleanMemo = memoLines.filter(l => !isAutoTs(l)).join("\n").trim();
     const mergedTs = existingTs.length > 0 ? existingTs : extractedTs;
     return {...item,
+      // 방문자(예약자와 다른 사람)가 있으면 디폴트로 방문자(visitor) 선택. DB primary_subject 있으면 그것 우선
+      primarySubject: item?.primarySubject || (item?.visitorName && item.visitorName !== item.custName ? 'visitor' : 'reserver'),
       // 합성 roomId(st_, nv_, blank_)는 무시, staffId만 있으면 해당 지점 첫 방 할당
       roomId: (() => {
         const rid = item?.roomId;
@@ -786,21 +787,31 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
     // 1) 메모리 캐시
     const _cached = getCachedTransliteration(_name);
     if (_cached) { setAutoNameKor(_cached); return; }
-    // 2) Gemini 호출
-    const _key = window.__systemGeminiKey || window.__geminiKey || (typeof localStorage !== 'undefined' ? localStorage.getItem('bliss_gemini_key') : '') || '';
-    if (!_key) return;
+    // 2) Gemini 호출 — settings 최신 키 우선 (5/17 토큰 교체 후 localStorage 옛 키 만료 이슈 회피)
     let cancelled = false;
-    transliterateName(_name, _key).then(k => {
-      if (cancelled || !k) return;
-      setAutoNameKor(k);
-      // 3) DB 백필 — custId 있고 nameKor 비어있을 때만
-      if (f.custId) {
-        const _cust = (data?.customers || []).find(c => c.id === f.custId);
-        if (_cust && !_cust.nameKor) {
-          sb.update('customers', f.custId, { name_kor: k }).catch(() => {});
+    (async () => {
+      let _key = "";
+      try {
+        const _r = await fetch(`${SB_URL}/rest/v1/businesses?select=settings&limit=1`, {headers: sbHeaders});
+        const _rows = await _r.json();
+        const _memo = JSON.parse(_rows[0]?.settings || "{}");
+        _key = _memo.gemini_key || "";
+        if (_key) { window.__geminiKey = _key; if (typeof localStorage !== 'undefined') localStorage.setItem('bliss_gemini_key', _key); }
+      } catch(_){}
+      if (!_key) _key = window.__systemGeminiKey || window.__geminiKey || (typeof localStorage !== 'undefined' ? localStorage.getItem('bliss_gemini_key') : '') || '';
+      if (!_key) return;
+      transliterateName(_name, _key).then(k => {
+        if (cancelled || !k) return;
+        setAutoNameKor(k);
+        // 3) DB 백필 — custId 있고 nameKor 비어있을 때만
+        if (f.custId) {
+          const _cust = (data?.customers || []).find(c => c.id === f.custId);
+          if (_cust && !_cust.nameKor) {
+            sb.update('customers', f.custId, { name_kor: k }).catch(() => {});
+          }
         }
-      }
-    });
+      });
+    })();
     return () => { cancelled = true; };
   }, [f.custName, f.custId]);
   // 🆕 방문자/예약자 main(primary) cust_id 계산
@@ -950,7 +961,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
     (pkgs||[]).forEach(p => {
       const n = (p.service_name||"");
       const nl = n.toLowerCase();
-      const isPrepaid = n.includes("다담권") || n.includes("선불") || nl.includes("10%추가적립");
+      const isPrepaid = isMoneyPkg(p);
       const isAnnual  = n.includes("연간") || n.includes("할인권") || n.includes("회원권");
       const expM = (p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/);
       const isExp = expM && expM[1] < today;
@@ -958,7 +969,9 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
       if (isPrepaid) {
         const m = (p.note||"").match(/잔액:([0-9,]+)/);
         const bal = m ? Number(m[1].replace(/,/g,"")) : 0;
-        out.push({type:"prepaid", active: bal>0 && !isExp, label: cleanName || "다담권", value: _fmtKor(bal)});
+        // 라벨에서 trailing 충전금액 제거: "다담권 100만"·"바프권 30만"·"다담권 1,000,000원" → "다담권"/"바프권"
+        const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원)?\s*$/, "").trim();
+        out.push({type:"prepaid", active: bal>0 && !isExp, label: prepaidLabel || cleanName || "다담권", value: _fmtKor(bal)});
       } else if (isAnnual) {
         out.push({type:"annual", active:!isExp, label: cleanName || "연간권", value: ""});
       } else {
@@ -1132,16 +1145,16 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
 
   // ── AI 자동분석: 네이버 request_msg → 시술상품 + 예약태그 자동 선택 ──
   const handleAiAnalyze = async () => {
-    let apiKey = window.__systemGeminiKey || window.__geminiKey || localStorage.getItem("bliss_gemini_key") || "";
-    if (!apiKey) {
-      try {
-        const r = await fetch(`${SB_URL}/rest/v1/businesses?select=settings&limit=1`, {headers: sbHeaders});
-        const rows = await r.json();
-        const memo = JSON.parse(rows[0]?.settings || "{}");
-        apiKey = memo.gemini_key || "";
-        if (apiKey) { window.__geminiKey = apiKey; localStorage.setItem("bliss_gemini_key", apiKey); }
-      } catch(e) {}
-    }
+    // settings에서 항상 최신 키 fetch (localStorage 캐시 옛 키 문제 회피 — 5/17 토큰 교체 후 만료 이슈)
+    let apiKey = "";
+    try {
+      const r = await fetch(`${SB_URL}/rest/v1/businesses?select=settings&limit=1`, {headers: sbHeaders});
+      const rows = await r.json();
+      const memo = JSON.parse(rows[0]?.settings || "{}");
+      apiKey = memo.gemini_key || "";
+      if (apiKey) { window.__geminiKey = apiKey; localStorage.setItem("bliss_gemini_key", apiKey); }
+    } catch(e) {}
+    if (!apiKey) apiKey = window.__systemGeminiKey || window.__geminiKey || localStorage.getItem("bliss_gemini_key") || "";
     if (!apiKey) { alert("관리설정 → AI설정에서 Gemini API 키를 등록하세요"); return; }
     const reqText = (() => {
       if (!f.requestMsg) return "";
@@ -1254,7 +1267,7 @@ ${naverText}
       const pkgKeywords = /패키지|PKG|연간할인권|이용중|패키지이용/i;
       const allText = [f.requestMsg, f.ownerComment, f.memo].join(" ");
       if (pkgKeywords.test(allText) && custPkgsInfo?.length) {
-        const multiPkgs = (custPkgsInfo||[]).filter(p=>{const n=(p.service_name||"").toLowerCase();return !n.includes("다담권")&&!n.includes("선불")&&!n.includes("10%추가적립")&&!n.includes("연간")&&!n.includes("할인권")&&!n.includes("회원권")&&(p.total_count||0)-(p.used_count||0)>0;});
+        const multiPkgs = (custPkgsInfo||[]).filter(p=>{const n=(p.service_name||"").toLowerCase();return !isMoneyPkg(p)&&!n.includes("연간")&&!n.includes("할인권")&&!n.includes("회원권")&&(p.total_count||0)-(p.used_count||0)>0;});
         if (multiPkgs.length > 0) {
           const groups={};multiPkgs.forEach(p=>{const nm=(p.service_name?.split("(")[0]||"").replace(/\s*\d+회$/,"").trim();if(!groups[nm])groups[nm]=true;});
           const firstPkgName = Object.keys(groups)[0];
@@ -1465,8 +1478,7 @@ ${naverText}
         return exp && exp < today;
       };
       const prepaidPkgs = myPkgs.filter(p => {
-        const n = (p.service_name||'').toLowerCase();
-        if (!(n.includes('다담') || n.includes('선불'))) return false;
+        if (!isMoneyPkg(p)) return false;
         if (isExpired(p)) return false;
         const m = (p.note||'').match(/잔액:([0-9,]+)/);
         return m ? Number(m[1].replace(/,/g,'')) > 0 : false;
@@ -1515,7 +1527,7 @@ ${naverText}
       } else {
         const multi = myPkgs.filter(p => {
           const n = (p.service_name||'').toLowerCase();
-          if (n.includes('다담') || n.includes('선불') || n.includes('연간') || n.includes('할인권') || n.includes('회원권')) return false;
+          if (isMoneyPkg(p) || n.includes('연간') || n.includes('할인권') || n.includes('회원권')) return false;
           if (isExpired(p)) return false;
           return (p.total_count||0) - (p.used_count||0) > 0;
         }).sort((a,b) => {
@@ -1909,7 +1921,7 @@ ${naverText}
                           return _kor ? <span style={{fontSize:13,color:T.primaryDk||"#5B21B6",fontWeight:700,whiteSpace:"nowrap"}}>{_kor}</span> : null;
                         })()}
                         {f.custName2 && <span style={{fontSize:12,color:"#888",fontWeight:500,whiteSpace:"nowrap"}}>({f.custName2})</span>}
-                        {custNum && <CopySpan text={custNum} style={{fontSize:13,color:"#999",fontFamily:"monospace",whiteSpace:"nowrap"}}>#{custNum}</CopySpan>}
+                        {custNum && <CopySpan text={custNum} style={{fontSize:13,color:T.text,fontWeight:700,whiteSpace:"nowrap"}}>#{custNum}</CopySpan>}
                         {shareCusts.length > 0 && <span title={`쉐어: ${shareCusts.map(s=>s.name).join(", ")}`}
                           style={{fontSize:10,padding:"2px 7px",borderRadius:10,background:"#F5F3FF",color:"#5B21B6",border:"1px solid #C4B5FD",fontWeight:700,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}>
                           <I name="users" size={10}/>쉐어 {shareCusts.length}명
@@ -1972,7 +1984,7 @@ ${naverText}
                                   style={{padding:"7px 12px",cursor:"pointer",borderBottom:"1px solid #e0e0e020",display:"flex",gap:6,alignItems:"center",fontSize:12}}
                                   onMouseOver={e=>e.currentTarget.style.background=T.gray200} onMouseOut={e=>e.currentTarget.style.background="transparent"}>
                                   <span className="badge" style={{background:c.gender==="M"?T.infoLt:c.gender==="F"?T.femaleLt:T.gray200,color:c.gender==="M"?T.primary:c.gender==="F"?T.female:T.gray500,fontSize:10}}>{c.gender==="M"?"남":c.gender==="F"?"여":"-"}</span>
-                                  {c.custNum && <span style={{fontFamily:"monospace",fontSize:11,color:T.textSub,background:T.gray100,padding:"1px 5px",borderRadius:3,fontWeight:600}}>{c.custNum}</span>}
+                                  {c.custNum && <span style={{fontSize:11,color:T.text,background:T.gray100,padding:"1px 5px",borderRadius:3,fontWeight:700}}>{c.custNum}</span>}
                                   <span style={{fontWeight:600}}>{c.name}</span>
                                   <span style={{color:T.textSub}}>{c.phone}</span>
                                 </div>
@@ -2117,7 +2129,7 @@ ${naverText}
                   style={{padding:"7px 12px",cursor:"pointer",borderBottom:"1px solid #e0e0e020",display:"flex",gap:6,alignItems:"center",fontSize:12}}
                   onMouseOver={e=>e.currentTarget.style.background=T.gray200} onMouseOut={e=>e.currentTarget.style.background="transparent"}>
                   <span className="badge" style={{background:c.gender==="M"?T.infoLt:c.gender==="F"?T.femaleLt:T.gray200,color:c.gender==="M"?T.primary:c.gender==="F"?T.female:T.gray500,fontSize:10}}>{c.gender==="M"?"남":c.gender==="F"?"여":"-"}</span>
-                  {c.custNum && <span style={{fontFamily:"monospace",fontSize:11,color:T.textSub,background:T.gray100,padding:"1px 5px",borderRadius:3,fontWeight:600}}>{c.custNum}</span>}
+                  {c.custNum && <span style={{fontSize:11,color:T.text,background:T.gray100,padding:"1px 5px",borderRadius:3,fontWeight:700}}>{c.custNum}</span>}
                   <span style={{fontWeight:600}}>{c.name}</span>
                   <span style={{color:T.textSub}}>{c.phone}</span>
                 </div>)}
@@ -2371,7 +2383,7 @@ ${naverText}
                 {(()=>{
                   const multiPkgs = (custPkgsInfo||[]).filter(p => {
                     const n=(p.service_name||"").toLowerCase();
-                    if(n.includes("다담권")||n.includes("선불")||n.includes("10%추가적립")) return false;
+                    if(isMoneyPkg(p)) return false;
                     if(n.includes("연간")||n.includes("할인권")||n.includes("회원권")) return false;
                     return (p.total_count||0)-(p.used_count||0)>0;
                   });
@@ -2904,9 +2916,17 @@ ${naverText}
                   if(Object.keys(custUpdate).length>0) sb.update("customers",f.custId,custUpdate).catch(()=>{});
                 }
                 // 상태가 cancelled로 변경되었고 이전 상태가 cancelled가 아니면 취소 알림톡
+                // 3단 분기 (UI_0370~0391 당일취소 알림톡 승인 후, v3.7.806):
+                //   ① 사전취소 (예약일 ≠ 오늘) → rsv_cancel
+                //   ② 당일취소 + 당일예약 + 생성 후 1시간 이내 (grace) → rsv_cancel (실수 보호)
+                //   ③ 그 외 당일취소 → rsv_cancel_today ★ (당일취소 안내 본문)
                 if(f.status==="cancelled" && item?.status!=="cancelled" && f.custPhone && !isSchedule){
                   const branch = (data?.branches||[]).find(b=>b.id===f.bid);
-                  if (!betaGroupMode) queueAlimtalk(f.bid, "rsv_cancel", f.custPhone, {
+                  const _today = todayStr();
+                  const _isSameDay = f.date === _today;
+                  const _isGrace = _isSameDay && judgePenaltyType(f.date, f.time, item?.createdAt || item?.created_at, new Date()) === 'grace';
+                  const _cancelKey = (_isSameDay && !_isGrace) ? "rsv_cancel_today" : "rsv_cancel";
+                  if (!betaGroupMode) queueAlimtalk(f.bid, _cancelKey, f.custPhone, {
                     "#{사용자명}":branch?.name||"", "#{날짜}":f.date||"", "#{시간}":f.time||"",
                     "#{대표전화번호}":branch?.phone||""
                   });
@@ -3310,7 +3330,7 @@ ${naverText}
                   {f.custGender==="F"?"여":f.custGender==="M"?"남":"?"}
                 </div>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:14,fontWeight:800,color:"#1a1a2e",marginBottom:2}}>{f.custName || "-"}{custNum && <span style={{marginLeft:6,fontSize:11,color:"#999",fontWeight:600,fontFamily:"monospace"}}>#{custNum}</span>}</div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#1a1a2e",marginBottom:2}}>{f.custName || "-"}{custNum && <span style={{marginLeft:6,fontSize:11,color:T.text,fontWeight:700}}>#{custNum}</span>}</div>
                   <div style={{fontSize:12,color:T.primary,marginBottom:1}}>{f.custPhone || "-"}</div>
                   {f.custEmail && <div style={{fontSize:11,color:"#777"}}>✉ {f.custEmail}</div>}
                 </div>

@@ -86,7 +86,7 @@ export function ShareCustModal({ baseCust, existingShareIds = [], onPick, onClos
                   {c.name2 ? <span style={{color:T.textSub,fontWeight:500,marginLeft:4}}>({c.name2})</span> : null}
                 </span>;
               })()}
-              {c.cust_num && <span style={{fontSize:10,color:T.textMuted,fontFamily:"monospace"}}>#{c.cust_num}</span>}
+              {c.cust_num && <span style={{fontSize:10,color:T.textMuted}}>#{c.cust_num}</span>}
               {c.phone && !c.phone.startsWith("no_phone") && <span style={{fontSize:11,color:T.textSub}}>{c.phone}</span>}
             </button>
           ))}

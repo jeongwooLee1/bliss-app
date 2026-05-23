@@ -27,11 +27,13 @@ const NOTI_LABELS = {
   tkt_exp_1w: '선불권 만기 1주',
   pkg_exp_1m: '패키지 만기 1개월',
   pkg_exp_1w: '패키지 만기 1주',
+  after_1d_first_only: '시술후 1일(신규·1회)',
   after_5d: '시술후 5일',
   after_10d: '시술후 10일',
+  after_18d_first_only: '시술후 18일(신규·1회)',
   after_21d: '시술후 21일',
   after_35d: '시술후 35일',
-  after_53d: '시술후 53일',
+  after_60d: '시술후 60일',
 }
 
 const STATUS_BADGE = {

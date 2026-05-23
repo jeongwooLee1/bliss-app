@@ -25,7 +25,7 @@ import FloatingAI from '../components/BlissAI/FloatingAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.755"
+const BLISS_V = "3.7.831"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -86,6 +86,30 @@ async function loadReservations(bizId) {
   const since = new Date(Date.now()-30*86400000).toISOString().slice(0,10);
   const rows = await sb.getAll("reservations", `&business_id=eq.${bizId}&is_beta=eq.false&date=gte.${since}&order=date.desc,time.asc&select=${RES_SELECT}`).catch(()=>[]);
   return fromDb("reservations", rows);
+}
+
+// 멤버십(app_users 행) + 계정 → 앱이 쓰는 currentUser 형태로 매핑.
+// 멤버십 모델: account = 사람, app_users 행 = 한 매장에서의 멤버십(역할·지점·근무표직원).
+function mapMembership(m, account) {
+  const parseArr = (v) => typeof v === 'string' ? (()=>{try{return JSON.parse(v)}catch{return []}})() : (Array.isArray(v) ? v : []);
+  const branches = parseArr(m.branch_ids);
+  const viewBranches = parseArr(m.view_branch_ids);
+  const loginId = account?.login_id || m.login_id;
+  const accId = account?.id || m.account_id;
+  return {
+    id: m.id,
+    account_id: accId, accountId: accId,
+    business_id: m.business_id, businessId: m.business_id,
+    login_id: loginId, loginId,
+    name: m.name || account?.name, role: m.role,
+    branch_ids: branches, branchIds: branches, branches,
+    view_branch_ids: viewBranches, viewBranchIds: viewBranches, viewBranches,
+    created_at: m.created_at, createdAt: m.created_at,
+    timeline_settings: m.timeline_settings, timelineSettings: m.timeline_settings,
+    email: m.email || account?.email,
+    emp_name: m.emp_name, empName: m.emp_name,
+    status: m.status,
+  };
 }
 function SuperDashboard({ superData, setSuperData, currentUser, onLogout, onEnterBiz }) {
   const [tab, setTab] = useState("businesses");
@@ -263,7 +287,7 @@ function SuperDashboard({ superData, setSuperData, currentUser, onLogout, onEnte
   );
 }
 
-function Login({ users, onLogin, onSignup }) {
+function Login({ users, onAccountLogin, onSignup }) {
   const [showSignup, setShowSignup] = useState(false);
   const [loginId, setLoginId] = useState(() => {try{return localStorage.getItem("savedLoginId")||"";}catch(e){return "";}});
   const [pw, setPw] = useState("");
@@ -273,31 +297,17 @@ function Login({ users, onLogin, onSignup }) {
     setErr("");
     try {
       const { SB_URL, SB_KEY } = await import('../lib/supabase');
-      const res = await fetch(`${SB_URL}/rest/v1/rpc/auth_login`, {
+      // 멤버십 모델: auth_login_v2 → { account, memberships[] }
+      const res = await fetch(`${SB_URL}/rest/v1/rpc/auth_login_v2`, {
         method: "POST",
         headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({ p_login_id: loginId, p_password: pw }),
       });
       if (!res.ok) { setErr("아이디 또는 비밀번호가 일치하지 않습니다."); return; }
-      const u = await res.json();
-      if (!u || !u.id) { setErr("아이디 또는 비밀번호가 일치하지 않습니다."); return; }
-      // snake/camel 양쪽 키 포함 (다운스트림 호환). branch_ids는 string/array 모두 지원
-      const parseArr = (v) => typeof v === 'string' ? (()=>{try{return JSON.parse(v)}catch{return []}})() : (Array.isArray(v) ? v : []);
-      const branches = parseArr(u.branch_ids);
-      const viewBranches = parseArr(u.view_branch_ids);
-      const mapped = {
-        id: u.id,
-        business_id: u.business_id, businessId: u.business_id,
-        login_id: u.login_id, loginId: u.login_id,
-        name: u.name, role: u.role,
-        branch_ids: branches, branchIds: branches, branches,
-        view_branch_ids: viewBranches, viewBranchIds: viewBranches, viewBranches,
-        created_at: u.created_at, createdAt: u.created_at,
-        timeline_settings: u.timeline_settings, timelineSettings: u.timeline_settings,
-        email: u.email,
-      };
+      const data = await res.json();
+      if (!data || !data.account) { setErr("아이디 또는 비밀번호가 일치하지 않습니다."); return; }
       try{if(saveId)localStorage.setItem("savedLoginId",loginId);else localStorage.removeItem("savedLoginId");}catch(e){}
-      onLogin(mapped);
+      onAccountLogin(data.account, data.memberships || []);
     } catch (e) {
       console.error('[login] error', e);
       setErr("로그인 중 오류가 발생했습니다.");
@@ -364,6 +374,137 @@ function Login({ users, onLogin, onSignup }) {
       </div>
     </div>
   );
+}
+
+// 멤버십 게이트 — 로그인했으나 활성 멤버십이 1개가 아닐 때(여러개 선택 / 승인대기 / 미가입)
+const ROLE_LABEL = { owner:"대표", manager:"매니저", staff:"직원", super:"관리자" };
+function AccountGate({ mode, pendingAccount, onPick, onLogout, onJoinSuccess, onCreateBiz }) {
+  const acc = pendingAccount?.account;
+  const memberships = pendingAccount?.memberships || [];
+  const [bizNames, setBizNames] = useState({});
+  const [code, setCode] = useState("");
+  const [joining, setJoining] = useState(false);
+  const [joinErr, setJoinErr] = useState("");
+  const doJoin = async () => {
+    if (!code.trim()) { setJoinErr("매장 코드를 입력하세요"); return; }
+    if (!acc?.id) { setJoinErr("계정 정보 오류"); return; }
+    setJoining(true); setJoinErr("");
+    try {
+      const { SB_URL, SB_KEY } = await import('../lib/supabase');
+      const res = await fetch(`${SB_URL}/rest/v1/rpc/staff_join_request`, {
+        method: "POST",
+        headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ p_account_id: acc.id, p_store_code: code.trim() }),
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        if (t.includes("store_not_found")) setJoinErr("해당 매장 코드를 찾을 수 없습니다");
+        else if (t.includes("already_member")) setJoinErr("이미 요청했거나 소속된 매장입니다");
+        else setJoinErr("요청 실패. 다시 시도해주세요");
+        setJoining(false); return;
+      }
+      onJoinSuccess && onJoinSuccess();
+    } catch (e) { setJoinErr("요청 실패"); setJoining(false); }
+  };
+  const [bizMode, setBizMode] = useState(false);
+  const [bizName, setBizName] = useState("");
+  const [bizSaving, setBizSaving] = useState(false);
+  const doCreateBiz = async () => {
+    if (!bizName.trim()) { setJoinErr("사업장 이름을 입력하세요"); return; }
+    if (!acc?.id) { setJoinErr("계정 정보 오류"); return; }
+    setBizSaving(true); setJoinErr("");
+    try {
+      const exp = new Date(); exp.setDate(exp.getDate() + 14);
+      const bizId = "biz_" + uid(), brId = "br_" + uid(), mbrId = "mbr_" + uid();
+      await sb.insert("businesses", { id: bizId, name: bizName.trim(), code: acc.login_id, phone: "",
+        settings: JSON.stringify({ plan: "trial", planExpiry: exp.toISOString().slice(0,10) }), use_yn: true });
+      await sb.insert("branches", { id: brId, business_id: bizId, name: bizName.trim(),
+        short: bizName.trim().slice(0,5), phone: "", sort: 0, use_yn: true });
+      await sb.insert("app_users", { id: mbrId, account_id: acc.id, business_id: bizId,
+        login_id: acc.login_id, name: acc.name, role: "owner", status: "active",
+        branch_ids: JSON.stringify([brId]), view_branch_ids: JSON.stringify([brId]) });
+      onCreateBiz && onCreateBiz(mapMembership({
+        id: mbrId, account_id: acc.id, business_id: bizId, role: "owner", status: "active",
+        branch_ids: [brId], view_branch_ids: [brId], name: acc.name, email: acc.email,
+      }, acc));
+    } catch (e) { setJoinErr("사업장 생성 실패"); setBizSaving(false); }
+  };
+  useEffect(() => {
+    const bids = [...new Set(memberships.map(m=>m.business_id).filter(Boolean))];
+    if (!bids.length) return;
+    sb.get("businesses", `&id=in.(${bids.map(b=>`"${b}"`).join(',')})&select=id,name`)
+      .then(rows => { const map={}; (rows||[]).forEach(b=>{map[b.id]=b.name}); setBizNames(map); })
+      .catch(()=>{});
+  }, []);
+  const bg = "linear-gradient(135deg,#e8e8f0 0%,#d8d8e8 50%,#c8c8d8 100%)";
+  const wrap = (children) => (
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:bg,fontFamily:"'Pretendard',sans-serif",padding:20}}>
+      <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" rel="stylesheet"/>
+      <div style={{background:T.bgCard,borderRadius:16,border:`1px solid ${T.border}`,padding:"32px 28px",width:"92%",maxWidth:420,boxShadow:T.shadow.md}}>
+        <div style={{textAlign:"center",marginBottom:24}}>
+          <div style={{fontSize:28,fontWeight:900,color:T.primary,letterSpacing:-1}}>Bliss</div>
+          {acc?.name && <div style={{fontSize:13,color:T.textMuted,marginTop:6}}>{acc.name}님</div>}
+        </div>
+        {children}
+        <button onClick={onLogout} style={{width:"100%",marginTop:16,padding:10,background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:T.textSub,cursor:"pointer",fontFamily:"inherit",fontSize:13}}>로그아웃</button>
+      </div>
+    </div>
+  );
+  if (mode === "pick_membership") {
+    return wrap(<>
+      <div style={{fontSize:14,fontWeight:700,marginBottom:12,textAlign:"center"}}>접속할 매장을 선택하세요</div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {memberships.map(m => (
+          <button key={m.id} onClick={()=>onPick(m)} style={{padding:"14px 16px",border:`1px solid ${T.border}`,borderRadius:10,background:"#fff",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+            <div style={{fontSize:14,fontWeight:700}}>{bizNames[m.business_id]||m.business_id||"매장"}</div>
+            <div style={{fontSize:12,color:T.textSub,marginTop:2}}>{ROLE_LABEL[m.role]||m.role}</div>
+          </button>
+        ))}
+      </div>
+    </>);
+  }
+  if (mode === "staff_pending") {
+    return wrap(<div style={{textAlign:"center",fontSize:14,color:T.textSub,lineHeight:1.8}}>
+      매장 등록 요청이 접수되었습니다.<br/>관리자 승인을 기다리고 있습니다.<br/>
+      <span style={{fontSize:12,color:T.textMuted}}>승인되면 다시 로그인해 주세요.</span>
+    </div>);
+  }
+  // no_membership — 매장 합류 요청 / 사업장 생성
+  if (bizMode) {
+    return wrap(<>
+      <div style={{fontSize:14,fontWeight:700,marginBottom:6,textAlign:"center"}}>내 사업장 만들기</div>
+      <div style={{fontSize:12,color:T.textSub,marginBottom:12,textAlign:"center",lineHeight:1.6}}>
+        사업장(브랜드)명을 입력하세요. 14일 무료 체험으로 시작됩니다.
+      </div>
+      <input value={bizName} onChange={e=>{setBizName(e.target.value);setJoinErr("")}} placeholder="브랜드 또는 상호명"
+        onKeyDown={e=>e.key==="Enter"&&doCreateBiz()}
+        style={{width:"100%",padding:"11px 13px",fontSize:14,borderRadius:10,border:`1px solid ${joinErr?T.danger:T.border}`,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+      {joinErr && <div style={{fontSize:12,color:T.danger,marginTop:4}}>{joinErr}</div>}
+      <button onClick={doCreateBiz} disabled={bizSaving} style={{width:"100%",marginTop:10,padding:12,borderRadius:10,border:"none",background:bizSaving?T.gray200:T.primary,color:bizSaving?T.gray400:"#fff",fontWeight:700,cursor:bizSaving?"not-allowed":"pointer",fontFamily:"inherit",fontSize:14}}>
+        {bizSaving?"생성 중...":"사업장 만들기"}
+      </button>
+      <button onClick={()=>{setBizMode(false);setJoinErr("")}} style={{width:"100%",marginTop:8,padding:10,background:"none",border:"none",color:T.textSub,cursor:"pointer",fontFamily:"inherit",fontSize:13}}>← 뒤로</button>
+    </>);
+  }
+  return wrap(<>
+    <div style={{fontSize:14,fontWeight:700,marginBottom:6,textAlign:"center"}}>매장에 합류하기</div>
+    <div style={{fontSize:12,color:T.textSub,marginBottom:12,textAlign:"center",lineHeight:1.6}}>
+      근무하는 매장의 코드를 입력해 직원 등록을 요청하세요.<br/>매장 코드는 매장 관리자에게 문의하세요.
+    </div>
+    <input value={code} onChange={e=>{setCode(e.target.value);setJoinErr("")}} placeholder="매장 코드"
+      onKeyDown={e=>e.key==="Enter"&&doJoin()}
+      style={{width:"100%",padding:"11px 13px",fontSize:14,borderRadius:10,border:`1px solid ${joinErr?T.danger:T.border}`,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+    {joinErr && <div style={{fontSize:12,color:T.danger,marginTop:4}}>{joinErr}</div>}
+    <button onClick={doJoin} disabled={joining} style={{width:"100%",marginTop:10,padding:12,borderRadius:10,border:"none",background:joining?T.gray200:T.primary,color:joining?T.gray400:"#fff",fontWeight:700,cursor:joining?"not-allowed":"pointer",fontFamily:"inherit",fontSize:14}}>
+      {joining?"요청 중...":"직원 등록 요청"}
+    </button>
+    <div style={{display:"flex",alignItems:"center",gap:10,margin:"16px 0"}}>
+      <div style={{flex:1,height:1,background:T.border}}/><span style={{fontSize:11,color:T.textMuted}}>또는</span><div style={{flex:1,height:1,background:T.border}}/>
+    </div>
+    <button onClick={()=>{setBizMode(true);setJoinErr("")}} style={{width:"100%",padding:12,borderRadius:10,border:`1px solid ${T.border}`,background:"#fff",color:T.text,fontWeight:600,cursor:"pointer",fontFamily:"inherit",fontSize:13}}>
+      내 사업장 만들기
+    </button>
+  </>);
 }
 
 function UsersPage(p) { return <UsersPageReal {...p} />; }
@@ -527,104 +668,52 @@ function SuperSystemSettings() {
   );
 }
 
+// 통합 가입 — account(사람)만 생성. 사업장 미생성. 가입 후 합류/생성은 AccountGate에서.
 function SignupWizard({ onComplete, onBack }) {
-  const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [acct, setAcct] = useState({ name:'', loginId:'', pw:'', pw2:'' });
   const setA = (k,v) => setAcct(p=>({...p,[k]:v}));
-  const [bizName, setBizName] = useState('');
-  const [branches, setBranches] = useState([]);
-  const [addName, setAddName] = useState('');
-  const [addPhone, setAddPhone] = useState('');
-  const [showAddForm, setShowAddForm] = useState(false);
   const [errs, setErrs] = useState({});
-  const setErr = (k,v) => setErrs(p=>({...p,[k]:v}));
 
-  const nextStep1 = () => {
+  const submit = async () => {
     const e = {};
     if (!acct.name.trim()) e.name = '이름을 입력해주세요';
-    if (!acct.loginId.trim()) e.loginId = '아이디를 입력해주세요';
     if (!/^[a-zA-Z0-9_]{3,20}$/.test(acct.loginId)) e.loginId = '아이디는 영문/숫자/언더바 3~20자로 입력해주세요';
     if (acct.pw.length < 4) e.pw = '비밀번호는 4자 이상이어야 해요';
     if (acct.pw !== acct.pw2) e.pw2 = '비밀번호가 일치하지 않아요';
     setErrs(e);
-    if (Object.keys(e).length === 0) setStep(2);
-  };
-
-  const addBranchItem = () => {
-    if (!addName.trim()) { setErr('addName','지점 이름을 입력해주세요'); return; }
-    if (branches.length >= 3) return;
-    setBranches(p=>[...p,{name:addName.trim(), phone:addPhone.trim()}]);
-    setAddName(''); setAddPhone(''); setShowAddForm(false); setErr('addName','');
-  };
-  const removeBranch = (i) => setBranches(p=>p.filter((_,idx)=>idx!==i));
-
-  const submit = async () => {
-    if (!bizName.trim()) { alert('브랜드명을 입력해주세요.'); return; }
-    // 지점 없으면 브랜드명으로 기본 지점 자동 생성
-    const finalBranches = branches.length > 0 ? branches : [{name: bizName.trim(), phone: ''}];
+    if (Object.keys(e).length > 0) return;
     setSaving(true);
     try {
-      const ex = await sb.get('app_users_safe','&login_id=eq.'+encodeURIComponent(acct.loginId));
-      if (ex.length > 0) { alert('이미 사용 중인 아이디입니다.'); setSaving(false); return; }
-      const bizId = 'biz_'+uid();
-      const oId = 'acc_'+uid();
-      const exp = new Date(); exp.setDate(exp.getDate()+14);
-      await sb.insert('businesses', {
-        id: bizId, name: bizName.trim(), code: acct.loginId, phone: finalBranches[0].phone||'',
-        settings: JSON.stringify({ plan:'trial', planExpiry: exp.toISOString().slice(0,10) }), use_yn: true
+      const { SB_URL, SB_KEY } = await import('../lib/supabase');
+      const res = await fetch(`${SB_URL}/rest/v1/rpc/account_signup`, {
+        method: 'POST',
+        headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_login_id: acct.loginId, p_password: acct.pw, p_name: acct.name.trim() }),
       });
-      const brIds = [];
-      for (let i=0; i<finalBranches.length; i++) {
-        const brId = 'br_'+uid();
-        brIds.push(brId);
-        await sb.insert('branches', {
-          id: brId, business_id: bizId, name: finalBranches[i].name, short: finalBranches[i].name.slice(0,5),
-          phone: finalBranches[i].phone||'', sort: i, use_yn: true
-        });
+      if (!res.ok) {
+        const t = await res.text();
+        if (t.includes('login_id_taken')) { setErrs({ loginId: '이미 사용 중인 아이디입니다' }); setSaving(false); return; }
+        alert('가입 실패: 다시 시도해주세요.'); setSaving(false); return;
       }
-      await sb.insert('app_users', {
-        id: oId, business_id: bizId, login_id: acct.loginId, password: acct.pw,
-        name: acct.name.trim(), role: 'owner', branch_ids: JSON.stringify(brIds), view_branch_ids: JSON.stringify(brIds)
-      });
-      setStep(3);
-      setTimeout(()=>onComplete({
-        id:oId, businessId:bizId, loginId:acct.loginId, pw:acct.pw,
-        name:acct.name.trim(), role:'owner', branchIds:brIds, viewBranchIds:brIds
-      }), 2000);
-    } catch(e) {
-      alert('가입 실패: '+(e.message||'다시 시도해주세요.'));
-    } finally { setSaving(false); }
+      const account = await res.json();
+      onComplete(account);
+    } catch (e) {
+      alert('가입 실패: ' + (e.message || '다시 시도해주세요.'));
+      setSaving(false);
+    }
   };
 
   const inp = {width:'100%',padding:'11px 13px',fontSize:T.fs.md,borderRadius:T.radius.lg,border:'1px solid '+T.border,outline:'none',fontFamily:'inherit',color:T.text,background:'#fff'};
   const lbl = {fontSize:T.fs.xxs,color:T.gray500,fontWeight:T.fw.bold,marginBottom:5,display:'block'};
   const errStyle = {fontSize:T.fs.xxs,color:T.danger,marginTop:3};
 
-  const StepBar = () => (
-    <div style={{display:'flex',alignItems:'center',justifyContent:'center',marginBottom:24,gap:0}}>
-      {[['1','계정'],['2','사업장'],['3','완료']].map(([n,lv],i,arr)=><React.Fragment key={n}>
-        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:5}}>
-          <div style={{width:28,height:28,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',
-            fontSize:12,fontWeight:700,
-            background: step>i+1?T.primary : step===i+1?T.primary:'#e8e8f0',
-            color: step>=i+1?'#fff':T.gray400,
-            boxShadow: step===i+1?'0 0 0 4px #f0f0fa':'none',
-            transition:'all .3s'}}>
-            {step>i+1?'✓':n}
-          </div>
-          <div style={{fontSize:10,fontWeight:600,color:step===i+1?T.primary:T.gray400}}>{lv}</div>
-        </div>
-        {i<2&&<div style={{width:44,height:2,background:step>i+1?T.primary:'#e8e8f0',margin:'0 6px',marginBottom:16,transition:'background .3s'}}/>}
-      </React.Fragment>)}
-    </div>
-  );
-
-  if (step===1) return (
+  return (
     <div style={{display:'flex',flexDirection:'column',gap:0}}>
-      <StepBar/>
       <div style={{fontSize:T.fs.lg,fontWeight:T.fw.black,marginBottom:4}}>계정 만들기</div>
-      <div style={{fontSize:T.fs.sm,color:T.textMuted,marginBottom:20,lineHeight:1.5}}>아이디와 비밀번호로 Bliss 계정을 만들어요.</div>
+      <div style={{fontSize:T.fs.sm,color:T.textMuted,marginBottom:20,lineHeight:1.5}}>
+        Bliss 계정을 만들어요. 가입 후 매장에 직원으로 합류하거나 내 사업장을 만들 수 있어요.
+      </div>
       <div style={{marginBottom:13}}>
         <label style={lbl}>이름</label>
         <input style={{...inp,borderColor:errs.name?T.danger:T.border}} value={acct.name} onChange={e=>setA('name',e.target.value)} placeholder="홍길동"/>
@@ -632,7 +721,7 @@ function SignupWizard({ onComplete, onBack }) {
       </div>
       <div style={{marginBottom:13}}>
         <label style={lbl}>아이디 (영문/숫자/언더바 3~20자)</label>
-        <input style={{...inp,borderColor:errs.loginId?T.danger:T.border}} value={acct.loginId} onChange={e=>setA('loginId',e.target.value.toLowerCase())} placeholder="예: myshop"/>
+        <input style={{...inp,borderColor:errs.loginId?T.danger:T.border}} value={acct.loginId} onChange={e=>setA('loginId',e.target.value.toLowerCase())} placeholder="예: gildong"/>
         {errs.loginId&&<div style={errStyle}>{errs.loginId}</div>}
       </div>
       <div style={{marginBottom:13}}>
@@ -642,81 +731,14 @@ function SignupWizard({ onComplete, onBack }) {
       </div>
       <div style={{marginBottom:20}}>
         <label style={lbl}>비밀번호 확인</label>
-        <input style={{...inp,borderColor:errs.pw2?T.danger:T.border}} type="password" value={acct.pw2} onChange={e=>setA('pw2',e.target.value)} placeholder="비밀번호 재입력"/>
+        <input style={{...inp,borderColor:errs.pw2?T.danger:T.border}} type="password" value={acct.pw2} onChange={e=>setA('pw2',e.target.value)} placeholder="비밀번호 재입력" onKeyDown={e=>e.key==='Enter'&&submit()}/>
         {errs.pw2&&<div style={errStyle}>{errs.pw2}</div>}
       </div>
-      <button onClick={nextStep1} style={{width:'100%',padding:13,borderRadius:T.radius.lg,border:'none',background:T.primary,color:'#fff',fontSize:T.fs.md,fontWeight:T.fw.bolder,cursor:'pointer',fontFamily:'inherit'}}>
-        다음 — 사업장 등록 →
+      <button onClick={submit} disabled={saving}
+        style={{width:'100%',padding:13,borderRadius:T.radius.lg,border:'none',background:saving?T.gray200:T.primary,color:saving?T.gray400:'#fff',fontSize:T.fs.md,fontWeight:T.fw.bolder,cursor:saving?'not-allowed':'pointer',fontFamily:'inherit'}}>
+        {saving?'처리 중...':'가입하기'}
       </button>
       <button onClick={onBack} style={{background:'none',border:'none',fontSize:T.fs.sm,color:T.gray400,cursor:'pointer',marginTop:12,fontFamily:'inherit'}}>← 로그인으로 돌아가기</button>
-    </div>
-  );
-
-  if (step===2) return (
-    <div style={{display:'flex',flexDirection:'column',gap:0}}>
-      <StepBar/>
-      <div style={{fontSize:T.fs.lg,fontWeight:T.fw.black,marginBottom:4}}>사업장 등록</div>
-      <div style={{fontSize:T.fs.sm,color:T.textMuted,marginBottom:16,lineHeight:1.5}}>사업장 정보를 등록해주세요.</div>
-      <div style={{marginBottom:16}}>
-        <label style={lbl}>브랜드명 <span style={{color:T.danger}}>*</span></label>
-        <input style={inp} value={bizName} onChange={e=>setBizName(e.target.value)} placeholder="브랜드 또는 상호명"/>
-      </div>
-      <div style={{marginBottom:10,display:'flex',flexDirection:'column',gap:8}}>
-        {branches.map((b,i)=>(
-          <div key={i} style={{border:'1.5px solid '+(i===0?T.primary:T.border),borderRadius:T.radius.lg,padding:'12px 14px',background:i===0?T.primaryHover:'#fff',position:'relative'}}>
-            <div style={{fontSize:10,fontWeight:800,color:T.primary,marginBottom:4}}>지점 {i+1}</div>
-            <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.text}}>{b.name}</div>
-            {b.phone&&<div style={{fontSize:T.fs.xxs,color:T.textSub,marginTop:2}}>{b.phone}</div>}
-            {i>0&&<button onClick={()=>removeBranch(i)} style={{position:'absolute',top:8,right:10,background:'none',border:'none',cursor:'pointer',color:T.gray400,fontSize:16}}>×</button>}
-          </div>
-        ))}
-      </div>
-      {showAddForm ? (
-        <div style={{border:'1.5px solid '+T.border,borderRadius:T.radius.lg,padding:'14px',marginBottom:10,background:'#fafafa'}}>
-          <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,marginBottom:10,color:T.text}}>지점 등록</div>
-          <div style={{marginBottom:10}}>
-            <label style={lbl}>지점 이름 <span style={{color:T.danger}}>*</span></label>
-            <input style={{...inp,borderColor:errs.addName?T.danger:T.border}} value={addName} onChange={e=>{setAddName(e.target.value);setErr('addName','')}} placeholder="예: 강남점"/>
-            {errs.addName&&<div style={errStyle}>{errs.addName}</div>}
-          </div>
-          <div style={{marginBottom:12}}>
-            <label style={lbl}>전화번호 (선택)</label>
-            <input style={inp} value={addPhone} onChange={e=>setAddPhone(e.target.value)} placeholder="02-0000-0000"/>
-          </div>
-          <div style={{display:'flex',gap:8}}>
-            <button onClick={addBranchItem} style={{flex:1,padding:'10px',borderRadius:T.radius.lg,border:'none',background:T.primary,color:'#fff',fontSize:T.fs.sm,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>등록</button>
-            <button onClick={()=>{setShowAddForm(false);setAddName('');setAddPhone('');setErr('addName','');}} style={{padding:'10px 16px',borderRadius:T.radius.lg,border:'1px solid '+T.border,background:'#fff',color:T.gray600,fontSize:T.fs.sm,cursor:'pointer',fontFamily:'inherit'}}>취소</button>
-          </div>
-        </div>
-      ) : (
-        branches.length < 3 && (
-          <button onClick={()=>setShowAddForm(true)} style={{width:'100%',padding:11,border:'1.5px dashed #ccc',borderRadius:T.radius.lg,background:'none',color:T.textMuted,fontSize:T.fs.sm,fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6,marginBottom:10,fontFamily:'inherit'}}>
-            + 지점 등록 ({branches.length}/3)
-          </button>
-        )
-      )}
-      <div style={{fontSize:T.fs.xxs,color:T.textMuted,textAlign:'center',marginBottom:14}}>여러 지점이 있으면 추가해주세요 (선택)</div>
-      <button onClick={submit} disabled={saving||!bizName.trim()}
-        style={{width:'100%',padding:13,borderRadius:T.radius.lg,border:'none',
-          background:(saving||!bizName.trim())?T.gray200:'linear-gradient(135deg,#7c7cc8,#9b9be0)',
-          color:(saving||!bizName.trim())?T.gray400:'#fff',
-          fontSize:T.fs.md,fontWeight:T.fw.bolder,cursor:saving?'not-allowed':'pointer',fontFamily:'inherit'}}>
-        {saving?'처리 중...':'완료 — 시작하기 →'}
-      </button>
-      <button onClick={()=>setStep(1)} style={{background:'none',border:'none',fontSize:T.fs.sm,color:T.gray400,cursor:'pointer',marginTop:10,fontFamily:'inherit'}}>← 이전</button>
-    </div>
-  );
-
-  return (
-    <div style={{textAlign:'center',padding:'20px 0',display:'flex',flexDirection:'column',alignItems:'center',gap:16}}>
-      <div style={{fontSize:56}}>🎉</div>
-      <div style={{fontSize:T.fs.xxl,fontWeight:T.fw.black,color:T.successDk||T.primary}}>가입 완료!</div>
-      <div style={{fontSize:T.fs.sm,color:T.gray600,lineHeight:1.8}}>
-        <b style={{color:T.text}}>{acct.name}</b>님,<br/>14일 무료 체험이 시작되었습니다.
-      </div>
-      <div style={{width:'60%',height:4,background:'#e0e0f0',borderRadius:T.radius.sm,overflow:'hidden'}}>
-        <div style={{height:'100%',background:T.primary,borderRadius:T.radius.sm,width:'100%',animation:'loadingBar 1.8s linear forwards'}}/>
-      </div>
     </div>
   );
 }
@@ -840,6 +862,85 @@ function AnnouncesMarquee({ overrideItems }) {
 }
 
 // ── 🏦 미매칭 입금 배너 — bank_deposits 폴링 + Realtime ──
+// 직원 등록 요청 배너 — pending 멤버십을 마스터/매니저에게 노출, 수락(근무표 직원 연결)/거절
+function StaffRequestsBanner({ bizId, role, branches=[] }) {
+  const [reqs, setReqs] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [emps, setEmps] = useState([]);
+  const [pick, setPick] = useState({});
+  const [busy, setBusy] = useState(false);
+  const canApprove = role === "owner" || role === "manager" || role === "super";
+  const load = async () => {
+    if (!bizId || !canApprove) { setReqs([]); return; }
+    try {
+      const r = await fetch(`${SB_URL}/rest/v1/app_users_safe?business_id=eq.${bizId}&status=eq.pending&role=eq.staff&select=id,name,account_id,created_at&order=created_at.asc`, { headers:{...sbHeaders,'Cache-Control':'no-cache'}, cache:'no-store' });
+      if (r.ok) setReqs(await r.json() || []);
+    } catch {}
+  };
+  useEffect(() => { load(); const t=setInterval(load,30000); return ()=>clearInterval(t); }, [bizId, role]);
+  useEffect(() => {
+    if (!window._sbClient || !bizId || !canApprove) return;
+    const ch = window._sbClient.channel('staff_req_'+Date.now())
+      .on('postgres_changes',{event:'*',schema:'public',table:'app_users',filter:`business_id=eq.${bizId}`}, load)
+      .subscribe();
+    return ()=>{ try{window._sbClient.removeChannel(ch)}catch{} };
+  }, [bizId, role]);
+  useEffect(() => {
+    if (!open || !bizId) return;
+    fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${bizId}&key=eq.employees_v1&select=value`, { headers:sbHeaders })
+      .then(r=>r.json()).then(rows=>{
+        try { const v = rows?.[0]?.value; const list = typeof v==='string'?JSON.parse(v):v; setEmps(Array.isArray(list)?list:[]); } catch { setEmps([]); }
+      }).catch(()=>setEmps([]));
+  }, [open, bizId]);
+  if (!canApprove || reqs.length === 0) return null;
+  const allBids = (branches||[]).map(b=>b.id);
+  const decide = async (req, action) => {
+    setBusy(true);
+    try {
+      const body = action === "approve"
+        ? { status:"active", emp_name: pick[req.id]||null, branch_ids: allBids, view_branch_ids: allBids }
+        : { status:"rejected" };
+      await fetch(`${SB_URL}/rest/v1/app_users?id=eq.${req.id}`, {
+        method:"PATCH", headers:{...sbHeaders,'Cache-Control':'no-cache'}, body: JSON.stringify(body),
+      });
+      await load();
+    } catch {} finally { setBusy(false); }
+  };
+  return <>
+    <div onClick={()=>setOpen(true)} style={{flexShrink:0,cursor:'pointer',background:'#EDE7F6',borderBottom:'1px solid #d1c4e9',padding:'9px 16px',display:'flex',alignItems:'center',gap:8,fontSize:13}}>
+      <I name="users" size={15}/>
+      <span style={{fontWeight:800,color:'#4527A0'}}>직원 등록 요청 {reqs.length}건</span>
+      <span style={{color:'#7E57C2'}}>· 탭하여 승인</span>
+    </div>
+    {open && <div style={{position:'fixed',inset:0,zIndex:10000,background:'rgba(0,0,0,.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={()=>setOpen(false)}>
+      <div onClick={e=>e.stopPropagation()} style={{background:'#fff',borderRadius:14,width:'100%',maxWidth:440,maxHeight:'80vh',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+        <div style={{padding:'14px 16px',borderBottom:`1px solid ${T.border}`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <span style={{fontWeight:800,fontSize:15}}>직원 등록 요청</span>
+          <button onClick={()=>setOpen(false)} style={{border:'none',background:'none',fontSize:20,cursor:'pointer',color:T.textSub}}>×</button>
+        </div>
+        <div style={{flex:1,overflowY:'auto',padding:12,display:'flex',flexDirection:'column',gap:10}}>
+          {reqs.length===0 && <div style={{textAlign:'center',color:T.textMuted,padding:24,fontSize:13}}>대기 중인 요청이 없습니다.</div>}
+          {reqs.map(req => (
+            <div key={req.id} style={{border:`1px solid ${T.border}`,borderRadius:10,padding:'12px 14px'}}>
+              <div style={{fontSize:14,fontWeight:700,marginBottom:8}}>{req.name||'(이름없음)'}</div>
+              <div style={{fontSize:11,color:T.textSub,marginBottom:6}}>근무표 직원과 연결 (타임라인 본인 컬럼 인식용)</div>
+              <select value={pick[req.id]||''} onChange={e=>setPick(p=>({...p,[req.id]:e.target.value}))}
+                style={{width:'100%',padding:'8px 10px',borderRadius:8,border:`1px solid ${T.border}`,fontFamily:'inherit',fontSize:13,marginBottom:8}}>
+                <option value="">— 직원 선택 (선택사항) —</option>
+                {emps.map(e=>{const n=e.id||e;return <option key={n} value={n}>{n}</option>;})}
+              </select>
+              <div style={{display:'flex',gap:8}}>
+                <button disabled={busy} onClick={()=>decide(req,'approve')} style={{flex:1,padding:9,border:'none',borderRadius:8,background:T.primary,color:'#fff',fontWeight:700,cursor:'pointer',fontFamily:'inherit',fontSize:13}}>수락</button>
+                <button disabled={busy} onClick={()=>decide(req,'reject')} style={{padding:'9px 16px',border:`1px solid ${T.border}`,borderRadius:8,background:'#fff',color:T.textSub,cursor:'pointer',fontFamily:'inherit',fontSize:13}}>거절</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>}
+  </>;
+}
+
 function DepositsAlertBanner({ userBranches=[], onOpen }) {
   const [count, setCount] = useState(0);
   const [latest, setLatest] = useState(null); // 가장 최근 미매칭 1건 (미리보기)
@@ -1117,13 +1218,15 @@ function App() {
   const [unreadMsgCount, setUnreadMsgCount] = useState(0);
   const [unreadDelayedCount, setUnreadDelayedCount] = useState(0); // 1분 이상 미응답 (타임라인 배너용)
   const [unreadSample, setUnreadSample] = useState([]); // 배너용: [{user_id, channel, user_name, message_text, created_at, account_id}]
-  const [teamChatUnread, setTeamChatUnread] = useState(0); // 팀채팅 안읽음 (사이드바 합산용)
+  // 팀채팅 미읽음 카운트는 사이드바 배지에 합산하지 않음 (유저 요청 2026-05-20).
+  // 받은메시지함 안 팀채팅 탭의 미읽 표시는 별도 hook(useTeamChat)이 담당 — 영향 없음.
   const [pendingDepositCount, setPendingDepositCount] = useState(0); // 미매칭 입금 (사이드바 합산용)
   const [pendingReqCount, setPendingReqCount] = useState(0);
   const [unackNoticesPopup, setUnackNoticesPopup] = useState(null); // {count, ids}
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
+  const [pendingAccount, setPendingAccount] = useState(null); // {account, memberships} — 멤버십 미선택/승인대기/미가입
   const [currentBizId, setCurrentBizId] = useState(null);
   const [currentBiz, setCurrentBiz] = useState(null);
   const [data, setData] = useState(null);
@@ -1235,11 +1338,19 @@ function App() {
         .then(r=>r.json())
         .then(arr=>{
           if(!Array.isArray(arr)) return;
-          // isMaster는 전체 통과. 그 외엔 매핑된 account_id면 userBranches 일치 여부로, 매핑 없는 채널(Telegram/Kakao/Line 등)은 fallback 통과.
-          const filtered = isMaster ? arr : arr.filter(m => {
+          // 패널(MessagesPage threads 필터)과 동일 규칙으로 카운트 — 사이드바 배지 ≠ 화면 표시 불일치 방지.
+          // 패널: WhatsApp·Line·account 미지정은 노출, ai_test 미노출, 그 외는 지점 account_id 일치 시만.
+          // ★ isMaster(매니저 포함) 전체통과 제거 — 지점장도 패널처럼 자기 지점 account만 카운트.
+          //   대표/슈퍼는 userBranches가 전 지점이라 allowedAccIds에 모든 계정 포함 → 자연히 전체 카운트.
+          //   userBranches 미로드(allowedAccIds 0)면 pass-all로 안전.
+          const filtered = arr.filter(m => {
+            const ch = String(m.channel || "");
+            if (ch === "ai_test") return false;                  // 패널 미노출 채널
+            if (ch === "whatsapp" || ch === "line") return true; // 전지점 공통
             const accId = String(m.account_id || "");
-            if (allMappedAccIds.has(accId)) return allowedAccIds.has(accId);
-            return true;
+            if (!accId || accId === "unknown") return true;      // 지점 미지정 메시지 → 노출
+            if (allowedAccIds.size === 0) return true;
+            return allowedAccIds.has(accId);
           });
           // 사이드바 뱃지: 모든 미읽 즉시
           setUnreadMsgCount(filtered.length);
@@ -1333,31 +1444,6 @@ function App() {
   // 팀채팅 공지(📣) — 상단 마퀴 배너로 통합 (AnnouncesMarquee 컴포넌트). 우상단 플로팅 팝업 제거.
 
   // 팀채팅 안읽음 카운트 (사이드바 합산용) — last_read_at 이후 메시지 수
-  useEffect(() => {
-    let alive = true;
-    const fetchCount = async () => {
-      try {
-        if (!_activeBizId) { setTeamChatUnread(0); return; }
-        const lastRead = (typeof window !== 'undefined' && localStorage.getItem('bliss_team_chat_last_read_at')) || '1970-01-01T00:00:00Z';
-        const tcUserId = (typeof window !== 'undefined' && localStorage.getItem('bliss_team_chat_user_id')) || '';
-        let url = `${SB_URL}/rest/v1/team_chat_messages?business_id=eq.${_activeBizId}&select=id&created_at=gt.${encodeURIComponent(lastRead)}&limit=999`;
-        if (tcUserId) url += `&user_id=neq.${encodeURIComponent(tcUserId)}`;
-        const r = await fetch(url, { headers:{...sbHeaders,'Cache-Control':'no-cache'}, cache:'no-store' });
-        if (!alive) return;
-        if (r.ok) { const rows = await r.json(); setTeamChatUnread(Array.isArray(rows) ? rows.length : 0); }
-      } catch {}
-    };
-    fetchCount();
-    const t = setInterval(fetchCount, 10000);
-    let ch = null;
-    if (window._sbClient) {
-      ch = window._sbClient.channel('rt_team_chat_badge_'+Date.now())
-        .on('postgres_changes',{event:'INSERT',schema:'public',table:'team_chat_messages'}, fetchCount)
-        .subscribe();
-    }
-    return () => { alive=false; clearInterval(t); if (ch && window._sbClient) window._sbClient.removeChannel(ch); };
-  }, []);
-
   // 미매칭 입금 카운트 (사이드바 합산용)
   useEffect(() => {
     if (!userBranches?.length) { setPendingDepositCount(0); return; }
@@ -1494,6 +1580,11 @@ function App() {
     document.body.dataset.msgPanel = messagesPanelOpen ? "open" : "closed";
     return () => { try { delete document.body.dataset.msgPanel; } catch {} };
   }, [messagesPanelOpen]);
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.body.dataset.msgChatOpen = isChatOpen ? "open" : "closed";
+    return () => { try { delete document.body.dataset.msgChatOpen; } catch {} };
+  }, [isChatOpen]);
   const setPage = useCallback((p) => {
     // 받은메시지함은 라우트 이동 대신 우측 사이드 패널 (모바일은 기존 풀스크린 라우팅 유지)
     const isMob = typeof window !== "undefined" && window.innerWidth < 768;
@@ -1621,27 +1712,22 @@ function App() {
           if (authSession?.user) {
             const authUser = authSession.user;
             const email = authUser.email || '';
-            const authId = authUser.id;
             const provider = authUser.app_metadata?.provider || 'oauth';
-            // 이메일 또는 login_id(provider_xxx)로 기존 유저 검색
-            let oauthUser = email ? users.find(u => u.email === email) : null;
-            if (!oauthUser) oauthUser = users.find(u => u.login_id?.startsWith(provider + '_'));
-            if (!oauthUser) {
-              // 신규 OAuth 유저 → 자동 계정 생성
-              const name = authUser.user_metadata?.full_name || authUser.user_metadata?.name || authUser.user_metadata?.preferred_username || (email ? email.split('@')[0] : provider + '사용자');
-              const bizId = 'biz_' + uid(); const brId = 'br_' + uid(); const accId = 'acc_' + uid();
-              const loginId = provider + '_' + uid();
-              const bizName = name + '님의 사업장';
-              const exp = new Date(); exp.setDate(exp.getDate() + 14);
-              await sb.insert('businesses', { id: bizId, name: bizName, code: loginId, phone: '', settings: JSON.stringify({ plan:'trial', planExpiry: exp.toISOString().slice(0,10) }), use_yn: true });
-              await sb.insert('branches', { id: brId, business_id: bizId, name: bizName, short: name.slice(0,5), phone: '', sort: 0, use_yn: true });
-              await sb.insert('app_users', { id: accId, business_id: bizId, login_id: loginId, password: uid(), name, role: 'owner', email: email || null, branch_ids: JSON.stringify([brId]), view_branch_ids: JSON.stringify([brId]) });
-              const newUsers = fromDb("app_users", await sb.get("app_users_safe"));
-              setAllUsers(newUsers);
-              oauthUser = newUsers.find(u => u.id === accId);
-              sessionStorage.setItem('bliss_new_oauth_user', 'true');
-            }
-            if (oauthUser) { handleLogin(oauthUser, true); return; }
+            const name = authUser.user_metadata?.full_name || authUser.user_metadata?.name || authUser.user_metadata?.preferred_username || (email ? email.split('@')[0] : provider + '사용자');
+            // 멤버십 모델: auth_oauth → account 찾기/생성(사업장 미생성). provider+authId = 안정 login_id.
+            const provLogin = provider + '_' + authUser.id;
+            try {
+              const { SB_URL, SB_KEY } = await import('../lib/supabase');
+              const r = await fetch(`${SB_URL}/rest/v1/rpc/auth_oauth`, {
+                method: 'POST',
+                headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ p_email: email, p_provider_login: provLogin, p_name: name }),
+              });
+              if (r.ok) {
+                const d = await r.json();
+                if (d?.account) { handleAccountLogin(d.account, d.memberships || [], true); return; }
+              }
+            } catch(e) { console.warn('[oauth] err', e); }
           }
           setPhase("login");
         }
@@ -1652,6 +1738,22 @@ function App() {
       }
     })();
   }, []);
+
+  // 멤버십 모델 진입점 — account + memberships 목록을 받아 분기
+  // 활성 멤버십 1개 → 바로 진입 / 여러개 → 선택 / 0개 → 승인대기 or 미가입
+  const handleAccountLogin = (account, memberships, isAutoLogin) => {
+    const active = (memberships || []).filter(m => m.status === "active");
+    if (active.length === 1) {
+      handleLogin(mapMembership(active[0], account), isAutoLogin);
+    } else if (active.length > 1) {
+      setPendingAccount({ account, memberships: active });
+      setPhase("pick_membership");
+    } else {
+      const hasPending = (memberships || []).some(m => m.status === "pending");
+      setPendingAccount({ account, memberships: memberships || [] });
+      setPhase(hasPending ? "staff_pending" : "no_membership");
+    }
+  };
 
   // Handle login → route to super dashboard or business app
   const handleLogin = async (user, isAutoLogin) => {
@@ -1833,6 +1935,7 @@ function App() {
     try{localStorage.removeItem("bliss_session");}catch(e){}
     navigate("/timeline", {replace:true});
     setCurrentUser(null); setCurrentBizId(null); setCurrentBiz(null);
+    setPendingAccount(null);
     setData(null); setSuperData(null); setRole("staff");
     setUserBranches([]); setViewBranches([]); setPage("timeline");
     setActiveBiz(null);
@@ -1853,6 +1956,14 @@ function App() {
 
 
 
+
+  // ─── 직원(staff) 라우트 가드 — 공지·타임라인 외 경로 접근 차단 ───
+  useEffect(() => {
+    if (phase !== "app" || role !== "staff") return;
+    const p = location.pathname;
+    const allowed = p === "/" || p.startsWith("/timeline") || p.startsWith("/requests");
+    if (!allowed) navigate("/timeline", { replace: true });
+  }, [phase, role, location.pathname]);
 
   // ─── 예약 실시간 동기화 ───
   useEffect(() => {
@@ -1963,8 +2074,8 @@ function App() {
         const d2s = (d) => d.toISOString().slice(0,10);
         const from = new Date(today); from.setDate(today.getDate() - 3);
         const to   = new Date(today); to.setDate(today.getDate() + 60);
-        const rows = await sb.get("reservations",
-          `&business_id=eq.${currentBizId}&is_beta=eq.false&date=gte.${d2s(from)}&date=lte.${d2s(to)}&limit=5000`);
+        const rows = await sb.getAll("reservations",
+          `&business_id=eq.${currentBizId}&is_beta=eq.false&date=gte.${d2s(from)}&date=lte.${d2s(to)}&order=date.desc,time.asc`);
         const parsed = fromDb("reservations", rows||[]);
         if (parsed.length > 0) {
           setData(prev => {
@@ -2003,12 +2114,14 @@ function App() {
   };
 
   if (phase === "loading") return <Loading msg={loadMsg} />;
-  if (phase === "login") return <Login users={allUsers} onLogin={handleLogin} onSignup={async (newUser) => {
-    setAllUsers(prev => [...prev, newUser]);
-    await handleLogin(newUser);
-    sessionStorage.setItem('bliss_open_setup', '1');
-    setTimeout(() => setPage("blissai"), 500); // 가입 직후 블리스 AI 설정 마법사 자동 진입
-  }} />;
+  if (phase === "login") return <Login users={allUsers} onAccountLogin={handleAccountLogin}
+    onSignup={(account) => handleAccountLogin(account, [])} />;
+  if (phase === "pick_membership" || phase === "staff_pending" || phase === "no_membership")
+    return <AccountGate mode={phase} pendingAccount={pendingAccount}
+      onPick={(m)=>handleLogin(mapMembership(m, pendingAccount?.account))}
+      onJoinSuccess={()=>setPhase("staff_pending")}
+      onCreateBiz={(membership)=>handleLogin(membership)}
+      onLogout={handleLogout} />;
   if (phase === "super") return <SuperDashboard superData={superData} setSuperData={setSuperData} currentUser={currentUser} onLogout={handleLogout} onEnterBiz={handleEnterBiz} />;
 
   // Phase: app (owner or staff)
@@ -2023,13 +2136,17 @@ function App() {
   if (!data) return <Loading msg="데이터 로딩 중..." />;
 
   const isSuper = currentUser?.role === "super";
-  const nav = [
+  // 직원(staff)은 공지·타임라인만. 그 외 메뉴 비노출 (라우트 가드와 함께 동작)
+  const nav = role === "staff" ? [
+    { id:"timeline", label:"타임라인", icon:<I name="calendar" size={16}/> },
+    { id:"requests", label:"공지 & 요청", icon:"📢", badge:pendingReqCount },
+  ] : [
     { id:"timeline", label:"타임라인", icon:<I name="calendar" size={16}/> },
     { id:"reservations", label:"예약목록", icon:<I name="clipboard" size={16}/> },
     { id:"sales", label:"매출관리", icon:<I name="wallet" size={16}/> },
     { id:"customers", label:"고객관리", icon:<I name="users" size={16}/> },
     ...((role==="owner"||role==="super")?[{ id:"users", label:"사용자관리", icon:<I name="user" size={16}/> }]:[]),
-    { id:"messages", label:"받은메시지함", icon:<I name="msgSq" size={16}/>, badge: unreadMsgCount + teamChatUnread + pendingDepositCount },
+    { id:"messages", label:"받은메시지함", icon:<I name="msgSq" size={16}/>, badge: unreadMsgCount + pendingDepositCount },
     { id:"admin", label:"관리설정", icon:<I name="settings" size={16}/> },
     { id:"requests", label:"공지 & 요청", icon:"📢", badge:pendingReqCount },
   ];
@@ -2061,7 +2178,7 @@ function App() {
           <div style={{padding:"8px 12px",borderBottom:"1px solid "+T.border,background:T.bgCard,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
             <div style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:T.fw.bolder}}>
               <I name="msgSq" size={14}/> 받은메시지함
-              {(unreadMsgCount + teamChatUnread + pendingDepositCount) > 0 && <span style={{background:T.danger,color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px"}}>{unreadMsgCount + teamChatUnread + pendingDepositCount}</span>}
+              {(unreadMsgCount + pendingDepositCount) > 0 && <span style={{background:T.danger,color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px"}}>{unreadMsgCount + pendingDepositCount}</span>}
             </div>
             <button onClick={()=>setMessagesPanelOpen(false)} title="닫기" style={{width:24,height:24,borderRadius:12,border:"none",background:T.gray100,color:T.textSub,cursor:"pointer",fontSize:16,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>×</button>
           </div>
@@ -2115,7 +2232,8 @@ function App() {
       <main className="main-c" style={{...S.main, marginLeft: 200 + (messagesPanelOpen ? 340 : 0), transition:"margin-left .25s cubic-bezier(.22,1,.36,1)"}}>
         <div className="mob-hdr" style={{display:"none"}}></div>
         <AnnouncesMarquee/>
-        <DepositsAlertBanner
+        <StaffRequestsBanner bizId={currentBizId} role={role} branches={data?.branches} />
+        {role !== "staff" && <DepositsAlertBanner
           userBranches={userBranches}
           onOpen={() => {
             window.__bliss_inbox_initial_tab = 'deposits';
@@ -2124,7 +2242,7 @@ function App() {
               try { window.dispatchEvent(new CustomEvent('bliss:inbox_tab', { detail:{ tab:'deposits' } })); } catch {}
             }, 60);
           }}
-        />
+        />}
         <div className="page-pad" style={{flex:1,padding:(page==="timeline"||page==="messages"||page==="schedule")?"0":"16px 20px 16px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
           <Routes>
             <Route path="/announce-test" element={<AnnounceDesignGallery/>}/>
@@ -2166,7 +2284,7 @@ function App() {
           </div>
         </footer>
       </main>
-      <MobileBottomNav nav={nav} page={page} setPage={setPage} isChatOpen={isChatOpen}/>
+      <MobileBottomNav nav={nav} page={page} setPage={(p)=>{ if(window.innerWidth<=768) setMessagesPanelOpen(false); setPage(p); }} isChatOpen={isChatOpen && (messagesPanelOpen || page === "messages")}/>
     </div>
   );
 }

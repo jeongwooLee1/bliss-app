@@ -207,7 +207,7 @@ function AdminLongValidityReview({ data, userBranches = [] }) {
               return <tr key={p.id}>
                 <td style={td}>
                   <div style={{ fontWeight: T.fw.bolder }}>{c?.name || '-'}{c?.name2 ? ` (${c.name2})` : ''}</div>
-                  {c?.cust_num && <div style={{ fontSize: T.fs.nano, color: T.textMuted, fontFamily: 'monospace' }}>{c.cust_num}</div>}
+                  {c?.cust_num && <div style={{ fontSize: T.fs.nano, color: T.textMuted }}>{c.cust_num}</div>}
                 </td>
                 <td style={td}>
                   <div>{c?.phone || '-'}</div>

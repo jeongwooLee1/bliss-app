@@ -112,6 +112,18 @@ export function useScrollRestore(key, externalRef) {
 }
 
 // ── 날짜/시간 유틸 ──────────────────────────────────────────
+// 보유권(customer_packages)이 금액형(prepaid)인지 판정
+// 1순위: note의 "잔액:N,NNN" 패턴 (금액 잔액이 실제로 기록된 row = 확정 금액형)
+// 2순위: service_name 키워드 fallback (구버전 데이터 / 발급 직후 잔액 미기입 케이스)
+// → 새 금액권 이름(예: "바프권", "프리패스권")도 note 패턴으로 자동 매핑
+export const isMoneyPkg = (p) => {
+  if (!p) return false;
+  if (p.note && /잔액\s*:/.test(p.note)) return true;
+  const n = (p.service_name || "").toLowerCase();
+  return n.includes("다담") || n.includes("선불") || n.includes("바프") ||
+         n.includes("프리패스") || n.includes("10%추가적립");
+};
+
 export const todayStr = () => {
   const d = new Date()
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`

@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { T } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY, sbHeaders, queueAlimtalk, buildTokenSearch } from '../../lib/sb'
 import { toDb, fromDb, _activeBizId } from '../../lib/db'
-import { genId, todayStr, useScrollRestore, useSessionState, getCustPkgBranchInitial, TTL } from '../../lib/utils'
+import { genId, todayStr, useScrollRestore, useSessionState, getCustPkgBranchInitial, isMoneyPkg, TTL } from '../../lib/utils'
 import { Btn, FLD, Empty, fmt, Spinner, DataTable } from '../common'
 import SendSmsModal from '../common/SendSmsModal'
 import I from '../common/I'
@@ -503,7 +503,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       const nl = n.toLowerCase();
       // 쿠폰 이름 패턴: "체험 할인", "원할인쿠폰", "할인쿠폰" 등 — 다담권/연간 키워드와 충돌 안 하게 보수적으로
       if (/쿠폰/.test(n)) return;
-      const isPrepaid = n.includes("다담권") || n.includes("선불") || nl.includes("10%추가적립");
+      const isPrepaid = isMoneyPkg(p);
       const isAnnual  = n.includes("연간") || n.includes("할인권") || n.includes("회원권");
       // 유효기간 체크
       const expiryMatch = (p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/);
@@ -1098,7 +1098,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       if (catName === '패키지') return "package";
     }
     const n = (p.service_name||"").toLowerCase();
-    if (n.includes("다담권") || n.includes("선불") || n.includes("10%추가적립")) return "prepaid";
+    if (isMoneyPkg(p)) return "prepaid";
     if (n.includes("연간") || n.includes("할인권") || n.includes("회원권") || n.includes("구독")) return "annual";
     return "package";
   };
@@ -1778,7 +1778,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
               );
               // 매출 패널 helper — 우하단 셀
               const renderSalesPanel = () => (
-                <div style={{maxHeight:"calc(95vh - 200px)",overflowY:"auto"}}>
+                <div>
                   {loadingDetail
                     ? <div style={{fontSize:T.fs.xs,color:T.textMuted,padding:"8px 12px"}}>로딩 중...</div>
                     : custSales.length===0
@@ -1851,7 +1851,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                     <input type="checkbox" checked={smsSel.has(c.id)}
                       onChange={e=>setSmsSel(prev=>{const n=new Set(prev); if(e.target.checked) n.add(c.id); else n.delete(c.id); return n;})}/>
                   </td>
-                  <td style={{fontSize:T.fs.xs,color:T.text,fontFamily:"monospace",fontWeight:800}}>{c.custNum||"-"}</td>
+                  <td style={{fontSize:T.fs.xs,color:T.text,fontWeight:800}}>{c.custNum||"-"}</td>
                   <td style={{fontSize:T.fs.xxs,color:T.textSub,whiteSpace:"nowrap"}}>{c.joinDate||(c.createdAt||"").slice(0,10)||"-"}</td>
                   {(() => {
                     // 영문 이름이면 한글 음역(name_kor)만 인라인 표시. name2는 직원 별칭용이라 음역 fallback으로 쓰지 않음.
@@ -1923,6 +1923,10 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                     .cust-fs-modal .tab-btn{transition:color .15s, border-color .15s, background-color .15s;}
                     .cust-fs-modal .tab-btn:hover{color:${T.primary}!important;background:${T.primary}08!important;}
                     .cust-fs-modal .chip-btn{transition:background-color .15s, border-color .15s;}
+                    .cust-fs-modal details.exp-acc > summary{list-style:none;}
+                    .cust-fs-modal details.exp-acc > summary::-webkit-details-marker{display:none;}
+                    .cust-fs-modal details.exp-acc > summary .exp-chev{transition:transform .15s;}
+                    .cust-fs-modal details.exp-acc[open] > summary .exp-chev{transform:rotate(90deg);}
                     /* 모바일: 단일 스크롤 — 오버레이 한 겹만 스크롤 (중첩 스크롤 = iOS 멈춤 버그 방지) */
                     @media (max-width: 767px) {
                       .cust-fs-overlay { display: block !important; overflow-y: auto !important; overflow-x: hidden !important; -webkit-overflow-scrolling: touch !important; padding: 0 !important; }
@@ -1957,7 +1961,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                     <span style={{fontSize:T.fs.lg,fontWeight:T.fw.bolder,color:T.text}}>
                       {c.gender && <span style={{...sx.genderBadge(c.gender),marginRight:6}}>{c.gender==="F"?"여":"남"}</span>}
                       {c.name}
-                      {c.custNum && <span style={{marginLeft:8,fontSize:T.fs.sm,color:T.textSub,fontFamily:"monospace",fontWeight:T.fw.normal}}>#{c.custNum}</span>}
+                      {c.custNum && <span style={{marginLeft:8,fontSize:T.fs.sm,color:T.textSub,fontWeight:T.fw.normal}}>#{c.custNum}</span>}
                       {c.phone && <span style={{marginLeft:10,fontSize:T.fs.sm,color:T.primary,fontWeight:T.fw.normal}}>{c.phone}</span>}
                     </span>
                     {/* 문자 발송 — 이름·전화 바로 옆 */}
@@ -2013,7 +2017,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                   </div>
                   </div>
                   {/* 우측 wrap — 보유권 영역에 3열×2줄 들어갈 충분한 높이 보장 (탭 40 + padding 24 + 카드 180×2 + gap 8 ≈ 432) */}
-                  <div className="cust-fs-right" style={{display:"grid",gridTemplateRows:"minmax(460px, auto) minmax(180px, 1fr)",gap:14,minWidth:0,minHeight:0}}>
+                  <div className="cust-fs-right" style={{display:"grid",gridTemplateRows:"minmax(0, auto) minmax(180px, 1fr)",gap:14,minWidth:0,minHeight:0}}>
                   {/* 우상 — 보유권/포인트/쉐어/동의서 카드 */}
                   <div data-pkg-scroll="1" className="cust-fs-pkg-card" style={{background:"#fff",borderRadius:12,border:"1px solid "+T.border,minWidth:0,minHeight:0,overflowY:"auto",position:"relative"}}>
                     {/* 탭 */}
@@ -2149,8 +2153,9 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                                   {_active.map(p=><PkgCard key={p.id} p={p}/>)}
                                 </div>
                                 {_active.length === 0 && <div style={{fontSize:T.fs.xs,color:T.textMuted,padding:"8px 0"}}>보유 중인 권한 없음</div>}
-                                {_inactive.length > 0 && <details style={{marginTop:10}}>
+                                {_inactive.length > 0 && <details className="exp-acc" style={{marginTop:10}}>
                                   <summary style={{cursor:"pointer",fontSize:T.fs.xxs,color:T.textSub,padding:"6px 8px",background:T.gray100,borderRadius:T.radius.sm,fontWeight:T.fw.bolder,userSelect:"none",display:"flex",alignItems:"center",gap:5}}>
+                                    <span className="exp-chev" style={{display:"inline-flex"}}><I name="chevR" size={12}/></span>
                                     <I name="archive" size={12}/> 만료/소진된 권한 더보기 ({_inactive.length}건)
                                   </summary>
                                   <div className="cust-fs-pkg-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginTop:8}}>
@@ -2177,7 +2182,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                             <span key={sc.id} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:14,background:"#fff",border:"1px solid #C4B5FD",fontSize:12,color:"#5B21B6",fontWeight:600}}>
                               <I name="user" size={11}/> {sc.name}{sc.name2?` (${sc.name2})`:""}
                               {sc.phone && !sc.phone.startsWith("no_phone") && <span style={{color:T.textMuted,fontWeight:400}}>· {sc.phone}</span>}
-                              {sc.cust_num && <span style={{fontFamily:"monospace",fontSize:10,color:T.textMuted}}>#{sc.cust_num}</span>}
+                              {sc.cust_num && <span style={{fontSize:10,color:T.textMuted}}>#{sc.cust_num}</span>}
                               <button onClick={()=>removeShare(sc.shareRowId, sc.name)} title="쉐어 해제"
                                 style={{border:"none",background:"none",color:T.danger,fontSize:14,cursor:"pointer",padding:0,lineHeight:1,fontFamily:"inherit",marginLeft:2}}>×</button>
                             </span>
