@@ -2272,3 +2272,16 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
 **fix** (유저 지시 — 테두리 대신 블록 사이 빈 공간): `TimelinePage.jsx` 예약 블록 height `Math.max(h-1,10)` → `Math.max(h-3,10)`. 블록 시작 위치(`top:y`=시작시각)는 그대로 두고 높이만 줄여 → 연속 예약 블록 아래에 ~3px gap 생김 → 시간축 정렬·드래그/리사이즈 계산 무영향. 테두리(border)는 미추가(색박스 무테두리 원칙 + 유저 지시).
 **적용**: v3.7.832 라이브 배포(version.txt 검증 3.7.832, CF 퍼지 success). 로컬 dev server 컨펌 후 배포. 현아 요청 status=done + reply 처리.
 **유의**: gap은 세로 연속(시간 연달은) 블록 사이에 생김 — 가로 동시간대(`_totalCols>1`)는 기존 left/width spacing 유지. gap 크기 조정 필요 시 `h-3`의 3 조정.
+
+### 서버 — AI 고객 세션 기록 통합 (회원권·포인트·예약 단일 source of truth) (2026-05-23, React 변경 0)
+**배경**: ① 회원권 잔여 문의에 AI가 "담당자 확인"으로 미룸(신하엘 사례). ② cece 사례처럼 취소된 예약을 AI가 "그날 뵙죠"로 재확인. 유저 지시: 흩어진 컨텍스트를 **하나의 세션 기록으로 취합**해 AI가 그 하나만 보고 답변·예약·변경·취소 모든 결정을 내리게 (실수 방지). AI는 이미 예약 생성/변경/취소(`cancel_booking`, action=book/cancel)를 다 수행 중 — 문제는 정보가 블록 4~5개로 흩어진 것.
+**fix** (`ai_booking.py`, 백업 `ai_booking.py.bak_pre_session_20260523_142125`):
+- **고객 프로필 조회 확장** (`customer_packages_block` → 종합 프로필): 보유권(만료·소진도 "(만료)/(소진)"으로 표시, 숨기지 않음) + **포인트 잔액**(earn−deduct/expire) + **예약 날짜별**(예정/취소 구분). 매칭되면 custId를 `chat_booking_state`에 저장 → 다음 턴부터 그 사람으로 고정.
+- **전화 매칭 안전화**: phone/phone2 + 숫자형·하이픈형. 1명이면 바로 사용(유저 지시 "전화 일치 시 바로 답"). **여러 명이 같은 번호 공유** 시 대화에서 받은 이름으로 좁히고, 그래도 모호하면 공개 보류(남의 회원권 노출 방지 — `feedback_bliss_no_phone_matching` 반영).
+- **단일 `[고객 세션 기록]` 통합**: 흩어진 5블록(registered_cust/cust_history/existing_bookings/프로필/state)을 하나의 헤더 아래로 묶고, 프롬프트에 "이 하나가 유일한 source of truth, 취소됨 예약은 활성 아님" 명시. 하위 섹션 헤더([기존 예약]/[현재 누적 정보])는 보존 → 기존 book/cancel 룰 참조 유지.
+**검증** (suggest_only 6흐름): 신규예약 ✓ / 변경(기존예약 기반) ✓ / 예약확인(기록에서 정확) ✓ / 취소 ✓ / 회원권(유효·만료 정직) ✓ / 취소건 재확인 방지("활성 예약 없음") ✓.
+**적용**: 서버 직접 (scp + py_compile + `systemctl restart`, 전 스레드 정상). React 변경 0 → 버전업·CF퍼지 불필요.
+**유의**:
+- 예약·변경·취소 **실행 로직 자체는 무변경** — 통합 블록은 AI가 "정확한 정보를 보고 결정"하게 하는 read 쪽. 실행(create_booking_from_ai/cancel_booking)은 그대로.
+- 회원권/예약은 매 턴 DB live 조회(저장 스냅샷은 stale되므로) → 항상 최신. custId만 state에 저장.
+- 같은 번호 공유 + 동명이인이면 회원권 공개 보류(담당자) — 안전 우선.
