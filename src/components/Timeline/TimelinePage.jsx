@@ -5284,7 +5284,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                           left: block._totalCols > 1 ? 1 + (block._col * ((colW - 2) / block._totalCols)) : 1,
                           width: block._totalCols > 1 ? ((colW - 2) / block._totalCols) - 1 : undefined,
                           right: block._totalCols > 1 ? undefined : 1,
-                          height:Math.max(h-1,10),
+                          height:Math.max(h-3,10),
                           background: _hlOn && _hlMode === "fill" ? _hlC : _baseBg,
                           border: _isHL ? "3px solid #ef4444" : (_hlOn && _hlMode === "border" ? `2px solid ${_hlC}` : "none"),
                           borderRadius:4,padding:"4px 6px",overflow:"hidden",fontSize:blockFs,lineHeight:1.2,

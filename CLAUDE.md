@@ -2266,3 +2266,9 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
 - 판정은 직원 outbound가 최근 30분 내일 때만 발동 — 직원이 오래전 답하고 빠진 thread는 평소처럼 AI fallback.
 - status는 새 값 대신 기존 `canceled_by_staff` 재사용(CHECK 제약 위험 회피, 의미상 "사람 응대중") — 사유는 로그로 구분.
 - cece 잔존 예약: 16:00·16:30 cancelled 2건 + 16:30 `request` 1건(ai_q1d68zept012) 잔존 — 고객이 연기 중이라 오늘 방문 안 함. 정리 여부는 직원 판단(미조치).
+
+### v3.7.832 — 타임라인 연속 예약 블록 구분 (현아 id_r9e93t77fm) (2026-05-23)
+**요청**: "타임라인에 고객 테두리 라인 있으면 좋겠어요. 지금은 2~3개 붙어있으면 한 사람처럼 보여요."
+**fix** (유저 지시 — 테두리 대신 블록 사이 빈 공간): `TimelinePage.jsx` 예약 블록 height `Math.max(h-1,10)` → `Math.max(h-3,10)`. 블록 시작 위치(`top:y`=시작시각)는 그대로 두고 높이만 줄여 → 연속 예약 블록 아래에 ~3px gap 생김 → 시간축 정렬·드래그/리사이즈 계산 무영향. 테두리(border)는 미추가(색박스 무테두리 원칙 + 유저 지시).
+**적용**: v3.7.832 라이브 배포(version.txt 검증 3.7.832, CF 퍼지 success). 로컬 dev server 컨펌 후 배포. 현아 요청 status=done + reply 처리.
+**유의**: gap은 세로 연속(시간 연달은) 블록 사이에 생김 — 가로 동시간대(`_totalCols>1`)는 기존 left/width spacing 유지. gap 크기 조정 필요 시 `h-3`의 3 조정.
