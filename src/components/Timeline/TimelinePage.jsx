@@ -2150,13 +2150,13 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   const tlSaveLocal = useCallback((allSettings) => {
     try { localStorage.setItem("tl_settings", JSON.stringify(allSettings)); } catch(e) {}
   }, []);
-  const [startHour, setStartHourRaw] = useState(() => tlDef("sh", 8));
+  const [startHour, setStartHourRaw] = useState(() => tlDef("sh", 10));
   const [endHour, setEndHourRaw] = useState(() => tlDef("eh", 23));
-  const [rowH, setRowHRaw] = useState(() => tlDef("rh", 14));
-  const [colW, setColWRaw] = useState(() => tlDef("cw", 160));
+  const [rowH, setRowHRaw] = useState(() => tlDef("rh", 10));
+  const [colW, setColWRaw] = useState(() => tlDef("cw", 100));
   const [timeUnit, setTimeUnitRaw] = useState(() => tlDef("tu", 5));
-  const [blockFs, setBlockFsRaw] = useState(() => tlDef("fs", 13));
-  const [blockOp, setBlockOpRaw] = useState(() => tlDef("op", 50));
+  const [blockFs, setBlockFsRaw] = useState(() => tlDef("fs", 12));
+  const [blockOp, setBlockOpRaw] = useState(() => tlDef("op", 80));
   const [statusClr, setStatusClrRaw] = useState(() => {
     const sc = dbTl.current.sc;
     return sc ? {...STATUS_CLR_DEFAULT,...sc} : {...STATUS_CLR_DEFAULT};
@@ -2971,6 +2971,157 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
 
   // ── Drag handlers ──
   const timeLabelsW = window.innerWidth <= 768 ? 52 : 88;
+
+  // 지점 네비게이션 "정지 지점" 계산 + 단계 이동 (키보드·휠·터치 공통)
+  const navLockRef = useRef(0);
+  const _computeNavStops = (sr) => {
+    // 각 지점 시작 위치 + (지점이 화면보다 넓으면) 그 지점 끝까지 보는 위치
+    const cols = Array.from(sr.querySelectorAll(".tl-room-col"));
+    if (!cols.length) return [];
+    const offs = []; let lastBid = null;
+    for (const c of cols) {
+      const bid = c.getAttribute("data-branch-id");
+      if (bid !== lastBid) { offs.push(c.offsetLeft); lastBid = bid; }
+    }
+    const contentW = sr.scrollWidth, clientW = sr.clientWidth;
+    const maxScroll = Math.max(0, contentW - clientW);
+    const viewCol = clientW - timeLabelsW;     // 시간축 제외 보이는 컬럼 폭
+    const stops = [];
+    for (let i = 0; i < offs.length; i++) {
+      const S = Math.max(0, Math.min(maxScroll, offs[i] - timeLabelsW)); // 지점 시작 정렬
+      stops.push(S);
+      const rightEdge = (i + 1 < offs.length) ? offs[i + 1] : contentW;  // 이 지점 우측 경계
+      if (rightEdge - offs[i] > viewCol + 4) {  // 화면보다 넓은 지점 → 끝까지 보는 중간 정지점 추가
+        const E = Math.max(0, Math.min(maxScroll, rightEdge - clientW));
+        if (E > S + 4) stops.push(E);
+      }
+    }
+    return [...new Set(stops.map(x => Math.round(x)))].sort((a, b) => a - b);
+  };
+  const _navStep = (sr, forward) => {
+    const stops = _computeNavStops(sr);
+    if (!stops.length) return;
+    const cur = sr.scrollLeft, eps = 4;
+    let dest;
+    if (forward) { dest = stops.find(s => s > cur + eps); if (dest == null) dest = stops[stops.length - 1]; }
+    else { const p = stops.filter(s => s < cur - eps); dest = p.length ? p[p.length - 1] : 0; }
+    navLockRef.current = Date.now() + 550;     // 단계 이동 직후 자석 스냅이 끼어들지 않게
+    sr.scrollTo({ left: dest, behavior: "smooth" });
+  };
+
+  // 키보드 화살표 네비게이션: ←/→ 지점 단위 이동(넓은 지점은 끝까지), ↑/↓ 한 화면씩(끝난 다음부터)
+  useEffect(() => {
+    const onKey = (e) => {
+      if (["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].indexOf(e.key) === -1) return;
+      const ae = document.activeElement;
+      if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT" || ae.isContentEditable)) return;
+      const sr = scrollRef.current;
+      if (!sr || sr.offsetParent === null) return;       // 숨김(다른 페이지)이면 무시
+      if (dragBlock || resizeBlock) return;              // 블록 드래그/리사이즈 중엔 무시
+      e.preventDefault();
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        const page = Math.max(120, sr.clientHeight - headerH - 6); // 헤더 가림 보정, 화면 끝난 다음부터
+        sr.scrollBy({ top: e.key === "ArrowDown" ? page : -page, behavior: "smooth" });
+        return;
+      }
+      _navStep(sr, e.key === "ArrowRight");  // ←/→ 지점(넓으면 끝까지) 단계 이동
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [headerH, timeLabelsW, dragBlock, resizeBlock]);
+
+  // 마우스/트랙패드 가로 스크롤: 멈추면 가까운 지점 경계에 자석 스냅 (경계 근처에서만 — 멀리 밀면 자유 스크롤)
+  useEffect(() => {
+    const sr = scrollRef.current;
+    if (!sr) return;
+    const SNAP_THRESHOLD = 110;  // 경계와 이만큼 이내일 때만 스냅
+    let t = null, settling = false, ready = false;
+    let lastLeft = sr.scrollLeft;
+    const readyTimer = setTimeout(() => { lastLeft = sr.scrollLeft; ready = true; }, 800); // 초기 자동스크롤 안정 후 활성
+    const onScroll = () => {
+      if (!ready || settling || dragBlock || resizeBlock) return;
+      if (Date.now() < navLockRef.current) { lastLeft = sr.scrollLeft; return; } // 단계 이동 직후엔 스냅 안 함
+      clearTimeout(t);
+      t = setTimeout(() => {
+        const cur = sr.scrollLeft;
+        if (Math.abs(cur - lastLeft) < 8) { lastLeft = cur; return; } // 가로 변화 거의 없음(세로 스크롤) → 무시
+        const stops = _computeNavStops(sr);
+        lastLeft = cur;
+        if (!stops.length) return;
+        const nearest = stops.reduce((a, b) => Math.abs(b - cur) < Math.abs(a - cur) ? b : a, stops[0]);
+        const d = Math.abs(nearest - cur);
+        if (d > 2 && d <= SNAP_THRESHOLD) {  // 경계 근처일 때만 스냅, 멀면 그대로 둠
+          lastLeft = nearest;
+          settling = true;
+          sr.scrollTo({ left: nearest, behavior: "smooth" });
+          setTimeout(() => { settling = false; lastLeft = sr.scrollLeft; }, 450);
+        }
+      }, 130);
+    };
+    sr.addEventListener("scroll", onScroll, { passive: true });
+    return () => { clearTimeout(t); clearTimeout(readyTimer); sr.removeEventListener("scroll", onScroll); };
+  }, [timeLabelsW, dragBlock, resizeBlock]);
+
+  // 마우스/트랙패드 가로 스크롤 = 한 번에 한 지점씩 단계 이동 ("멈췄다 가" — 휠마다 다음 지점에서 멈춤)
+  useEffect(() => {
+    const sr = scrollRef.current;
+    if (!sr) return;
+    let cooldown = false;
+    const onWheel = (e) => {
+      if (dragBlock || resizeBlock) return;
+      const dx = e.shiftKey ? e.deltaY : e.deltaX;   // shift+휠 = 가로
+      // 세로 의도가 더 크면(그리고 shift 아님) 네이티브 세로 스크롤 그대로
+      if (!e.shiftKey && Math.abs(dx) <= Math.abs(e.deltaY)) return;
+      e.preventDefault();
+      if (cooldown || Math.abs(dx) < 6) return;
+      cooldown = true;
+      setTimeout(() => { cooldown = false; }, 380);   // 한 제스처당 한 지점 (관성 다중 이동 방지)
+      _navStep(sr, dx > 0);
+    };
+    sr.addEventListener("wheel", onWheel, { passive: false });
+    return () => sr.removeEventListener("wheel", onWheel);
+  }, [timeLabelsW, dragBlock, resizeBlock]);
+
+  // 모바일 터치 가로 스와이프 = 한 번에 한 정지 지점씩 (세로 스크롤·블록 터치·탭은 그대로)
+  useEffect(() => {
+    const sr = scrollRef.current;
+    if (!sr) return;
+    let sx = 0, sy = 0, axis = null, eligible = false, active = false;
+    const SWIPE = 40;
+    const onStart = (e) => {
+      if (!e.touches || e.touches.length !== 1) { active = false; return; }
+      const tt = e.touches[0]; sx = tt.clientX; sy = tt.clientY; axis = null; active = true;
+      // 블록 위/드래그 중엔 가로 스와이프 가로채기 안 함 (블록 드래그·탭 보존)
+      eligible = !(e.target && e.target.closest && e.target.closest(".tl-block")) && !dragBlock && !resizeBlock;
+    };
+    const onMove = (e) => {
+      if (!active || !eligible || !e.touches || e.touches.length !== 1) return;
+      const tt = e.touches[0]; const dx = tt.clientX - sx, dy = tt.clientY - sy;
+      if (axis === null) {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+        axis = Math.abs(dx) > Math.abs(dy) ? "h" : "v";
+      }
+      if (axis === "h") e.preventDefault();   // 가로 = 단계 이동(네이티브 가로 스크롤 차단), 세로는 그대로
+    };
+    const onEnd = (e) => {
+      const wasH = active && eligible && axis === "h";
+      active = false;
+      if (!wasH) return;
+      const tt = e.changedTouches && e.changedTouches[0]; if (!tt) return;
+      const dx = tt.clientX - sx;
+      if (Math.abs(dx) < SWIPE) return;       // 너무 짧은 스와이프 무시
+      _navStep(sr, dx < 0);                    // 왼쪽으로 스와이프 = 다음 지점
+    };
+    sr.addEventListener("touchstart", onStart, { passive: true });
+    sr.addEventListener("touchmove", onMove, { passive: false });
+    sr.addEventListener("touchend", onEnd, { passive: true });
+    return () => {
+      sr.removeEventListener("touchstart", onStart);
+      sr.removeEventListener("touchmove", onMove);
+      sr.removeEventListener("touchend", onEnd);
+    };
+  }, [timeLabelsW, dragBlock, resizeBlock]);
+
   // 타임라인 클릭 시 이동팝업 닫기
   const handleTlClick = () => { if(empMovePopup) setEmpMovePopup(null); };
   const handleDragStart = (block, e) => {
@@ -5284,7 +5435,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                           left: block._totalCols > 1 ? 1 + (block._col * ((colW - 2) / block._totalCols)) : 1,
                           width: block._totalCols > 1 ? ((colW - 2) / block._totalCols) - 1 : undefined,
                           right: block._totalCols > 1 ? undefined : 1,
-                          height:Math.max(h-3,10),
+                          height:Math.max(h-2,10),
                           background: _hlOn && _hlMode === "fill" ? _hlC : _baseBg,
                           border: _isHL ? "3px solid #ef4444" : (_hlOn && _hlMode === "border" ? `2px solid ${_hlC}` : "none"),
                           borderRadius:4,padding:"4px 6px",overflow:"hidden",fontSize:blockFs,lineHeight:1.2,

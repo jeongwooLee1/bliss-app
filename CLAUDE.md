@@ -2302,3 +2302,15 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
 - 교체 11곳/6파일: `TimelineSettings`(매출강조색·예약상태색 ×2) · `AdminServiceTags`(태그색, 중복 텍스트 입력 제거) · `AdminSaleItems`(배지 글자/배경 ×2 + 일괄 ×2) · `TagSettings` · `BranchSettings` · `EditCellModal`(근무표 셀 태그색). 핸들러 `e=>...e.target.value` → `c=>...c`로.
 **적용**: v3.7.833 라이브 배포(version.txt 검증 3.7.833, CF 퍼지 success). 로컬 dev server 후 배포. 로그인 필요 화면이라 직접 캡처검증은 못 함(빌드 통과).
 **유의**: 색 변환(hex/rgb/hsv) + SV박스/색조 드래그는 표준 구현, 외부 라이브러리 0. swatchStyle prop으로 각 위치 크기 맞춤. EyeDrop(스포이드)은 기존대로 별도 유지.
+
+### v3.7.834 — 타임라인 지점 네비게이션(키보드·휠·터치) + 블록갭 2px + 디폴트값 (2026-05-23)
+**타임라인 지점 이동** (`TimelinePage.jsx` — scrollRef 컨테이너):
+- 공통 헬퍼 `_computeNavStops(sr)`: 정지 지점 = 각 지점 첫 컬럼 시작(offsetLeft − timeLabelsW) + **지점이 화면(clientWidth−timeLabelsW)보다 넓으면 그 지점 끝까지 보는 위치(rightEdge−clientWidth) 추가**. `_navStep(sr, forward)` = 다음/이전 정지점으로 smooth scroll + `navLockRef` 550ms(자석 스냅 충돌 방지).
+- **키보드**: ←/→ `_navStep`, ↑/↓ 한 화면씩(`clientHeight−headerH`). 입력칸 포커스·드래그·숨김 시 무시.
+- **마우스 휠**: 가로(deltaX 우세 또는 Shift+휠) → `_navStep` 1지점/제스처(380ms 쿨다운). 세로는 네이티브.
+- **터치(모바일)**: 가로 스와이프(>40px) → `_navStep`. axis 판정 후 가로만 preventDefault(세로 스크롤·블록 탭/드래그 보존). 블록 위(`.tl-block`)·드래그 중 제외.
+- **멈춤 자석 스냅**(스크롤바 등): 멈추면 가까운 정지점에 스냅(경계 ~110px 이내만, navLock·세로무시 가드).
+- 블록 갭 `Math.max(h-3,10)` → `Math.max(h-2,10)` (연속 예약 구분).
+- **타임라인 디폴트값 갱신**(`tlDef` 폴백 + `STATUS_CLR_DEFAULT`): 현재 운영값으로 — sh 8→10, rh 14→10, cw 160→100, fs 13→12, op 50→80 (eh 23·tu 5 동일). 상태색상 디폴트 = 예약중 `#d0d4ed`·진행 `#4a7cc8`·완료 `#6ab56a`·취소 `#e8b830`·노쇼 `#ef5350`(저장된 공통설정값). 매출강조(hl)는 매장별이라 제외.
+**적용**: v3.7.834 라이브 배포(version.txt 검증, CF 퍼지 success). 직원 공지(`bliss_notices_v1` 맨 앞) "🖐️ 타임라인 지점 빨리 넘기기" 게시 — 스와이프·방향키·휠 + 블록갭 + AI 회원권/취소 안내, 쉬운 말로.
+**유의**: 디폴트는 저장된 설정 없는 기기에만 적용(기존 기기는 localStorage/공통설정 우선). 정지점은 키보드·휠·터치 공통. 넓은 지점은 끝까지 본 뒤 다음 지점.

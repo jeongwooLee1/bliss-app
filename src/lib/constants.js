@@ -108,4 +108,4 @@ export const SYSTEM_TAG_NAME_NEW_CUST = "신규"
 export const SYSTEM_TAG_NAME_PREPAID  = "예약금완료"
 export const SYSTEM_SRC_NAME_NAVER    = "네이버"
 
-export const STATUS_CLR_DEFAULT = { reserved:T.gray500, confirmed:T.male, completed:T.success, cancelled:T.warning, no_show:T.danger, naver_cancel:T.danger }
+export const STATUS_CLR_DEFAULT = { reserved:"#d0d4ed", confirmed:"#4a7cc8", completed:"#6ab56a", cancelled:"#e8b830", no_show:"#ef5350", naver_cancel:"#ef5350" }
