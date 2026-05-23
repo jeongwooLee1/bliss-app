@@ -752,7 +752,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       .catch(()=>{});
     };
     load();
-    const t = setInterval(load, 10000);
+    const t = setInterval(load, 120000);
     return ()=>clearInterval(t);
   }, []);
 
@@ -1534,7 +1534,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.extraCols_v1" }, loadExtra)
         .subscribe();
     }
-    const poll = setInterval(loadExtra, 30000);
+    const poll = setInterval(loadExtra, 120000);
     return () => { try { ch?.unsubscribe(); } catch(e) {} clearInterval(poll); };
   }, []);
   const _saveExtraCols = (next) => {
@@ -1587,7 +1587,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.naverColShifts_v1" }, load)
         .subscribe();
     }
-    const poll = setInterval(load, 30000);
+    const poll = setInterval(load, 120000);
     return () => { try { ch?.unsubscribe(); } catch(e) {} clearInterval(poll); };
   }, []);
   const _saveNaverColShifts = (next) => {
@@ -3027,17 +3027,16 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     return () => window.removeEventListener("keydown", onKey);
   }, [headerH, timeLabelsW, dragBlock, resizeBlock]);
 
-  // 마우스/트랙패드 가로 스크롤: 멈추면 가까운 지점 경계에 자석 스냅 (경계 근처에서만 — 멀리 밀면 자유 스크롤)
+  // 가로 스크롤(손가락/트랙패드)을 멈추면 → 가장 가까운 지점 정지점에 자석 정렬 (항상 정렬, 거리 제한 없음)
   useEffect(() => {
     const sr = scrollRef.current;
     if (!sr) return;
-    const SNAP_THRESHOLD = 110;  // 경계와 이만큼 이내일 때만 스냅
     let t = null, settling = false, ready = false;
     let lastLeft = sr.scrollLeft;
     const readyTimer = setTimeout(() => { lastLeft = sr.scrollLeft; ready = true; }, 800); // 초기 자동스크롤 안정 후 활성
     const onScroll = () => {
       if (!ready || settling || dragBlock || resizeBlock) return;
-      if (Date.now() < navLockRef.current) { lastLeft = sr.scrollLeft; return; } // 단계 이동 직후엔 스냅 안 함
+      if (Date.now() < navLockRef.current) { lastLeft = sr.scrollLeft; return; } // 키보드/휠 단계이동 직후엔 스냅 안 함
       clearTimeout(t);
       t = setTimeout(() => {
         const cur = sr.scrollLeft;
@@ -3046,8 +3045,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         lastLeft = cur;
         if (!stops.length) return;
         const nearest = stops.reduce((a, b) => Math.abs(b - cur) < Math.abs(a - cur) ? b : a, stops[0]);
-        const d = Math.abs(nearest - cur);
-        if (d > 2 && d <= SNAP_THRESHOLD) {  // 경계 근처일 때만 스냅, 멀면 그대로 둠
+        if (Math.abs(nearest - cur) > 2) {   // 항상 가까운 지점으로 정렬
           lastLeft = nearest;
           settling = true;
           sr.scrollTo({ left: nearest, behavior: "smooth" });
@@ -3079,45 +3077,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     return () => sr.removeEventListener("wheel", onWheel);
   }, [timeLabelsW, dragBlock, resizeBlock]);
 
-  // 모바일 터치 가로 스와이프 = 한 번에 한 정지 지점씩 (세로 스크롤·블록 터치·탭은 그대로)
-  useEffect(() => {
-    const sr = scrollRef.current;
-    if (!sr) return;
-    let sx = 0, sy = 0, axis = null, eligible = false, active = false;
-    const SWIPE = 40;
-    const onStart = (e) => {
-      if (!e.touches || e.touches.length !== 1) { active = false; return; }
-      const tt = e.touches[0]; sx = tt.clientX; sy = tt.clientY; axis = null; active = true;
-      // 블록 위/드래그 중엔 가로 스와이프 가로채기 안 함 (블록 드래그·탭 보존)
-      eligible = !(e.target && e.target.closest && e.target.closest(".tl-block")) && !dragBlock && !resizeBlock;
-    };
-    const onMove = (e) => {
-      if (!active || !eligible || !e.touches || e.touches.length !== 1) return;
-      const tt = e.touches[0]; const dx = tt.clientX - sx, dy = tt.clientY - sy;
-      if (axis === null) {
-        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-        axis = Math.abs(dx) > Math.abs(dy) ? "h" : "v";
-      }
-      if (axis === "h") e.preventDefault();   // 가로 = 단계 이동(네이티브 가로 스크롤 차단), 세로는 그대로
-    };
-    const onEnd = (e) => {
-      const wasH = active && eligible && axis === "h";
-      active = false;
-      if (!wasH) return;
-      const tt = e.changedTouches && e.changedTouches[0]; if (!tt) return;
-      const dx = tt.clientX - sx;
-      if (Math.abs(dx) < SWIPE) return;       // 너무 짧은 스와이프 무시
-      _navStep(sr, dx < 0);                    // 왼쪽으로 스와이프 = 다음 지점
-    };
-    sr.addEventListener("touchstart", onStart, { passive: true });
-    sr.addEventListener("touchmove", onMove, { passive: false });
-    sr.addEventListener("touchend", onEnd, { passive: true });
-    return () => {
-      sr.removeEventListener("touchstart", onStart);
-      sr.removeEventListener("touchmove", onMove);
-      sr.removeEventListener("touchend", onEnd);
-    };
-  }, [timeLabelsW, dragBlock, resizeBlock]);
+  // (모바일 터치는 네이티브 가로 스크롤 + 아래 멈춤 자석 스냅으로 처리 — 손가락 따라 자유 스크롤 후 가까운 지점에 정렬)
 
   // 타임라인 클릭 시 이동팝업 닫기
   const handleTlClick = () => { if(empMovePopup) setEmpMovePopup(null); };
@@ -3956,7 +3916,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         </div>;
       })()}
       {/* Single scroll container */}
-      <div ref={scrollRef} className="timeline-scroll" style={{flex:1,overflow:"auto",minHeight:0,overscrollBehavior:"none",paddingBottom:200,touchAction:"pan-y"}}>
+      <div ref={scrollRef} className="timeline-scroll" style={{flex:1,overflow:"auto",minHeight:0,overscrollBehavior:"none",paddingBottom:200}}>
 
         {/* Top Bar - sticky */}
         <div ref={topbarRef} className="tl-topbar" style={{position:"sticky",top:0,left:0,zIndex:30,borderBottom:"none",boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",background:T.bgCard,padding:"6px 12px",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",minWidth:"100%",boxSizing:"border-box",overflow:"visible"}}>

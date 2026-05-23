@@ -2338,3 +2338,18 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
 **fix** (`ai_booking.py` 프롬프트 4곳 + 하드코딩 fallback 1곳, 백업 `bak_pre_confirmtone_20260523_193757`): "예약 접수완료! 담당자 확인 후 확정 안내" / "Booking received! confirm shortly" → **"예약 완료됐습니다! 혹시 변동사항이 생기면 담당 직원이 다시 연락드릴게요" / "Your booking is confirmed! If anything changes, our staff will reach out."** line 2102의 "절대 예약 확정이라고 하지 않기" 규칙 제거.
 **유의**: 예약 status는 그대로 `request`(확정대기 — 직원이 타임라인서 봄). **고객 메시지만** 확정 톤으로(안심). action≠book일 때 확정표현 금지 규칙은 유지. 검증: KR/EN 예약 시뮬 → "예약 완료됐습니다 ... 변동사항 생기면 연락" 정상.
 **적용**: 서버 직접 (scp + `systemctl restart`). React 변경 0 → 버전업·CF퍼지 불필요.
+
+### 🚨 Supabase DB 과부하 장애 + 폴링 다이어트 (2026-05-23, v3.7.837)
+**장애**: 저녁 피크(KST 19시대) Supabase Postgres가 과부하로 hang — 모든 쿼리 statement timeout, 관리자 연결도 timeout, 앱 전체 다운. compute는 Small. **스스로 회복**(쿼리 멈춤 풀림). 재시작 불필요였음.
+**진단** (Supabase 로그 직접 확인):
+- postgres 로그: `canceling statement due to statement timeout` 다수.
+- realtime 로그: **`connection pool cannot serve them fast enough` / `IncreaseSubscriptionConnectionPool: Too many database timeouts` / `UnableToConnectToTenantDatabase`** → **DB 연결 풀 고갈**. Realtime이 연결 못 얻음 → 클라 재연결 → 더 많은 연결 → 죽음의 소용돌이.
+- pg_stat_statements(12분 창): Realtime WAL/sub_tables = 분당 ~280회(38%), `reservations.*` 전체조회 분당 35회, schedule_data 분당 122, messages 64. **앱이 연결을 과도하게 요구하는 구조**가 근본 (정상 사용으로 안 터짐 — 유저 지적 정확).
+**근본 원인**: ① 폴링 인터벌 20개+ 중 다수가 5~30초 + Realtime과 중복 ② Realtime 채널 기기당 8~10개 ③ `reservations.*` 전체 컬럼 30일치 반복 fetch. 기기 수 × 이 모든 게 피크에 연결 풀 초과.
+**Phase 1 fix (이번 배포)**: Realtime 백업 있는 폴링 전부 **120초+**로 — AppShell(staff_req·입금×2·미읽·요청·예약 fallback·data reload), MessagesPage(미읽카운트 10s→120s, AI배지 5s→30s), TimelinePage(미읽 500건 10s→120s·extraCols·naverColShifts), useTeamChat 30s→120s, BankDeposits 30s→120s. DB 아닌 폴링(알람체크·버전reload)은 유지.
+**남은 Phase**: ② Realtime 채널 통합(8~10개→소수), ③ `reservations.*` → 필요 컬럼만. **선제 모니터링**(매일 Supabase 사용량 체크+TG 알림) + **서버 이원화(failover)** 별도 트랙.
+**메모**: `feedback_supabase_load_diet` + `project_supabase_compute` 갱신.
+
+#### 같은 배포에 함께 (v3.7.837)
+- **모바일 swipe**: v3.7.836 `touch-action:pan-y`가 빈영역 외에서 "안 움직임" 유발 → pan-y·터치 단계이동 제거, **네이티브 스크롤 + 멈추면 가까운 지점 항상 스냅**(거리제한 제거)로 변경.
+- **SaleForm 제품쿠폰 fix** (현아 버그): 새 다담권 즉시차감 상한(`svcAfterAllDiscounts`)에 `evtCouponDiscountOnProd` 누락 → 제품전용 쿠폰 80,000이 제품 아닌 다담권에 붙던 것 → `- evtCouponDiscountOnProd` 추가.

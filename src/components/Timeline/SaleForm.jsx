@@ -1902,7 +1902,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   const externalToNewPrepaid = Math.min(externalDeduct, Math.max(0, newPrepaidActiveTotal - eventDiscountPrepaid));
   const externalToSvc = externalDeduct - externalToNewPrepaid;
   // 할인·보유권 차감 후 순수 시술·제품 잔액 (= 다담권 즉시차감 가능 상한)
-  const svcAfterAllDiscounts = Math.max(0, pureSvcTotal + prodTotal - discount - promoDiscountTotal - couponDiscountTotal - evtCouponDiscountOnSvc - eventDiscountSvc - naverDeduct - externalToSvc - pkgDeduct);
+  const svcAfterAllDiscounts = Math.max(0, pureSvcTotal + prodTotal - discount - promoDiscountTotal - couponDiscountTotal - evtCouponDiscountOnSvc - evtCouponDiscountOnProd - eventDiscountSvc - naverDeduct - externalToSvc - pkgDeduct);
   // 새 다담권 즉시차감: 할인 후 시술잔액과 (선결제 적용 후) 다담권 잔액 중 작은 값
   newPkgInstantDeduct = newPrepaidActiveTotal > 0 ? Math.min(svcAfterAllDiscounts, Math.max(0, newPrepaidActiveTotal - eventDiscountPrepaid)) : 0;
   const grandTotal = Math.max(0, svcTotal + prodTotal - discount - promoDiscountTotal - couponDiscountTotal - evtCouponDiscountTotal - eventDiscountTotal - naverDeduct - externalDeduct - pkgDeduct - newPkgInstantDeduct - pointDeduct - svcCompedTotal - prodCompedTotal);

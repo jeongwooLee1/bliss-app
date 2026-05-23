@@ -427,7 +427,7 @@ export default function BankDeposits({ data, branches=[], userBranches=[], curre
   // 초기 로드 + 30초 폴링 + Realtime (Realtime이 메인, 폴링은 백업)
   useEffect(() => {
     load(false);
-    const interval = setInterval(() => load(true), 30000);
+    const interval = setInterval(() => load(true), 120000);
 
     let ch = null;
     if (window._sbClient) {

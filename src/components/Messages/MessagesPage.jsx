@@ -286,7 +286,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       } catch {}
     };
     fetchBadges();
-    const t = setInterval(fetchBadges, 5000);
+    const t = setInterval(fetchBadges, 30000);
     return () => { alive=false; clearInterval(t); };
   }, []);
 
@@ -1760,7 +1760,7 @@ function MessagesWithTeamTab(props) {
       if (r.ok) { const rows = await r.json(); setDepositPending(Array.isArray(rows)?rows.length:0); }
     };
     fetchCount();
-    const t = setInterval(fetchCount, 10000);
+    const t = setInterval(fetchCount, 120000);
     return () => { alive = false; clearInterval(t); };
   }, [props.userBranches]);
   const teamChat = useTeamChat();

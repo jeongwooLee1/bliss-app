@@ -117,8 +117,8 @@ export function useTeamChat() {
         })
       .subscribe()
 
-    // 폴링 fallback (30초) — Realtime 실패 대비
-    const poll = setInterval(loadMsgs, 30_000)
+    // 폴링 fallback (2분) — Realtime 실패 대비 (Realtime이 평소엔 즉시 받음)
+    const poll = setInterval(loadMsgs, 120_000)
 
     return () => {
       cancelled = true

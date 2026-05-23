@@ -25,7 +25,7 @@ import FloatingAI from '../components/BlissAI/FloatingAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.836"
+const BLISS_V = "3.7.837"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -877,7 +877,7 @@ function StaffRequestsBanner({ bizId, role, branches=[] }) {
       if (r.ok) setReqs(await r.json() || []);
     } catch {}
   };
-  useEffect(() => { load(); const t=setInterval(load,30000); return ()=>clearInterval(t); }, [bizId, role]);
+  useEffect(() => { load(); const t=setInterval(load,120000); return ()=>clearInterval(t); }, [bizId, role]);
   useEffect(() => {
     if (!window._sbClient || !bizId || !canApprove) return;
     const ch = window._sbClient.channel('staff_req_'+Date.now())
@@ -960,7 +960,7 @@ function DepositsAlertBanner({ userBranches=[], onOpen }) {
       } catch {}
     };
     fetchPending();
-    const t = setInterval(fetchPending, 10000);
+    const t = setInterval(fetchPending, 120000);
     let ch = null;
     if (window._sbClient) {
       ch = window._sbClient.channel('rt_deposits_banner_'+Date.now())
@@ -1283,7 +1283,7 @@ function App() {
       });
     });
     load();
-    const t = setInterval(load, 60000); // 1분 폴링
+    const t = setInterval(load, 120000); // 2분 폴링 (Realtime 백업)
     return () => clearInterval(t);
   }, [currentBizId]);
   const [naverColShow, setNaverColShowRaw] = useState(()=>{ try{return JSON.parse(localStorage.getItem("bliss_naver_cols")||"null")||{};}catch(e){return{};} });
@@ -1380,7 +1380,7 @@ function App() {
         p=>{ if(p?.new?.is_read===true) load(); }
       )?.subscribe();
     // 30초마다 재평가 (1분 경과 자동 반영)
-    const int = setInterval(load, 30_000);
+    const int = setInterval(load, 120_000);
     return ()=>{ try{rt?.unsubscribe();}catch(e){} clearInterval(int); };
   }, [userBranches, isMaster]);
   // 수정요청 pending 카운트
@@ -1402,7 +1402,7 @@ function App() {
       ?.on("postgres_changes",{event:"UPDATE",schema:"public",table:"schedule_data",filter:"key=eq.bliss_requests_v1"}, load)
       ?.on("postgres_changes",{event:"INSERT",schema:"public",table:"schedule_data",filter:"key=eq.bliss_requests_v1"}, load)
       ?.subscribe();
-    const poll = setInterval(load, 60_000);
+    const poll = setInterval(load, 120_000);
     return () => { try{rt?.unsubscribe();}catch(e){} clearInterval(poll); };
   }, []);
   // 미확인 공지 팝업 — 본인 이름이 employees_v1에 있고 acks에 없는 공지가 있으면 팝업
@@ -1458,7 +1458,7 @@ function App() {
       } catch {}
     };
     fetchPending();
-    const t = setInterval(fetchPending, 10000);
+    const t = setInterval(fetchPending, 120000);
     let ch = null;
     if (window._sbClient) {
       ch = window._sbClient.channel('rt_deposits_badge_'+Date.now())
@@ -2066,7 +2066,7 @@ function App() {
     };
     window.addEventListener("online", onOnline);
 
-    // 폴링 fallback — Realtime 채널 오류 시에도 stale state 방지 (60초, 최근 예약 범위만)
+    // 폴링 fallback — Realtime 채널 오류 시에도 stale state 방지 (120초, 최근 예약 범위만)
     const pollInt = setInterval(async () => {
       if (document.hidden) return; // 백그라운드 탭은 스킵
       try {
@@ -2086,7 +2086,7 @@ function App() {
           });
         }
       } catch(e) {}
-    }, 60000);
+    }, 120000);
 
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
