@@ -2289,9 +2289,9 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
 ### 서버 — AI 예약 가용성: capacity 거절 제거, 네이버 예약막기만 거절 (2026-05-23, React 변경 0)
 **증상** (Judylyn 인스타): "AI 답변 추천"이 11시를 "예약 어렵다"며 11:30을 제안 → 11시에 자리 있는데 왜 거절? + 제안한 11:30도 이상.
 **원인**: `check_availability`가 **룸 수(`max(len(rooms),3)`=강남 3)로 동시 수용량을 잡고**, 요청 구간에 겹치는 예약 "건수"가 그 이상이면 거절. (1) 직원 이동/재배치로 실제론 더 받을 수 있는데 거절 (2) `naver_changed`(변경되어 사라진 예약)까지 카운트 (3) 겹치는 "건수"≠동시 예약수라 긴 시술서 과다 거절 (4) 대안 시간 탐색도 같은 버그. 실제 강남 내일 데이터: 11:30 한 칸이 **네이버 예약막기**였고, 이 예약이 5개 시술 ~115분이라 11:30을 지나가서 거절된 것 — capacity가 아니라 막기 문제.
-**fix** (유저 원칙 — `feedback_bliss_no_capacity_reject`): 자리 꽉 참으로 **거절 안 함**. 받아서 확정대기(request, 자동예약 status 이미 request)로 넣고 직원이 판단. **거절은 오직 네이버 예약막기 + 예약 "시작 시각"이 막힌 슬롯일 때만** (시술이 막힌 슬롯을 지나가는 건 직원 판단 → 받음).
+**fix** (유저 원칙 — `feedback_bliss_no_capacity_reject`): 자리 꽉 참으로 **거절 안 함**. 받아서 확정대기(request, 자동예약 status 이미 request)로 넣고 직원이 판단. **거절은 오직 네이버 예약막기 — 시술 구간 `[start, start+dur)`이 막힌 30분 슬롯과 하나라도 겹치면 거절** (유저 확정 2026-05-23: 막힌 시간을 지나가야 하면 거절).
 - `_branch_blocked_bits(branch_id, date)` 신규 — branch `naver_biz_id` → `bliss_naver.naver_block_state`(lazy import, 순환·스레드 무해) → 48비트(30분, '0'=막힘) 통합. 120초 캐시.
-- `check_availability`: 시작 슬롯 막힘이면 거절+가장 가까운 안 막힌 시작 제안, 아니면 받음. 막기정보 없음/조회실패 시 fail-open(받음).
-**검증** (강남 내일 실데이터, 11:30만 막힘): 11:00 dur115 → 받음 ✓ / 11:30 → 거절·대안 12:00 ✓ / 12:00 → 받음 ✓.
-**적용**: 서버 직접 (백업 `ai_booking.py.bak_pre_avail_20260523_145452`) + restart. React 변경 0.
-**유의**: 거절은 "시작 시각이 막힌 슬롯"만 — 막힌 슬롯을 지나가는 긴 시술은 받음(직원 판단). overlap 기준으로 바꾸려면 `_slot_blocked` → 윈도우 검사로. naver_block_state는 네이버 partner API 호출(시술 item별) → 120초 캐시로 완화, 세션 만료 시 fail-open.
+- `check_availability`: 시술 구간이 막힌 슬롯과 겹치면 거절 + 시술 '전체'가 안 막히는 가장 가까운 시작 제안, 안 겹치면 받음. 막기정보 없음/조회실패 시 fail-open(받음).
+**검증** (강남 내일 실데이터, 11:30만 막힘): 11:00 dur115 → 거절·대안 12:00 ✓ / 11:00 dur25 → 받음(11:25 종료) ✓ / 11:30 → 거절·대안 12:00 ✓ / 12:00·09:30 dur115 → 받음 ✓.
+**적용**: 서버 직접 (백업 `ai_booking.py.bak_pre_avail_20260523_145452` → 윈도우 기준 재배포 `bak_pre_winblock_20260523_145834`) + restart. React 변경 0.
+**유의**: 거절 기준 = 시술 구간이 막힌 슬롯과 겹침(start만이 아니라 dur 전체 윈도우). naver_block_state는 네이버 partner API 호출(시술 item별) → 120초 캐시로 완화, 세션 만료 시 fail-open.
