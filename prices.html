@@ -10,7 +10,14 @@
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   body { margin:0; font-family:-apple-system,"Apple SD Gothic Neo",Pretendard,system-ui,sans-serif; background:#f5f6f8; color:#1a1a2e; min-height:100vh; padding:16px; }
   .wrap { max-width:480px; margin:0 auto; }
-  .header { text-align:center; padding:16px 0 16px; }
+
+  /* 상단 언어 토글 */
+  .lang-bar { display:flex; justify-content:flex-end; margin-bottom:4px; }
+  .lang-toggle { display:inline-flex; background:#fff; border-radius:999px; padding:3px; box-shadow:0 1px 4px rgba(17,24,39,.08); }
+  .lang-toggle button { border:none; background:transparent; padding:5px 12px; border-radius:999px; font-size:11px; font-weight:700; color:#9ca3af; cursor:pointer; font-family:inherit; letter-spacing:.3px; }
+  .lang-toggle button.active { background:#5B21B6; color:#fff; }
+
+  .header { text-align:center; padding:8px 0 16px; }
   .header .brand { display:inline-flex; align-items:center; gap:12px; }
   .header .brand img { width:46px; height:46px; border-radius:11px; box-shadow:0 6px 18px rgba(91,33,182,.18); }
   .header h1 { margin:0; font-size:20px; font-weight:800; color:#5B21B6; letter-spacing:-.3px; }
@@ -80,54 +87,54 @@
 <body>
 <div class="wrap">
 
+  <!-- 언어 토글 -->
+  <div class="lang-bar">
+    <div class="lang-toggle" id="langToggle">
+      <button data-lang="ko" class="active">KO</button>
+      <button data-lang="en">EN</button>
+    </div>
+  </div>
+
   <div class="header">
     <div class="brand">
-      <img src="/logo.png" alt="하우스왁싱">
+      <img src="/logo.png" alt="House Waxing">
       <h1 id="branchName">하우스왁싱</h1>
     </div>
-    <div class="sub">가격 안내</div>
+    <div class="sub" id="subTitle">가격 안내</div>
   </div>
 
   <!-- 고객 유형 탭 -->
   <div class="type-tabs" id="typeTabs">
-    <button data-mode="new" class="new">신규</button>
-    <button data-mode="existing" class="existing active">기존</button>
-    <button data-mode="member" class="member">회원</button>
+    <button data-mode="new" class="new" data-i18n="new">신규</button>
+    <button data-mode="existing" class="existing active" data-i18n="existing">기존</button>
+    <button data-mode="member" class="member" data-i18n="member">회원</button>
   </div>
 
   <!-- 신규 혜택 박스 -->
   <div class="promo-box" id="promoBox">
     <div class="pb-title">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
-      신규 고객 혜택
+      <span id="promoTitle">신규 고객 혜택</span>
     </div>
     <ul id="promoList"></ul>
-    <div class="promo-foot">※ 혜택 적용은 매장 정책에 따릅니다.</div>
+    <div class="promo-foot" id="promoFoot">※ 혜택 적용은 매장 정책에 따릅니다.</div>
   </div>
 
   <!-- 회원 안내 박스 -->
-  <div class="member-box" id="memberBox">
-    💎 <b>회원가</b>는 다회권 / 연간회원권 / 선불권 등 회원 보유 고객에게 적용됩니다.<br>
-    회원가 미지정 시술은 <b>정상가</b>로 표시됩니다.
-  </div>
+  <div class="member-box" id="memberBox"></div>
 
   <div class="cat-tabs" id="catTabs">
-    <button class="active" data-cat="all">전체</button>
-    <button data-cat="fjodaiex1">브라질리언</button>
-    <button data-cat="2wlxa22ho">바디</button>
-    <button data-cat="i79pitl0h">페이스</button>
-    <button data-cat="cat_care_001">케어</button>
-    <button data-cat="cat_skincare">스킨케어</button>
+    <button class="active" data-cat="all" data-i18n="all">전체</button>
+    <button data-cat="fjodaiex1" data-i18n="cat_brazilian">브라질리언</button>
+    <button data-cat="2wlxa22ho" data-i18n="cat_body">바디</button>
+    <button data-cat="i79pitl0h" data-i18n="cat_face">페이스</button>
+    <button data-cat="cat_care_001" data-i18n="cat_care">케어</button>
+    <button data-cat="cat_skincare" data-i18n="cat_skincare">스킨케어</button>
   </div>
 
-  <div id="svcList"><div class="loading">가격표를 불러오는 중…</div></div>
+  <div id="svcList"><div class="loading" id="loadingMsg">가격표를 불러오는 중…</div></div>
 
-  <div class="note">
-    ※ <b>신규</b> = 첫 방문 고객. 결제 시 일부 카테고리는 적립 환원 혜택이 추가됩니다.<br>
-    ※ <b>기존</b> = 회원권 미보유 일반 고객. 정상가로 결제.<br>
-    ※ <b>회원</b> = 다회권/연간회원권/선불권 등 보유 고객 적용가.<br>
-    ※ 시술 부위·모량·상태에 따라 실제 금액과 차이가 있을 수 있습니다.
-  </div>
+  <div class="note" id="noteBox"></div>
 
   <div class="footer-note">Powered by Bliss</div>
 
@@ -139,42 +146,157 @@
   const SK = "sb_publishable_3H-KTP0MoV_KuY74ocbefw_3Ze5xBJj";
   const BIZ = "biz_khvurgshb";
 
-  const BRANCHES = {
-    "강남":"하우스왁싱 강남본점","마곡":"하우스왁싱 마곡점","홍대":"하우스왁싱 홍대점",
-    "왕십리":"하우스왁싱 왕십리점","용산":"하우스왁싱 용산점","위례":"하우스왁싱 위례점",
-    "잠실":"하우스왁싱 잠실점","천호":"하우스왁싱 천호점"
+  // ─── i18n dict ───
+  const I18N = {
+    ko: {
+      title: "가격 안내 - 하우스왁싱",
+      sub: "가격 안내",
+      new: "신규", existing: "기존", member: "회원",
+      all: "전체",
+      cat_brazilian: "브라질리언", cat_body: "바디", cat_face: "페이스", cat_care: "케어", cat_skincare: "스킨케어",
+      promoTitle: "신규 고객 혜택",
+      promoFoot: "※ 혜택 적용은 매장 정책에 따릅니다.",
+      memberInfo: "💎 <b>회원가</b>는 다회권 / 연간회원권 / 선불권 등 회원 보유 고객에게 적용됩니다.<br>회원가 미지정 시술은 <b>정상가</b>로 표시됩니다.",
+      f: "여", m: "남", min: "분",
+      pointEarned: (rate) => `첫 방문 시술 결제 금액의 <b>${rate}% 포인트 자동 적립</b> (3개월 사용 가능)`,
+      couponDiscount: (svcs, amt) => `<b>${svcs}</b> → <b>${amt}원 할인 쿠폰</b> (3개월)`,
+      fixedPrice: (svc, p) => `<b>${svc}</b> 첫 체험 → <b>${p}원</b>`,
+      firstTrial: "신규 첫 체험 한정가",
+      firstCoupon: (amt) => `신규 첫방문 ${amt}원 할인 쿠폰 적용가`,
+      pointBackPart: (val) => `${val}P`,
+      pointBack: (parts) => `+ ${parts} 포인트 환원 (3개월)`,
+      memberNA: "회원가 미지정 · 정상가 적용",
+      inquiry: "문의",
+      won: (n) => `${n}원`,
+      noteLines: [
+        "※ <b>신규</b> = 첫 방문 고객. 결제 시 일부 카테고리는 적립 환원 혜택이 추가됩니다.",
+        "※ <b>기존</b> = 회원권 미보유 일반 고객. 정상가로 결제.",
+        "※ <b>회원</b> = 다회권/연간회원권/선불권 등 보유 고객 적용가.",
+        "※ 시술 부위·모량·상태에 따라 실제 금액과 차이가 있을 수 있습니다."
+      ],
+      loading: "가격표를 불러오는 중…",
+      error: "가격표를 불러올 수 없습니다.",
+      empty: "표시할 시술이 없습니다.",
+    },
+    en: {
+      title: "Price List - House Waxing",
+      sub: "Price List",
+      new: "New", existing: "Returning", member: "Member",
+      all: "All",
+      cat_brazilian: "Brazilian", cat_body: "Body", cat_face: "Face", cat_care: "Care", cat_skincare: "Skincare",
+      promoTitle: "New Customer Benefits",
+      promoFoot: "※ Benefits apply per store policy.",
+      memberInfo: "💎 <b>Member rate</b> applies to customers with an active multi-pass / annual membership / prepaid pass.<br>Services without a member rate are shown at the <b>regular price</b>.",
+      f: "F", m: "M", min: " min",
+      pointEarned: (rate) => `<b>${rate}% points back</b> on your first visit (valid for 3 months)`,
+      couponDiscount: (svcs, amt) => `<b>${svcs}</b> → <b>₩${amt} off coupon</b> (3 months)`,
+      fixedPrice: (svc, p) => `<b>${svc}</b> first trial → <b>₩${p}</b>`,
+      firstTrial: "New customer first trial price",
+      firstCoupon: (amt) => `New customer ₩${amt} off (first visit)`,
+      pointBackPart: (val) => `${val}P`,
+      pointBack: (parts) => `+ ${parts} points back (3 months)`,
+      memberNA: "No member rate · regular price applies",
+      inquiry: "Inquiry",
+      won: (n) => `₩${n}`,
+      noteLines: [
+        "※ <b>New</b> = First-time customers. Some categories include bonus points back.",
+        "※ <b>Returning</b> = General customers without a membership. Regular price applies.",
+        "※ <b>Member</b> = Holders of multi-pass / annual membership / prepaid pass.",
+        "※ Actual price may vary depending on the area, hair density, and condition."
+      ],
+      loading: "Loading price list…",
+      error: "Failed to load price list.",
+      empty: "No services to display.",
+    }
   };
+
+  // ─── 시술명 키워드 매핑 (한→영) — 부분 치환. 매칭 안 되는 키워드는 한국어 그대로 ───
+  const SVC_KEYWORD_MAP = {
+    // 시술 카테고리·세트
+    "풀바디": "Full Body", "풀페이스": "Full Face", "풀암": "Full Arm", "풀레그": "Full Leg",
+    "비키니라인": "Bikini Line", "비키니": "Bikini", "브라질리언": "Brazilian", "음모왁싱": "Brazilian", "음모": "Pubic",
+    "헤어라인": "Hairline", "겨드랑이": "Underarms",
+    "다리반": "Half Leg", "다리전체": "Full Leg", "다리": "Leg",
+    "팔반": "Half Arm", "팔전체": "Full Arm", "팔": "Arm",
+    "눈썹": "Eyebrow", "인중": "Upper Lip", "턱": "Chin", "입술": "Lip",
+    "가슴": "Chest", "어깨": "Shoulder", "엉덩이": "Buttocks", "둔부": "Buttocks", "항문": "Anal",
+    "등반": "Half Back", "등전체": "Full Back", "등": "Back",
+    "손가락": "Fingers", "발가락": "Toes", "손": "Hands", "발": "Feet",
+    "코": "Nose", "사이드번": "Sideburn",
+    // 케어·스킨
+    "에너지테라피": "Energy Therapy", "에너지": "Energy",
+    "머슬렌더": "Muscle Render", "큐테라피": "Q-Therapy",
+    "재생관리": "Regeneration Care", "재생": "Regeneration",
+    "사후관리": "Aftercare", "케어": "Care", "스킨케어": "Skincare",
+    "온수확인": "Hot Water Check",
+    // 패키지·회원
+    "패키지": "Package", "다담권": "Prepaid Pass", "다회권": "Multi-Pass",
+    "연간회원권": "Annual Membership", "연간": "Annual", "회원권": "Membership", "선불권": "Prepaid Pass",
+    // 단위
+    "분": " min", "시간": " hr",
+    "회차": " sessions",
+    "1차": "1st", "2차": "2nd", "3차": "3rd", "4차": "4th", "5차": "5th",
+    // 성별·기타
+    "여성": "Women", "남성": "Men", "여자": "Women", "남자": "Men",
+    "신규": "New", "기존": "Returning", "첫방문": "First Visit", "첫 방문": "First Visit",
+  };
+
+  function svcNameEn(name) {
+    if (!name) return name;
+    let en = name;
+    // 긴 키부터 매칭 (substring 충돌 방지)
+    const keys = Object.keys(SVC_KEYWORD_MAP).sort((a,b) => b.length - a.length);
+    for (const k of keys) {
+      en = en.split(k).join(SVC_KEYWORD_MAP[k]);
+    }
+    return en.replace(/\s+/g," ").trim();
+  }
+
+  // ─── 지점명 i18n ───
+  const BRANCHES = {
+    ko: {
+      "강남":"하우스왁싱 강남본점","마곡":"하우스왁싱 마곡점","홍대":"하우스왁싱 홍대점",
+      "왕십리":"하우스왁싱 왕십리점","용산":"하우스왁싱 용산점","위례":"하우스왁싱 위례점",
+      "잠실":"하우스왁싱 잠실점","천호":"하우스왁싱 천호점"
+    },
+    en: {
+      "강남":"House Waxing Gangnam","마곡":"House Waxing Magok","홍대":"House Waxing Hongdae",
+      "왕십리":"House Waxing Wangsimni","용산":"House Waxing Yongsan","위례":"House Waxing Wirye",
+      "잠실":"House Waxing Jamsil","천호":"House Waxing Cheonho"
+    },
+    fallback: { ko:"하우스왁싱", en:"House Waxing" }
+  };
+
   const qs = new URLSearchParams(location.search);
   const branchKey = (qs.get("branch")||"").trim();
-  if (BRANCHES[branchKey]) document.getElementById("branchName").textContent = BRANCHES[branchKey];
 
   const CAT_ORDER = [
-    {id:"fjodaiex1",   name:"브라질리언"},
-    {id:"2wlxa22ho",   name:"바디"},
-    {id:"i79pitl0h",   name:"페이스"},
-    {id:"cat_care_001",name:"케어"},
-    {id:"cat_skincare",name:"스킨케어"}
+    {id:"fjodaiex1",   key:"cat_brazilian"},
+    {id:"2wlxa22ho",   key:"cat_body"},
+    {id:"i79pitl0h",   key:"cat_face"},
+    {id:"cat_care_001",key:"cat_care"},
+    {id:"cat_skincare",key:"cat_skincare"}
   ];
   const catIds = CAT_ORDER.map(c=>c.id);
 
   const fmt = n => (n||0).toLocaleString();
 
+  // ─── lang state ───
+  let lang = localStorage.getItem("prices_lang") || "ko";
   let mode = 'existing';
   let services = [];
   let newPointRate = 0;
   let newPointCats = new Set();
-  let newFixedPriceMap = {};   // { serviceId: fixed_price }
-  let newCouponMap = {};        // { serviceId: discount_amount } — discount_flat 매칭 시술
+  let newFixedPriceMap = {};
+  let newCouponMap = {};
+  let svcNameById = {};
 
-  // ─── settings에서 신규 혜택 ───
+  // ─── settings (신규 혜택) ───
   try {
     const br = await fetch(`${SB}/rest/v1/businesses?id=eq.${BIZ}&select=settings`, {headers:{"apikey":SK,"Authorization":"Bearer "+SK}});
     const bjs = await br.json();
     const settings = bjs?.[0]?.settings;
     const sObj = typeof settings === 'string' ? JSON.parse(settings) : (settings||{});
-    const promoItems = [];
-    // 임시 매핑 : serviceId → 시술명 (혜택 박스 안내 텍스트용)
-    const _svcNameCache = {};
     if (sObj.events_master_enabled !== false) {
       for (const evt of (sObj.events || [])) {
         if (evt.enabled === false) continue;
@@ -186,7 +308,6 @@
             newPointRate = Math.max(newPointRate, r.rate || 0);
             (r.baseCategoryIds||[]).forEach(c => newPointCats.add(c));
           } else if (r.type === 'discount_flat') {
-            // 매칭 시술에만 적용
             for (const sid of tgtSvcIds) {
               newCouponMap[sid] = Math.max(newCouponMap[sid]||0, r.value || 0);
             }
@@ -198,60 +319,63 @@
     }
   } catch(e){ console.warn("settings load fail", e); }
 
-  // ─── 시술 fetch ───
+  // ─── services fetch ───
   try {
     const r = await fetch(`${SB}/rest/v1/services?business_id=eq.${BIZ}&cat=in.(${catIds.join(",")})&select=id,cat,name,dur,price_f,price_m,member_price_f,member_price_m,sort,is_active,is_package&order=cat.asc,sort.asc.nullslast,name.asc`,
       {headers:{"apikey":SK,"Authorization":"Bearer "+SK}});
     services = (await r.json()).filter(s => (s.is_active===null||s.is_active===true) && !s.is_package);
   } catch(e) {
     console.error(e);
-    document.getElementById("svcList").innerHTML = '<div class="loading">가격표를 불러올 수 없습니다.</div>';
+    document.getElementById("svcList").innerHTML = `<div class="loading">${I18N[lang].error}</div>`;
     return;
   }
 
-  // ─── 시술 이름 매핑 + 신규 혜택 박스 텍스트 빌드 ───
-  const svcNameById = Object.fromEntries(services.map(s => [s.id, s.name]));
-  // 풀 fetch (패키지 포함 — 일부 신규 혜택 대상이 패키지일 수 있음)
+  svcNameById = Object.fromEntries(services.map(s => [s.id, s.name]));
   try {
-    const r2 = await fetch(`${SB}/rest/v1/services?business_id=eq.${BIZ}&id=in.(${Object.keys({...newCouponMap, ...newFixedPriceMap}).join(",")})&select=id,name`,
-      {headers:{"apikey":SK,"Authorization":"Bearer "+SK}});
-    for (const x of await r2.json()) { if (!svcNameById[x.id]) svcNameById[x.id] = x.name; }
+    const extraIds = Object.keys({...newCouponMap, ...newFixedPriceMap});
+    if (extraIds.length) {
+      const r2 = await fetch(`${SB}/rest/v1/services?business_id=eq.${BIZ}&id=in.(${extraIds.join(",")})&select=id,name`,
+        {headers:{"apikey":SK,"Authorization":"Bearer "+SK}});
+      for (const x of await r2.json()) { if (!svcNameById[x.id]) svcNameById[x.id] = x.name; }
+    }
   } catch(_){}
-  const promoItems = [];
-  if (newPointRate > 0) {
-    promoItems.push(`첫 방문 시술 결제 금액의 <b>${newPointRate}% 포인트 자동 적립</b> (3개월 사용 가능)`);
-  }
-  // 5만/8만/... 할인 쿠폰들 — 시술명별로 정리
-  const byAmount = {};
-  for (const [sid, amt] of Object.entries(newCouponMap)) {
-    (byAmount[amt] = byAmount[amt] || []).push(svcNameById[sid] || sid);
-  }
-  const amounts = Object.keys(byAmount).map(n=>parseInt(n)).sort((a,b)=>a-b);
-  for (const amt of amounts) {
-    promoItems.push(`<b>${byAmount[amt].join(', ')}</b> → <b>${fmt(amt)}원 할인 쿠폰</b> (3개월)`);
-  }
-  // fixed_price (재생관리 등)
-  for (const [sid, price] of Object.entries(newFixedPriceMap)) {
-    promoItems.push(`<b>${svcNameById[sid] || sid}</b> 첫 체험 → <b>${fmt(price)}원</b>`);
-  }
-  document.getElementById("promoList").innerHTML = promoItems.map(t => `<li>${t}</li>`).join('');
+
+  // ─── 표시 헬퍼 ───
+  const t = () => I18N[lang];
+  const showName = (n) => lang === 'en' ? svcNameEn(n) : n;
+
+  const renderPromoList = () => {
+    const items = [];
+    if (newPointRate > 0) items.push(t().pointEarned(newPointRate));
+    const byAmount = {};
+    for (const [sid, amt] of Object.entries(newCouponMap)) {
+      (byAmount[amt] = byAmount[amt] || []).push(showName(svcNameById[sid] || sid));
+    }
+    const amounts = Object.keys(byAmount).map(n=>parseInt(n)).sort((a,b)=>a-b);
+    for (const amt of amounts) {
+      items.push(t().couponDiscount(byAmount[amt].join(', '), fmt(amt)));
+    }
+    for (const [sid, price] of Object.entries(newFixedPriceMap)) {
+      items.push(t().fixedPrice(showName(svcNameById[sid] || sid), fmt(price)));
+    }
+    document.getElementById("promoList").innerHTML = items.map(x => `<li>${x}</li>`).join('');
+  };
 
   const renderCard = (s) => {
     const hasF = s.price_f && s.price_f > 0;
     const hasM = s.price_m && s.price_m > 0;
     const hasMemF = s.member_price_f && s.member_price_f > 0;
     const hasMemM = s.member_price_m && s.member_price_m > 0;
-    let f = hasF ? s.price_f : null;        // 표시 가격 (여)
-    let m = hasM ? s.price_m : null;        // 표시 가격 (남)
-    let oldF = null, oldM = null;            // 취소선용 정상가
-    let savePct = null;                       // 할인율 배지
+    let f = hasF ? s.price_f : null;
+    let m = hasM ? s.price_m : null;
+    let oldF = null, oldM = null;
+    let savePct = null;
     let earnRow = '';
     let memberNA = '';
 
     if (mode === 'new') {
       const fixedPrice = newFixedPriceMap[s.id];
       const couponDiscount = newCouponMap[s.id] || 0;
-      // 신규 적립 카테고리에 속하면 적립 — base는 항상 결제 후 가격(매출 등록 net_pay 기준)
       const earnApplies = newPointRate > 0 && newPointCats.has(s.cat);
 
       if (fixedPrice) {
@@ -261,7 +385,7 @@
         m = (hasM && !hasF) ? fixedPrice : null;
         const base = oldF || oldM;
         savePct = base ? Math.round((1 - fixedPrice/base) * 100) : null;
-        earnRow = `<div class="new-earn">신규 첫 체험 한정가</div>`;
+        earnRow = `<div class="new-earn">${t().firstTrial}</div>`;
       } else if (couponDiscount > 0 && (hasF || hasM)) {
         oldF = hasF ? s.price_f : null;
         oldM = hasM ? s.price_m : null;
@@ -270,18 +394,15 @@
         const base = oldF || oldM;
         const after = f || m;
         savePct = (base && after) ? Math.round((1 - after/base) * 100) : null;
-        earnRow = `<div class="new-earn">신규 첫방문 ${fmt(couponDiscount)}원 할인 쿠폰 적용가</div>`;
+        earnRow = `<div class="new-earn">${t().firstCoupon(fmt(couponDiscount))}</div>`;
       }
-      // 적립 라인 추가 — 매출 등록과 동일하게 결제 후 가격(f/m) 기준
       if (earnApplies && (f || m)) {
         const earnF = f ? Math.round(f * newPointRate / 100 / 100) * 100 : null;
         const earnM = m ? Math.round(m * newPointRate / 100 / 100) * 100 : null;
-        const parts = [
-          (earnF && (hasM || hasF)) ? `여 ${fmt(earnF)}P` : (earnF ? `${fmt(earnF)}P` : null),
-          (earnM && hasM) ? `남 ${fmt(earnM)}P` : null
-        ].filter(x=>x).join(' / ');
-        const sep = earnRow ? '' : '';
-        earnRow += `<div class="new-earn">+ ${parts} 포인트 환원 (3개월)</div>`;
+        const partsArr = [];
+        if (earnF && (hasM || hasF)) partsArr.push(hasM ? `${t().f} ${fmt(earnF)}P` : `${fmt(earnF)}P`);
+        if (earnM && hasM) partsArr.push(`${t().m} ${fmt(earnM)}P`);
+        earnRow += `<div class="new-earn">${t().pointBack(partsArr.join(' / '))}</div>`;
       }
     } else if (mode === 'member') {
       if (hasMemF || hasMemM) {
@@ -293,27 +414,27 @@
         const memBase = f || m;
         savePct = (base && memBase) ? Math.round((1 - memBase/base) * 100) : null;
       } else {
-        memberNA = `<span class="member-na">회원가 미지정 · 정상가 적용</span>`;
+        memberNA = `<span class="member-na">${t().memberNA}</span>`;
       }
     }
 
     const priceSpan = (g, newV, oldV) => {
       const inner = [];
       if (g) inner.push(`<span class="g">${g}</span>`);
-      if (oldV && oldV !== newV) inner.push(`<span class="old">${fmt(oldV)}원</span>`);
-      inner.push(`<span class="v">${fmt(newV)}원</span>`);
+      if (oldV && oldV !== newV) inner.push(`<span class="old">${t().won(fmt(oldV))}</span>`);
+      inner.push(`<span class="v">${t().won(fmt(newV))}</span>`);
       return `<span class="price">${inner.join('')}</span>`;
     };
     const parts = [];
-    if (f) parts.push(priceSpan(hasM ? '여' : '', f, oldF));
-    if (m) parts.push(priceSpan('남', m, oldM));
-    if (!parts.length) parts.push(`<span class="price" style="color:#9ca3af">문의</span>`);
+    if (f) parts.push(priceSpan(hasM ? t().f : '', f, oldF));
+    if (m) parts.push(priceSpan(t().m, m, oldM));
+    if (!parts.length) parts.push(`<span class="price" style="color:#9ca3af">${t().inquiry}</span>`);
 
     const saveBadgeHtml = (mode !== 'existing' && savePct && savePct > 0)
       ? `<span class="save-badge">${savePct}% ↓</span>` : '';
 
     return `<div class="svc-card mode-${mode}">
-      <div class="svc-name">${s.name}${s.dur ? `<span class="svc-dur">${s.dur}분</span>` : ''}${saveBadgeHtml}</div>
+      <div class="svc-name">${showName(s.name)}${s.dur ? `<span class="svc-dur">${s.dur}${t().min}</span>` : ''}${saveBadgeHtml}</div>
       <div class="svc-row"><div class="price-grp">${parts.join('')}</div>${memberNA}</div>
       ${earnRow}
     </div>`;
@@ -327,15 +448,41 @@
       const list = byCat[c.id]||[];
       if (!list.length) return '';
       return `<div class="cat-section" data-cat="${c.id}">
-        <div class="cat-title">${c.name}</div>
+        <div class="cat-title">${t()[c.key]}</div>
         ${list.map(renderCard).join('')}
       </div>`;
-    }).join('') || '<div class="loading">표시할 시술이 없습니다.</div>';
-    // 카테고리 탭 활성 반영
+    }).join('') || `<div class="loading">${t().empty}</div>`;
     const activeCat = document.querySelector(".cat-tabs button.active")?.dataset.cat || "all";
     if (activeCat !== "all") {
       document.querySelectorAll(".cat-section").forEach(sec => sec.classList.toggle("hidden", sec.dataset.cat !== activeCat));
     }
+  };
+
+  // ─── 언어 적용 ───
+  const applyLang = () => {
+    document.documentElement.lang = lang;
+    document.title = I18N[lang].title;
+    // 헤더
+    const brName = BRANCHES[lang][branchKey] || BRANCHES.fallback[lang];
+    document.getElementById("branchName").textContent = brName;
+    document.getElementById("subTitle").textContent = I18N[lang].sub;
+    // type-tabs
+    document.querySelectorAll("[data-i18n]").forEach(el => {
+      const key = el.dataset.i18n;
+      if (I18N[lang][key]) el.textContent = I18N[lang][key];
+    });
+    // promo
+    document.getElementById("promoTitle").textContent = I18N[lang].promoTitle;
+    document.getElementById("promoFoot").textContent = I18N[lang].promoFoot;
+    document.getElementById("memberBox").innerHTML = I18N[lang].memberInfo;
+    document.getElementById("loadingMsg") && (document.getElementById("loadingMsg").textContent = I18N[lang].loading);
+    // note
+    document.getElementById("noteBox").innerHTML = I18N[lang].noteLines.map(x=>x).join("<br>");
+    // 토글 active
+    document.querySelectorAll("#langToggle button").forEach(b => b.classList.toggle("active", b.dataset.lang === lang));
+    // promo list + render
+    renderPromoList();
+    render();
   };
 
   const setMode = (newMode) => {
@@ -361,8 +508,17 @@
       window.scrollTo({top:0, behavior:"smooth"});
     });
   });
+  // 언어 토글
+  document.querySelectorAll("#langToggle button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      lang = btn.dataset.lang;
+      localStorage.setItem("prices_lang", lang);
+      applyLang();
+    });
+  });
 
-  setMode('existing');  // 디폴트: 기존
+  applyLang();
+  setMode('existing');
 })();
 </script>
 </body>

@@ -124,6 +124,22 @@
           left: 540px !important;
         }
       }
+      /* 받은메시지함 사이드 패널 — 모바일은 풀스크린 (입금 배너 클릭 경로에서 데스크탑 폭으로 떠 잘리던 것 방지) */
+      @media (max-width: 767px) {
+        .msg-panel {
+          left: 0 !important;
+          width: 100% !important;
+          max-width: 100% !important;
+        }
+        /* 채팅방 미진입 시(받은메시지/팀채팅/입금문자 리스트 상태) — 하단탭 영역 비워서 함께 표시 */
+        body[data-msg-chat-open="closed"] .msg-panel {
+          bottom: 76px !important;
+        }
+        /* 채팅방 진입 시 풀스크린 (하단탭은 isChatOpen=true로 자동 숨김) */
+        body[data-msg-chat-open="open"] .msg-panel {
+          bottom: 0 !important;
+        }
+      }
 
       /* ══ 타임라인 블록 ══ */
       div:hover>.resize-handle{opacity:1 !important}
@@ -150,6 +166,15 @@
       @keyframes tbDot{0%,80%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-3px);opacity:1}}
       @keyframes tbFadeIn{from{opacity:0;transform:translateY(2px)}to{opacity:1;transform:translateY(0)}}
       @keyframes announcePulse{0%,100%{box-shadow:0 1px 4px rgba(230,81,0,.18),0 0 0 0 rgba(255,183,77,0)}50%{box-shadow:0 1px 8px rgba(230,81,0,.32),0 0 0 4px rgba(255,183,77,.15)}}
+      /* 팀채팅 새 메시지 포커스 — 클릭(확인) 전까지 보라빛으로 계속 깜빡임 */
+      @keyframes chatMsgPulse{
+        0%,100%{background:rgba(124,124,200,.05);box-shadow:inset 4px 0 0 rgba(124,124,200,.30)}
+        50%{background:rgba(124,124,200,.34);box-shadow:inset 4px 0 0 #7c7cc8, 0 0 0 1px rgba(124,124,200,.30)}
+      }
+      .chat-msg-new{animation:chatMsgPulse 1.3s ease-in-out infinite;cursor:pointer}
+      @media (prefers-reduced-motion: reduce){
+        .chat-msg-new{animation:none;background:rgba(124,124,200,.22);box-shadow:inset 4px 0 0 #7c7cc8}
+      }
 
       /* ══ 모달 리디자인 — Minimal / Linear style ══ */
       .modal-res{font-size:14px;color:#1a1a2e;width:480px!important;max-width:480px!important}
@@ -281,7 +306,10 @@
       .sale-dur{font-size:11px !important;color:#aaa}
       .sale-cat-hdr{font-size:12px !important;font-weight:700}
       .sale-section-title{font-size:12px !important;font-weight:700}
-      .sale-modal-wrap .sale-pay-row *{font-size:13px !important}
+      .sale-modal-wrap .sale-pay-row{font-size:13px}
+      /* 입금 매칭 피커·확인박스 — 결제영역/모바일 강제 13px 규칙(span:not(.badge))을 이기는 컴팩트 폰트 */
+      .sale-modal-wrap .dep-match-box span:not(.badge),.ov>div:not(.modal-res) .dep-match-box span:not(.badge),.modal-res .dep-match-box span:not(.badge),
+      .sale-modal-wrap .dep-match-box div,.ov>div:not(.modal-res) .dep-match-box div,.modal-res .dep-match-box div{font-size:9px!important}
 
       /* ══ 모바일 ══ */
       @media(max-width:768px){
@@ -350,7 +378,7 @@
         .sidebar-m{display:none!important}
       }
     </style>
-    <script type="module" crossorigin src="/assets/index-0S0caBu-.js"></script>
+    <script type="module" crossorigin src="/assets/index-BcJs8D6p.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-DoaQoIwC.js">
     <link rel="modulepreload" crossorigin href="/assets/supabase-DywSbxor.js">
   </head>
