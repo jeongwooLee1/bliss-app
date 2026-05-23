@@ -2332,3 +2332,9 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
 **fix** (`TimelinePage.jsx` scrollRef 컨테이너): `touchAction:"pan-y"` 추가 → 가로 네이티브 스크롤 자체 차단 → 빈 영역 가로 스와이프는 속도 무관 항상 터치 단계이동 핸들러로 진입. 세로 스크롤 유지.
 **적용**: v3.7.836 라이브 배포(version.txt 검증, CF 퍼지 success).
 **유의(미해결)**: **예약 블록 위에서 시작한 스와이프**는 아직 단계이동 안 됨 — 블록 touchstart가 `stopPropagation`(line 2785, 롱프레스 드래그용) + 블록 `touchAction:"pan-x pan-y"`라 가로 네이티브 스크롤 허용. 블록 위 스와이프까지 잡으려면 캡처단계 감지 + 블록 touch-action을 pan-y로 변경 필요(드래그/탭 회귀 위험으로 보류). 빈 영역(미배정·블록 사이·헤더) 스와이프는 정상.
+
+### 서버 — AI 예약 확정 멘트 톤 변경 (대기 → 확정) (2026-05-23, React 변경 0)
+**요청**: AI 예약 등록 후 "예약 접수완료, 직원이 곧 확인" → 손님이 "확정된 거 맞나요?" 불안. **"예약 완료됐습니다, 변동사항 생기면 직원이 다시 연락"** 톤으로. 전 채널(인스타·카톡 등) 공통.
+**fix** (`ai_booking.py` 프롬프트 4곳 + 하드코딩 fallback 1곳, 백업 `bak_pre_confirmtone_20260523_193757`): "예약 접수완료! 담당자 확인 후 확정 안내" / "Booking received! confirm shortly" → **"예약 완료됐습니다! 혹시 변동사항이 생기면 담당 직원이 다시 연락드릴게요" / "Your booking is confirmed! If anything changes, our staff will reach out."** line 2102의 "절대 예약 확정이라고 하지 않기" 규칙 제거.
+**유의**: 예약 status는 그대로 `request`(확정대기 — 직원이 타임라인서 봄). **고객 메시지만** 확정 톤으로(안심). action≠book일 때 확정표현 금지 규칙은 유지. 검증: KR/EN 예약 시뮬 → "예약 완료됐습니다 ... 변동사항 생기면 연락" 정상.
+**적용**: 서버 직접 (scp + `systemctl restart`). React 변경 0 → 버전업·CF퍼지 불필요.
