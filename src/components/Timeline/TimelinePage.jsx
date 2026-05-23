@@ -2326,13 +2326,10 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   const hourH = rowH * slotsPerHour;
   const halfH = rowH * (slotsPerHour / 2);
   const gridBg = useMemo(() => ({
-    backgroundImage: [
-      `repeating-linear-gradient(to bottom, #e8e8e8 0px, #e8e8e8 1px, transparent 1px, transparent ${hourH}px)`,
-      ...(slotsPerHour >= 2 ? [`repeating-linear-gradient(to bottom, #f0f0f0 0px, #f0f0f0 1px, transparent 1px, transparent ${halfH}px)`] : []),
-      ...(slotsPerHour > 2 ? [`repeating-linear-gradient(to bottom, #f5f5f5 0px, #f5f5f5 1px, transparent 1px, transparent ${rowH}px)`] : []),
-    ].join(","),
+    // 시간(정시) 가로선만 — 분 단위 가로선(30분·슬롯) 제거 (유저 요청)
+    backgroundImage: `repeating-linear-gradient(to bottom, #e8e8e8 0px, #e8e8e8 1px, transparent 1px, transparent ${hourH}px)`,
     backgroundSize: "100% 100%",
-  }), [rowH, hourH, halfH, slotsPerHour]);
+  }), [hourH]);
 
   // Time label positions
   const timeLabels = useMemo(() => {
@@ -5037,7 +5034,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                           onMouseLeave={e=>{if(room._shift>0){e.currentTarget.style.opacity=".7";e.currentTarget.style.color=T.gray500;}}}>◀</button>
                       )}
                       {room.isBlockCol ? (
-                        <svg width="14" height="14" viewBox="0 0 24 24" style={{display:"block"}} title="네이버 막기">
+                        <svg width="18" height="18" viewBox="0 0 24 24" style={{display:"block"}} title="네이버 막기">
                           <text x="12" y="17" textAnchor="middle" fontFamily="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif" fontSize="14" fontWeight="800" fill="#333333">N</text>
                           <circle cx="19" cy="5" r="3.5" fill="#E53935"/>
                           <rect x="17.5" y="4" width="3" height="1.5" rx="0.3" fill="#FFFFFF"/>

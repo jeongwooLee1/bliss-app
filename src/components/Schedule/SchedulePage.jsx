@@ -760,6 +760,51 @@ export default function SchedulePage({ employees: propEmps }) {
     saveDeletedEmpIds(next)
   }
 
+  // 직원 이름 변경 — 이름이 곧 ID라 모든 기록(근무표·설정·로테이션·근무시간·예약·매출)을 새 이름으로 이전
+  const onRenameEmp = async (oldId, newNameRaw) => {
+    const newName = (newNameRaw || '').trim()
+    if (!newName || newName === oldId) return
+    if ((baseEmployees || []).some(e => e.id === newName)) { alert('이미 같은 이름의 직원이 있습니다.'); return }
+    let rsvCnt = 0, saleCnt = 0
+    try {
+      const a = await supabase.from('reservations').select('id', { count:'exact', head:true }).eq('business_id', _activeBizId).eq('staff_id', oldId)
+      rsvCnt = a.count || 0
+      const b = await supabase.from('sales').select('id', { count:'exact', head:true }).eq('business_id', _activeBizId).eq('staff_name', oldId)
+      saleCnt = b.count || 0
+    } catch (e) {}
+    if (!confirm(`'${oldId}' → '${newName}' 으로 이름을 바꿉니다.\n\n근무표·설정·예약 ${rsvCnt}건·매출 ${saleCnt}건의 기록을 모두 새 이름으로 옮깁니다.\n진행할까요?`)) return
+    try {
+      // 1) employees_v1 (id+name)
+      const updatedEmps = (baseEmployees || []).map(e => e.id === oldId ? { ...e, id:newName, name:newName } : e)
+      await saveEmployees(updatedEmps)
+      // schedule_data 키 1개 로드→변형→저장 헬퍼
+      const renameInKey = async (key, mutate) => {
+        const { data } = await supabase.from('schedule_data').select('value').eq('business_id', _activeBizId).eq('key', key).maybeSingle()
+        if (!data) return
+        let obj; try { obj = JSON.parse(data.value) } catch { return }
+        const next = mutate(obj)
+        if (next === null) return
+        await supabase.from('schedule_data').upsert({ business_id:_activeBizId, id:key, key, value:JSON.stringify(next), updated_at:new Date().toISOString() }, { onConflict:'business_id,key' })
+      }
+      // 2) schHistory_v1 (월→이름)
+      await renameInKey('schHistory_v1', (sh) => { let ch=false; for (const m of Object.keys(sh)) { if (sh[m] && typeof sh[m]==='object' && oldId in sh[m]) { sh[m][newName]=sh[m][oldId]; delete sh[m][oldId]; ch=true } } return ch?sh:null })
+      // 3) empSettings_v1 (이름→설정)
+      await renameInKey('empSettings_v1', (s) => { if (oldId in s){ s[newName]=s[oldId]; delete s[oldId]; return s } return null })
+      // 4) maleRotation_v1 (이름→로테이션)
+      await renameInKey('maleRotation_v1', (s) => { if (oldId in s){ s[newName]=s[oldId]; delete s[oldId]; return s } return null })
+      // 5) empWorkHours_v1 (이름_지점_날짜 / 이름)
+      await renameInKey('empWorkHours_v1', (s) => { let ch=false; for (const k of Object.keys(s)) { if (k===oldId || k.startsWith(oldId+'_')) { const nk=newName+k.slice(oldId.length); s[nk]=s[k]; delete s[k]; ch=true } } return ch?s:null })
+      // 6) reservations.staff_id  7) sales.staff_name (대량 일괄)
+      await supabase.from('reservations').update({ staff_id:newName }).eq('business_id', _activeBizId).eq('staff_id', oldId)
+      await supabase.from('sales').update({ staff_name:newName }).eq('business_id', _activeBizId).eq('staff_name', oldId)
+      alert(`완료! '${oldId}' → '${newName}' 으로 모든 기록을 옮겼어요. 새로고침합니다.`)
+      window.location.reload()
+    } catch (err) {
+      console.error('[rename emp]', err)
+      alert('이름 변경 중 오류가 발생했습니다: ' + (err?.message || err))
+    }
+  }
+
   // Add employee — employees_v1 (baseEmployees)에 직접 추가
   const handleAddEmp = (emp) => {
     const updated = [...(baseEmployees || []), emp]
@@ -816,7 +861,7 @@ export default function SchedulePage({ employees: propEmps }) {
         onDeleteTagDef={deleteCellTagDef}/>}
       {showBulkModal && selectedCells.size > 0 && <BulkEditModal selectedCells={selectedCells} onSet={setS} onClose={(st) => { setShowBulkModal(false); setSelectedCells(new Set()); if (st) toast_(`✅ ${selectedCells.size}개 셀 → ${st}`) }}/>}
       {showRuleConfig && <RuleConfigModal ruleConfig={ruleConfig} allEmployees={ALL_EMPLOYEES} empSettings={empSettings} onSetRule={onSetRule} onClose={() => setShowRuleConfig(false)}/>}
-      {showEmpSettings && <EmpSettingsModal allEmployees={ALL_EMPLOYEES} empSettings={empSettings} deletedEmpIds={deletedEmpIds} maleRotation={maleRotation||{}} onSetEmpSetting={onSetEmpSetting} onAddEmp={handleAddEmp} onDeleteEmp={handleDeleteEmp} onSaveMaleRotation={saveMaleRotation} onUpdateEmp={(empId, key, value) => {
+      {showEmpSettings && <EmpSettingsModal allEmployees={ALL_EMPLOYEES} empSettings={empSettings} deletedEmpIds={deletedEmpIds} maleRotation={maleRotation||{}} onSetEmpSetting={onSetEmpSetting} onAddEmp={handleAddEmp} onDeleteEmp={handleDeleteEmp} onRenameEmp={onRenameEmp} onSaveMaleRotation={saveMaleRotation} onUpdateEmp={(empId, key, value) => {
         const updated = baseEmployees.map(e => {
           if (e.id !== empId) return e;
           // 여러 필드 동시 업데이트 (예: 성별 → gender + isMale)

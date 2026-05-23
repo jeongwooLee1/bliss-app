@@ -2314,3 +2314,14 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
 - **타임라인 디폴트값 갱신**(`tlDef` 폴백 + `STATUS_CLR_DEFAULT`): 현재 운영값으로 — sh 8→10, rh 14→10, cw 160→100, fs 13→12, op 50→80 (eh 23·tu 5 동일). 상태색상 디폴트 = 예약중 `#d0d4ed`·진행 `#4a7cc8`·완료 `#6ab56a`·취소 `#e8b830`·노쇼 `#ef5350`(저장된 공통설정값). 매출강조(hl)는 매장별이라 제외.
 **적용**: v3.7.834 라이브 배포(version.txt 검증, CF 퍼지 success). 직원 공지(`bliss_notices_v1` 맨 앞) "🖐️ 타임라인 지점 빨리 넘기기" 게시 — 스와이프·방향키·휠 + 블록갭 + AI 회원권/취소 안내, 쉬운 말로.
 **유의**: 디폴트는 저장된 설정 없는 기기에만 적용(기존 기기는 localStorage/공통설정 우선). 정지점은 키보드·휠·터치 공통. 넓은 지점은 끝까지 본 뒤 다음 지점.
+
+### v3.7.835 — 막기 헤더 키움 + 분 가로선 제거 + 직원 이름 변경(전 기록 이전) (2026-05-23)
+- **B. 막기 컬럼 헤더**: N 아이콘 SVG 14→18px (`TimelinePage.jsx`, isBlockCol 헤더).
+- **C. 타임라인 가로선**: `gridBg`에서 30분(`#f0f0f0`)·슬롯(`#f5f5f5`) 선 제거, **정시선(`#e8e8e8`)만** 유지.
+- **D. 직원 이름 변경** (`EmpSettingsModal.jsx` + `SchedulePage.jsx`): 직원 id=이름이라 이름 변경 = 모든 기록 이전. 직원별 근무 설정 카드에 "✎ 이름" 버튼 → 새이름 입력 → 확인창(예약 N·매출 M건) → `onRenameEmp` 마이그레이션:
+  - `employees_v1`(id+name), `schHistory_v1`(월별 이름키), `empSettings_v1`, `maleRotation_v1`, `empWorkHours_v1`(이름_지점_날짜 prefix), `reservations.staff_id`, `sales.staff_name` 전부 old→new 일괄. supabase 클라이언트로 처리, 완료 후 reload.
+- **A(공지·요청 뱃지)는 유저 보류.**
+**적용**: v3.7.835 라이브 배포(version.txt 검증, CF 퍼지 success).
+**유의**:
+- 직원 id=이름은 레거시. 이름 변경은 위 우회 마이그레이션. 고유 ID 도입 리팩토링은 **유저 결정으로 보류**(나중에 별도 — 모든 참조 이름→ID 전환 필요, 대규모).
+- 이름 변경은 라이브 DB 직접 수정(로컬 dev도 같은 DB). 동명이인 새 이름은 차단.

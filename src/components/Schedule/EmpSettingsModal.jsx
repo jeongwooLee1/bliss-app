@@ -5,7 +5,7 @@ import { BRANCHES_SCH, BRANCH_LABEL, STATUS, getDow0Mon, fmtDs } from './schedul
 const RANKS = ['원장','마스터','시니어','인턴'];
 const RANK_COLOR = {원장:'#8B4513',마스터:'#2a6099',시니어:'#4CAF50',인턴:'#999'};
 
-export default function EmpSettingsModal({ allEmployees, empSettings, deletedEmpIds, maleRotation, onSetEmpSetting, onAddEmp, onDeleteEmp, onSaveMaleRotation, onUpdateEmp, onClose,
+export default function EmpSettingsModal({ allEmployees, empSettings, deletedEmpIds, maleRotation, onSetEmpSetting, onAddEmp, onDeleteEmp, onRenameEmp, onSaveMaleRotation, onUpdateEmp, onClose,
   ownerReqs, empReqs, ownerRepeat, days, year, month, curMonthStr, nextMonthStr, onSetOwnerReqs, onSetEmpReqs, onSaveOwnerReqs, onSaveEmpReqs, onSetOwnerRepeat }) {
   const [showAddEmp, setShowAddEmp] = useState(false)
   const todayStr = new Date().toISOString().slice(0, 10)
@@ -36,7 +36,7 @@ export default function EmpSettingsModal({ allEmployees, empSettings, deletedEmp
           <div key={branch.id} style={{ marginBottom:16 }}>
             <div style={{ fontSize:12, fontWeight:700, color:branch.color, marginBottom:8, borderBottom:`1px solid ${branch.color}33`, paddingBottom:4 }}>{branch.name}</div>
             <div style={{ display:'flex', flexWrap:'wrap', gap:10 }}>
-              {emps.map(emp => <EmpCard key={emp.id} emp={emp} branch={branch} empSettings={empSettings} onSetEmpSetting={onSetEmpSetting} onDeleteEmp={onDeleteEmp} onUpdateEmp={onUpdateEmp} reqCtx={reqCtx}/>)}
+              {emps.map(emp => <EmpCard key={emp.id} emp={emp} branch={branch} empSettings={empSettings} onSetEmpSetting={onSetEmpSetting} onDeleteEmp={onDeleteEmp} onRenameEmp={onRenameEmp} onUpdateEmp={onUpdateEmp} reqCtx={reqCtx}/>)}
             </div>
           </div>
         )
@@ -128,7 +128,7 @@ export default function EmpSettingsModal({ allEmployees, empSettings, deletedEmp
   </>
 }
 
-function EmpCard({ emp, branch, empSettings, onSetEmpSetting, onDeleteEmp, onUpdateEmp, reqCtx }) {
+function EmpCard({ emp, branch, empSettings, onSetEmpSetting, onDeleteEmp, onRenameEmp, onUpdateEmp, reqCtx }) {
   const cfg = empSettings[emp.id] || { weeklyWork:5, altPattern:false }
   const excluded = !!cfg.excludeFromSchedule
   const isOwner = emp.isOwner || emp.rank === '원장'
@@ -154,7 +154,11 @@ function EmpCard({ emp, branch, empSettings, onSetEmpSetting, onDeleteEmp, onUpd
   return (
     <div style={{ border:`1.5px solid ${excluded ? T.gray400 : '#e4ddd0'}`, borderRadius:8, padding:'8px 12px', minWidth:240, background: excluded ? T.gray100 : T.bgCard, opacity:excluded ? 0.85 : 1 }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
-        <div style={{ fontWeight:700, fontSize:12, color:'#3a2010' }}>{emp.name}</div>
+        <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+          <div style={{ fontWeight:700, fontSize:12, color:'#3a2010' }}>{emp.name}</div>
+          {onRenameEmp && <button onClick={() => { const nn = prompt(`'${emp.name}' 직원의 새 이름을 입력하세요.\n(근무표·예약·매출 등 모든 기록이 새 이름으로 함께 옮겨집니다)`, emp.name); if (nn && nn.trim() && nn.trim() !== emp.id) onRenameEmp(emp.id, nn.trim()); }}
+            title="이름 변경 (모든 기록 함께 이전)" style={{ fontSize:10, padding:'1px 5px', borderRadius:4, border:`1px solid ${T.border}`, background:T.bgCard, color:T.textSub, cursor:'pointer', fontFamily:'inherit' }}>✎ 이름</button>}
+        </div>
         <button onClick={() => onDeleteEmp(emp.id)} style={{ fontSize:10, padding:'1px 5px', borderRadius:4, border:'1px solid #f5b3b3', background:T.dangerLt, color:T.danger, cursor:'pointer', fontFamily:'inherit' }}>삭제</button>
       </div>
       {/* 근무 제외 + 로테이션 토글 */}
