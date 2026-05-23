@@ -3956,7 +3956,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         </div>;
       })()}
       {/* Single scroll container */}
-      <div ref={scrollRef} className="timeline-scroll" style={{flex:1,overflow:"auto",minHeight:0,overscrollBehavior:"none",paddingBottom:200}}>
+      <div ref={scrollRef} className="timeline-scroll" style={{flex:1,overflow:"auto",minHeight:0,overscrollBehavior:"none",paddingBottom:200,touchAction:"pan-y"}}>
 
         {/* Top Bar - sticky */}
         <div ref={topbarRef} className="tl-topbar" style={{position:"sticky",top:0,left:0,zIndex:30,borderBottom:"none",boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",background:T.bgCard,padding:"6px 12px",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",minWidth:"100%",boxSizing:"border-box",overflow:"visible"}}>
