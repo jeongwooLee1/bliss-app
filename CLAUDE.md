@@ -2236,3 +2236,18 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
 - 영업시간(윈도우 밖) + delay ON: 1분 후 직원 미응답 시 AI fallback
 - 영업시간 + delay OFF: AI 안 함 (직원 100% 응대)
 - active mode (AI가 한 번 답한 thread + 직원 outbound 없음): 시간 무관 즉시 (대화 흐름 보존)
+
+### 서버 — 네이버 예약 블록시간(dur) = 시술합 자동 동기화 (2026-05-23, React 변경 0)
+**증상** (Tagnipez #1244388060): 브라질리언(45)+케어(10)=55분 매칭인데 블록 dur=80분으로 어긋남. 다수 네이버 예약이 block_dur ≠ svc_dur_sum (55·60·80·105 제각각).
+**원인**: 신규 네이버 예약은 `ai_analyze_reservation`이 처음부터 `dur=max(시술합,30)`으로 맞춤(정상). 문제는 **분석 후 시술/시술시간이 바뀐 기존 건** — `_should_analyze` 게이트(selected_services 있으면 재분석 skip, 비용 절감 5/15 도입)가 재분석을 막아 dur이 stale로 남음. `dur`이 `BLISS_PRESERVE_FIELDS`라 스크랩 INSERT 하드코딩값(45)도 안 덮고 시술합 재계산도 안 됨. +5/+15 패턴은 시술 duration이 나중에 수정됐는데 기존 예약 dur은 옛 값 유지된 흔적.
+**fix** (`bliss_naver.py` `db_upsert`, 백업 `bak_pre_dursync_20260523_120510`):
+- row SELECT 2곳에 `selected_services,dur` 추가
+- UPDATE 경로의 `update` 빌드 후 dur 재동기화 블록 추가 — `schedule_log`(수동 시간조정 흔적) 없고, 기존 `selected_services` 시술합 > 0 이고, 현재 dur ≠ `max(시술합,30)`이면 → `update["dur"]` + `update["end_time"]`(시작시각+dur) 세팅. 시술 dur 맵은 `_load_ai_settings()` 캐시 재사용 → **AI 재호출 0, 비용 0**.
+- 네이버 예약이 스크랩/변경될 때마다 dur이 현재 시술합으로 자동 sync. `db_upsert`에 `re` 최상위 import 없어 블록 내 `import re as _re_dur` 로컬 import 사용.
+**정책** (유저 결정): 최소 블록 30분 유지(`max(svc_sum,30)`), schedule_log 수동조정 흔적은 보존.
+**소급** (유저 결정 — 오늘 이후만): 일회성 스크립트로 오늘+ 네이버 예약 dur≠시술합 4건 즉시 교정 — #1244388060 80→55(19:00–19:55), #1241696048 60→55, #1243404984 120→105, #1243690997 90→85. 재감사 결과 잔여 불일치 0건. 과거 예약은 미적용(유저 결정).
+**적용**: 서버 직접 (scp + `py_compile` + `systemctl restart bliss-naver`, 전 스레드 정상 기동 확인). React 변경 0 → 버전업·CF퍼지 불필요.
+**유의**:
+- 재동기화는 **스크랩/변경 시점에만** 발화 (`db_upsert` UPDATE 경로). reserved 미래 예약이 재스크랩 안 되면 즉시 반영 안 됨 — 그래서 기존 backlog은 backfill로 처리. 신규·변경 건은 자동.
+- 클라이언트(앱)에서 직원이 시술 수동 편집 시 dur 재계산은 별도(React) — 다만 다음 네이버 스크랩 때 서버가 sync하므로 5~30분 내 보정됨.
+- `_load_ai_settings` services는 "N회"(다회권/보유권) 제외 — dur 합산에서 보유권은 0 기여(정상).
