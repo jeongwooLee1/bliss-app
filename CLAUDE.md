@@ -2251,3 +2251,18 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
 - 재동기화는 **스크랩/변경 시점에만** 발화 (`db_upsert` UPDATE 경로). reserved 미래 예약이 재스크랩 안 되면 즉시 반영 안 됨 — 그래서 기존 backlog은 backfill로 처리. 신규·변경 건은 자동.
 - 클라이언트(앱)에서 직원이 시술 수동 편집 시 dur 재계산은 별도(React) — 다만 다음 네이버 스크랩 때 서버가 sync하므로 5~30분 내 보정됨.
 - `_load_ai_settings` services는 "N회"(다회권/보유권) 제외 — dur 합산에서 보유권은 0 기여(정상).
+
+### 서버 — AI 지연응답: 직원 응대중 thread에서 "답변 필요 여부" 판정 게이트 (2026-05-23, React 변경 0)
+**증상** (cece WhatsApp 33783699257): 고객이 몸이 안 좋아 예약 연기 요청 → 직원이 수동 응대("일정 확정되면 연락주세요, 건강 기도할게요") → 고객 "Okay I will! Thank you so much!"(단순 인사) → **AI 지연응답이 끼어들어** 잔존 `request` 예약(16:30 홍대 눈썹+윗입술)을 "오늘 4:30 뵙길 기대"라고 확정조로 발송. 직원이 "방금 건 챗봇 오입력" 정정.
+**원인**: `pending_ai_replies_worker`의 직원 응대 감지가 **트리거 메시지 이후(`created_at > trigger`)의 직원 outbound만** 검사. 직원이 트리거 직전에 마무리 멘트를 했고 고객 "Okay"는 그에 대한 인사인데, 그 이후 직원 outbound가 없어 `canceled_by_staff`에 안 걸리고 AI fallback 발화. AI는 잔존 request 예약을 활성으로 보고 확정.
+**fix** (`bliss_naver.py`, 백업 `bak_pre_needsreply_20260523_123745`):
+- `_msg_needs_reply(text, prev_context)` 헬퍼 신규 — 고객 메시지가 '업체 답변 필요(질문/예약요청)'인지 '답변 불필요(인사·마무리·동의·감사)'인지 Gemini 2.5 Flash(무료)로 판정. 질문 신호 휴리스틱 + Gemini. 실패/불확실 시 False(미발송 — 어차피 직원 응대중이라 안전).
+- worker step 2.5 추가 — **직원(비-AI)이 최근 30분 내 outbound 있는(=수동 응대중) thread**면, 고객 마지막 메시지를 `_msg_needs_reply`로 판정. 답변 불필요면 `canceled_by_staff`로 마킹 + 미발송. 질문/예약요청이면 평소대로 AI 발화.
+- 유저 결정: 전면 억제가 아니라 "직원이 응대 중일 때 메시지가 답변 필요한지 분석 후 필요할 때만 답". 프롬프트(예약 확정조 차단) 변경은 안 함 — 직원 응대중 게이트만으로 충분(유저 결정).
+**검증**: standalone 6케이스 — "Okay I will! Thank you!"·"감사합니다 알겠어요"·"고맙습니다 :)" → NO(미발송), "네 5/25 3시로 변경해주세요"·"Can I book brazilian tomorrow 3pm?"·"주소가 어디에요?" → YES(발화). 전부 정답.
+**적용**: 서버 직접 (scp + `py_compile` + `systemctl restart`, worker 정상 기동 확인). React 변경 0.
+**유의**:
+- 게이트는 delay 경로(worker)에만. active mode(AI 연속 응대 중 즉시 응답)는 직원 outbound 시 이미 reset되므로 별개. 직원 미관여 thread는 기존대로 AI가 인사 포함 전부 응대.
+- 판정은 직원 outbound가 최근 30분 내일 때만 발동 — 직원이 오래전 답하고 빠진 thread는 평소처럼 AI fallback.
+- status는 새 값 대신 기존 `canceled_by_staff` 재사용(CHECK 제약 위험 회피, 의미상 "사람 응대중") — 사유는 로그로 구분.
+- cece 잔존 예약: 16:00·16:30 cancelled 2건 + 16:30 `request` 1건(ai_q1d68zept012) 잔존 — 고객이 연기 중이라 오늘 방문 안 함. 정리 여부는 직원 판단(미조치).
