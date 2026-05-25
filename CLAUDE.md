@@ -2353,3 +2353,34 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
 #### 같은 배포에 함께 (v3.7.837)
 - **모바일 swipe**: v3.7.836 `touch-action:pan-y`가 빈영역 외에서 "안 움직임" 유발 → pan-y·터치 단계이동 제거, **네이티브 스크롤 + 멈추면 가까운 지점 항상 스냅**(거리제한 제거)로 변경.
 - **SaleForm 제품쿠폰 fix** (현아 버그): 새 다담권 즉시차감 상한(`svcAfterAllDiscounts`)에 `evtCouponDiscountOnProd` 누락 → 제품전용 쿠폰 80,000이 제품 아닌 다담권에 붙던 것 → `- evtCouponDiscountOnProd` 추가.
+
+### v3.7.862 → v3.7.864 — 매출상세 2단·패키지 미사용 검토·로그인 개편·계정 인증(가입/아이디·비번찾기) (2026-05-25~26)
+
+#### v3.7.862 — 고객 상세 예약내역 → 예약모달 센터+빨강반짝
+- CustomersPage 고객 상세에 "예약 내역" 탭(매출 내역 옆). 예약 행 클릭 → 타임라인 예약모달 오픈.
+- TimelinePage pendingOpenRes: 모달 케이스도 `_highlightOnly`와 동일한 정밀 센터 스크롤 + 빨강 테두리 반짝(`blissHlBlink`). 모달 진입 fetch 버그(`rows[0]` 배열 처리) 수정.
+
+#### v3.7.863 — 매출상세 2단 + 패키지 미사용 검토 + 로그인 개편
+- **SalesPage 매출 상세 2단**: 상단 결제수단 요약 유지, 그 아래 좌(시술/제품 표)·우(메모) 2컬럼 flex. 🏷 관리내역(태그) 블록 제거(유저 요청).
+- **신규 페이지 `AdminPkgUnusedReview.jsx`** "패키지 당일 미사용 검토" — 관리설정 아님, **사이드바 "공지&요청" 아래** 독립 메뉴(`pkgunused`, /pkg-unused, isMaster). nav(AppShell)+Sidebar 시스템 카테고리+PAGE_ROUTES 등록.
+  - 로직: `package_transactions` charge(앱 기록 구매) 중 **구매 당일 차감 없는 건**. 제외조건 = 연간권 / 같은날 deduct(날짜+sale_id) / 삭제된 패키지(orphan, pmap에 없음) / 같은 패키지 2개이상 보유 / 구매매출에 실제 시술 라인 있음(브라질리언 등). **`sb.getAll` 페이지네이션 필수**(PostgREST 1000행 캡으로 최신 차감 누락 버그 fix). 현재 ~11건.
+  - 지점필터 + 검색 + 고객정보↗ 버튼(setPendingOpenCust→customers) + **확인완료 버튼**(schedule_data `pkg_unused_reviewed_v1`에 package_id 배열 저장, 기본 숨김, 토글 표시).
+- **SaleForm 저장 경고**: 신규 등록에서 패키지/선불권 구매했는데 당일 사용(차감) 0이면 confirm. 판정 = `newPkgInstantDeduct>0`(선불권) 또는 `usePkgToday[svc.id]>0`(다회권) 둘 다 없을 때. editMode 제외.
+- **로그인 화면 개편**(AppShell Login): `/landing.html` iframe 흐린 배경(blur9px)+그라데이션 오버레이 / PG footer(정책·사업자정보) 제거(메인에 있음) / 닫기(×)버튼→`/` / 카카오·구글 이모지→SVG(msgSq + 공식 Google G).
+
+#### 서버 — AI 콜라보 게이트 매장발신 마무리 멘트 (React 변경 0)
+- `ai_booking.py`: 매장이 먼저 협업 제안한 대화(_outbound_collab)가 기존 "AI 침묵"이었는데 → **마케팅 담당자 안내 마무리 멘트 발송**(예약 안 잡음). 한/영 분기. 인플루언서 콜라보 대화방은 AI가 예약 절대 안 잡고 "담당자 출근 후 연락" 안내. 백업 `bak_pre_collab_outbound`.
+
+#### v3.7.864 — 계정 인증: 회원가입 재설계 + 아이디/비밀번호 찾기
+- **DB**(migration `accounts_phone_and_reset`): `accounts.phone` 추가. `account_signup(p_login_id,p_password,p_name,p_email,p_phone)` — phone 정규화 저장(하위호환). `admin_reset_password(login_id,new_password)` bcrypt 재설정 RPC(anon/authenticated REVOKE — service_role 전용). auth는 `crypt(pw, password_hash)` 검증(bcrypt).
+- **서버 엔드포인트 5개**(bliss_naver.py, 백업 `bak_pre_acctauth`): `/account-verify-send`(SMS 6자리, `_cust_verify_codes`에 `acct:`prefix 재사용, NPRO send-sms), `/account-verify-check`, `/account-find-id`(phone+code→login_id, name 추가필터), `/account-reset-sms`(인증후 admin_reset_password 호출, 멀티계정 시 login_id 요구), `/account-reset-email`(임시비번 생성→admin_reset_password→Gmail SMTP 발송, 계정/이메일 없으면 sent:false로 노출최소화). 헬퍼 `_acct_resp`/`_acct_verify_code` 모듈레벨 추가.
+  - **nginx**: location regex에 5개 경로 추가(백업 `/home/ubuntu/bliss_nginx.bak_acctauth_*`, sites-enabled 밖).
+- **SignupWizard 재설계**(참고: 공비서 화면): 아이디·비번+확인(영문+숫자 8~20)·이름·이메일(필수)·휴대폰 인증(전송→코드→확인)·약관(전체동의+이용약관/개인정보 필수+마케팅 선택). 인증완료+필수약관 동의 시 가입버튼 활성.
+- **AuthHelpModal**(로그인 "아이디 찾기·비밀번호 찾기" 링크): 아이디찾기=이름+휴대폰인증→login_id 표시+자동채움. 비번찾기 2탭=이메일(임시비번 발송)/휴대폰(인증→새비번). `acctApi('account-*')` 헬퍼 + `_normPhone`/`_fmtPhone`.
+- **검증**: account_signup(email+phone)·admin_reset_password·엔드포인트 라우팅(phone_format/missing_fields/sent:false)·기존 demo 로그인 무결성 — 전부 PASS. ⚠️ **실 SMS/실메일 end-to-end 미테스트**(실문자·실메일 발송+실계정 비번변경 우려) — 정우님 본인 번호/메일로 1회 확인 권장.
+
+#### 주의사항 (v3.7.864 이후)
+- **신규 가입 비번 규칙 = 영문+숫자 8~20자** (기존 계정·demo는 무관, 기존 로그인 안 깨짐).
+- **계정 비번 = `accounts.password_hash`(bcrypt)** — 재설정은 `admin_reset_password` RPC(service_role)만. 구 UsersPage는 `app_users.password`(레거시) 기록이라 계정 로그인과 별개(추후 정리 대상).
+- **기존 계정 자가 재설정**: 이메일 5/20·전화 0이라 기존 계정은 메일/전화 등록된 것만 가능, 나머지는 본사 문의 폴백. 신규 가입자는 둘 다 받아 전부 가능.
+- **계정 SMS 인증** = NPRO(강남 발신번호 br_4bcauqvrb) 재사용, 건당 SMS 비용. 코드 10분 만료 메모리 캐시(`acct:`+phone).
