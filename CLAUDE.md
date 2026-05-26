@@ -2447,6 +2447,15 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
 **설계 원칙**(유저 지적): 신규/기존 판단은 **예약 등록 시 한 번(`is_new_cust`)** 만 하고 태그·차트 모두 그걸 사용. 차트가 따로 또 판단하면 안 됨.
 **fix** (`ai_booking.py` `create_booking_from_ai`, 백업 `bak_pre_isnewphone_*`): is_new_cust 판단에 **전화 기반 보정** 추가 — `_cust_created`거나 cust_id 매출 없어도, **같은 전화에 cust_num 보유 고객(=기존 등록)이 있으면 `is_new_cust=False`**. 이 한 번의 판단이 신규태그 + 차트선택 공통 기준. (차트 쪽 `_chart_is_new` 별도 안전장치는 만들었다가 **폐기**·되돌림 — 단일 판단 원칙.)
 **미해결(근본·별도)**: AI 매칭 실패로 인한 **중복 고객 레코드** 자체는 남음(전화 일치하는데 이름 달라 매칭 실패). 매칭 개선(2026-05-16 find_cust_by_phone의 _name_mismatch 패턴을 AI 예약 고객생성에도 적용) + Yuka류 중복 병합은 별도 트랙. is_new_cust는 이제 전화로 보정되므로 차트·태그는 정상.
+→ **(2026-05-26 후속 완료)** AI 예약 고객생성에 **전화 단독 매칭**(이름 달라도 1명이면 연결, cust_num 보유 1명 우선) 추가 + **기존 중복 8건 병합**(예약·sns·토큰·동의서 정식고객 재연결 후 삭제, 권후남/박현남=번호공유 다른사람은 제외). 아래 항목 참고.
+
+### 서버 — AI 예약: ① 답변추천 자동예약 ② 회원번호(cust_num) 대화추출 매칭 (2026-05-26, React 변경 0)
+**발단**: zerotokorea(인스타, 홍대, 회원 #52059) — 직원이 "AI 답변 추천"을 눌러 "Perfect! confirmed" 멘트가 나갔는데 **예약 0건 + 기존고객 연결 안 됨**.
+**원인**: ① "AI 답변 추천"=`/ai-suggest`(suggest_only=True)는 **예약 생성을 skip**하고 답변만 → "confirmed" 멘트만 나가 거짓말. (`/ai-book`=AI 예약등록은 정상 작동 확인) ② cust_num 매칭이 **프로필명("55054 Naush" 형태)만** 보고 **대화 본문("membership number ... 52059")은 안 봄** → #52059 못 찾아 새 고객(cust_ai_*) 생성.
+**fix** (`ai_booking.py`, 백업 `bak_pre_custnum_suggest_*`):
+  - **B (답변추천 자동예약)**: `ai_booking_agent`에서 예약 가능 상황(`_proceed`=action=book+가용)이면 `suggest_only`여도 `create_booking_from_ai` 호출(기존 skip 제거). → 답변추천 눌러도 정보 완비면 실제 예약 생성 → "확정" 멘트가 진실. 정보 부족(action≠book)이면 진입 안 함(답변만). 유저 요청: "예약 가능 상황이면 답변추천이 예약등록까지".
+  - **A (회원번호 대화추출)**: 프로필명에 번호 없으면 `history_text`+user_msg에서 회원번호 정규식 추출(`membership/member/회원번호/멤버십` 키워드 + 3~6자리), 기존 cust_num 매칭 로직(→`_matched_cust`→`booking.custId`)에 연결. 검증: "membership number is 52059"→52059, "회원번호 52059"→52059, 일반 문장→None(오탐 없음) + 실제 cust_num 존재 시에만 매칭.
+**데이터 정정**: zerotokorea 건 — `/ai-book` 호출로 예약 생성됐던 중복 고객(cust_ai_*)을 **#52059(Yisel sandoval)** 로 재연결 + 인스타 sns 이전 + 중복 삭제.
 
 ### 서버 — 차트 템플릿 v2(폐기) → v3(정식) 통일 (2026-05-26, React 변경 0)
 **발견**: 차트가 경로마다 버전이 갈림 — **매장 키오스크는 v3**(`ct_condition_v3`/`ct_consent_full_ko_v3`, is_active=true 정식), **AI 예약확정 발송 링크는 v2**(is_active=**false** 폐기). 서버 `_pick_chart_tpls`가 v2를 하드코딩한 채 안 바뀜 → 발송 링크로 받는 고객은 **폐기된 구버전 차트**를 받음(최근 30일 ct_condition_v2 34건). 김미진 케이스 추적 중 발견.
