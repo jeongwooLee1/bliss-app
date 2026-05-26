@@ -18,6 +18,13 @@
 - rsv_today 알림톡 WL 버튼 URL을 카카오가 전달 시 제거 → 본문 변수 `#{차트링크}`로 전환. 신규 템플릿 등록+검수 요청(8지점 UI_1603~1610, 버튼 없음).
 - **검수 승인 후**: ① `branches.noti_config.rsv_today` 8지점 tplCode/msgTpl 교체 + `buttons:[]` ② 서버 rsv_today 루프 + `_send_booking_confirm`에서 `#{차트링크}`에 `https://sign.blissme.ai/?t={token}` 전체 URL 주입 ③ 알리고 inspStatus 확인(본문 URL 카카오 반려 가능성). 등록 스크립트 `/tmp/aligo_reg_chartlink.py`.
 
+## 🟡 진행 (2026-05-26) — 카카오 **확정(rsv_confirm)** 알림톡에 차트링크 추가 (검수 요청 완료)
+**배경**: 카카오 예약 확정 알림톡(rsv_confirm)에 차트링크 없음 + 당일 오후 예약은 rsv_today(09시) 지나 차트링크 영영 못 받음. 카카오는 상담톡 자유발신 불가(messages 카카오 아웃바운드 0건) → 알림톡=검수 필수. 그래서 rsv_confirm 자체에 차트링크 추가(확정=즉시발송이라 당일 오후예약까지 커버).
+**등록·검수요청 완료** (2026-05-26, 8지점 신규 템플릿 "확정안내_차트링크", 기존 rsv_confirm 본문 + `https://sign.blissme.ai/?t=#{차트토큰}` 줄 추가, 버튼 없음):
+  - 강남 **UI_1879** / 마곡 UI_1880 / 왕십리 UI_1881 / 용산 UI_1882 / 위례 UI_1883 / 잠실 UI_1884 / 천호 UI_1885 / 홍대 UI_1886
+  - 등록 스크립트: `/tmp/aligo_reg_rsvconfirm.py` (senderkey 8지점, aligoKey 공통). 검수중 당일안내(UI_160x)는 그대로 둠.
+**검수 승인 후 작업**: ① `branches.noti_config.rsv_confirm` 8지점 tplCode를 위 UI_187x~188x로 교체 + msgTpl 동일 교체 ② rsv_confirm params에 `#{차트토큰}` 추가 — 서버가 확정 시 차트 토큰 항상 생성해 주입(`send_booking_confirm`의 토큰 생성 로직 재사용, 기존/신규는 `_pick_chart_tpls`+is_new_cust 기준). ③ 알리고 inspStatus 확인(본문 URL 반려 가능성, 당일안내와 동일 리스크).
+
 ## ⏭️ consent 세션 위임 (이월) — sign.blissme.ai "내 보유 현황" 버그 2건
 **bliss-consent 앱(별도 레포 — 이 세션에서 안 건드림).**
 1. 연간회원권 "99회 남음" → 회수 대신 "무제한"/유효기간 표시.
