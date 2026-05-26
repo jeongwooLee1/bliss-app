@@ -11,6 +11,12 @@ import { SmartDatePicker } from '../Reservations/ReservationsPage'
 import { DetailedSaleForm } from '../Timeline/ReservationModal'
 import SalesGridPage from './SalesGridPage'
 
+/* ── 포인트 총매출 제외 정책일 ── */
+// 이 날짜부터(>=) 발생한 매출은 포인트(svc_point/prod_point)를 총매출에서 제외(현금 미수취).
+// 이전 매출은 그대로 포함 → 과거 총매출 숫자 불변. 포인트는 '포인트' 열에 항상 표시.
+const POINT_EXCL_FROM = '2026-05-26';
+const exclPt = (sale, v) => ((sale?.date || '') >= POINT_EXCL_FROM ? (v || 0) : 0);
+
 /* ── sale_details 캐시 ── */
 const _detailCache = {};  // { saleId: [rows...] | "loading" }
 
@@ -181,7 +187,8 @@ function SettlementModal({ data, userBranches, onClose, initBranch, initDate }) 
   const _addDays = (n) => { const d = new Date(); d.setDate(d.getDate()+n); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
   const prod = agg ? {cash:agg.prodCash,card:agg.prodCard,transfer:agg.prodTransfer,point:agg.prodPoint,ext:0} : null;
   const svc  = agg ? {cash:agg.svcCash,card:agg.svcCard,transfer:agg.svcTransfer,point:agg.svcPoint,ext:agg.ext} : null;
-  const rowTot = (r) => r ? r.cash+r.card+r.transfer+r.point+r.ext : 0;
+  // 정책일 이후 날짜면 포인트 제외(현금 미수취). 포인트는 별도 열로 표시만.
+  const rowTot = (r) => r ? r.cash+r.card+r.transfer+(date>=POINT_EXCL_FROM?0:r.point)+r.ext : 0;
   const sumK = (k) => (prod?prod[k]:0)+(svc?svc[k]:0);
   const cols = [["현금","cash","#16a34a"],["카드","card",T.primary],["입금","transfer",T.info],["포인트","point",T.orange],["외부선결제","ext","#8E24AA"]];
   const cell = (v) => v>0 ? fmt(v) : <span style={{color:T.gray300}}>-</span>;
@@ -393,11 +400,12 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
       const ep = s.externalPrepaid || 0;
       const gift = s.gift || 0;
       const _split = splitSvcProd(s);
-      g.svc += _split.svc + ep; // 외부선결제는 시술에 포함 (운영 규칙)
-      g.prod += _split.prod;
+      // 정책일 이후 매출은 포인트 제외(현금 미수취) — g.point에 별도 집계해 표시만
+      g.svc += _split.svc + ep - exclPt(s,s.svcPoint); // 외부선결제는 시술에 포함 (운영 규칙)
+      g.prod += _split.prod - exclPt(s,s.prodPoint);
       g.ep += ep;
       g.gift += gift;
-      g.total += svRaw + pr + gift + ep;
+      g.total += (svRaw-exclPt(s,s.svcPoint)) + (pr-exclPt(s,s.prodPoint)) + gift + ep;
       g.count += 1;
       // 결제수단별 합계 (시술+제품)
       g.cash     += (s.svcCash||0)     + (s.prodCash||0);
@@ -477,13 +485,14 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
     const svDisp = split.svc + extToSvc;
     const prDisp = split.prod;
     return {
-      svc:  a.svc+svDisp,  svcCash:a.svcCash+s.svcCash, svcTransfer:a.svcTransfer+s.svcTransfer,
+      // 정책일 이후 매출은 포인트를 총매출/시술/제품에서 제외(현금 미수취). svcPoint/prodPoint는 '포인트' 열에 표시만.
+      svc:  a.svc+svDisp-exclPt(s,s.svcPoint),  svcCash:a.svcCash+s.svcCash, svcTransfer:a.svcTransfer+s.svcTransfer,
       svcCard:a.svcCard+s.svcCard, svcPoint:a.svcPoint+s.svcPoint,
-      prod: a.prod+prDisp, prodCash:a.prodCash+s.prodCash, prodTransfer:a.prodTransfer+s.prodTransfer,
+      prod: a.prod+prDisp-exclPt(s,s.prodPoint), prodCash:a.prodCash+s.prodCash, prodTransfer:a.prodTransfer+s.prodTransfer,
       prodCard:a.prodCard+s.prodCard, prodPoint:a.prodPoint+s.prodPoint,
       gift: a.gift+(s.gift||0),
       extPrepaid: a.extPrepaid+(s.externalPrepaid||0),
-      total: a.total+svRaw+pr+(s.gift||0)+(s.externalPrepaid||0),
+      total: a.total+(svRaw-exclPt(s,s.svcPoint))+(pr-exclPt(s,s.prodPoint))+(s.gift||0)+(s.externalPrepaid||0),
     };
   }, {svc:0,svcCash:0,svcTransfer:0,svcCard:0,svcPoint:0,prod:0,prodCash:0,prodTransfer:0,prodCard:0,prodPoint:0,gift:0,extPrepaid:0,total:0});
   // 외부 플랫폼별 선결제 합계
@@ -850,13 +859,14 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
               const extToSvc = (s.externalPrepaid||0);
               // 시술/제품 분리 — sale_details 기반 (구버전 데이터는 svc_*/prod_* fallback)
               const _split = splitSvcProd(s);
-              const sv = _split.svc + extToSvc;
-              const prDisp = _split.prod;
+              // 정책일 이후 매출은 포인트 제외(현금 미수취) — rowPoint는 '포인트' 열에 표시만
+              const sv = _split.svc + extToSvc - exclPt(s,s.svcPoint);
+              const prDisp = _split.prod - exclPt(s,s.prodPoint);
               const rowCash = (s.svcCash||0)+(s.prodCash||0);
               const rowCard = (s.svcCard||0)+(s.prodCard||0);
               const rowTransfer = (s.svcTransfer||0)+(s.prodTransfer||0);
               const rowPoint = (s.svcPoint||0)+(s.prodPoint||0);
-              const total = svRaw+pr+(s.gift||0)+(s.externalPrepaid||0);
+              const total = (svRaw-exclPt(s,s.svcPoint))+(pr-exclPt(s,s.prodPoint))+(s.gift||0)+(s.externalPrepaid||0);
               const isExp = expandedId===s.id;
               const br = (data.branches||[]).find(b=>b.id===s.bid);
               return <React.Fragment key={s.id}>
@@ -1290,8 +1300,9 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
   const chartDays = (() => {
     const allSales = (data?.sales || []).filter(s => (vb==="all" ? allBids.includes(s.bid) : s.bid===vb));
     const sumOf = (arr) => arr.reduce((a,s) => ({
-      svc: a.svc + s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint+(s.externalPrepaid||0),
-      prod: a.prod + s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint,
+      // 정책일 이후 매출은 포인트 제외
+      svc: a.svc + s.svcCash+s.svcTransfer+s.svcCard+(s.svcPoint-exclPt(s,s.svcPoint))+(s.externalPrepaid||0),
+      prod: a.prod + s.prodCash+s.prodTransfer+s.prodCard+(s.prodPoint-exclPt(s,s.prodPoint)),
     }), {svc:0, prod:0});
 
     if (statsPeriod === "day") {
@@ -1345,8 +1356,8 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
       if (!y) return;
       if (!byYear.has(y)) byYear.set(y, {svc:0, prod:0});
       const r = byYear.get(y);
-      r.svc += s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint+(s.externalPrepaid||0);
-      r.prod += s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint;
+      r.svc += s.svcCash+s.svcTransfer+s.svcCard+(s.svcPoint-exclPt(s,s.svcPoint))+(s.externalPrepaid||0);  // 정책일 이후 포인트 제외
+      r.prod += s.prodCash+s.prodTransfer+s.prodCard+(s.prodPoint-exclPt(s,s.prodPoint));
     });
     return Array.from(byYear.entries())
       .sort((a,b) => a[0].localeCompare(b[0]))

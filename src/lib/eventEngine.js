@@ -448,6 +448,7 @@ export function applyEvents(events, ctx) {
     issueCoupons: [],
     virtualCoupons: [],
     appliedEvents: [],
+    pointEarnByEvent: [],   // [{eventId, trigger, earn}] — 선불권 적립 포인트를 권에 연결하기 위함
   }
   if (!Array.isArray(events)) return result
   const now = new Date()
@@ -484,13 +485,17 @@ export function applyEvents(events, ctx) {
   const svcNetAmount = Math.max(0, (ctx.svcTotal||0) - svcDiscountTotal)
   const ctx2 = { ...ctx, netAmount, svcNetAmount }
 
-  // Pass 2: point_earn만 계산 (netAmount 반영)
+  // Pass 2: point_earn만 계산 (netAmount 반영) + 이벤트별 적립액 기록
   result.appliedEvents.forEach(evt => {
     const rewards = Array.isArray(evt.rewards) ? evt.rewards : []
+    let evtEarn = 0
     rewards.forEach((reward, idx) => {
       if (reward.type !== 'point_earn') return
+      const _before = result.pointEarn
       applyReward({ ...reward, _idx: idx }, evt, ctx2, result, now)
+      evtEarn += (result.pointEarn - _before)
     })
+    if (evtEarn > 0) result.pointEarnByEvent.push({ eventId: evt.id, trigger: evt.trigger, earn: evtEarn })
   })
 
   return result

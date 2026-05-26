@@ -7,6 +7,10 @@ import I from '../common/I'
 
 const FILTER_KEY = 'salesGrid_filters_v2'
 
+// 이 날짜부터(>=) 발생한 매출은 포인트를 금액(매출)에서 제외(현금 미수취). 이전은 그대로.
+const POINT_EXCL_FROM = '2026-05-26'
+const exclPt = (sale, v) => ((sale?.date || '') >= POINT_EXCL_FROM ? (v || 0) : 0)
+
 const today = () => new Date().toISOString().slice(0, 10)
 const back = (days) => { const d = new Date(); d.setDate(d.getDate() - days); return d.toISOString().slice(0,10) }
 
@@ -358,9 +362,9 @@ function SalesGridPage({ data, userBranches = [], role }) {
       const joinDate = c?.joinDate || ''
       const br = (data?.branches || []).find(b => b.id === s.bid)
       const brName = br?.short || br?.name || ''
-      const amt =
-        (s.svcCash||0)+(s.svcCard||0)+(s.svcTransfer||0)+(s.svcPoint||0)+
-        (s.prodCash||0)+(s.prodCard||0)+(s.prodTransfer||0)+(s.prodPoint||0)+
+      const amt =  // 정책일 이후 매출은 포인트 제외(현금 미수취)
+        (s.svcCash||0)+(s.svcCard||0)+(s.svcTransfer||0)+((s.svcPoint||0)-exclPt(s,s.svcPoint))+
+        (s.prodCash||0)+(s.prodCard||0)+(s.prodTransfer||0)+((s.prodPoint||0)-exclPt(s,s.prodPoint))+
         (s.externalPrepaid||0)
       return { ...s, _custNum: custNum, _joinDate: joinDate, _brName: brName, _amount: amt }
     })

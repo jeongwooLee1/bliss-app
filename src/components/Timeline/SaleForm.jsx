@@ -1625,7 +1625,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   // viewOnly/editMode + snapshot.eventResult 있으면 매출 시점 결과 그대로 반환 (재평가 차단)
   // viewOnly/editMode + snapshot.eventResult 없는 이전 매출은 빈값 반환 (재평가 차단)
   // → 시술합계/현장결제금액 표시가 실제 sale_details 합과 일치
-  const _emptyEventResult = { pointEarn:0, pointExpiresAt:null, discountFlat:0, discountFlatPkg:0, discountFlatPrepaid:0, discountFlatAnnual:0, discountPct:0, prepaidBonus:0, issueCoupons:[], virtualCoupons:[], appliedEvents:[] };
+  const _emptyEventResult = { pointEarn:0, pointExpiresAt:null, discountFlat:0, discountFlatPkg:0, discountFlatPrepaid:0, discountFlatAnnual:0, discountPct:0, prepaidBonus:0, issueCoupons:[], virtualCoupons:[], appliedEvents:[], pointEarnByEvent:[] };
   const eventResult = React.useMemo(() => {
     if ((viewOnly || editMode) && _snapshotInput && _snapshotInput.eventResult) {
       return _snapshotInput.eventResult;
@@ -1639,7 +1639,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       const s = typeof biz?.settings === 'string' ? JSON.parse(biz.settings) : (biz?.settings||{});
       // 마스터 스위치: 이벤트 전체 OFF 상태면 엔진 skip
       if (s?.events_master_enabled === false) {
-        return { pointEarn:0, pointExpiresAt:null, discountFlat:0, discountFlatPkg:0, discountFlatPrepaid:0, discountFlatAnnual:0, discountPct:0, prepaidBonus:0, issueCoupons:[], virtualCoupons:[], appliedEvents:[] };
+        return { pointEarn:0, pointExpiresAt:null, discountFlat:0, discountFlatPkg:0, discountFlatPrepaid:0, discountFlatAnnual:0, discountPct:0, prepaidBonus:0, issueCoupons:[], virtualCoupons:[], appliedEvents:[], pointEarnByEvent:[] };
       }
       let events = Array.isArray(s?.events) ? s.events : [];
       // 레거시 point_events.newcust_10pct → 이벤트 배열에 합류
@@ -1793,7 +1793,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
           + (couponDiscountOnSvc||0) + (promoDiscountTotal||0) + (svcCompedTotal||0),
       };
       return applyEvents(events, ctx);
-    } catch (e) { console.warn('[eventEngine]', e); return { pointEarn:0, pointExpiresAt:null, discountFlat:0, discountFlatPkg:0, discountFlatPrepaid:0, discountFlatAnnual:0, discountPct:0, prepaidBonus:0, issueCoupons:[], virtualCoupons:[], appliedEvents:[] }; }
+    } catch (e) { console.warn('[eventEngine]', e); return { pointEarn:0, pointExpiresAt:null, discountFlat:0, discountFlatPkg:0, discountFlatPrepaid:0, discountFlatAnnual:0, discountPct:0, prepaidBonus:0, issueCoupons:[], virtualCoupons:[], appliedEvents:[], pointEarnByEvent:[] }; }
   }, [data?.businesses, cust.id, custHasSale, custPkgs, custSvcUsageMap, newPrepaidPurchases, newPkgPurchases, newAnnualPurchases, svcTotal, prodTotal, items, extraRows, payMethod.svcCash, payMethod.svcCard, payMethod.prodCash, payMethod.prodCard, gender]);
 
   // ─── 이벤트 발행 쿠폰 즉시 사용 — 다담권/패키지 구매로 증정되는 쿠폰을 같은 매출에서 바로 사용 ───
@@ -2605,6 +2605,9 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     const _pkgTxRecords = []; // sale.id를 알아야 하므로 나중에 flush
     // 첫 사용 pkg 추적 — 연결된 대기 쿠폰 활성화 용 (used_count 0→positive)
     const _firstUsePkgIds = []; // [{pkgId, firstUseDate (YYYY-MM-DD)}]
+    // 이 매출에서 생성된 선불권(다담/바프/다회/연간) — 적립 포인트를 권에 연결(유효기간 따라감)용
+    // expISO: 구매 즉시 사용으로 유효일이 찍혔으면 그 ISO, 아니면 null(미사용=무기한)
+    const _earnLinkPkgs = []; // [{id, faceVal, expISO}]
     const _todayStr = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })();
     Object.entries(pkgUse).forEach(([pkgId, val]) => {
       if (!val) return;
@@ -2695,13 +2698,16 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
         // 구매지점 기록 (id_imgr471swt-3 수정요청: 고객명 앞 이니셜 표시용)
         const _branchShort = (data?.branches||[]).find(b=>b.id===branchId)?.short || "";
         let _note = `잔액:${balance.toLocaleString()}`;
+        let _prepaidExpStr = null;
         if (bonus > 0) _note += ` | 보너스:+${bonus.toLocaleString()}`;
         if (deduct > 0) {
           const _expD = new Date(); _expD.setFullYear(_expD.getFullYear()+1); _expD.setDate(_expD.getDate()-1);
-          const _expStr = `${_expD.getFullYear()}-${String(_expD.getMonth()+1).padStart(2,"0")}-${String(_expD.getDate()).padStart(2,"0")}`;
-          _note += ` | 유효:${_expStr}`;
+          _prepaidExpStr = `${_expD.getFullYear()}-${String(_expD.getMonth()+1).padStart(2,"0")}-${String(_expD.getDate()).padStart(2,"0")}`;
+          _note += ` | 유효:${_prepaidExpStr}`;
         }
         if (_branchShort) _note += ` | 매장:${_branchShort.replace(/점$|본점$/,'')}`;
+        // 적립 포인트 연결용 — 면가 + 유효일(미사용이면 null)
+        _earnLinkPkgs.push({ id: newPkgId, faceVal, expISO: _prepaidExpStr ? `${_prepaidExpStr}T00:00:00+09:00` : null });
         const newPkg = {
           id: newPkgId, business_id: _activeBizId, customer_id: cust.id,
           service_id: svc.id, service_name: svc.name,
@@ -2744,10 +2750,11 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
         // — 다담권(line ~2488) / 연간회원권(line ~2591) 패턴과 동일
         // — 사용 안 하고 보유만 하면 첫 사용 시점에 자동 부여 (line ~2410 로직)
         let _pkgNote = _pkgBranchShort ? `매장:${_pkgBranchShort.replace(/점$|본점$/,'')}` : "";
+        let _pkgExpStr = null;
         if (used > 0) {
           const _expD = new Date(); _expD.setFullYear(_expD.getFullYear()+1); _expD.setDate(_expD.getDate()-1);
-          const _expStr = `${_expD.getFullYear()}-${String(_expD.getMonth()+1).padStart(2,"0")}-${String(_expD.getDate()).padStart(2,"0")}`;
-          _pkgNote = _pkgNote ? `${_pkgNote} | 유효:${_expStr}` : `유효:${_expStr}`;
+          _pkgExpStr = `${_expD.getFullYear()}-${String(_expD.getMonth()+1).padStart(2,"0")}-${String(_expD.getDate()).padStart(2,"0")}`;
+          _pkgNote = _pkgNote ? `${_pkgNote} | 유효:${_pkgExpStr}` : `유효:${_pkgExpStr}`;
         }
         const _isCouple = !!(svc.isCouple || svc.is_couple);
         // 커플 그룹 ID — 구매자·상대방 두 보유권 행을 같은 ID로 묶어 파트너 변경 시 짝 식별
@@ -2763,6 +2770,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
         };
         sb.insert("customer_packages", newPkg).catch(console.error);
         _newTriggerPkgIds.pkg_purchase.push(newPkgId);
+        _earnLinkPkgs.push({ id: newPkgId, faceVal: items[svc.id]?.amount || 0, expISO: _pkgExpStr ? `${_pkgExpStr}T00:00:00+09:00` : null });
         if (used > 0) _firstUsePkgIds.push({pkgId: newPkgId, firstUseDate: _todayStr});
         _pkgTxRecords.push({
           package_id: newPkgId, service_name: svc.name,
@@ -2855,6 +2863,8 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
         };
         sb.insert("customer_packages", newPkg).catch(console.error);
         _newTriggerPkgIds.annual_purchase.push(newPkgId);
+        // 연간권은 구매 시점에 유효일이 항상 정해짐
+        _earnLinkPkgs.push({ id: newPkgId, faceVal: items[svc.id]?.amount || 0, expISO: `${_expStr}T00:00:00+09:00` });
         const _txNote = _activeAnnualExp
           ? `선구매 갱신 (기존 만료 ${_activeAnnualExp.toISOString().slice(0,10)} 다음날 ~ ${_expStr})`
           : `신규 구매 (연간 ~ ${_expStr})`;
@@ -3146,6 +3156,15 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       (async () => {
         try {
           for (const {pkgId, firstUseDate} of _firstUsePkgIds) {
+            // 선불권 첫 사용 → 유효일 확정(첫사용+1년-1일) → 이 권으로 적립됐던 포인트의 expires_at 전파 (미설정=무기한이던 것만)
+            try {
+              const _ue = new Date(firstUseDate); _ue.setFullYear(_ue.getFullYear()+1); _ue.setDate(_ue.getDate()-1);
+              const _ueStr = `${_ue.getFullYear()}-${String(_ue.getMonth()+1).padStart(2,"0")}-${String(_ue.getDate()).padStart(2,"0")}`;
+              const _linkedPts = await sb.get("point_transactions", `&source_package_id=eq.${pkgId}&type=eq.earn&expires_at=is.null`);
+              if (Array.isArray(_linkedPts)) {
+                for (const pt of _linkedPts) sb.update("point_transactions", pt.id, { expires_at: `${_ueStr}T00:00:00+09:00` }).catch(console.error);
+              }
+            } catch(e) { console.warn("[point expiry propagate]", e); }
             // 이 pkgId에 연결된 대기 쿠폰 검색
             const linked = await sb.get("customer_packages",
               `&customer_id=eq.${cust.id}&note=ilike.*연결:${pkgId}*&note=ilike.*유효대기*`);
@@ -3295,26 +3314,56 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
         }).catch(console.error);
       }
       if (pointEarn > 0) {
-        balAfter += pointEarn;
-        // 이벤트로 자동 적립된 경우 만료일 부여
-        const _evt = newCustEventEarn.evt;
-        const _evtApplied = _evt && newCustEventEarn.earn > 0 && pointEarn === newCustEventEarn.earn;
-        let _expires = null, _source = null, _note = "매출 적립";
-        if (_evtApplied) {
-          const d = new Date(); d.setMonth(d.getMonth() + (Number(_evt.expiryMonths)||3));
-          _expires = d.toISOString();
-          _source = "event_newcust_10pct";
-          _note = `신규 고객 ${_evt.rate}% 이벤트 적립`;
+        // 선불권 구매로 적립된 포인트 → 그 선불권에 연결(유효기간 따라감). 나머지(신규고객 등)는 현행 규칙(발행+개월).
+        const _PREPAID_TRIG = ['prepaid_purchase','prepaid_recharge','pkg_purchase','pkg_repurchase','annual_purchase'];
+        const _ptByEvt = (eventResult?.pointEarnByEvent) || [];
+        const _prepaidEarnTotal = _ptByEvt.filter(e=>_PREPAID_TRIG.includes(e.trigger)).reduce((s,e)=>s+(e.earn||0),0);
+        const _canLink = !pointEarnManualRef.current && _earnLinkPkgs.length > 0 && _prepaidEarnTotal > 0;
+        const _linkedEarn = _canLink ? Math.min(_prepaidEarnTotal, pointEarn) : 0;
+        const _regularEarn = pointEarn - _linkedEarn;
+
+        // 권별 연결 — 비례 아님: 권 면가 내림차순 ↔ 이벤트 적립액 내림차순 페어링(구간↔권). 남는 적립은 최대 권에.
+        if (_linkedEarn > 0) {
+          const _passes = [..._earnLinkPkgs].sort((a,b)=>(b.faceVal||0)-(a.faceVal||0));
+          const _earns = _ptByEvt.filter(e=>_PREPAID_TRIG.includes(e.trigger)).map(e=>e.earn||0).sort((a,b)=>b-a);
+          const _assign = _passes.map((p,i)=>({ p, earn: _earns[i]||0 }));
+          const _used = _assign.reduce((s,a)=>s+a.earn,0);
+          if (_assign.length && _used !== _linkedEarn) _assign[0].earn += (_linkedEarn - _used); // 합계 보정
+          _assign.forEach(({p, earn}) => {
+            if (earn <= 0) return;
+            balAfter += earn;
+            sb.insert("point_transactions", {
+              id: "ptx_"+uid(), business_id: _activeBizId, bid: sale.bid,
+              customer_id: cust.id, type: "earn", amount: earn,
+              balance_after: balAfter, sale_id: sale.id, staff_id: sale.staffId,
+              staff_name: sale.staffName, note: "선불권 구매 적립",
+              source: "prepaid_purchase_event", source_package_id: p.id,
+              ...(p.expISO ? { expires_at: p.expISO } : {}),  // 유효 미정(미사용)이면 expires_at 없음=무기한 → 첫 사용 시 전파
+            }).catch(console.error);
+          });
         }
-        sb.insert("point_transactions", {
-          id: "ptx_"+uid(), business_id: _activeBizId, bid: sale.bid,
-          customer_id: cust.id, type: "earn", amount: pointEarn,
-          balance_after: balAfter, sale_id: sale.id, staff_id: sale.staffId,
-          staff_name: sale.staffName, note: _note,
-          ...(("expires_at" in {})?{}:{}),
-          ...(_expires ? { expires_at: _expires } : {}),
-          ...(_source ? { source: _source } : {}),
-        }).catch(console.error);
+
+        // 나머지(비선불권 적립: 신규고객 10% 등) — 현행 규칙
+        if (_regularEarn > 0) {
+          balAfter += _regularEarn;
+          const _evt = newCustEventEarn.evt;
+          const _evtApplied = _evt && newCustEventEarn.earn > 0 && _regularEarn === newCustEventEarn.earn;
+          let _expires = null, _source = null, _note = "매출 적립";
+          if (_evtApplied) {
+            const d = new Date(); d.setMonth(d.getMonth() + (Number(_evt.expiryMonths)||3));
+            _expires = d.toISOString();
+            _source = "event_newcust_10pct";
+            _note = `신규 고객 ${_evt.rate}% 이벤트 적립`;
+          }
+          sb.insert("point_transactions", {
+            id: "ptx_"+uid(), business_id: _activeBizId, bid: sale.bid,
+            customer_id: cust.id, type: "earn", amount: _regularEarn,
+            balance_after: balAfter, sale_id: sale.id, staff_id: sale.staffId,
+            staff_name: sale.staffName, note: _note,
+            ...(_expires ? { expires_at: _expires } : {}),
+            ...(_source ? { source: _source } : {}),
+          }).catch(console.error);
+        }
       }
     }
     // _continueAfter: true면 저장 후 모달 유지 + 새 매출 입력 가능하도록 부모에서 리셋

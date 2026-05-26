@@ -2399,3 +2399,26 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
 **모델 리서치+실데이터 10건 테스트 결론 (중요)**: 더 싼 모델 교체 검토했으나 **기각**. 실측 — **Gemini 3.5 Flash(현행)=9/10 최고**, Gemini 2.5 Flash-Lite=~5/10(half→전체 오류, JSON 깨짐, 스키마도 못 막음), GPT-4.1-nano=4/10(바우처·다담권 오매칭 위험). 폴백 비교 — **gpt-4.1-mini=8/8 최적**, gemini-3-flash=API 404(불가), claude-haiku-4.5=다부위 legs 누락. → **결론: Gemini 3.5 Flash 1차 + gpt-4.1-mini 폴백 = 현 구성이 최적, 교체 안 함.**
 
 **유의**: 서버 `ai_booking.py`/`bliss_naver.py`는 bliss-app git 미추적(별도 `/home/ubuntu/naver-sync/`). ssh+scp+`systemctl restart bliss-naver`로 적용. React 변경 0 → 버전업·CF퍼지 불필요.
+
+### v3.7.865 — 총매출 포인트 제외(정책일 컷오프) + 포인트 유효기간 출처별 (2026-05-26)
+
+#### Phase A — 총매출에서 포인트 제외 (정책일 `2026-05-26`부터, 과거 불변)
+**배경**: "포인트는 돈 안 받은 것이니 총매출에서 빼라. 단 그동안 건 그대로, 앞으로만." 결제수단으로 포인트 사용은 그대로 허용(svc_point 기록 OK), 총매출 집계에서만 제외.
+- **중요 사실**: `sales.svc_point`는 2025-09-11 이후 0건 — 현재 "포인트 사용"은 `point_transactions`(deduct)로만 기록되고 sales엔 차감 후 금액만 들어가 **이미 총매출에서 빠져 있음**. svc_point 경로(결제수단 포인트)는 미사용. 그래서 이 변경은 **미래에 포인트를 결제수단으로 쓸 경우 대비 + 정책 명문화**.
+- **컷오프 방식**: 매출 `date >= '2026-05-26'`이면 총매출/시술/제품에서 `svc_point+prod_point` 제외. 이전은 포함(과거 연·월 총매출 숫자 불변). 포인트는 '포인트' 열에 항상 표시.
+- **클라이언트** `SalesPage.jsx`: 모듈 상수 `POINT_EXCL_FROM='2026-05-26'` + `exclPt(sale,v)` 헬퍼. 마감정산 rowTot / 매출리스트 footer / 일별그룹 / 개별행 / 통계차트(일·연) 6곳 적용. `SalesGridPage.jsx` amt도 동일.
+- **서버 RPC**(migration `sales_total_exclude_point_from_20260526`): `get_sales_stats_summary`·`get_sales_summary`·`get_sales_by_branch`·`get_sales_monthly`·`get_sales_yearly`의 total/svc/prod에 `CASE WHEN date::date >= DATE '2026-05-26' THEN 0 ELSE svc_point END`. svc_point/prod_point 필드는 표시용 전액 반환. external_prepaid는 실수금이라 항상 포함.
+- 통계 요약 카드(시술·제품·총매출)는 RPC `t` 기반이라 RPC만으로 자동 반영.
+
+#### Phase B — 포인트 유효기간 출처별 (선불권 적립 → 권 유효기간 따라감)
+**원칙**: 선불권(다담·바프·다회·연간) 구매 이벤트로 **추가 적립된 포인트**는 그 선불권의 유효기간을 따라감. 선불권 미사용=유효기간 없음(null=무기한) → 첫 사용으로 유효 찍히면 연결 포인트도 그 날짜로 전파. 일반 적립(신규고객 10% 등)은 현행(발행+개월). **비례 분배 아님** — 각 선불권 구간 이벤트가 정해진 고정 적립액(30k/50k/70k/100k/300k/500k)을 줌, 그 권에 직접 연결.
+- **DB**(migration `point_transactions_add_source_package_id`): `point_transactions.source_package_id` + 부분 인덱스.
+- **`eventEngine.js`**: `applyEvents` 결과에 `pointEarnByEvent: [{eventId,trigger,earn}]` 추가(이벤트별 적립액).
+- **`SaleForm.jsx`**: 선불권 생성 루프(다담/다회/연간)에서 `_earnLinkPkgs=[{id,faceVal,expISO}]` 수집(expISO=구매 즉시 사용 시 유효일, 미사용이면 null). 적립 write 재작성 — 선불권 트리거(`prepaid/pkg/annual_purchase`) 적립은 권별 연결(`source_package_id`+`expires_at`=권 유효일/null), 나머지는 현행. 다중 권은 면가 내림차순↔적립액 내림차순 페어링. 수동 수정(`pointEarnManualRef`) 시 연결 안 함(현행).
+- **첫 사용 전파**: `_firstUsePkgIds` 소비부에서, 선불권 첫 사용 시 `point_transactions`(`source_package_id`=권, `expires_at IS NULL`)의 expires_at을 첫사용+1년-1일로 UPDATE.
+- **소급(백필) 생략**: 기존 적립 630건(2026-04-17~)은 선불권 링크 정보 없음(customer_packages에 sale_id 없음) → 추정 매칭 위험 + 1개월치라 **포워드만** 적용(유저 승인). 기존 포인트는 현 만료일 유지.
+
+**유의**:
+- 총매출 포인트 제외는 **정책일 컷오프** — 과거 데이터 절대 안 바뀜. 정책일 변경은 `POINT_EXCL_FROM`(클라) + RPC의 `DATE '2026-05-26'`(5개 함수) 동시 수정.
+- Phase B는 **앞으로 적립되는 선불권 포인트만** 권 유효기간 따라감. 다회권/연간권 구매 이벤트는 현재 point_earn 없이 할인·쿠폰만 줘서 실제 연결은 다담/바프 위주(코드는 다회·연간도 대비).
+- 향후 선불권 상품 추가 시: 충전 구간 이벤트(point_earn fixed)만 등록하면 자동으로 권에 연결됨.
