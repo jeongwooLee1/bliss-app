@@ -245,10 +245,6 @@ function AdminServiceTags({ data, setData }) {
   return <div style={{maxWidth:720,margin:"0 auto"}}>
     <APageHeader title="태그·경로 관리" count={items.length} onAdd={openNew} addLabel={addLabel}/>
     {!isSource && <div style={{marginBottom:12,display:"flex",justifyContent:"flex-end",gap:6,flexWrap:"wrap"}}>
-      <button onClick={runBulkEval} disabled={bulkState?.loading} title="오늘부터의 예약을 평가해 부여될 자동태그 미리보기"
-        style={{padding:"7px 14px",fontSize:12,fontWeight:700,border:"1px solid #F59E0B",background:"#FEF3C7",color:"#B45309",borderRadius:8,cursor:bulkState?.loading?"wait":"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5,opacity:bulkState?.loading?0.6:1}}>
-        ⚡ {bulkState?.loading?"평가 중…":"미래 예약 일괄 평가"}
-      </button>
       <button onClick={openAutoSheet} title="모든 태그의 자동 부여 조건을 한 화면에서 편집"
         style={{padding:"7px 14px",fontSize:12,fontWeight:700,border:"1px solid "+T.primary,background:T.primaryLt||"#ede9fe",color:T.primaryDk,borderRadius:8,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
         <I name="zap" size={12}/> 자동태그 설정

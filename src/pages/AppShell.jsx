@@ -23,16 +23,17 @@ import SetupWizard from '../components/SetupWizard/SetupWizard'
 import BlissAI from '../components/BlissAI/BlissAI'
 import FloatingAI from '../components/BlissAI/FloatingAI'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
+import AdminPkgUnusedReview from '../components/Admin/AdminPkgUnusedReview'
 
 const uid = genId;
-const BLISS_V = "3.7.837"
+const BLISS_V = "3.7.864"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
   const ref = useScrollRestore(storageKey)
   return <div ref={ref} className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}>{children}</div>
 }
-const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", users:"/users", messages:"/messages", admin:"/settings", schedule:"/schedule", requests:"/requests", blissai:"/blissai" };
+const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", users:"/users", messages:"/messages", admin:"/settings", schedule:"/schedule", requests:"/requests", blissai:"/blissai", pkgunused:"/pkg-unused" };
 // reservations 테이블엔 대용량 JSONB 없음 (snapshot_data는 sales 테이블에만 존재)
 // type/is_schedule/source/repeat 등 필터링 필수 컬럼이 누락되면 화면 비어짐 → * 사용이 안전
 const RES_SELECT = "*";
@@ -185,7 +186,7 @@ function SuperDashboard({ superData, setSuperData, currentUser, onLogout, onEnte
 
   const SideContent = () => <>
     <div style={{padding:"20px 16px 16px",borderBottom:"1px solid "+T.border}}>
-      <div style={{fontSize:T.fs.xxl,fontWeight:T.fw.black,color:T.primary,letterSpacing:-1}}>Bliss</div>
+      <div style={{fontSize:T.fs.xxl,fontWeight:T.fw.black,color:T.primary,letterSpacing:-1}}>BlissMe</div>
       <div style={{fontSize:T.fs.xxs,color:T.textSub,marginTop:4}}>슈퍼관리자 · {currentUser?.name}</div>
     </div>
     <div style={{flex:1,padding:"12px 0"}}>
@@ -289,6 +290,7 @@ function SuperDashboard({ superData, setSuperData, currentUser, onLogout, onEnte
 
 function Login({ users, onAccountLogin, onSignup }) {
   const [showSignup, setShowSignup] = useState(false);
+  const [showHelp, setShowHelp] = useState(null); // 'findId' | 'resetPw' | null
   const [loginId, setLoginId] = useState(() => {try{return localStorage.getItem("savedLoginId")||"";}catch(e){return "";}});
   const [pw, setPw] = useState("");
   const [saveId, setSaveId] = useState(() => {try{return localStorage.getItem("savedLoginId")!==null;}catch(e){return false;}});
@@ -321,7 +323,7 @@ function Login({ users, onAccountLogin, onSignup }) {
       
       <div style={{...cardStyle,padding:"28px 24px",width:"92%",maxWidth:460,marginTop:20}}>
         <div style={{textAlign:"center",marginBottom:32}}>
-          <div style={{fontSize:T.fs.xxl,fontWeight:T.fw.black,color:T.primary,letterSpacing:-1}}>Bliss</div>
+          <div style={{fontSize:T.fs.xxl,fontWeight:T.fw.black,color:T.primary,letterSpacing:-1}}>BlissMe</div>
           <div style={{fontSize:T.fs.xs,color:T.textMuted,marginTop:4}}>신규 가입</div>
         </div>
         <SignupWizard onComplete={(newUser)=>{ setShowSignup(false); onSignup(newUser); }} onBack={()=>setShowSignup(false)}/>
@@ -329,49 +331,60 @@ function Login({ users, onAccountLogin, onSignup }) {
     </div>
   );
   return (
-    <div style={{minHeight:"100vh",width:"100%",display:"flex",alignItems:"center",justifyContent:"center",background:bgGrad,fontFamily:"'Pretendard',sans-serif",padding:T.sp.lg}}>
+    <div style={{minHeight:"100vh",width:"100%",display:"flex",alignItems:"center",justifyContent:"center",background:bgGrad,fontFamily:"'Pretendard',sans-serif",padding:T.sp.lg,position:"relative",overflow:"hidden"}}>
       <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" rel="stylesheet"/>
-      
-      <div style={{...cardStyle,padding:"32px 28px",width:"92%",maxWidth:420}}>
+      {/* 블리스미 첫페이지 흐린 배경 */}
+      <iframe src="/landing.html" title="" tabIndex={-1} aria-hidden="true" scrolling="no"
+        style={{position:"absolute",top:"-4%",left:"-4%",width:"108%",height:"108%",border:"none",filter:"blur(9px) saturate(1.08)",transform:"scale(1.04)",pointerEvents:"none",zIndex:0}}/>
+      <div style={{position:"absolute",inset:0,background:"linear-gradient(135deg, rgba(124,93,250,.30) 0%, rgba(216,216,232,.55) 55%, rgba(255,255,255,.45) 100%)",zIndex:1,pointerEvents:"none"}}/>
+      <div style={{...cardStyle,padding:"32px 28px",width:"92%",maxWidth:420,position:"relative",zIndex:2}}>
+        <button onClick={()=>{window.location.href='/';}} aria-label="닫기" title="홈으로"
+          style={{position:"absolute",top:12,right:12,width:32,height:32,borderRadius:"50%",border:"none",background:T.gray100,color:T.textSub,fontSize:20,lineHeight:1,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
         <div style={{textAlign:"center",marginBottom:32}}>
-          <div style={{fontSize:28,fontWeight:T.fw.black,color:T.primary,letterSpacing:-1}}>Bliss</div>
+          <div style={{fontSize:28,fontWeight:T.fw.black,color:T.primary,letterSpacing:-1}}>BlissMe</div>
           <div style={{fontSize:T.fs.sm,color:T.textMuted,marginTop:T.sp.sm}}>통합 예약 & 매출 관리 시스템</div>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           {/* 소셜 로그인 */}
-          <button onClick={()=>{import('../lib/supabase').then(m=>m.supabase.auth.signInWithOAuth({provider:'kakao',options:{redirectTo:window.location.origin+'/'}}))}} style={{width:"100%",height:48,display:"flex",alignItems:"center",justifyContent:"center",gap:10,background:"#FEE500",color:"#3C1E1E",border:"none",borderRadius:T.radius.md,fontSize:T.fs.md,fontWeight:T.fw.bold,cursor:"pointer",fontFamily:"inherit"}}>💬 카카오로 시작하기</button>
-          <button onClick={()=>{import('../lib/supabase').then(m=>m.supabase.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin+'/'}}))}} style={{width:"100%",height:48,display:"flex",alignItems:"center",justifyContent:"center",gap:10,background:"#fff",color:"#333",border:`1px solid ${T.border}`,borderRadius:T.radius.md,fontSize:T.fs.md,fontWeight:T.fw.bold,cursor:"pointer",fontFamily:"inherit"}}>🔍 Google로 시작하기</button>
+          <button onClick={()=>{import('../lib/supabase').then(m=>m.supabase.auth.signInWithOAuth({provider:'kakao',options:{redirectTo:window.location.origin+'/'}}))}} style={{width:"100%",height:48,display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:"#FEE500",color:"#3C1E1E",border:"none",borderRadius:T.radius.md,fontSize:T.fs.md,fontWeight:T.fw.bold,cursor:"pointer",fontFamily:"inherit"}}><I name="msgSq" size={17} style={{color:"#3C1E1E"}}/>카카오로 시작하기</button>
+          <button onClick={()=>{import('../lib/supabase').then(m=>m.supabase.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin+'/'}}))}} style={{width:"100%",height:48,display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:"#fff",color:"#333",border:`1px solid ${T.border}`,borderRadius:T.radius.md,fontSize:T.fs.md,fontWeight:T.fw.bold,cursor:"pointer",fontFamily:"inherit"}}>
+            <svg width="17" height="17" viewBox="0 0 48 48" style={{flexShrink:0}}><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.9 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.3 13.2 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.5 3-2.2 5.5-4.7 7.2l7.3 5.7C43.9 38 46.5 31.8 46.5 24.5z"/><path fill="#FBBC05" d="M10.5 28.3c-.5-1.4-.8-2.9-.8-4.3s.3-3 .8-4.3l-7.9-6.1C1 16.9 0 20.3 0 24s1 7.1 2.6 10.4l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.3 0 11.6-2.1 15.5-5.6l-7.3-5.7c-2 1.4-4.7 2.3-8.2 2.3-6.3 0-11.7-3.7-13.5-9.3l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>
+            Google로 시작하기
+          </button>
           {/* 구분선 */}
           <div style={{display:"flex",alignItems:"center",gap:12,margin:"4px 0"}}><div style={{flex:1,height:1,background:T.border}}/><span style={{fontSize:T.fs.xs,color:T.textMuted}}>또는</span><div style={{flex:1,height:1,background:T.border}}/></div>
           <FLD label="아이디"><input className="inp" placeholder="아이디 입력" value={loginId} onChange={e=>{setLoginId(e.target.value);setErr("")}}/></FLD>
           <FLD label="비밀번호"><input className="inp" type="password" placeholder="비밀번호 입력" value={pw} onChange={e=>{setPw(e.target.value);setErr("")}} onKeyDown={e=>e.key==="Enter"&&handleLogin()}/></FLD>
           {err && <div style={{fontSize:T.fs.sm,color:T.danger,textAlign:"center"}}>{err}</div>}
-          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:T.fs.sm,color:T.textSub,cursor:"pointer"}}>
-            <input type="checkbox" checked={saveId} onChange={e=>setSaveId(e.target.checked)} style={{accentColor:T.primary,width:14,height:14}}/>
-            아이디 저장
-          </label>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <label style={{display:"flex",alignItems:"center",gap:6,fontSize:T.fs.sm,color:T.textSub,cursor:"pointer"}}>
+              <input type="checkbox" checked={saveId} onChange={e=>setSaveId(e.target.checked)} style={{accentColor:T.primary,width:14,height:14}}/>
+              아이디 저장
+            </label>
+            <div style={{display:"flex",alignItems:"center",gap:8,fontSize:T.fs.xs}}>
+              <button onClick={()=>setShowHelp('findId')} style={{background:"none",border:"none",color:T.textSub,cursor:"pointer",fontFamily:"inherit",fontSize:T.fs.xs,padding:0}}>아이디 찾기</button>
+              <span style={{color:T.gray300}}>·</span>
+              <button onClick={()=>setShowHelp('resetPw')} style={{background:"none",border:"none",color:T.textSub,cursor:"pointer",fontFamily:"inherit",fontSize:T.fs.xs,padding:0}}>비밀번호 찾기</button>
+            </div>
+          </div>
           <Btn onClick={handleLogin} style={{width:"100%",padding:13,fontSize:T.fs.lg,marginTop:4}}>로그인</Btn>
           <div style={{borderTop:`1px solid ${T.gray200}`,marginTop:T.sp.sm,paddingTop:T.sp.md,textAlign:"center"}}>
             <span style={{fontSize:T.fs.sm,color:T.textMuted}}>아직 계정이 없으신가요? </span>
             <button onClick={()=>setShowSignup(true)} style={{background:"none",border:"none",fontSize:T.fs.sm,color:T.primary,fontWeight:T.fw.bolder,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>무료 체험 시작 →</button>
           </div>
           <div style={{fontSize:T.fs.xs,color:T.textMuted,textAlign:"center",marginTop:4}}>앱 v{BLISS_V}</div>
-        </div>
-        {/* PG 심사 요건 — 사업자정보 + 정책 페이지 footer */}
-        <footer style={{marginTop:32,paddingTop:20,borderTop:`1px solid ${T.gray200}`,fontSize:11,color:T.textMuted,lineHeight:1.7,textAlign:"center"}}>
-          <div style={{marginBottom:6}}>
-            <a href="/about.html" style={{color:T.textSub,textDecoration:"none",margin:"0 6px"}}>회사소개</a>·
-            <a href="/pricing.html" style={{color:T.textSub,textDecoration:"none",margin:"0 6px"}}>요금제</a>·
-            <a href="/terms.html" style={{color:T.textSub,textDecoration:"none",margin:"0 6px"}}>이용약관</a>·
-            <a href="/privacy.html" style={{color:T.textSub,textDecoration:"none",margin:"0 6px",fontWeight:700}}>개인정보처리방침</a>·
-            <a href="/refund.html" style={{color:T.textSub,textDecoration:"none",margin:"0 6px"}}>환불정책</a>
+          {/* 체험(데모) 계정 안내 */}
+          <div style={{marginTop:10,padding:"10px 12px",background:T.primaryHover||T.gray100,borderRadius:T.radius.md,textAlign:"center"}}>
+            <div style={{fontSize:T.fs.xs,color:T.primary,fontWeight:T.fw.bolder,marginBottom:3}}>체험용 데모 계정</div>
+            <div style={{fontSize:T.fs.sm,color:T.text}}>아이디 <b>demo</b> · 비밀번호 <b>demo1234</b></div>
+            <button onClick={()=>{setLoginId("demo");setPw("demo1234");setErr("");}}
+              style={{marginTop:7,padding:"5px 12px",borderRadius:T.radius.sm,border:`1px solid ${T.primary}`,background:"#fff",color:T.primary,fontSize:T.fs.xs,fontWeight:T.fw.bolder,cursor:"pointer",fontFamily:"inherit"}}>
+              데모 계정으로 채우기
+            </button>
           </div>
-          <div>(주)테라포트 · 대표: 권신영 · 사업자등록번호: 632-81-02070</div>
-          <div>통신판매업신고: 제 2022-성남수정-0100 호 · 고객센터: 010-5702-8008 · 이메일: teraport@blissme.ai</div>
-          <div>주소: 서울특별시 강남구 논현로 641, 420호</div>
-          <div style={{marginTop:6,color:"#bbb"}}>© 2026 Terraport Inc. All rights reserved.</div>
-        </footer>
+        </div>
       </div>
+      {showHelp && <AuthHelpModal initialMode={showHelp} onClose={()=>setShowHelp(null)} onUseId={(id)=>{setLoginId(id);setErr("");}}/>}
     </div>
   );
 }
@@ -442,7 +455,7 @@ function AccountGate({ mode, pendingAccount, onPick, onLogout, onJoinSuccess, on
       <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" rel="stylesheet"/>
       <div style={{background:T.bgCard,borderRadius:16,border:`1px solid ${T.border}`,padding:"32px 28px",width:"92%",maxWidth:420,boxShadow:T.shadow.md}}>
         <div style={{textAlign:"center",marginBottom:24}}>
-          <div style={{fontSize:28,fontWeight:900,color:T.primary,letterSpacing:-1}}>Bliss</div>
+          <div style={{fontSize:28,fontWeight:900,color:T.primary,letterSpacing:-1}}>BlissMe</div>
           {acc?.name && <div style={{fontSize:13,color:T.textMuted,marginTop:6}}>{acc.name}님</div>}
         </div>
         {children}
@@ -668,19 +681,69 @@ function SuperSystemSettings() {
   );
 }
 
+// 계정 인증 서버 API 베이스 (nginx → Flask 프록시)
+const ACCT_API = 'https://blissme.ai';
+async function acctApi(path, body) {
+  const r = await fetch(`${ACCT_API}/${path}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}),
+  });
+  let j = {}; try { j = await r.json(); } catch(e){}
+  return { ok: r.ok, status: r.status, data: j };
+}
+const _normPhone = s => (s||'').replace(/[^0-9]/g,'');
+const _fmtPhone = s => { const d=_normPhone(s); if(d.length<4)return d; if(d.length<8)return d.slice(0,3)+'-'+d.slice(3); return d.slice(0,3)+'-'+d.slice(3,7)+'-'+d.slice(7,11); };
+
 // 통합 가입 — account(사람)만 생성. 사업장 미생성. 가입 후 합류/생성은 AccountGate에서.
 function SignupWizard({ onComplete, onBack }) {
   const [saving, setSaving] = useState(false);
-  const [acct, setAcct] = useState({ name:'', loginId:'', pw:'', pw2:'' });
+  const [acct, setAcct] = useState({ name:'', loginId:'', pw:'', pw2:'', email:'', phone:'' });
   const setA = (k,v) => setAcct(p=>({...p,[k]:v}));
   const [errs, setErrs] = useState({});
+  // 휴대폰 인증
+  const [codeSent, setCodeSent] = useState(false);
+  const [code, setCode] = useState('');
+  const [verified, setVerified] = useState(false);
+  const [smsBusy, setSmsBusy] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+  // 약관
+  const [agree, setAgree] = useState({ terms:false, privacy:false, marketing:false });
+  const allAgree = agree.terms && agree.privacy && agree.marketing;
+  const toggleAll = () => { const v=!allAgree; setAgree({terms:v,privacy:v,marketing:v}); };
+
+  useEffect(() => { if(countdown<=0) return; const t=setInterval(()=>setCountdown(c=>c<=1?0:c-1),1000); return ()=>clearInterval(t); }, [countdown]);
+
+  const sendCode = async () => {
+    const ph = _normPhone(acct.phone);
+    if (!/^01[0-9]{8,9}$/.test(ph)) { setErrs(e=>({...e,phone:'휴대폰 번호를 정확히 입력해주세요'})); return; }
+    setSmsBusy(true); setErrs(e=>({...e,phone:undefined}));
+    const { ok, data } = await acctApi('account-verify-send', { phone: ph });
+    setSmsBusy(false);
+    if (!ok || !data.ok) {
+      if (data.error==='rate_limited') setErrs(e=>({...e,phone:`잠시 후 다시 시도 (${data.retry_after||60}초)`}));
+      else setErrs(e=>({...e,phone:'인증번호 발송 실패. 번호를 확인해주세요'}));
+      return;
+    }
+    setCodeSent(true); setVerified(false); setCode(''); setCountdown(180);
+  };
+  const checkCode = async () => {
+    const ph = _normPhone(acct.phone);
+    if (!code.trim()) return;
+    setSmsBusy(true);
+    const { data } = await acctApi('account-verify-check', { phone: ph, code: code.trim() });
+    setSmsBusy(false);
+    if (data.ok) { setVerified(true); setErrs(e=>({...e,code:undefined})); }
+    else setErrs(e=>({...e,code: data.error==='wrong_code'?'인증번호가 일치하지 않아요':data.error==='expired'?'인증번호가 만료됐어요. 다시 받아주세요':'인증 실패'}));
+  };
 
   const submit = async () => {
     const e = {};
     if (!acct.name.trim()) e.name = '이름을 입력해주세요';
-    if (!/^[a-zA-Z0-9_]{3,20}$/.test(acct.loginId)) e.loginId = '아이디는 영문/숫자/언더바 3~20자로 입력해주세요';
-    if (acct.pw.length < 4) e.pw = '비밀번호는 4자 이상이어야 해요';
+    if (!/^[a-z0-9_]{4,20}$/.test(acct.loginId)) e.loginId = '아이디는 영 소문자/숫자/언더바 4~20자';
+    if (!(acct.pw.length>=8 && acct.pw.length<=20 && /[a-zA-Z]/.test(acct.pw) && /[0-9]/.test(acct.pw))) e.pw = '영문+숫자 포함 8~20자';
     if (acct.pw !== acct.pw2) e.pw2 = '비밀번호가 일치하지 않아요';
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(acct.email.trim())) e.email = '이메일을 정확히 입력해주세요';
+    if (!verified) e.phone = '휴대폰 인증을 완료해주세요';
+    if (!agree.terms || !agree.privacy) e.agree = '필수 약관에 동의해주세요';
     setErrs(e);
     if (Object.keys(e).length > 0) return;
     setSaving(true);
@@ -689,7 +752,7 @@ function SignupWizard({ onComplete, onBack }) {
       const res = await fetch(`${SB_URL}/rest/v1/rpc/account_signup`, {
         method: 'POST',
         headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ p_login_id: acct.loginId, p_password: acct.pw, p_name: acct.name.trim() }),
+        body: JSON.stringify({ p_login_id: acct.loginId, p_password: acct.pw, p_name: acct.name.trim(), p_email: acct.email.trim(), p_phone: _normPhone(acct.phone) }),
       });
       if (!res.ok) {
         const t = await res.text();
@@ -704,45 +767,254 @@ function SignupWizard({ onComplete, onBack }) {
     }
   };
 
-  const inp = {width:'100%',padding:'11px 13px',fontSize:T.fs.md,borderRadius:T.radius.lg,border:'1px solid '+T.border,outline:'none',fontFamily:'inherit',color:T.text,background:'#fff'};
+  const inp = {width:'100%',padding:'11px 13px',fontSize:T.fs.md,borderRadius:T.radius.lg,border:'1px solid '+T.border,outline:'none',fontFamily:'inherit',color:T.text,background:'#fff',boxSizing:'border-box'};
   const lbl = {fontSize:T.fs.xxs,color:T.gray500,fontWeight:T.fw.bold,marginBottom:5,display:'block'};
+  const hint = {fontSize:T.fs.xxs,color:T.gray400,marginTop:4};
   const errStyle = {fontSize:T.fs.xxs,color:T.danger,marginTop:3};
+  const smallBtn = (disabled,bg) => ({padding:'0 14px',height:44,flexShrink:0,borderRadius:T.radius.lg,border:'none',background:disabled?T.gray200:(bg||T.primary),color:disabled?T.gray400:'#fff',fontSize:T.fs.sm,fontWeight:T.fw.bolder,cursor:disabled?'not-allowed':'pointer',fontFamily:'inherit',whiteSpace:'nowrap'});
 
   return (
     <div style={{display:'flex',flexDirection:'column',gap:0}}>
       <div style={{fontSize:T.fs.lg,fontWeight:T.fw.black,marginBottom:4}}>계정 만들기</div>
-      <div style={{fontSize:T.fs.sm,color:T.textMuted,marginBottom:20,lineHeight:1.5}}>
-        Bliss 계정을 만들어요. 가입 후 매장에 직원으로 합류하거나 내 사업장을 만들 수 있어요.
+      <div style={{fontSize:T.fs.sm,color:T.textMuted,marginBottom:18,lineHeight:1.5}}>
+        가입 후 매장에 직원으로 합류하거나 내 사업장을 만들 수 있어요.
       </div>
       <div style={{marginBottom:13}}>
-        <label style={lbl}>이름</label>
-        <input style={{...inp,borderColor:errs.name?T.danger:T.border}} value={acct.name} onChange={e=>setA('name',e.target.value)} placeholder="홍길동"/>
-        {errs.name&&<div style={errStyle}>{errs.name}</div>}
+        <label style={lbl}>아이디 *</label>
+        <input style={{...inp,borderColor:errs.loginId?T.danger:T.border}} value={acct.loginId} onChange={e=>setA('loginId',e.target.value.toLowerCase())} placeholder="영 소문자·숫자 4~20자"/>
+        {errs.loginId?<div style={errStyle}>{errs.loginId}</div>:<div style={hint}>영 소문자, 숫자를 사용해 4~20자 이내로 입력해 주세요.</div>}
       </div>
-      <div style={{marginBottom:13}}>
-        <label style={lbl}>아이디 (영문/숫자/언더바 3~20자)</label>
-        <input style={{...inp,borderColor:errs.loginId?T.danger:T.border}} value={acct.loginId} onChange={e=>setA('loginId',e.target.value.toLowerCase())} placeholder="예: gildong"/>
-        {errs.loginId&&<div style={errStyle}>{errs.loginId}</div>}
-      </div>
-      <div style={{marginBottom:13}}>
-        <label style={lbl}>비밀번호</label>
-        <input style={{...inp,borderColor:errs.pw?T.danger:T.border}} type="password" value={acct.pw} onChange={e=>setA('pw',e.target.value)} placeholder="4자 이상"/>
+      <div style={{marginBottom:8}}>
+        <label style={lbl}>비밀번호 *</label>
+        <input style={{...inp,borderColor:errs.pw?T.danger:T.border}} type="password" value={acct.pw} onChange={e=>setA('pw',e.target.value)} placeholder="비밀번호를 입력해 주세요."/>
         {errs.pw&&<div style={errStyle}>{errs.pw}</div>}
       </div>
-      <div style={{marginBottom:20}}>
-        <label style={lbl}>비밀번호 확인</label>
-        <input style={{...inp,borderColor:errs.pw2?T.danger:T.border}} type="password" value={acct.pw2} onChange={e=>setA('pw2',e.target.value)} placeholder="비밀번호 재입력" onKeyDown={e=>e.key==='Enter'&&submit()}/>
-        {errs.pw2&&<div style={errStyle}>{errs.pw2}</div>}
+      <div style={{marginBottom:13}}>
+        <input style={{...inp,borderColor:errs.pw2?T.danger:T.border}} type="password" value={acct.pw2} onChange={e=>setA('pw2',e.target.value)} placeholder="비밀번호를 한 번 더 입력해 주세요."/>
+        {errs.pw2?<div style={errStyle}>{errs.pw2}</div>:<div style={hint}>영문+숫자 포함 8~20자 이내로 입력해 주세요.</div>}
+      </div>
+      <div style={{marginBottom:13}}>
+        <label style={lbl}>이름 *</label>
+        <input style={{...inp,borderColor:errs.name?T.danger:T.border}} value={acct.name} onChange={e=>setA('name',e.target.value)} placeholder="이름을 입력해 주세요."/>
+        {errs.name?<div style={errStyle}>{errs.name}</div>:<div style={hint}>예약 캘린더에 노출할 이름을 입력해 주세요.</div>}
+      </div>
+      <div style={{marginBottom:13}}>
+        <label style={lbl}>이메일 *</label>
+        <input style={{...inp,borderColor:errs.email?T.danger:T.border}} type="email" value={acct.email} onChange={e=>setA('email',e.target.value)} placeholder="비밀번호 찾기에 사용돼요" disabled={verified&&false}/>
+        {errs.email?<div style={errStyle}>{errs.email}</div>:<div style={hint}>비밀번호 분실 시 임시 비밀번호를 받을 주소예요.</div>}
+      </div>
+      <div style={{marginBottom:18}}>
+        <label style={lbl}>휴대폰 인증 *</label>
+        <div style={{display:'flex',gap:8}}>
+          <input style={{...inp,borderColor:errs.phone?T.danger:(verified?T.success:T.border)}} value={_fmtPhone(acct.phone)} onChange={e=>{setA('phone',e.target.value);setVerified(false);setCodeSent(false);}} placeholder="휴대폰 번호를 입력해 주세요." disabled={verified}/>
+          <button onClick={sendCode} disabled={smsBusy||verified} style={smallBtn(smsBusy||verified)}>{verified?'완료':codeSent?'재전송':'전송'}</button>
+        </div>
+        {errs.phone&&<div style={errStyle}>{errs.phone}</div>}
+        {codeSent && !verified && (
+          <div style={{display:'flex',gap:8,marginTop:8}}>
+            <input style={{...inp,borderColor:errs.code?T.danger:T.border}} value={code} onChange={e=>setCode(e.target.value.replace(/[^0-9]/g,'').slice(0,6))} placeholder="인증번호 6자리" inputMode="numeric"/>
+            <button onClick={checkCode} disabled={smsBusy||code.length<6} style={smallBtn(smsBusy||code.length<6,T.success||'#16a34a')}>확인</button>
+          </div>
+        )}
+        {codeSent && !verified && countdown>0 && <div style={hint}>인증번호 입력 시간 {Math.floor(countdown/60)}:{String(countdown%60).padStart(2,'0')}</div>}
+        {errs.code&&<div style={errStyle}>{errs.code}</div>}
+        {verified && <div style={{fontSize:T.fs.xxs,color:T.success||'#16a34a',marginTop:4,fontWeight:T.fw.bolder}}>휴대폰 인증 완료</div>}
+      </div>
+      {/* 약관 */}
+      <div style={{borderTop:`1px solid ${T.gray200}`,paddingTop:14,marginBottom:16}}>
+        <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.text,marginBottom:10}}>
+          <input type="checkbox" checked={allAgree} onChange={toggleAll} style={{accentColor:T.primary,width:16,height:16}}/> 전체 동의
+        </label>
+        {[['terms','이용약관 동의 (필수)','/terms.html'],['privacy','개인정보 처리방침 (필수)','/privacy.html'],['marketing','마케팅 정보 수신 동의 (선택)',null]].map(([k,label,url])=>(
+          <label key={k} style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:T.fs.xs,color:T.textSub,padding:'4px 0'}}>
+            <input type="checkbox" checked={agree[k]} onChange={e=>setAgree(p=>({...p,[k]:e.target.checked}))} style={{accentColor:T.primary,width:14,height:14}}/>
+            {url?<a href={url} target="_blank" rel="noreferrer" style={{color:T.textSub}}>{label}</a>:label}
+          </label>
+        ))}
+        {errs.agree&&<div style={errStyle}>{errs.agree}</div>}
       </div>
       <button onClick={submit} disabled={saving}
         style={{width:'100%',padding:13,borderRadius:T.radius.lg,border:'none',background:saving?T.gray200:T.primary,color:saving?T.gray400:'#fff',fontSize:T.fs.md,fontWeight:T.fw.bolder,cursor:saving?'not-allowed':'pointer',fontFamily:'inherit'}}>
-        {saving?'처리 중...':'가입하기'}
+        {saving?'처리 중...':'회원가입 완료'}
       </button>
       <button onClick={onBack} style={{background:'none',border:'none',fontSize:T.fs.sm,color:T.gray400,cursor:'pointer',marginTop:12,fontFamily:'inherit'}}>← 로그인으로 돌아가기</button>
     </div>
   );
 }
 
+
+// 아이디 찾기 / 비밀번호 찾기 모달 (휴대폰 인증 / 이메일 임시비번)
+function AuthHelpModal({ initialMode, onClose, onUseId }) {
+  const [mode, setMode] = useState(initialMode || 'findId'); // findId | resetPw
+  const [phone, setPhone] = useState('');
+  const [code, setCode] = useState('');
+  const [codeSent, setCodeSent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+  const [err, setErr] = useState('');
+  const [name, setName] = useState('');
+  const [foundIds, setFoundIds] = useState(null);
+  const [resetTab, setResetTab] = useState('email'); // email | sms
+  const [loginId, setLoginId] = useState('');
+  const [multiIds, setMultiIds] = useState(null);
+  const [newPw, setNewPw] = useState('');
+  const [newPw2, setNewPw2] = useState('');
+  const [done, setDone] = useState('');
+
+  useEffect(() => { if(countdown<=0) return; const t=setInterval(()=>setCountdown(c=>c<=1?0:c-1),1000); return ()=>clearInterval(t); }, [countdown]);
+  useEffect(() => { const h=e=>{if(e.key==='Escape'&&!e.isComposing)onClose?.();}; window.addEventListener('keydown',h); return ()=>window.removeEventListener('keydown',h); }, [onClose]);
+
+  const reset = () => { setPhone('');setCode('');setCodeSent(false);setErr('');setName('');setFoundIds(null);setLoginId('');setMultiIds(null);setNewPw('');setNewPw2('');setDone('');setCountdown(0); };
+  const switchMode = m => { reset(); setMode(m); };
+
+  const sendCode = async () => {
+    const ph=_normPhone(phone);
+    if(!/^01[0-9]{8,9}$/.test(ph)){setErr('휴대폰 번호를 정확히 입력해주세요');return;}
+    setBusy(true);setErr('');
+    const {data}=await acctApi('account-verify-send',{phone:ph});
+    setBusy(false);
+    if(!data.ok){setErr(data.error==='rate_limited'?`잠시 후 다시 (${data.retry_after||60}초)`:'인증번호 발송 실패');return;}
+    setCodeSent(true);setCountdown(180);setCode('');
+  };
+  const doFindId = async () => {
+    const ph=_normPhone(phone);
+    if(code.length<6){setErr('인증번호 6자리를 입력해주세요');return;}
+    setBusy(true);setErr('');
+    const {data}=await acctApi('account-find-id',{phone:ph,code:code.trim(),name:name.trim()});
+    setBusy(false);
+    if(!data.ok){setErr(data.error==='wrong_code'?'인증번호가 일치하지 않아요':data.error==='expired'?'인증번호 만료. 다시 받아주세요':'인증 실패');return;}
+    setFoundIds(data.ids||[]);
+  };
+  const doResetEmail = async () => {
+    const id=loginId.trim().toLowerCase();
+    if(!id){setErr('아이디를 입력해주세요');return;}
+    setBusy(true);setErr('');
+    const {data}=await acctApi('account-reset-email',{login_id:id});
+    setBusy(false);
+    if(data.ok && data.sent) setDone(`임시 비밀번호를 메일(${data.email_masked})로 보냈어요. 로그인 후 변경해주세요.`);
+    else setDone('__no_email__');
+  };
+  const doResetSms = async () => {
+    const ph=_normPhone(phone);
+    if(code.length<6){setErr('인증번호 6자리를 입력해주세요');return;}
+    if(!(newPw.length>=8&&newPw.length<=20&&/[a-zA-Z]/.test(newPw)&&/[0-9]/.test(newPw))){setErr('새 비밀번호: 영문+숫자 포함 8~20자');return;}
+    if(newPw!==newPw2){setErr('새 비밀번호가 일치하지 않아요');return;}
+    setBusy(true);setErr('');
+    const {data}=await acctApi('account-reset-sms',{phone:ph,code:code.trim(),new_password:newPw,login_id:loginId.trim().toLowerCase()||undefined});
+    setBusy(false);
+    if(data.ok){setDone(`비밀번호가 재설정됐어요. 아이디 ${data.login_id}로 로그인해주세요.`);return;}
+    if(data.error==='multiple'){setMultiIds(data.ids||[]);setErr('이 번호로 등록된 계정이 여러 개예요. 아이디를 선택해주세요.');return;}
+    setErr(data.error==='wrong_code'?'인증번호가 일치하지 않아요':data.error==='expired'?'인증번호 만료. 다시 받아주세요':data.error==='no_account'?'해당 번호로 등록된 계정이 없어요':'재설정 실패');
+  };
+
+  const inp={width:'100%',padding:'11px 13px',fontSize:T.fs.md,borderRadius:T.radius.lg,border:'1px solid '+T.border,outline:'none',fontFamily:'inherit',color:T.text,background:'#fff',boxSizing:'border-box'};
+  const lbl={fontSize:T.fs.xxs,color:T.gray500,fontWeight:T.fw.bold,marginBottom:5,display:'block'};
+  const errStyle={fontSize:T.fs.xxs,color:T.danger,marginTop:6};
+  const sBtn=(d,bg)=>({padding:'0 14px',height:44,flexShrink:0,borderRadius:T.radius.lg,border:'none',background:d?T.gray200:(bg||T.primary),color:d?T.gray400:'#fff',fontSize:T.fs.sm,fontWeight:T.fw.bolder,cursor:d?'not-allowed':'pointer',fontFamily:'inherit',whiteSpace:'nowrap'});
+  const tab=(active)=>({flex:1,padding:'10px 0',textAlign:'center',fontSize:T.fs.sm,fontWeight:active?T.fw.bolder:T.fw.medium,color:active?T.primary:T.textMuted,borderBottom:active?`2px solid ${T.primary}`:'2px solid transparent',background:'none',border:'none',cursor:'pointer',fontFamily:'inherit'});
+
+  const phoneVerifyBlock = (onSubmitLabel, onSubmit) => (<>
+    <div style={{marginBottom:12}}>
+      <label style={lbl}>휴대폰 번호</label>
+      <div style={{display:'flex',gap:8}}>
+        <input style={inp} value={_fmtPhone(phone)} onChange={e=>{setPhone(e.target.value);setCodeSent(false);}} placeholder="가입한 휴대폰 번호" disabled={busy}/>
+        <button onClick={sendCode} disabled={busy} style={sBtn(busy)}>{codeSent?'재전송':'인증번호'}</button>
+      </div>
+    </div>
+    {codeSent && <div style={{marginBottom:12}}>
+      <label style={lbl}>인증번호</label>
+      <input style={inp} value={code} onChange={e=>setCode(e.target.value.replace(/[^0-9]/g,'').slice(0,6))} placeholder="6자리" inputMode="numeric"/>
+      {countdown>0 && <div style={{fontSize:T.fs.xxs,color:T.gray400,marginTop:4}}>입력 시간 {Math.floor(countdown/60)}:{String(countdown%60).padStart(2,'0')}</div>}
+    </div>}
+  </>);
+
+  return <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',zIndex:10000,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 16px'}}
+    onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+    <div style={{background:'#fff',borderRadius:14,padding:'24px 22px',width:'100%',maxWidth:400,maxHeight:'90vh',overflowY:'auto'}}>
+      <div style={{display:'flex',marginBottom:18,borderBottom:`1px solid ${T.gray200}`}}>
+        <button style={tab(mode==='findId')} onClick={()=>switchMode('findId')}>아이디 찾기</button>
+        <button style={tab(mode==='resetPw')} onClick={()=>switchMode('resetPw')}>비밀번호 찾기</button>
+      </div>
+
+      {mode==='findId' && (foundIds ? (
+        <div>
+          {foundIds.length===0
+            ? <div style={{fontSize:T.fs.sm,color:T.textSub,lineHeight:1.6}}>이 번호로 가입된 아이디를 찾지 못했어요.<br/>가입 시 인증한 번호인지 확인해주세요.</div>
+            : <div>
+                <div style={{fontSize:T.fs.sm,color:T.textSub,marginBottom:10}}>회원님의 아이디예요:</div>
+                {foundIds.map((a,i)=><div key={i} style={{padding:'10px 12px',background:T.primaryHover,borderRadius:8,marginBottom:6,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                  <span style={{fontWeight:T.fw.black,color:T.primary}}>{a.login_id}</span>
+                  <button onClick={()=>{onUseId&&onUseId(a.login_id);onClose();}} style={{...sBtn(false),height:32,fontSize:T.fs.xs}}>이 아이디로 로그인</button>
+                </div>)}
+              </div>}
+          <button onClick={reset} style={{width:'100%',marginTop:12,padding:11,borderRadius:T.radius.lg,border:`1px solid ${T.border}`,background:'#fff',color:T.textSub,fontWeight:T.fw.bolder,cursor:'pointer',fontFamily:'inherit'}}>다시 찾기</button>
+        </div>
+      ) : (
+        <div>
+          <div style={{fontSize:T.fs.xs,color:T.textMuted,marginBottom:14,lineHeight:1.5}}>가입 시 인증한 휴대폰으로 본인확인 후 아이디를 알려드려요.</div>
+          <div style={{marginBottom:12}}>
+            <label style={lbl}>이름 (선택)</label>
+            <input style={inp} value={name} onChange={e=>setName(e.target.value)} placeholder="이름"/>
+          </div>
+          {phoneVerifyBlock()}
+          {err&&<div style={errStyle}>{err}</div>}
+          <button onClick={doFindId} disabled={busy||!codeSent} style={{...sBtn(busy||!codeSent),width:'100%',marginTop:6}}>아이디 찾기</button>
+        </div>
+      ))}
+
+      {mode==='resetPw' && (done ? (
+        <div style={{textAlign:'center',padding:'10px 0'}}>
+          {done==='__no_email__'
+            ? <div style={{fontSize:T.fs.sm,color:T.textSub,lineHeight:1.7}}>등록된 이메일이 없거나 일치하는 계정을 찾지 못했어요.<br/>휴대폰 인증으로 재설정하거나<br/>고객센터(070-8983-6838)로 문의해주세요.</div>
+            : <div style={{fontSize:T.fs.sm,color:T.text,lineHeight:1.7,fontWeight:T.fw.bold}}>{done}</div>}
+          <button onClick={onClose} style={{width:'100%',marginTop:16,padding:12,borderRadius:T.radius.lg,border:'none',background:T.primary,color:'#fff',fontWeight:T.fw.bolder,cursor:'pointer',fontFamily:'inherit'}}>확인</button>
+        </div>
+      ) : (
+        <div>
+          <div style={{display:'flex',gap:8,marginBottom:16}}>
+            <button onClick={()=>{setResetTab('email');setErr('');}} style={{flex:1,padding:'8px 0',borderRadius:8,border:`1px solid ${resetTab==='email'?T.primary:T.border}`,background:resetTab==='email'?T.primaryHover:'#fff',color:resetTab==='email'?T.primary:T.textSub,fontSize:T.fs.xs,fontWeight:T.fw.bolder,cursor:'pointer',fontFamily:'inherit'}}>이메일로 받기</button>
+            <button onClick={()=>{setResetTab('sms');setErr('');}} style={{flex:1,padding:'8px 0',borderRadius:8,border:`1px solid ${resetTab==='sms'?T.primary:T.border}`,background:resetTab==='sms'?T.primaryHover:'#fff',color:resetTab==='sms'?T.primary:T.textSub,fontSize:T.fs.xs,fontWeight:T.fw.bolder,cursor:'pointer',fontFamily:'inherit'}}>휴대폰 인증</button>
+          </div>
+          {resetTab==='email' ? (
+            <div>
+              <div style={{fontSize:T.fs.xs,color:T.textMuted,marginBottom:12,lineHeight:1.5}}>아이디를 입력하면 가입 이메일로 임시 비밀번호를 보내드려요.</div>
+              <label style={lbl}>아이디</label>
+              <input style={inp} value={loginId} onChange={e=>setLoginId(e.target.value.toLowerCase())} placeholder="아이디" onKeyDown={e=>e.key==='Enter'&&doResetEmail()}/>
+              {err&&<div style={errStyle}>{err}</div>}
+              <button onClick={doResetEmail} disabled={busy} style={{...sBtn(busy),width:'100%',marginTop:14}}>임시 비밀번호 받기</button>
+            </div>
+          ) : (
+            <div>
+              <div style={{fontSize:T.fs.xs,color:T.textMuted,marginBottom:12,lineHeight:1.5}}>가입한 휴대폰 인증 후 새 비밀번호를 설정해요.</div>
+              {phoneVerifyBlock()}
+              {multiIds && <div style={{marginBottom:12}}>
+                <label style={lbl}>아이디 선택</label>
+                <select style={inp} value={loginId} onChange={e=>setLoginId(e.target.value)}>
+                  <option value="">선택</option>
+                  {multiIds.map(id=><option key={id} value={id}>{id}</option>)}
+                </select>
+              </div>}
+              {codeSent && <>
+                <div style={{marginBottom:12}}>
+                  <label style={lbl}>새 비밀번호</label>
+                  <input style={inp} type="password" value={newPw} onChange={e=>setNewPw(e.target.value)} placeholder="영문+숫자 8~20자"/>
+                </div>
+                <div style={{marginBottom:4}}>
+                  <label style={lbl}>새 비밀번호 확인</label>
+                  <input style={inp} type="password" value={newPw2} onChange={e=>setNewPw2(e.target.value)} placeholder="새 비밀번호 재입력"/>
+                </div>
+              </>}
+              {err&&<div style={errStyle}>{err}</div>}
+              <button onClick={doResetSms} disabled={busy||!codeSent} style={{...sBtn(busy||!codeSent),width:'100%',marginTop:14}}>비밀번호 재설정</button>
+            </div>
+          )}
+        </div>
+      ))}
+
+      <button onClick={onClose} style={{width:'100%',marginTop:14,background:'none',border:'none',fontSize:T.fs.sm,color:T.gray400,cursor:'pointer',fontFamily:'inherit'}}>닫기</button>
+    </div>
+  </div>;
+}
 
 // ── 상단 마퀴 배너 — 팀채팅 is_announce=true 메시지 가로 흐름 표시 (세션 단위 dismiss) ──
 // overrideItems prop 있으면 fetch 안 하고 그 데이터로만 표시 (디자인 테스트용)
@@ -989,6 +1261,52 @@ function DepositsAlertBanner({ userBranches=[], onOpen }) {
         </span>
       )}
       <span style={{marginLeft:'auto',fontSize:12,color:'#8a6900'}}>확인 →</span>
+    </div>
+  );
+}
+
+// ── 예약변경요청 배너 (AI가 자동 변경 못 한 건 → 직원이 메시지함에서 처리) ──
+function ChangeReqBanner({ userBranches=[], onOpen }) {
+  const [rows, setRows] = useState([]);
+  useEffect(() => {
+    if (!userBranches?.length) { setRows([]); return; }
+    let alive = true;
+    const bidIn = userBranches.map(b=>`"${b}"`).join(',');
+    const fetchPending = async () => {
+      try {
+        const url = `${SB_URL}/rest/v1/ai_change_requests?select=id,reservation_id,channel,account_id,user_id,cust_name,kind,req_date,req_time,created_at&status=eq.pending&branch_id=in.(${bidIn})&order=created_at.desc&limit=20`;
+        const r = await fetch(url, { headers:{...sbHeaders,'Cache-Control':'no-cache'}, cache:'no-store' });
+        if (!alive || !r.ok) return;
+        const data = await r.json();
+        setRows(Array.isArray(data) ? data : []);
+      } catch {}
+    };
+    fetchPending();
+    const t = setInterval(fetchPending, 120000);
+    let ch = null;
+    if (window._sbClient) {
+      ch = window._sbClient.channel('rt_changereq_banner_'+Date.now())
+        .on('postgres_changes',{event:'*',schema:'public',table:'ai_change_requests'}, fetchPending)
+        .subscribe();
+    }
+    return () => { alive=false; clearInterval(t); if (ch && window._sbClient) window._sbClient.removeChannel(ch); };
+  }, [userBranches?.join('|')]);
+  if (!rows.length) return null;
+  const latest = rows[0];
+  const kindLabel = latest.kind === 'cross_day' ? '다른 날로 변경' : '시간 변경';
+  return (
+    <div onClick={()=>onOpen(latest)} style={{
+      flexShrink:0, cursor:'pointer',
+      background:'#EDE9FE', borderBottom:'1px solid #ddd0fb',
+      padding:'7px 16px', display:'flex', alignItems:'center', gap:10,
+      fontSize:13, color:'#5b21b6', fontWeight:600,
+    }}>
+      <I name="calendar" size={15} color="#5b21b6"/>
+      <span><b>예약변경요청 {rows.length}건</b></span>
+      <span style={{opacity:.8,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+        · 최근: {latest.cust_name || '고객'} {latest.req_date||''} {latest.req_time||''} ({kindLabel})
+      </span>
+      <span style={{marginLeft:'auto',fontSize:12,color:'#6d28d9'}}>확인 →</span>
     </div>
   );
 }
@@ -1259,6 +1577,15 @@ function App() {
     if (p === "settings") return "admin";
     return Object.keys(PAGE_ROUTES).includes(p) ? p : "timeline";
   }, [location.pathname]);
+  // 로그인 안 된 상태에선 URL을 /login 으로 표시(앱 경로에 로그인 화면이 뜨는 혼동 방지),
+  // 로그인 후 /login 이면 /timeline 으로 보냄
+  useEffect(() => {
+    if (phase === "login") {
+      if (location.pathname !== "/login") { try { navigate("/login", { replace: true }); } catch (e) {} }
+    } else if (phase === "app" && location.pathname === "/login") {
+      try { navigate("/timeline", { replace: true }); } catch (e) {}
+    }
+  }, [phase, location.pathname]);
   const [pendingOpenRes, setPendingOpenRes] = useState(null);
   const [pendingOpenCust, setPendingOpenCust] = useState(null); // 고객관리 페이지에서 자동 오픈할 cust_id
   const [pendingChat, setPendingChat] = useState(null); // {user_id, channel, account_id}
@@ -1684,7 +2011,7 @@ function App() {
         } catch(e) {}
         const users = fromDb("app_users", await sb.get("app_users_safe"));
         if (users.length === 0) {
-          setAllUsers([{id:"acc_super", loginId:"admin", pw:"1234", name:"Bliss 관리자", role:"super", branches:[], viewBranches:[]}]);
+          setAllUsers([{id:"acc_super", loginId:"admin", pw:"1234", name:"BlissMe 관리자", role:"super", branches:[], viewBranches:[]}]);
           setPhase("login");
         } else {
           setAllUsers(users);
@@ -1733,7 +2060,7 @@ function App() {
         }
       } catch(e) {
         console.error("DB 연결 실패:", e);
-        setAllUsers([{id:"acc_super", loginId:"admin", pw:"1234", name:"Bliss 관리자", role:"super", branches:[], viewBranches:[]}]);
+        setAllUsers([{id:"acc_super", loginId:"admin", pw:"1234", name:"BlissMe 관리자", role:"super", branches:[], viewBranches:[]}]);
         setPhase("login");
       }
     })();
@@ -1805,6 +2132,8 @@ function App() {
           if (memo.gemini_key) {
             localStorage.setItem("bliss_gemini_key", memo.gemini_key);
             window.__geminiKey = memo.gemini_key;
+            // 키 일원화: 로그인 후엔 시스템 변수도 매장 키(서버 공용·단일 관리)로 덮어 stale 시스템 키가 1순위로 끼어드는 것 방지
+            window.__systemGeminiKey = memo.gemini_key;
           }
           const AI_RULES_KEY = "bliss_ai_rules";
           if (memo.ai_rules?.length && !localStorage.getItem(AI_RULES_KEY)) {
@@ -2149,6 +2478,7 @@ function App() {
     { id:"messages", label:"받은메시지함", icon:<I name="msgSq" size={16}/>, badge: unreadMsgCount + pendingDepositCount },
     { id:"admin", label:"관리설정", icon:<I name="settings" size={16}/> },
     { id:"requests", label:"공지 & 요청", icon:"📢", badge:pendingReqCount },
+    ...(isMaster ? [{ id:"pkgunused", label:"패키지 미사용 검토", icon:<I name="clipboard" size={16}/> }] : []),
   ];
 
   const branchNames = userBranches.map(bid => (data.branches||[]).find(b=>b.id===bid)?.short||bid).filter(Boolean).join(", ");
@@ -2243,6 +2573,20 @@ function App() {
             }, 60);
           }}
         />}
+        {role !== "staff" && <ChangeReqBanner
+          userBranches={userBranches}
+          onOpen={(row) => {
+            if (row?.user_id) setPendingChat({ user_id: row.user_id, channel: row.channel, account_id: row.account_id });
+            setMessagesPanelOpen(true);
+            try {
+              fetch(`${SB_URL}/rest/v1/ai_change_requests?id=eq.${row.id}`, {
+                method:'PATCH',
+                headers:{...sbHeaders,'Content-Type':'application/json','Prefer':'return=minimal'},
+                body: JSON.stringify({ status:'handled', handled_at: new Date().toISOString() }),
+              });
+            } catch {}
+          }}
+        />}
         <div className="page-pad" style={{flex:1,padding:(page==="timeline"||page==="messages"||page==="schedule")?"0":"16px 20px 16px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
           <Routes>
             <Route path="/announce-test" element={<AnnounceDesignGallery/>}/>
@@ -2251,13 +2595,14 @@ function App() {
             <Route path="/reservations" element={<ScrollArea storageKey="page_reservations"><ReservationList data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} setNaverColShow={setNaverColShow}/></ScrollArea>}/>
             <Route path="/sales" element={<ScrollArea storageKey="page_sales"><SalesPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} role={role} setPendingOpenCust={setPendingOpenCust}/></ScrollArea>}/>
             <Route path="/sale-summary" element={<ScrollArea storageKey="page_sale_summary"><SaleSummary/></ScrollArea>}/>
-            <Route path="/customers" element={<ScrollArea storageKey="page_customers"><CustomersPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} pendingOpenCust={pendingOpenCust} setPendingOpenCust={setPendingOpenCust}/></ScrollArea>}/>
+            <Route path="/customers" element={<ScrollArea storageKey="page_customers"><CustomersPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} pendingOpenCust={pendingOpenCust} setPendingOpenCust={setPendingOpenCust} setPage={setPage} setPendingOpenRes={setPendingOpenRes}/></ScrollArea>}/>
             <Route path="/users" element={<ScrollArea storageKey="page_users"><UsersPage data={data} setData={setData} bizId={currentBizId}/></ScrollArea>}/>
             <Route path="/messages" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><AdminInbox sb={sb} branches={data?.branches} data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} currentUser={currentUser} onRead={(cnt)=>setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)))} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage}/></div>}/>
             <Route path="/schedule" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}>{isMaster && <SchedulePage/>}</div>}/>
-            <Route path="/settings/*" element={<ScrollArea storageKey="page_settings"><AdminPage data={data} setData={setData} bizId={currentBizId} serverV={serverV} onLogout={handleLogout} currentUser={currentUser} userBranches={userBranches} setPage={setPage}/></ScrollArea>}/>
+            <Route path="/settings/*" element={<ScrollArea storageKey="page_settings"><AdminPage data={data} setData={setData} bizId={currentBizId} serverV={serverV} onLogout={handleLogout} currentUser={currentUser} userBranches={userBranches} setPage={setPage} setPendingOpenCust={setPendingOpenCust}/></ScrollArea>}/>
             <Route path="/wizard" element={<Navigate to="/blissai" replace/>}/>
             <Route path="/requests" element={<ScrollArea storageKey="page_requests"><BlissRequests data={data} currentUser={currentUser} userBranches={userBranches} isMaster={isMaster}/></ScrollArea>}/>
+            <Route path="/pkg-unused" element={<ScrollArea storageKey="page_pkgunused"><div style={{padding:16}}><AdminPkgUnusedReview data={data} bizId={currentBizId} userBranches={userBranches} setPage={setPage} setPendingOpenCust={setPendingOpenCust}/></div></ScrollArea>}/>
             <Route path="/blissai" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}><BlissAI data={data} setData={setData} currentUser={currentUser} userBranches={userBranches} isMaster={isMaster} bizId={currentBizId} bizName={bizName}/></div>}/>
             <Route path="*" element={<Navigate to="/timeline" replace/>}/>
           </Routes>
@@ -2279,8 +2624,8 @@ function App() {
             <span>(주)테라포트</span><span>·</span>
             <span>632-81-02070</span><span>·</span>
             <span>대표 권신영</span><span>·</span>
-            <span>010-5702-8008</span><span>·</span>
-            <span>teraport@blissme.ai</span>
+            <span>070-8983-6838</span><span>·</span>
+            <span>contact@blissme.ai</span>
           </div>
         </footer>
       </main>

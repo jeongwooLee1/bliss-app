@@ -246,8 +246,8 @@ export function chunkText(text, opts = {}) {
   return chunks
 }
 
-// ─── Gemini 임베딩 (gemini-embedding-001 최신, outputDimensionality=768로 DB schema 호환) ───
-const EMBED_MODEL = 'gemini-embedding-001'
+// ─── Gemini 임베딩 (gemini-embedding-2, outputDimensionality=768로 DB schema·쿼리 모델 일치) ───
+const EMBED_MODEL = 'gemini-embedding-2'
 const EMBED_DIM = 768
 
 export async function embedTexts(texts, apiKey) {

@@ -2196,6 +2196,20 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       showAlert("매출 내역 수정은 매출관리 페이지에서 가능합니다.");
       return;
     }
+    // ── 패키지/선불권 구매했는데 당일 소진(사용) 0 → 첫 시술 누락 의심 경고 (신규 등록만) ──
+    if (!editMode) {
+      const _boughtAny = newPkgPurchases.length > 0 || newPrepaidPurchases.length > 0;
+      const _pkgUsedToday = newPkgPurchases.some(s => Number(usePkgToday[s.id] || 0) > 0);
+      const _prepaidUsedToday = newPkgInstantDeduct > 0;
+      if (_boughtAny && !_pkgUsedToday && !_prepaidUsedToday) {
+        const _names = [...newPkgPurchases, ...newPrepaidPurchases].map(s => s.name).join(", ");
+        const ok = confirm(
+          `패키지/선불권(${_names})을 구매했는데 오늘 사용(차감)한 내역이 없습니다.\n\n` +
+          `당일 첫 시술을 빠뜨린 건 아닌지 확인해주세요.\n그대로 저장할까요?`
+        );
+        if (!ok) return;
+      }
+    }
     // ── 외부선결제 입력했는데 플랫폼 미선택 차단 (id_bx34ug1iaq 케이스 방어) ──
     if (externalPrepaid > 0 && !(externalPlatform || "").trim()) {
       showAlert("외부선결제 금액을 입력하셨는데 플랫폼이 선택되지 않았습니다.\n\n네이버/트레이지/서울뷰티 등 플랫폼을 선택해주세요.");
@@ -3212,7 +3226,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
             grouped[k].amount += (r.amount || 0);
             grouped[k].balance_after = r.balance_after; // 마지막 값
           });
-          Object.values(grouped).forEach(r => {
+          const _sendPkgAlerts = () => Object.values(grouped).forEach(r => {
             const pkg = (custPkgs||[]).find(p => p.id === r.package_id) || {};
             const note = pkg.note || "";
             const expM = note.match(/유효:\s*(\d{4}-\d{2}-\d{2})/);
@@ -3253,6 +3267,17 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
               }).catch(e => console.warn("[tkt_pay queue]", e));
             }
           });
+          // 중복 발송 방지: 최근 3시간 내 같은 고객에 보유권 알림톡 발송 이력 있으면 재발송 여부 확인 (매출 취소→재등록 대비)
+          if (Object.keys(grouped).length > 0) {
+            const _since = new Date(Date.now() - 3*60*60*1000).toISOString();
+            sb.get("alimtalk_queue", `&phone=eq.${cleanPhone}&noti_key=in.(tkt_pay,pkg_pay)&created_at=gte.${_since}&status=neq.failed&limit=1`)
+              .then(rows => {
+                if (rows && rows.length > 0) {
+                  if (window.confirm("이 고객에게 보유권(다담권/다회권) 알림톡이 최근 발송됐어요.\n매출을 취소 후 다시 등록하면 중복으로 또 갈 수 있습니다.\n\n다시 보낼까요?")) _sendPkgAlerts();
+                } else { _sendPkgAlerts(); }
+              })
+              .catch(() => _sendPkgAlerts());
+          }
         }
       } catch(e) { console.warn("[tkt_pay trigger]", e); }
     }

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { T } from '../../lib/constants'
 import { SB_URL, sbHeaders } from '../../lib/sb'
 import { _activeBizId, fromDb } from '../../lib/db'
+import I from '../common/I'
 
 const FILTER_KEY = 'salesGrid_filters_v2'
 
@@ -525,7 +526,7 @@ function SalesGridPage({ data, userBranches = [], role }) {
         style={{height:28, padding:'0 14px', fontSize:11, fontWeight:T.fw.bolder,
                 border:`1px solid ${T.success}`, background:T.success+'18', color:T.success,
                 borderRadius:4, cursor:filtered.length?'pointer':'not-allowed',
-                opacity:filtered.length?1:.4, fontFamily:'inherit'}}>⬇ Excel (CSV)</button>
+                opacity:filtered.length?1:.4, fontFamily:'inherit',display:'inline-flex',alignItems:'center',gap:4}}><I name="download" size={11}/>Excel (CSV)</button>
     </div>
 
     {/* 그리드 */}

@@ -1,9 +1,10 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { T } from '../../lib/constants'
 import { _activeBizId } from '../../lib/db'
 import { sb, buildTokenSearch, matchAllTokens, SB_URL, sbHeaders } from '../../lib/sb'
 import { toDb, fromDb } from '../../lib/db'
-import { todayStr, genId, fmtLocal, useSessionState, TTL } from '../../lib/utils'
+import { todayStr, pad, genId, fmtLocal, useSessionState, TTL, isMoneyPkg, fmtPhone } from '../../lib/utils'
 import { Btn, StatCard, GridLayout, fmt, Empty, DataTable, FLD } from '../common'
 import I from '../common/I'
 import { SmartDatePicker } from '../Reservations/ReservationsPage'
@@ -53,8 +54,200 @@ const sx = {
   },
 };
 
+// 매출관리 유지한 채 고객 상세를 읽기전용 팝업으로 표시
+function CustDetailPopup({ custId, data, onClose, onOpenFull }) {
+  const [cust, setCust] = useState(() => (data?.customers||[]).find(c=>c.id===custId) || null);
+  const [pkgs, setPkgs] = useState([]);
+  const [pointBal, setPointBal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLoading(true);
+      let c = (data?.customers||[]).find(x=>x.id===custId);
+      if (!c) {
+        const rows = await sb.get("customers", `&id=eq.${custId}&limit=1`).catch(()=>[]);
+        if (rows?.length) c = fromDb("customers", rows)[0];
+      }
+      const [pk, pt] = await Promise.all([
+        sb.get("customer_packages", `&customer_id=eq.${custId}`).catch(()=>[]),
+        sb.get("point_transactions", `&customer_id=eq.${custId}&select=type,amount`).catch(()=>[]),
+      ]);
+      if (!alive) return;
+      setCust(c||null);
+      setPkgs(Array.isArray(pk)?pk:[]);
+      let bal=0; (Array.isArray(pt)?pt:[]).forEach(t=>{ if(t.type==='earn')bal+=+t.amount||0; else if(t.type==='deduct'||t.type==='expire')bal-=+t.amount||0; });
+      setPointBal(Math.max(0,bal));
+      setLoading(false);
+    })();
+    return ()=>{alive=false;};
+  }, [custId]);
+  useEffect(()=>{ const h=e=>{if(e.key==='Escape')onClose();}; window.addEventListener('keydown',h); return ()=>window.removeEventListener('keydown',h); }, [onClose]);
+
+  const activePkgs = pkgs.filter(p=>{
+    const ex=(p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/); if(ex&&ex[1]<todayStr())return false;
+    if (isMoneyPkg(p)) { const v=((p.note||"").match(/잔액:([0-9,]+)/)?.[1]||"0").replace(/,/g,""); return +v>0; }
+    return ((p.total_count||0)-(p.used_count||0))>0;
+  });
+  const Row = ({label, children}) => (children!=null && children!=="") ? (
+    <div style={{display:"flex",gap:8,fontSize:T.fs.sm,lineHeight:1.5,padding:"3px 0"}}>
+      <span style={{minWidth:64,flexShrink:0,color:T.textMuted,fontWeight:600}}>{label}</span>
+      <span style={{color:T.text,wordBreak:"break-word"}}>{children}</span>
+    </div>
+  ) : null;
+
+  const _summary = cust?.serviceSummary || "";
+  const _phone = cust?.phone || "";
+  const _phone2 = cust?.phone2 || "";
+  const _visits = cust?.visits ?? cust?.visitCount;
+  const _last = cust?.lastVisit || cust?.lastDate || "";
+
+  return createPortal(
+    <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:4000,background:"rgba(0,0,0,.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:440,maxHeight:"88vh",overflowY:"auto",background:T.bgCard,borderRadius:14,boxShadow:"0 12px 40px rgba(0,0,0,.25)"}}>
+        {/* 헤더 */}
+        <div style={{display:"flex",alignItems:"center",gap:8,padding:"14px 16px",borderBottom:`1px solid ${T.border}`,position:"sticky",top:0,background:T.bgCard,borderRadius:"14px 14px 0 0"}}>
+          {cust?.gender && <span style={{...sx.genderBadge(cust.gender)}}>{cust.gender==="M"?"남":"여"}</span>}
+          <span style={{fontSize:16,fontWeight:800,color:T.text}}>{cust?.name || "고객"}</span>
+          {cust?.custNum && <span style={{fontSize:13,fontWeight:700,color:T.text}}>#{cust.custNum}</span>}
+          <button type="button" onClick={onClose} style={{marginLeft:"auto",border:"none",background:"transparent",fontSize:20,color:T.gray500,cursor:"pointer",lineHeight:1,padding:"0 4px"}}>×</button>
+        </div>
+        <div style={{padding:"12px 16px"}}>
+          {loading ? <div style={{padding:24,textAlign:"center",color:T.textMuted,fontSize:13}}>불러오는 중…</div> : !cust ? <div style={{padding:24,textAlign:"center",color:T.textMuted,fontSize:13}}>고객 정보를 찾을 수 없습니다.</div> : (
+            <>
+              {/* AI 분석 */}
+              {_summary && <div style={{marginBottom:10,padding:"8px 11px",background:"#EEF2FF",borderRadius:T.radius.md,boxShadow:"0 2px 8px rgba(0,0,0,.06)"}}>
+                <div style={{fontSize:10,fontWeight:800,color:"#4338ca",display:"flex",alignItems:"center",gap:4,marginBottom:3}}><I name="sparkles" size={11}/>AI 분석</div>
+                <div style={{fontSize:12.5,color:"#3730a3",fontWeight:600,lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{_summary}</div>
+              </div>}
+              {/* 기본 정보 */}
+              <Row label="연락처">{[_phone&&fmtPhone(_phone), _phone2&&fmtPhone(_phone2)].filter(Boolean).join(" / ")}</Row>
+              <Row label="이메일">{cust.email}</Row>
+              <Row label="가입일">{(cust.joinDate||cust.createdAt||"").slice(0,10)}</Row>
+              <Row label="방문수">{_visits!=null?`${_visits}회`:null}</Row>
+              <Row label="최근방문">{(_last||"").slice(0,10)}</Row>
+              {/* 보유권 */}
+              {activePkgs.length>0 && <div style={{marginTop:8,paddingTop:8,borderTop:`1px dashed ${T.border}`}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.textMuted,marginBottom:4}}>보유권</div>
+                {activePkgs.map((p,i)=>{
+                  const money=isMoneyPkg(p);
+                  const bal=((p.note||"").match(/잔액:([0-9,]+)/)?.[1]||"").replace(/,/g,"");
+                  const disp = money ? (bal?`${(+bal).toLocaleString()}원`:"-") : `${(p.total_count||0)-(p.used_count||0)}회 남음`;
+                  return <div key={i} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:T.fs.sm,padding:"2px 0"}}>
+                    <span style={{color:T.text}}>{(p.service_name||"").split("(")[0].trim()}</span>
+                    <span style={{fontWeight:700,color:T.primary}}>{disp}</span>
+                  </div>;
+                })}
+              </div>}
+              {/* 포인트 */}
+              {pointBal>0 && <Row label="포인트">{pointBal.toLocaleString()}P</Row>}
+              {/* 메모 */}
+              {cust.memo && <div style={{marginTop:8,paddingTop:8,borderTop:`1px dashed ${T.border}`}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.textMuted,marginBottom:4}}>고객 메모</div>
+                <div style={{fontSize:T.fs.sm,color:T.text,whiteSpace:"pre-wrap",wordBreak:"break-word",lineHeight:1.5}}>{cust.memo}</div>
+              </div>}
+            </>
+          )}
+        </div>
+        {/* 푸터 — 전체 고객관리로 열기 */}
+        {cust && onOpenFull && <div style={{padding:"10px 16px",borderTop:`1px solid ${T.border}`,position:"sticky",bottom:0,background:T.bgCard}}>
+          <button type="button" onClick={()=>onOpenFull(custId)} style={{width:"100%",padding:"10px",fontSize:13,fontWeight:700,border:`1px solid ${T.primary}`,borderRadius:8,background:T.primaryLt||"#EEF2FF",color:T.primary,cursor:"pointer",fontFamily:"inherit"}}>고객관리에서 전체 보기 ↗</button>
+        </div>}
+      </div>
+    </div>, document.body);
+}
+
+// 🧾 마감정산 모드 — 한 지점·하루 단위, 제품/시술 × 현금·카드·입금·포인트·외부선결제·총매출
+function SettlementModal({ data, userBranches, onClose, initBranch, initDate }) {
+  const brs = (data?.branches||[]).filter(b=>!userBranches?.length || userBranches.includes(b.id));
+  const [branch, setBranch] = useState(initBranch && initBranch!=="all" ? initBranch : (brs[0]?.id||""));
+  const [date, setDate] = useState(initDate || todayStr());
+  const [agg, setAgg] = useState(null);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!branch || !date) { setAgg(null); return; }
+    let alive = true; setLoading(true);
+    sb.getAll("sales", `&business_id=eq.${_activeBizId}&bid=eq.${branch}&date=eq.${date}&select=svc_cash,svc_card,svc_transfer,svc_point,prod_cash,prod_card,prod_transfer,prod_point,external_prepaid`)
+      .then(rows => {
+        if (!alive) return;
+        const a = {count:(rows||[]).length, svcCash:0,svcCard:0,svcTransfer:0,svcPoint:0, prodCash:0,prodCard:0,prodTransfer:0,prodPoint:0, ext:0};
+        (rows||[]).forEach(r => { a.svcCash+=r.svc_cash||0;a.svcCard+=r.svc_card||0;a.svcTransfer+=r.svc_transfer||0;a.svcPoint+=r.svc_point||0;a.prodCash+=r.prod_cash||0;a.prodCard+=r.prod_card||0;a.prodTransfer+=r.prod_transfer||0;a.prodPoint+=r.prod_point||0;a.ext+=r.external_prepaid||0; });
+        setAgg(a); setLoading(false);
+      }).catch(() => { if (alive) { setAgg(null); setLoading(false); } });
+    return () => { alive = false; };
+  }, [branch, date]);
+  useEffect(() => { const h=e=>{if(e.key==='Escape')onClose();}; window.addEventListener('keydown',h); return ()=>window.removeEventListener('keydown',h); }, [onClose]);
+
+  const _addDays = (n) => { const d = new Date(); d.setDate(d.getDate()+n); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
+  const prod = agg ? {cash:agg.prodCash,card:agg.prodCard,transfer:agg.prodTransfer,point:agg.prodPoint,ext:0} : null;
+  const svc  = agg ? {cash:agg.svcCash,card:agg.svcCard,transfer:agg.svcTransfer,point:agg.svcPoint,ext:agg.ext} : null;
+  const rowTot = (r) => r ? r.cash+r.card+r.transfer+r.point+r.ext : 0;
+  const sumK = (k) => (prod?prod[k]:0)+(svc?svc[k]:0);
+  const cols = [["현금","cash","#16a34a"],["카드","card",T.primary],["입금","transfer",T.info],["포인트","point",T.orange],["외부선결제","ext","#8E24AA"]];
+  const cell = (v) => v>0 ? fmt(v) : <span style={{color:T.gray300}}>-</span>;
+  const cH = {padding:"7px 8px",fontSize:T.fs.xxs,fontWeight:T.fw.bolder,color:T.textSub,borderBottom:`2px solid ${T.border}`};
+  const cD = {padding:"9px 8px",borderBottom:`1px solid ${T.border}`};
+  const dBtn = (on) => ({height:34,padding:"0 12px",fontSize:T.fs.xs,fontWeight:T.fw.bold,borderRadius:T.radius.sm,cursor:"pointer",fontFamily:"inherit",border:`1px solid ${on?T.primary:T.border}`,background:on?T.primaryHover:T.bgCard,color:on?T.primaryDk:T.textSub});
+
+  return createPortal(
+    <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:4000,background:"rgba(0,0,0,.45)",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"40px 16px",overflowY:"auto"}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:680,background:T.bgCard,borderRadius:14,boxShadow:"0 12px 40px rgba(0,0,0,.25)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"14px 16px",borderBottom:`1px solid ${T.border}`}}>
+          <span style={{fontSize:16,fontWeight:800,color:T.text,display:"inline-flex",alignItems:"center",gap:6}}><I name="banknote" size={16}/>마감정산</span>
+          <button onClick={onClose} style={{marginLeft:"auto",border:"none",background:"transparent",fontSize:22,color:T.gray500,cursor:"pointer",lineHeight:1,padding:"0 4px"}}>×</button>
+        </div>
+        <div style={{padding:"14px 16px"}}>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:14}}>
+            <select className="inp" style={{height:34,minWidth:130}} value={branch} onChange={e=>setBranch(e.target.value)}>
+              {brs.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+            <input type="date" className="inp" style={{height:34}} value={date} onChange={e=>setDate(e.target.value)}/>
+            <button type="button" onClick={()=>setDate(todayStr())} style={dBtn(date===todayStr())}>당일</button>
+            <button type="button" onClick={()=>setDate(_addDays(-1))} style={dBtn(date===_addDays(-1))}>전일</button>
+            {agg && <span style={{marginLeft:"auto",fontSize:T.fs.xs,color:T.textSub,fontWeight:T.fw.bold}}>{agg.count}건</span>}
+          </div>
+          {loading ? <div style={{padding:28,textAlign:"center",color:T.textMuted,fontSize:13}}>불러오는 중…</div> : !agg ? null : (
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:T.fs.sm,minWidth:560}}>
+                <thead><tr>
+                  <th style={{...cH,textAlign:"left"}}>구분</th>
+                  {cols.map(([l,,c])=><th key={l} style={{...cH,textAlign:"right",color:c}}>{l}</th>)}
+                  <th style={{...cH,textAlign:"right",color:T.text}}>총매출</th>
+                </tr></thead>
+                <tbody>
+                  <tr>
+                    <td style={{...cD,fontWeight:T.fw.bolder,color:T.info}}>제품</td>
+                    {cols.map(([l,k])=><td key={l} style={{...cD,textAlign:"right"}}>{cell(prod[k])}</td>)}
+                    <td style={{...cD,textAlign:"right",fontWeight:T.fw.black}}>{fmt(rowTot(prod))}</td>
+                  </tr>
+                  <tr>
+                    <td style={{...cD,fontWeight:T.fw.bolder,color:T.primary}}>시술</td>
+                    {cols.map(([l,k])=><td key={l} style={{...cD,textAlign:"right"}}>{cell(svc[k])}</td>)}
+                    <td style={{...cD,textAlign:"right",fontWeight:T.fw.black}}>{fmt(rowTot(svc))}</td>
+                  </tr>
+                  <tr style={{background:T.gray200}}>
+                    <td style={{...cD,fontWeight:T.fw.black}}>합계</td>
+                    {cols.map(([l,k])=><td key={l} style={{...cD,textAlign:"right",fontWeight:T.fw.bolder}}>{cell(sumK(k))}</td>)}
+                    <td style={{...cD,textAlign:"right",fontWeight:T.fw.black,color:T.info}}>{fmt(rowTot(prod)+rowTot(svc))}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div style={{marginTop:10,fontSize:T.fs.xxs,color:T.textMuted,lineHeight:1.5}}>※ 외부선결제(예약금 등)는 시술로 집계됩니다. 보유권 차감은 현금성 결제가 아니라 제외.</div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>, document.body);
+}
+
 function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPendingOpenCust }) {
-  const goToCustomer = (custId) => {
+  const [custPopupId, setCustPopupId] = useState(null);
+  const [showSettlement, setShowSettlement] = useState(false);
+  // 고객명 클릭 → 매출관리 유지한 채 팝업으로 상세 표시
+  const goToCustomer = (custId) => { if (custId) setCustPopupId(custId); };
+  // 팝업 내 '전체 보기' → 기존처럼 고객관리 페이지로 이동
+  const openFullCustomer = (custId) => {
+    setCustPopupId(null);
     if (!custId || !setPendingOpenCust || !setPage) return;
     setPendingOpenCust(custId);
     setPage("customers");
@@ -502,7 +695,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
 
   // 그리드 탭은 대표(super/owner)만 노출
   const _gridAllowed = role === 'super' || role === 'owner'
-  const _tabs = [["sales","매출 관리"],["stats","매출 통계"], ..._gridAllowed ? [["grid","📊 그리드"]] : []]
+  const _tabs = [["sales","매출 관리"],["stats","매출 통계"], ..._gridAllowed ? [["grid",<span style={{display:"inline-flex",alignItems:"center",gap:4}}><I name="chart" size={13}/>그리드</span>]] : []]
 
   if (salesTab === "grid") {
     if (!_gridAllowed) { setSalesTab("sales"); return null }
@@ -543,7 +736,10 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
     {/* Header */}
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:T.sp.sm}}>
       <h2 className="page-title" style={{marginBottom:0}}>매출 관리</h2>
-      <Btn variant="primary" onClick={()=>setShowModal(true)}><I name="plus" size={12}/> 매출등록</Btn>
+      <div style={{display:"flex",gap:T.sp.sm,alignItems:"center"}}>
+        <Btn variant="ghost" onClick={()=>setShowSettlement(true)}><I name="banknote" size={13} style={{marginRight:4,verticalAlign:"-2px"}}/>정산 모드</Btn>
+        <Btn variant="primary" onClick={()=>setShowModal(true)}><I name="plus" size={12}/> 매출등록</Btn>
+      </div>
     </div>
 
     {/* Filters */}
@@ -727,22 +923,9 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
                         {new Date(s.createdAt).toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}
                       </span>}
                     </div>
-                    {/* 관리내역 — 연결된 예약의 서비스태그 표시 */}
-                    {(()=>{
-                      const rsv = s.reservationId
-                        ? (data?.reservations||[]).find(r => r.reservationId===s.reservationId || r.id===s.reservationId)
-                        : null;
-                      const tagIds = rsv?.selectedTags || [];
-                      if (!tagIds.length) return null;
-                      const tagList = tagIds.map(tid => (data?.serviceTags||[]).find(t=>t.id===tid)).filter(Boolean);
-                      if (!tagList.length) return null;
-                      return <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:8,padding:"6px 10px",background:T.gray100,borderRadius:T.radius.md}}>
-                        <span style={{fontSize:T.fs.xxs,color:T.textSub,fontWeight:T.fw.bold}}>🏷 관리내역</span>
-                        {tagList.map(tg => (
-                          <span key={tg.id} style={{fontSize:T.fs.xxs,fontWeight:700,padding:"2px 8px",borderRadius:10,color:"#fff",background:tg.color||T.primary}}>{tg.name}</span>
-                        ))}
-                      </div>;
-                    })()}
+                    {/* 상세 2단: 왼쪽 관리내역+시술상세 / 오른쪽 메모 */}
+                    <div style={{display:"flex",gap:12,alignItems:"flex-start",flexWrap:"wrap"}}>
+                    <div style={{flex:"1 1 380px",minWidth:300,display:"flex",flexDirection:"column",gap:8}}>
                     {/* 시술 상세 내역 (sale_details) */}
                     {(()=>{
                       const details = detailMap[s.id];
@@ -823,8 +1006,9 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
                         </table>
                       </div>;
                     })()}
-                    {/* 메모 — 상세 페이지 전용, 편집 가능 */}
-                    <div style={{marginTop:10,padding:"8px 12px",background:T.bgCard,border:"1px solid "+T.border,borderRadius:T.radius.md}}>
+                    </div>{/* /왼쪽 컬럼 */}
+                    {/* 메모 — 상세 페이지 전용, 편집 가능 (오른쪽 컬럼) */}
+                    <div style={{flex:"1 1 280px",minWidth:260,padding:"8px 12px",background:T.bgCard,border:"1px solid "+T.border,borderRadius:T.radius.md,alignSelf:"stretch"}}>
                       <div style={{fontSize:T.fs.xxs,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:4}}>📝 메모</div>
                       {editMemoId===s.id ? (
                         <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -845,7 +1029,8 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
                           style={{fontSize:T.fs.xs,color:s.memo?T.text:T.gray400,whiteSpace:"pre-wrap",lineHeight:1.5,cursor:"pointer",minHeight:20}}
                           title="클릭하여 편집">{s.memo||"메모 없음 (클릭하여 작성)"}</div>
                       )}
-                    </div>
+                    </div>{/* /오른쪽 컬럼(메모) */}
+                    </div>{/* /상세 2단 */}
                   </div>
                 </td></tr>}
               </React.Fragment>;
@@ -883,6 +1068,8 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
     <SmartDatePicker open={showSheet} onClose={()=>setShowSheet(false)} anchorEl={dateAnchorRef.current}
       startDate={startDate} endDate={endDate} mode="sales"
       onApply={(s,e,p)=>{ setStartDate(s); setEndDate(e); setPeriodKey(p); setShowSheet(false); }}/>
+    {custPopupId && <CustDetailPopup custId={custPopupId} data={data} onClose={()=>setCustPopupId(null)} onOpenFull={openFullCustomer}/>}
+    {showSettlement && <SettlementModal data={data} userBranches={userBranches} onClose={()=>setShowSettlement(false)} initBranch={vb} initDate={startDate}/>}
   </div>;
 }
 

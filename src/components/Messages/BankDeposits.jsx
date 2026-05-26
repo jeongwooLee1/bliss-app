@@ -371,7 +371,7 @@ function MatchModal({ deposit, branches, onClose, onMatched, currentUser }) {
 }
 
 // ---------- 메인 ----------
-export default function BankDeposits({ data, branches=[], userBranches=[], currentUser=null }) {
+export default function BankDeposits({ data, branches=[], userBranches=[], currentUser=null, onDepositChange, setPendingOpenRes, setPage }) {
   const [deposits, setDeposits] = useState([]);
   const [filter, setFilter] = useState('all'); // all|pending|matched|ignored
   const [matchTarget, setMatchTarget] = useState(null);
@@ -395,6 +395,8 @@ export default function BankDeposits({ data, branches=[], userBranches=[], curre
       }
       return next;
     });
+    // 부모 뱃지 즉시 갱신 (매칭/되돌리기 직후 pending 수 반영 — 120초 폴링 기다리지 않음)
+    try { onDepositChange?.(next.filter(d=>d.status==='pending').length); } catch {}
     // 매칭된 예약/매출 라벨 로드 → 입금 카드에 "→ 예약/매출 ..." 연결 정보 표시
     try {
       const rsvIds  = [...new Set(next.filter(d=>d.matchedReservationId).map(d=>d.matchedReservationId))];
@@ -402,13 +404,13 @@ export default function BankDeposits({ data, branches=[], userBranches=[], curre
       const custIds = [...new Set(next.filter(d=>d.status==='awaiting_sale' && d.matchedCustId).map(d=>d.matchedCustId))];
       const info = {};
       if (rsvIds.length) {
-        const rr = await sb.get('reservations', `&id=in.(${rsvIds.map(x=>`"${x}"`).join(',')})&select=id,date,time,cust_name`);
-        const rmap = {}; (rr||[]).forEach(x=>{ rmap[x.id] = { type:'rsv', date:x.date, time:x.time, name:x.cust_name }; });
+        const rr = await sb.get('reservations', `&id=in.(${rsvIds.map(x=>`"${x}"`).join(',')})&select=id,date,time,cust_name,reservation_id`);
+        const rmap = {}; (rr||[]).forEach(x=>{ rmap[x.id] = { type:'rsv', date:x.date, time:x.time, name:x.cust_name, rid:x.reservation_id }; });
         next.forEach(d=>{ if (d.matchedReservationId && rmap[d.matchedReservationId]) info[d.id] = rmap[d.matchedReservationId]; });
       }
       if (saleIds.length) {
-        const sr = await sb.get('sales', `&id=in.(${saleIds.map(x=>`"${x}"`).join(',')})&select=id,date,cust_name,service_name`);
-        const smap = {}; (sr||[]).forEach(x=>{ smap[x.id] = { type:'sale', date:x.date, name:x.cust_name }; });
+        const sr = await sb.get('sales', `&id=in.(${saleIds.map(x=>`"${x}"`).join(',')})&select=id,date,cust_name,service_name,reservation_id`);
+        const smap = {}; (sr||[]).forEach(x=>{ smap[x.id] = { type:'sale', date:x.date, name:x.cust_name, resvFk:x.reservation_id }; });
         next.forEach(d=>{ if (d.matchedSaleId && smap[d.matchedSaleId]) info[d.id] = smap[d.matchedSaleId]; });
       }
       if (custIds.length) {
@@ -581,18 +583,23 @@ export default function BankDeposits({ data, branches=[], userBranches=[], curre
                   <span style={{fontSize:T.fs.nano,color:T.textSub,whiteSpace:'nowrap'}}>{fmtSmsTime(d.smsSentAt)}</span>
                 </div>
               </div>
-              {matchedInfo[d.id] && (
-                <div style={{display:'flex',alignItems:'center',gap:4,fontSize:T.fs.xs,color: matchedInfo[d.id].type==='cust' ? '#B45309' : T.primaryDk,fontWeight:T.fw.bold}}>
-                  <I name={matchedInfo[d.id].type==='rsv'?'calendar':matchedInfo[d.id].type==='cust'?'users':'banknote'} size={11}/>
-                  <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                    {matchedInfo[d.id].type==='rsv'
-                      ? `예약 · ${matchedInfo[d.id].date} ${matchedInfo[d.id].time||''} ${matchedInfo[d.id].name||'(이름없음)'}`
-                      : matchedInfo[d.id].type==='cust'
-                        ? `매출등록 대기 · ${matchedInfo[d.id].name||'(이름없음)'}${matchedInfo[d.id].phone? ' · '+matchedInfo[d.id].phone : ''}`
-                        : `매출 · ${matchedInfo[d.id].date} ${matchedInfo[d.id].name||'(이름없음)'}`}
-                  </span>
-                </div>
-              )}
+              {matchedInfo[d.id] && (()=>{ const mi=matchedInfo[d.id];
+                const navTarget = (mi.type==='rsv' && d.matchedReservationId) ? { id:d.matchedReservationId, reservationId:mi.rid, date:mi.date, time:mi.time }
+                  : (mi.type==='sale' && mi.resvFk) ? { id:mi.resvFk, date:mi.date }
+                  : null;
+                const isLink = navTarget && setPendingOpenRes && setPage;
+                const label = mi.type==='rsv'
+                  ? `예약 · ${mi.date} ${mi.time||''} ${mi.name||'(이름없음)'}`
+                  : mi.type==='cust'
+                    ? `매출등록 대기 · ${mi.name||'(이름없음)'}${mi.phone? ' · '+mi.phone : ''}`
+                    : `매출 · ${mi.date} ${mi.name||'(이름없음)'}`;
+                return <div onClick={isLink ? ()=>{ setPendingOpenRes({ ...navTarget, _highlightOnly:true }); setPage('timeline'); } : undefined}
+                  title={isLink ? '타임라인에서 예약 보기' : undefined}
+                  style={{display:'flex',alignItems:'center',gap:4,fontSize:T.fs.xs,color: mi.type==='cust' ? '#B45309' : T.primaryDk,fontWeight:T.fw.bold,cursor:isLink?'pointer':'default',textDecoration:isLink?'underline':'none'}}>
+                  <I name={mi.type==='rsv'?'calendar':mi.type==='cust'?'users':'banknote'} size={11}/>
+                  <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{label}{isLink?' →':''}</span>
+                </div>;
+              })()}
               <div style={{display:'flex',gap:6}}>
                 {status === 'pending' && (
                   <>

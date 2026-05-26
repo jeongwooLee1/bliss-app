@@ -1151,8 +1151,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     setSelDate(pendingOpenRes.date || todayStr());
 
     const isHighlightOnly = !!pendingOpenRes._highlightOnly;
-    // _highlightOnly: 페이지 전환 + DOM 렌더 시간 확보 위해 300ms (확정대기 배너와 동일)
-    const delay = isHighlightOnly ? 300 : 120;
+    // 페이지 전환 + 블록 DOM 렌더 시간 확보 위해 300ms (센터 스크롤·강조 위해 모달 케이스도 동일)
+    const delay = 300;
 
     const timer = setTimeout(()=>{
       const rid = pendingOpenRes.reservationId || pendingOpenRes.id;
@@ -1163,7 +1163,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         try {
           const sr = scrollRef.current;
           if (sr) {
-            const el = rid ? sr.querySelector(`[data-rid="${rid}"]`) : null;
+            const el = rid ? (sr.querySelector(`[data-rid="${rid}"]`) || sr.querySelector(`[data-resid="${rid}"]`)) : null;
             if (el) {
               const rect = el.getBoundingClientRect();
               const srRect = sr.getBoundingClientRect();
@@ -1189,37 +1189,30 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         return;
       }
 
-      // 모달 케이스 (메시지함 등) — 기존 스크롤 + 모달 오픈
+      // 모달 케이스 — 정밀 센터 스크롤 + 빨강 테두리 반짝(_highlightOnly와 동일) + 모달 오픈
+      if (rid) setHighlightedBlockId(rid);
       try {
         const sr = scrollRef.current;
         if (sr) {
-          const timeStr = pendingOpenRes.time || "10:00";
-          const yPos = timeToY(timeStr);
-          const srH = sr.clientHeight;
-          sr.scrollTop = Math.max(0, yPos - srH / 3);
-          const el = rid ? sr.querySelector(`[data-rid="${rid}"]`) : null;
+          const el = rid ? (sr.querySelector(`[data-rid="${rid}"]`) || sr.querySelector(`[data-resid="${rid}"]`)) : null;
           if (el) {
-            const elRect = el.getBoundingClientRect();
+            const rect = el.getBoundingClientRect();
             const srRect = sr.getBoundingClientRect();
-            const elLeft = elRect.left - srRect.left + sr.scrollLeft;
-            const elW = elRect.width || 160;
-            sr.scrollLeft = Math.max(0, elLeft - sr.clientWidth / 2 + elW / 2);
+            const elTop = rect.top - srRect.top + sr.scrollTop;
+            const elLeft = rect.left - srRect.left + sr.scrollLeft;
+            const stickyH = topbarH + headerH;
+            const stickyW = window.innerWidth <= 768 ? 52 : 88;
+            const visibleH = sr.clientHeight - stickyH;
+            const visibleW = sr.clientWidth - stickyW;
+            sr.scrollTo({
+              top: Math.max(0, elTop - stickyH - visibleH / 2 + rect.height / 2),
+              left: Math.max(0, elLeft - stickyW - visibleW / 2 + rect.width / 2),
+              behavior: "smooth"
+            });
           } else {
-            const bid = pendingOpenRes.bid;
-            if (bid) {
-              const tlW = window.innerWidth <= 768 ? 52 : 88;
-              const colEls = sr.querySelectorAll(".tl-room-col");
-              let colLeft = tlW;
-              for (const col of colEls) {
-                const brId = col.getAttribute("data-branch-id");
-                if (brId === bid) {
-                  const colW = col.offsetWidth || 160;
-                  sr.scrollLeft = Math.max(0, colLeft - sr.clientWidth / 2 + colW / 2);
-                  break;
-                }
-                colLeft += col.offsetWidth || 160;
-              }
-            }
+            // fallback: 블록을 못 찾으면 시간 기반 센터 스크롤
+            const yPos = timeToY(pendingOpenRes.time || "10:00");
+            sr.scrollTop = Math.max(0, yPos - sr.clientHeight / 2);
           }
         }
       } catch(e) { console.warn("scroll err:", e); }
@@ -1231,8 +1224,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             const resId = pendingOpenRes.id;
             if (resId) {
               const rows = await sb.get("reservations", resId);
-              if (rows && rows.id) {
-                const parsed = fromDb("reservations", [rows])[0];
+              const row0 = Array.isArray(rows) ? rows[0] : rows;
+              if (row0 && row0.id) {
+                const parsed = fromDb("reservations", [row0])[0];
                 freshData = {...pendingOpenRes, ...parsed};
                 setData(prev => prev ? {...prev, reservations: (prev.reservations||[]).map(r => r.id === parsed.id ? {...r, ...parsed} : r)} : prev);
               }
@@ -2671,6 +2665,12 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         const _normalized = _dbRows.map(r => { const o = {}; _allKeys.forEach(k => { o[k] = (k in r) ? r[k] : null; }); return o; });
         sb.upsert("reservations", _normalized).then(() => {
         // 저장 성공 — 개별 항목 재시도 불필요
+        // 🆕 채팅(AI 예약등록 fallback 등)에서 넘어온 신규 예약 → 서버가 확정 메시지 + 차트 미리작성 링크 발송
+        try {
+          if (_isNewRes && item.chatChannel && item.chatUserId && !betaGroupMode && item.date && item.time) {
+            fetch("https://blissme.ai/send-booking-confirm",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reservation_id:item.id})}).catch(()=>{});
+          }
+        } catch(e){ console.warn("[booking confirm]", e); }
       }).catch(async err => {
         console.error("예약 저장 실패 (batch):", err, allItems);
         // batch 실패 시 개별 재시도 (reservation_id 충돌 등 한 건만 실패한 경우 대응)
@@ -3027,35 +3027,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     return () => window.removeEventListener("keydown", onKey);
   }, [headerH, timeLabelsW, dragBlock, resizeBlock]);
 
-  // 가로 스크롤(손가락/트랙패드)을 멈추면 → 가장 가까운 지점 정지점에 자석 정렬 (항상 정렬, 거리 제한 없음)
-  useEffect(() => {
-    const sr = scrollRef.current;
-    if (!sr) return;
-    let t = null, settling = false, ready = false;
-    let lastLeft = sr.scrollLeft;
-    const readyTimer = setTimeout(() => { lastLeft = sr.scrollLeft; ready = true; }, 800); // 초기 자동스크롤 안정 후 활성
-    const onScroll = () => {
-      if (!ready || settling || dragBlock || resizeBlock) return;
-      if (Date.now() < navLockRef.current) { lastLeft = sr.scrollLeft; return; } // 키보드/휠 단계이동 직후엔 스냅 안 함
-      clearTimeout(t);
-      t = setTimeout(() => {
-        const cur = sr.scrollLeft;
-        if (Math.abs(cur - lastLeft) < 8) { lastLeft = cur; return; } // 가로 변화 거의 없음(세로 스크롤) → 무시
-        const stops = _computeNavStops(sr);
-        lastLeft = cur;
-        if (!stops.length) return;
-        const nearest = stops.reduce((a, b) => Math.abs(b - cur) < Math.abs(a - cur) ? b : a, stops[0]);
-        if (Math.abs(nearest - cur) > 2) {   // 항상 가까운 지점으로 정렬
-          lastLeft = nearest;
-          settling = true;
-          sr.scrollTo({ left: nearest, behavior: "smooth" });
-          setTimeout(() => { settling = false; lastLeft = sr.scrollLeft; }, 450);
-        }
-      }, 130);
-    };
-    sr.addEventListener("scroll", onScroll, { passive: true });
-    return () => { clearTimeout(t); clearTimeout(readyTimer); sr.removeEventListener("scroll", onScroll); };
-  }, [timeLabelsW, dragBlock, resizeBlock]);
+  // 모바일 가로 스와이프는 자석 없이 네이티브 자유 스크롤 (지점 정렬 강제 안 함)
 
   // 마우스/트랙패드 가로 스크롤 = 한 번에 한 지점씩 단계 이동 ("멈췄다 가" — 휠마다 다음 지점에서 멈춤)
   useEffect(() => {
@@ -5325,7 +5297,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                     const opHex = (pct) => Math.round(pct * 2.55).toString(16).padStart(2,"0");
                     const bgAlpha = isSch ? opHex(Math.min(blockOp, 80)) : opHex(blockOp);
                     return (
-                      <div key={block.id} data-rid={block.reservationId||block.id}
+                      <div key={block.id} data-rid={block.reservationId||block.id} data-resid={block.id}
                         onMouseEnter={e=>{
                           // 모바일에선 mouseenter가 터치 후 발생 → 모달 뒤에 남는 문제. 팝업 자체 비활성
                           if (window.innerWidth <= 768 || ('ontouchstart' in window)) return;
@@ -5338,6 +5310,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                         onMouseLeave={()=>setMemoPopup(p => p?.id === block.id ? null : p)}
                         onClick={e=>{
                           e.stopPropagation();
+                          setMemoPopup(null); // 클릭 시 hover 메모 팝업 닫기 (모달이 덮어 mouseleave 안 떠 stuck되는 문제)
                           // 🔴 빨강 깜빡임 하이라이트 클릭 시 사라짐 — 모달 안 열고 하이라이트만 해제
                           const _rid = block.reservationId || block.id;
                           if (highlightedBlockId && (highlightedBlockId === _rid || highlightedBlockId === block.id)) {

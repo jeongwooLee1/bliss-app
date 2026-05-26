@@ -362,7 +362,7 @@ function AdminJoinBrand({ currentUser, onBack }) {
 // ═══════════════════════════════════════════
 // ADMIN — 메뉴 홈 + 라우터
 // ═══════════════════════════════════════════
-function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userBranches=[], setPage }) {
+function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userBranches=[], setPage, setPendingOpenCust }) {
   const navTo = useNavigate();
   const loc = useLocation();
   const TAB_SLUGS = {places:"places",saleitems:"services",pkgcount:"pkg-count",coupons:"coupons",prodmgmt:"products",svctags:"tags",ressrc:"sources",extplatforms:"ext-platforms",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",branchgroups:"branch-groups",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",branchaudit:"branch-audit",pointmig:"point-migration",memberrules:"member-rules",joinbrand:"join-brand",kiosks:"kiosks",alimtalkLog:"alimtalk-log",smsLog:"sms-log",longValidity:"long-validity",couplePkgMigrate:"couple-pkg-migrate",coupleMemoReview:"couple-memo-review",plan:"plan",paymentSettings:"payments"};
@@ -385,13 +385,10 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     ]},
     ...(isMaster ? [{section:"사업장 관리",items:[
       {key:"saleitems",   icon:"scissors", label:"시술 상품 관리", desc:"시술 항목 및 가격 설정"},
-      {key:"pkgcount",    icon:"archive",  label:"패키지 회수 관리", desc:"패키지 카테고리 시술의 회수 일괄 입력"},
       {key:"coupons",     icon:"gift",     label:"혜택 관리",      desc:"이벤트·쿠폰·회원가 자격 통합 관리"},
-      {key:"kiosks",      icon:"mobile",   label:"📲 태블릿 (키오스크)", desc:"매장 비치 태블릿 등록 — 동의서 서명용"},
       {key:"prodmgmt",    icon:"clipboard",label:"제품 관리",      desc:"판매 제품 관리"},
       ...(isOwner ? [{key:"brandmembers", icon:"userPlus", label:"브랜드 멤버 관리", desc:"지점 가입 요청 승인/거절", badge:pendingCount}] : []),
       {key:"schedule",     icon:"calendar", label:"직원 근무표",      desc:"직원 월별 근무 자동 배정"},
-      {key:"couplePkgMigrate", icon:"users", label:"커플 패키지 소급 적용", desc:"기존 커플 패키지 구매자에게 상대방 보유권 발급"},
       {key:"coupleMemoReview", icon:"search", label:"커플 메모 검수", desc:"고객 메모에 커플 키워드가 있는 케이스 검수·짝꿍 연결"},
     ]}] : []),
     ...(isMaster ? [{section:"예약 설정",items:[
@@ -464,7 +461,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     {tab==="smsLog" && <AdminPlan data={data} setData={setData} currentUser={currentUser} userBranches={userBranches} initialSubTab="sms"/>}
     {tab==="longValidity" && <AdminLongValidityReview data={data} userBranches={userBranches}/>}
     {tab==="couplePkgMigrate" && isMaster && <AdminCouplePkgMigrate data={data} userBranches={userBranches}/>}
-    {tab==="coupleMemoReview" && isMaster && <AdminCoupleMemoReview data={data} userBranches={userBranches}/>}
+    {tab==="coupleMemoReview" && isMaster && <AdminCoupleMemoReview data={data} userBranches={userBranches} setPendingOpenCust={setPendingOpenCust} setPage={setPage}/>}
     {tab==="joinbrand"    && !isMaster &&<AdminJoinBrand   currentUser={currentUser} onBack={back}/>}
     {tab && !["mypage","schedule"].includes(tab) && !isMaster && <div style={{textAlign:"center",padding:"60px 20px",color:T.textMuted}}>
       <div style={{fontSize:32,marginBottom:12}}>&#128274;</div>

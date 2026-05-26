@@ -11,6 +11,30 @@ import { transliterateName, getCachedTransliteration } from '../../lib/nameTrans
 
 const uid = genId;
 
+// 📋 차트(동의서) form_data 표시용 — 키 라벨 + 값 포매터
+const CHART_LABELS = {
+  name:"이름", phone:"연락처", email:"이메일", gender:"성별", pregnant:"임신 여부",
+  first_waxing:"첫 왁싱", skin_type:"피부 타입", service_areas:"시술 부위", concern:"피부 고민",
+  referral:"방문 경로", motivation:"방문 동기", choose_reason:"선택 이유", agree:"동의",
+  privacy_consent:"개인정보 동의", sms_consent:"문자 수신 동의", care_type:"케어 종류",
+  condition:"컨디션", soothing:"진정 케어", towel:"수건", sound:"사운드", free_service:"무료 서비스",
+  extras:"추가 선택", picked:"선택 항목", voucher_amount:"금액권", curl:"컬", eye_condition:"눈 상태",
+  prev_perm:"이전 펌 경험", sensitive:"민감 여부", contraindication:"금기 사항",
+};
+function _fmtChartVal(v) {
+  if (v == null || v === "") return "";
+  if (typeof v === "boolean") return v ? "예" : "아니오";
+  if (typeof v === "number" || typeof v === "string") return String(v);
+  if (Array.isArray(v)) return v.filter(x=>x!=null&&x!=="").map(_fmtChartVal).join(", ");
+  if (typeof v === "object") {
+    if ("values" in v) return [...(v.values||[]), v.other].filter(Boolean).join(", ");
+    if ("value" in v) return _fmtChartVal(v.value);
+    const parts = Object.values(v).map(_fmtChartVal).filter(Boolean);
+    return parts.join(", ");
+  }
+  return String(v);
+}
+
 const TIMES = (() => {
   const arr = [];
   for (let h = 9; h <= 23; h++) {
@@ -776,6 +800,11 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   const [visitorPointRaw, setVisitorPointRaw] = useState(0);
   const [custPkgsInfo, setCustPkgsInfo] = useState([]); // 보유권 요약 표시용 (deprecated, derived 권장)
   const [custPointBal, setCustPointBal] = useState(0);  // 보유 포인트 잔액 (deprecated, derived 권장)
+  // 📋 차트 작성 링크 연동 — 이 예약에 차트 작성 링크가 발송됐는지 + 작성 내용
+  // sign.blissme.ai 동의서/차트는 consent_tokens(발송 토큰, prefill_data.reservation_id) +
+  // customer_consents(작성 결과)로 저장. 예약별 차트를 직원이 확인할 수 있게 연결.
+  const [chartInfo, setChartInfo] = useState(null); // {status, consent, signedAt, tokenSent}
+  const [chartExpand, setChartExpand] = useState(false);
   // 외국 이름 음역 fallback — 네이버/AI 예약 신규 고객은 customers.name_kor 비어있어서
   // _cust?.nameKor 조건만으론 화면에 안 뜸. 캐시 → Gemini 호출 → 결과 state + DB 백필
   const [autoNameKor, setAutoNameKor] = useState('');
@@ -820,6 +849,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   const _hasVisitor = !!(f.visitorName && f.visitorName !== f.custName);
   const _primaryCustId = (_hasVisitor && f.primarySubject === 'visitor') ? (f.visitorCustId || '') : (f.custId || '');
   const _secondaryCustId = (_hasVisitor && f.primarySubject === 'visitor') ? (f.custId || '') : (f.visitorCustId || '');
+  const _custSummary = (data?.customers||[]).find(c => c.id === f.custId)?.serviceSummary || "";
   const _primaryName = (_hasVisitor && f.primarySubject === 'visitor') ? f.visitorName : f.custName;
   const _primaryPhone = (_hasVisitor && f.primarySubject === 'visitor') ? f.visitorPhone : f.custPhone;
   const _secondaryName = (_hasVisitor && f.primarySubject === 'visitor') ? f.custName : f.visitorName;
@@ -840,6 +870,37 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
       setReserverPointRaw(Math.max(0, bal));
     }).catch(() => { setReserverPkgsRaw([]); setReserverPointRaw(0); });
   }, [f.custId]);
+  // 📋 차트 작성 링크 상태 — 이 예약(item.id)에 차트 작성 링크가 발송됐는지 + 작성 내용
+  useEffect(() => {
+    const rid = item?.id;
+    if (!rid) { setChartInfo(null); return; }
+    let alive = true;
+    setChartExpand(false);
+    (async () => {
+      // 토큰: 이 예약으로 발송된 차트 작성 링크 (prefill_data.reservation_id)
+      const tokens = await sb.get("consent_tokens", `&prefill_data->>reservation_id=eq.${rid}&order=created_at.desc`).catch(()=>[]);
+      // 작성 결과: form_data.reservation_id 직접 매칭 (최근 작성분)
+      let consents = await sb.get("customer_consents", `&form_data->>reservation_id=eq.${rid}&order=signed_at.desc`).catch(()=>[]);
+      // form_data에 reservation_id 없는 구버전 차트 → 토큰 used_at ≈ 서명시각으로 매칭
+      if ((!Array.isArray(consents) || consents.length === 0) && Array.isArray(tokens)) {
+        const usedTok = tokens.find(t => t.used_at && t.customer_id);
+        if (usedTok) {
+          const byCust = await sb.get("customer_consents", `&customer_id=eq.${usedTok.customer_id}&order=signed_at.desc&limit=30`).catch(()=>[]);
+          const u = new Date(usedTok.used_at).getTime();
+          const matched = (byCust||[]).find(c => c.signed_at && Math.abs(new Date(c.signed_at).getTime() - u) < 10000);
+          if (matched) consents = [matched];
+        }
+      }
+      if (!alive) return;
+      const tokenSent = Array.isArray(tokens) && tokens.length > 0;
+      const consent = (Array.isArray(consents) && consents.length) ? consents[0] : null;
+      let status = "none";
+      if (consent) status = "signed";
+      else if (tokenSent) status = "sent";
+      setChartInfo({ status, consent, tokenSent, signedAt: consent?.signed_at || null });
+    })();
+    return () => { alive = false; };
+  }, [item?.id]);
   // 🆕 visitor(방문자) 보유권 + 포인트 — f.visitorCustId 변경 시만 fetch
   useEffect(() => {
     if (!f.visitorCustId) { setVisitorPkgsRaw([]); setVisitorPointRaw(0); return; }
@@ -1939,6 +2000,14 @@ ${naverText}
                             <I name="alert" size={10}/>주의 (취소{_cp}/노쇼{_ns})
                           </span>;
                         })()}
+                        {/* 📋 차트 작성 상태 — 우측. 작성완료면 클릭해서 내용 보기 */}
+                        {chartInfo?.status === "signed" && <button type="button" onClick={(e)=>{e.stopPropagation(); setChartExpand(v=>!v);}}
+                          title="클릭해서 작성 내용 보기"
+                          style={{marginLeft:"auto",fontSize:10,padding:"2px 9px",borderRadius:10,background:chartExpand?"#047857":"#059669",color:"#fff",border:"none",fontWeight:800,whiteSpace:"nowrap",cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:3}}>
+                          <I name="fileText" size={10}/>차트 작성완료</button>}
+                        {chartInfo?.status === "sent" && <span title="차트 작성 링크 발송됨 · 미작성"
+                          style={{marginLeft:"auto",fontSize:10,padding:"2px 9px",borderRadius:10,background:"#FFF7ED",color:"#c2410c",fontWeight:800,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}>
+                          <I name="fileText" size={10}/>차트 미작성</span>}
                       </div>
                       {/* 2줄: 전화 + 이메일 한 줄 (신규/변경 모드는 input) */}
                       <div style={{display:"flex",alignItems:"center",gap:8,marginTop:3,flexWrap:"wrap",minWidth:0}}>
@@ -2284,6 +2353,38 @@ ${naverText}
               </div>
             )}
             </div>
+            {/* AI 분석 — 시술/특이/성격 요약 (고객정보 바로 아래). 서버가 정제 생성 */}
+            {_custSummary && <div style={{marginTop:6,marginBottom:8,padding:"8px 11px",background:"#EEF2FF",borderRadius:T.radius.md,boxShadow:"0 2px 8px rgba(0,0,0,.06)"}}>
+              <div style={{fontSize:10,fontWeight:800,color:"#4338ca",display:"flex",alignItems:"center",gap:4,marginBottom:3}}><I name="sparkles" size={11}/>AI 분석</div>
+              <div style={{fontSize:12.5,color:"#3730a3",fontWeight:600,lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{_custSummary}</div>
+            </div>}
+            {/* 📋 작성 차트 내용 — "차트 작성완료" 버튼 클릭 시 펼침 (PDF 없음) */}
+            {chartExpand && chartInfo?.status === "signed" && chartInfo.consent && (() => {
+              const c = chartInfo.consent;
+              const survey = c?.form_data?.survey || null;
+              const rows = survey ? Object.entries(survey)
+                .map(([k,v]) => [CHART_LABELS[k]||k, _fmtChartVal(v)])
+                .filter(([,val]) => val !== "") : [];
+              return (
+                <div style={{marginTop:6,marginBottom:8,padding:"10px 12px",background:"#ECFDF5",borderRadius:T.radius.md,boxShadow:"0 2px 8px rgba(0,0,0,.06)"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:rows.length?6:0,flexWrap:"wrap"}}>
+                    <I name="fileText" size={12} style={{color:"#059669"}}/>
+                    <span style={{fontSize:11,fontWeight:800,color:"#047857"}}>{c.template_name||"작성 차트"}</span>
+                    {c.signed_at && <span style={{fontSize:10,color:"#047857",marginLeft:"auto"}}>{(c.signed_at||"").replace("T"," ").slice(0,16)}{c.signer_name?" · "+c.signer_name:""}</span>}
+                  </div>
+                  {rows.length > 0 ? (
+                    <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                      {rows.map(([label,val],i)=>(
+                        <div key={i} style={{display:"flex",gap:8,fontSize:12,lineHeight:1.5}}>
+                          <span style={{minWidth:84,flexShrink:0,color:"#047857",fontWeight:700}}>{label}</span>
+                          <span style={{color:T.text,wordBreak:"break-word"}}>{val}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : <div style={{fontSize:12,color:T.textMuted}}>작성 항목이 없습니다.</div>}
+                </div>
+              );
+            })()}
             {/* 예약기간 + 장소/담당자 */}
             <div>
               <div className="fld-datetime" style={{width:"100%",gap:6}}>
@@ -2540,7 +2641,7 @@ ${naverText}
             </div>}
 
             {/* 외부 선결제(예약금/선결제) — 블리스 톤으로 통일 */}
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",marginTop:4,flexWrap:"wrap",gap:6,background:"linear-gradient(135deg,#f8f9fb,#f0f2f5)",borderRadius:8,border:"1px solid #e2e5ea"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",marginTop:4,flexWrap:"wrap",gap:6,background:"linear-gradient(135deg,#f8f9fb,#f0f2f5)",borderRadius:8,boxShadow:"0 2px 8px rgba(0,0,0,.06)"}}>
               <span style={{fontSize:T.fs.sm,color:T.gray700,display:"inline-flex",alignItems:"center",gap:4,whiteSpace:"nowrap",fontWeight:700}}>
                 <I name="wallet" size={12}/>선결제
               </span>
@@ -2565,64 +2666,25 @@ ${naverText}
                   onChange={e=>{const v=Number(String(e.target.value).replace(/[^0-9]/g,""))||0; set("externalPrepaid", Math.max(0, v));}}
                   style={{width:110,padding:"4px 8px",fontSize:T.fs.sm,textAlign:"right",fontWeight:700,color:T.primary,border:"1px solid #d1d5db",borderRadius:6,background:"#fff",fontFamily:"inherit"}}/>
                 <span style={{fontSize:T.fs.sm,color:T.gray700,fontWeight:700}}>원</span>
-              </div>
-            </div>
-
-            {/* 💳 예약금 청구 — 매장 → 고객 결제 링크 (토스페이먼츠) */}
-            {item?.id && !isReadOnly && !isSchedule && (
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",marginTop:6,flexWrap:"wrap",gap:6,background:item.depositPaidAt?"#E8F5E9":"#F5F3FF",borderRadius:8,border:`1px solid ${item.depositPaidAt?"#A5D6A7":"#D8B4FE"}`}}>
-                <span style={{fontSize:T.fs.sm,fontWeight:700,color:item.depositPaidAt?"#1B5E20":"#5B21B6",display:"inline-flex",alignItems:"center",gap:4}}>
-                  <I name="wallet" size={13}/>{item.depositPaidAt?"예약금 결제완료":"예약금 청구"}
-                </span>
-                {item.depositPaidAt ? (
-                  <span style={{display:"inline-flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:T.fs.sm,color:"#1B5E20",fontWeight:600}}>
-                      {Number(item.depositAmount||0).toLocaleString()}원 · {new Date(item.depositPaidAt).toLocaleDateString('ko')}
-                    </span>
-                    <button type="button" onClick={refundDeposit} disabled={refunding}
-                      style={{padding:"4px 10px",fontSize:11,fontWeight:700,background:refunding?"#fca5a5":"#dc2626",color:"#fff",border:"none",borderRadius:6,cursor:refunding?"wait":"pointer",fontFamily:"inherit"}}>
-                      {refunding?"환불 중…":"환불"}
-                    </button>
-                  </span>
+                {/* 💳 결제 링크 발송 / 환불 — 매장 → 고객 (토스페이먼츠) */}
+                {item?.id && !isReadOnly && !isSchedule && (item.depositPaidAt ? (
+                  <button type="button" onClick={refundDeposit} disabled={refunding} title={`예약금 결제완료 ${Number(item.depositAmount||0).toLocaleString()}원`}
+                    style={{padding:"5px 11px",fontSize:11,fontWeight:700,background:refunding?"#fca5a5":"#dc2626",color:"#fff",border:"none",borderRadius:6,cursor:refunding?"wait":"pointer",fontFamily:"inherit"}}>
+                    {refunding?"환불 중…":"결제완료 · 환불"}
+                  </button>
                 ) : (
                   <button type="button" onClick={chargeDeposit} disabled={depositCharging}
-                    style={{padding:"5px 12px",fontSize:11,fontWeight:700,background:depositCharging?"#a78bfa":"#7C3AED",color:"#fff",border:"none",borderRadius:6,cursor:depositCharging?"wait":"pointer",fontFamily:"inherit"}}>
-                    {depositCharging?"생성 중...":"결제 링크 발송"}
+                    style={{padding:"5px 11px",fontSize:11,fontWeight:700,background:depositCharging?"#a78bfa":"#7C3AED",color:"#fff",border:"none",borderRadius:6,cursor:depositCharging?"wait":"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:3}}>
+                    <I name="wallet" size={12}/>{depositCharging?"생성 중...":"결제 링크 발송"}
                   </button>
-                )}
+                ))}
               </div>
-            )}
+            </div>
 
             {/* 예약태그 아코디언 — 위쪽 통합 태그 아코디언으로 이동됨 */}
 
 
           </>}
-
-          {/* ═══ 수동 예약 등록정보 + 일정변경 로그 ═══
-             네이버 예약도 schedule_log는 표시 (등록 시각만 네이버 예약정보 박스와 중복되니 비-네이버에서만) */}
-          {item?.id && !isSchedule && (()=>{
-            const c = (!isNaverItem && item?.createdAt) ? new Date(item.createdAt) : null;
-            const regFmt = c && !isNaN(c)
-              ? `${String(c.getMonth()+1).padStart(2,"0")}-${String(c.getDate()).padStart(2,"0")} ${String(c.getHours()).padStart(2,"0")}:${String(c.getMinutes()).padStart(2,"0")}`
-              : "";
-            const _schLogRaw = item?.scheduleLog;
-            const schLog = (Array.isArray(_schLogRaw) ? _schLogRaw.join("\n") : (_schLogRaw || "")).trim();
-            if (!regFmt && !schLog) return null;
-            const schLines = schLog ? schLog.split("\n").filter(Boolean) : [];
-            return <div style={{padding:"6px 10px",marginBottom:8,background:T.gray100,borderRadius:T.radius.md,fontSize:11,color:T.textSub}}>
-              {regFmt && <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <I name="calendar" size={11} color={T.gray500}/>
-                <span style={{fontWeight:600}}>등록</span>
-                <span style={{marginLeft:"auto",fontFamily:"monospace"}}>{regFmt}</span>
-              </div>}
-              {schLines.length > 0 && <div style={{marginTop:regFmt?6:0,paddingTop:regFmt?6:0,borderTop:regFmt?"1px dashed "+T.border:"none",display:"flex",flexDirection:"column",gap:3}}>
-                {schLines.slice(0, 10).map((l, i) => (
-                  <div key={i} style={{fontSize:10.5,color:T.textMuted,fontFamily:"monospace",lineHeight:1.4}}>{l}</div>
-                ))}
-                {schLines.length > 10 && <div style={{fontSize:10,color:T.gray400}}>... 외 {schLines.length - 10}건</div>}
-              </div>}
-            </div>;
-          })()}
 
           {/* ═══ 네이버 예약정보 (읽기전용) ═══ */}
           {isNaverItem && <div style={{background:T.successLt,borderRadius:T.radius.md,padding:"12px 14px",marginBottom:8,boxShadow:"0 2px 8px rgba(0,0,0,.06)"}}>
@@ -2725,7 +2787,54 @@ ${naverText}
                 })()}
               </>;
             })()}
+            {/* 변경 이력 — prev_reservation_id 체인 (네이버에서 변경한 이력) */}
+            {changeChain.length > 0 && (
+              <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #C8E6C9"}}>
+                <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.successDk,marginBottom:5,display:"flex",alignItems:"center",gap:5}}>
+                  <I name="clock" size={11}/>네이버 변경 이력 ({changeChain.length}건)
+                </div>
+                {changeChain.map((rec, i) => {
+                  const stMap = { naver_changed:"변경됨", cancelled:"취소", naver_cancelled:"취소", reserved:"예약", confirmed:"확정", completed:"완료", no_show:"노쇼" };
+                  const stLabel = stMap[rec.status] || rec.status;
+                  return (
+                    <div key={rec.id || i} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",borderTop:i>0?"1px dashed #C8E6C9":"none",fontSize:11,color:"#33691E"}}>
+                      <span style={{fontWeight:700,minWidth:90}}>{rec.date||""} {rec.time||""}</span>
+                      <span style={{padding:"1px 6px",borderRadius:8,background:"#C8E6C9",color:T.successDk,fontSize:10,fontWeight:700}}>{stLabel}</span>
+                      <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:10,color:"#558B2F"}}>
+                        {(rec.memo || "").split("\n")[0].slice(0, 50)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>}
+
+          {/* ═══ 수동 예약 등록정보 + 일정변경 로그 (변경 내역) — 직원 메모 바로 위 ═══
+             네이버 예약도 schedule_log는 표시 (등록 시각만 네이버 예약정보 박스와 중복되니 비-네이버에서만) */}
+          {item?.id && !isSchedule && (()=>{
+            const c = (!isNaverItem && item?.createdAt) ? new Date(item.createdAt) : null;
+            const regFmt = c && !isNaN(c)
+              ? `${String(c.getMonth()+1).padStart(2,"0")}-${String(c.getDate()).padStart(2,"0")} ${String(c.getHours()).padStart(2,"0")}:${String(c.getMinutes()).padStart(2,"0")}`
+              : "";
+            const _schLogRaw = item?.scheduleLog;
+            const schLog = (Array.isArray(_schLogRaw) ? _schLogRaw.join("\n") : (_schLogRaw || "")).trim();
+            if (!regFmt && !schLog) return null;
+            const schLines = schLog ? schLog.split("\n").filter(Boolean) : [];
+            return <div style={{padding:"6px 10px",marginBottom:8,background:T.gray100,borderRadius:T.radius.md,fontSize:11,color:T.textSub}}>
+              {regFmt && <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <I name="calendar" size={11} color={T.gray500}/>
+                <span style={{fontWeight:600}}>등록</span>
+                <span style={{marginLeft:"auto",fontFamily:"monospace"}}>{regFmt}</span>
+              </div>}
+              {schLines.length > 0 && <div style={{marginTop:regFmt?6:0,paddingTop:regFmt?6:0,borderTop:regFmt?"1px dashed "+T.border:"none",display:"flex",flexDirection:"column",gap:3}}>
+                {schLines.slice(0, 10).map((l, i) => (
+                  <div key={i} style={{fontSize:10.5,color:T.textMuted,fontFamily:"monospace",lineHeight:1.4}}>{l}</div>
+                ))}
+                {schLines.length > 10 && <div style={{fontSize:10,color:T.gray400}}>... 외 {schLines.length - 10}건</div>}
+              </div>}
+            </div>;
+          })()}
 
           {/* 예약메모 - 직원 메모 (네이버 포함 모두 수정 가능) */}
           <div>
@@ -2740,29 +2849,6 @@ ${naverText}
                 <I name="sparkles" size={12} style={{marginRight:4}}/>{aiAnalyzing?"분석중":"AI"}
               </button>}
             </div>
-            {/* 변경 이력 — prev_reservation_id 체인 (메모 위) */}
-            {changeChain.length > 0 && (
-              <div style={{marginBottom:10,padding:"10px 12px",background:"#FFF8E1",border:"1px solid #FFD54F",borderRadius:T.radius.md}}>
-                <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:"#E65100",marginBottom:6,display:"flex",alignItems:"center",gap:6}}>
-                  <I name="clock" size={12}/>변경 이력 ({changeChain.length}건)
-                </div>
-                {changeChain.map((rec, i) => {
-                  const stMap = { naver_changed:"변경됨", cancelled:"취소", naver_cancelled:"취소", reserved:"예약", confirmed:"확정", completed:"완료", no_show:"노쇼" };
-                  const stLabel = stMap[rec.status] || rec.status;
-                  const dt = rec.date || "";
-                  const tm = rec.time || "";
-                  return (
-                    <div key={rec.id || i} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderTop:i>0?"1px dashed #FFD54F":"none",fontSize:11,color:"#5D4037"}}>
-                      <span style={{fontWeight:700,minWidth:90}}>{dt} {tm}</span>
-                      <span style={{padding:"1px 6px",borderRadius:8,background:"#FFE0B2",color:"#E65100",fontSize:10,fontWeight:700}}>{stLabel}</span>
-                      <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:10,color:"#8D6E63"}}>
-                        {(rec.memo || "").split("\n")[0].slice(0, 50)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
             <textarea className="inp inp-memo" ref={el=>{if(el){el.style.height="auto";el.style.height=Math.max(90,el.scrollHeight)+"px";}}}
               value={f.memo} onChange={e=>{set("memo",e.target.value);const t=e.target;t.style.height="auto";t.style.height=Math.max(90,t.scrollHeight)+"px";}}
               style={{resize:"vertical",minHeight:90,lineHeight:1.6,marginTop:4}} placeholder="직원 메모를 입력하세요"/>

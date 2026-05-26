@@ -11,7 +11,7 @@ import { ShareCustModal } from '../Customers/ShareCustModal'
 const KEYWORDS = ['커플패키지', '커플 패키지', '커플프리패스', '커플 프리패스', '커패']
 const MEMO_OR = `or=(${KEYWORDS.map(k => `memo.ilike.*${encodeURIComponent(k)}*`).join(',')})`
 
-function AdminCoupleMemoReview({ data, userBranches = [] }) {
+function AdminCoupleMemoReview({ data, userBranches = [], setPendingOpenCust, setPage }) {
   const branches = useMemo(
     () => (data?.branches || []).filter(b => b.useYn !== false && (userBranches.length === 0 || userBranches.includes(b.id))),
     [data?.branches, userBranches]
@@ -208,6 +208,11 @@ function AdminCoupleMemoReview({ data, userBranches = [] }) {
                 <td style={td}>
                   <div style={{ fontWeight: T.fw.bolder }}>{c.name || '-'}{c.name2 ? ` (${c.name2})` : ''}</div>
                   {c.cust_num && <div style={{ fontSize: T.fs.nano, color: T.textMuted }}>{c.cust_num}</div>}
+                  <button onClick={() => { if (setPendingOpenCust) setPendingOpenCust(c.id); if (setPage) setPage('customers'); }}
+                    title="고객관리에서 이 고객 정보 열기"
+                    style={{ marginTop: 4, padding: '2px 8px', borderRadius: 4, border: '1px solid ' + T.primary, background: T.primaryLt || '#ede9fe', color: T.primaryDk, fontSize: T.fs.nano, fontWeight: T.fw.bolder, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                    👤 고객정보
+                  </button>
                 </td>
                 <td style={td}>{c.phone || '-'}</td>
                 <td style={td}>{branchShort(c.bid) || '미판정'}</td>

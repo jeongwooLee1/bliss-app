@@ -35,6 +35,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   // AI로 생성된 답변인지 추적 (is_ai 플래그용)
   const [replyIsAi, setReplyIsAi] = useState(false);
   const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false); // 동기 더블서밋 가드 (setSending 비동기 race 방지)
   // 실제 번역 API 호출 중인지 표시 (번역 토글 버튼에 ON-AIR 표시용)
   const [translating, setTranslating] = useState(false);
   // IN 메시지 자동 번역 진행 중 표시 — 새 in 메시지 도착 후 translated_text 채워질 때까지 잠시 ON-AIR
@@ -213,9 +214,9 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         const _sc = s.ai_auto_reply_schedule || {};
         if (_sc && typeof _sc === 'object' && (_sc.naver || _sc.instagram || _sc.whatsapp)) {
           const _first = _sc.naver || _sc.instagram || _sc.whatsapp || {};
-          setAiSchedule({enabled:!!_first.enabled,start:_first.start||"10:00",end:_first.end||"22:00"});
+          setAiSchedule({enabled:!!_first.enabled,start:_first.start||"10:00",end:_first.end||"22:00",byDay:_mkByDay(_first)});
         } else {
-          setAiSchedule({enabled:!!_sc.enabled,start:_sc.start||"10:00",end:_sc.end||"22:00"});
+          setAiSchedule({enabled:!!_sc.enabled,start:_sc.start||"10:00",end:_sc.end||"22:00",byDay:_mkByDay(_sc)});
         }
         // IG account_id → branch_id 오버라이드 매핑 (branches 미등록 IG 계정용)
         setIgBranchOverride(s.ig_branch_override || {});
@@ -251,6 +252,34 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       await fetch(SB_URL+`/rest/v1/businesses?id=eq.${_activeBizId}`,{method:"PATCH",headers:{...sbHeaders,"Prefer":"return=minimal"},body:JSON.stringify({settings:JSON.stringify(settings)})});
     } catch(e){ setAiSchedule(prev); }
   };
+
+  // 요일별 시간 저장 (dow: 0=일~6=토)
+  const saveAiScheduleDay = (dow, patch) => {
+    const cur = (aiSchedule.byDay && aiSchedule.byDay[dow]) || {on:true,start:"10:00",end:"22:00"};
+    const nextByDay = {...(aiSchedule.byDay||{}), [dow]: {...cur, ...patch}};
+    saveAiSchedule({ byDay: nextByDay });
+  };
+  const _DOW = ["일","월","화","수","목","금","토"];
+  const renderAiScheduleRows = () => (
+    <div style={{display:"flex",flexDirection:"column",gap:4}}>
+      {_DOW.map((lbl,i)=>{
+        const d = (aiSchedule.byDay && aiSchedule.byDay[i]) || {on:true,start:"10:00",end:"22:00"};
+        const act = !!aiSchedule.enabled;
+        const dayOn = act && !!d.on;
+        return <div key={i} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 8px",background:"#fff",border:"none",borderRadius:8,boxShadow:"0 1px 3px rgba(0,0,0,0.12)"}}>
+          <label style={{display:"inline-flex",alignItems:"center",gap:4,cursor:act?"pointer":"default",width:40,flexShrink:0}}>
+            <input type="checkbox" checked={!!d.on} disabled={!act} onChange={e=>saveAiScheduleDay(i,{on:e.target.checked})} style={{cursor:act?"pointer":"default",width:13,height:13,accentColor:"#7C3AED"}}/>
+            <span style={{fontSize:11,fontWeight:700,color:dayOn?"#7C3AED":T.gray500}}>{lbl}</span>
+          </label>
+          <input type="text" inputMode="numeric" placeholder="HH:MM" value={d.start||""} disabled={!dayOn} onChange={e=>saveAiScheduleDay(i,{start:e.target.value})}
+            style={{fontSize:12,padding:"4px 6px",border:"none",borderRadius:6,fontFamily:"inherit",minWidth:0,flex:1,textAlign:"center",opacity:dayOn?1:0.4,background:"transparent",outline:"none"}}/>
+          <span style={{color:T.gray400,fontSize:11,flexShrink:0}}>~</span>
+          <input type="text" inputMode="numeric" placeholder="HH:MM" value={d.end||""} disabled={!dayOn} onChange={e=>saveAiScheduleDay(i,{end:e.target.value})}
+            style={{fontSize:12,padding:"4px 6px",border:"none",borderRadius:6,fontFamily:"inherit",minWidth:0,flex:1,textAlign:"center",opacity:dayOn?1:0.4,background:"transparent",outline:"none"}}/>
+        </div>;
+      })}
+    </div>
+  );
 
   // 미응답 N분 후 자동 답변 저장
   const saveAiDelay = async (patch) => {
@@ -330,8 +359,21 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     if (!sc?.enabled) return true;
     const now=new Date(); const cur=now.getHours()*60+now.getMinutes();
     const toMin=s=>{const [h,m]=(s||"0:0").split(":").map(Number);return h*60+(m||0);};
+    // 요일별(byDay) 우선 — 오늘 요일(0=일~6=토) 설정 적용
+    const bd = sc.byDay && sc.byDay[String(now.getDay())];
+    if (bd) {
+      if (!bd.on) return false;            // 그 요일 자동응대 끔
+      const st=toMin(bd.start||"00:00"), en=toMin(bd.end||"23:59");
+      return st<=en ? (cur>=st&&cur<=en) : (cur>=st||cur<=en);
+    }
     const st=toMin(sc.start||"00:00"), en=toMin(sc.end||"23:59");
     return st<=en ? (cur>=st&&cur<=en) : (cur>=st||cur<=en);
+  };
+  // 구버전 {start,end} → byDay(요일7개) 마이그레이션
+  const _mkByDay = (sc) => {
+    if (sc?.byDay && typeof sc.byDay==='object') return sc.byDay;
+    const d={}; for(let i=0;i<7;i++) d[i]={on:true, start:sc?.start||"10:00", end:sc?.end||"22:00"};
+    return d;
   };
   const scheduleInWindow = _nowInWindow(aiSchedule);
 
@@ -489,6 +531,28 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
 
   const unread = (uid,ch)=>msgs.filter(m=>m.user_id===uid&&(m.channel||"naver")===ch&&!m.is_read&&m.direction==="in").length;
   const totalUnread = threads.reduce((acc,m)=>acc+unread(m.user_id,m.channel||"naver"),0);
+
+  // 발송 윈도우(채널별) — 마지막 손님(수신) 메시지 이후 이 시간 안에만 자유 발송 가능.
+  // whatsapp 24h / instagram 7일(서버가 24h 밖이면 HUMAN_AGENT 태그 자동 적용) / naver·line 등 = 무제한
+  const CH_SEND_WINDOW_H = { whatsapp:24, instagram:168 };
+  const lastInboundMap = useMemo(()=>{
+    const map={};
+    msgs.forEach(m=>{
+      if(m.direction!=="in") return;
+      const key=(m.channel||"naver")+"_"+m.user_id;
+      const t=new Date(m.created_at).getTime();
+      if(!isFinite(t)) return;
+      if(!map[key]||t>map[key]) map[key]=t;
+    });
+    return map;
+  },[msgs]);
+  const sendWindowActive = (uid,ch)=>{
+    const win=CH_SEND_WINDOW_H[ch];
+    if(!win) return true; // 무제한 채널 (naver/line 등)
+    const li=lastInboundMap[ch+"_"+uid]||0;
+    if(!li) return false; // 손님 수신 메시지 없음 → 윈도우 미시작
+    return (Date.now()-li) <= win*3600*1000;
+  };
 
   // 🔗 채널별 "원본 플랫폼 바로가기" URL 계산
   //   네이버톡톡은 특정 대화 딥링크가 공개되지 않아 파트너센터 홈으로
@@ -864,6 +928,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           channel: sel.channel,
           account_id: sel.account_id,
           user_id: sel.user_id,
+          business_id: _activeBizId,
         }),
       });
       const dd = await res.json().catch(()=>({}));
@@ -1012,7 +1077,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       const res=await fetch("https://blissme.ai/ai-book",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({channel:sel.channel,account_id:sel.account_id,user_id:sel.user_id}),
+        body:JSON.stringify({channel:sel.channel,account_id:sel.account_id,user_id:sel.user_id,business_id:_activeBizId}),
       });
       const dd=await res.json().catch(()=>({}));
       if(!res.ok||!dd?.ok){
@@ -1251,6 +1316,16 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     }finally{setSending(false);}
   };
 
+  // 모든 발송 진입점(버튼·Enter ×각2)이 거치는 단일 가드 — 동기 ref로 14ms급 더블발화 차단
+  const doSend = async()=>{
+    if(sendingRef.current) return;
+    sendingRef.current = true;
+    try{
+      if(translateMode!=="off") await sendTranslated();
+      else await sendMsg(reply.trim(), aiKoDraft);
+    } finally { sendingRef.current = false; }
+  };
+
   const fmtTime=(ts)=>{
     const d=new Date(ts),now=new Date(),diff=now-d;
     const isToday=d.toDateString()===now.toDateString();
@@ -1291,20 +1366,13 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             <button key={ch} onClick={()=>toggleAiChannel(ch)} style={{padding:"5px 10px",borderRadius:14,fontSize:11,fontWeight:700,cursor:"pointer",border:"1.5px solid",borderColor:aiAutoChannels[ch]?clr:T.border,background:aiAutoChannels[ch]?clr:"#fff",color:aiAutoChannels[ch]?"#fff":T.gray500,whiteSpace:"nowrap",fontFamily:"inherit"}}>{label}</button>
           ))}
         </div>
-        <div style={{fontSize:10,fontWeight:700,color:"#8B5CF6",marginBottom:5,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:4}}><I name="clock" size={11} color="#8B5CF6"/>응대 시간 (전채널 공통)</div>
-        <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"#fff",border:"1px solid "+T.border,borderRadius:8}}>
-          <label style={{display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
-            <input type="checkbox" checked={!!aiSchedule.enabled} onChange={e=>saveAiSchedule({enabled:e.target.checked})} style={{cursor:"pointer",width:14,height:14,accentColor:"#7C3AED"}}/>
-            <span style={{fontSize:11,fontWeight:700,color:aiSchedule.enabled?"#7C3AED":T.gray500}}>스케줄</span>
-          </label>
-          <input type="time" value={aiSchedule.start||"10:00"} onChange={e=>saveAiSchedule({start:e.target.value})} disabled={!aiSchedule.enabled}
-            style={{fontSize:12,padding:"4px 6px",border:"1px solid "+T.border,borderRadius:5,fontFamily:"inherit",minWidth:0,flex:1,opacity:aiSchedule.enabled?1:0.45,background:aiSchedule.enabled?"#fff":"#f9fafb"}}/>
-          <span style={{color:T.gray400,fontSize:11,flexShrink:0}}>~</span>
-          <input type="time" value={aiSchedule.end||"22:00"} onChange={e=>saveAiSchedule({end:e.target.value})} disabled={!aiSchedule.enabled}
-            style={{fontSize:12,padding:"4px 6px",border:"1px solid "+T.border,borderRadius:5,fontFamily:"inherit",minWidth:0,flex:1,opacity:aiSchedule.enabled?1:0.45,background:aiSchedule.enabled?"#fff":"#f9fafb"}}/>
-        </div>
+                <label style={{display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",marginBottom:7}}>
+          <input type="checkbox" checked={!!aiSchedule.enabled} onChange={e=>saveAiSchedule({enabled:e.target.checked})} style={{cursor:"pointer",width:14,height:14,accentColor:"#7C3AED"}}/>
+          <span style={{fontSize:11,fontWeight:700,color:aiSchedule.enabled?"#7C3AED":T.gray500,display:"inline-flex",alignItems:"center",gap:3}}><I name="clock" size={11} color={aiSchedule.enabled?"#7C3AED":T.gray500}/>요일별 응대 시간{aiSchedule.enabled?"":" · 꺼짐(항상 응대)"}</span>
+        </label>
+        {renderAiScheduleRows()}
         <div style={{fontSize:10,fontWeight:700,color:"#8B5CF6",marginTop:8,marginBottom:5,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:4}}><I name="clock" size={11} color="#8B5CF6"/>미응답 N분 후 자동 답변</div>
-        <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"#fff",border:"1px solid "+T.border,borderRadius:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"#fff",border:"none",borderRadius:8,boxShadow:"0 1px 3px rgba(0,0,0,0.12)"}}>
           <label style={{display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
             <input type="checkbox" checked={!!aiDelay.enabled} onChange={e=>saveAiDelay({enabled:e.target.checked})} style={{cursor:"pointer",width:14,height:14,accentColor:"#7C3AED"}}/>
             <span style={{fontSize:11,fontWeight:700,color:aiDelay.enabled?"#7C3AED":T.gray500}}>지연</span>
@@ -1319,7 +1387,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             }}
             onBlur={()=>{ if (aiDelay.minutes === '' || !aiDelay.minutes) saveAiDelay({minutes:1}); }}
             disabled={!aiDelay.enabled}
-            style={{fontSize:12,padding:"4px 6px",border:"1px solid "+T.border,borderRadius:5,fontFamily:"inherit",width:54,textAlign:"center",opacity:aiDelay.enabled?1:0.45,background:aiDelay.enabled?"#fff":"#f9fafb"}}/>
+            style={{fontSize:12,padding:"4px 6px",border:"none",borderRadius:6,fontFamily:"inherit",width:54,textAlign:"center",opacity:aiDelay.enabled?1:0.45,background:"transparent",outline:"none"}}/>
           <span style={{fontSize:11,color:T.gray500,whiteSpace:"nowrap"}}>분 후 직원 미응답 시 AI 답변</span>
         </div>
       </div>})()}
@@ -1347,6 +1415,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           const branch=ch==="whatsapp"?"":branchName(m);
           const initials=name.slice(0,2);
           const isOut=m.direction==="out";
+          const sendActive=sendWindowActive(m.user_id,ch);
           return <div key={key} onClick={()=>selectThread(m)}
             style={{padding:forceCompact?"8px 12px":"12px 16px",display:"flex",alignItems:"center",gap:forceCompact?10:14,borderBottom:"1px solid #f0f0f0",background:"#fff",cursor:"pointer"}}>
             {/* 아바타 — 브랜드 색상 배경 + 공식 로고 */}
@@ -1359,6 +1428,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                 boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}}>
                 <ChannelLogo channel={ch} size={forceCompact?20:26}/>
               </div>
+              <span title={sendActive?"지금 메시지 발송 가능":"발송 시간 지남 — 손님이 다시 답하면 발송 가능"} style={{position:"absolute",right:-1,bottom:-1,width:forceCompact?11:13,height:forceCompact?11:13,borderRadius:"50%",background:sendActive?"#22c55e":"#cbd5e1",border:"2px solid #fff",boxSizing:"border-box"}}/>
             </div>
             {/* 텍스트 */}
             <div style={{flex:1,minWidth:0}}>
@@ -1435,9 +1505,9 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
               {m.is_ai&&<div style={{display:"flex",justifyContent:isOut?"flex-end":"flex-start",marginBottom:3}}>
                 <span style={{background:"#A78BFA",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:forceCompact?9:10,fontWeight:800,letterSpacing:0.3,display:"inline-flex",alignItems:"center",gap:3}}><I name="bot" size={forceCompact?9:10} color="#fff"/>AI 자동응답</span>
               </div>}
-              {/* 직원 답장 말머리 — 고객엔 노출 안 됨, 직원만 봄 */}
-              {isOut && !m.is_ai && m.sent_by_staff_name && <div style={{display:"flex",justifyContent:isOut?"flex-end":"flex-start",marginBottom:3}}>
-                <span style={{background:"#6D28D9",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:forceCompact?9:10,fontWeight:800,letterSpacing:0.3,display:"inline-flex",alignItems:"center",gap:3}}><I name="user" size={forceCompact?9:10} color="#fff"/>{m.sent_by_staff_name}</span>
+              {/* 발신 말머리 — 발신 드롭다운에서 선택된 직원/지점(sent_by_staff_name). 기록 없으면 내 지점명(드롭다운 디폴트). 고객엔 노출 안 됨 */}
+              {isOut && !m.is_ai && <div style={{display:"flex",justifyContent:isOut?"flex-end":"flex-start",marginBottom:3}}>
+                <span style={{background:"#6D28D9",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:forceCompact?9:10,fontWeight:800,letterSpacing:0.3,display:"inline-flex",alignItems:"center",gap:3}}><I name="user" size={forceCompact?9:10} color="#fff"/>{m.sent_by_staff_name || _userBranchName || "직원"}</span>
               </div>}
               <div data-allow-select="true" style={{padding:forceCompact?"7px 10px":"10px 14px",borderRadius:isOut?"14px 14px 4px 14px":"14px 14px 14px 4px",background:isOut?(m.is_ai?"#A78BFA":T.primary):"#fff",color:isOut?"#fff":T.text,fontSize:forceCompact?12:16,lineHeight:1.45,boxShadow:"0 1px 2px rgba(0,0,0,.08)",border:isOut?"none":"1px solid "+T.border,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
                 {m.message_text}
@@ -1501,11 +1571,11 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         {aiKoDraft&&<div style={{fontSize:forceCompact?11:12,color:"#4338ca",padding:"4px 8px",background:"#eff6ff",borderRadius:6,marginBottom:6,borderLeft:"3px solid #818cf8"}}>🇰🇷 {aiKoDraft}</div>}
         <div style={{position:"relative"}}>
           <textarea id="bliss-reply-ta" value={reply} onChange={e=>{ setReply(e.target.value); setAiKoDraft(""); }}
-            onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();(translateMode!=="off")?sendTranslated():sendMsg(reply.trim(), aiKoDraft);}}}
+            onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}}
             placeholder="메시지 입력..."
             style={{width:"100%",padding:forceCompact?"8px 44px 8px 12px":"10px 52px 10px 14px",border:"1px solid "+T.border,borderRadius:12,fontSize:forceCompact?12:15,resize:"none",minHeight:forceCompact?36:42,maxHeight:200,fontFamily:"inherit",outline:"none",background:"#fff",color:"#1f2937",lineHeight:"20px",overflowY:"auto",boxSizing:"border-box",WebkitAppearance:"none",appearance:"none"}}
           />
-          {(reply.trim()||sending)&&<button onClick={()=>(translateMode!=="off")?sendTranslated():sendMsg(reply.trim(), aiKoDraft)} disabled={sending||!reply.trim()}
+          {(reply.trim()||sending)&&<button onClick={()=>doSend()} disabled={sending||!reply.trim()}
             style={{position:"absolute",right:6,bottom:5,width:forceCompact?26:32,height:forceCompact?26:32,background:"#7C3AED",color:"#fff",border:"none",borderRadius:"50%",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
             {sending?<span style={{fontSize:11}}>⏳</span>:<svg width={forceCompact?13:16} height={forceCompact?13:16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>}
           </button>}
@@ -1536,18 +1606,11 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
               <button key={ch} onClick={()=>toggleAiChannel(ch)} style={{padding:"5px 10px",borderRadius:14,fontSize:11,fontWeight:700,cursor:"pointer",border:"1.5px solid",borderColor:aiAutoChannels[ch]?clr:T.border,background:aiAutoChannels[ch]?clr:"#fff",color:aiAutoChannels[ch]?"#fff":T.gray500,whiteSpace:"nowrap",fontFamily:"inherit"}}>{label}</button>
             ))}
           </div>
-          <div style={{fontSize:10,fontWeight:700,color:"#8B5CF6",marginBottom:5,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:4}}><I name="clock" size={11} color="#8B5CF6"/>응대 시간 (전채널 공통)</div>
-          <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"#fff",border:"1px solid "+T.border,borderRadius:8}}>
-            <label style={{display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
-              <input type="checkbox" checked={!!aiSchedule.enabled} onChange={e=>saveAiSchedule({enabled:e.target.checked})} style={{cursor:"pointer",width:14,height:14,accentColor:"#7C3AED"}}/>
-              <span style={{fontSize:11,fontWeight:700,color:aiSchedule.enabled?"#7C3AED":T.gray500}}>스케줄</span>
-            </label>
-            <input type="time" value={aiSchedule.start||"10:00"} onChange={e=>saveAiSchedule({start:e.target.value})} disabled={!aiSchedule.enabled}
-              style={{fontSize:12,padding:"4px 6px",border:"1px solid "+T.border,borderRadius:5,fontFamily:"inherit",minWidth:0,flex:1,opacity:aiSchedule.enabled?1:0.45,background:aiSchedule.enabled?"#fff":"#f9fafb"}}/>
-            <span style={{color:T.gray400,fontSize:11,flexShrink:0}}>~</span>
-            <input type="time" value={aiSchedule.end||"22:00"} onChange={e=>saveAiSchedule({end:e.target.value})} disabled={!aiSchedule.enabled}
-              style={{fontSize:12,padding:"4px 6px",border:"1px solid "+T.border,borderRadius:5,fontFamily:"inherit",minWidth:0,flex:1,opacity:aiSchedule.enabled?1:0.45,background:aiSchedule.enabled?"#fff":"#f9fafb"}}/>
-          </div>
+                    <label style={{display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",marginBottom:7}}>
+            <input type="checkbox" checked={!!aiSchedule.enabled} onChange={e=>saveAiSchedule({enabled:e.target.checked})} style={{cursor:"pointer",width:14,height:14,accentColor:"#7C3AED"}}/>
+            <span style={{fontSize:11,fontWeight:700,color:aiSchedule.enabled?"#7C3AED":T.gray500,display:"inline-flex",alignItems:"center",gap:3}}><I name="clock" size={11} color={aiSchedule.enabled?"#7C3AED":T.gray500}/>요일별 응대 시간{aiSchedule.enabled?"":" · 꺼짐(항상 응대)"}</span>
+          </label>
+          {renderAiScheduleRows()}
         </div>})()}
         {/* 지점 필터 (id_ebgbebctt3 Phase 2) — 데스크탑 */}
         <div style={{padding:"5px 10px",borderBottom:"1px solid "+T.border,display:"flex",gap:6,alignItems:"center",background:"#fafafa"}}>
@@ -1573,6 +1636,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             // 왓츠앱은 전지점 공통이라 지점명 숨김
             const branch=ch==="whatsapp"?"":branchName(m);
             const initials=name.slice(0,1);
+            const sendActive=sendWindowActive(m.user_id,ch);
             return <div key={key} onClick={()=>selectThread(m)}
               style={{padding:"12px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:12,
                 background:isS?"rgba(124,58,237,0.06)":"transparent",
@@ -1585,6 +1649,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                   boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}}>
                   <ChannelLogo channel={ch} size={22}/>
                 </div>
+                <span title={sendActive?"지금 메시지 발송 가능":"발송 시간 지남 — 손님이 다시 답하면 발송 가능"} style={{position:"absolute",right:-1,bottom:-1,width:11,height:11,borderRadius:"50%",background:sendActive?"#22c55e":"#cbd5e1",border:"2px solid #fff",boxSizing:"border-box"}}/>
               </div>
               {/* 텍스트 */}
               <div style={{flex:1,minWidth:0}}>
@@ -1703,11 +1768,11 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             {aiKoDraft&&<div style={{fontSize:11,color:"#4338ca",padding:"3px 8px",background:"#eff6ff",borderRadius:6,marginBottom:4,borderLeft:"3px solid #818cf8"}}>🇰🇷 {aiKoDraft}</div>}
             <div style={{display:"flex",gap:8}}>
               <textarea id="bliss-reply-ta" value={reply} onChange={e=>{ setReply(e.target.value); }}
-                onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();(translateMode!=="off")?sendTranslated():sendMsg(reply.trim(), aiKoDraft);}}}
+                onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}}
                 placeholder="메시지 입력..."
                 style={{flex:1,padding:"10px 14px",border:"1px solid "+T.border,borderRadius:8,fontSize:15,resize:"none",minHeight:42,maxHeight:200,fontFamily:"inherit",outline:"none",background:"#fff",color:"#1f2937",lineHeight:"22px",overflowY:"auto"}}
               />
-              <button onClick={()=>(translateMode!=="off")?sendTranslated():sendMsg(reply.trim(), aiKoDraft)} disabled={sending||!reply.trim()}
+              <button onClick={()=>doSend()} disabled={sending||!reply.trim()}
                 style={{width:44,height:44,alignSelf:"flex-end",flexShrink:0,background:reply.trim()?"#7C3AED":"#e5e7eb",color:reply.trim()?"#fff":"#9ca3af",border:"none",borderRadius:"50%",cursor:reply.trim()?"pointer":"default",display:"flex",alignItems:"center",justifyContent:"center"}}>
                 {sending?<span>⏳</span>:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>}
               </button>
@@ -1800,6 +1865,9 @@ function MessagesWithTeamTab(props) {
           branches={props.branches}
           userBranches={props.userBranches}
           currentUser={props.currentUser}
+          onDepositChange={(n)=>setDepositPending(n)}
+          setPendingOpenRes={props.setPendingOpenRes}
+          setPage={props.setPage}
         />
       </div>
     </div>

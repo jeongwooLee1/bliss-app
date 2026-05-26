@@ -110,7 +110,7 @@ function CustModal({ item, isEdit, onSave, onClose, defBranch, userBranches, bra
   </div>;
 }
 
-function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust, setPendingOpenCust }) {
+function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust, setPendingOpenCust, setPage, setPendingOpenRes }) {
   const navigate = useNavigate();
   const [q, setQ] = useSessionState("cust_q", "", { ttlMs: TTL.SEARCH });
   const [vb, setVb] = useSessionState("cust_vb", "all", { ttlMs: TTL.TAB });
@@ -685,6 +685,8 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
   }, [detailCust?.id]);
 
   const [custSales, setCustSales] = useState([]);
+  const [custReservations, setCustReservations] = useState([]);
+  const [bottomTab, setBottomTab] = useState("sales"); // 우하 카드 탭: "sales" | "res"
   const [custPkgsServer, setCustPkgsServer] = useState([]);
   // 동의서 모달 (선택된 고객 오브젝트 있으면 열림)
   const [consentCust, setConsentCust] = useState(null);
@@ -991,7 +993,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
   };
 
   useEffect(() => {
-    if (!detailCust) { setCustSales([]); setCustPkgsServer([]); setCustResStats({total:0,noshow:0,samedayCancel:0,samedayChange:0}); setCustPointTx([]); setShareCusts([]); setLoadingDetail(false); return; }
+    if (!detailCust) { setCustSales([]); setCustReservations([]); setCustPkgsServer([]); setCustResStats({total:0,noshow:0,samedayCancel:0,samedayChange:0}); setCustPointTx([]); setShareCusts([]); setLoadingDetail(false); return; }
     loadShares(detailCust.id);
     setLoadingDetail(true);
     Promise.all([
@@ -1021,8 +1023,10 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       sb.get("customer_packages", `&customer_id=eq.${detailCust.id}`)
         .then(rows => setCustPkgsServer(rows))
         .catch(() => setCustPkgsServer([])),
-      sb.get("reservations", `&cust_id=eq.${detailCust.id}&select=status,date,updated_at,prev_reservation_id&limit=2000`)
+      sb.get("reservations", `&cust_id=eq.${detailCust.id}&select=id,reservation_id,status,date,time,bid,staff_id,selected_services,is_schedule,updated_at,prev_reservation_id&order=date.desc&limit=2000`)
         .then(rows => {
+          // 예약 내역 탭용 — 내부일정 제외
+          setCustReservations((rows||[]).filter(r => !r.is_schedule));
           // 당일취소: 취소 상태 + updated_at 날짜 == 예약일 (id_imgr471swt-5 수정요청)
           // 당일변경: naver_changed 상태 또는 prev_reservation_id 있는 것 중 updated_at 날짜 == 예약일
           const dateOf = (ts) => ts ? String(ts).slice(0,10) : "";
@@ -1763,6 +1767,9 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                     <I name="clipboard" size={11}/> 메모
                     {memoSaving && <span style={{marginLeft:6,fontSize:9,color:T.textMuted,fontWeight:500}}>저장중…</span>}
                   </div>
+                  {c.serviceSummary && <div onClick={e=>e.stopPropagation()} style={{marginBottom:10,padding:"7px 9px",background:"#EEF2FF",borderRadius:6,fontSize:T.fs.xxs,color:"#4338ca",lineHeight:1.5,cursor:"default"}}>
+                    <span style={{fontWeight:800,marginRight:4}}>🔁 단골 시술</span>{c.serviceSummary}
+                  </div>}
                   {editingMemo ? (
                     <textarea autoFocus value={memoDraft}
                       onChange={e=>setMemoDraft(e.target.value)}
@@ -2198,16 +2205,43 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                       </div>}
                     </div>
                   </div>
-                  {/* 우하 — 매출 내역 카드 */}
+                  {/* 우하 — 매출/예약 내역 카드 (탭) */}
                   <div style={{background:"#fff",borderRadius:12,border:"1px solid "+T.border,minWidth:0,minHeight:0,overflowY:"auto"}}>
-                    <div style={{padding:"10px 14px",borderBottom:"1px solid "+T.border,fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.text,background:T.bgCard,position:"sticky",top:0,zIndex:1,display:"flex",alignItems:"center",gap:8}}>
-                      <span style={{display:"inline-flex",alignItems:"center",gap:5}}><I name="wallet" size={14} color={T.primary}/> 매출 내역 ({custSales.length}건)</span>
-                      {(() => {
+                    <div style={{borderBottom:"1px solid "+T.border,background:T.bgCard,position:"sticky",top:0,zIndex:1,display:"flex",alignItems:"center"}}>
+                      {[["sales","wallet","매출 내역",custSales.length],["res","calendar","예약 내역",custReservations.length]].map(([k,ic,lbl,cnt])=>(
+                        <button key={k} type="button" onClick={()=>setBottomTab(k)}
+                          style={{padding:"10px 14px",fontSize:T.fs.xs,fontWeight:bottomTab===k?T.fw.bolder:T.fw.medium,
+                            color:bottomTab===k?T.primary:T.textSub,background:"none",border:"none",
+                            borderBottom:bottomTab===k?"2px solid "+T.primary:"2px solid transparent",cursor:"pointer",fontFamily:"inherit",
+                            display:"inline-flex",alignItems:"center",gap:5}}>
+                          <I name={ic} size={13} color={bottomTab===k?T.primary:T.textSub}/>{lbl} ({cnt})
+                        </button>
+                      ))}
+                      {bottomTab==="sales" && (() => {
                         const _t = custSales.reduce((acc,s)=>{const sv=s.svcCash+s.svcTransfer+s.svcCard+s.svcPoint;const pr=s.prodCash+s.prodTransfer+s.prodCard+s.prodPoint;return acc+sv+pr+(s.gift||0);},0);
-                        return _t > 0 ? <span style={{marginLeft:"auto",fontSize:T.fs.xxs,color:T.info,fontWeight:T.fw.black}}>총 {fmt(_t)}원</span> : null;
+                        return _t > 0 ? <span style={{marginLeft:"auto",marginRight:14,fontSize:T.fs.xxs,color:T.info,fontWeight:T.fw.black}}>총 {fmt(_t)}원</span> : null;
                       })()}
                     </div>
-                    {renderSalesPanel()}
+                    {bottomTab==="sales" ? renderSalesPanel() : (
+                      <div style={{padding:"6px 0"}}>
+                        {custReservations.length===0 ? <div style={{padding:24,textAlign:"center",color:T.textMuted,fontSize:T.fs.xs}}>예약 내역이 없습니다</div> :
+                          custReservations.map(r => {
+                            const br = (data.branches||[]).find(b=>b.id===r.bid);
+                            const svcs = (r.selected_services||[]).map(id=>(data.services||[]).find(s=>s.id===id)?.name).filter(Boolean).join(", ");
+                            const stMap = {reserved:["예약중","#6366f1"],confirmed:["진행","#2563eb"],completed:["완료","#16a34a"],cancelled:["취소","#9ca3af"],naver_cancelled:["취소","#9ca3af"],no_show:["노쇼","#dc2626"],naver_changed:["변경됨","#d97706"],request:["확정대기","#ea580c"],pending:["확정대기","#ea580c"]};
+                            const [stL,stC] = stMap[r.status] || [r.status,"#6b7280"];
+                            const _goRes = () => { if (setPendingOpenRes && setPage) { setDetailCust(null); setPendingOpenRes({ ...r, reservationId: r.reservation_id || r.id }); setPage("timeline"); } };
+                            return <div key={r.id} onClick={_goRes}
+                              style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderBottom:"1px solid "+T.gray100,fontSize:T.fs.xs,cursor:(setPendingOpenRes&&setPage)?"pointer":"default"}}
+                              onMouseOver={e=>e.currentTarget.style.background=T.primaryLt||"#f3f0ff"} onMouseOut={e=>e.currentTarget.style.background="transparent"}>
+                              <span style={{fontWeight:T.fw.bolder,color:T.text,minWidth:108,flexShrink:0}}>{r.date} {r.time||""}</span>
+                              <span style={{padding:"1px 7px",borderRadius:8,background:stC+"1a",color:stC,fontSize:T.fs.nano,fontWeight:T.fw.bolder,flexShrink:0}}>{stL}</span>
+                              {br && <span style={{fontSize:T.fs.nano,background:T.gray200,borderRadius:T.radius.sm,padding:"1px 5px",flexShrink:0}}>{br.short||br.name}</span>}
+                              <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:T.textSub}}>{svcs||"-"}</span>
+                            </div>;
+                          })}
+                      </div>
+                    )}
                   </div>
                   </div>
                   </div>
