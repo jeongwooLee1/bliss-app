@@ -2384,3 +2384,18 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
 - **계정 비번 = `accounts.password_hash`(bcrypt)** — 재설정은 `admin_reset_password` RPC(service_role)만. 구 UsersPage는 `app_users.password`(레거시) 기록이라 계정 로그인과 별개(추후 정리 대상).
 - **기존 계정 자가 재설정**: 이메일 5/20·전화 0이라 기존 계정은 메일/전화 등록된 것만 가능, 나머지는 본사 문의 폴백. 신규 가입자는 둘 다 받아 전부 가능.
 - **계정 SMS 인증** = NPRO(강남 발신번호 br_4bcauqvrb) 재사용, 건당 SMS 비용. 코드 10분 만료 메모리 캐시(`acct:`+phone).
+
+### AI 자동예약 — 날짜·시술매칭 다중 버그 수정 (2026-05-26, 서버, React 변경 0)
+**발단**: Christina(WhatsApp) 대화 — AI가 "next tuesday"를 5/27(수)로 잘못 잡고, 시술도 엉뚱하게 등록(턱), 고객 날짜확인 질문에 엉뚱 응답.
+
+**원인·수정 (`ai_booking.py`, 백업 `bak_pre_{nextweekday,svcmatch,safetyC}_*`)**:
+1. **상대 요일** — "this/next/이번주/다음주 ○요일" 전부 **가장 가까운 미래 그 요일**로 매핑(+7일 금지). 외국 손님 'next Tuesday'=다가오는 화요일 관행. (요일↔날짜 모순은 기존 14일 캘린더 표가 차단)
+2. **날짜확인 질문** — 기존 예약 블록에 **요일+오늘/내일/N일뒤 라벨** 자동 주입 + "오늘이냐 내일이냐?"류 질문 → 날짜+요일 명확히 답하라는 규칙 추가("confirmed for 11:00"식 날짜 누락 금지).
+3. **시술 매칭을 견고한 AI추출기(`bliss_naver._ai_extract_booking_info`, Gemini)로 통일** — 브리틀 키워드 테이블(`SVC_ENG_TO_KOR`) 대체. 키워드 폴백도 보강(`upper lip→인중`, `half/full arm→팔 절반/전체`, 한국어 키워드에 `인중·팔`). lazy import로 순환 회피.
+4. **안전망 C** — AI 예약 시술매칭 0건이면 `schedule_log`에 "⚠ 시술 자동인식 실패 — 직원 확인" 경고. AI 예약은 `request`(확정대기)라 직원이 검토.
+
+**`bliss_naver.py` `_ai_extract_booking_info` 견고화 (백업 `bak_pre_gptfallback_*`)**: Gemini가 깨진 JSON(Unterminated string) 반환 시 → ① 제어문자 제거 재시도 ② **GPT(gpt-4.1-mini) 교차 재추출** → 둘 다 실패면 graceful 빈값. 카카오/폼 예약도 같이 견고해짐.
+
+**모델 리서치+실데이터 10건 테스트 결론 (중요)**: 더 싼 모델 교체 검토했으나 **기각**. 실측 — **Gemini 3.5 Flash(현행)=9/10 최고**, Gemini 2.5 Flash-Lite=~5/10(half→전체 오류, JSON 깨짐, 스키마도 못 막음), GPT-4.1-nano=4/10(바우처·다담권 오매칭 위험). 폴백 비교 — **gpt-4.1-mini=8/8 최적**, gemini-3-flash=API 404(불가), claude-haiku-4.5=다부위 legs 누락. → **결론: Gemini 3.5 Flash 1차 + gpt-4.1-mini 폴백 = 현 구성이 최적, 교체 안 함.**
+
+**유의**: 서버 `ai_booking.py`/`bliss_naver.py`는 bliss-app git 미추적(별도 `/home/ubuntu/naver-sync/`). ssh+scp+`systemctl restart bliss-naver`로 적용. React 변경 0 → 버전업·CF퍼지 불필요.
