@@ -2474,7 +2474,7 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
 **배경**: 인스타·WhatsApp 24시간 메시지 제한으로 발송 실패 다발(2주 WA 16건·IG 15건). 원인 데이터 규명 후 채널별로 분리 대응.
 
 **WhatsApp `131047 Re-engagement` (16건)** — 24h 지난 뒤 직원/AI 자유텍스트 발송이 막힘. **자동 재참여 시스템 구현**:
-- **재참여 템플릿 2개 등록**(브라우저로 Meta WhatsApp Manager 직접): `bliss_reengage_ko`/`bliss_reengage_en`. **검토 중**. ⚠️ Meta가 "재참여" 문구를 **마케팅 카테고리로 강제 분류**(유틸리티 통과 불가 — 정우님 동의). 변수 없는 정적 본문(편집기 중괄호 자동완성 이슈 회피). WABA business_id `408896146297631`, asset_id(WABA) `1236360581538660`.
+- **재참여 템플릿 2개 등록**(브라우저로 Meta WhatsApp Manager 직접): `bliss_reengage_ko`/`bliss_reengage_en`. **승인 완료(마케팅)** + 정우 번호로 테스트 발송 → Meta 200 + `read` 검증. ⚠️ Meta가 "재참여" 문구를 **마케팅 카테고리로 강제 분류**(유틸리티 통과 불가 — 정우님 동의). 변수 없는 정적 본문(편집기 중괄호 자동완성 이슈 회피). WABA business_id `408896146297631`, asset_id(WABA) `1236360581538660`. **참고: "결제 구성=인도/액세스 불가"는 발송 무관**(무료 한도 내 발송, 결제수단 셋업 불필요 확인). bliss_reminder_ko/en은 등록만 돼 있고 코드 미연결(보낸 0개).
 - **서버 `bliss_naver.py`** (백업 `bak_pre_wareengage_*`):
   - status webhook에서 **131047 실패 감지** → `_wa_trigger_reengage(wamid)`: 원문을 send_queue `status='held'`로 보류 + 원문 메시지 `error_reason`에 안내 표시 + 재참여 템플릿(고객 언어 `detect_lang` 기준 ko/en, 1시간 내 중복발송 방지) 큐잉.
   - **인바운드 핸들러**: WA 메시지 수신 시 그 유저의 `held` → `pending` flush(24h 창 재개 → 원문 자동 전달).
