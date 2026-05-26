@@ -2451,4 +2451,12 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
 ### 서버 — 차트 템플릿 v2(폐기) → v3(정식) 통일 (2026-05-26, React 변경 0)
 **발견**: 차트가 경로마다 버전이 갈림 — **매장 키오스크는 v3**(`ct_condition_v3`/`ct_consent_full_ko_v3`, is_active=true 정식), **AI 예약확정 발송 링크는 v2**(is_active=**false** 폐기). 서버 `_pick_chart_tpls`가 v2를 하드코딩한 채 안 바뀜 → 발송 링크로 받는 고객은 **폐기된 구버전 차트**를 받음(최근 30일 ct_condition_v2 34건). 김미진 케이스 추적 중 발견.
 **fix** (`bliss_naver.py` `_pick_chart_tpls`, 백업 `bak_pre_chartv3_*`): `NEW=ct_consent_full_ko_v3`, `COND=ct_condition_v3`로 교체. 발송 링크도 키오스크와 동일 현재 정식 v3. (ct_addons_v3는 is_active=false라 발송 제외 — 키오스크 부가용)
-**유의**: consent_templates의 is_active로 현재 정식 버전 확인 가능. 향후 v4 등 버전업 시 `_pick_chart_tpls` 상수도 같이 갱신해야 함(키오스크/consent 앱과 서버 발송이 따로 노는 구조라 동기화 주의). 김미진(기존) 본인 건은 키오스크 토큰(v3 풀세트)이 이미 생성돼 있고 메시지 발송은 없었음 — 별도.
+**유의**: consent_templates의 is_active로 현재 정식 버전 확인 가능. 김미진(기존) 본인 건은 키오스크 토큰(v3 풀세트)이 이미 생성돼 있고 메시지 발송은 없었음 — 별도.
+
+### 서버 — AI 고객 전화 매칭 보강 + 차트 템플릿 DB 자동추종 (2026-05-26, React 변경 0)
+**①AI 고객 매칭 (`ai_booking.py` create_booking_from_ai, 백업 `bak_pre_phonematch_*`)**: 기존 phone+name 정확일치/email/sns 매칭 다음에 **전화 매칭** 단계 추가. AI가 이름을 부분만 받아(예: "Park yuka"→"Yuka") 매칭 실패하고 중복 레코드 만들던 문제 해결.
+  - 전화 정확히 1명 → 그 고객 연결 (이름 달라도).
+  - 여러 명이어도 **cust_num(기존 등록) 보유 고객이 정확히 1명**이면 그 고객 연결 (AI가 만든 중복 레코드[cust_num 빈값]는 자동 배제 → 실제 기존고객 연결). 번호공유 다수(cust_num 2+)면 skip→신규 (feedback_bliss_no_phone_matching 존중).
+  - 검증: 01059654529 → 후보 2명(Park yuka #54869 + AI중복 "Yuka") → Park yuka 연결.
+**②차트 템플릿 DB 자동추종 (`bliss_naver.py` `_active_chart_tpls`, 백업 `bak_pre_dyntpl_*`)**: `_pick_chart_tpls`가 하드코딩 대신 `consent_templates.is_active=true`에서 현재 신규/컨디션 템플릿 ID를 조회(5분 캐시, 실패 시 v3 폴백). 키오스크/consent 앱이 버전업해도 서버 발송이 자동 동기화 → v2/v3 드리프트 재발 방지.
+**미해결(별도)**: Yuka류 **기존 중복 레코드 병합**(이미 생긴 cust_ai_* → #54869로 reservation 재연결 + 중복 삭제)은 데이터 정리 트랙. 매칭 보강으로 미래 신규 중복은 안 생김.
