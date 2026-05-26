@@ -2483,4 +2483,12 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
 - **비파괴적**: 템플릿 승인 전에도 held/flush(원문 보류·재전달)는 작동, 재참여 핑만 승인 후 발송.
 - ⚠️ **승인 후 확인 필요**: WhatsApp이 "비즈니스 발신 메시지에 결제수단 필요" 경고 → 마케팅 템플릿 실발송에 WABA 결제수단 등록 필요할 수 있음.
 
-**Instagram `403` (15건)** — 응답 *"To use 'Human Agent', your use of this endpoint must be reviewed and approved"*. 코드는 이미 HUMAN_AGENT 태그 정상 부착 중 → **Meta 앱에 'Human Agent' 기능 미승인**이 원인. 실패 다수는 **매장발 콜라보 콜드DM**(인플루언서 먼저 보내기)으로 인스타 정책상 API 불가(별개). **코드 변경 불가 — Meta App Review 제출(정우님) 필요**. 승인되면 24h~7일 손님 응대 자동 작동.
+**Instagram `403` (15건)** — 응답 *"To use 'Human Agent', your use of this endpoint must be reviewed and approved"*. 코드는 이미 HUMAN_AGENT 태그 정상 부착 중 → **Meta 앱에 'Human Agent' 기능 미승인**이 원인. 실패 다수는 **매장발 콜라보 콜드DM**(인플루언서 먼저 보내기)으로 인스타 정책상 API 불가(별개). **코드 변경 불가 — Meta App Review 제출(정우님) 필요**. 승인되면 24h~7일 손님 응대 자동 작동. App Review 제출 양식 = 권한 3개(instagram_business_basic·_manage_messages·Human Agent) 사용설명 3건 작성·저장 완료(브라우저), 남은 건 데모 스크린캐스트 업로드 + 데이터처리 답변 + 최종제출(정우님). 앱: "Bliss Messaging" appId `1591870165413712`.
+
+### 서버 — Instagram 토큰 9개 전체 만료 장애 + 자동갱신 구축 (2026-05-26, React 변경 0)
+**장애**: 발송실패(401) 보고 → 조사 결과 **9개 지점 IG 토큰 전부 동일 시각(05-26 00:20~00:30 PDT) 만료** — 60일 전 일괄 발급분이 동시 만료. 전 지점 IG DM 발송(자동응답·직원답장) 다운. 자동갱신 로직 부재가 근본 원인.
+**즉시 복구**: Meta 앱(Bliss Messaging) → Instagram API 설정 → "액세스 토큰 생성"에서 9개 계정 토큰 재발급(정우님), 각 토큰 `graph.instagram.com/me`로 검증 후 user_id 매핑 → `secrets.conf` `BLISS_IG_TOKENS_B64`(+`BLISS_IG_TOKEN` 기본=강남) 교체 + `app_secrets.ig_tokens`(Edge Function용) 동기화 → bliss-naver 재시작. 9개 전부 OK 검증.
+  - 계정 매핑: 강남=**housewaxing_official**(17841400218759830)·용산=_ys(17841445864668171)·잠실(17841449388904548)·마곡(17841424994371009)·홍대(17841424540907024)·왕십리(17841451286389128)·천호(17841456275137877)·위례(17841448925225432)·housewaxing_seoul(17841455170480955). (+9familydaddy 개인계정 미사용)
+**영구 방지 — 자동갱신**: `/home/ubuntu/naver-sync/ig_token_refresh.py` + systemd `bliss-ig-refresh.timer`(**매주 일 19:00 UTC=월 04:00 KST**). 각 토큰 `refresh_access_token`(ig_refresh_token)으로 +60일 연장 → secrets.conf 재기록 + bliss-naver 재시작. 갱신 실패(만료임박/무효) 시 TG 경보(chat 5771685751). 실행 검증: 9개 전부 +59d 갱신 성공.
+**유의**: bliss_naver는 **anon(publishable) 키**라 app_secrets 못 씀 → 자동갱신은 secrets.conf(env, 실제 발송 경로)만 갱신. app_secrets는 수동 1회 동기화(Edge Function IG 발송은 사실상 bliss_naver가 전담). IG Login 토큰 user_id = 웹훅 account_id(messages.account_id)와 동일.
+**미해결(부차)**: bliss_naver `_ig_use_human_agent` 24h 체크의 `datetime.fromisoformat`가 5자리 마이크로초 타임스탬프('.62133')에서 ValueError → 경고만 뜨고 태그 스킵(401 원인 아님). 별도 fix 대상.

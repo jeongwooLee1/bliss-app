@@ -22,7 +22,12 @@
 
 **Instagram 403 = 'Human Agent' 미승인** (코드 정상, 정우님 액션 필요):
 - 원인 확정 — Meta 앱에 **Human Agent advanced access 미승인**이라 24h~7일 손님 응대 발송이 전부 403.
-- **정우님: Meta for Developers → 앱 → App Review에서 'Human Agent' 기능 제출·승인**. 승인되면 즉시 자동 작동(코드 그대로). 콜라보 콜드DM은 정책상 영영 불가(별개, 인스타 앱에서 수동).
+- **App Review 진행 중**: 앱 "Bliss Messaging" → App Review 제출 양식에서 권한 3개(instagram_business_basic·_manage_messages·Human Agent) **사용설명 작성·저장 완료**(브라우저로). 남은 것(정우님): ① **데모 스크린캐스트 업로드**(손님 IG DM→Bliss 받은메시지함→직원 직접 답장→IG 도착, 권한 3곳 동일영상) ② **데이터 처리 질문** 답변 ③ 앱 설정 확인 ④ **[검수를 위해 제출]**. 콜라보 콜드DM은 정책상 영영 불가(인스타 앱에서 수동).
+
+## ✅ (2026-05-26) Instagram 토큰 9개 전체 만료 장애 — 복구 완료 + 자동갱신 구축 (상세 CLAUDE.md)
+- **장애**: 발송실패(401) = 9개 지점 IG 토큰이 60일째라 동시 만료. **재발급 9개 완료 + 검증 + 서버 반영(secrets.conf+app_secrets) + bliss-naver 재시작 → IG 발송 정상 복구.**
+- **영구 방지**: `bliss-ig-refresh.timer`(매주 월 04:00 KST) 자동 토큰 갱신 구축·검증 완료. 실패 시 TG 경보. **다시는 60일 만료로 안 끊김.**
+- **정우님 확인**: 천호(housewaxing_cheonho) Webhook "설정"(켬) 했는지 확인 — 꺼져 있으면 천호 DM 수신 안 됨.
 
 ## 🟡 진행 (이전 세션 이월) — 카카오 알림톡 차트링크: 버튼→본문텍스트 (검수 대기)
 - rsv_today 알림톡 WL 버튼 URL을 카카오가 전달 시 제거 → 본문 변수 `#{차트링크}`로 전환. 신규 템플릿 등록+검수 요청(8지점 UI_1603~1610, 버튼 없음).
