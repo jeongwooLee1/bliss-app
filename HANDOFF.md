@@ -14,6 +14,16 @@
 ## 🟡 확인 부탁 (정우님)
 - **계정 인증 실 발송 end-to-end 미테스트**: 실 SMS/실메일이 나가고 실계정 비번이 바뀌는 거라 끝까지 안 돌림. 본인 번호/메일로 ① 신규 가입 1회 ② 비번찾기(이메일/휴대폰) 1회 ③ 아이디찾기 1회 확인 권장.
 
+## 🟡 진행 (2026-05-26) — 인스타·WhatsApp 24h 메시지 제한 대응
+**WhatsApp 자동 재참여** (서버 코드 배포 완료, React 변경 0 / 상세 CLAUDE.md):
+- 템플릿 `bliss_reengage_ko`·`bliss_reengage_en` Meta 등록 → **검토 중**(마케팅 카테고리로 분류됨, 동의).
+- **승인 후 확인**: ① 알림톡 아니고 WhatsApp이라 **WABA 결제수단 등록** 필요할 수 있음(없으면 승인돼도 발송 막힘) — Meta WhatsApp Manager → 결제 구성 확인. ② 승인되면 코드가 자동 작동(24h 막힘→재참여 핑→손님 답장 시 원문 자동전달). 별도 배선 불필요.
+- 코드는 비파괴적: 승인 전에도 원문 보류·재전달(held→flush)은 작동.
+
+**Instagram 403 = 'Human Agent' 미승인** (코드 정상, 정우님 액션 필요):
+- 원인 확정 — Meta 앱에 **Human Agent advanced access 미승인**이라 24h~7일 손님 응대 발송이 전부 403.
+- **정우님: Meta for Developers → 앱 → App Review에서 'Human Agent' 기능 제출·승인**. 승인되면 즉시 자동 작동(코드 그대로). 콜라보 콜드DM은 정책상 영영 불가(별개, 인스타 앱에서 수동).
+
 ## 🟡 진행 (이전 세션 이월) — 카카오 알림톡 차트링크: 버튼→본문텍스트 (검수 대기)
 - rsv_today 알림톡 WL 버튼 URL을 카카오가 전달 시 제거 → 본문 변수 `#{차트링크}`로 전환. 신규 템플릿 등록+검수 요청(8지점 UI_1603~1610, 버튼 없음).
 - **검수 승인 후**: ① `branches.noti_config.rsv_today` 8지점 tplCode/msgTpl 교체 + `buttons:[]` ② 서버 rsv_today 루프 + `_send_booking_confirm`에서 `#{차트링크}`에 `https://sign.blissme.ai/?t={token}` 전체 URL 주입 ③ 알리고 inspStatus 확인(본문 URL 카카오 반려 가능성). 등록 스크립트 `/tmp/aligo_reg_chartlink.py`.

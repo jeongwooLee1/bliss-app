@@ -2469,3 +2469,18 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
   - 검증: 01059654529 → 후보 2명(Park yuka #54869 + AI중복 "Yuka") → Park yuka 연결.
 **②차트 템플릿 DB 자동추종 (`bliss_naver.py` `_active_chart_tpls`, 백업 `bak_pre_dyntpl_*`)**: `_pick_chart_tpls`가 하드코딩 대신 `consent_templates.is_active=true`에서 현재 신규/컨디션 템플릿 ID를 조회(5분 캐시, 실패 시 v3 폴백). 키오스크/consent 앱이 버전업해도 서버 발송이 자동 동기화 → v2/v3 드리프트 재발 방지.
 **미해결(별도)**: Yuka류 **기존 중복 레코드 병합**(이미 생긴 cust_ai_* → #54869로 reservation 재연결 + 중복 삭제)은 데이터 정리 트랙. 매칭 보강으로 미래 신규 중복은 안 생김.
+
+### 서버 — WhatsApp 24h 윈도우 자동 재참여 + Instagram 403 원인규명 (2026-05-26, React 변경 0)
+**배경**: 인스타·WhatsApp 24시간 메시지 제한으로 발송 실패 다발(2주 WA 16건·IG 15건). 원인 데이터 규명 후 채널별로 분리 대응.
+
+**WhatsApp `131047 Re-engagement` (16건)** — 24h 지난 뒤 직원/AI 자유텍스트 발송이 막힘. **자동 재참여 시스템 구현**:
+- **재참여 템플릿 2개 등록**(브라우저로 Meta WhatsApp Manager 직접): `bliss_reengage_ko`/`bliss_reengage_en`. **검토 중**. ⚠️ Meta가 "재참여" 문구를 **마케팅 카테고리로 강제 분류**(유틸리티 통과 불가 — 정우님 동의). 변수 없는 정적 본문(편집기 중괄호 자동완성 이슈 회피). WABA business_id `408896146297631`, asset_id(WABA) `1236360581538660`.
+- **서버 `bliss_naver.py`** (백업 `bak_pre_wareengage_*`):
+  - status webhook에서 **131047 실패 감지** → `_wa_trigger_reengage(wamid)`: 원문을 send_queue `status='held'`로 보류 + 원문 메시지 `error_reason`에 안내 표시 + 재참여 템플릿(고객 언어 `detect_lang` 기준 ko/en, 1시간 내 중복발송 방지) 큐잉.
+  - **인바운드 핸들러**: WA 메시지 수신 시 그 유저의 `held` → `pending` flush(24h 창 재개 → 원문 자동 전달).
+  - **send_queue_thread**: `held` 48h 경과 → `expired`(오래된 원문 발송 방지). 템플릿 발송 시 **무변수면 components 생략** + 이름 `_en` 접미사로 언어 결정.
+  - 루프 방지: 재참여 템플릿 본문(`WA_REENGAGE_BODIES`) 실패는 트리거 스킵.
+- **비파괴적**: 템플릿 승인 전에도 held/flush(원문 보류·재전달)는 작동, 재참여 핑만 승인 후 발송.
+- ⚠️ **승인 후 확인 필요**: WhatsApp이 "비즈니스 발신 메시지에 결제수단 필요" 경고 → 마케팅 템플릿 실발송에 WABA 결제수단 등록 필요할 수 있음.
+
+**Instagram `403` (15건)** — 응답 *"To use 'Human Agent', your use of this endpoint must be reviewed and approved"*. 코드는 이미 HUMAN_AGENT 태그 정상 부착 중 → **Meta 앱에 'Human Agent' 기능 미승인**이 원인. 실패 다수는 **매장발 콜라보 콜드DM**(인플루언서 먼저 보내기)으로 인스타 정책상 API 불가(별개). **코드 변경 불가 — Meta App Review 제출(정우님) 필요**. 승인되면 24h~7일 손님 응대 자동 작동.
