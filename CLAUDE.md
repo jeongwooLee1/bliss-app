@@ -2454,8 +2454,8 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
 **원인**: ① "AI 답변 추천"=`/ai-suggest`(suggest_only=True)는 **예약 생성을 skip**하고 답변만 → "confirmed" 멘트만 나가 거짓말. (`/ai-book`=AI 예약등록은 정상 작동 확인) ② cust_num 매칭이 **프로필명("55054 Naush" 형태)만** 보고 **대화 본문("membership number ... 52059")은 안 봄** → #52059 못 찾아 새 고객(cust_ai_*) 생성.
 **fix** (`ai_booking.py`, 백업 `bak_pre_custnum_suggest_*`):
   - **B (답변추천 자동예약)**: `ai_booking_agent`에서 예약 가능 상황(`_proceed`=action=book+가용)이면 `suggest_only`여도 `create_booking_from_ai` 호출(기존 skip 제거). → 답변추천 눌러도 정보 완비면 실제 예약 생성 → "확정" 멘트가 진실. 정보 부족(action≠book)이면 진입 안 함(답변만). 유저 요청: "예약 가능 상황이면 답변추천이 예약등록까지".
-  - **A (회원번호 대화추출)**: 프로필명에 번호 없으면 `history_text`+user_msg에서 회원번호 정규식 추출(`membership/member/회원번호/멤버십` 키워드 + 3~6자리), 기존 cust_num 매칭 로직(→`_matched_cust`→`booking.custId`)에 연결. 검증: "membership number is 52059"→52059, "회원번호 52059"→52059, 일반 문장→None(오탐 없음) + 실제 cust_num 존재 시에만 매칭.
-**데이터 정정**: zerotokorea 건 — `/ai-book` 호출로 예약 생성됐던 중복 고객(cust_ai_*)을 **#52059(Yisel sandoval)** 로 재연결 + 인스타 sns 이전 + 중복 삭제.
+  - **A (연락처 묻기)**: 회원번호를 대화에서 추출하려 했으나(유저 지적: "고객이 회원번호를 말할 이유가 없다") **철회**. 대신 프롬프트 룰 #12를 "**연락처(휴대폰/이메일) 한 번 물어보기**"로 변경 — 기존 "연락처 강제 금지"(2026-05-13)에서 "물어보되 강요·재요구 금지, 안 주면 빈 값 진행"으로. 연락처를 받으면 기존 phone/email 매칭으로 확실히 기존 고객 연결(중복 방지). 정석은 sns_accounts(채팅 user_id↔고객 1회 연결 후 자동매칭) — 1회 연결되면 이후 자동.
+**데이터 정정**: zerotokorea 건 — `/ai-book` 호출로 예약 생성됐던 중복 고객(cust_ai_*)을 **#52059(Yisel sandoval)** 로 재연결 + 인스타 sns 이전 + 중복 삭제. → 이후 zerotokorea 대화는 sns_accounts로 자동 매칭됨.
 
 ### 서버 — 차트 템플릿 v2(폐기) → v3(정식) 통일 (2026-05-26, React 변경 0)
 **발견**: 차트가 경로마다 버전이 갈림 — **매장 키오스크는 v3**(`ct_condition_v3`/`ct_consent_full_ko_v3`, is_active=true 정식), **AI 예약확정 발송 링크는 v2**(is_active=**false** 폐기). 서버 `_pick_chart_tpls`가 v2를 하드코딩한 채 안 바뀜 → 발송 링크로 받는 고객은 **폐기된 구버전 차트**를 받음(최근 30일 ct_condition_v2 34건). 김미진 케이스 추적 중 발견.
