@@ -2492,3 +2492,12 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
 **영구 방지 — 자동갱신**: `/home/ubuntu/naver-sync/ig_token_refresh.py` + systemd `bliss-ig-refresh.timer`(**매주 일 19:00 UTC=월 04:00 KST**). 각 토큰 `refresh_access_token`(ig_refresh_token)으로 +60일 연장 → secrets.conf 재기록 + bliss-naver 재시작. 갱신 실패(만료임박/무효) 시 TG 경보(chat 5771685751). 실행 검증: 9개 전부 +59d 갱신 성공.
 **유의**: bliss_naver는 **anon(publishable) 키**라 app_secrets 못 씀 → 자동갱신은 secrets.conf(env, 실제 발송 경로)만 갱신. app_secrets는 수동 1회 동기화(Edge Function IG 발송은 사실상 bliss_naver가 전담). IG Login 토큰 user_id = 웹훅 account_id(messages.account_id)와 동일.
 **미해결(부차)**: bliss_naver `_ig_use_human_agent` 24h 체크의 `datetime.fromisoformat`가 5자리 마이크로초 타임스탬프('.62133')에서 ValueError → 경고만 뜨고 태그 스킵(401 원인 아님). 별도 fix 대상.
+
+### 서버 — 채팅채널 예약 리마인더 보강 (WhatsApp 템플릿 + 스킵규칙 + IG 창체크) (2026-05-27, React 변경 0)
+**배경**: 카카오 리마인더(한국폰, rsv_1day 18시/rsv_today 09시)와 별개로, 채팅채널(WhatsApp/IG/LINE/네이버톡) 예약 손님(주로 외국인)에게도 리마인더 필요. `_send_chat_reminders`+`chat_reminder_thread`가 이미 있었으나 4가지 미흡 → 보강(백업 `bak_pre_chatrem_*`):
+1. **전날 리마인더 14시 → 18시** (카카오 rsv_1day와 동일 시각). 당일 09시(동일).
+2. **스킵규칙**: ① 예약을 "리마인더 발송일(오늘 KST)"에 한 건 → 방금 예약이라 불필요(스킵). ② 한국 휴대폰(010/8210) → 카카오 중복이라 스킵. (created_at·cust_phone select 추가)
+3. **WhatsApp은 승인 템플릿(bliss_reminder_ko/en)으로** — 일반텍스트는 24h 밖 131047 실패. template_params=[이름, 날짜(언어별포맷), 시간, 지점(영어 시 영문명)].
+4. **Instagram은 24h 창 열린 손님만**(마지막 inbound 24h 이내), 닫히면 스킵. LINE/네이버톡은 plain text best-effort.
+**정책 핵심**: 리마인더=능동발송. **WhatsApp·카카오만 "승인 템플릿 푸시"라 항상 발송 가능.** Instagram은 능동발송 불가·"24h 창 열린(=최근 대화) 손님"에게만. Human Agent 승인돼도 그건 "응답 기한 7일 연장"이지 능동 리마인더 허가 아님. 네이버톡 상담채널이라 능동 제한적(best-effort).
+**중복방지**: `reminder_sent_log`(reservation_id, reminder_type). **검증**: 2026-05-28 대상 WhatsApp 3건 중 1건(당일예약) 스킵→2건, 네이버 1건(한국폰) 스킵→0건. 블라스트 없음.
