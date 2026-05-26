@@ -2440,3 +2440,9 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
 **fix** (`bliss_naver.py`, 백업 `bak_pre_igaiflag_*`): IG echo 폴백을 **최근 120초 sent 중 '접두어 20자 일치' 우선, 없으면 최신건**으로 견고화(길이 동일 체크 제거, limit 5). is_ai/sent_by_staff 안정 전파.
 **데이터 정정**: ailemasousa222 대화 2026-05-26 발신 6건(직원 null·AI 확정) `is_ai=true` 백필.
 **유의**: 과거 전체 is_ai=false 메시지의 전역 백필은 안 함 — 과거 staff/AI 구분이 불확실(staff도 is_ai=false)해 오라벨 위험. 포워드 fix로 신규는 정상. 필요 시 send_queue(is_ai=true) 재매칭 백필 별도 검토.
+
+### 서버 — 기존 고객한테 신규차트 가던 문제 fix (차트 발송 신규판정 안전장치) (2026-05-26, React 변경 0)
+**증상**: 신규=신규차트(ct_consent_full_ko_v2), 기존=컨디션차트(ct_condition_v2)만 가야 하는데 **기존 고객한테 신규차트** 발송.
+**원인**: `_pick_chart_tpls` 로직은 정상. 예약의 `is_new_cust`가 기존 고객인데 true로 찍힘 → **AI가 기존 고객을 못 알아보고 새 고객 레코드(cust_ai_*) 생성**(매칭 실패)이 근본. 예) Park yuka(#54869, 01059654529)인데 AI가 "Yuka"로만 받아 새 레코드 만들어 신규 취급. 전화는 동일한데 이름 달라 매칭 실패.
+**fix** (`bliss_naver.py`, 백업 `bak_pre_chartnew_*`): 차트 발송 2곳(예약확정카드 + 당일 rsv_today 리마인더)에 **신규판정 안전장치 `_chart_is_new(cid, phone, biz)`** 추가 — is_new_cust=true여도 ① 같은 전화에 **cust_num 보유 고객 존재**(=기존 등록) 또는 ② 이 cust_id **유료매출 이력** 있으면 → 기존으로 처리(컨디션차트). 신규→기존 방향으로만 보정(반대 X). 검증: Yuka→기존, 외국인 신규→신규 정상.
+**미해결(근본·별도)**: AI 고객 매칭 실패로 인한 **중복 고객 레코드** 자체는 남음(예약 태그·통계엔 여전히 신규로 잡힐 수 있음). 매칭 개선(전화 일치 시 이름 달라도 연결 — 2026-05-16 find_cust_by_phone 패턴을 AI 예약 고객생성에도 적용) + Yuka류 중복 병합은 별도 트랙.
