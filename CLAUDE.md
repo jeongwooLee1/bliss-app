@@ -2433,3 +2433,10 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
 **원인**: `create_booking_from_ai` 지점 결정이 **1차 ACC_BRANCH(계정→지점)** 를 쓰고, booking.branch(LLM 추출) 재해석은 `not branch_id or whatsapp`일 때만 → IG는 계정 지점(강남)이 있어 손님 요청 지점(용산) 무시.
 **fix** (`ai_booking.py`, 백업 `bak_pre_igbranch_*`): 지점 결정에 **1.5차** 추가 — 손님이 대화에서 명시한 지점(`booking.branch`)이 유효하고 계정 지점과 다르면 **그 지점 우선**(`_match_branch_by_name`로 검증). 명시 없으면 기존대로 계정 지점. 검증: "Yongsan/용산/our Yongsan branch"→용산, "Gangnam/강남"→강남 정상.
 **효과**: IG/네이버 계정이 특정 지점이어도 손님이 다른 지점 요청 시 처음부터 정확히 예약 → 강남 오등록·재예약 churn·카드 오표기 재발 안 함. 카드 `_bname`은 예약 bid 기준이라 자동 정상화. ailemasousa222 현재 예약은 이미 용산(정상) — 데이터 수정 불필요.
+
+### 서버 — IG 발신 메시지 is_ai(AI/직원 말머리) 누락 fix (2026-05-26, React 변경 0)
+**증상**: AI 자동응답·예약확정 카드가 인박스에서 'AI' 말머리로 안 보임(직원처럼 보임). DB상 `messages.is_ai=false`인데 실제 AI/시스템 발신.
+**원인**: IG는 Meta가 발신을 echo로 돌려줄 때 `send_queue`와 매칭해 is_ai/직원정보를 가져옴. 1차 exact `message_text` 매칭 + 폴백의 `len(echo)==len(send_queue)` 체크가 **이모지·URL·줄바꿈 인코딩 차이**로 실패 → is_ai/staff 통째 누락(false). (send_queue는 is_ai=true 정상, echo 매칭만 실패). 네이버·WA·LINE은 send_queue row에서 직접 INSERT라 무관.
+**fix** (`bliss_naver.py`, 백업 `bak_pre_igaiflag_*`): IG echo 폴백을 **최근 120초 sent 중 '접두어 20자 일치' 우선, 없으면 최신건**으로 견고화(길이 동일 체크 제거, limit 5). is_ai/sent_by_staff 안정 전파.
+**데이터 정정**: ailemasousa222 대화 2026-05-26 발신 6건(직원 null·AI 확정) `is_ai=true` 백필.
+**유의**: 과거 전체 is_ai=false 메시지의 전역 백필은 안 함 — 과거 staff/AI 구분이 불확실(staff도 is_ai=false)해 오라벨 위험. 포워드 fix로 신규는 정상. 필요 시 send_queue(is_ai=true) 재매칭 백필 별도 검토.
