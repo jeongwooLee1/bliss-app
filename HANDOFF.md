@@ -22,7 +22,7 @@
 
 **Instagram 403 = 'Human Agent' 미승인** (코드 정상, 정우님 액션 필요):
 - 원인 확정 — Meta 앱에 **Human Agent advanced access 미승인**이라 24h~7일 손님 응대 발송이 전부 403.
-- **App Review 진행 중**: 앱 "Bliss Messaging" → App Review 제출 양식에서 권한 3개(instagram_business_basic·_manage_messages·Human Agent) **사용설명 작성·저장 완료**(브라우저로). 남은 것(정우님): ① **데모 스크린캐스트 업로드**(손님 IG DM→Bliss 받은메시지함→직원 직접 답장→IG 도착, 권한 3곳 동일영상) ② **데이터 처리 질문** 답변 ③ 앱 설정 확인 ④ **[검수를 위해 제출]**. 콜라보 콜드DM은 정책상 영영 불가(인스타 앱에서 수동).
+- **App Review 제출 완료 (2026-05-26, "검토 진행 중")**: 앱 "Bliss Messaging"(appId 1591870165413712)에서 권한 3개(instagram_business_basic·_manage_messages·Human Agent) 제출. 스크린캐스트(손님 IG DM→Bliss 받은메시지함→직원 직접 답장→IG 도착, 영어자막) + 사용설명 + 데이터처리(처리자 Teraport/Supabase(싱가포르)/Oracle, 책임주체 Teraport Inc.) + 앱설정(아이콘 1024·카테고리 비즈니스및페이지·도메인 blissme.ai·개인정보처리방침 https://blissme.ai/privacy.html·약관 https://blissme.ai/terms.html·데이터삭제 안내URL) + 검수자지침(데모 demo/demo1234) 전부 작성. **Meta 검토 ~10일 대기**. 승인되면 24h~7일 손님 응대 자동 작동. 콜라보 콜드DM은 정책상 영영 불가(인스타 앱에서 수동).
 
 ## ✅ (2026-05-26) Instagram 토큰 9개 전체 만료 장애 — 복구 완료 + 자동갱신 구축 (상세 CLAUDE.md)
 - **장애**: 발송실패(401) = 9개 지점 IG 토큰이 60일째라 동시 만료. **재발급 9개 완료 + 검증 + 서버 반영(secrets.conf+app_secrets) + bliss-naver 재시작 → IG 발송 정상 복구.**
