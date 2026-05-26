@@ -2447,3 +2447,8 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
 **설계 원칙**(유저 지적): 신규/기존 판단은 **예약 등록 시 한 번(`is_new_cust`)** 만 하고 태그·차트 모두 그걸 사용. 차트가 따로 또 판단하면 안 됨.
 **fix** (`ai_booking.py` `create_booking_from_ai`, 백업 `bak_pre_isnewphone_*`): is_new_cust 판단에 **전화 기반 보정** 추가 — `_cust_created`거나 cust_id 매출 없어도, **같은 전화에 cust_num 보유 고객(=기존 등록)이 있으면 `is_new_cust=False`**. 이 한 번의 판단이 신규태그 + 차트선택 공통 기준. (차트 쪽 `_chart_is_new` 별도 안전장치는 만들었다가 **폐기**·되돌림 — 단일 판단 원칙.)
 **미해결(근본·별도)**: AI 매칭 실패로 인한 **중복 고객 레코드** 자체는 남음(전화 일치하는데 이름 달라 매칭 실패). 매칭 개선(2026-05-16 find_cust_by_phone의 _name_mismatch 패턴을 AI 예약 고객생성에도 적용) + Yuka류 중복 병합은 별도 트랙. is_new_cust는 이제 전화로 보정되므로 차트·태그는 정상.
+
+### 서버 — 차트 템플릿 v2(폐기) → v3(정식) 통일 (2026-05-26, React 변경 0)
+**발견**: 차트가 경로마다 버전이 갈림 — **매장 키오스크는 v3**(`ct_condition_v3`/`ct_consent_full_ko_v3`, is_active=true 정식), **AI 예약확정 발송 링크는 v2**(is_active=**false** 폐기). 서버 `_pick_chart_tpls`가 v2를 하드코딩한 채 안 바뀜 → 발송 링크로 받는 고객은 **폐기된 구버전 차트**를 받음(최근 30일 ct_condition_v2 34건). 김미진 케이스 추적 중 발견.
+**fix** (`bliss_naver.py` `_pick_chart_tpls`, 백업 `bak_pre_chartv3_*`): `NEW=ct_consent_full_ko_v3`, `COND=ct_condition_v3`로 교체. 발송 링크도 키오스크와 동일 현재 정식 v3. (ct_addons_v3는 is_active=false라 발송 제외 — 키오스크 부가용)
+**유의**: consent_templates의 is_active로 현재 정식 버전 확인 가능. 향후 v4 등 버전업 시 `_pick_chart_tpls` 상수도 같이 갱신해야 함(키오스크/consent 앱과 서버 발송이 따로 노는 구조라 동기화 주의). 김미진(기존) 본인 건은 키오스크 토큰(v3 풀세트)이 이미 생성돼 있고 메시지 발송은 없었음 — 별도.
