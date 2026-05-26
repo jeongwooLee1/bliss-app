@@ -1,7 +1,7 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.865** (https://blissme.ai/version.txt) — 로컬 `BLISS_V`/`version.txt` 일치
+- **라이브: v3.7.866** (https://blissme.ai/version.txt) — 로컬 `BLISS_V`/`version.txt` 일치
 
 ## ✅ 이번 세션 완료 (2026-05-25~26) — 상세는 CLAUDE.md 변경이력 참고
 - **v3.7.865** 총매출 포인트 제외(정책일 2026-05-26 컷오프, 과거 불변 / 클라 6곳+RPC 5개) + 포인트 유효기간 출처별(선불권 적립→권 유효기간 따라감, source_package_id 링크+첫사용 전파, 포워드만·소급 생략). 상세 CLAUDE.md.

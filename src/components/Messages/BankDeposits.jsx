@@ -86,7 +86,18 @@ function MatchModal({ deposit, branches, onClose, onMatched, currentUser }) {
       let custRows = [];
       if (term.length >= 1) {
         const orFilter = `or=(name.ilike.*${encodeURIComponent(term)}*,name2.ilike.*${encodeURIComponent(term)}*,phone.ilike.*${encodeURIComponent(term)}*,phone2.ilike.*${encodeURIComponent(term)}*,cust_num.ilike.*${encodeURIComponent(term)}*)`;
-        custRows = await sb.get('customers', `&business_id=eq.${_activeBizId}&${orFilter}&select=id,name,name2,phone,phone2,cust_num&limit=20`);
+        // 동명이인 많을 때(예: "유민" 54명) 무정렬 limit이면 정작 당사자가 잘림 → 넉넉히 받아 관련도순 정렬 후 상위만
+        const _raw = await sb.get('customers', `&business_id=eq.${_activeBizId}&${orFilter}&select=id,name,name2,phone,phone2,cust_num&limit=80`);
+        const _t = term.trim();
+        const _score = (c) => {
+          const nm = (c.name||'').trim();
+          if (nm === _t) return 5;                                  // 이름 정확 일치
+          if ((c.phone||'') === _t || (c.cust_num||'') === _t) return 4; // 전화/고객번호 정확
+          if (nm.startsWith(_t)) return 3;                          // 이름 시작
+          if (nm.includes(_t) || (c.name2||'').includes(_t)) return 2;  // 이름 부분
+          return 1;                                                 // 전화/번호 부분
+        };
+        custRows = (_raw || []).sort((a,b) => _score(b) - _score(a)).slice(0, 25);
       }
 
       if (!alive) return;
@@ -105,19 +116,14 @@ function MatchModal({ deposit, branches, onClose, onMatched, currentUser }) {
       list.sort((a,b) => (b._amountScore + b._nameScore) - (a._amountScore + a._nameScore));
       setCandidates(list);
 
-      // reservations: 일반예약만 + 취소/노쇼 제외 + 예약 시작시간이 입금시각 이후만 (예약 시작 후 입금=시술후결제→예약 매칭 X)
+      // reservations: 일반예약만 + 취소/노쇼 제외 + 과거 날짜 예약만 제외
+      // (같은 날 예약은 시술 후 계좌이체 결제가 흔하므로 시각 무관 표시 — 입금 12:38, 예약 12:10 케이스 노출)
       const depDate = timeWindow.date;
-      const depTime = timeWindow.depTime;
-      const isStarted = (r) => {
-        if (!r.time || !r.date) return false;
-        if (r.date < depDate) return true;
-        if (r.date > depDate) return false;
-        return r.time <= depTime;
-      };
+      const isPastDay = (r) => r.date && r.date < depDate;
       const rsv = fromDb('reservations', rsvRows || [])
         .filter(r => !r.isSchedule)
         .filter(r => !['cancelled','no_show','naver_cancelled'].includes(r.status))
-        .filter(r => !isStarted(r));
+        .filter(r => !isPastDay(r));
       setReservations(rsv);
       setCustCandidates(custRows || []);
       setLoading(false);
