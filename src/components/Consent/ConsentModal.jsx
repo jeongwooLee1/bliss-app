@@ -226,47 +226,21 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
             </div>
           </details>}
 
-          {/* 전송 방식 */}
+          {/* 전송 방식 — 카카오 알림톡(권장) + QR/링크 폴백 */}
           {tpls.length > 0 && <div style={{ marginTop: 14, padding: 12, background: T.gray100, borderRadius: 8 }}>
-            {kiosks.length > 0 ? <>
-              <div style={{ fontSize: 12, fontWeight: 700, color: T.textSub, marginBottom: 6 }}>📲 대상 태블릿</div>
-              <select value={kioskId} onChange={e => setKioskId(e.target.value)}
-                style={{ width: '100%', padding: '8px 10px', fontSize: 13, border: '1px solid ' + T.border, borderRadius: 6, background: '#fff' }}>
-                {kiosks.map(k => <option key={k.id} value={k.id}>{k.name || k.id}</option>)}
-              </select>
-              <button onClick={() => send('kiosk')} disabled={loading || selectedIds.length === 0}
-                style={{ width: '100%', padding: '10px', marginTop: 10, fontSize: 14, fontWeight: 800, background: T.primary, color: '#fff', border: 'none', borderRadius: 8, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
-                {loading ? '전송중…' : `📲 태블릿으로 전송 (${selectedIds.length}건)`}
-              </button>
-              {smsHasPhone && <button onClick={() => send('alimtalk')} disabled={loading || selectedIds.length === 0}
-                style={{ width: '100%', padding: '10px', marginTop: 6, fontSize: 14, fontWeight: 800, background: '#FEE500', color: '#3C1E1E', border: 'none', borderRadius: 8, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
-                {loading ? '전송중…' : `💬 알림톡으로 보내기 (${cust?.phone || ''})`}
-              </button>}
-              {smsHasPhone && <button onClick={() => send('sms')} disabled={loading || selectedIds.length === 0}
-                style={{ width: '100%', padding: '8px', marginTop: 6, fontSize: 12, fontWeight: 600, background: 'transparent', color: T.textSub, border: '1px dashed ' + T.border, borderRadius: 6, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
-                {loading ? '전송중…' : `📱 문자(SMS)로 보내기 — 링크 차단될 수 있음`}
-              </button>}
-              <button onClick={() => send('qr')} disabled={loading || selectedIds.length === 0}
-                style={{ width: '100%', padding: '8px', marginTop: 6, fontSize: 12, fontWeight: 600, background: 'transparent', color: T.textSub, border: '1px dashed ' + T.border, borderRadius: 6, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
-                QR/링크로 대신 받기 (폴백)
-              </button>
-            </> : <>
-              <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 8, lineHeight: 1.5 }}>
-                고객 폰으로 동의서 링크를 카카오 알림톡(권장)·문자로 전송하거나, QR/링크로 전달하세요.
-              </div>
-              {smsHasPhone && <button onClick={() => send('alimtalk')} disabled={loading || selectedIds.length === 0}
-                style={{ width: '100%', padding: '10px', fontSize: 14, fontWeight: 800, background: '#FEE500', color: '#3C1E1E', border: 'none', borderRadius: 8, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
-                {loading ? '전송중…' : `💬 알림톡으로 보내기 (${cust?.phone || ''})`}
-              </button>}
-              {smsHasPhone && <button onClick={() => send('sms')} disabled={loading || selectedIds.length === 0}
-                style={{ width: '100%', padding: '8px', marginTop: 6, fontSize: 12, fontWeight: 600, background: 'transparent', color: T.textSub, border: '1px dashed ' + T.border, borderRadius: 6, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
-                {loading ? '전송중…' : `📱 문자(SMS)로 보내기 — 링크 차단될 수 있음`}
-              </button>}
-              <button onClick={() => send('qr')} disabled={loading || selectedIds.length === 0}
-                style={{ width: '100%', padding: '10px', marginTop: smsHasPhone ? 6 : 0, fontSize: smsHasPhone ? 13 : 14, fontWeight: smsHasPhone ? 700 : 800, background: smsHasPhone ? 'transparent' : T.primary, color: smsHasPhone ? T.textSub : '#fff', border: smsHasPhone ? '1px dashed ' + T.border : 'none', borderRadius: 8, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
-                {loading ? '생성중…' : `🔗 QR 링크 생성 (${selectedIds.length}건)`}
-              </button>
-            </>}
+            <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 8, lineHeight: 1.5 }}>
+              {smsHasPhone
+                ? '고객 카카오톡으로 동의서 링크를 보냅니다. 카톡이 안 되면 QR/링크로 전달하세요.'
+                : '이 고객은 휴대폰 번호(010~)가 없어 알림톡 발송이 안 됩니다. QR/링크로 전달하세요.'}
+            </div>
+            {smsHasPhone && <button onClick={() => send('alimtalk')} disabled={loading || selectedIds.length === 0}
+              style={{ width: '100%', padding: '12px', fontSize: 15, fontWeight: 800, background: '#FEE500', color: '#3C1E1E', border: 'none', borderRadius: 8, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
+              {loading ? '전송중…' : `💬 알림톡으로 보내기 (${cust?.phone || ''})`}
+            </button>}
+            <button onClick={() => send('qr')} disabled={loading || selectedIds.length === 0}
+              style={{ width: '100%', padding: smsHasPhone ? '8px' : '12px', marginTop: smsHasPhone ? 6 : 0, fontSize: smsHasPhone ? 12 : 15, fontWeight: smsHasPhone ? 600 : 800, background: smsHasPhone ? 'transparent' : T.primary, color: smsHasPhone ? T.textSub : '#fff', border: smsHasPhone ? '1px dashed ' + T.border : 'none', borderRadius: 8, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
+              {loading ? '생성중…' : `🔗 QR/링크로 대신 받기`}
+            </button>
           </div>}
         </div>}
       </div>
