@@ -18,11 +18,11 @@ function genToken() {
  *  3) 대상 태블릿(kiosk) 선택 → 전송 → 태블릿이 realtime으로 즉시 서명 UI 띄움
  *  4) 키오스크 없는 매장: "링크 복사/QR 보기"로 폴백 (고객 폰으로 QR 스캔)
  */
-export default function ConsentModal({ cust, bizId, data, onClose, reservationId }) {
+export default function ConsentModal({ cust, bizId, data, onClose, reservationId, initialSelectedIds, initialPrefill }) {
   const [tpls, setTpls] = useState([])
   const [folders, setFolders] = useState([])
-  const [selectedIds, setSelectedIds] = useState([])
-  const [prefill, setPrefill] = useState({})
+  const [selectedIds, setSelectedIds] = useState(initialSelectedIds || [])
+  const [prefill, setPrefill] = useState(initialPrefill || {})
   const [kioskId, setKioskId] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null) // {token, url, qr, via:'kiosk'|'qr'}

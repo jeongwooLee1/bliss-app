@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react'
 import { T, SCH_BRANCH_MAP } from '../../lib/constants'
 import { sb, buildTokenSearch, SB_URL, SB_KEY, sbHeaders } from '../../lib/sb'
-import { fromDb, toDb, _activeBizId } from '../../lib/db'
+import { fromDb, toDb, _activeBizId, PREPAID_TAG_ID } from '../../lib/db'
 import { todayStr, genId, getPkgPurchaseBranchShort, canUsePkgAtBranch, isMoneyPkg } from '../../lib/utils'
 import { applyEvents } from '../../lib/eventEngine'
 import { isNewCustomer as _isNewCustomerSSOT } from '../../lib/customerStatus'
 import { createPortal } from 'react-dom'
 import I from '../common/I'
 import { ShareCustModal } from '../Customers/ShareCustModal'
+import ConsentModal from '../Consent/ConsentModal'
 
 const uid = genId;
 // 금액 콤마 포맷 유틸
@@ -578,6 +579,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   };
 
   // 고객 검색 (디바운스)
+  const [pendingConsent, setPendingConsent] = useState(null); // 매출 저장 후 동의서 발송 프롬프트
   const [custSearch, setCustSearch] = useState("");
   const [showCustDrop, setShowCustDrop] = useState(false);
   const [custResults, setCustResults] = useState([]);
@@ -1775,6 +1777,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
         customerGender: gender || null,
         // 금액
         svcTotal, prodTotal,
+        extraSvcTotal: _extraSvcAddTotal,  // 카테고리 없는 추가시술 — 카테고리필터 적립 base에 시술로 포함 (현아 id_bqtjtnw55y)
         prepaidPurchaseAmount, pkgPurchaseAmount, annualPurchaseAmount,
         // 구매 아이템 배열 (조건 정확 매칭용)
         newPrepaidItems: newPrepaidPurchases.map(s => ({ id: s.id, name: s.name, amount: items[s.id]?.amount||0 })),
@@ -3112,6 +3115,18 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       }
     } catch(e) { console.warn("[reservation dur auto-adjust]", e); }
 
+    // ── 선결제(외부) 입력 시 예약금완료 태그 자동 부착 (신영 id_4m33q2cpux) ──
+    try {
+      if (externalDeduct > 0 && (externalPlatform || "").trim() && reservation?.id && PREPAID_TAG_ID) {
+        const curTags = Array.isArray(reservation.selectedTags) ? reservation.selectedTags : [];
+        if (!curTags.includes(PREPAID_TAG_ID)) {
+          const nextTags = [...curTags, PREPAID_TAG_ID];
+          await sb.update("reservations", reservation.id, { selected_tags: nextTags });
+          if (setData) setData(prev => ({ ...prev, reservations: (prev?.reservations || []).map(r => r.id === reservation.id ? { ...r, selectedTags: nextTags } : r) }));
+        }
+      }
+    } catch (e) { console.warn("[prepaid tag auto]", e); }
+
     // 이벤트 자동 쿠폰 발행 (trigger 충족 시)
     // 트리거가 prepaid/pkg/annual_purchase면 → 발행된 보유권에 연결, 첫 사용일에 유효기간 시작
     if (cust.id && eventResult?.issueCoupons?.length) {
@@ -3368,7 +3383,26 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     }
     // _continueAfter: true면 저장 후 모달 유지 + 새 매출 입력 가능하도록 부모에서 리셋
     // _alreadySaved: SaleForm이 이미 sales INSERT 완료 → 부모는 state만 갱신, 중복 insert 금지
-    onSubmit({ ...sale, _continueAfter: !!continueAfter, _alreadySaved: true });
+    const _salePayload = { ...sale, _continueAfter: !!continueAfter, _alreadySaved: true };
+
+    // ── 동의서 필요 상품(금액권/선불권·패키지·연간권) 구매 시 → 발송 프롬프트 ──
+    // 선불권(다담권·바프권 등)=금액권 동의서. 패키지=패키지(에너지면 에너지). 연간권=연간회원권.
+    if (!editMode && !viewOnly && !continueAfter && cust?.id) {
+      const _cids = [];
+      if (newPrepaidPurchases.length > 0) _cids.push('ct_gift_ko');
+      newPkgPurchases.forEach(s => _cids.push(/에너지/.test(s.name || '') ? 'ct_energy_package' : 'ct_package'));
+      if (newAnnualPurchases.length > 0) _cids.push('ct_annual_member_ko');
+      const consentIds = [...new Set(_cids)];
+      if (consentIds.length > 0) {
+        const _vf = todayStr();
+        const _vu = (() => { const d = new Date(); d.setFullYear(d.getFullYear() + 1); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); })();
+        const _pf = { valid_from: _vf, valid_until: _vu };
+        if (newPrepaidActiveTotal > 0) _pf.points = String(newPrepaidActiveTotal);
+        setPendingConsent({ ids: consentIds, prefill: _pf, bid: sale.bid, salePayload: _salePayload });
+        return; // 닫기는 동의서 창 닫힐 때 onSubmit으로
+      }
+    }
+    onSubmit(_salePayload);
   };
 
   // Split services into 2 columns by flat sort order
@@ -3400,6 +3434,15 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       style={_m?{
         position:"fixed",inset:0,zIndex:500,background:T.bgCard,overflowY:"auto",WebkitOverflowScrolling:"touch"
       }:{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.35)",backdropFilter:"blur(2px)",WebkitBackdropFilter:"blur(2px)",zIndex:200,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"20px 16px",overflow:"auto",WebkitOverflowScrolling:"touch",animation:"ovFadeIn .25s"}}>
+      {pendingConsent && createPortal(
+        <ConsentModal
+          cust={{ ...cust, bid: pendingConsent.bid }}
+          bizId={_activeBizId}
+          data={data}
+          initialSelectedIds={pendingConsent.ids}
+          initialPrefill={pendingConsent.prefill}
+          onClose={() => { const _p = pendingConsent; setPendingConsent(null); onSubmit(_p.salePayload); }}
+        />, document.body)}
       {_m&&<div style={{display:"flex",alignItems:"center",padding:"10px 14px 8px",borderBottom:`1px solid ${T.border}`,background:T.bgCard,position:"sticky",top:0,zIndex:10}}>
         <button onClick={onClose} style={{display:"flex",alignItems:"center",gap:4,background:"none",border:"none",cursor:"pointer",color:T.primary,fontWeight:700,fontSize:15,padding:"4px 2px",fontFamily:"inherit"}}>
           <I name="chevronLeft" size={20}/> 뒤로
