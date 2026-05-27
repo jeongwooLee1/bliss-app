@@ -22,11 +22,12 @@ import SchedulePage from '../components/Schedule/SchedulePage'
 import SetupWizard from '../components/SetupWizard/SetupWizard'
 import BlissAI from '../components/BlissAI/BlissAI'
 import FloatingAI from '../components/BlissAI/FloatingAI'
+import QuickRequest from '../components/common/QuickRequest'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 import AdminPkgUnusedReview from '../components/Admin/AdminPkgUnusedReview'
 
 const uid = genId;
-const BLISS_V = "3.7.866"
+const BLISS_V = "3.7.875"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -2502,6 +2503,8 @@ function App() {
       </div>}
       {/* 플로팅 AI — 우하단 항상 표시 */}
       <FloatingAI data={data} currentUser={currentUser} isMaster={isMaster} bizId={currentBizId}/>
+      {/* 우클릭 → 수정 요청(화면 캡처 + 바로 등록) — 전 직원 */}
+      <QuickRequest currentUser={currentUser} userBranches={userBranches}/>
       {/* 받은메시지함 사이드 패널 — 좌측(사이드바 우측) 슬라이드, 다른 페이지 작업 가능 */}
       {messagesPanelOpen && (
         <div className="msg-panel" style={{position:"fixed",top:0,left:200,bottom:0,width:340,maxWidth:"95vw",background:"#fff",borderRight:"1px solid "+T.border,boxShadow:"4px 0 16px rgba(0,0,0,.08)",zIndex:400,display:"flex",flexDirection:"column",animation:"slideIn .3s cubic-bezier(.22,1,.36,1)"}}>

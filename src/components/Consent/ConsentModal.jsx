@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import QRCode from 'qrcode/lib/browser'
 import { T } from '../../lib/constants'
-import { sb, SB_URL, sbHeaders } from '../../lib/sb'
+import { sb, SB_URL, SB_KEY, sbHeaders } from '../../lib/sb'
 
 const SIGN_HOST = 'https://sign.blissme.ai'
 
@@ -18,7 +18,7 @@ function genToken() {
  *  3) 대상 태블릿(kiosk) 선택 → 전송 → 태블릿이 realtime으로 즉시 서명 UI 띄움
  *  4) 키오스크 없는 매장: "링크 복사/QR 보기"로 폴백 (고객 폰으로 QR 스캔)
  */
-export default function ConsentModal({ cust, bizId, data, onClose }) {
+export default function ConsentModal({ cust, bizId, data, onClose, reservationId }) {
   const [tpls, setTpls] = useState([])
   const [folders, setFolders] = useState([])
   const [selectedIds, setSelectedIds] = useState([])
@@ -62,14 +62,19 @@ export default function ConsentModal({ cust, bizId, data, onClose }) {
 
   const toggleTpl = id => setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
 
+  const smsHasPhone = /^01[016789]\d{7,8}$/.test(String(cust?.phone || '').replace(/[^0-9]/g, ''))
+
   const send = async (via) => {
     if (selectedIds.length === 0) return alert('템플릿을 1개 이상 선택하세요.')
     if (via === 'kiosk' && !kioskId) return alert('대상 태블릿을 선택하세요.')
+    const smsPhone = String(cust?.phone || '').replace(/[^0-9]/g, '')
+    if ((via === 'sms' || via === 'alimtalk') && !/^01[016789]\d{7,8}$/.test(smsPhone)) return alert('이 고객은 휴대폰 번호(010~)가 없어 발송이 안 됩니다.\nQR/링크로 전달해주세요.')
     setLoading(true)
     try {
       const token = genToken()
       const expires_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
       const cleanPrefill = Object.fromEntries(Object.entries(prefill).filter(([_, v]) => v && String(v).trim() !== ''))
+      if (reservationId) cleanPrefill.reservation_id = reservationId  // 예약 모달에서 보낸 경우 — 예약별 차트 상태 연동
       await sb.insert('consent_tokens', {
         token,
         business_id: bizId,
@@ -83,6 +88,39 @@ export default function ConsentModal({ cust, bizId, data, onClose }) {
       const url = `${SIGN_HOST}/?t=${token}`
       if (via === 'kiosk') {
         setResult({ token, url, via: 'kiosk' })
+      } else if (via === 'sms') {
+        const targetBid = cust?.bid || (data?.branches || [])[0]?.id || ''
+        const brName = (data?.branches || []).find(b => b.id === targetBid)?.short || ''
+        const msg = `[${brName || '동의서'}] 동의서 작성 요청\n아래 링크에서 작성·서명 부탁드려요 (24시간 내 만료)\n${url}`
+        const r = await fetch(`${SB_URL}/functions/v1/send-sms`, {
+          method: 'POST',
+          headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ branch_id: targetBid, message: msg, receivers: [{ phone: smsPhone, userKey: cust?.id || smsPhone }] }),
+        })
+        let body = null; try { body = await r.json() } catch { body = {} }
+        const ok = r.ok && (String(body.code || '') === '100' || String(body.code || '') === '200' || body.ok === true)
+        if (ok) {
+          const _bytes = (() => { let b = 0; for (const ch of msg) b += ch.charCodeAt(0) > 127 ? 2 : 1; return b })()
+          fetch(`${SB_URL}/rest/v1/rpc/deduct_billing`, {
+            method: 'POST', headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ p_business_id: bizId, p_branch_id: targetBid, p_kind: _bytes > 90 ? 'lms' : 'sms', p_count: 1, p_points: _bytes > 90 ? 60 : 20, p_ref_table: 'consent_sms', p_ref_id: token }),
+          }).catch(() => {})
+        }
+        setResult({ token, url, via: 'sms', sent: ok, phone: smsPhone })
+        if (!ok) alert('문자 발송 실패: ' + JSON.stringify(body).slice(0, 200) + '\n(QR/링크로 대신 전달해주세요)')
+      } else if (via === 'alimtalk') {
+        // 카카오 알림톡 — 링크 차단 없음. alimtalk_queue 적재 → 서버가 아리고로 발송.
+        const targetBid = cust?.bid || (data?.branches || [])[0]?.id || ''
+        const brName = (data?.branches || []).find(b => b.id === targetBid)?.short || ''
+        await sb.insert('alimtalk_queue', {
+          branch_id: targetBid,
+          noti_key: 'consent_doc',
+          phone: smsPhone,
+          params: { '#{사용자명}': brName, '#{고객명}': cust?.name || '', '#{동의서링크}': url },
+          status: 'pending',
+          channel: 'alimtalk',
+        })
+        setResult({ token, url, via: 'alimtalk', sent: true, phone: smsPhone })
       } else {
         const qr = await QRCode.toDataURL(url, { width: 256, margin: 2 })
         setResult({ token, url, qr, via: 'qr' })
@@ -121,6 +159,26 @@ export default function ConsentModal({ cust, bizId, data, onClose }) {
           <div style={{ fontSize: 13, color: T.textMuted, marginBottom: 20 }}>
             <b>{kiosks.find(k => k.id === kioskId)?.name || kioskId}</b> 태블릿에 서명 화면이 열렸습니다.<br />
             고객님께 태블릿을 전달해주세요.
+          </div>
+          <button onClick={onClose} style={{ padding: '10px 24px', fontSize: 14, fontWeight: 700, background: T.primary, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>확인</button>
+        </div>}
+
+        {result && result.via === 'alimtalk' && <div style={{ padding: 30, textAlign: 'center' }}>
+          <div style={{ fontSize: 60, marginBottom: 14 }}>💬</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: '#10b981', marginBottom: 8 }}>카카오 알림톡 발송 완료</div>
+          <div style={{ fontSize: 13, color: T.textMuted, marginBottom: 20 }}>
+            <b>{result.phone}</b> 카카오톡으로 동의서 링크를 보냈습니다.<br />고객님이 링크에서 작성·서명하시면 됩니다.
+          </div>
+          <button onClick={onClose} style={{ padding: '10px 24px', fontSize: 14, fontWeight: 700, background: T.primary, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>확인</button>
+        </div>}
+
+        {result && result.via === 'sms' && <div style={{ padding: 30, textAlign: 'center' }}>
+          <div style={{ fontSize: 60, marginBottom: 14 }}>{result.sent ? '📨' : '⚠️'}</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: result.sent ? '#10b981' : T.danger, marginBottom: 8 }}>
+            {result.sent ? '문자 발송 완료' : '문자 발송 실패'}
+          </div>
+          <div style={{ fontSize: 13, color: T.textMuted, marginBottom: 20 }}>
+            {result.sent ? <><b>{result.phone}</b> 으로 동의서 링크를 보냈습니다.<br />고객님이 링크에서 작성·서명하시면 됩니다.</> : <>QR/링크로 대신 전달해주세요.</>}
           </div>
           <button onClick={onClose} style={{ padding: '10px 24px', fontSize: 14, fontWeight: 700, background: T.primary, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>확인</button>
         </div>}
@@ -180,17 +238,32 @@ export default function ConsentModal({ cust, bizId, data, onClose }) {
                 style={{ width: '100%', padding: '10px', marginTop: 10, fontSize: 14, fontWeight: 800, background: T.primary, color: '#fff', border: 'none', borderRadius: 8, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
                 {loading ? '전송중…' : `📲 태블릿으로 전송 (${selectedIds.length}건)`}
               </button>
+              {smsHasPhone && <button onClick={() => send('alimtalk')} disabled={loading || selectedIds.length === 0}
+                style={{ width: '100%', padding: '10px', marginTop: 6, fontSize: 14, fontWeight: 800, background: '#FEE500', color: '#3C1E1E', border: 'none', borderRadius: 8, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
+                {loading ? '전송중…' : `💬 알림톡으로 보내기 (${cust?.phone || ''})`}
+              </button>}
+              {smsHasPhone && <button onClick={() => send('sms')} disabled={loading || selectedIds.length === 0}
+                style={{ width: '100%', padding: '8px', marginTop: 6, fontSize: 12, fontWeight: 600, background: 'transparent', color: T.textSub, border: '1px dashed ' + T.border, borderRadius: 6, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
+                {loading ? '전송중…' : `📱 문자(SMS)로 보내기 — 링크 차단될 수 있음`}
+              </button>}
               <button onClick={() => send('qr')} disabled={loading || selectedIds.length === 0}
                 style={{ width: '100%', padding: '8px', marginTop: 6, fontSize: 12, fontWeight: 600, background: 'transparent', color: T.textSub, border: '1px dashed ' + T.border, borderRadius: 6, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
                 QR/링크로 대신 받기 (폴백)
               </button>
             </> : <>
               <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 8, lineHeight: 1.5 }}>
-                등록된 태블릿(키오스크)이 없습니다.<br />
-                관리설정에서 태블릿을 등록하거나, QR/링크로 고객 폰에 전송하세요.
+                고객 폰으로 동의서 링크를 카카오 알림톡(권장)·문자로 전송하거나, QR/링크로 전달하세요.
               </div>
+              {smsHasPhone && <button onClick={() => send('alimtalk')} disabled={loading || selectedIds.length === 0}
+                style={{ width: '100%', padding: '10px', fontSize: 14, fontWeight: 800, background: '#FEE500', color: '#3C1E1E', border: 'none', borderRadius: 8, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
+                {loading ? '전송중…' : `💬 알림톡으로 보내기 (${cust?.phone || ''})`}
+              </button>}
+              {smsHasPhone && <button onClick={() => send('sms')} disabled={loading || selectedIds.length === 0}
+                style={{ width: '100%', padding: '8px', marginTop: 6, fontSize: 12, fontWeight: 600, background: 'transparent', color: T.textSub, border: '1px dashed ' + T.border, borderRadius: 6, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
+                {loading ? '전송중…' : `📱 문자(SMS)로 보내기 — 링크 차단될 수 있음`}
+              </button>}
               <button onClick={() => send('qr')} disabled={loading || selectedIds.length === 0}
-                style={{ width: '100%', padding: '10px', fontSize: 14, fontWeight: 800, background: T.primary, color: '#fff', border: 'none', borderRadius: 8, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
+                style={{ width: '100%', padding: '10px', marginTop: smsHasPhone ? 6 : 0, fontSize: smsHasPhone ? 13 : 14, fontWeight: smsHasPhone ? 700 : 800, background: smsHasPhone ? 'transparent' : T.primary, color: smsHasPhone ? T.textSub : '#fff', border: smsHasPhone ? '1px dashed ' + T.border : 'none', borderRadius: 8, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
                 {loading ? '생성중…' : `🔗 QR 링크 생성 (${selectedIds.length}건)`}
               </button>
             </>}
