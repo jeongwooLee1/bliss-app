@@ -2637,3 +2637,16 @@ Liah(WhatsApp) 후속 2건.
 - **⑤ 매출 히스토리 소진 마이너스 + 다담권 잔액** (id_0ck973k84l, `ReservationModal.jsx` 매출히스토리 패널): 소진 항목(다담권 pkg_deduct·패키지 pkg_use·포인트)을 **빨강(#C62828) 마이너스**로 표기(다담권 −110,000원 / 패키지 −1회 / 포인트 −X원, 포인트는 total>0이어도 항상). 패널 상단에 **"다담권 남은 잔액"** 배지 — `custPkgsInfo`에서 `isMoneyPkg` + note `잔액:` 합계(만료 `유효:` 제외). 충전금 잔액 = 현재 잔액(per-sale 과거잔액 아님).
 - **② 신규차트 음모왁 4지선다** (id_0pjoyafwt0): sign.blissme.ai(bliss-consent 별도 레포) 작업 → consent 세션 위임(spawn_task). status=reviewing.
 - **④ 종이 동의서 사진 저장** (id_5cbyzefgtx): 첨부 위치 설계 필요 → 보류. status=reviewing.
+
+### v3.7.891 — 예약모달 상단 "작성완료" 칩 + 동의서·차트 이미지 뷰어 (2026-05-28)
+**요청**: 예약 모달 상단 고객정보에, 동의서·차트 작성완료 시 깜빡이는 표시 + 클릭하면 (키오스크처럼) 문서를 **이미지로 바로** 보기.
+- **신규 `src/components/Consent/ConsentDocsViewer.jsx`**: 키오스크(`bliss-consent/.../ConsentDocsViewer.jsx`)를 bliss-app 스타일(인라인+`T` 토큰+`I` 아이콘+`SB_URL`/`sbHeaders` fetch)로 이식. `customer_consents?customer_id=eq.{custId}`(signed_at desc, limit 8) → pdfjs로 PDF를 이미지(`<img>`) 렌더. 문서 여러 건이면 탭(활성만 lazy 렌더). 92dvh / `min(940px,96vw)`. `createPortal`(body), z-index 9500, ESC/배경클릭/닫기.
+  - **pdfjs(v5.7) 워커 경로 — `?url` 동적 import** (`new URL(bare, import.meta.url)`는 Vite에서 bare 스펙 해석 안 됨 → 무한 로딩. aiDocs.js와 동일 방식). pdfjs는 `await import`(동적) — aiDocs가 이미 정적 import라 메인 번들 무게 증가 없음.
+  - **적응형 scale**: 고정 scale 2.1은 원본이 큰 PDF에서 캔버스 22MP+ → 렌더 멈춤. `목표폭 1400 / 원본폭` 기준(clamp 0.8~2.2) + 한 변 상한 `MAX_DIM 2600`.
+  - **render 타임아웃 15초 → PDF 링크 fallback**: 어떤 환경에서도 무한 로딩 방지(`task.cancel()` + `Promise.race`). 렌더 실패/지연 시 "📄 PDF 새 창에서 열기".
+  - pdfjs 5.7 render: `{ canvas, viewport }`(canvas가 주 파라미터, canvasContext는 하위호환).
+- **ReservationModal.jsx 상단 고객정보**: 이름줄의 기존 "차트 작성완료" 버튼(텍스트 펼침, "PDF 없음")을 **깜빡이는 칩**으로 교체 — `chartInfo?.status==="signed"`일 때 `className="chart-done-blink"` + 라벨 "동의서·차트 작성완료" + 눈 아이콘. 클릭 시 `ConsentDocsViewer` 오픈(`customerId=chartInfo.consent.customer_id||f.custId`, `focusConsentId`로 이 예약 차트 기본 탭). 미서명 시 "동의서 보내기/재전송" 버튼은 그대로.
+  - 기존 텍스트 펼침(`chartExpand`) + 미사용 `CHART_LABELS`/`_fmtChartVal` 죽은 코드 제거.
+- **index.html**: `@keyframes chartDoneBlink`(차분한 초록 글로우, 1.8s) + `.chart-done-blink` + `prefers-reduced-motion` 무효화.
+- **검증(로컬 dev)**: 칩 노출·깜빡임(chartDoneBlink) + 클릭→뷰어 오픈 + pdfjs 워커 로드·PDF fetch(560KB)·파싱·렌더 시작 + 타임아웃 폴백(PDF 링크) 전부 확인. ⚠️ 실제 PDF 래스터화 이미지는 프리뷰 **헤드리스 브라우저**에서 `page.render()`가 멈춰 눈으로 확인 못 함(기본 canvas는 정상 → 헤드리스 한계, 코드는 pdfjs 5.7 API상 정확·키오스크 동일 방식). **실 브라우저에서 이미지 표시 1회 확인 권장** — 실패해도 PDF 링크 fallback으로 항상 열림.
+- 검증용 임시 동의서(데모 사업장 1건) 삽입→확인→삭제 완료.

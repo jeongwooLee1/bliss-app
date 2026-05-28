@@ -677,10 +677,9 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
   // 상세 패널 바뀌면 편집 모드 해제
   useEffect(() => { setEditingMemo(false); setMemoDraft(""); }, [detailCust?.id]);
 
-  // 신규차트/동의서 응답(form_data.survey) 로드 → 상세 표시 + 빈 칸 자동 채움
-  const [chartSurvey, setChartSurvey] = useState(null);
+  // 동의서(customer_consents.form_data.survey) 기반 빈 칸 자동 채움 (이메일·성별·전화)
+  // 문진 표시는 customers.survey(detailCust.survey)에서 직접 읽음
   useEffect(() => {
-    setChartSurvey(null);
     const cid = detailCust?.id;
     if (!cid) return;
     let cancelled = false;
@@ -690,7 +689,6 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       const fd = rows[0].form_data;
       if (!fd || typeof fd !== "object") return;
       const sv = (fd.survey && typeof fd.survey === "object") ? fd.survey : {};
-      setChartSurvey(sv);
       // 빈 칸만 자동 채움 (이메일·성별·전화) — 이미 값 있으면 안 건드림
       const _str = (x) => (typeof x === "string" ? x : (x && typeof x === "object" ? (x.value || "") : "")).toString().trim();
       const patch = {}, local = {};
@@ -1786,27 +1784,39 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                       {(data?.serviceTags||[]).filter(t=>t.useYn!==false && t.scheduleYn!=="Y").length === 0 && <span style={{fontSize:10,color:T.textMuted}}>등록된 예약태그가 없습니다</span>}
                     </div>
                   </div>
-                  {/* 신규차트/동의서 응답 — referral·선택이유·동기 등 (form_data.survey) */}
-                  {chartSurvey && (()=>{
+                  {/* 신규차트 문진/설문 응답 — customers.survey (동의서앱이 저장) */}
+                  {detailCust?.survey && typeof detailCust.survey === "object" && (()=>{
                     const _sv = (x) => {
                       if (x == null) return "";
+                      if (typeof x === "boolean") return x ? "예" : "아니오";
                       if (typeof x === "string") return x;
                       if (Array.isArray(x)) return x.filter(Boolean).join(", ");
                       if (typeof x === "object") {
-                        const base = x.value != null ? String(x.value) : (Array.isArray(x.values) ? x.values.join(", ") : "");
+                        const base = x.value != null ? String(x.value) : (Array.isArray(x.values) ? x.values.filter(Boolean).join(", ") : "");
                         return base + (x.other ? (base ? ", " : "") + x.other : "");
                       }
                       return String(x);
                     };
-                    const LBL = [["referral","방문 경로"],["choose_reason","선택 이유"],["motivation","방문 동기"],["first_waxing","왁싱 경험"],["skin_type","피부 타입"],["concern","고민"],["pregnant","임신 여부"],["sms_consent","문자 수신"]];
-                    const rows = LBL.map(([k,l]) => [l, _sv(chartSurvey[k])]).filter(([,v]) => v && v.trim());
+                    // 알려진 키는 한글 라벨, 모르는 키는 키 그대로 (일반 렌더)
+                    const LBL = {
+                      skin_type:"피부 타입", concern:"피부 고민", referral:"방문 경로",
+                      motivation:"방문 동기", first_waxing:"왁싱 경험", choose_reason:"선택 이유",
+                      eumo_range:"음모왁싱 범위", pregnant:"임신 여부",
+                      sms_consent:"문자 수신 동의", copy_delivery:"사본 전달", visit_purpose:"방문 목적",
+                    };
+                    // 상단에 이미 보이는 신원 필드 + 내부 동의 필드는 생략
+                    const SKIP = new Set(["name","name2","phone","phone2","email","gender","cust_num","privacy_consent"]);
+                    const rows = Object.keys(detailCust.survey)
+                      .filter(k => !SKIP.has(k))
+                      .map(k => [LBL[k] || k, _sv(detailCust.survey[k])])
+                      .filter(([,v]) => v && String(v).trim());
                     if (rows.length === 0) return null;
                     return <div style={{gridColumn:"1 / -1",display:"flex",flexDirection:"column",gap:5,marginTop:2,padding:"9px 11px",background:"#F5F3FF",borderRadius:7}}>
-                      <span style={{color:"#6D28D9",fontWeight:T.fw.bolder,fontSize:10,display:"flex",alignItems:"center",gap:4}}><I name="clipboard" size={11}/> 차트 응답</span>
+                      <span style={{color:"#6D28D9",fontWeight:T.fw.bolder,fontSize:10,display:"flex",alignItems:"center",gap:4}}><I name="clipboard" size={11}/> 신규차트 문진</span>
                       <div style={{display:"flex",flexDirection:"column",gap:3}}>
                         {rows.map(([l,v])=>(
                           <div key={l} style={{display:"flex",gap:8,fontSize:12,alignItems:"baseline"}}>
-                            <span style={{color:T.textMuted,flex:"0 0 64px"}}>{l}</span>
+                            <span style={{color:T.textMuted,flex:"0 0 84px"}}>{l}</span>
                             <span style={{color:T.text,fontWeight:600,flex:1,minWidth:0}}>{v}</span>
                           </div>
                         ))}

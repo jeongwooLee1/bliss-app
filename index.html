@@ -166,6 +166,10 @@
       @keyframes tbDot{0%,80%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-3px);opacity:1}}
       @keyframes tbFadeIn{from{opacity:0;transform:translateY(2px)}to{opacity:1;transform:translateY(0)}}
       @keyframes announcePulse{0%,100%{box-shadow:0 1px 4px rgba(230,81,0,.18),0 0 0 0 rgba(255,183,77,0)}50%{box-shadow:0 1px 8px rgba(230,81,0,.32),0 0 0 4px rgba(255,183,77,.15)}}
+      /* 동의서·차트 작성완료 칩 — 차분한 초록 글로우 */
+      @keyframes chartDoneBlink{0%,100%{box-shadow:0 0 0 0 rgba(5,150,105,.40)}50%{box-shadow:0 0 0 4px rgba(5,150,105,0)}}
+      .chart-done-blink{animation:chartDoneBlink 1.8s ease-in-out infinite}
+      @media (prefers-reduced-motion: reduce){ .chart-done-blink{animation:none} }
       /* 팀채팅 새 메시지 포커스 — 클릭(확인) 전까지 보라빛으로 계속 깜빡임 */
       @keyframes chatMsgPulse{
         0%,100%{background:rgba(124,124,200,.05);box-shadow:inset 4px 0 0 rgba(124,124,200,.30)}
