@@ -2616,3 +2616,11 @@ Liah(WhatsApp) 후속 2건.
 **서버 — AI 길/건물 질문 안티-할루시네이션 강화**(직전, React 0): 주소·층·전화·영업시간만 데이터로 답하고, 엘베·주차·계단·간판·출구·도보 등 저장 안 된 건물 세부는 "담당자 확인"(추측 금지). access_info 있으면 그걸로 정확히 답.
 **적용**: v3.7.869 라이브 배포(version.txt 검증, CF 퍼지 success). 서버 패치 + migration은 별도 적용 완료.
 **유의**: 지점 건물정보는 RAG가 아니라 **예약 지점에 묶인 필드**라 지점 안 섞임(RAG는 유사도라 8지점 헷갈림 위험 — 의도적으로 필드 방식 채택). access_info는 현재 지점·기존예약 지점 둘 다 주입(WA 공통채널은 branch_id 미해결이라 기존예약 bid로 보강).
+
+### v3.7.888 — 요청 처리 4건 (고객명 변경 / 자동번역 / AI 범위게이트 / 오류신고 버튼) (2026-05-28)
+공지&요청 대기 4건 처리. ①②④ React(v3.7.888 배포), ③ 서버(ai_booking.py 라이브).
+- **① 강남 고객명 변경 저장 버그** (id_g2n7orbp8p, `ReservationModal.jsx`): 편집 모드(변경) 저장이 예약 `cust_name`만 갱신하고 **customers 테이블 본 레코드(name)는 안 바꿈** → 모달 재진입 시 custId로 customers.name을 다시 불러와 옛 이름으로 덮어쓰던 버그("소민구"가 "구소민"으로 안 바뀜). fix: 공통 헬퍼 `_persistCustEdits()` — 편집 저장 시 custId 있고 이름/전화/이메일/성별/이름2가 스냅샷 대비 바뀌었으면 `sb.update("customers", …)` + 로컬 `data.customers` 동기화. 저장 버튼 2곳(일반/방문자 통합 액션바)에서 호출.
+- **② 현아 자동번역 발송 누락** (id_3xihixs9v6, `MessagesPage.jsx sendTranslated`): auto 모드 번역 판정(`_enPriority`)이 **마지막 인바운드 1건의 영문 글자 수**만 봄 → 영어권 손님이 "12?"·"ok"·이모지 같은 짧은 답을 마지막에 보내면 영문<5라 번역이 꺼져 **한글이 그대로 외국 손님에게 발송**. fix: 최근 인바운드 **5건을 합쳐** 영어권 판정(`_en>=5 || (_en>0 && _ko===0)`). 서버 실패 fallback이 아니라 애초에 번역 시도를 안 한 케이스였음.
+- **③ 대표 AI 비키니/브라질리언 범위게이트 과발동** (id_tixg5pc9nf, 서버 `ai_booking.py`, React 0): v3.7.868 범위 게이트가 시술이 "비키니·브라질리언·음모/하의"면 무조건 범위 질문 → 손님이 "Brazilian" 명시했는데도 또 물어 짜증. fix: 프롬프트를 **조건부**로 — "브라질리언/Brazilian" 명시 시 범위 재질문 금지·바로 book, "bikini"·모호할 때만 1회 확인. 백업 `ai_booking.py.bak_pre_gatefix_20260528_042244`, `systemctl restart bliss-naver`.
+- **④ 신영 오류신고 버튼 (임시안)** (id_l47143d65l, `MessagesPage.jsx`): 원 요청은 AI 학습 체크 UI였으나 임시로 — 메시지 대화창 버튼행(AI 답변추천/번역/AI 예약등록 옆)에 **🚨 오류신고** 버튼 추가. 클릭 → html2canvas 자동 화면캡처 + 최근 대화 4건 → `bliss_requests_v1`에 **"AI 고객응대오류"**(kind:'ai_error')로 원클릭 접수. QuickRequest 인프라(uploadImageToStorage+bliss_requests_v1) 재사용. 메시지함 오전/오후·날짜 표기는 이미 v3.7.872 완료. 실시간 학습 체크 UI는 향후 별도 기능.
+- 요청 4건 `bliss_requests_v1` status=done + 매장 직원 톤 답글. 배포: v3.7.888 라이브(version.txt 검증, CF 퍼지 success) + git commit/push.
