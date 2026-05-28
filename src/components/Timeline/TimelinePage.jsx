@@ -902,6 +902,10 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     return map;
   }, [data?.branches]);
 
+  // ★ schHistory_v1 쓰기 직렬화 큐 — syncOverrideToSch는 전체 blob을 read-modify-write 하므로,
+  //   연속 호출(예: "경아·수연 서로 이동/배정")이 겹치면 뒤 호출이 앞 write 전에 읽어 앞 배정을 덮어씀
+  //   ("원 근무지 이름이 계속 사라짐" id_9f4hu0sw4z). 큐로 순차 실행해 각 read가 직전 write 이후를 읽게 함.
+  const _schSyncQueue = React.useRef(Promise.resolve());
   // 타임라인 override 변경 → schHistory_v1 DB 동기화
   const syncOverrideToSch = (empId, date, overrideData) => {
     const monthKey = date.slice(0, 7);
@@ -914,20 +918,23 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       const brName = branchIdToSchName[targetSeg?.branchId];
       if (brName) newStatus = `지원(${brName})`;
     }
-    // schHistory_v1 raw fetch → patch → upsert
-    const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
-    fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.schHistory_v1&select=value`, { headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY } })
-      .then(r => r.json())
-      .then(rows => {
+    // 큐에 read-modify-write를 직렬로 연결 (앞 작업 완료 후 fetch → patch → upsert)
+    _schSyncQueue.current = _schSyncQueue.current.then(async () => {
+      try {
+        const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
+        const r = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.schHistory_v1&select=value`, { headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY } });
+        const rows = await r.json();
         const raw = rows?.[0]?.value ? (typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value) : {};
         if (!raw[monthKey]) raw[monthKey] = {};
         if (!raw[monthKey][empId]) raw[monthKey][empId] = {};
         raw[monthKey][empId][date] = newStatus;
-        return fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
+        await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
           method: "POST", headers: H,
           body: JSON.stringify({ business_id: _activeBizId, id: "schHistory_v1", key: "schHistory_v1", value: JSON.stringify(raw), updated_at: new Date().toISOString() })
         });
-      }).catch(console.error);
+      } catch (e) { console.error("[syncOverrideToSch]", e); }
+    });
+    return _schSyncQueue.current;
   };
 
   const schHistoryLoaded = React.useRef(false);

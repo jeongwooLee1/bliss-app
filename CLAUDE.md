@@ -2629,3 +2629,11 @@ Liah(WhatsApp) 후속 2건.
 **증상**(정우님): 예약 등록 시 이름·연락처가 동일한 고객이 중복으로 신규 생성됨. 동일인이면 경고가 떠야 함.
 **원인** (`TimelinePage.jsx` handleSave 신규고객 생성부): 전화 중복 경고는 이미 있었으나 — ① 서버 조회가 `phone.eq.{숫자}` **정확일치**라 기존 고객 전화가 하이픈 등 다른 포맷으로 저장돼 있으면 못 잡음 ② 로컬 캐시 100건 제한으로 그 밖 고객 누락 → 이름+전화 같아도 중복 생성.
 **fix**: 신규 고객 생성 직전 중복 검출 강화 — **이름(`name.eq`)으로도 후보를 서버 조회** + 전화는 **JS에서 정규화 비교**(`_normP`, phone·phone2, 하이픈·공백 무시)라 저장 포맷 달라도 일치 판정. 경고 분기: 이름+전화 둘 다 같으면 "⚠️ 이름·연락처가 모두 같은 고객이 이미 있습니다 (중복 등록 주의)" + [확인]기존 연결/[취소]그래도 신규 / 전화만 같으면 기존 "동일 번호" 경고 / **이름만 같고 전화 다름은 경고 안 함**(동명이인 — `feedback_bliss_no_phone_matching` 원칙). 네이버/카카오/AI 예약(서버 자동생성)은 별도 `find_cust_by_phone` 경로라 무관 — 이번 건은 앱 직접 등록 경로.
+
+### v3.7.890 — 요청 처리: 타임라인 직원 이름 사라짐 + 매출히스토리 소진/잔액 (2026-05-28)
+공지&요청 신규 5건 중 ①⑤ React(v3.7.890), ③ 데이터수정, ② consent세션 위임, ④ 보류.
+- **① 타임라인 직원 이동 시 원 근무지 이름 사라짐** (id_9f4hu0sw4z, `TimelinePage.jsx`): `syncOverrideToSch`가 schHistory_v1 **전체 blob을 read-modify-write**(fetch→한 칸 patch→upsert) → "경아·수연 서로 이동/배정"처럼 **연속 호출 시 뒤 호출 fetch가 앞 write 전에 읽어 앞 배정을 덮어씀** → 한쪽 이름 사라짐. fix: `_schSyncQueue` ref 프로미스 큐로 read-modify-write **직렬화**(앞 작업 write 완료 후 다음 fetch). v3.7.717 empWorkHours 레이스와 동류. ⚠️ 레이스 타이밍이라 로컬 재현 어려움 — 정우님 "경아·수연 서로 배정" 재확인 요청. setEmpBranchOverride(empOverride_v1)는 React updater로 순차 병합이라 별개(미변경).
+- **③ 장영수 차트가 동의서에 안 뜸** (id_6z15o3qsrv, 데이터 수정·배포무관): 장영수가 동일전화 중복고객 2개(cust_2xcqzjs00w 고아 / cust_naver_myembuz1a5 #70609 예약보유). 신규차트+컨디션차트가 고아 고객에 form_data.reservation_id=null로 묶여 예약(flgpo4wker)에서 안 보임. 차트 2건+토큰 실고객+예약 재연결(form_data.reservation_id=flgpo4wker), 고아 is_hidden=true. chartInfo 코드 정상 — 원인=키오스크/동의서 경로 중복 고객(consent 앱 영역).
+- **⑤ 매출 히스토리 소진 마이너스 + 다담권 잔액** (id_0ck973k84l, `ReservationModal.jsx` 매출히스토리 패널): 소진 항목(다담권 pkg_deduct·패키지 pkg_use·포인트)을 **빨강(#C62828) 마이너스**로 표기(다담권 −110,000원 / 패키지 −1회 / 포인트 −X원, 포인트는 total>0이어도 항상). 패널 상단에 **"다담권 남은 잔액"** 배지 — `custPkgsInfo`에서 `isMoneyPkg` + note `잔액:` 합계(만료 `유효:` 제외). 충전금 잔액 = 현재 잔액(per-sale 과거잔액 아님).
+- **② 신규차트 음모왁 4지선다** (id_0pjoyafwt0): sign.blissme.ai(bliss-consent 별도 레포) 작업 → consent 세션 위임(spawn_task). status=reviewing.
+- **④ 종이 동의서 사진 저장** (id_5cbyzefgtx): 첨부 위치 설계 필요 → 보류. status=reviewing.

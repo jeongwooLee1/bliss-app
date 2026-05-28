@@ -3338,6 +3338,23 @@ ${naverText}
                 )}
               </div>
             )}
+            {/* 다담권 남은 잔액 (충전금 잔액) — 현재 보유 금액형 보유권 잔액 합계. id_0ck973k84l */}
+            {(() => {
+              const _bal = (custPkgsInfo||[]).reduce((acc,p)=>{
+                if(!isMoneyPkg(p)) return acc;
+                const exp=(p.note||'').match(/유효:(\d{4}-\d{2}-\d{2})/);
+                if(exp && exp[1] < todayStr()) return acc;  // 만료 제외
+                const m=(p.note||'').match(/잔액:([0-9,]+)/);
+                return acc + (m?Number(m[1].replace(/,/g,'')):0);
+              },0);
+              if(_bal<=0) return null;
+              return (
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"9px 13px",marginBottom:8,background:"#EDE7F6",borderRadius:T.radius.md}}>
+                  <span style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:"#5B21B6"}}>다담권 남은 잔액</span>
+                  <span style={{fontSize:T.fs.md,fontWeight:800,color:"#5B21B6"}}>{_bal.toLocaleString()}원</span>
+                </div>
+              );
+            })()}
             {historyLoading ? (
               <div style={{textAlign:"center",padding:40,color:T.textSub}}>로딩중...</div>
             ) : salesHistory.length === 0 && !custMemo ? (
@@ -3372,12 +3389,12 @@ ${naverText}
                     const q = Number(d.qty)||1;
                     const amt = Number(d.unit_price)||0;
                     if (d.item_kind === "pkg_deduct") {
-                      // 다담권/선불권: 금액 차감
-                      const total = amt * q;
-                      return total > 0 ? `${nm} ${total.toLocaleString()}원 사용` : `${nm} 사용`;
+                      // 다담권/선불권: 금액 차감 (마이너스 표기)
+                      const t = amt * q;
+                      return t > 0 ? `${nm} −${t.toLocaleString()}원` : `${nm} 사용`;
                     }
-                    // 다회권/패키지: 회수 차감
-                    return q>1 ? `${nm} ${q}회 차감` : `${nm} 1회 차감`;
+                    // 다회권/패키지: 회수 차감 (마이너스 표기)
+                    return `${nm} −${q}회`;
                   }).filter(Boolean);
                   // 포인트 사용 (결제수단 합계가 0원이어도 포인트만 사용한 경우 노출 — 결제수단 배지는 total>0 조건이라 안 보임)
                   const _pointUsed = (s.svc_point||0) + (s.prod_point||0);
@@ -3400,12 +3417,12 @@ ${naverText}
                         {ext>0 && <span style={{fontSize:9,padding:"1px 6px",borderRadius:T.radius.sm,background:"#FFEBEE",color:"#C62828",fontWeight:700}}>📦 외부선결제 {ext.toLocaleString()}</span>}
                       </div>}
                       {_itemLines.length > 0 && <div style={{fontSize:T.fs.xs,color:T.gray700,marginBottom:4,lineHeight:1.5}}>{_itemLines.join(" · ")}</div>}
-                      {(_pkgUseLines.length > 0 || (total === 0 && _pointUsed > 0)) && <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:6}}>
+                      {(_pkgUseLines.length > 0 || _pointUsed > 0) && <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:6}}>
                         {_pkgUseLines.map((ln,k) => (
-                          <span key={k} style={{fontSize:10,padding:"2px 7px",borderRadius:T.radius.sm,background:"#FFF8E1",color:"#8D6E00",fontWeight:700}}>🎫 {ln}</span>
+                          <span key={k} style={{fontSize:10,padding:"2px 7px",borderRadius:T.radius.sm,background:"#FFEBEE",color:"#C62828",fontWeight:700}}>🎫 {ln}</span>
                         ))}
-                        {total === 0 && _pointUsed > 0 && (
-                          <span style={{fontSize:10,padding:"2px 7px",borderRadius:T.radius.sm,background:"#F3E5F5",color:"#6A1B9A",fontWeight:700}}>⭐ 포인트 {_pointUsed.toLocaleString()} 사용</span>
+                        {_pointUsed > 0 && (
+                          <span style={{fontSize:10,padding:"2px 7px",borderRadius:T.radius.sm,background:"#FFEBEE",color:"#C62828",fontWeight:700}}>⭐ 포인트 −{_pointUsed.toLocaleString()}원</span>
                         )}
                       </div>}
                       {s.staff_name && <div style={{fontSize:T.fs.nano,color:T.textSub,marginBottom:4}}>담당: {s.staff_name}</div>}
