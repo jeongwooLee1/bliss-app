@@ -2650,3 +2650,7 @@ Liah(WhatsApp) 후속 2건.
 - **index.html**: `@keyframes chartDoneBlink`(차분한 초록 글로우, 1.8s) + `.chart-done-blink` + `prefers-reduced-motion` 무효화.
 - **검증(로컬 dev)**: 칩 노출·깜빡임(chartDoneBlink) + 클릭→뷰어 오픈 + pdfjs 워커 로드·PDF fetch(560KB)·파싱·렌더 시작 + 타임아웃 폴백(PDF 링크) 전부 확인. ⚠️ 실제 PDF 래스터화 이미지는 프리뷰 **헤드리스 브라우저**에서 `page.render()`가 멈춰 눈으로 확인 못 함(기본 canvas는 정상 → 헤드리스 한계, 코드는 pdfjs 5.7 API상 정확·키오스크 동일 방식). **실 브라우저에서 이미지 표시 1회 확인 권장** — 실패해도 PDF 링크 fallback으로 항상 열림.
 - 검증용 임시 동의서(데모 사업장 1건) 삽입→확인→삭제 완료.
+
+### v3.7.892 — 고객 관리 헤더 총원 정확 카운트 (2026-05-29)
+**요청**(정우님): 고객 관리 헤더가 "87명+"(로드된 페이지 수)만 표시 → 실제 총원을 보여달라.
+**fix** (`CustomersPage.jsx`): `totalCount` state 추가. fetchPage `reset` 시 현재 필터(buildFilter) 기준 `count=exact` 쿼리(raw fetch + `Prefer: count=exact` + `Range: 0-0` → `Content-Range` 헤더 `/총합` 파싱)로 정확 총원 집계. 헤더 `{custs.length}명{hasMore?+}` → `총 {totalCount}명`(있으면)/폴백. 검색·매장·가입일 필터 반영, reset 시 1회(스크롤마다 X). longValOnly(RPC)·집계 실패 시 폴백. 전체 매장 40,522명(2026-05-29). 표 컬럼 ▼필터(클라이언트)는 헤더 총원 미반영.
