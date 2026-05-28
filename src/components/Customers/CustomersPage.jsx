@@ -252,6 +252,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
   const [longValIds, setLongValIds] = useState(null); // null=미로드, []=결과없음, [..]=cust_id
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [totalCount, setTotalCount] = useState(null); // 현재 필터 기준 정확 총 인원 (count=exact). null=미집계
   const [searching, setSearching] = useState(false); // 검색중 표시
   const [pkgByCust, setPkgByCust] = useState({}); // {cust_id: [pkg,...]} 페이지 단위 lazy 로드
   const totalCountRef = useRef(0);
@@ -313,7 +314,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
     if (!reset && loading) return;
     const myReqId = ++reqIdRef.current;
     setLoading(true);
-    if (reset) setSearching(true);
+    if (reset) { setSearching(true); setTotalCount(null); }
     // 검색어 있을 때 limit 4배 확장 (200) — 검색 결과를 한 번에 더 많이 가져옴
     const _hasSearch = (q && q.trim().length > 0);
     const _limit = _hasSearch ? PAGE_SIZE * 4 : PAGE_SIZE;
@@ -346,6 +347,22 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       const mapped = fromDb("customers", rows).filter(c => matchesQuery(c, q));
       setPagedCusts(prev => reset ? mapped : [...prev, ...mapped]);
       setHasMore(rows.length === _limit);
+      // 현재 필터 기준 정확 총 인원 카운트 (count=exact → Content-Range 헤더). reset 시 1회만.
+      // longValOnly(RPC 경로)는 제외 — 폴백 "N명+" 사용.
+      if (reset && !longValOnly) {
+        (async () => {
+          try {
+            const cf = buildFilter(0, 1).slice(1); // 앞 '&' 제거 (order/offset/limit은 count에 무해)
+            const cr = await fetch(`${SB_URL}/rest/v1/customers?${cf}&select=id`, {
+              headers: { ...sbHeaders, Prefer: "count=exact", Range: "0-0" },
+            });
+            if (myReqId !== reqIdRef.current) return;
+            const range = cr.headers.get("content-range") || "";
+            const tot = range.includes("/") ? parseInt(range.split("/")[1], 10) : NaN;
+            setTotalCount(Number.isFinite(tot) ? tot : null);
+          } catch { /* 실패 시 폴백 유지 */ }
+        })();
+      }
       if (reset && scrollRef.current) scrollRef.current.scrollTop = 0;
       const ids = mapped.map(c => c.id).filter(Boolean);
       if (ids.length > 0) {
@@ -1644,7 +1661,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
         <option value="all">전체 매장</option>
         {(data.branches||[]).filter(b=>userBranches.includes(b.id)).map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
       </select>
-      <span style={{fontSize:T.fs.xxs,color:T.textMuted}}>{custs.length}명{hasMore?"+":""}</span>
+      <span style={{fontSize:T.fs.xxs,color:T.textMuted}}>{totalCount!=null ? `총 ${totalCount.toLocaleString()}명` : `${custs.length}명${hasMore?"+":""}`}</span>
       {searching && <span style={{fontSize:T.fs.xxs,color:T.orange}}>검색중...</span>}
       {/* 컬럼 ▼ 필터 전체 초기화 — sessionStorage도 클리어 */}
       <button type="button"
