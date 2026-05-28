@@ -794,6 +794,24 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
     setCustNum(custSnapshot.custNum);
     setCustSnapshot(null);
   };
+  // 편집 모드 "저장" 시 — 기존 고객(custId)의 이름/전화/이메일/성별/이름2가 바뀌면 customers 테이블에도 반영.
+  // (이게 없으면 예약 cust_name만 바뀌고 customers.name은 그대로 → 모달 재진입 시 custId로 옛 이름을 다시 불러와
+  //  "변경했는데 반영 안 됨" 버그. id_g2n7orbp8p 강남점 소민구→구소민)
+  const _persistCustEdits = () => {
+    if (!custSnapshot || custSnapshot.isNewCust || f.isNewCust) return;
+    const cid = f.custId;
+    if (!cid || cid !== custSnapshot.custId) return; // 다른 고객으로 교체한 경우는 예약만 갱신(여긴 미적용)
+    const upd = {};
+    if ((f.custName||"").trim()  !== (custSnapshot.custName||"").trim())  upd.name   = (f.custName||"").trim();
+    if ((f.custName2||"").trim() !== (custSnapshot.custName2||"").trim()) upd.name2  = (f.custName2||"").trim();
+    if ((f.custPhone||"").trim() !== (custSnapshot.custPhone||"").trim()) upd.phone  = (f.custPhone||"").trim();
+    if ((f.custEmail||"").trim() !== (custSnapshot.custEmail||"").trim()) upd.email  = (f.custEmail||"").trim();
+    if ((f.custGender||"")       !== (custSnapshot.custGender||""))       upd.gender = f.custGender||"";
+    if (!Object.keys(upd).length) return;
+    sb.update("customers", cid, upd).catch(console.error);
+    // 로컬 data.customers 동기화 → 재진입 시 옛 값으로 안 덮어쓰게
+    if (setData) setData(d => ({...d, customers: (d.customers||[]).map(c => c.id===cid ? {...c, ...upd} : c)}));
+  };
   // 🆕 reserver/visitor 별 raw state — primarySubject 토글 시 깜빡임 방지 (다시 fetch X)
   // 각 cust_id 변경 시만 fetch. 카드 표시 등은 이 raw state 직접 사용
   const [reserverPkgsRaw, setReserverPkgsRaw] = useState([]);
@@ -2319,6 +2337,7 @@ ${naverText}
                       취소
                     </button>
                     <button onClick={()=>{
+                        _persistCustEdits();
                         setCustSnapshot(null);
                         setEditingCust(false); setCustSearch(""); setShowCustDropdown(false);
                         setTimeout(()=>commitBtnRef.current?.click(), 0);

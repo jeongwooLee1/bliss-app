@@ -6,6 +6,7 @@ import { fromDb, _activeBizId } from '../../lib/db'
 import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, useSessionState, TTL } from '../../lib/utils'
 import I from '../common/I'
 import { ChannelLogo } from './channelIcons'
+import { uploadImageToStorage } from '../../lib/supabase'
 
 
 // 지점 매핑은 data.branches에서 동적 생성 (하드코딩 제거)
@@ -43,6 +44,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   const [loading, setLoading] = useState(true);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiBookLoading, setAiBookLoading] = useState(false);
+  const [aiErrBusy, setAiErrBusy] = useState(false);
   const [endCounselLoading, setEndCounselLoading] = useState(false);
   // 번역 모드: "auto" (기본, 고객 언어 감지) / "force_en" (강제 영어) / "off" (번역 안 함)
   const [autoTranslate, setAutoTranslate] = useState(true);  // 기존 호환
@@ -1201,6 +1203,44 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     finally{setAiBookLoading(false);}
   };
 
+  // 🚨 오류신고 — AI 고객응대오류 원클릭 접수 (id_l47143d65l 신영 임시안)
+  // 버튼 클릭 → 현재 화면 자동 캡처 → bliss_requests_v1에 "AI 고객응대오류"로 수정요청 등록.
+  // QuickRequest(우클릭 수정요청)와 동일 인프라(html2canvas + uploadImageToStorage + bliss_requests_v1) 재사용.
+  const reportAiError = async()=>{
+    if(!sel||aiErrBusy) return;
+    setAiErrBusy(true);
+    try{
+      let imgUrl="";
+      try{
+        const html2canvas=(await import("html2canvas")).default;
+        await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+        const canvas=await html2canvas(document.body,{
+          backgroundColor:"#ffffff", scale:Math.min(1.5,window.devicePixelRatio||1),
+          useCORS:true, logging:false, x:window.scrollX, y:window.scrollY,
+          width:window.innerWidth, height:window.innerHeight,
+          windowWidth:document.documentElement.scrollWidth, windowHeight:document.documentElement.scrollHeight,
+        });
+        const dataUrl=canvas.toDataURL("image/jpeg",0.82);
+        try{ imgUrl=await uploadImageToStorage(dataUrl,"requests"); }catch{ imgUrl=""; }
+      }catch(e){ console.warn("[reportAiError capture]",e); }
+      // 대화 맥락 (최근 4건) + 채널/고객 식별
+      const ctx=(convo||[]).slice(-4).map(m=>`${m.direction==="out"?(m.is_ai?"AI":"매장"):"고객"}: ${String(m.message_text||"").replace(/\s+/g," ").slice(0,140)}`).join("\n");
+      const chLabel=_ACC_NAME[sel.account_id]||sel.channel||"";
+      const desc=`[AI 고객응대오류] ${chLabel} · ${sel.user_id||""}\n\nAI 자동응대가 잘못 답변한 건으로 직원이 접수했습니다. (화면 캡처 첨부)\n\n[최근 대화]\n${ctx}`;
+      const r=await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.bliss_requests_v1&select=value`,{headers:sbHeaders});
+      const rows=await r.json();
+      let list=[]; try{ const v=rows?.[0]?.value; list=typeof v==="string"?JSON.parse(v):(Array.isArray(v)?v:[]); }catch{}
+      const row={ id:genId(), name:currentUser?.name||"직원", branchId:userBranches?.[0]||"", description:desc,
+        images:imgUrl?[imgUrl]:[], status:"pending", reply:"", createdAt:new Date().toISOString(), page:location.pathname, kind:"ai_error" };
+      await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`,{
+        method:"POST", headers:{...sbHeaders, Prefer:"resolution=merge-duplicates,return=minimal"},
+        body:JSON.stringify({ business_id:_activeBizId, id:"bliss_requests_v1", key:"bliss_requests_v1", value:JSON.stringify([row,...list]) }),
+      });
+      alert("✓ AI 고객응대오류로 접수됐어요. (화면 캡처 첨부)\n공지&요청에서 확인할 수 있어요.");
+    }catch(e){ console.error("[reportAiError]",e); alert("오류 접수 실패: "+(e?.message||e)); }
+    finally{ setAiErrBusy(false); }
+  };
+
   // 🟢 상담완료 — 네이버 톡톡 파트너센터 [상담완료] 자동 호출
   // 우리 메시지함 내부에서도 모두 읽음 처리. 네이버 채널에서만 노출.
   // confirm() 제거 — iOS PWA·모바일 일부 환경에서 차단되어 동작 불가하던 문제 해결 (aiBook과 동일 패턴)
@@ -1269,7 +1309,9 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       let text = reply.trim();
       if(lastIn){
         // 한+영 혼용 시 영어 우선 — 영어 5자 이상이면 영어로 번역 (한글 일부 있어도)
-        const _lastInTxt = String(lastIn.message_text || "");
+        // \uACE0\uAC1D \uC5B8\uC5B4 \uD310\uC815 \u2014 \uB9C8\uC9C0\uB9C9 \uC778\uBC14\uC6B4\uB4DC 1\uAC74\uB9CC \uBCF4\uBA74 "12?","ok","\uD83D\uDC4D" \uAC19\uC740 \uC9E7\uC740 \uB2F5\uC5D0 \uC790\uB3D9\uBC88\uC5ED\uC774 \uAEBC\uC9C0\uB294 \uBC84\uADF8
+        // (id_3xihixs9v6). \uCD5C\uADFC \uC778\uBC14\uC6B4\uB4DC 5\uAC74\uC744 \uD569\uCCD0 \uC601\uC5B4\uAD8C \uACE0\uAC1D\uC778\uC9C0 \uD310\uC815.
+        const _lastInTxt = [...convo].filter(m=>m.direction==="in").slice(-5).map(m=>String(m.message_text||"")).join(" ");
         const _ko = (_lastInTxt.match(/[\uAC00-\uD7A3\u1100-\u11FF]/g)||[]).length;
         const _en = (_lastInTxt.match(/[a-zA-Z]/g)||[]).length;
         const _enPriority = _en >= 5 || (_en > 0 && _ko === 0);
@@ -1557,6 +1599,12 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             style={{padding:forceCompact?"5px 10px":"6px 12px",background:aiBookLoading?T.gray400:T.primary,color:"#fff",border:"1px solid "+(aiBookLoading?T.gray400:T.primaryDk),borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:aiBookLoading?"wait":"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
             <I name={aiBookLoading?"loader":"calendar"} size={13} color="#fff"/> {aiBookLoading?"분석 중…":"AI 예약등록"}
           </button>
+          {/* 🚨 오류신고 — AI 고객응대오류 원클릭 접수 (자동 화면캡처) */}
+          <button onClick={reportAiError} disabled={aiErrBusy}
+            title="AI 자동응대 오류 신고 — 현재 화면을 캡처해서 'AI 고객응대오류'로 접수해요"
+            style={{padding:forceCompact?"5px 10px":"6px 12px",background:aiErrBusy?T.gray400:"#FEF2F2",color:aiErrBusy?"#fff":"#DC2626",border:"1px solid "+(aiErrBusy?T.gray400:"#FCA5A5"),borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:aiErrBusy?"wait":"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
+            <I name={aiErrBusy?"loader":"alert"} size={13}/> {aiErrBusy?"접수 중…":"오류신고"}
+          </button>
           {/* 상담완료 — 네이버 톡톡 파트너센터 [상담완료] 자동 호출 (네이버 채널만) */}
           {(sel.channel||"naver") === "naver" && <button onClick={endCounsel} disabled={endCounselLoading}
             title="네이버 톡톡 파트너센터에 [상담완료] 자동 적용 + 메시지함 모두 읽음 처리"
@@ -1760,6 +1808,12 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                 title="AI가 대화 분석해서 예약 자동 등록 (담당자 확인 후 확정)"
                 style={{padding:"6px 12px",background:aiBookLoading?T.gray400:T.primary,color:"#fff",border:"1px solid "+(aiBookLoading?T.gray400:T.primaryDk),borderRadius:T.radius.md,fontSize:12,cursor:aiBookLoading?"wait":"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
                 <I name={aiBookLoading?"loader":"calendar"} size={13} color="#fff"/> {aiBookLoading?"분석 중…":"AI 예약등록"}
+              </button>
+              {/* 🚨 오류신고 — AI 고객응대오류 원클릭 접수 (자동 화면캡처) */}
+              <button onClick={reportAiError} disabled={aiErrBusy}
+                title="AI 자동응대 오류 신고 — 현재 화면을 캡처해서 'AI 고객응대오류'로 접수해요"
+                style={{padding:"6px 12px",background:aiErrBusy?T.gray400:"#FEF2F2",color:aiErrBusy?"#fff":"#DC2626",border:"1px solid "+(aiErrBusy?T.gray400:"#FCA5A5"),borderRadius:T.radius.md,fontSize:12,cursor:aiErrBusy?"wait":"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
+                <I name={aiErrBusy?"loader":"alert"} size={13}/> {aiErrBusy?"접수 중…":"오류신고"}
               </button>
               <select value={selStaff} onChange={e=>updateSelStaff(e.target.value)}
                 title="답장 발신자 — 메시지 머리에 표시 (디폴트: 지점명, 변경 시 자동 저장)"
