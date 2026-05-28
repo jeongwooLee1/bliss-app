@@ -31,6 +31,13 @@ ssh bliss-server "sudo cp -r /tmp/bliss-app/* /var/www/html/bliss-app/ && sudo c
 ```
 주의: /tmp/bliss-app/ 초기화 필수 (구버전 JS 누적 방지)
 
+⚠️ **배포 ≠ 커밋.** 위 배포(빌드·서버·CF퍼지·버전업) 후 **반드시 git commit + push까지 함께** 실행한다 (묻지 말고 자동). 배포만 하고 커밋을 빼먹으면 라이브와 git이 어긋나 소스 백업이 누락됨 (2026-05-28 v3.7.878~887 라이브만 가고 git 누락 사고). 배포 묶음의 마지막 단계:
+```bash
+git add CLAUDE.md HANDOFF.md package.json package-lock.json public/version.txt src/
+git commit -m "<버전+요약>"   # CLAUDE.md 변경이력 + HANDOFF 갱신 포함
+git push
+```
+
 ## 서버 프로세스
 - `bliss-naver.service` — 네이버 스크래핑 + WhatsApp webhook + send_queue 폴링 + AI 분석
 - `bliss-relay.service` — CMD relay
