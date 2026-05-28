@@ -2468,25 +2468,38 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     const _isCompanionAuto = /\s동반자\d+\s*$/.test(_custNameTrim);
     if (!item.custId && item.custName && !_isScheduleType && !_isInternalKw && !_isCompanionAuto) {
       const normPhone = (item.custPhone || "").replace(/[^0-9]/g, "");
-      // 1) 로컬 캐시 검사
-      let dup = normPhone ? (data?.customers||[]).find(c => (c.phone||"").replace(/[^0-9]/g,'') === normPhone) : null;
-      // 2) 로컬 없으면 서버 조회 (data.customers가 100건 제한이라 반드시 필요)
-      if (!dup && normPhone && normPhone.length >= 8) {
+      const _nm = _custNameTrim;
+      const _normP = s => (s||"").replace(/[^0-9]/g,"");
+      // 전화 정규화 비교 — 저장 포맷(하이픈/+82 등) 달라도 일치 판정. phone·phone2 둘 다.
+      const _samePhone = c => normPhone.length>=8 && (_normP(c.phone)===normPhone || _normP(c.phone2)===normPhone);
+      const _sameName  = c => !!_nm && (c.name||"").trim()===_nm;
+      // 1) 로컬 캐시: 이름+전화 우선, 없으면 전화만
+      let dup = (data?.customers||[]).find(c => _sameName(c) && _samePhone(c))
+             || (normPhone.length>=8 ? (data?.customers||[]).find(c => _samePhone(c)) : null) || null;
+      let _dupExact = dup ? (_sameName(dup) && _samePhone(dup)) : false;
+      // 2) 서버 조회 — 로컬 100건 제한 + 저장 전화 포맷 불일치 대비. 이름·전화 둘 다로 후보 조회 후 JS 정규화 비교.
+      //    (서버 phone.eq는 정확일치라 하이픈 저장분을 놓침 → 이름으로도 후보를 끌어와 정규화 비교로 잡음)
+      if (!dup && (_nm || normPhone.length>=8)) {
         try {
-          const rows = await sb.get("customers", `&business_id=eq.${_activeBizId}&or=(phone.eq.${encodeURIComponent(normPhone)},phone2.eq.${encodeURIComponent(normPhone)})&limit=3`);
+          const conds = [];
+          if (normPhone.length>=8) { conds.push(`phone.eq.${encodeURIComponent(normPhone)}`, `phone2.eq.${encodeURIComponent(normPhone)}`); }
+          if (_nm) conds.push(`name.eq.${encodeURIComponent(_nm)}`);
+          const rows = await sb.get("customers", `&business_id=eq.${_activeBizId}&or=(${conds.join(",")})&limit=20`);
           if (Array.isArray(rows) && rows.length > 0) {
-            const r0 = rows[0];
-            dup = { id: r0.id, name: r0.name, phone: r0.phone, custNum: r0.cust_num };
+            const cand = rows.map(r => ({ id:r.id, name:r.name, phone:r.phone, phone2:r.phone2, custNum:r.cust_num }));
+            // 경고 대상 = 전화(정규화) 일치만 (이름만 같고 전화 다른 건 동명이인일 수 있어 제외). 이름+전화 둘 다 같은 걸 우선.
+            const hit = cand.find(c => _samePhone(c) && _sameName(c)) || cand.find(c => _samePhone(c));
+            if (hit) { dup = hit; _dupExact = _sameName(hit) && _samePhone(hit); }
           }
-        } catch(e) { console.warn("[res save] dup phone server check", e); }
+        } catch(e) { console.warn("[res save] dup check", e); }
       }
       if (dup) {
-        const label = `${dup.name}${dup.custNum?` (#${dup.custNum})`:""}`;
-        if (!confirm(`동일 번호(${normPhone})로 등록된 고객이 있습니다:\n\n  ${label}\n\n[확인] 기존 고객에 예약 연결\n[취소] 신규 고객으로 새로 등록`)) {
-          // 취소 → 신규 고객 생성 허용 (현행 UX 유지)
-        } else {
+        const label = `${dup.name}${dup.custNum?` (#${dup.custNum})`:""}${dup.phone?`  ${dup.phone}`:""}`;
+        const _why = _dupExact ? `이름·연락처가 모두 같은 고객이 이미 있습니다 (중복 등록 주의)` : `동일 번호(${normPhone})로 등록된 고객이 있습니다`;
+        if (confirm(`⚠️ ${_why}:\n\n  ${label}\n\n[확인] 기존 고객에 예약 연결 (중복 방지)\n[취소] 그래도 신규 고객으로 등록`)) {
           item.custId = dup.id; item.custName = dup.name; item.isNewCust = false;
         }
+        // 취소 → 신규 고객 생성 허용 (현행 UX 유지 — 정말 다른 사람일 때)
       }
       if (!item.custId && !betaGroupMode) {
         // 🔒 race-window 직전 phone 재확인 — 두 번째 핸들러 호출이 첫 INSERT 전에 들어와도 매칭되도록

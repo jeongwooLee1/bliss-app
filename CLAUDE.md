@@ -2624,3 +2624,8 @@ Liah(WhatsApp) 후속 2건.
 - **③ 대표 AI 비키니/브라질리언 범위게이트 과발동** (id_tixg5pc9nf, 서버 `ai_booking.py`, React 0): v3.7.868 범위 게이트가 시술이 "비키니·브라질리언·음모/하의"면 무조건 범위 질문 → 손님이 "Brazilian" 명시했는데도 또 물어 짜증. fix: 프롬프트를 **조건부**로 — "브라질리언/Brazilian" 명시 시 범위 재질문 금지·바로 book, "bikini"·모호할 때만 1회 확인. 백업 `ai_booking.py.bak_pre_gatefix_20260528_042244`, `systemctl restart bliss-naver`.
 - **④ 신영 오류신고 버튼 (임시안)** (id_l47143d65l, `MessagesPage.jsx`): 원 요청은 AI 학습 체크 UI였으나 임시로 — 메시지 대화창 버튼행(AI 답변추천/번역/AI 예약등록 옆)에 **🚨 오류신고** 버튼 추가. 클릭 → html2canvas 자동 화면캡처 + 최근 대화 4건 → `bliss_requests_v1`에 **"AI 고객응대오류"**(kind:'ai_error')로 원클릭 접수. QuickRequest 인프라(uploadImageToStorage+bliss_requests_v1) 재사용. 메시지함 오전/오후·날짜 표기는 이미 v3.7.872 완료. 실시간 학습 체크 UI는 향후 별도 기능.
 - 요청 4건 `bliss_requests_v1` status=done + 매장 직원 톤 답글. 배포: v3.7.888 라이브(version.txt 검증, CF 퍼지 success) + git commit/push.
+
+### v3.7.889 — 예약 등록 시 이름+전화 중복 고객 경고 강화 (2026-05-28)
+**증상**(정우님): 예약 등록 시 이름·연락처가 동일한 고객이 중복으로 신규 생성됨. 동일인이면 경고가 떠야 함.
+**원인** (`TimelinePage.jsx` handleSave 신규고객 생성부): 전화 중복 경고는 이미 있었으나 — ① 서버 조회가 `phone.eq.{숫자}` **정확일치**라 기존 고객 전화가 하이픈 등 다른 포맷으로 저장돼 있으면 못 잡음 ② 로컬 캐시 100건 제한으로 그 밖 고객 누락 → 이름+전화 같아도 중복 생성.
+**fix**: 신규 고객 생성 직전 중복 검출 강화 — **이름(`name.eq`)으로도 후보를 서버 조회** + 전화는 **JS에서 정규화 비교**(`_normP`, phone·phone2, 하이픈·공백 무시)라 저장 포맷 달라도 일치 판정. 경고 분기: 이름+전화 둘 다 같으면 "⚠️ 이름·연락처가 모두 같은 고객이 이미 있습니다 (중복 등록 주의)" + [확인]기존 연결/[취소]그래도 신규 / 전화만 같으면 기존 "동일 번호" 경고 / **이름만 같고 전화 다름은 경고 안 함**(동명이인 — `feedback_bliss_no_phone_matching` 원칙). 네이버/카카오/AI 예약(서버 자동생성)은 별도 `find_cust_by_phone` 경로라 무관 — 이번 건은 앱 직접 등록 경로.
