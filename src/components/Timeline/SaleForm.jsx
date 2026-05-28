@@ -1082,21 +1082,29 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       const today = new Date().toISOString().slice(0,10);
       return m[1] >= today;
     };
+    // 유효기간 빠른 순(soonest expiry first) 정렬 — 곧 만료될 권부터 소진 (구매일순 아님)
+    const _expK = (p) => { const m = (p?.note||"").match(/유효[:：]\s*(\d{4}-\d{2}-\d{2})/); return m ? m[1] : "9999-12-31"; };
     const existing = (custPkgs||[])
       // 현 지점에서 사용 가능한 선불권만 자동 차감 (강남/왕십리 전용 다담권을 천호점 매출에 차감하던 버그 fix 2026-05-22)
       .filter(p => _isPrepaidPkg(p) && _pkgBal(p) > 0 && _notExpired(p)
         && canUsePkgAtBranch(p, (selBranch || branchId), data?.branches, data?.branchGroups))
-      .sort((a,b) => String(_cKey(a)).localeCompare(String(_cKey(b))));
+      .sort((a,b) => _expK(a).localeCompare(_expK(b)) || String(_cKey(a)).localeCompare(String(_cKey(b))));
     if (existing.length === 0) return;
+    // 오늘 시술액(신규 다담권 구매분 제외)을 한도로, 유효 빠른 권부터 분배 차감.
+    // (풀 잔액 세팅 시 시술보다 많이 차감되는 과차감 버그 fix — 시술액으로 캡)
+    let _remain = SVC_LIST.reduce((s, svc) =>
+      s + (svc.cat !== PCAT && items[svc.id]?.checked ? (items[svc.id].amount || 0) : 0), 0);
     const updates = {};
     existing.forEach(p => {
-      if (pkgUse[p.id] === undefined) updates[p.id] = _pkgBal(p);
+      if (pkgUse[p.id] !== undefined) { _remain -= (Number(pkgUse[p.id]) || 0); return; } // 사용자 수동값 존중
+      const use = Math.min(_pkgBal(p), Math.max(0, _remain));
+      if (use > 0) { updates[p.id] = use; _remain -= use; }
     });
     if (Object.keys(updates).length > 0) {
       setPkgUse(prev => ({...prev, ...updates}));
       _autoPrepaidActivatedRef.current = true;
     }
-  }, [JSON.stringify(Object.entries(items).filter(([k,v]) => v?.checked).map(([k]) => k)), custPkgs.length]);
+  }, [JSON.stringify(Object.entries(items).filter(([k,v]) => v?.checked).map(([k]) => k)), custPkgs.length, selBranch, branchId]);
 
   // items 선언 이후에만 isMemberCustomer 계산 가능 (items가 내부에서 참조되기 때문)
   const isMemberCustomer = _computeIsMemberCustomer();
@@ -3394,10 +3402,23 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       if (newAnnualPurchases.length > 0) _cids.push('ct_annual_member_ko');
       const consentIds = [...new Set(_cids)];
       if (consentIds.length > 0) {
-        const _vf = todayStr();
-        const _vu = (() => { const d = new Date(); d.setFullYear(d.getFullYear() + 1); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); })();
-        const _pf = { valid_from: _vf, valid_until: _vu };
+        const _pf = {};
         if (newPrepaidActiveTotal > 0) _pf.points = String(newPrepaidActiveTotal);
+        // 유효기간은 방금 만든 보유권(_earnLinkPkgs)의 유효일을 그대로 사용 — 재계산 안 함.
+        // 동의서 대상은 선불권·패키지. 그중 유효일이 정해진(오늘 사용) 보유권이 있으면 그 기간을,
+        // 없으면(미사용) 날짜 대신 "사용일로부터 1년" 텍스트를 표시한다(첫 사용 시점에 시작되므로).
+        const _consentPkgIds = new Set([
+          ...(_newTriggerPkgIds.prepaid_purchase || []),
+          ...(_newTriggerPkgIds.pkg_purchase || []),
+        ]);
+        const _exp = _earnLinkPkgs.find(p => _consentPkgIds.has(p.id) && p.expISO)?.expISO;
+        if (_exp) {
+          _pf.valid_from = _todayStr;
+          _pf.valid_until = _exp.slice(0, 10);
+          _pf.valid_period = `${_pf.valid_from} ~ ${_pf.valid_until}`;
+        } else {
+          _pf.valid_period = '사용일로부터 1년';
+        }
         setPendingConsent({ ids: consentIds, prefill: _pf, bid: sale.bid, salePayload: _salePayload });
         return; // 닫기는 동의서 창 닫힐 때 onSubmit으로
       }
@@ -3441,6 +3462,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
           data={data}
           initialSelectedIds={pendingConsent.ids}
           initialPrefill={pendingConsent.prefill}
+          reservationId={reservation?.id || null}
           onClose={() => { const _p = pendingConsent; setPendingConsent(null); onSubmit(_p.salePayload); }}
         />, document.body)}
       {_m&&<div style={{display:"flex",alignItems:"center",padding:"10px 14px 8px",borderBottom:`1px solid ${T.border}`,background:T.bgCard,position:"sticky",top:0,zIndex:10}}>
@@ -4264,10 +4286,11 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
                 {/* 선불잔액 — 다담권/선불권 (카드형, 금액 입력 가능). 신규 다담권 구매 중에도 표시 — 기존 우선 차감 정책 */}
                 {(()=>{
                   // 지점 제한 롤백: 전체 prepaid 사용 가능
-                  // 차감 순서: 구매일 ASC (FIFO) — 기존 다담권을 먼저 소진, 신규 충전분은 나중에
+                  // 차감 순서: 유효기간 빠른 순(soonest expiry) — 곧 만료될 권부터 소진, 동일 시 구매일 ASC
                   const _cKey = (p) => p.purchased_at || p.purchasedAt || p.created_at || p.createdAt || "9999-12-31";
+                  const _expK = (p) => { const m = (p?.note||"").match(/유효[:：]\s*(\d{4}-\d{2}-\d{2})/); return m ? m[1] : "9999-12-31"; };
                   const prepaidPkgs = activePkgs.filter(p=>_pkgType(p)==="prepaid")
-                    .sort((a,b)=>String(_cKey(a)).localeCompare(String(_cKey(b))));
+                    .sort((a,b)=>_expK(a).localeCompare(_expK(b)) || String(_cKey(a)).localeCompare(String(_cKey(b))));
                   const prepaidBal = prepaidPkgs.reduce((s,p)=>s+_pkgBalance(p),0);
                   if (prepaidBal <= 0) return null;
                   const isActive = prepaidPkgs.some(p=>!!pkgUse[p.id]);

@@ -3923,11 +3923,11 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
               <text x="12" y="15.5" textAnchor="middle" fontSize="9.5" fontWeight="900" fill="#03C75A" fontFamily="-apple-system,BlinkMacSystemFont,sans-serif">N</text>
             </svg>
           </button>
-          <button onClick={()=>setShowQuickBook(true)} style={{padding:"0 12px",height:32,fontSize:T.fs.sm,border:"none",borderRadius:T.radius.xl,background:"linear-gradient(135deg,#4285f4,#9b72cb,#d96570)",color:T.bgCard,cursor:"pointer",fontFamily:"inherit",flexShrink:0,display:"flex",alignItems:"center",gap:5,fontWeight:T.fw.bolder,boxShadow:"0 2px 8px rgba(66,133,244,.25)"}}>
+          <button onClick={()=>setShowQuickBook(true)} title="AI 빠른 예약 등록 (대화/메모 붙여넣으면 AI가 예약 자동 작성)" style={{padding:"0 12px",height:32,fontSize:T.fs.sm,border:"none",borderRadius:T.radius.xl,background:"linear-gradient(135deg,#4285f4,#9b72cb,#d96570)",color:T.bgCard,cursor:"pointer",fontFamily:"inherit",flexShrink:0,display:"flex",alignItems:"center",gap:5,fontWeight:T.fw.bolder,boxShadow:"0 2px 8px rgba(66,133,244,.25)"}}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill={T.bgCard} style={{flexShrink:0}}><path d="M12 2L13.09 8.26L18 6L14.74 10.91L21 12L14.74 13.09L18 18L13.09 15.74L12 22L10.91 15.74L6 18L9.26 13.09L3 12L9.26 10.91L6 6L10.91 8.26L12 2Z"/></svg> AI Book
           </button>
 <div style={{marginLeft:"auto",position:"relative",flexShrink:0}} ref={el => { if(el) el._settingsBtn = el; }}>
-            <button onClick={(e)=>{const next=!showSettings;setShowSettings(next);if(next&&scrollRef.current)scrollRef.current.scrollLeft=0;}} id="settings-btn"
+            <button onClick={(e)=>{const next=!showSettings;setShowSettings(next);if(next&&scrollRef.current)scrollRef.current.scrollLeft=0;}} id="settings-btn" title="타임라인 설정 (글자크기·색상·시간단위 등)"
               style={{height:32,padding:"0 12px",border:"none",borderRadius:T.radius.md,background:"transparent",
                 cursor:"pointer",background:showSettings?T.primaryLt:"none",border:showSettings?"1px solid "+T.primary:"1px solid transparent",borderRadius:T.radius.md,padding:"4px 6px",display:"flex",alignItems:"center",justifyContent:"center"}}><I name="settings" size={17} color={showSettings?T.primary:T.gray500}/></button>
           </div>
@@ -4162,8 +4162,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                 <span style={{display:"flex",alignItems:"center",gap:4}}>
                                   <span style={{fontWeight:600,color:isOff?T.textMuted:T.text}}>{e.id}</span>
                                   {isOff && <span style={{fontSize:9,background:T.gray200,color:T.danger,borderRadius:3,padding:"1px 5px",fontWeight:700}}>휴무</span>}
+                                  {empBase?.isFreelancer && <span style={{fontSize:9,background:"#E8F5E9",color:"#4CAF50",borderRadius:3,padding:"1px 5px",fontWeight:700}}>프리랜서</span>}
                                 </span>
-                                <span style={{fontSize:10,color:T.textMuted}}>{baseBr?.short||""}</span>
+                                <span style={{fontSize:10,color:T.textMuted}}>{empBase?.isFreelancer ? "소속없음" : (baseBr?.short||"")}</span>
                               </div>;
                             })}
                             {!addStaffPopup?.selectedEmp && BASE_EMP_LIST.filter(e => !allRooms.some(r => r.isStaffCol && r.branch_id === room.branch_id && r.staffId === e.id)).length === 0 &&
@@ -4181,7 +4182,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                 if (RESERVED.includes(nm)) { alert(`"${nm}"은(는) 시스템 예약어로 사용할 수 없습니다.`); return; }
                                 // 항상 고유 id 생성 — 직원과 이름이 같아도 충돌 없게 (직원근무표/empSettings 격리)
                                 const newId = `fl_${nm}_${Date.now().toString(36)}`;
-                                const newEmp = {id: newId, name: nm, branch: schKey, isMale: false, isFreelancer: true};
+                                // 프리랜서는 소속(home branch) 없음 — 그날 배정된 지점에만 표시 (id_4kx5wgvimj)
+                                const newEmp = {id: newId, name: nm, branch: "", isMale: false, isFreelancer: true};
                                 // employees_v1에 추가 (customEmployees_v1 폐기됨)
                                 const H = {apikey:SB_KEY, Authorization:"Bearer "+SB_KEY, "Content-Type":"application/json", "Prefer":"resolution=merge-duplicates"};
                                 try {
@@ -4189,8 +4191,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                   const rows = await r.json();
                                   const raw = rows?.[0]?.value;
                                   const existing = typeof raw === 'string' ? JSON.parse(raw) : (Array.isArray(raw) ? raw : []);
-                                  // 같은 이름의 프리랜서가 이미 같은 지점에 있으면 차단 (UI 혼란 방지)
-                                  if (existing.some(e => e.isFreelancer && (e.name||e.id) === nm && e.branch === schKey)) { alert("같은 지점에 같은 이름의 프리랜서가 이미 있습니다."); return; }
+                                  // 프리랜서는 소속 없는 공유 명단 — 같은 이름이 이미 있으면 새로 만들지 말고 직원 목록에서 선택해 배치
+                                  if (existing.some(e => e.isFreelancer && (e.name||e.id) === nm)) { alert(`"${nm}" 프리랜서는 이미 등록돼 있어요.\n새로 만들지 말고, 위 직원 목록에서 "${nm}"을(를) 선택해 이 지점으로 배치해주세요.`); return; }
                                   const updated = [...existing, newEmp];
                                   await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {method:"POST", headers:H, body:JSON.stringify({business_id: _activeBizId, id:"employees_v1",key:"employees_v1",value:JSON.stringify(updated)})});
                                   setEmpList(prev=>[...prev.filter(e=>e.id!==newEmp.id), newEmp]);
@@ -4213,6 +4215,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                     schObj[monthKey][newId][selDate] = "근무";
                                     await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {method:"POST", headers:H, body:JSON.stringify({business_id: _activeBizId, id:"schHistory_v1",key:"schHistory_v1",value:JSON.stringify(schObj)})});
                                   } catch(_e) { console.warn("schHistory 등록 실패:", _e); }
+                                  // 소속이 없으므로 만든 지점에 그날 배치(exclusive override)해야 타임라인에 표시됨
+                                  // (empOverride_v1은 별도 row로 저장 — schHistory '근무' 쓰기와 경합 없음)
+                                  setEmpBranchOverride(p=>({...p,[newId+"_"+selDate]:{segments:[{branchId:targetBid, from:null, until:null}], exclusive:true}}));
                                   setAddStaffPopup(null);
                                 } catch(e){console.error("프리랜서 추가 실패:",e);}
                               };
@@ -4274,7 +4279,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                 setAddStaffPopup(null);
                               };
                               return <div style={{borderTop:"2px solid "+T.primary,padding:"8px 12px"}}>
-                                <div style={{fontSize:12,fontWeight:700,marginBottom:6}}>{empName} <span style={{fontWeight:400,color:T.textMuted}}>({baseBr?.short||""})</span></div>
+                                <div style={{fontSize:12,fontWeight:700,marginBottom:6}}>{empName} <span style={{fontWeight:400,color:T.textMuted}}>({empBase?.isFreelancer ? "프리랜서·소속없음" : (baseBr?.short||"")})</span></div>
                                 <div style={{display:"flex",gap:4,alignItems:"center",marginBottom:6}}>
                                   <span style={{fontSize:10,color:T.textMuted}}>시작</span>
                                   <select value={supportFrom} onChange={e=>setAddStaffPopup(p=>({...p,supportFrom:e.target.value}))}

@@ -75,6 +75,14 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
       const expires_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
       const cleanPrefill = Object.fromEntries(Object.entries(prefill).filter(([_, v]) => v && String(v).trim() !== ''))
       if (reservationId) cleanPrefill.reservation_id = reservationId  // 예약 모달에서 보낸 경우 — 예약별 차트 상태 연동
+      // 지점명 prefill — consent 앱이 "하우스왁싱 {branch}"로 렌더 (없으면 "하우스왁싱"만)
+      if (!cleanPrefill.branch) {
+        // 매출/예약 발생 지점(cust.bid)만 사용 — bid 없으면 빈칸("하우스왁싱"). 첫 지점(강남) 폴백 금지.
+        const _bid = cust?.bid || ''
+        const _br = _bid ? (data?.branches || []).find(b => b.id === _bid) : null
+        const _brName = (_br?.short || _br?.name || '').replace(/^하우스왁싱\s*/, '').trim()
+        if (_brName) cleanPrefill.branch = _brName
+      }
       await sb.insert('consent_tokens', {
         token,
         business_id: bizId,

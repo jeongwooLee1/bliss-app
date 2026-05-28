@@ -296,13 +296,16 @@ function baseAmount(reward, ctx) {
 
   // 카테고리/시술 필터가 있으면 — base 종류와 무관하게 그 시술 합계만 사용
   if (hasCatFilter || hasSvcFilter || base === 'category' || base === 'services') {
+    // 추가시술(카테고리 없는 커스텀 시술 라인)은 등록 시술이 아니라 svcList에 없음.
+    // 특정 시술ID 필터가 아닌 경우(카테고리 필터/일반 시술 base)엔 '시술'로 보고 base에 포함 (현아 id_bqtjtnw55y).
+    const _extraSvcInBase = (!hasSvcFilter) ? (ctx.extraSvcTotal || 0) : 0
     const matchedSubtotal = svcList.reduce((sum, s) => {
       const it = items[s.id]
       if (!it?.checked) return sum
       if (hasSvcFilter && !reward.baseServiceIds.includes(s.id)) return sum
       if (hasCatFilter && !reward.baseCategoryIds.includes(s.cat)) return sum
       return sum + (it.amount || 0)
-    }, 0)
+    }, 0) + _extraSvcInBase
 
     // net_pay base + 카테고리/시술 필터:
     //   매칭 대상이 모두 시술이면 → svcNetAmount(=시술합계-시술할인) 기준 비례

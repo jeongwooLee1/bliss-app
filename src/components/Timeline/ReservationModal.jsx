@@ -3,8 +3,10 @@ import { T, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, SYSTEM_TAG_NAME_NEW_CUST, SY
 import { sb, SB_URL, SB_KEY, sbHeaders, queueAlimtalk, buildTokenSearch } from '../../lib/sb'
 import { fromDb, toDb, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS, _activeBizId } from '../../lib/db'
 import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, getDow, genId, fmtLocal, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, getCustPkgBranchInitial, naverConfirmBooking, judgePenaltyType, customerGrade, isMoneyPkg } from '../../lib/utils'
+import { createPortal } from 'react-dom'
 import I from '../common/I'
 import SendSmsModal from '../common/SendSmsModal'
+import ConsentModal from '../Consent/ConsentModal'
 import { DetailedSaleForm } from './SaleForm'
 import { evaluateTagTriggers } from '../../lib/tagAutoTrigger'
 import { transliterateName, getCachedTransliteration } from '../../lib/nameTransliterate'
@@ -804,6 +806,8 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   // sign.blissme.ai 동의서/차트는 consent_tokens(발송 토큰, prefill_data.reservation_id) +
   // customer_consents(작성 결과)로 저장. 예약별 차트를 직원이 확인할 수 있게 연결.
   const [chartInfo, setChartInfo] = useState(null); // {status, consent, signedAt, tokenSent}
+  const [consentOpen, setConsentOpen] = useState(false); // 📋 동의서 보내기 모달
+  const [chartReloadKey, setChartReloadKey] = useState(0); // 동의서 발송 후 차트 상태 새로고침
   const [chartExpand, setChartExpand] = useState(false);
   // 외국 이름 음역 fallback — 네이버/AI 예약 신규 고객은 customers.name_kor 비어있어서
   // _cust?.nameKor 조건만으론 화면에 안 뜸. 캐시 → Gemini 호출 → 결과 state + DB 백필
@@ -900,7 +904,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
       setChartInfo({ status, consent, tokenSent, signedAt: consent?.signed_at || null });
     })();
     return () => { alive = false; };
-  }, [item?.id]);
+  }, [item?.id, chartReloadKey]);
   // 🆕 visitor(방문자) 보유권 + 포인트 — f.visitorCustId 변경 시만 fetch
   useEffect(() => {
     if (!f.visitorCustId) { setVisitorPkgsRaw([]); setVisitorPointRaw(0); return; }
@@ -1328,7 +1332,7 @@ ${naverText}
       const pkgKeywords = /패키지|PKG|연간할인권|이용중|패키지이용/i;
       const allText = [f.requestMsg, f.ownerComment, f.memo].join(" ");
       if (pkgKeywords.test(allText) && custPkgsInfo?.length) {
-        const multiPkgs = (custPkgsInfo||[]).filter(p=>{const n=(p.service_name||"").toLowerCase();return !isMoneyPkg(p)&&!n.includes("연간")&&!n.includes("할인권")&&!n.includes("회원권")&&(p.total_count||0)-(p.used_count||0)>0;});
+        const multiPkgs = (custPkgsInfo||[]).filter(p=>{const n=(p.service_name||"").toLowerCase();const exp=((p.note||"").match(/유효:\s*(\d{4}-\d{2}-\d{2})/)||[])[1];if(exp&&exp<new Date().toISOString().slice(0,10))return false;return !isMoneyPkg(p)&&!n.includes("연간")&&!n.includes("할인권")&&!n.includes("회원권")&&(p.total_count||0)-(p.used_count||0)>0;});
         if (multiPkgs.length > 0) {
           const groups={};multiPkgs.forEach(p=>{const nm=(p.service_name?.split("(")[0]||"").replace(/\s*\d+회$/,"").trim();if(!groups[nm])groups[nm]=true;});
           const firstPkgName = Object.keys(groups)[0];
@@ -2005,9 +2009,15 @@ ${naverText}
                           title="클릭해서 작성 내용 보기"
                           style={{marginLeft:"auto",fontSize:10,padding:"2px 9px",borderRadius:10,background:chartExpand?"#047857":"#059669",color:"#fff",border:"none",fontWeight:800,whiteSpace:"nowrap",cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:3}}>
                           <I name="fileText" size={10}/>차트 작성완료</button>}
-                        {chartInfo?.status === "sent" && <span title="차트 작성 링크 발송됨 · 미작성"
-                          style={{marginLeft:"auto",fontSize:10,padding:"2px 9px",borderRadius:10,background:"#FFF7ED",color:"#c2410c",fontWeight:800,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}>
-                          <I name="fileText" size={10}/>차트 미작성</span>}
+                        {chartInfo?.status !== "signed" && f.custId && !String(f.custId).startsWith("new_") && !f.isNewCust && (
+                          <button type="button" onClick={(e)=>{e.stopPropagation(); setConsentOpen(true);}}
+                            title="동의서/차트 작성 링크를 고객에게 보내기 (문자·QR·태블릿)"
+                            style={{marginLeft:"auto",fontSize:10,padding:"2px 9px",borderRadius:10,
+                              background: chartInfo?.status==="sent" ? "#FFF7ED" : "#EDE7F6",
+                              color: chartInfo?.status==="sent" ? "#c2410c" : "#5B21B6",
+                              border:"none",fontWeight:800,whiteSpace:"nowrap",cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:3}}>
+                            <I name="fileText" size={10}/>{chartInfo?.status==="sent" ? "동의서 재전송" : "동의서 보내기"}</button>
+                        )}
                       </div>
                       {/* 2줄: 전화 + 이메일 한 줄 (신규/변경 모드는 input) */}
                       <div style={{display:"flex",alignItems:"center",gap:8,marginTop:3,flexWrap:"wrap",minWidth:0}}>
@@ -2486,6 +2496,8 @@ ${naverText}
                     const n=(p.service_name||"").toLowerCase();
                     if(isMoneyPkg(p)) return false;
                     if(n.includes("연간")||n.includes("할인권")||n.includes("회원권")) return false;
+                    const exp=((p.note||"").match(/유효:\s*(\d{4}-\d{2}-\d{2})/)||[])[1];
+                    if(exp && exp < new Date().toISOString().slice(0,10)) return false; // 만료 보유권 제외 (id_zl2g6fglfv)
                     return (p.total_count||0)-(p.used_count||0)>0;
                   });
                   if(!multiPkgs.length) return null;
@@ -3532,6 +3544,15 @@ ${naverText}
           userBranches={userBranches}
           defaultBranchId={f.bid}/>;
       })()}
+      {/* 📋 동의서 보내기 모달 — 예약 고객 자동 입력. 예약과 연동(reservationId) → 차트 상태 갱신 */}
+      {consentOpen && f.custId && createPortal(
+        <ConsentModal
+          cust={{ id: f.custId, name: f.custName, phone: f.custPhone, bid: f.bid }}
+          bizId={_activeBizId}
+          data={data}
+          reservationId={item?.id}
+          onClose={() => { setConsentOpen(false); setChartReloadKey(k => k + 1); }}/>,
+        document.body)}
     </div>
   );
 }

@@ -676,6 +676,35 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
   };
   // 상세 패널 바뀌면 편집 모드 해제
   useEffect(() => { setEditingMemo(false); setMemoDraft(""); }, [detailCust?.id]);
+
+  // 신규차트/동의서 응답(form_data.survey) 로드 → 상세 표시 + 빈 칸 자동 채움
+  const [chartSurvey, setChartSurvey] = useState(null);
+  useEffect(() => {
+    setChartSurvey(null);
+    const cid = detailCust?.id;
+    if (!cid) return;
+    let cancelled = false;
+    (async () => {
+      const rows = await sb.get("customer_consents", `&customer_id=eq.${cid}&form_data=not.is.null&order=created_at.desc&limit=1`).catch(() => []);
+      if (cancelled || !rows?.length) return;
+      const fd = rows[0].form_data;
+      if (!fd || typeof fd !== "object") return;
+      const sv = (fd.survey && typeof fd.survey === "object") ? fd.survey : {};
+      setChartSurvey(sv);
+      // 빈 칸만 자동 채움 (이메일·성별·전화) — 이미 값 있으면 안 건드림
+      const _str = (x) => (typeof x === "string" ? x : (x && typeof x === "object" ? (x.value || "") : "")).toString().trim();
+      const patch = {}, local = {};
+      const email = _str(sv.email) || _str(fd.email);
+      if (email && !detailCust.email) { patch.email = email; local.email = email; }
+      const gRaw = _str(sv.gender);
+      const gender = gRaw === "여" || gRaw === "F" ? "F" : (gRaw === "남" || gRaw === "M" ? "M" : "");
+      if (gender && !detailCust.gender) { patch.gender = gender; local.gender = gender; }
+      const phone = _str(sv.phone).replace(/[^0-9]/g, "");
+      if (phone && !detailCust.phone) { patch.phone = phone; local.phone = phone; }
+      if (Object.keys(patch).length) saveCustField(patch, local);
+    })();
+    return () => { cancelled = true; };
+  }, [detailCust?.id]);
   // 풀스크린 상세 모달: ESC 닫기
   useEffect(() => {
     if (!detailCust) return;
@@ -1682,25 +1711,25 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                 <div key={"info_"+c.id} className="cust-fs-info-grid" style={{padding:"8px 10px",display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:5,fontSize:T.fs.xxs,overflowY:"auto",height:"100%",alignContent:"start",boxSizing:"border-box"}}>
                   <label style={{display:"flex",flexDirection:"column",gap:1,minWidth:0}}>
                     <span style={{color:T.textMuted,fontWeight:T.fw.bold,fontSize:9}}>이름</span>
-                    <input defaultValue={c.name||""} placeholder="이름"
+                    <input defaultValue={c.name||""} placeholder=""
                       onBlur={e=>{const v=e.target.value.trim(); if(v!==(c.name||"")) saveCustField({name:v},{name:v});}}
                       style={{padding:"4px 7px",border:"1px solid "+T.border,borderRadius:5,fontSize:T.fs.xs,fontFamily:"inherit",color:T.text,minWidth:0}}/>
                   </label>
                   <label style={{display:"flex",flexDirection:"column",gap:1,minWidth:0}}>
                     <span style={{color:T.textMuted,fontWeight:T.fw.bold,fontSize:9}}>이름 2</span>
-                    <input defaultValue={c.name2||""} placeholder="별칭"
+                    <input defaultValue={c.name2||""} placeholder=""
                       onBlur={e=>{const v=e.target.value.trim(); if(v!==(c.name2||"")) saveCustField({name2:v||null},{name2:v});}}
                       style={{padding:"4px 7px",border:"1px solid "+T.border,borderRadius:5,fontSize:T.fs.xs,fontFamily:"inherit",color:T.text,minWidth:0}}/>
                   </label>
                   <label style={{display:"flex",flexDirection:"column",gap:1,minWidth:0}}>
                     <span style={{color:T.textMuted,fontWeight:T.fw.bold,fontSize:9}}>한글 음역</span>
-                    <input defaultValue={c.nameKor||""} placeholder="외국 이름용"
+                    <input defaultValue={c.nameKor||""} placeholder=""
                       onBlur={e=>{const v=e.target.value.trim(); if(v!==(c.nameKor||"")) saveCustField({name_kor:v||null},{nameKor:v});}}
                       style={{padding:"4px 7px",border:"1px solid "+T.border,borderRadius:5,fontSize:T.fs.xs,fontFamily:"inherit",color:T.text,minWidth:0}}/>
                   </label>
                   <label style={{display:"flex",flexDirection:"column",gap:1,minWidth:0}}>
                     <span style={{color:T.textMuted,fontWeight:T.fw.bold,fontSize:9}}>고객번호</span>
-                    <input defaultValue={c.custNum||""} placeholder="-"
+                    <input defaultValue={c.custNum||""} placeholder=""
                       onBlur={e=>{const v=e.target.value.trim(); if(v!==(c.custNum||"")) saveCustField({cust_num:v||null},{custNum:v});}}
                       style={{padding:"4px 7px",border:"1px solid "+T.border,borderRadius:5,fontSize:T.fs.xs,fontFamily:"monospace",color:T.text,fontWeight:T.fw.bold,minWidth:0}}/>
                   </label>
@@ -1712,19 +1741,19 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                   </label>
                   <label style={{display:"flex",flexDirection:"column",gap:1,minWidth:0}}>
                     <span style={{color:T.textMuted,fontWeight:T.fw.bold,fontSize:9}}>이메일</span>
-                    <input defaultValue={c.email||""} placeholder="email" type="email"
+                    <input defaultValue={c.email||""} placeholder="" type="email"
                       onBlur={e=>{const v=e.target.value.trim(); if(v!==(c.email||"")) saveCustField({email:v||null},{email:v});}}
                       style={{padding:"4px 7px",border:"1px solid "+T.border,borderRadius:5,fontSize:T.fs.xs,fontFamily:"inherit",color:T.text,minWidth:0}}/>
                   </label>
                   <label style={{display:"flex",flexDirection:"column",gap:1,minWidth:0}}>
                     <span style={{color:T.textMuted,fontWeight:T.fw.bold,fontSize:9}}>연락처</span>
-                    <input defaultValue={c.phone||""} placeholder="01012345678"
+                    <input defaultValue={c.phone||""} placeholder=""
                       onBlur={e=>{const v=e.target.value.trim(); if(v!==(c.phone||"")) saveCustField({phone:v},{phone:v});}}
                       style={{padding:"4px 7px",border:"1px solid "+T.border,borderRadius:5,fontSize:T.fs.xs,fontFamily:"inherit",color:T.text,minWidth:0}}/>
                   </label>
                   <label style={{display:"flex",flexDirection:"column",gap:1,minWidth:0}}>
                     <span style={{color:T.textMuted,fontWeight:T.fw.bold,fontSize:9}}>연락처 2</span>
-                    <input defaultValue={c.phone2||""} placeholder="추가 연락처"
+                    <input defaultValue={c.phone2||""} placeholder=""
                       onBlur={e=>{const v=e.target.value.trim(); if(v!==(c.phone2||"")) saveCustField({phone2:v||null},{phone2:v});}}
                       style={{padding:"4px 7px",border:"1px solid "+T.border,borderRadius:5,fontSize:T.fs.xs,fontFamily:"inherit",color:T.text,minWidth:0}}/>
                   </label>
@@ -1757,6 +1786,33 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                       {(data?.serviceTags||[]).filter(t=>t.useYn!==false && t.scheduleYn!=="Y").length === 0 && <span style={{fontSize:10,color:T.textMuted}}>등록된 예약태그가 없습니다</span>}
                     </div>
                   </div>
+                  {/* 신규차트/동의서 응답 — referral·선택이유·동기 등 (form_data.survey) */}
+                  {chartSurvey && (()=>{
+                    const _sv = (x) => {
+                      if (x == null) return "";
+                      if (typeof x === "string") return x;
+                      if (Array.isArray(x)) return x.filter(Boolean).join(", ");
+                      if (typeof x === "object") {
+                        const base = x.value != null ? String(x.value) : (Array.isArray(x.values) ? x.values.join(", ") : "");
+                        return base + (x.other ? (base ? ", " : "") + x.other : "");
+                      }
+                      return String(x);
+                    };
+                    const LBL = [["referral","방문 경로"],["choose_reason","선택 이유"],["motivation","방문 동기"],["first_waxing","왁싱 경험"],["skin_type","피부 타입"],["concern","고민"],["pregnant","임신 여부"],["sms_consent","문자 수신"]];
+                    const rows = LBL.map(([k,l]) => [l, _sv(chartSurvey[k])]).filter(([,v]) => v && v.trim());
+                    if (rows.length === 0) return null;
+                    return <div style={{gridColumn:"1 / -1",display:"flex",flexDirection:"column",gap:5,marginTop:2,padding:"9px 11px",background:"#F5F3FF",borderRadius:7}}>
+                      <span style={{color:"#6D28D9",fontWeight:T.fw.bolder,fontSize:10,display:"flex",alignItems:"center",gap:4}}><I name="clipboard" size={11}/> 차트 응답</span>
+                      <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                        {rows.map(([l,v])=>(
+                          <div key={l} style={{display:"flex",gap:8,fontSize:12,alignItems:"baseline"}}>
+                            <span style={{color:T.textMuted,flex:"0 0 64px"}}>{l}</span>
+                            <span style={{color:T.text,fontWeight:600,flex:1,minWidth:0}}>{v}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>;
+                  })()}
                 </div>
               );
               // 메모 helper — 좌하 카드
@@ -1776,7 +1832,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                       onBlur={saveMemoInline}
                       onKeyDown={e=>{ if(e.key==='Escape'){ setEditingMemo(false); setMemoDraft(""); } }}
                       onClick={e=>e.stopPropagation()}
-                      placeholder="메모 추가…"
+                      placeholder=""
                       style={{width:"100%",border:"1px solid "+T.primaryLt,borderRadius:6,padding:"6px 8px",fontSize:T.fs.xs,fontFamily:"inherit",background:"#fff",color:"#155a8a",lineHeight:1.55,resize:"none",height:"calc(100% - 28px)",minHeight:80,outline:"none",boxSizing:"border-box"}}/>
                   ) : (
                     <span style={{color:c.memo?"#155a8a":T.gray500,fontStyle:c.memo?"normal":"italic"}}>{c.memo || "메모 추가… (클릭)"}</span>
@@ -2451,11 +2507,11 @@ function PointPanel({ cust, txList, balance, onReload }) {
       ))}
     </div>
     <div className="pt-row" style={{display:"flex",gap:4,alignItems:"center",marginBottom:6}}>
-      <input type="text" inputMode="numeric" value={amt} placeholder="금액" className="pt-amt"
+      <input type="text" inputMode="numeric" value={amt} placeholder="" className="pt-amt"
         onChange={e=>{const v=e.target.value.replace(/[^0-9]/g,""); setAmt(v?Number(v).toLocaleString():"");}}
         style={{flex:"0 0 90px",padding:"5px 8px",fontSize:11,borderRadius:5,border:"1px solid "+T.border,textAlign:"right",fontFamily:"inherit"}}/>
       <span style={{fontSize:10,color:T.textSub}}>P</span>
-      <input type="text" value={note} placeholder="메모 (선택)" className="pt-note"
+      <input type="text" value={note} placeholder="" className="pt-note"
         onChange={e=>setNote(e.target.value)}
         style={{flex:1,padding:"5px 8px",fontSize:11,borderRadius:5,border:"1px solid "+T.border,fontFamily:"inherit",minWidth:0}}/>
       <button onClick={submit} disabled={saving||!amt}

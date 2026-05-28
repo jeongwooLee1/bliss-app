@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { T } from '../../lib/constants'
-import { SB_URL, sbHeaders } from '../../lib/sb'
+import { SB_URL, SB_KEY, sbHeaders } from '../../lib/sb'
 import I from '../common/I'
 import { AField, AInp, AEmpty, APageHeader, ABadge, AIBtn } from './AdminUI'
 import AdminAIDocs from './AdminAIDocs'
+import { loadFaqItems, saveFaqItem, deleteFaqItem, updateFaqMeta, bulkImportFaq } from '../../lib/faqStore'
 
 // AI 설정 — 단일 페이지 4섹션 (아코디언)
 // 1) 🔑 API 키   2) 📘 FAQ (블리스AI + 메시지함 공용)
@@ -44,6 +45,11 @@ function AdminAISettings({ data, sb: sbProp, bizId }) {
   const [faqSearch, setFaqSearch] = useState("")
   const [faqCatFilter, setFaqCatFilter] = useState("all")
   const [faqActiveFilter, setFaqActiveFilter] = useState("all") // all | active | inactive
+  const [faqNewCore, setFaqNewCore] = useState(false)
+  const [faqEditCore, setFaqEditCore] = useState(false)
+  const [faqBusy, setFaqBusy] = useState(false)
+  const [faqMsg, setFaqMsg] = useState("")
+  const [migrating, setMigrating] = useState("")  // 마이그레이션 진행 텍스트
 
   // ── DB 로드 + ai_rules 레거시 마이그레이션 ──────────────
   useEffect(() => {
@@ -55,7 +61,13 @@ function AdminAISettings({ data, sb: sbProp, bizId }) {
           const memo = JSON.parse(rows[0]?.settings || "{}")
           if (memo.gemini_key) { setApiKey(memo.gemini_key); localStorage.setItem("bliss_gemini_key", memo.gemini_key) }
           if (memo.ai_chat_prompt != null) { setChatPrompt(memo.ai_chat_prompt); localStorage.setItem("bliss_ai_chat_prompt", memo.ai_chat_prompt); window.__aiChatPrompt = memo.ai_chat_prompt }
-          if (Array.isArray(memo.ai_faq)) setFaqItems(memo.ai_faq)
+          // FAQ는 RAG 청크(document_chunks)에서 로드 (확장형). ai_faq(레거시/핵심)는 core 동기화 참조용.
+          loadFaqItems(bizId).then(items => {
+            if (items.length === 0 && Array.isArray(memo.ai_faq) && memo.ai_faq.length) {
+              // 아직 청크로 이관 전 — 레거시 ai_faq를 보여주되 chunkId 없음(이관 버튼 안내)
+              setFaqItems(memo.ai_faq.map(f => ({ ...f, chunkId: null, core: true })))
+            } else setFaqItems(items)
+          }).catch(() => {})
 
           // ── ai_rules → ai_analyze_prompt 마이그레이션 ──
           // 기존 rules 리스트가 있고 analyze_prompt에 {custom_rules} 변수가 있으면 그대로 → 변수는 서버가 주입
@@ -150,35 +162,108 @@ function AdminAISettings({ data, sb: sbProp, bizId }) {
     setChatSaved(true); setTimeout(() => setChatSaved(false), 2000)
   }
 
-  // ── FAQ 액션 ─────────────────────────────────────
-  const saveFAQ = async updated => {
-    setFaqItems(updated)
-    try {
-      await patchSettings(memo => { memo.ai_faq = updated })
-      setFaqSaved(true); setTimeout(() => setFaqSaved(false), 1800)
-    } catch (e) {}
+  // ── FAQ 액션 (RAG 청크 기반 · 항목별 임베딩) ─────────────────
+  const _faqKey = () => apiKey.trim() || (typeof window !== "undefined" && (window.__systemGeminiKey || window.__geminiKey)) || localStorage.getItem("bliss_gemini_key") || ""
+  const reloadFaq = async () => { try { setFaqItems(await loadFaqItems(bizId)) } catch {} }
+  // 핵심(core) 항목을 settings.ai_faq에 동기화 → 서버가 항상 직접 주입 (RAG가 놓쳐도 보장)
+  const syncCore = async (items) => {
+    const core = (items || []).filter(f => f.core && f.active !== false).map(f => ({ q: f.q, a: f.a, active: true, category: f.category || "기타" }))
+    try { await patchSettings(memo => { memo.ai_faq = core }) } catch {}
   }
-  const addFAQ = () => {
+  const _afterFaqChange = async () => {
+    const items = await loadFaqItems(bizId).catch(() => [])
+    setFaqItems(items); await syncCore(items)
+    setFaqSaved(true); setTimeout(() => setFaqSaved(false), 1800)
+  }
+  const addFAQ = async () => {
     const q = faqNewQ.trim(), a = faqNewA.trim()
     if (!q || !a) return
-    saveFAQ([...faqItems, { q, a, active: true, category: faqNewCat || "기타" }])
-    setFaqNewQ(""); setFaqNewA("")
+    if (!_faqKey()) { setFaqMsg("Gemini 키가 없어 FAQ 임베딩 불가 (운영자 문의)"); return }
+    setFaqBusy(true); setFaqMsg("")
+    try {
+      await saveFaqItem(bizId, { q, a, category: faqNewCat || "기타", core: faqNewCore }, _faqKey())
+      setFaqNewQ(""); setFaqNewA(""); setFaqNewCore(false)
+      await _afterFaqChange()
+    } catch (e) { setFaqMsg("저장 실패: " + (e?.message || e)) }
+    finally { setFaqBusy(false) }
   }
-  const delFAQ = i => saveFAQ(faqItems.filter((_, idx) => idx !== i))
-  const toggleFAQ = i => saveFAQ(faqItems.map((f, idx) => idx === i ? { ...f, active: !f.active } : f))
-  const startEditFAQ = i => { setFaqEditIdx(i); setFaqEditQ(faqItems[i].q); setFaqEditA(faqItems[i].a); setFaqEditCat(faqItems[i].category || "") }
-  const saveEditFAQ = () => {
+  const delFAQ = async (item) => {
+    if (!item.chunkId) { setFaqMsg("레거시 항목 — 먼저 '기존 FAQ 이관'을 실행하세요"); return }
+    setFaqBusy(true)
+    try { await deleteFaqItem(item.chunkId); await _afterFaqChange() }
+    finally { setFaqBusy(false) }
+  }
+  const toggleFAQ = async (item) => {
+    if (!item.chunkId) return
+    await updateFaqMeta(item.chunkId, { ...item, active: item.active === false })
+    await _afterFaqChange()
+  }
+  const toggleCore = async (item) => {
+    if (!item.chunkId) return
+    await updateFaqMeta(item.chunkId, { ...item, core: !item.core })
+    await _afterFaqChange()
+  }
+  const startEditFAQ = item => { setFaqEditIdx(item.chunkId); setFaqEditQ(item.q); setFaqEditA(item.a); setFaqEditCat(item.category || ""); setFaqEditCore(!!item.core) }
+  const saveEditFAQ = async (item) => {
     const q = faqEditQ.trim(), a = faqEditA.trim()
     if (!q || !a) return
-    saveFAQ(faqItems.map((f, i) => i === faqEditIdx ? { ...f, q, a, category: faqEditCat || "기타" } : f))
-    setFaqEditIdx(null)
+    if (!_faqKey()) { setFaqMsg("Gemini 키 없음"); return }
+    setFaqBusy(true); setFaqMsg("")
+    try {
+      await saveFaqItem(bizId, { chunkId: item.chunkId, q, a, category: faqEditCat || "기타", core: faqEditCore, active: item.active }, _faqKey())
+      setFaqEditIdx(null)
+      await _afterFaqChange()
+    } catch (e) { setFaqMsg("저장 실패: " + (e?.message || e)) }
+    finally { setFaqBusy(false) }
+  }
+  // 기존 FAQ 이관 — 레거시 ai_faq + 학습문서 housewaxing_faq.md 의 Q&A를 항목별 RAG 청크로 변환
+  const migrateLegacyFaq = async () => {
+    if (!_faqKey()) { setFaqMsg("Gemini 키 없음"); return }
+    if (!confirm("기존 FAQ(설정 ai_faq + 학습문서 housewaxing_faq.md)를 항목별로 이관하고, 원본 학습문서는 정리합니다. 진행할까요?")) return
+    setMigrating("준비 중…")
+    try {
+      // 1) 현재 청크 FAQ 질문 set (중복 방지)
+      const existing = await loadFaqItems(bizId).catch(() => [])
+      const seen = new Set(existing.map(f => (f.q || "").trim()))
+      const toImport = []
+      // 2) 레거시 ai_faq (settings)
+      const sr = await fetch(`${SB_URL}/rest/v1/businesses?id=eq.${bizId}&select=settings`, { headers: sbHeaders })
+      let memo = {}; try { memo = JSON.parse((await sr.json())[0]?.settings || "{}") } catch {}
+      for (const f of (memo.ai_faq || [])) { if (f.q && !seen.has(f.q.trim())) { seen.add(f.q.trim()); toImport.push({ q: f.q, a: f.a, category: f.category || "기타", core: true }) } }
+      // 3) 학습문서 housewaxing_faq.md 청크 파싱
+      const dr = await fetch(`${SB_URL}/rest/v1/documents?business_id=eq.${bizId}&name=eq.housewaxing_faq.md&select=id`, { headers: sbHeaders })
+      const docs = await dr.json(); const faqDocId = docs?.[0]?.id
+      if (faqDocId) {
+        const cr = await fetch(`${SB_URL}/rest/v1/document_chunks?document_id=eq.${faqDocId}&select=content&order=chunk_index`, { headers: sbHeaders })
+        const chunks = await cr.json()
+        const full = (Array.isArray(chunks) ? chunks : []).map(c => c.content || "").join("\n")
+        let cat = "기타"
+        const re = /(?:\[섹션[:：]\s*(.+?)\])|(?:\*\*Q[.\s]*(.+?)\*\*\s*\n+A[.\s]*([\s\S]*?)(?=\n\*\*Q|\n\[섹션|\n---|\n##|$))/g
+        let m
+        while ((m = re.exec(full))) {
+          if (m[1]) { cat = m[1].replace(/^\d+\.\s*/, "").trim() || "기타"; continue }
+          const q = (m[2] || "").trim(), a = (m[3] || "").trim().replace(/\n{2,}/g, "\n")
+          if (q && a && !seen.has(q)) { seen.add(q); toImport.push({ q, a, category: cat, core: false }) }
+        }
+      }
+      if (toImport.length === 0) { setMigrating(""); setFaqMsg("이관할 새 FAQ가 없습니다 (이미 이관됨)"); return }
+      setMigrating(`임베딩·저장 중 0/${toImport.length}`)
+      await bulkImportFaq(bizId, toImport, _faqKey(), (d, t) => setMigrating(`임베딩·저장 중 ${d}/${t}`))
+      // 4) 원본 학습문서 삭제 (중복 검색 방지)
+      if (faqDocId) {
+        await fetch(`${SB_URL}/rest/v1/document_chunks?document_id=eq.${faqDocId}`, { method: "DELETE", headers: { ...sbHeaders, Prefer: "return=minimal" } }).catch(() => {})
+        await fetch(`${SB_URL}/rest/v1/documents?id=eq.${faqDocId}`, { method: "DELETE", headers: { ...sbHeaders, Prefer: "return=minimal" } }).catch(() => {})
+      }
+      setMigrating("")
+      setFaqMsg(`✓ ${toImport.length}개 이관 완료`)
+      await _afterFaqChange()
+    } catch (e) { setMigrating(""); setFaqMsg("이관 실패: " + (e?.message || e)) }
   }
   // 필터된 FAQ 목록
   const { filteredFAQs, faqCategories } = useMemo(() => {
     const cats = [...new Set(faqItems.map(f => f.category).filter(Boolean))].sort()
     const kw = faqSearch.trim().toLowerCase()
     const filtered = faqItems
-      .map((f, i) => ({ ...f, _idx: i }))
       .filter(f => {
         if (faqCatFilter !== "all" && (f.category || "기타") !== faqCatFilter) return false
         if (faqActiveFilter === "active" && f.active === false) return false
@@ -188,14 +273,17 @@ function AdminAISettings({ data, sb: sbProp, bizId }) {
       })
     return { filteredFAQs: filtered, faqCategories: cats }
   }, [faqItems, faqSearch, faqCatFilter, faqActiveFilter])
-  // 카테고리별 활성/비활성 일괄 토글
-  const bulkToggleByCat = (cat, on) => {
+  // 카테고리별 활성/비활성 일괄 토글 (메타만 — 재임베딩 없음)
+  const bulkToggleByCat = async (cat, on) => {
     if (!confirm(`${cat === 'all' ? '전체' : cat} FAQ를 ${on ? '활성' : '비활성'}으로 변경할까요?`)) return
-    const next = faqItems.map(f => {
-      if (cat === 'all' || (f.category || '기타') === cat) return { ...f, active: on }
-      return f
-    })
-    saveFAQ(next)
+    setFaqBusy(true)
+    try {
+      for (const f of faqItems) {
+        if (!f.chunkId) continue
+        if (cat === 'all' || (f.category || '기타') === cat) await updateFaqMeta(f.chunkId, { ...f, active: on })
+      }
+      await _afterFaqChange()
+    } finally { setFaqBusy(false) }
   }
 
   // ── 섹션 헤더 ─────────────────────────────────────
@@ -218,31 +306,32 @@ function AdminAISettings({ data, sb: sbProp, bizId }) {
   return <div>
     <APageHeader title="AI 설정" desc="Gemini 2.5 Flash — 모든 AI 기능(블리스AI·메시지함·AI Book·예약분석)이 이 설정을 공유합니다" />
 
-    {/* ── 1) API 키 ───────────────────────────────── */}
-    <div className="card" style={{ padding: 0, marginBottom: 10 }}>
+    {/* 1) API 키 — 운영자(테라포트)가 시스템 전역 키로 관리. 매장 사용자는 쓸 일 없어 화면에서 숨김 */}
+    {false && <div className="card" style={{ padding: 0, marginBottom: 10 }}>
       <SectionHeader icon="sparkles" title="🔑 API 키" desc="Gemini 키 하나로 앱 전체 AI가 작동합니다"
         open={openKey} onToggle={() => setOpenKey(v => !v)}
         right={hasSystemKey && <ABadge color={T.success}>시스템 키 사용 중</ABadge>} />
       {openKey && <div style={{ padding: "16px 18px" }}>
-        {hasSystemKey && <div style={{ fontSize: T.fs.xxs, color: T.textMuted, marginBottom: 12, padding: "8px 12px", background: "#f0faf4", borderRadius: 8, lineHeight: 1.5 }}>
-          시스템에 전역 키가 이미 설정되어 있어요. 개인 키를 따로 등록하면 이 키가 우선 사용됩니다.
-        </div>}
-        <div style={{ fontSize: T.fs.xs, color: T.textMuted, marginBottom: 14, lineHeight: 1.6 }}>
-          <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" style={{ color: T.primary, fontWeight: 700 }}>Google AI Studio</a>에서 무료로 발급받을 수 있어요.
-        </div>
-        <AField label="Gemini API 키">
-          <input style={AInp} type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="AIzaSy…"
-            onFocus={e => e.target.style.borderColor = T.primary} onBlur={e => e.target.style.borderColor = "#e8e8f0"} />
-        </AField>
-        {testResult && <div style={{ fontSize: T.fs.xs, padding: "8px 12px", borderRadius: 8, marginBottom: 12, background: testResult.startsWith("✓") ? "#f0faf4" : "#fff5f5", color: testResult.startsWith("✓") ? T.success : T.danger }}>{testResult}</div>}
-        <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={testKey} disabled={testing || !apiKey.trim()} style={{ flex: 1, padding: "11px", borderRadius: 10, border: "1.5px solid " + T.border, background: "#fff", fontSize: T.fs.sm, fontWeight: 600, color: T.textSub, cursor: "pointer", fontFamily: "inherit" }}>
-            {testing ? "테스트 중…" : "연결 테스트"}
-          </button>
-          <AIBtn onClick={saveKey} disabled={!apiKey.trim()} label={saved ? "✓ 저장됨" : "저장"} style={{ flex: 1, background: saved ? T.success : T.primary }} />
-        </div>
+        {hasSystemKey ? <div style={{ fontSize: T.fs.xs, color: T.textSub, padding: "10px 12px", background: "#f0faf4", borderRadius: 8, lineHeight: 1.6 }}>
+          ✓ 시스템 전역 키로 작동 중입니다. 매장에서 따로 키를 입력하실 필요 없어요.
+        </div> : <>
+          <div style={{ fontSize: T.fs.xs, color: T.textMuted, marginBottom: 14, lineHeight: 1.6 }}>
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" style={{ color: T.primary, fontWeight: 700 }}>Google AI Studio</a>에서 무료로 발급받을 수 있어요.
+          </div>
+          <AField label="Gemini API 키">
+            <input style={AInp} type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="AIzaSy…"
+              onFocus={e => e.target.style.borderColor = T.primary} onBlur={e => e.target.style.borderColor = "#e8e8f0"} />
+          </AField>
+          {testResult && <div style={{ fontSize: T.fs.xs, padding: "8px 12px", borderRadius: 8, marginBottom: 12, background: testResult.startsWith("✓") ? "#f0faf4" : "#fff5f5", color: testResult.startsWith("✓") ? T.success : T.danger }}>{testResult}</div>}
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={testKey} disabled={testing || !apiKey.trim()} style={{ flex: 1, padding: "11px", borderRadius: 10, border: "1.5px solid " + T.border, background: "#fff", fontSize: T.fs.sm, fontWeight: 600, color: T.textSub, cursor: "pointer", fontFamily: "inherit" }}>
+              {testing ? "테스트 중…" : "연결 테스트"}
+            </button>
+            <AIBtn onClick={saveKey} disabled={!apiKey.trim()} label={saved ? "✓ 저장됨" : "저장"} style={{ flex: 1, background: saved ? T.success : T.primary }} />
+          </div>
+        </>}
       </div>}
-    </div>
+    </div>}
 
     {/* ── 2) FAQ ───────────────────────────────── */}
     <div className="card" style={{ padding: 0, marginBottom: 10 }}>
@@ -253,6 +342,13 @@ function AdminAISettings({ data, sb: sbProp, bizId }) {
         right={<ABadge color={T.primary}>{faqItems.filter(f => f.active !== false).length}/{faqItems.length}</ABadge>} />
       {openFaq && <div style={{ padding: "16px 18px" }}>
         {faqSaved && <div style={{ fontSize: T.fs.xxs, color: T.success, fontWeight: 700, marginBottom: 8 }}>✓ 저장됨</div>}
+        {faqMsg && <div style={{ fontSize: T.fs.xs, color: faqMsg.startsWith("✓") ? T.success : T.danger, fontWeight: 700, marginBottom: 8 }}>{faqMsg}</div>}
+        <div style={{ fontSize: T.fs.xxs, color: T.textMuted, background: "#F5F3FF", borderRadius: 8, padding: "8px 12px", marginBottom: 10, lineHeight: 1.6 }}>
+          FAQ는 <strong>RAG 검색형</strong>이라 수백 개도 비용 걱정 없어요 (질문과 관련된 것만 AI가 찾아 답). <strong>★ 핵심</strong> 표시한 항목만 항상 직접 주입됩니다.
+          {migrating
+            ? <div style={{ marginTop: 6, color: T.primary, fontWeight: 700 }}>이관 중… {migrating}</div>
+            : <div style={{ marginTop: 6 }}><button onClick={migrateLegacyFaq} style={{ padding: "5px 12px", fontSize: 11, fontWeight: 700, border: "1px solid " + T.primary, background: "#fff", color: T.primary, borderRadius: 6, cursor: "pointer", fontFamily: "inherit" }}>기존 FAQ 이관 (설정 6개 + 학습문서 250개 → 항목별)</button></div>}
+        </div>
 
         {/* 필터 바 */}
         <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
@@ -287,31 +383,36 @@ function AdminAISettings({ data, sb: sbProp, bizId }) {
           ? <AEmpty icon="msgSq" message={faqItems.length === 0 ? "등록된 FAQ가 없어요. 아래에서 추가해보세요" : "필터 결과 없음"} />
           : <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16, maxHeight: 560, overflowY: "auto", paddingRight: 4 }}>
             {filteredFAQs.map(f => {
-              const i = f._idx
-              return <div key={i} style={{
-                border: "1.5px solid " + (f.active === false ? T.gray300 : T.border),
+              const editing = !!f.chunkId && faqEditIdx === f.chunkId
+              return <div key={f.chunkId || f.q} style={{
+                border: "1.5px solid " + (f.active === false ? T.gray300 : (f.core ? "#C4B5FD" : T.border)),
                 borderRadius: 10, padding: "12px 14px",
-                background: f.active === false ? "#fafafa" : "#fff",
+                background: f.active === false ? "#fafafa" : (f.core ? "#FAF8FF" : "#fff"),
                 opacity: f.active === false ? 0.55 : 1,
               }}>
-                {faqEditIdx === i
+                {editing
                   ? <div>
                     <div style={{ fontSize: T.fs.xxs, color: T.textMuted, marginBottom: 4, fontWeight: 700 }}>질문</div>
                     <input style={{ ...AInp, marginBottom: 8 }} value={faqEditQ} onChange={e => setFaqEditQ(e.target.value)} placeholder="고객 질문" />
                     <div style={{ fontSize: T.fs.xxs, color: T.textMuted, marginBottom: 4, fontWeight: 700 }}>답변</div>
                     <textarea style={{ ...AInp, minHeight: 80, resize: "vertical", marginBottom: 8, lineHeight: 1.6 }} value={faqEditA} onChange={e => setFaqEditA(e.target.value)} placeholder="답변 내용" />
                     <div style={{ fontSize: T.fs.xxs, color: T.textMuted, marginBottom: 4, fontWeight: 700 }}>카테고리</div>
-                    <input style={{ ...AInp, marginBottom: 10 }} value={faqEditCat} onChange={e => setFaqEditCat(e.target.value)} placeholder="예: 사후관리&트러블" list="faq-cat-list-edit" />
+                    <input style={{ ...AInp, marginBottom: 8 }} value={faqEditCat} onChange={e => setFaqEditCat(e.target.value)} placeholder="예: 사후관리&트러블" list="faq-cat-list-edit" />
                     <datalist id="faq-cat-list-edit">{faqCategories.map(c => <option key={c} value={c} />)}</datalist>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: T.fs.xs, color: T.textSub, marginBottom: 10, cursor: "pointer" }}>
+                      <input type="checkbox" checked={faqEditCore} onChange={e => setFaqEditCore(e.target.checked)} /> ★ 핵심 (항상 직접 주입 — 절대 틀리면 안 되는 단답)
+                    </label>
                     <div style={{ display: "flex", gap: 8 }}>
-                      <AIBtn onClick={saveEditFAQ} disabled={!faqEditQ.trim() || !faqEditA.trim()} label="저장" style={{ flex: 1 }} />
+                      <AIBtn onClick={() => saveEditFAQ(f)} disabled={faqBusy || !faqEditQ.trim() || !faqEditA.trim()} label={faqBusy ? "저장중…" : "저장"} style={{ flex: 1 }} />
                       <button onClick={() => setFaqEditIdx(null)} style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1.5px solid " + T.border, background: "none", fontSize: T.fs.sm, fontWeight: 600, color: T.textSub, cursor: "pointer", fontFamily: "inherit" }}>취소</button>
                     </div>
                   </div>
                   : <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
+                        {f.core && <span style={{ fontSize: 10, fontWeight: 800, padding: "1px 7px", borderRadius: 10, background: "#EDE7F6", color: "#5B21B6" }}>★ 핵심</span>}
                         {f.category && <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 10, background: T.primaryLt, color: T.primaryDk }}>{f.category}</span>}
+                        {!f.chunkId && <span style={{ fontSize: 10, fontWeight: 700, color: T.danger }}>미이관(이관 버튼 실행 필요)</span>}
                       </div>
                       <div style={{ fontSize: T.fs.sm, color: T.text, fontWeight: 700, lineHeight: 1.5, marginBottom: 6 }}>
                         <span style={{ color: T.primary, marginRight: 6 }}>Q.</span>{f.q}
@@ -321,9 +422,10 @@ function AdminAISettings({ data, sb: sbProp, bizId }) {
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                      <button onClick={() => toggleFAQ(i)} title={f.active === false ? "활성화" : "비활성화"} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid " + T.border, background: f.active === false ? "#fff" : "#f0faf4", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: f.active === false ? T.gray500 : T.success }}>{f.active === false ? "OFF" : "ON"}</button>
-                      <button onClick={() => startEditFAQ(i)} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid " + T.border, background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><I name="edit" size={12} style={{ color: T.gray500 }} /></button>
-                      <button onClick={() => { if (confirm("이 FAQ를 삭제하시겠어요?")) delFAQ(i) }} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid #fecaca", background: "#fff5f5", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><I name="trash" size={12} style={{ color: T.danger }} /></button>
+                      <button onClick={() => toggleCore(f)} disabled={!f.chunkId || faqBusy} title={f.core ? "핵심 해제" : "핵심 지정(항상 직접 주입)"} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid " + (f.core ? "#C4B5FD" : T.border), background: f.core ? "#EDE7F6" : "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: f.core ? "#5B21B6" : T.gray400 }}>{f.core ? "★" : "☆"}</button>
+                      <button onClick={() => toggleFAQ(f)} disabled={!f.chunkId || faqBusy} title={f.active === false ? "활성화" : "비활성화"} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid " + T.border, background: f.active === false ? "#fff" : "#f0faf4", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: f.active === false ? T.gray500 : T.success }}>{f.active === false ? "OFF" : "ON"}</button>
+                      <button onClick={() => startEditFAQ(f)} disabled={!f.chunkId} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid " + T.border, background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><I name="edit" size={12} style={{ color: T.gray500 }} /></button>
+                      <button onClick={() => { if (confirm("이 FAQ를 삭제하시겠어요?")) delFAQ(f) }} disabled={faqBusy} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid #fecaca", background: "#fff5f5", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><I name="trash" size={12} style={{ color: T.danger }} /></button>
                     </div>
                   </div>}
               </div>
@@ -339,47 +441,18 @@ function AdminAISettings({ data, sb: sbProp, bizId }) {
           <div style={{ fontSize: T.fs.xxs, color: T.textMuted, marginBottom: 4, fontWeight: 700 }}>답변</div>
           <textarea style={{ ...AInp, minHeight: 90, resize: "vertical", marginBottom: 8, lineHeight: 1.6 }} value={faqNewA} onChange={e => setFaqNewA(e.target.value)} placeholder={"예: 처음엔 살짝 따끔하실 수 있어요. 2회차부터 훨씬 편해집니다 :)"} />
           <div style={{ fontSize: T.fs.xxs, color: T.textMuted, marginBottom: 4, fontWeight: 700 }}>카테고리</div>
-          <input style={{ ...AInp, marginBottom: 10 }} value={faqNewCat} onChange={e => setFaqNewCat(e.target.value)} placeholder="예: 사후관리&트러블 (기존 카테고리 선택 or 새로 입력)" list="faq-cat-list-new" />
+          <input style={{ ...AInp, marginBottom: 8 }} value={faqNewCat} onChange={e => setFaqNewCat(e.target.value)} placeholder="예: 사후관리&트러블 (기존 카테고리 선택 or 새로 입력)" list="faq-cat-list-new" />
           <datalist id="faq-cat-list-new">{faqCategories.map(c => <option key={c} value={c} />)}</datalist>
-          <AIBtn onClick={addFAQ} disabled={!faqNewQ.trim() || !faqNewA.trim()} label="FAQ 추가" />
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: T.fs.xs, color: T.textSub, marginBottom: 10, cursor: "pointer" }}>
+            <input type="checkbox" checked={faqNewCore} onChange={e => setFaqNewCore(e.target.checked)} /> ★ 핵심 (항상 직접 주입 — 절대 틀리면 안 되는 단답만)
+          </label>
+          <AIBtn onClick={addFAQ} disabled={faqBusy || !faqNewQ.trim() || !faqNewA.trim()} label={faqBusy ? "추가중…" : "FAQ 추가"} />
         </div>
       </div>}
     </div>
 
-    {/* ── 3) 메시지함 자동 응대 프롬프트 ─────────────── */}
-    <div className="card" style={{ padding: 0, marginBottom: 10 }}>
-      <SectionHeader icon="msgSq" title="💬 메시지함 자동 응대 프롬프트"
-        desc="네이버톡톡·인스타·WhatsApp 등 고객 메시지에 AI가 답변할 때의 지침"
-        open={openChat} onToggle={() => setOpenChat(v => !v)} />
-      {openChat && <div style={{ padding: "16px 18px" }}>
-        <div style={{ fontSize: T.fs.xxs, color: T.textMuted, marginBottom: 12, lineHeight: 1.6 }}>
-          영업시간·정책·금지 사항 등을 간결하게 작성하세요. 시술 가격표와 FAQ는 <strong>자동으로 포함</strong>됩니다.
-        </div>
-        <AField label="응대 지침">
-          <textarea style={{ ...AInp, minHeight: 160, resize: "vertical", lineHeight: 1.7 }} value={chatPrompt} onChange={e => setChatPrompt(e.target.value)}
-            placeholder={"예:\n- 영업시간: 오전 11시 ~ 오후 10시 (연중무휴)\n- 가격 문의 → 가격표 기준 정확히 안내\n- 할인/이벤트는 안내 금지\n- 예약은 네이버 링크로 유도"} />
-        </AField>
-        <AIBtn onClick={saveChatPrompt} label={chatSaved ? "✓ 저장됨" : "저장"} style={{ background: chatSaved ? T.success : T.primary }} />
-      </div>}
-    </div>
-
-    {/* ── 4) 네이버 예약 AI 분석 프롬프트 ─────────────── */}
-    <div className="card" style={{ padding: 0, marginBottom: 10 }}>
-      <SectionHeader icon="sparkles" title="🔍 네이버 예약 AI 분석 프롬프트"
-        desc="네이버 예약 원문에서 태그·시술을 추출하는 프롬프트 (고급)"
-        open={openAnal} onToggle={() => setOpenAnal(v => !v)} />
-      {openAnal && <div style={{ padding: "16px 18px" }}>
-        <div style={{ fontSize: T.fs.xxs, color: T.textMuted, marginBottom: 12, lineHeight: 1.6 }}>
-          비워두면 시스템 기본 프롬프트를 사용합니다.<br />
-          사용 가능 변수: <code>{"{tags}"}</code> <code>{"{services}"}</code> <code>{"{cust_name}"}</code> <code>{"{visit_count}"}</code> <code>{"{naver_text}"}</code>
-        </div>
-        <AField label="분석 프롬프트">
-          <textarea style={{ ...AInp, minHeight: 240, resize: "vertical", lineHeight: 1.6, fontFamily: "monospace", fontSize: T.fs.xs }} value={analyzePrompt} onChange={e => setAnalyzePrompt(e.target.value)}
-            placeholder={"비워두면 시스템 기본 프롬프트 사용\n\n예시:\n당신은 왁싱샵 예약 정보를 분석하는 AI입니다.\n[태그 목록] {tags}\n[시술상품 목록] {services}\n\n[규칙]\n- 태그 목록에 있는 태그만 선택\n- '신규','예약금완료' 제외\n- 음모왁싱/음부왁싱 = 브라질리언\n\n[예약 정보]\n고객명: {cust_name}\n방문횟수: {visit_count}\n\n[고객 요청]\n{naver_text}"} />
-        </AField>
-        <AIBtn onClick={saveAnalyzePrompt} label={analyzeSaved ? "✓ 저장됨" : "저장"} style={{ background: analyzeSaved ? T.success : T.primary }} />
-      </div>}
-    </div>
+    {/* 3) 메시지함 자동응대 프롬프트 · 4) 네이버 예약 AI 분석 프롬프트 — 현재 서버 코드 프롬프트로 동작(설정값 미사용)이라 화면에서 숨김.
+        자동응답 지식은 FAQ + 학습문서(RAG)로 관리. (관련 state/save 함수는 호환 위해 보존) */}
 
     {/* ── 5) 📚 학습 문서 (RAG) ─────────────────── */}
     <div style={{ marginBottom: 16, border: "1px solid " + T.border, borderRadius: 12, overflow: "hidden", background: T.bgCard }}>

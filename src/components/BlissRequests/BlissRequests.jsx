@@ -14,6 +14,7 @@ const STATUS = {
 };
 
 import MarkupEditor from '../common/MarkupEditor'
+import OffRequestCard from './OffRequestCard'
 
 function BlissRequests({ data, currentUser, userBranches, isMaster }) {
   const [tab, setTab] = useState("notices"); // notices | requests
@@ -29,6 +30,8 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
   // Form state
   const [form, setForm] = useState({ name: "", branchId: userBranches?.[0] || "", description: "", images: [] });
   const [noticeForm, setNoticeForm] = useState({ title: "", version: "", content: "", images: [] });
+  const [showOffForm, setShowOffForm] = useState(false);
+  const [offForm, setOffForm] = useState({ title: "", start: "", end: "", maxPicks: 2, exclude: [], excludeInput: "" });
   const [submitting, setSubmitting] = useState(false);
   // Reply form (master only)
   const [replyText, setReplyText] = useState("");
@@ -129,6 +132,53 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
     await saveNotices(notices.filter(n => n.id !== id));
     if (openNoticeId === id) setOpenNoticeId(null);
   };
+  // ── 휴무 신청 (공지에 얹는 특수 글) ──
+  const submitOffRequest = async () => {
+    if (!offForm.start || !offForm.end) { alert("기간(시작일·종료일)을 입력하세요"); return; }
+    if (offForm.end < offForm.start) { alert("종료일이 시작일보다 빠릅니다"); return; }
+    const row = {
+      id: genId(), kind: "off_request",
+      title: offForm.title.trim() || `휴무 신청 (${offForm.start}~${offForm.end})`,
+      createdAt: new Date().toISOString(), author: currentUser?.name || "관리자",
+      offReq: { start: offForm.start, end: offForm.end, exclude: offForm.exclude || [], maxPicks: Number(offForm.maxPicks) || 2, picks: {}, status: "open" },
+    };
+    await saveNotices([row, ...notices]);
+    setOffForm({ title: "", start: "", end: "", maxPicks: 2, exclude: [], excludeInput: "" });
+    setShowOffForm(false);
+    setOpenNoticeId(row.id);
+  };
+  const updateOffNotice = async (updated) => {
+    await saveNotices(notices.map(n => n.id === updated.id ? updated : n));
+  };
+  const confirmOffRequest = async (notice) => {
+    const oq = notice.offReq || {};
+    try {
+      const r = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.schHistory_v1&select=value`, { headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY } });
+      const rows = await r.json();
+      const raw = rows?.[0]?.value;
+      const sch = typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
+      Object.entries(oq.picks || {}).forEach(([empId, p]) => {
+        if (!p || p.none) return;
+        (p.dates || []).forEach(date => {
+          const mk = date.slice(0, 7);
+          if (!sch[mk]) sch[mk] = {};
+          if (!sch[mk][empId]) sch[mk][empId] = {};
+          sch[mk][empId][date] = "휴무(꼭)";
+        });
+      });
+      const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
+      await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
+        method: "POST", headers: H,
+        body: JSON.stringify({ business_id: _activeBizId, id: "schHistory_v1", key: "schHistory_v1", value: JSON.stringify(sch), updated_at: new Date().toISOString() })
+      });
+      const updated = { ...notice, offReq: { ...oq, status: "confirmed", confirmedAt: new Date().toISOString(), confirmedBy: currentUser?.name || "관리자" } };
+      await saveNotices(notices.map(n => n.id === notice.id ? updated : n));
+      alert("근무표에 휴무(꼭)로 반영했어요. 직원 근무표에서 확인하세요.");
+    } catch (e) {
+      console.error("[off confirm]", e);
+      alert("근무표 반영 실패: " + (e?.message || e));
+    }
+  };
   // 공지 확인 토글 — 클릭 시 ack 추가/해제 (확인 안 한 상태면 ISO 저장, 이미 확인한 상태면 제거)
   const ackNotice = async (noticeId, empName) => {
     const nowIso = new Date().toISOString();
@@ -142,6 +192,22 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
       }
       return { ...n, acks };
     });
+    await saveNotices(next);
+  };
+
+  // 공지 댓글 — 추가/삭제 (작성자 본인 또는 마스터만 삭제)
+  const [commentDrafts, setCommentDrafts] = useState({});
+  const addComment = async (noticeId) => {
+    const txt = (commentDrafts[noticeId] || "").trim();
+    if (!txt) return;
+    const cm = { id: "cm_" + Math.random().toString(36).slice(2, 10), name: currentUser?.name || "직원", text: txt, createdAt: new Date().toISOString() };
+    const next = notices.map(n => n.id === noticeId ? { ...n, comments: [...(n.comments || []), cm] } : n);
+    setCommentDrafts(p => ({ ...p, [noticeId]: "" }));
+    await saveNotices(next);
+  };
+  const removeComment = async (noticeId, cmId) => {
+    if (!window.confirm("이 댓글을 삭제할까요?")) return;
+    const next = notices.map(n => n.id === noticeId ? { ...n, comments: (n.comments || []).filter(c => c.id !== cmId) } : n);
     await saveNotices(next);
   };
 
@@ -358,6 +424,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
       {tab === "requests" && <button onClick={()=>setShowForm(true)} style={{padding:"10px 18px",borderRadius:10,border:"none",background:T.primary,color:"#fff",fontSize:T.fs.sm,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
         <I name="plus" size={14}/> 새 요청
       </button>}
+      {/* 휴무 신청 버튼 — 보류(설계 재검토). 진입점만 숨김, 코드는 보존 */}
       {tab === "notices" && isMaster && <button onClick={()=>setShowNoticeForm(true)} style={{padding:"10px 18px",borderRadius:10,border:"none",background:T.primary,color:"#fff",fontSize:T.fs.sm,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
         <I name="plus" size={14}/> 새 공지
       </button>}
@@ -381,6 +448,37 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
     </div>
     {/* 공지사항 */}
     {tab==="notices" && <>
+      {showOffForm && <div style={{background:"#F5F3FF",border:"1.5px solid #C4B5FD",borderRadius:12,padding:18,marginBottom:18}}>
+        <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#5B21B6",marginBottom:12,display:"flex",alignItems:"center",gap:6}}>
+          <I name="calendar" size={14} color="#5B21B6"/> 휴무 신청 만들기
+        </div>
+        <input value={offForm.title} onChange={e=>setOffForm(p=>({...p,title:e.target.value}))} placeholder="제목 (비우면 자동 — 예: 휴무 신청 6/1~7/5)"
+          style={{width:"100%",padding:"9px 12px",fontSize:13,border:"1.5px solid "+T.border,borderRadius:8,fontFamily:"inherit",marginBottom:8,boxSizing:"border-box"}}/>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>
+          <label style={{fontSize:12,color:T.textSub,fontWeight:600}}>기간</label>
+          <input type="date" value={offForm.start} onChange={e=>setOffForm(p=>({...p,start:e.target.value}))} style={{padding:"7px 10px",fontSize:13,border:"1px solid "+T.border,borderRadius:8,fontFamily:"inherit"}}/>
+          <span style={{color:T.textMuted}}>~</span>
+          <input type="date" value={offForm.end} onChange={e=>setOffForm(p=>({...p,end:e.target.value}))} style={{padding:"7px 10px",fontSize:13,border:"1px solid "+T.border,borderRadius:8,fontFamily:"inherit"}}/>
+          <label style={{fontSize:12,color:T.textSub,fontWeight:600,marginLeft:8}}>인당 최대</label>
+          <input type="number" min={1} max={5} value={offForm.maxPicks} onChange={e=>setOffForm(p=>({...p,maxPicks:e.target.value}))} style={{width:60,padding:"7px 10px",fontSize:13,border:"1px solid "+T.border,borderRadius:8,fontFamily:"inherit"}}/>
+          <span style={{fontSize:12,color:T.textSub}}>개</span>
+        </div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:10}}>
+          <label style={{fontSize:12,color:T.textSub,fontWeight:600}}>신청 제외일</label>
+          <input type="date" value={offForm.excludeInput} onChange={e=>setOffForm(p=>({...p,excludeInput:e.target.value}))} style={{padding:"7px 10px",fontSize:13,border:"1px solid "+T.border,borderRadius:8,fontFamily:"inherit"}}/>
+          <button onClick={()=>{const d=offForm.excludeInput;if(d&&!offForm.exclude.includes(d))setOffForm(p=>({...p,exclude:[...p.exclude,d].sort(),excludeInput:""}));}}
+            style={{padding:"6px 12px",fontSize:12,fontWeight:700,borderRadius:7,border:"1px solid "+T.primary,background:"#fff",color:T.primary,cursor:"pointer",fontFamily:"inherit"}}>추가</button>
+          {offForm.exclude.map(d=>(
+            <span key={d} style={{fontSize:11,fontWeight:700,color:T.textSub,background:T.gray100,borderRadius:6,padding:"3px 8px",display:"inline-flex",alignItems:"center",gap:4}}>
+              {d} <span onClick={()=>setOffForm(p=>({...p,exclude:p.exclude.filter(x=>x!==d)}))} style={{cursor:"pointer",color:T.danger,fontWeight:800}}>×</span>
+            </span>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+          <button onClick={()=>{setShowOffForm(false);setOffForm({title:"",start:"",end:"",maxPicks:2,exclude:[],excludeInput:""});}} style={{padding:"8px 16px",borderRadius:8,border:"1px solid "+T.border,background:"#fff",color:T.textSub,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>취소</button>
+          <button onClick={submitOffRequest} style={{padding:"8px 18px",borderRadius:8,border:"none",background:"#7C3AED",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>만들기</button>
+        </div>
+      </div>}
       {showNoticeForm && <div style={{background:"#F5F3FF",border:"1.5px solid #C4B5FD",borderRadius:12,padding:18,marginBottom:18}}>
         <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#5B21B6",marginBottom:12,display:"flex",alignItems:"center",gap:6}}>
           <I name={editingNoticeId?"edit":"bell"} size={14} color="#5B21B6"/> {editingNoticeId?"공지 수정":"새 공지 작성"}
@@ -461,7 +559,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
                   {/* 라벨 + 버전 + 첨부 카운트 */}
                   <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
                     <span style={{fontSize:10,fontWeight:T.fw.bolder,padding:"2px 7px",borderRadius:4,background:"#F5F3FF",color:"#5B21B6",letterSpacing:0.3,display:"inline-flex",alignItems:"center",gap:3}}>
-                      <I name="bell" size={9} color="#5B21B6"/> 공지
+                      <I name={n.kind==="off_request"?"calendar":"bell"} size={9} color="#5B21B6"/> {n.kind==="off_request"?"휴무 신청":"공지"}
                     </span>
                     {n.version && <span style={{fontSize:9,padding:"2px 5px",borderRadius:3,background:T.gray100,color:T.textSub,fontFamily:"monospace",fontWeight:700}}>{n.version}</span>}
                     {imgs.length > 0 && <span style={{fontSize:10,color:T.gray500,fontWeight:600,display:"inline-flex",alignItems:"center",gap:3}}>
@@ -479,7 +577,17 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
                 </div>
                 <I name={isOpen?"chevD":"chevR"} size={14} color={T.gray400}/>
               </div>
-              {isOpen && <div style={{padding:"0 16px 16px",borderTop:"1px solid "+T.gray100}}>
+              {isOpen && n.kind==="off_request" && <div style={{padding:"4px 16px 16px",borderTop:"1px solid "+T.gray100}}>
+                <OffRequestCard notice={n} employees={employees} isMaster={isMaster}
+                  onUpdate={updateOffNotice} onConfirm={confirmOffRequest}/>
+                {isMaster && <div style={{marginTop:10,display:"flex",justifyContent:"flex-end"}}>
+                  <button onClick={()=>removeNotice(n.id)}
+                    style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+T.danger+"66",background:"#fff5f5",color:T.danger,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:4}}>
+                    <I name="trash" size={11} color={T.danger}/> 휴무 신청 삭제
+                  </button>
+                </div>}
+              </div>}
+              {isOpen && n.kind!=="off_request" && <div style={{padding:"0 16px 16px",borderTop:"1px solid "+T.gray100}}>
                 <div style={{fontSize:13,color:T.text,lineHeight:1.7,whiteSpace:"pre-wrap",padding:"12px 0"}}>{n.content}</div>
                 {imgs.length > 0 && <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:10}}>
                   {imgs.map((img, i) => (
@@ -542,6 +650,34 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
                     })}
                   </div>
                 </div>}
+                {/* 댓글 */}
+                <div style={{marginTop:12,paddingTop:12,borderTop:"1px dashed "+T.gray200}}>
+                  <div style={{fontSize:12,fontWeight:T.fw.bolder,color:T.text,display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+                    <I name="msgSq" size={13} color={T.primary}/> 댓글 <span style={{fontSize:11,color:T.textMuted,fontWeight:600}}>({(n.comments||[]).length})</span>
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:8}}>
+                    {(n.comments||[]).map(c=>(
+                      <div key={c.id} style={{display:"flex",gap:7,alignItems:"baseline",fontSize:12,background:T.gray100,borderRadius:8,padding:"6px 9px"}}>
+                        <span style={{fontWeight:700,color:T.text,flex:"0 0 auto"}}>{c.name}</span>
+                        <span style={{color:T.text,flex:1,minWidth:0,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{c.text}</span>
+                        <span style={{fontSize:9,color:T.textMuted,flex:"0 0 auto"}}>{fmtDate(c.createdAt)}</span>
+                        {(isMaster || c.name === (currentUser?.name)) && <button onClick={()=>removeComment(n.id,c.id)} title="삭제"
+                          style={{border:"none",background:"none",cursor:"pointer",padding:0,flex:"0 0 auto",display:"inline-flex",alignItems:"center"}}>
+                          <I name="x" size={11} color={T.textMuted}/>
+                        </button>}
+                      </div>
+                    ))}
+                    {(n.comments||[]).length===0 && <span style={{fontSize:11,color:T.textMuted}}>첫 댓글을 남겨보세요.</span>}
+                  </div>
+                  <div style={{display:"flex",gap:6}}>
+                    <input value={commentDrafts[n.id]||""} onChange={e=>setCommentDrafts(p=>({...p,[n.id]:e.target.value}))}
+                      onKeyDown={e=>{ if(e.key==='Enter' && !e.nativeEvent.isComposing){ e.preventDefault(); addComment(n.id); } }}
+                      placeholder="댓글 입력…"
+                      style={{flex:1,padding:"7px 10px",fontSize:12,border:"1px solid "+T.border,borderRadius:8,fontFamily:"inherit"}}/>
+                    <button onClick={()=>addComment(n.id)}
+                      style={{padding:"7px 14px",borderRadius:8,border:"none",background:T.primary,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>등록</button>
+                  </div>
+                </div>
                 {isMaster && <div style={{marginTop:12,display:"flex",gap:6,flexWrap:"wrap"}}>
                   <button onClick={()=>startEditNotice(n)}
                     style={{padding:"4px 10px",borderRadius:6,border:"1px solid #C4B5FD",background:"#F5F3FF",color:"#5B21B6",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:4}}>

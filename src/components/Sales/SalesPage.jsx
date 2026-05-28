@@ -17,6 +17,20 @@ import SalesGridPage from './SalesGridPage'
 const POINT_EXCL_FROM = '2026-05-26';
 const exclPt = (sale, v) => ((sale?.date || '') >= POINT_EXCL_FROM ? (v || 0) : 0);
 
+/* ── 동의서 필요 상품(charge service_name) → 템플릿 매핑 (SaleForm 동일 로직) ── */
+//   컨디션체크리스트(ct_condition_v3)·방문동의(ct_consent_full_ko_v3)는 매 방문 차트라 여기 매핑 X
+//   → 구매(금액권/패키지/연간권) 동의서 템플릿만 반환. 매칭 안 되면 null(동의서 불필요)
+const _consentTplForName = (name, services) => {
+  const svc = (services || []).find(x => x.name === name);
+  const nm = svc?.name || name || '';
+  const cat = svc?.cat;
+  if (cat === '1s18w2l46') return 'ct_gift_ko';                          // 선불권/금액권
+  if (/연간|회원권|할인권/.test(nm)) return 'ct_annual_member_ko';        // 연간권
+  if (cat === 'c1fbbbff-' || /PKG|패키지/i.test(nm))                      // 패키지(다회권)
+    return /에너지/.test(nm) ? 'ct_energy_package' : 'ct_package';
+  return null;
+};
+
 /* ── sale_details 캐시 ── */
 const _detailCache = {};  // { saleId: [rows...] | "loading" }
 
@@ -303,6 +317,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
   const [q, setQ] = useSessionState("sales_q", "", { ttlMs: TTL.SEARCH });
   const [expandedId, setExpandedId] = useSessionState("sales_expandedId", null, { ttlMs: TTL.TAB });
   const [detailMap, setDetailMap] = useState({});  // saleId → [detail rows]
+  const [consentRowMap, setConsentRowMap] = useState({});  // saleId → {state:'done'|'sent'|'need', url?} (리스트 행 표시용)
 
   // sales 행의 svc_x/prod_x NET 결제값 직접 사용
   // v3.7.240 SaleForm에서 매출 저장 시 결제수단을 시술/제품으로 정확히 분리해 DB에 저장하므로
@@ -334,6 +349,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
     }
   }, [detailMap]);
 
+
   const inRange = (date) => {
     if (periodKey==="all" || (!startDate && !endDate)) return true;
     if (startDate && endDate) return date >= startDate && date <= endDate;
@@ -355,6 +371,77 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
     if (ca !== cb) return cb.localeCompare(ca);
     return (b.id||"").localeCompare(a.id||"");
   });
+
+  // ── 동의서 상태 batch 로드 (보이는 매출만, 필터/목록 변경 시 1회 — 펼침 무관) ──
+  // 키: sales.reservation_id ↔ consent_tokens.prefill_data->>reservation_id(발송) / customer_consents.form_data->>reservation_id(작성)
+  // 동의서 필요 여부: package_transactions(type=charge, sale_id) = 선불권/패키지/연간권 구매분
+  const _consentBatchRef = React.useRef("");
+  React.useEffect(() => {
+    const visible = sales.filter(s => s.reservationId).slice(0, 400); // 부하 가드: 최대 400행
+    if (visible.length === 0) { setConsentRowMap({}); return; }
+    const svcCount = (data?.services || []).length;
+    const key = svcCount + "|" + visible.map(s => s.id).join(",");
+    if (_consentBatchRef.current === key) return;
+    _consentBatchRef.current = key;
+    let cancelled = false;
+    (async () => {
+      const chunk = (arr, n) => { const o = []; for (let i = 0; i < arr.length; i += n) o.push(arr.slice(i, i + n)); return o; };
+      const saleIds = visible.map(s => s.id);
+      const resIds = [...new Set(visible.map(s => s.reservationId))];
+      // 1) 매출별 "필요 동의서 템플릿" — 선불권/패키지/연간권 구매(charge) service_name → 템플릿
+      const needTplBySale = {}; // saleId → Set(tplId)
+      for (const c of chunk(saleIds, 100)) {
+        const rows = await sb.get("package_transactions", `&type=eq.charge&sale_id=in.(${c.join(",")})`).catch(() => []);
+        (rows || []).forEach(r => {
+          const tpl = _consentTplForName(r.service_name, data?.services);
+          if (!tpl || !r.sale_id) return;
+          if (!needTplBySale[r.sale_id]) needTplBySale[r.sale_id] = new Set();
+          needTplBySale[r.sale_id].add(tpl);
+        });
+      }
+      // 2) 예약별 발송(token)/작성(consent) 템플릿 집합 — reservation_id 기준
+      const sentTplByRes = {};   // resid → Set(tplId)
+      const signedTplByRes = {}; // resid → Map(tplId → 작성본 url)
+      for (const c of chunk(resIds, 60)) {
+        const enc = c.map(encodeURIComponent).join(",");
+        const [tk, cs] = await Promise.all([
+          sb.get("consent_tokens", `&prefill_data->>reservation_id=in.(${enc})`).catch(() => []),
+          sb.get("customer_consents", `&form_data->>reservation_id=in.(${enc})`).catch(() => []),
+        ]);
+        (tk || []).forEach(t => {
+          const r = t?.prefill_data?.reservation_id; if (!r) return;
+          if (!sentTplByRes[r]) sentTplByRes[r] = new Set();
+          if (t.template_id) sentTplByRes[r].add(t.template_id);
+          if (Array.isArray(t.template_ids)) t.template_ids.forEach(x => sentTplByRes[r].add(x));
+        });
+        (cs || []).forEach(c2 => {
+          const r = c2?.form_data?.reservation_id; if (!r) return;
+          if (!signedTplByRes[r]) signedTplByRes[r] = new Map();
+          if (c2.template_id) signedTplByRes[r].set(c2.template_id, c2.document_url || c2.signature_url || null);
+        });
+      }
+      if (cancelled) return;
+      const map = {};
+      visible.forEach(s => {
+        const needed = needTplBySale[s.id];
+        if (!needed || needed.size === 0) return; // 구매 동의서 불필요 → 아이콘 없음
+        const r = s.reservationId;
+        const signedM = signedTplByRes[r] || new Map();
+        const sentS = sentTplByRes[r] || new Set();
+        let anySigned = false, anySent = false, url = null;
+        // 필요 템플릿 중 작성된 게 있나? 발송된 게 있나? (컨디션체크리스트는 needed에 없으므로 매칭 안 됨)
+        for (const tpl of needed) {
+          if (signedM.has(tpl)) { anySigned = true; if (url === null) url = signedM.get(tpl); }
+          if (sentS.has(tpl)) anySent = true;
+        }
+        if (anySigned) map[s.id] = { state: 'done', url };
+        else if (anySent) map[s.id] = { state: 'sent' };
+        else map[s.id] = { state: 'need' };
+      });
+      setConsentRowMap(map);
+    })();
+    return () => { cancelled = true; };
+  }, [sales.map(s => s.id).join(","), (data?.services || []).length]);
 
   // ── 날짜 범위 lazy-load: PostgREST max-rows=1000 제한 때문에 AppShell 초기 로드도 일부 누락
   // → startDate 변경 시 항상 그 범위 서버 조회 (sb.getAll 페이지네이션). 중복은 _lazyLoadedRanges로 차단
@@ -897,6 +984,23 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
                         onClick={s.custId ? (e)=>{e.stopPropagation(); goToCustomer(s.custId);} : undefined}
                         style={s.custId ? {color:T.primary,textDecoration:"underline",textDecorationColor:T.primary+"55",cursor:"pointer"} : undefined}>{_nm||"-"}</span>
                       {_title && <span style={{marginLeft:4,fontSize:T.fs.xxs,color:T.textSub}}>({_title})</span>}
+                      {(() => {
+                        const cs = consentRowMap[s.id];
+                        if (!cs) return null;
+                        // 노트 아이콘 1개로 3상태: 미발송=회색+금지 / 발송됨=무색(기본) / 작성완료=푸른색
+                        const cfg = cs.state==='done' ? {c:"#2563eb", t:"동의서 작성 완료 (클릭하여 보기)", ban:false}
+                          : cs.state==='sent' ? {c:T.text, t:"동의서 발송됨 · 미작성", ban:false}
+                          : {c:"#c7ccd1", t:"동의서 미발송 (링크 안 보냄)", ban:true};
+                        return <span title={cfg.t}
+                          onClick={cs.url ? (e)=>{e.stopPropagation(); window.open(cs.url,"_blank","noopener");} : undefined}
+                          style={{position:"relative",display:"inline-flex",alignItems:"center",marginLeft:6,verticalAlign:"middle",cursor:cs.url?"pointer":"default"}}>
+                          <I name="fileText" size={14} color={cfg.c}/>
+                          {cfg.ban && <svg width="11" height="11" viewBox="0 0 24 24" style={{position:"absolute",right:-4,bottom:-3}}>
+                            <circle cx="12" cy="12" r="9" fill="#fff" stroke="#c0392b" strokeWidth="2.6"/>
+                            <line x1="6" y1="6" x2="18" y2="18" stroke="#c0392b" strokeWidth="2.6"/>
+                          </svg>}
+                        </span>;
+                      })()}
                     </td>;
                   })()}
                   <td style={{color:T.textSub,fontSize:T.fs.xxs}}>{s.staffName||"-"}</td>

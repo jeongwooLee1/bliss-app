@@ -1,7 +1,34 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.866** (https://blissme.ai/version.txt) — 로컬 `BLISS_V`/`version.txt` 일치
+- **라이브: v3.7.887** (https://blissme.ai/version.txt) — 로컬 `BLISS_V`/`version.txt` 일치
+
+## 🟡 진행 (2026-05-28) — 카카오 알림톡 알리고→엠포(UMS) 전환  ★다음 세션 이어받기★
+**배경**: 엠포 카카오 알림톡 단가(5원)가 알리고보다 저렴 → 알림톡을 엠포로 전환(2026-05-28 정우님 결정). SMS는 이미 엠포 NPRO 사용 중.
+
+**현재 상태**:
+- **send-alimtalk Edge Function 배포 완료**(verify_jwt=false). send-sms와 동일 인증(`ums_token_cache` id='default', `/api/v1/auth` code"100" 24h 캐시) + POST `https://ums.emfo-api.co.kr/api/v1/send/alt` (callback=branch.sms_callback, senderKey, templateCode, type "ALT", message #{var}, receiverList[{phone,userKey,customFields}], buttons[], fallback{SMS/MMS}). sms_consent 필터, sms_send_log 기록, code"100"성공/"500"1회재시도.
+- **등록 시트 작성 완료**: `~/Library/CloudStorage/SynologyDrive-bliss/엠포_알림톡_템플릿_등록시트.md` — 템플릿 10종 본문/변수/버튼 전부 정리(전부 "유틸리티" 카테고리). UMS 매뉴얼: 같은 폴더 `Ums_API_Manual_v2.pdf`.
+- **⚠️ 엠포는 NPRO3 API가 발송 전용** — 템플릿/발신프로필 등록 API 없음. **콘솔(웹)에서만 등록 = 브라우저 조작 필요**.
+
+**미완(다음 세션 할 일)**:
+1. **엠포 콘솔에서 템플릿 등록** (`npro.emfo.co.kr` 카카오 템플릿 관리). 8지점 카카오 채널 → 지점별 senderKey 발급 + 10종 템플릿 각 지점 등록·검수 제출.
+   - 브라우저 조작 메모: macOS Browser 1은 cert 경고(개인정보 보호 오류) + 미로그인이었음 → 진행 막힘. **Windows "하우스마케팅" 브라우저에 엠포 로그인되어 있음**(엠포 콘솔 스크린샷 출처). 또는 정우님이 직접 로그인 후 인계. 콘솔 접속 시 인증서 경고는 정우님이 통과시켜야 함.
+   - 엠포 고객센터에 "기존 아리고 운영 템플릿 동일 본문, 8채널 일괄등록 지원하는지" 문의 권장(온보딩 일괄등록 흔함).
+2. 등록 후 받을 것: **지점별 senderKey 8개 + 지점×템플릿 emfo templateCode**.
+3. 받으면: 서버 `bliss_naver.py` alimtalk_thread 발송경로를 send-alimtalk Edge Function으로 점진 전환(branch별 senderKey+templateCode 매핑).
+- 실행단가(엠포, VAT별도): 알림톡 5 / SMS 7.5 / LMS 25 / MMS 55. 이번달 지점별 합계: 알림톡1702/SMS410/LMS6 = 11,735원.
+
+## ✅ 이번 세션 완료 (2026-05-28) — v3.7.867~887 (상세는 CLAUDE.md)
+- **선불권 자동차감 순서 버그 fix**(SaleForm.jsx): 구매일순→**유효기간 임박순(FIFO)** 정렬 + 서비스금액 cap + deps에 selBranch/branchId. 마곡 이영은 실데이터 교정(기존권 차감, 신규권 보존).
+- **매출관리 동의서 상태 아이콘**(SalesPage.jsx): 매출 리스트 행 고객명 옆 노트아이콘 3상태 — 미발송=회색+금지표시, 발송=무색, 서명완료=파란색(클릭→동의서 URL). 구매상품에 필요한 템플릿만 매칭(`_consentTplForName`). consent_tokens.prefill_data↔customer_consents.form_data↔sales(reservation_id 조인).
+- **ConsentModal 지점표시**: prefill.branch 주입.
+- **고객 상세 모달**: placeholder 텍스트 전부 제거 + 차트/동의서 응답 자동반영(빈 칸만: email/gender/phone) + "차트 응답" 카드.
+- **요청사항**: 공지 댓글 기능(BlissRequests.jsx commentDrafts).
+- **리마인더 개선(서버)**: is_ai=true 말머리 / "yes"등 짧은긍정→재질문 금지 / 인박스에 실제 템플릿 본문 표시 / ko "내일" 제거(전일=당일 한 템플릿 공용).
+
+## 🟡 확인 부탁 (정우님, 이월)
+- WhatsApp **ko 템플릿 `bliss_reminder_ko`** Meta에서 "내일" 제거 편집 중(검수 3~5일). en은 이미 정상.
 
 ## ✅ 이번 세션 완료 (2026-05-25~26) — 상세는 CLAUDE.md 변경이력 참고
 - **v3.7.865** 총매출 포인트 제외(정책일 2026-05-26 컷오프, 과거 불변 / 클라 6곳+RPC 5개) + 포인트 유효기간 출처별(선불권 적립→권 유효기간 따라감, source_package_id 링크+첫사용 전파, 포워드만·소급 생략). 상세 CLAUDE.md.

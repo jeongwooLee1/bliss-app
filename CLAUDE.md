@@ -2515,3 +2515,97 @@ const prepaidLabel = cleanName.replace(/\s+[\d][\d,]*(\.\d+)?\s*(만원?|천|원
 - 가격질문 → 여/남 가격+소요시간 답 후 "예약할까요?" ✅
 - 명확한 비키니 예약요청 → action=ask_info, gender=F 캡처, 비키니 범위 게이트 발동("bikini=panty line vs Brazilian, which?") ✅, 성급예약 안 함 ✅
 - 잔여 한계: gemini-3.5-flash가 **여러 턴 전 서술 메시지의 성별·시술을 항상 끌어오진 못함** → 재질문 발생(무해 — 성급예약 대신 한번 더 묻는 안전 방향, blind 예약은 안 함). 최근/명확하면 정상 캡처.
+
+### 서버 — AI 예약 churn fix: 멱등성(중복 예약·취소 방지) (2026-05-27, React 변경 0)
+**증상** (Liah Goyal WhatsApp): 손님이 "Thank you!" 같은 비-예약 메시지를 보낼 때마다 AI가 예약을 **계속 다시 생성** → 예약 6건 생성·5건 취소 + "Done! confirmed" 중복 발송 + 취소건 성별 M으로 깨짐(손님은 F). 변경 1번인데 취소 다발.
+**원인**: 최근 변경(답변추천 자동예약 + 세션기록 기반 예약 + active 모드)에서 **멱등성·의도 게이트가 빠짐**. 대화에 예약정보가 다 모여 있으면 메시지마다 `action=book`+`_is_change`→`_proceed=True`→`create_booking_from_ai`가 기존 예약 취소+재생성. 예약 "변경"=취소+재생성이라 인사 한 번에 취소 1건씩 churn.
+**fix** (`ai_booking.py`, 백업 `bak_pre_churn_*`):
+1. **`create_booking_from_ai` 멱등**: `find_existing_booking` 결과가 신규 booking과 **동일(bid·date·time)** 이면 → 취소·재생성하지 말고 `return existing["id"]`. (defense-in-depth)
+2. **action=book 핸들러 멱등**: `_is_change`인데 기존 예약과 같은 날짜·시간·지점이면 → `_proceed=False` + 답변이 "확정/Done/confirm"이면 "이미 예약돼 있어요 😊"로 교체(중복 confirm 차단).
+3. **프롬프트 CASE B 가드**: [기존 예약]과 같은 날짜·시간이면 다시 book 금지. 감사/인사/"곧 봬요"/단순질문 → action=chat(예약 동작 금지). 실제로 날짜·시간 바꿀 때만 book.
+**검증** (`_test_churn.py`, create/cancel mock, 실DB 예약 1건 setup·삭제): "Thank you!" → create 0·cancel 0 (churn 없음, AI가 "You're welcome"로 chat 처리) ✅ / "4pm으로 변경" → create 1 (정상 변경) ✅.
+**적용**: 서버 직접 패치 + `systemctl restart bliss-naver`. React 변경 0 → 버전업·CF퍼지 불필요.
+
+### v3.7.867 — 프리랜서 소속제거 + 동의서 문자발송 + 만료패키지 숨김 (2026-05-27, 요청 처리)
+공지&요청 6건 처리 묶음 배포.
+- **프리랜서 소속 없는 공유 명단** (지은 id_4kx5wgvimj, `TimelinePage.jsx`): 새 프리랜서는 `branch:""`(소속 없음)으로 생성 + 만든 지점에 그날만 exclusive override로 배치. 다른 지점/날짜엔 각 지점 '직원 추가' 목록에서 선택→이동(기존 doAdd exclusive 경로 재사용). 목록·이동 패널에 "프리랜서·소속없음" 표시. 같은 이름 재생성 차단(목록에서 선택 유도). **혜진(유일 프리랜서) `branch:""` 마이그레이션** — 이미 5/30+ 전부 강남 배정돼 있어 소속만 떼면 강남에만 뜨고 홍대 소속 표시 사라짐(기존 지원/override 로직 그대로 활용, 엔진 변경 최소).
+- **동의서 문자(SMS) 발송** (신영 id_xdbby2br6e, `ConsentModal.jsx`): 동의서 모달에 `📱 문자로 보내기` 추가 — consent_token 생성 후 `send-sms` Edge Function으로 손님 폰에 링크 SMS. 휴대폰(010~) 있는 고객만 노출. **예약 모달에서도** (`ReservationModal.jsx`) 고객정보 줄의 차트 배지를 `동의서 보내기/재전송` 버튼으로 → 같은 ConsentModal(createPortal) 오픈, `reservationId` 연동으로 차트 상태 갱신. 카카오 알림톡 템플릿은 검수 후 추가 예정(SMS가 우선·폴백).
+- **만료 패키지 숨김** (지은 id_zl2g6fglfv, `ReservationModal.jsx`): 예약등록 '보유 패키지' 목록 + 패키지 자동감지 필터에 `유효:YYYY-MM-DD < today` 제외 추가. 만료권(예: 36536 김경민 토탈PKG 유효:2025-10-20)이 "1회 남음"으로 뜨던 것 차단.
+- **세기 2건**(id_23e6pmzv1n 용산→강남 오등록 / id_vhhi3xtppd 인스타 발송실패)는 직전 세션 서버 fix(손님 명시지점 우선 + IG 토큰 갱신)로 해결됨 → done 답글.
+- **현아 현장결제**(id_inybvy85wv): `businesses.settings.external_platforms`에 '현장결제' 추가(jsonb surgical).
+- **미반영(별도 — consent 앱)**: 미진·재윤·보령 3건은 동의서/차트 앱(bliss-consent 별도 레포) 수정이라 pending 유지.
+**적용**: v3.7.867 라이브 배포(version.txt 검증, CF 퍼지 success). 혜진 마이그레이션 + 요청 6건 done은 DB 직접.
+
+### 동의서(결제 동의서) 알림톡 템플릿 등록·검수 제출 (2026-05-27, 승인 대기)
+신영 동의서 수동발송을 SMS→알림톡으로 전환 위해 신규 템플릿 8지점 등록+검수 요청 (pkg_pay 패턴, 알리고 API).
+- **용도**: 패키지·선불권 등 **결제(구매) 관련 동의서** 수동 발송 (시술 전 차트 아님). 매장에서 못 받은 결제 동의서를 손님 폰으로 보내 서명받기.
+- **본문**: `안녕하세요, 하우스왁싱입니다.\n\n[지점] #{사용자명}\n\n#{고객명}님, 구매하신 상품(패키지·선불권 등) 관련 동의서를 안내드립니다.\n아래 링크에서 내용 확인 후 서명 부탁드립니다.\n▶ #{동의서링크}\n\n문의 사항은 매장으로 연락 부탁드립니다.` (버튼 없음, 변수 #{사용자명}/#{고객명}/#{동의서링크})
+- **tpl_code 매핑** (8지점, status REQ 검수중): 강남 UI_2146 · 마곡 UI_2147 · 왕십리 UI_2148 · 용산 UI_2149 · 위례 UI_2151 · 잠실 UI_2152 · 천호 UI_2153 · 홍대 UI_2154
+- **승인 후 후속 (PENDING)**:
+  1. `ConsentModal.jsx` send()에 `via='alimtalk'` 추가 — 동의서 token 발급 후 `alimtalk_queue`에 noti_key(신규 'consent_doc' 등) + params(#{사용자명}=지점명, #{고객명}, #{동의서링크}=`https://sign.blissme.ai/?t={token}`) 적재. UI 버튼 `💬 알림톡`(우선) + `📱 문자`(폴백). 휴대폰 없으면 QR.
+  2. 8지점 `noti_config`에 새 키(예: `consent_doc`) {on:true, tplCode:지점별코드, msgTpl:위 본문} 추가 — `alimtalk_thread`가 noti_key로 tplCode/params 조회·발송.
+- **참고**: 별도로, 차트링크 자동발송 템플릿(확정안내_차트링크 UI_1890등 / 당일안내_차트링크 UI_1603등)도 8지점 승인 완료 — rsv_confirm/rsv_today에 `#{차트링크}` 연결하는 wiring 별도 대기(시술 전 차트용, 결제 동의서와 별개).
+
+**알리고 등록 시 주의**: 응답 `code` 문자열 "0"=성공. add 응답 `data.templtCode`로 코드 회수. template/request의 param명은 `tpl_code`. senderKey는 지점별 상이(8개 카톡 채널).
+
+### 서버 — AI 길/위치 질문 회피 fix + v3.7.868 직원 수동발송 말머리 fix (2026-05-27)
+Liah(WhatsApp) 후속 2건.
+**A. 서버 `ai_booking.py` (라이브, React 0)** — 길·찾아오는법 질문에 AI가 "You're all set/곧 뵐게요"만 반복:
+- 원인: churn fix(2026-05-27)에서 넣은 멱등 응답("You're all set")이 **질문 답변까지 덮음**. 손님이 "Is it easy to find from the street?" 물어도 예약확정 멘트로 회피.
+- fix: ① 멱등 응답 override를 **질문이 아닐 때만**(단순 인사·동의) 적용 — 질문이면 AI 답을 안 덮음(`_is_q` 휴리스틱). ② 프롬프트 강화 — 주소·전화·영업시간뿐 아니라 **찾아오는 길·교통·주차·엘리베이터·건물/층** 질문도 action=chat + [현재 지점 상세]/[모든 지점 주소·전화] 기반 실제 안내, "예약확정 멘트로 회피 절대 금지".
+- 검증: "find from the street?" → "Wangsimni Branch is easy to find! 3rd floor at 311-1 Wangsimni-ro" (회피 X, churn 0) ✅. 백업 `bak_pre_dir_*` + `systemctl restart`.
+**B. v3.7.868 `MessagesPage.jsx` (라이브)** — AI 답변추천 후 직원이 고쳐 보냈는데 "AI 자동응답" 말머리로 박힘:
+- 원인: "AI 답변 추천"(genAI)이 `replyIsAi=true` 세팅 → 직원이 입력칸 고쳐도 플래그 안 꺼짐 → is_ai=true로 발송.
+- fix: textarea onChange(직원이 한 글자라도 편집) 시 `setReplyIsAi(false)` — 그대로 보내면 AI, 고치면 직원 발송. (2곳)
+**휴무 신청 기능 보류**: `OffRequestCard.jsx` + `BlissRequests.jsx` 통합(공지에 얹는 휴무 신청 — 담당자가 직원별 날짜 대신 입력→마감 시 schHistory "휴무(꼭)" 일괄 기록)을 만들었으나, 정우님이 설계 재검토 요청 → **진입 버튼만 숨김(코드 보존, 진입점 없어 비활성)**. 재개 시 BlissRequests 새공지 버튼 옆 휴무신청 버튼만 복구하면 동작.
+
+### v3.7.869 — 지점별 건물·접근 정보(AI 주입) + AI설정 정리 (2026-05-27)
+**배경**: AI가 손님 "엘리베이터 있어요?/주차 돼요?"에 **건물 세부를 지어냄**(DB엔 주소·전화만 있고 건물정보 없음). 지점별 건물정보를 저장해 AI가 그것만 보고 답하게.
+**A. 지점별 건물·접근 정보 (DB + UI + 서버 주입)**:
+- DB: `branches.access_info jsonb` 컬럼 (migration `branches_add_access_info`). db.js DBMAP `access_info↔accessInfo`.
+- UI: `AdminPlaces.jsx`(관리설정→예약장소 관리) 지점 편집에 "건물·접근 안내" 섹션 — 주차/엘리베이터·계단/대중교통/위치설명/네이버지도/구글지도/기타. 비워두면 AI가 "담당자 확인"으로 답.
+- 서버 `ai_booking.py`: branches 캐시 SELECT에 `access_info` 추가 + `_fmt_access_block()` 헬퍼 → **현재 지점(branch_detail_block) + 기존 예약 지점(_ex_bid, WA 공통채널 대비) 둘 다 주입**. 프롬프트에 "★이 내용만★ 사용, 없는 항목은 지어내지 말고 담당자 확인". 백업 `bak_pre_access_*`.
+- 검증: 왕십리 access_info=[엘베 없음·계단 3층 / 외부 유료주차] 세팅 후 "Is there an elevator?" → "Wangsimni does not have an elevator, please use the stairs to the 3rd floor" / "주차?" → "외부 유료주차장 이용" ✅ (지어내기 X).
+- **남은 일(정우님)**: 왕십리 외 7개 지점 건물정보를 예약장소 관리에서 입력. (왕십리는 예시로 입력해둠)
+**B. AI 설정 페이지 정리** (`AdminAISettings.jsx`):
+- 삭제(숨김): "메시지함 자동응대 프롬프트"(ai_chat_prompt)·"네이버 예약 AI 분석 프롬프트"(ai_analyze_prompt) — 둘 다 **서버가 안 읽음**(서버 코드 프롬프트로 동작). 편집해도 효과 0이라 혼란만 줘서 제거. (state/save 함수는 호환 위해 코드 보존)
+- API 키: (v3.7.870) **섹션 전체 숨김** — Gemini 키는 운영자(테라포트)가 시스템 전역으로 관리, 매장 사용자는 쓸 일 없음. AI 설정 화면에서 API 키 섹션 제거({false &&}로 보존). 시스템 키는 그대로 작동.
+
+### v3.7.871 — FAQ를 RAG 검색형(항목별 편집)으로 전환 + 214개 이관 (2026-05-27)
+**배경**: FAQ가 두 군데로 갈려 혼란 — 설정 `ai_faq`(6개, 직접 주입) vs 학습문서 `housewaxing_faq.md`(~250, RAG). 직접 주입은 항목 늘면 매 응답 프롬프트 폭증(비용·속도). 정우님: 200개 더 추가 시 옳은 구조? → **RAG 검색형으로 통일** (수백 개도 비용 일정).
+**구조**: FAQ 항목을 `document_chunks`(전용 FAQ 문서 `doc_faq_{biz}`)에 1항목=1청크로 저장 + 임베딩. 서버 `_rag_search_docs`(match_documents)가 이미 청크 전체 검색 → **서버 검색 코드 변경 0**. ★핵심(core) 항목만 `settings.ai_faq`에도 동기화해 항상 직접 주입(안전 단답 보장).
+- **임베딩 일관성**: 편집기·이관·서버쿼리 전부 `gemini-embedding-2 / 768` 동일 (편집기·이관 RETRIEVAL_DOCUMENT, 쿼리 RETRIEVAL_QUERY). 기존 학습문서와 같은 공간 → 검색 정확.
+- **신규 라이브러리** `src/lib/faqStore.js`: loadFaqItems/saveFaqItem(임베딩 후 upsert)/updateFaqMeta(메타만, 재임베딩 X)/deleteFaqItem/bulkImportFaq.
+- **AdminAISettings FAQ 섹션 재작성**: 인덱스 기반 → chunkId 기반. 항목별 추가/수정/삭제(임베딩) + ON/OFF·★핵심 토글(메타만) + 검색/카테고리 + "기존 FAQ 이관" 버튼.
+- **이관 완료(서버 스크립트 `/tmp/migrate_faq.py`, gemini-embedding-2)**: 레거시 ai_faq 6(core) + housewaxing_faq.md 파싱 208 = **214개** document_chunks 생성, 구 housewaxing_faq.md 문서·청크 삭제. 검증: `_rag_search_docs` 4개 질문 모두 실제 Q&A 반환 ✅.
+**적용**: v3.7.871 라이브 배포(version.txt 검증, CF 퍼지 success). 이관은 서버에서 1회 실행 완료(클라 임베딩과 동일 모델이라 일관).
+**유의**: 새 FAQ는 AI 설정 → FAQ에서 항목별로 추가(자동 임베딩 → RAG 검색). ★핵심은 소수만(마취크림·콧속 등 절대 틀리면 안 되는 안전 단답). 수백 개 추가해도 프롬프트엔 관련된 top5 + 핵심만 들어가 비용 일정.
+
+### v3.7.872 — 요청 처리 묶음 (메시지함 시간·추가시술 적립·예약금 태그) + 고객 병합 (2026-05-27)
+공지&요청 자동 처리 가능분.
+- **메시지함 시간 표기** (신영 id_l47143d65l 일부): `MessagesPage.fmtTime` — 24h "7:53" → **"오전/오후 7:53"** + 오늘 아니면 **날짜(M/D)** 붙임(작년이면 연도). (같은 요청의 'AI 학습 체크 UI'는 화면 설계 필요 → reviewing, 별도 논의)
+- **추가시술 금액 첫방문 10% 적립 포함** (현아 id_bqtjtnw55y): "첫방문 10% 적립"이 `base:net_pay + baseCategoryIds`(카테고리 필터)라 **카테고리 없는 추가시술(어깨 3만 등)이 적립 base에서 빠지던 버그**. `eventEngine.baseAmount` 카테고리/시술필터 분기에 `ctx.extraSvcTotal` 포함(특정 시술ID 필터가 아닐 때). SaleForm ctx에 `extraSvcTotal:_extraSvcAddTotal` 추가.
+- **외부선결제 입력 시 예약금완료 태그 자동** (신영 id_4m33q2cpux): `SaleForm` 저장 시 externalPrepaid>0 + 플랫폼 선택돼 있으면 예약 `selected_tags`에 `PREPAID_TAG_ID` 자동 부착(중복 방지). 입금문자 매칭(BankDeposits)과 동일한 태그.
+- **고객 병합** (현아 id_7hd6j0bl2e): cust_num 55554·70259 동일인(Violette Drks)→ 70259 매출 1건을 55554로 이전 + sns 병합 + 70259 삭제 (DB 직접).
+- **세기 외국인 길/건물 질문 반복** (id_gyxzxokvny): 직전 서버 fix(길/건물 안티-할루시네이션 + 멱등응답 완화 + 지점 access_info)로 해결됨 → done 답글.
+- **미진/재윤/보령**(consent 앱)·**신영 AI학습 UI**: reviewing(별도 — consent 레포 / 설계 논의).
+**적용**: v3.7.872 라이브 배포(version.txt 검증, CF 퍼지 success).
+
+### v3.7.873 — 우클릭 "수정 요청" (화면 캡처 + 바로 등록) (2026-05-27)
+- 신규 `src/components/common/QuickRequest.jsx` — AppShell 전역 마운트(전 직원). **우클릭 → "📝 수정 요청"** 메뉴 → 클릭 시 현재 화면 캡처(html2canvas) + 내용 입력 팝업 → `bliss_requests_v1`에 바로 등록(이미지 첨부 = uploadImageToStorage 'requests', name=현재 직원, page=경로).
+- 캡처: `html2canvas` 신규 의존성(^1.4.1) — **동적 import**(트리거 시에만 로드, 별도 청크 202KB → 메인 번들 무게 0). 뷰포트 영역만 캡처, `data-quickreq` 요소(메뉴·팝업) 제외.
+- 입력칸/textarea/contentEditable 위 우클릭은 **기본 메뉴 유지**(붙여넣기 등) — 그 외 영역만 수정요청 메뉴. z-index 99999(모든 모달 위).
+- 캡처 실패해도 내용만으로 등록 가능(graceful). 등록 후 "✓ 수정요청 등록됨" 토스트.
+**적용**: v3.7.873 라이브 배포(version.txt 검증, CF 퍼지 success). ⚠️ 프리뷰 로그아웃 상태라 전체 플로우 자동검증 미실시 — 라이브(로그인)에서 우클릭→수정요청 직접 확인 권장.
+**유의**: html2canvas는 DOM 렌더 방식이라 iframe(근무표 등)·크로스도메인 이미지는 캡처에서 빈칸일 수 있음(정상 한계). 텍스트·일반 UI는 정상 캡처.
+
+### v3.7.874 — 수정요청 처리 (상단 아이콘 툴팁) + 홍소희 입금 매칭 (2026-05-27)
+- **상단 아이콘 툴팁** (강남 id_g30ak3ujnx): 받은메시지함 ↗(외부 채널 열기) title을 "↗ OO앱에서 이 고객 대화 열기"로 명확화 + 타임라인 'AI Book'·설정(톱니) 버튼에 title 추가. (네이버갱신·시계 버튼은 이미 title 있음)
+- **홍소희 예약금 매칭** (지은 id_65iswcoqxz, DB): 입금자명이 **'홍송희'(소→송 오타)**로 들어와 예약(홍소희, 5/28)과 자동매칭 안 됨 → 입금 bd_ea07d1c1f를 예약 id_3wbpofkkhn에 수동 매칭(status=matched) + 예약금완료 태그 확인. (예약엔 선결제 33,000 이미 기록돼 있었음)
+- **강남 '테스트'** (id_y85wlf2hqf): 우클릭 수정요청 동작 테스트 → done.
+- **남음**: 신영 id_l47143d65l(AI 학습 체크 UI) — 설계 논의 필요, reviewing 유지.
+**적용**: v3.7.874 라이브 배포(version.txt 검증, CF 퍼지 success).
+- 유지: FAQ(ai_faq, 자동응답 실사용)·학습문서(RAG).
+**서버 — AI 길/건물 질문 안티-할루시네이션 강화**(직전, React 0): 주소·층·전화·영업시간만 데이터로 답하고, 엘베·주차·계단·간판·출구·도보 등 저장 안 된 건물 세부는 "담당자 확인"(추측 금지). access_info 있으면 그걸로 정확히 답.
+**적용**: v3.7.869 라이브 배포(version.txt 검증, CF 퍼지 success). 서버 패치 + migration은 별도 적용 완료.
+**유의**: 지점 건물정보는 RAG가 아니라 **예약 지점에 묶인 필드**라 지점 안 섞임(RAG는 유사도라 8지점 헷갈림 위험 — 의도적으로 필드 방식 채택). access_info는 현재 지점·기존예약 지점 둘 다 주입(WA 공통채널은 branch_id 미해결이라 기존예약 bid로 보강).
