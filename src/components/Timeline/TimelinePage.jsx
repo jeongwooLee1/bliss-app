@@ -4414,7 +4414,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                 </div>
                                 <label style={{display:"flex",alignItems:"center",gap:5,marginTop:8,fontSize:11,cursor:"pointer",color:isDayMove?T.primary:T.textSub,fontWeight:isDayMove?700:500}}>
                                   <input type="checkbox" checked={isDayMove} onChange={e=>onDayMoveToggle(e.target.checked)} style={{cursor:"pointer",accentColor:T.primary}}/>
-                                  🧳 타지점 종일 근무
+                                  타지점 종일 근무
                                 </label>
                                 {isDayMove && <select value={dayMoveBid} onChange={e=>onDayMoveBranchChange(e.target.value)}
                                   style={{width:"100%",marginTop:4,fontSize:11,padding:"4px 6px",borderRadius:6,border:"1px solid "+T.primary,background:T.primaryLt,color:T.primary,fontWeight:700,fontFamily:"inherit"}}>
@@ -4476,6 +4476,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                             const empBase = BASE_EMP_LIST.find(e=>e.id===room.staffId);
                             // base는 원소속 우선 — 지원 직원(타 지점 컬럼에서 열림)도 visualSegs가 원소속 구간을 자동 채우도록
                             const baseBranch = empBase?.branch_id || room.branch_id;
+                            // 공통 케이스 정리: 실제 이동(타지점 세그먼트)이 없으면 바·세그먼트·이동추가 숨기고 "이동" 버튼만 — 이동 없는 직원 화면 단순화(시간 3중복·빈 폼·바 제거). 위젯 로직은 그대로.
+                            const hasRealMove = segs.some(s => s.branchId !== baseBranch);
+                            const showMoveUI = hasRealMove || empMovePopup.expandMove;
                             const allBranches = (data.branches||[]).filter(b=>b.useYn!==false);
                             // 추가할 지점 + 시간 상태
                             const [addBranch,setAddBranch] = [empMovePopup.addBranch||"", v=>setEmpMovePopup(p=>({...p,addBranch:v}))];
@@ -4581,6 +4584,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                             })();
 
                             return <>
+                              {showMoveUI ? <>
                               {/* 시각적 타임라인 바 — 드래그로 구간 조절 가능 */}
                               {visualSegs.length>0 && whDur>0 && (() => {
                                 // 각 지점에 구분되는 색상 (branch.color 우선, 없으면 index 기반)
@@ -4879,6 +4883,14 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                   </button>
                                 </div>
                               </div>
+                              </> : (
+                                <div style={{padding:"10px 12px"}}>
+                                  <button onClick={()=>setEmpMovePopup(p=>({...p, expandMove:true}))}
+                                    style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1px dashed "+T.primary,background:T.primaryLt,color:T.primary,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                                    + 다른 지점으로 이동
+                                  </button>
+                                </div>
+                              )}
                               {/* 저장 / 취소 버튼 — 변경 사항이 있을 때만 적용 */}
                               <div style={{padding:"8px 12px",borderTop:"2px solid "+T.border,display:"flex",gap:6,background:isDirty?"#FFF8E1":"transparent"}}>
                                 <button onClick={cancelDraft}
