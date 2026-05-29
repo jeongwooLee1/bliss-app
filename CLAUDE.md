@@ -2687,4 +2687,4 @@ Liah(WhatsApp) 후속 2건.
 - `future_only`: 시술 시작시간 30분+ 지난 예약 스킵.
 - dedup `reservation_remind_log`(reservation_id+noti_key)로 **1회만**. 발송 시 차트 토큰(pf_) 발급 → 예약 모달이 자동 "차트 발송됨"으로.
 **검증**: 재시작 후 첫 폴링(13:21 KST)에 윤정현(강남 14:00)+이진화(위례 16:30) 각 1통 발송 `done`, 차트 토큰 생성 확인. 데모 0건(격리). React 변경 0 → 버전업·CF퍼지 불필요.
-**미해결(별도)**: `_issue_pf_token`이 `["ct_condition_v2"]` 하드코딩 — 키오스크/활성은 `ct_condition_v3`. 알림톡 차트 링크는 구버전 v2 폼으로 열림(렌더는 정상). v3 정렬은 별도 트랙(rsv_today 전체 발송에 영향이라 신중히).
+**v3 정렬 완료** (2026-05-29, 백업 `bak_pre_v3chart_20260529_043747`): rsv_today 차트 토큰이 `["ct_condition_v2"]` 하드코딩이라 키오스크(v3)와 드리프트 + 신규고객도 컨디션만 받던 문제 → `_issue_pf_token(..., None, ...)`으로 변경해 내부 `_pick_chart_tpls(is_new_cust, same_day=True)` 사용. 활성 템플릿(`_active_chart_tpls`, is_active 기준 v3) 자동 추종 + 신규/기존 구분(당일+기존=컨디션 v3 / 당일+신규=신규차트+컨디션 v3). 모닝배치·캐치업 양쪽 적용. 기존 발송분(윤정현 v2 토큰)은 그대로 유효, 이후 신규 발송만 v3.
