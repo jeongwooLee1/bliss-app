@@ -2654,3 +2654,9 @@ Liah(WhatsApp) 후속 2건.
 ### v3.7.892 — 고객 관리 헤더 총원 정확 카운트 (2026-05-29)
 **요청**(정우님): 고객 관리 헤더가 "87명+"(로드된 페이지 수)만 표시 → 실제 총원을 보여달라.
 **fix** (`CustomersPage.jsx`): `totalCount` state 추가. fetchPage `reset` 시 현재 필터(buildFilter) 기준 `count=exact` 쿼리(raw fetch + `Prefer: count=exact` + `Range: 0-0` → `Content-Range` 헤더 `/총합` 파싱)로 정확 총원 집계. 헤더 `{custs.length}명{hasMore?+}` → `총 {totalCount}명`(있으면)/폴백. 검색·매장·가입일 필터 반영, reset 시 1회(스크롤마다 X). longValOnly(RPC)·집계 실패 시 폴백. 전체 매장 40,522명(2026-05-29). 표 컬럼 ▼필터(클라이언트)는 헤더 총원 미반영.
+
+### v3.7.893 — 고객통계 탭 + 스크롤 1개 + 카운트 필터 + 매출 차감후잔액 (2026-05-29)
+- **고객통계 탭** (`CustomerStats.jsx` 신규 + CustomersPage [고객 목록 | 고객 통계] 탭): 월별 방문 추이(그래프+표) + 선택 월 지점별. **내국인/외국인 각각 신규·기존·소계 + 총합** 분리. 기간 버튼 1/2/3년/전체. 막대그래프(신규 보라/기존 연보라 누적, 월 클릭→지점별 갱신). ⚠️ **RPC 2개로 분리**(get_customer_visit_trend 월당1행 / get_customer_visit_branch 선택월 지점당1행) — 단일 RPC는 120개월×8지점×4≈3840행이 PostgREST 1000행 캡에 잘려 2022-08에서 끊기던 버그. 방문=매출발생(sales date), 신규=생애 첫 방문 달(지점무관), 외국인=customers.name에 한글 없음. (구 get_customer_visit_stats는 미사용)
+- **고객 스크롤 2→1** (CustomersPage): DataTable 내부 maxHeight 제거 → 바깥 scrollRef 하나만 세로 스크롤.
+- **카운트 필터 반영** (CustomersPage): 헤더 카운트가 검색·매장은 count=exact 서버 총원, **컬럼 ▼필터(excelFilters) 활성 시엔 필터된 개수**(custs.length) 표시. `_anyExcelActive` 판정 추가.
+- **매출등록 차감 후 선불잔액** (id_23yjtpfsuk, SaleForm): "선불잔액 차감 -N" 아래 "차감 후 선불잔액: M원"(현재 잔액−오늘 차감) 표시 — 고객 잔여금 안내용.

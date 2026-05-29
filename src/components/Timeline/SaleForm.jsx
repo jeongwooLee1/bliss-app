@@ -4461,6 +4461,12 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
             </div>}
           </div>}
           {pkgDeduct > 0 && <div style={{marginTop:6,fontSize:13,fontWeight:T.fw.black,color:"#E65100",background:"#FFF3E0",borderRadius:T.radius.md,padding:"6px 12px"}}>선불잔액 차감: -{pkgDeduct.toLocaleString()}원</div>}
+          {/* 차감 후 선불잔액 — 매출등록 전 고객 잔여금 안내용 (id_23yjtpfsuk). 현재 선불잔액 − 오늘 차감 */}
+          {pkgDeduct > 0 && (() => {
+            const _curBal = activePkgs.filter(p=>_pkgType(p)==="prepaid").reduce((s,p)=>s+_pkgBalance(p),0);
+            const _afterBal = Math.max(0, _curBal - pkgDeduct);
+            return <div style={{marginTop:4,fontSize:13,fontWeight:T.fw.black,color:"#5B21B6",background:"#EDE7F6",borderRadius:T.radius.md,padding:"6px 12px"}}>차감 후 선불잔액: {_afterBal.toLocaleString()}원</div>;
+          })()}
           {hasPkgChecked() && <div style={{marginTop:6,fontSize:13,fontWeight:800,color:T.primary,background:T.primaryHover,borderRadius:T.radius.md,padding:"8px 12px",border:"1px solid "+T.border}}>
             📦 패키지 {totalPkgQty()}회 차감
             {(()=>{

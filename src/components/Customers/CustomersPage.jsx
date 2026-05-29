@@ -10,6 +10,7 @@ import SendSmsModal from '../common/SendSmsModal'
 import I from '../common/I'
 import { DetailedSaleForm } from '../Timeline/SaleForm'
 import { ShareCustModal } from './ShareCustModal'
+import CustomerStats from './CustomerStats'
 import { ColHeader as ExcelColHeader } from '../Sales/SalesGridPage'
 import ConsentModal from '../Consent/ConsentModal'
 import ConsentPanel from '../Consent/ConsentPanel'
@@ -261,6 +262,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
   // pendingOpenCust가 있으면 단일 고객 모드 — 리스트 로드 완전 차단
   const lockSingleRef = useRef(!!pendingOpenCust);
   const [singleMode, setSingleMode] = useState(!!pendingOpenCust);
+  const [statTab, setStatTab] = useState('list'); // 'list' 고객 목록 | 'stats' 고객 통계
 
   // 필터(검색/매장/숨김)가 바뀌면 처음부터 다시 로드
   const buildFilter = (offset, limit) => {
@@ -506,6 +508,19 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
     }
     return rows;
   }, [pagedCusts, excelFilters, _excelBranchNameMap]);
+
+  // 표 컬럼 ▼필터(클라이언트)가 하나라도 활성인지 — 활성이면 헤더 카운트를 서버 총원 대신 필터된 개수로 표시.
+  // (sort는 개수에 영향 없으니 제외)
+  const _anyExcelActive = React.useMemo(() => {
+    const f = excelFilters || {};
+    const numAct = c => c && (c.min !== '' || c.max !== '');
+    const datAct = c => c && (c.start !== '' || c.end !== '' || c.includeEmpty === false);
+    const setAct = c => c && ((c.selected instanceof Set && c.selected.size > 0) || c.includeEmpty === false);
+    return numAct(f.custNum) || datAct(f.joinDate)
+      || setAct(f.custName) || (f.custName && f.custName.enOnly)
+      || setAct(f.custPhone) || setAct(f.custEmail) || setAct(f.bid)
+      || numAct(f.visitCount) || datAct(f.lastVisit);
+  }, [excelFilters]);
 
   // 보유권 요약: 유효 다회권(남은회차>0) + 다담권(잔액>0) + 연간권. 쿠폰은 리스트에서 숨김 (상세 패널에서만 표시)
   const pkgSummaryForCust = (cid) => {
@@ -1605,6 +1620,14 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
           ← 전체 목록
         </button>}
         <h2 className="page-title" style={{marginBottom:0}}>고객 관리</h2>
+        {/* 고객 목록 / 고객 통계 탭 */}
+        <div style={{display:"inline-flex",border:"1px solid "+T.border,borderRadius:T.radius.md,overflow:"hidden"}}>
+          {[['list','고객 목록'],['stats','고객 통계']].map(([k,l])=>(
+            <button key={k} onClick={()=>setStatTab(k)}
+              style={{padding:"5px 12px",fontSize:T.fs.xs,fontWeight:statTab===k?T.fw.bolder:T.fw.normal,border:"none",
+                background:statTab===k?T.primary:"#fff",color:statTab===k?"#fff":T.gray600,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
+          ))}
+        </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
         <Btn variant="primary" onClick={()=>{setEditItem(null);setShowModal(true)}}><I name="plus" size={12}/> 고객 등록</Btn>
@@ -1651,6 +1674,9 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       </>}
     </div>}
 
+    {statTab === 'stats'
+      ? <CustomerStats data={data} userBranches={userBranches}/>
+      : <>
     {/* 검색 & 필터 */}
     <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
       <div style={{position:"relative",flex:1,minWidth:200,maxWidth:360}}>
@@ -1661,7 +1687,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
         <option value="all">전체 매장</option>
         {(data.branches||[]).filter(b=>userBranches.includes(b.id)).map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
       </select>
-      <span style={{fontSize:T.fs.xxs,color:T.textMuted}}>{totalCount!=null ? `총 ${totalCount.toLocaleString()}명` : `${custs.length}명${hasMore?"+":""}`}</span>
+      <span style={{fontSize:T.fs.xxs,color:T.textMuted}}>{_anyExcelActive ? `${custs.length.toLocaleString()}명${hasMore?"+":""}` : (totalCount!=null ? `총 ${totalCount.toLocaleString()}명` : `${custs.length}명${hasMore?"+":""}`)}</span>
       {searching && <span style={{fontSize:T.fs.xxs,color:T.orange}}>검색중...</span>}
       {/* 컬럼 ▼ 필터 전체 초기화 — sessionStorage도 클리어 */}
       <button type="button"
@@ -1692,7 +1718,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       return <>
       {paged.length===0 && !loading
         ? <div style={{textAlign:"center",padding:"40px 0",color:T.textMuted}}><I name="users" size={24}/><div style={{marginTop:8,fontSize:T.fs.xs}}>고객 없음</div></div>
-        : <DataTable card maxHeight="calc(100vh - 220px)">
+        : <DataTable card>
             <thead><tr>
               <th style={{width:30,textAlign:"center"}}>
                 <input type="checkbox" title="현재 페이지 전체 선택"
@@ -2352,6 +2378,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       </>;
     })()}
     </div>
+    </>}
 
     {showModal && <CustModal item={editItem} isEdit={!!editItem?.id} onSave={handleSave}
       onClose={()=>_mc(()=>{setShowModal(false);setEditItem(null)})}
