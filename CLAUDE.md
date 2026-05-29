@@ -2678,3 +2678,13 @@ Liah(WhatsApp) 후속 2건.
 - **미발송 방지**: ConsentModal `handleClose` — `!result && selectedIds>0`이면 "아직 보내기 전입니다…" confirm. 배경클릭·×·ESC 전부 가드. 발송 실패는 모달 alert(조용한 실패 제거).
 - 뷰어: `docViewerFocus`로 클릭한 트랙의 작성본을 focusConsentId로.
 **유의**: 분류는 폴더명 기준(멀티테넌트 안전). 차트가 `none`이면 "차트 보내기"도 노출(보통 rsv_today 자동발송이라 sent). 재전송 preselect가 비활성 템플릿이면 모달에 체크 안 보일 수 있음(차트 재전송 edge — 동의서는 활성 템플릿이라 정상).
+
+### 서버 — 당일 늦은 예약 차트링크 알림톡 캐치업 (2026-05-29, React 변경 0)
+**문제**: 당일안내(rsv_today, UI_1221~1228)에 차트 링크가 들어있지만 **09:00 KST 배치 1회만** 발송(`reservation_reminder_thread` `in_today_window`). 윤정현(당일 12:35 예약→14:00)처럼 **아침 배치 후 들어온 당일 예약은 차트 링크 누락** → 예약 모달 "차트 보내기"(미발송) 상태로 남음.
+**fix** (`bliss_naver.py` `reservation_reminder_thread`, 백업 `bak_pre_todaycatchup_20260529_041914`): **새 카카오 템플릿 불필요**(검수 3~5일 회피) — 이미 승인된 UI_1221~1228 재사용. 캐치업 추가:
+- `in_today_catchup = 09:11~21:00 KST` 매 폴링(5분)마다, `_process_window(today, "rsv_today", future_only=True, created_since=오늘09:10KST)` 호출.
+- `created_since`(쿼리 `created_at=gte.{UTC ISO Z}`)로 **아침 배치 이후 생성된 당일 예약만** 조회 → 부하 최소(보통 0~수건).
+- `future_only`: 시술 시작시간 30분+ 지난 예약 스킵.
+- dedup `reservation_remind_log`(reservation_id+noti_key)로 **1회만**. 발송 시 차트 토큰(pf_) 발급 → 예약 모달이 자동 "차트 발송됨"으로.
+**검증**: 재시작 후 첫 폴링(13:21 KST)에 윤정현(강남 14:00)+이진화(위례 16:30) 각 1통 발송 `done`, 차트 토큰 생성 확인. 데모 0건(격리). React 변경 0 → 버전업·CF퍼지 불필요.
+**미해결(별도)**: `_issue_pf_token`이 `["ct_condition_v2"]` 하드코딩 — 키오스크/활성은 `ct_condition_v3`. 알림톡 차트 링크는 구버전 v2 폼으로 열림(렌더는 정상). v3 정렬은 별도 트랙(rsv_today 전체 발송에 영향이라 신중히).
