@@ -2666,3 +2666,15 @@ Liah(WhatsApp) 후속 2건.
 **진단**: 당일 리마인더 자체는 정상(카카오 rsv_today 오늘 43건 08:50 done, Tal도 카카오로 받음). 단 `_send_chat_reminders` **스킵②가 010이면 채팅 리마인더 전체 스킵**(카카오 중복 방지)이라, WhatsApp 손님이 채팅으론 못 받음. journalctl이 UTC라 09:00 KST 발송이 "00:00"으로 찍혀 처음엔 시각 오해.
 **fix** (`bliss_naver.py` `_send_chat_reminders` 스킵②): 010이어도 **channel이 whatsapp/instagram/line이면 채팅 리마인더 발송(카카오+채팅 둘 다)**, **naver(네이버톡)만 010이면 스킵**(카카오와 둘 다 한국 채널이라 중복). 백업 `bak_pre_reminderdual_20260529_025627`, `systemctl restart bliss-naver`. 단 채팅 발송되려면 예약에 chat_channel 또는 고객 sns_accounts에 채널 연결이 있어야 함(수동 예약·미연결이면 여전히 카카오만).
 **위임**: 키오스크 "예약 고객 선택" 화면에 손님별 QR 표시(폰으로 동의서 작성) → bliss-consent 세션(별도 레포).
+
+### v3.7.894 — 예약모달 동의서/차트 상태 트랙 분리 + 미발송 방지 (2026-05-29)
+**배경**(김경림 미수신 조사 결론): 동의서 발송 시스템·템플릿(UI_2146)·레코드는 정상(다른 고객 22건 발송 성공). 김경림은 `consent_doc` 큐가 **0건** — 즉 발송이 시작조차 안 됨. 원인 2겹:
+1. **chartInfo가 동의서+차트를 한 덩어리로 봄** — status가 signed/sent/none 하나뿐. 당일 알림톡(rsv_today)이 자동으로 보낸 **차트**(`ct_condition_v2/v3`) 토큰 때문에 status=`sent` → 버튼이 **"동의서 재전송"**으로 잘못 표시(실제론 동의서 한 번도 안 보냄).
+2. **"동의서 재전송" 버튼은 모달만 열 뿐** 재발송 아님. 모달에서 ①템플릿 선택 ②보내기 클릭을 안 끝내면 토큰·큐 0 + **에러도 없이** 닫힘 → "눌렀는데 안 갔다".
+**fix** (`ReservationModal.jsx` + `ConsentModal.jsx`):
+- **차트/동의서 트랙 분리** — chartInfo = `{ chart:{status,consent,tplIds}, doc:{...} }`. 분류 = 템플릿 폴더("신규차트&체크리스트"→차트 / "동의서"→동의서) + 이름 + ID패턴(`condition|eyelash|consent_full|chart`) 3중. 구버전 `ct_condition_v2`·비활성 템플릿도 정확히 분류(consent_templates 전체+folders fetch). `customer_consents.template_id/template_name`으로 작성본도 트랙 분류.
+- **트랙별 독립 UI 동시 표시**: 작성완료=🟢깜빡칩(클릭→해당 문서 뷰어 포커스) / 발송됨=재전송 / 미발송=보내기. 예: 김경림 = 차트 표시 + **"동의서 보내기"** 동시.
+- **재전송 = 이전 토큰 템플릿 미리선택**(`initialSelectedIds`=그 트랙 last token tplIds)으로 모달 오픈 → 한 번 더 확인 후 보내기(유저 결정).
+- **미발송 방지**: ConsentModal `handleClose` — `!result && selectedIds>0`이면 "아직 보내기 전입니다…" confirm. 배경클릭·×·ESC 전부 가드. 발송 실패는 모달 alert(조용한 실패 제거).
+- 뷰어: `docViewerFocus`로 클릭한 트랙의 작성본을 focusConsentId로.
+**유의**: 분류는 폴더명 기준(멀티테넌트 안전). 차트가 `none`이면 "차트 보내기"도 노출(보통 rsv_today 자동발송이라 sent). 재전송 preselect가 비활성 템플릿이면 모달에 체크 안 보일 수 있음(차트 재전송 edge — 동의서는 활성 템플릿이라 정상).

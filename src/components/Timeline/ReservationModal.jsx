@@ -800,10 +800,12 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   // 📋 차트 작성 링크 연동 — 이 예약에 차트 작성 링크가 발송됐는지 + 작성 내용
   // sign.blissme.ai 동의서/차트는 consent_tokens(발송 토큰, prefill_data.reservation_id) +
   // customer_consents(작성 결과)로 저장. 예약별 차트를 직원이 확인할 수 있게 연결.
-  const [chartInfo, setChartInfo] = useState(null); // {status, consent, signedAt, tokenSent}
+  const [chartInfo, setChartInfo] = useState(null); // { chart:{status,consent,tplIds}, doc:{status,consent,tplIds} } — 차트/동의서 트랙 독립
   const [consentOpen, setConsentOpen] = useState(false); // 📋 동의서 보내기 모달
+  const [consentPreselect, setConsentPreselect] = useState([]); // 재전송 시 이전 발송 템플릿 미리선택
   const [chartReloadKey, setChartReloadKey] = useState(0); // 동의서 발송 후 차트 상태 새로고침
   const [docsViewerOpen, setDocsViewerOpen] = useState(false); // 📋 작성된 동의서·차트 이미지 뷰어
+  const [docViewerFocus, setDocViewerFocus] = useState(null); // 뷰어에서 포커스할 작성본(차트 or 동의서)
   // 외국 이름 음역 fallback — 네이버/AI 예약 신규 고객은 customers.name_kor 비어있어서
   // _cust?.nameKor 조건만으론 화면에 안 뜸. 캐시 → Gemini 호출 → 결과 state + DB 백필
   const [autoNameKor, setAutoNameKor] = useState('');
@@ -876,27 +878,51 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
     let alive = true;
     setDocsViewerOpen(false);
     (async () => {
-      // 토큰: 이 예약으로 발송된 차트 작성 링크 (prefill_data.reservation_id)
+      // 템플릿 → 폴더/이름 맵 (차트 vs 동의서 분류용, 비활성 템플릿도 포함)
+      const bizId = _activeBizId;
+      const [tplRows, folderRows] = await Promise.all([
+        sb.get("consent_templates", `&business_id=eq.${bizId}&select=id,name,folder_id`).catch(()=>[]),
+        sb.get("template_folders", `&business_id=eq.${bizId}&select=id,name`).catch(()=>[]),
+      ]);
+      const folderName = {}; (folderRows||[]).forEach(f => { folderName[f.id] = f.name || ""; });
+      const tplFolder = {}, tplName = {};
+      (tplRows||[]).forEach(t => { tplFolder[t.id] = folderName[t.folder_id] || ""; tplName[t.id] = t.name || ""; });
+      // 차트(신규차트·체크리스트) vs 동의서 분류 — 폴더명 → 템플릿명 → ID패턴 3중
+      const kindOf = (tplId, tName) => {
+        const hay = (tplFolder[tplId] || "") + " " + (tName || tplName[tplId] || "");
+        if (/차트|체크|chart|checklist/i.test(hay)) return "chart";
+        if (/condition|eyelash|consent_full|chart/i.test(String(tplId || ""))) return "chart";
+        return "doc";
+      };
+      // 토큰: 이 예약으로 발송된 작성 링크 (prefill_data.reservation_id)
       const tokens = await sb.get("consent_tokens", `&prefill_data->>reservation_id=eq.${rid}&order=created_at.desc`).catch(()=>[]);
       // 작성 결과: form_data.reservation_id 직접 매칭 (최근 작성분)
       let consents = await sb.get("customer_consents", `&form_data->>reservation_id=eq.${rid}&order=signed_at.desc`).catch(()=>[]);
-      // form_data에 reservation_id 없는 구버전 차트 → 토큰 used_at ≈ 서명시각으로 매칭
+      // form_data에 reservation_id 없는 구버전 차트 → 토큰 used_at ≈ 서명시각으로 매칭(복수 허용)
       if ((!Array.isArray(consents) || consents.length === 0) && Array.isArray(tokens)) {
         const usedTok = tokens.find(t => t.used_at && t.customer_id);
         if (usedTok) {
           const byCust = await sb.get("customer_consents", `&customer_id=eq.${usedTok.customer_id}&order=signed_at.desc&limit=30`).catch(()=>[]);
           const u = new Date(usedTok.used_at).getTime();
-          const matched = (byCust||[]).find(c => c.signed_at && Math.abs(new Date(c.signed_at).getTime() - u) < 10000);
-          if (matched) consents = [matched];
+          const matched = (byCust||[]).filter(c => c.signed_at && Math.abs(new Date(c.signed_at).getTime() - u) < 10000);
+          if (matched.length) consents = matched;
         }
       }
       if (!alive) return;
-      const tokenSent = Array.isArray(tokens) && tokens.length > 0;
-      const consent = (Array.isArray(consents) && consents.length) ? consents[0] : null;
-      let status = "none";
-      if (consent) status = "signed";
-      else if (tokenSent) status = "sent";
-      setChartInfo({ status, consent, tokenSent, signedAt: consent?.signed_at || null });
+      const _tokIds = (t) => (Array.isArray(t.template_ids) && t.template_ids.length ? t.template_ids : [t.template_id]).filter(Boolean);
+      // 트랙별 집계: signed(작성완료) > sent(발송됨) > none(미발송)
+      const mk = (kind) => {
+        const grpTokens = (tokens || []).filter(t => _tokIds(t).some(id => kindOf(id) === kind));
+        const grpConsents = (consents || []).filter(c => kindOf(c.template_id, c.template_name) === kind);
+        const consentDoc = grpConsents.length ? grpConsents[0] : null;
+        const lastTok = grpTokens.length ? grpTokens[0] : null;
+        const tplIds = lastTok ? _tokIds(lastTok).filter(id => kindOf(id) === kind) : [];
+        let status = "none";
+        if (consentDoc) status = "signed";
+        else if (grpTokens.length) status = "sent";
+        return { status, consent: consentDoc, tplIds, signedAt: consentDoc?.signed_at || null };
+      };
+      setChartInfo({ chart: mk("chart"), doc: mk("doc") });
     })();
     return () => { alive = false; };
   }, [item?.id, chartReloadKey]);
@@ -1999,20 +2025,37 @@ ${naverText}
                             <I name="alert" size={10}/>주의 (취소{_cp}/노쇼{_ns})
                           </span>;
                         })()}
-                        {/* 📋 차트 작성 상태 — 우측. 작성완료면 깜빡이는 칩, 클릭 시 이미지 뷰어 */}
-                        {chartInfo?.status === "signed" && <button type="button" className="chart-done-blink" onClick={(e)=>{e.stopPropagation(); setDocsViewerOpen(true);}}
-                          title="클릭해서 작성한 동의서·차트 보기"
-                          style={{marginLeft:"auto",fontSize:10,padding:"2px 9px",borderRadius:10,background:"#059669",color:"#fff",border:"none",fontWeight:800,whiteSpace:"nowrap",cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:4}}>
-                          <I name="fileText" size={10}/>동의서·차트 작성완료<I name="eye" size={10}/></button>}
-                        {chartInfo?.status !== "signed" && f.custId && !String(f.custId).startsWith("new_") && !f.isNewCust && (
-                          <button type="button" onClick={(e)=>{e.stopPropagation(); setConsentOpen(true);}}
-                            title="동의서/차트 작성 링크를 고객에게 보내기 (문자·QR·태블릿)"
-                            style={{marginLeft:"auto",fontSize:10,padding:"2px 9px",borderRadius:10,
-                              background: chartInfo?.status==="sent" ? "#FFF7ED" : "#EDE7F6",
-                              color: chartInfo?.status==="sent" ? "#c2410c" : "#5B21B6",
-                              border:"none",fontWeight:800,whiteSpace:"nowrap",cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:3}}>
-                            <I name="fileText" size={10}/>{chartInfo?.status==="sent" ? "동의서 재전송" : "동의서 보내기"}</button>
-                        )}
+                        {/* 📋 차트/동의서 작성 상태 — 트랙 독립 표시. 작성완료=깜빡칩(클릭→뷰어), 발송됨=재전송, 미발송=보내기 */}
+                        {(() => {
+                          const _canSend = f.custId && !String(f.custId).startsWith("new_") && !f.isNewCust;
+                          const _openSend = (st) => { setConsentPreselect(st?.status === "sent" ? (st.tplIds || []) : []); setConsentOpen(true); };
+                          const _openView = (st) => { setDocViewerFocus(st?.consent || null); setDocsViewerOpen(true); };
+                          const _tracks = [
+                            { key: "chart", label: "차트", st: chartInfo?.chart },
+                            { key: "doc", label: "동의서", st: chartInfo?.doc },
+                          ];
+                          return (
+                            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                              {_tracks.map(tk => {
+                                const st = tk.st; if (!st) return null;
+                                if (st.status === "signed") return (
+                                  <button key={tk.key} type="button" className="chart-done-blink" onClick={(e) => { e.stopPropagation(); _openView(st); }}
+                                    title={`클릭해서 작성한 ${tk.label} 보기`}
+                                    style={{ fontSize: 10, padding: "2px 9px", borderRadius: 10, background: "#059669", color: "#fff", border: "none", fontWeight: 800, whiteSpace: "nowrap", cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                    <I name="fileText" size={10} />{tk.label} 작성완료<I name="eye" size={10} /></button>
+                                );
+                                if (!_canSend) return null;
+                                const _resend = st.status === "sent";
+                                return (
+                                  <button key={tk.key} type="button" onClick={(e) => { e.stopPropagation(); _openSend(st); }}
+                                    title={`${tk.label} 작성 링크를 고객에게 ${_resend ? "재전송" : "보내기"} (알림톡·문자·QR)`}
+                                    style={{ fontSize: 10, padding: "2px 9px", borderRadius: 10, background: _resend ? "#FFF7ED" : "#EDE7F6", color: _resend ? "#c2410c" : "#5B21B6", border: "none", fontWeight: 800, whiteSpace: "nowrap", cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 3 }}>
+                                    <I name="fileText" size={10} />{tk.label} {_resend ? "재전송" : "보내기"}</button>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
                       </div>
                       {/* 2줄: 전화 + 이메일 한 줄 (신규/변경 모드는 input) */}
                       <div style={{display:"flex",alignItems:"center",gap:8,marginTop:3,flexWrap:"wrap",minWidth:0}}>
@@ -3537,15 +3580,16 @@ ${naverText}
           bizId={_activeBizId}
           data={data}
           reservationId={item?.id}
-          onClose={() => { setConsentOpen(false); setChartReloadKey(k => k + 1); }}/>,
+          initialSelectedIds={consentPreselect}
+          onClose={() => { setConsentOpen(false); setConsentPreselect([]); setChartReloadKey(k => k + 1); }}/>,
         document.body)}
-      {/* 📋 작성된 동의서·차트 이미지 뷰어 — 작성완료 칩 클릭 시 */}
+      {/* 📋 작성된 동의서·차트 이미지 뷰어 — 작성완료 칩 클릭 시 (클릭한 트랙 문서 포커스) */}
       {docsViewerOpen && createPortal(
         <ConsentDocsViewer
-          customerId={chartInfo?.consent?.customer_id || f.custId}
+          customerId={docViewerFocus?.customer_id || chartInfo?.chart?.consent?.customer_id || chartInfo?.doc?.consent?.customer_id || f.custId}
           customerName={f.custName}
-          focusConsentId={chartInfo?.consent?.id}
-          onClose={() => setDocsViewerOpen(false)}/>,
+          focusConsentId={docViewerFocus?.id || null}
+          onClose={() => { setDocsViewerOpen(false); setDocViewerFocus(null); }}/>,
         document.body)}
     </div>
   );

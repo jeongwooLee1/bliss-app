@@ -42,10 +42,10 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
   }, [kiosks])
 
   useEffect(() => {
-    const onKey = e => { if (e.key === 'Escape') onClose?.() }
+    const onKey = e => { if (e.key === 'Escape') handleClose() }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [onClose, result, selectedIds.length])
 
   useEffect(() => {
     (async () => {
@@ -63,6 +63,12 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
   const toggleTpl = id => setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
 
   const smsHasPhone = /^01[016789]\d{7,8}$/.test(String(cust?.phone || '').replace(/[^0-9]/g, ''))
+
+  // 발송 완료(result) 전인데 템플릿을 골라둔 상태로 닫으려 하면 경고 — "눌렀는데 안 갔다" 방지
+  const handleClose = () => {
+    if (!result && selectedIds.length > 0 && !window.confirm('아직 보내기 전입니다.\n"보내기"를 누르지 않으면 고객에게 전송되지 않아요.\n그냥 닫을까요?')) return
+    onClose?.()
+  }
 
   const send = async (via) => {
     if (selectedIds.length === 0) return alert('템플릿을 1개 이상 선택하세요.')
@@ -153,11 +159,11 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
   })
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9000 }} onClick={onClose}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9000 }} onClick={handleClose}>
       <div style={{ width: 'min(540px, 95vw)', maxHeight: '90vh', overflow: 'auto', background: '#fff', borderRadius: 12, boxShadow: '0 20px 40px rgba(0,0,0,.2)' }} onClick={e => e.stopPropagation()}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid ' + T.border, display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ fontSize: 15, fontWeight: 800, flex: 1 }}>📝 동의서 요청 · {cust?.name || ''}</div>
-          <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 20, cursor: 'pointer', color: T.textMuted }}>×</button>
+          <button onClick={handleClose} style={{ border: 'none', background: 'none', fontSize: 20, cursor: 'pointer', color: T.textMuted }}>×</button>
         </div>
 
         {/* 전송 결과 화면 */}
