@@ -833,6 +833,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   }, [item?.id, f.requestMsg]);
   // AI 분석 요약이 옛 형식(시술:/하트 없음)이면 모달 열 때 자동 재생성 (self-heal). 빈값은 서버 lazy에 맡김.
   const [regenSummary, setRegenSummary] = useState("");
+  const [aiReveal, setAiReveal] = useState(false);     // AI 분석은 기본 가림 — 호버/탭 시에만 표시(고객 민감정보 보호)
   useEffect(() => {
     setRegenSummary("");
     const cid = f.custId;
@@ -2458,9 +2459,16 @@ ${naverText}
             )}
             </div>
             {/* AI 분석 — 시술/특이/성격 요약 (고객정보 바로 아래). 서버가 정제 생성 */}
-            {_custSummary && <div style={{marginTop:6,marginBottom:8,padding:"8px 11px",background:"#EEF2FF",borderRadius:T.radius.md,boxShadow:"0 2px 8px rgba(0,0,0,.06)"}}>
-              <div style={{fontSize:10,fontWeight:800,color:"#4338ca",display:"flex",alignItems:"center",gap:4,marginBottom:3}}><I name="sparkles" size={11}/>AI 분석</div>
-              <div style={{fontSize:12.5,color:"#3730a3",fontWeight:600,lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{_custSummary}</div>
+            {_custSummary && <div
+              onMouseEnter={()=>setAiReveal(true)} onMouseLeave={()=>setAiReveal(false)}
+              onClick={()=>setAiReveal(v=>!v)}
+              title={aiReveal?"":"마우스를 올리거나 탭하면 표시"}
+              style={{marginTop:6,marginBottom:8,padding:"8px 11px",background:"#EEF2FF",borderRadius:T.radius.md,boxShadow:"0 2px 8px rgba(0,0,0,.06)",cursor:"pointer"}}>
+              <div style={{fontSize:10,fontWeight:800,color:"#4338ca",display:"flex",alignItems:"center",gap:4,marginBottom:3}}>
+                <I name="sparkles" size={11}/>AI 분석
+                {!aiReveal && <span style={{fontSize:9,fontWeight:600,color:"#818cf8",marginLeft:2,display:"inline-flex",alignItems:"center",gap:2}}><I name="eye" size={9}/>올리면 보기</span>}
+              </div>
+              <div style={{fontSize:12.5,color:"#3730a3",fontWeight:600,lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word",filter:aiReveal?"none":"blur(7px)",userSelect:aiReveal?"auto":"none",transition:"filter .15s"}}>{_custSummary}</div>
             </div>}
             {/* 예약기간 + 장소/담당자 */}
             <div>

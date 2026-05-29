@@ -2746,3 +2746,6 @@ Liah(WhatsApp) 후속 2건.
 - **② 등록 줄 달력 아이콘 제거**: 등록 줄의 `<I name="calendar">` SVG 제거(글꼴은 v3.7.898에서 monospace 제거 완료). 이제 "등록  날짜"만.
 - **③ AI요약 특이·성격 self-heal**: 서버 신규 `/regen-summary`(gen_cust_summary force, 백업 `bak_pre_regenep_*`) + 모달 열 때 요약이 **옛 형식(시술:/하트 없음)이면 자동 재생성**→표시·data 동기화. 완료 예약(배치 제외분)·미방문 고객도 **열람 시 자동 갱신**(view-triggered self-heal, 빈값은 서버 lazy). 전체 일괄 안 함(비용).
 **적용**: v3.7.899 라이브(검증, CF퍼지 success) + 서버 `/regen-summary` 재시작.
+
+### v3.7.900 — AI 분석 호버 시에만 표시 (고객 민감정보 보호) (2026-05-29)
+정우님: AI 분석에 고객 은밀한 특이정보(부위 등)가 너무 적나라하게 노출됨. `ReservationModal` AI 분석 박스 — 기본 `filter:blur(7px)`+`userSelect:none`로 가림, 헤더에 "👁 올리면 보기" 힌트. `aiReveal` state를 onMouseEnter(호버) 시 true / onMouseLeave 시 false, onClick 토글(터치 대응). 호버/탭 시에만 선명하게. 적용: v3.7.900 라이브.
