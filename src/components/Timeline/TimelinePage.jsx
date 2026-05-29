@@ -4345,7 +4345,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                           </div>
                           {/* 근무시간 설정 + 종일 근무지 변경 — 하단 저장 버튼으로 통합 */}
                           <div style={{padding:"8px 12px",borderBottom:"1px solid "+T.border}}>
-                            <div style={{fontSize:10,color:T.textMuted,marginBottom:4,fontWeight:700}}>근무시간</div>
+                            <div style={{fontSize:12.5,color:T.textSub,marginBottom:6,fontWeight:700}}>근무시간</div>
                             {(()=>{
                               const whKey = room.staffId+"_"+room.branch_id+"_"+selDate;
                               // 현재 컬럼 지점의 운영시간 (fallback용)
@@ -4370,7 +4370,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                               const _spanH = Math.max(1, _closeH - _openH + 1); // closeH 정시까지 포함
                               // closeH+1:00까지 포함 (예: closeTime=21:00 → 마지막 옵션 22:00) — 직원 잔업 끝 시각 선택 가능
                               const hours = Array.from({length:_spanH*12 + 1},(_,i)=>{const h=Math.floor(i/12)+_openH,m=(i%12)*5;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;});
-                              const selSt = {flex:1,fontSize:11,padding:"4px 3px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"};
+                              const selSt = {fontSize:14,fontWeight:600,padding:"7px 11px",borderRadius:8,border:"1px solid "+T.border,fontFamily:"inherit",background:T.bgCard,minWidth:92,flex:"0 1 auto"};
 
                               // 종일 근무지 변경 — 체크박스 + 지점 select
                               // 현재 segs가 exclusive=true 하나짜리면 "다른 지점 종일 근무" 상태
@@ -4431,7 +4431,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                             const currentStaffIds = new Set([room.staffId]);
                             const candidates = BASE_EMP_LIST.filter(e => !currentStaffIds.has(e.id));
                             return <div style={{padding:"8px 12px",borderBottom:"1px solid "+T.border,background:"#FFF8E1"}}>
-                              <div style={{fontSize:10,fontWeight:700,color:"#F57F17",marginBottom:4,display:"flex",alignItems:"center",gap:4}}><I name="clipboard" size={10}/>담당자 교체 <span style={{color:T.textMuted,fontWeight:500}}>(예약 {rsvList.length}건)</span></div>
+                              <div style={{fontSize:12,fontWeight:700,color:"#E5820A",marginBottom:6,display:"flex",alignItems:"center",gap:5}}><I name="clipboard" size={12}/>담당자 교체 <span style={{color:T.textMuted,fontWeight:500}}>(예약 {rsvList.length}건)</span></div>
                               <div style={{display:"flex",gap:4}}>
                                 <select value={empMovePopup.replaceWith||""} onChange={e=>setEmpMovePopup(p=>({...p,replaceWith:e.target.value}))}
                                   style={{flex:1,fontSize:11,padding:"4px 6px",borderRadius:6,border:"1px solid #ffb74d",fontFamily:"inherit"}}>
@@ -4812,7 +4812,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                   const mnToTime = (mn) => `${String(Math.floor(mn/60)).padStart(2,"0")}:${String(mn%60).padStart(2,"0")}`;
                                   const fromT = mnToTime(vs.fromMn);
                                   const untilT = mnToTime(vs.untilMn);
-                                  const selSt = {flex:1,fontSize:10,padding:"2px 3px",borderRadius:4,border:"1px solid "+T.border,fontFamily:"inherit"};
+                                  const selSt = {flex:1,fontSize:12,padding:"5px 7px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"};
                                   // 자동 구간(base 보완) — 같은 UI, select disabled
                                   if (vs.isHome) {
                                     return <div key={idx} style={{display:"flex",alignItems:"center",gap:3,marginBottom:4,fontSize:11}}>
@@ -4846,7 +4846,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                               </div>}
                               {/* 이동 추가 */}
                               <div style={{padding:"6px 12px",borderTop:"1px solid "+T.border}}>
-                                <div style={{fontSize:10,color:T.textMuted,marginBottom:5,fontWeight:700}}>이동 추가</div>
+                                <div style={{fontSize:12,color:T.textSub,marginBottom:6,fontWeight:700}}>이동 추가</div>
                                 <div style={{display:"flex",gap:4,marginBottom:5}}>
                                   <select value={addBranch} onChange={e=>setAddBranch(e.target.value)}
                                     style={{flex:1,fontSize:11,padding:"4px 5px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"}}>
