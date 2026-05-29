@@ -1980,7 +1980,7 @@ function MessagesWithTeamTab(props) {
     return 'inbox';
   });
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
-  const [depositPending, setDepositPending] = useState(0);
+  const [depositPending, setDepositPending] = useState(props.depositPending || 0);
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', onResize);
@@ -1992,22 +1992,8 @@ function MessagesWithTeamTab(props) {
     window.addEventListener('bliss:inbox_tab', onSwitch);
     return () => window.removeEventListener('bliss:inbox_tab', onSwitch);
   }, []);
-  // 미매칭 입금 카운트 (badge용) — 폴링으로 가벼운 count 쿼리
-  useEffect(() => {
-    const userBranches = props.userBranches || [];
-    if (!userBranches.length) { setDepositPending(0); return; }
-    let alive = true;
-    const fetchCount = async () => {
-      const bidIn = userBranches.map(b=>`"${b}"`).join(',');
-      const url = `${SB_URL}/rest/v1/bank_deposits?select=id&status=eq.pending&bid=in.(${bidIn})&limit=999`;
-      const r = await fetch(url, { headers:{...sbHeaders,'Cache-Control':'no-cache'}, cache:'no-store' });
-      if (!alive) return;
-      if (r.ok) { const rows = await r.json(); setDepositPending(Array.isArray(rows)?rows.length:0); }
-    };
-    fetchCount();
-    const t = setInterval(fetchCount, 120000);
-    return () => { alive = false; clearInterval(t); };
-  }, [props.userBranches]);
+  // 미매칭 입금 카운트 — AppShell 단일 소스에서 props로 받음(자체 폴링 제거). onDepositChange로 로컬 즉시 갱신.
+  useEffect(() => { setDepositPending(props.depositPending || 0); }, [props.depositPending]);
   const teamChat = useTeamChat();
   // 사이드 패널 모드(forceCompact): 모바일 UI(좁은 폭, 리스트↔개별 토글) 강제
   const compact = !!props.forceCompact;

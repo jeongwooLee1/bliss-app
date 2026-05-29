@@ -8,17 +8,24 @@
  *   4. ingestDocument()   — DB에 documents + document_chunks 저장
  *   5. searchDocs()       — 질문 임베딩 + match_documents RPC로 top K 검색
  */
-import * as pdfjsLib from 'pdfjs-dist'
-// mammoth / xlsx / jszip — 문서 파싱 함수 안에서 dynamic import (메인 번들 경량화: 학습문서 업로드 때만 로드)
+// pdfjs / mammoth / xlsx / jszip — 문서 파싱 함수 안에서 dynamic import (메인 번들 경량화: 추출/업로드 때만 로드)
 import { sb, SB_URL, sbHeaders } from './sb'
 import { genId } from './utils'
 
-// PDF.js worker (Vite에서 ESM URL로 import)
-import pdfWorkerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerSrc
+// PDF.js — extractPDF에서 dynamic import (worker 포함). 모듈 1회 로드 후 캐시. → 메인 번들에서 pdfjs(~1.2MB) 분리
+let _pdfjsLib = null
+async function _getPdfjs() {
+  if (_pdfjsLib) return _pdfjsLib
+  const lib = await import('pdfjs-dist')
+  const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default
+  lib.GlobalWorkerOptions.workerSrc = workerUrl
+  _pdfjsLib = lib
+  return lib
+}
 
 // ─── 파일 형식별 텍스트 추출 ────────────────────────────────────────────────
 async function extractPDF(file) {
+  const pdfjsLib = await _getPdfjs()
   const buf = await file.arrayBuffer()
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise
   const out = []

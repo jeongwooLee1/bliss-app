@@ -1,6 +1,7 @@
 # HANDOFF
 
 ## 현재 버전
+- **라이브: v3.7.903** (https://blissme.ai/version.txt) — 코드점검 추천묶음: pdfjs 동적화(메인번들 2373→1822KB) + bank_deposits 4중복→단일소스(채널3→1·폴링4→1) + 죽은파일 9개 삭제. 서버 `ai_booking.py` RAG 게이팅(`_rag_should_search` — 인사·확인 메시지 임베딩 스킵, 백업 `bak_pre_raggate_20260529_224734`)도 라이브. 상세 CLAUDE.md v3.7.903. 미착수 묶음: Realtime 채널통합/렌더최적화/select축소/AI모델비용(Claude폴백 6/1차단)/fire-and-forget await화.
 - **라이브: v3.7.889** (https://blissme.ai/version.txt) — 로컬 `BLISS_V`/`version.txt` 일치
 - 2026-05-28 요청 4건 처리: ①강남 고객명 변경 저장 ②현아 자동번역(최근5건 합산) ④신영 오류신고 버튼 = v3.7.888 / ③대표 AI 범위게이트 = 서버 ai_booking.py 라이브. 전부 done+답글.
 - v3.7.889: 예약 등록 시 이름+전화 중복 고객 경고 강화 (이름으로도 후보조회 + 전화 정규화 비교, 포맷 달라도 검출).

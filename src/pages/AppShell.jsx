@@ -27,7 +27,7 @@ import BlissRequests from '../components/BlissRequests/BlissRequests'
 import AdminPkgUnusedReview from '../components/Admin/AdminPkgUnusedReview'
 
 const uid = genId;
-const BLISS_V = "3.7.902"
+const BLISS_V = "3.7.903"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1214,34 +1214,8 @@ function StaffRequestsBanner({ bizId, role, branches=[] }) {
   </>;
 }
 
-function DepositsAlertBanner({ userBranches=[], onOpen }) {
-  const [count, setCount] = useState(0);
-  const [latest, setLatest] = useState(null); // 가장 최근 미매칭 1건 (미리보기)
-  useEffect(() => {
-    if (!userBranches?.length) { setCount(0); setLatest(null); return; }
-    let alive = true;
-    const bidIn = userBranches.map(b=>`"${b}"`).join(',');
-    const fetchPending = async () => {
-      try {
-        const url = `${SB_URL}/rest/v1/bank_deposits?select=id,transferer_name,amount,sms_sent_at&status=eq.pending&bid=in.(${bidIn})&order=sms_sent_at.desc&limit=20`;
-        const r = await fetch(url, { headers:{...sbHeaders,'Cache-Control':'no-cache'}, cache:'no-store' });
-        if (!alive) return;
-        if (!r.ok) return;
-        const rows = await r.json();
-        setCount(Array.isArray(rows) ? rows.length : 0);
-        setLatest(rows?.[0] || null);
-      } catch {}
-    };
-    fetchPending();
-    const t = setInterval(fetchPending, 120000);
-    let ch = null;
-    if (window._sbClient) {
-      ch = window._sbClient.channel('rt_deposits_banner_'+Date.now())
-        .on('postgres_changes',{event:'*',schema:'public',table:'bank_deposits'}, fetchPending)
-        .subscribe();
-    }
-    return () => { alive=false; clearInterval(t); if (ch && window._sbClient) window._sbClient.removeChannel(ch); };
-  }, [userBranches?.join('|')]);
+// 미매칭 입금 배너 — 표시 전용. count/latest는 AppShell 단일 소스에서 props로 받음.
+function DepositsAlertBanner({ count=0, latest=null, onOpen }) {
   if (count === 0) return null;
   const fmt = n => Number(n||0).toLocaleString();
   return (
@@ -1540,6 +1514,7 @@ function App() {
   // 팀채팅 미읽음 카운트는 사이드바 배지에 합산하지 않음 (유저 요청 2026-05-20).
   // 받은메시지함 안 팀채팅 탭의 미읽 표시는 별도 hook(useTeamChat)이 담당 — 영향 없음.
   const [pendingDepositCount, setPendingDepositCount] = useState(0); // 미매칭 입금 (사이드바 합산용)
+  const [depositLatest, setDepositLatest] = useState(null); // 미매칭 입금 최근 1건 (배너 미리보기)
   const [pendingReqCount, setPendingReqCount] = useState(0);
   const [unackNoticesPopup, setUnackNoticesPopup] = useState(null); // {count, ids}
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -1772,17 +1747,17 @@ function App() {
   // 팀채팅 공지(📣) — 상단 마퀴 배너로 통합 (AnnouncesMarquee 컴포넌트). 우상단 플로팅 팝업 제거.
 
   // 팀채팅 안읽음 카운트 (사이드바 합산용) — last_read_at 이후 메시지 수
-  // 미매칭 입금 카운트 (사이드바 합산용)
+  // 미매칭 입금 — 단일 소스(배너 + 사이드바 배지 + 메시지함 탭 배지 공용). count + 최근 1건.
   useEffect(() => {
-    if (!userBranches?.length) { setPendingDepositCount(0); return; }
+    if (!userBranches?.length) { setPendingDepositCount(0); setDepositLatest(null); return; }
     let alive = true;
     const bidIn = userBranches.map(b=>`"${b}"`).join(',');
     const fetchPending = async () => {
       try {
-        const url = `${SB_URL}/rest/v1/bank_deposits?select=id&status=eq.pending&bid=in.(${bidIn})&limit=999`;
+        const url = `${SB_URL}/rest/v1/bank_deposits?select=id,transferer_name,amount,sms_sent_at&status=eq.pending&bid=in.(${bidIn})&order=sms_sent_at.desc&limit=999`;
         const r = await fetch(url, { headers:{...sbHeaders,'Cache-Control':'no-cache'}, cache:'no-store' });
         if (!alive) return;
-        if (r.ok) { const rows = await r.json(); setPendingDepositCount(Array.isArray(rows) ? rows.length : 0); }
+        if (r.ok) { const rows = await r.json(); const arr = Array.isArray(rows) ? rows : []; setPendingDepositCount(arr.length); setDepositLatest(arr[0] || null); }
       } catch {}
     };
     fetchPending();
@@ -2500,7 +2475,7 @@ function App() {
             <button onClick={()=>setMessagesPanelOpen(false)} title="닫기" style={{width:24,height:24,borderRadius:12,border:"none",background:T.gray100,color:T.textSub,cursor:"pointer",fontSize:16,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>×</button>
           </div>
           <div style={{flex:1,minHeight:0,overflow:"hidden",position:"relative"}}>
-            <AdminInbox sb={sb} branches={data?.branches} data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} currentUser={currentUser} onRead={(cnt)=>setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)))} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage} forceCompact={true} inboxResetKey={inboxResetKey} onClosePanel={()=>setMessagesPanelOpen(false)}/>
+            <AdminInbox sb={sb} branches={data?.branches} data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} currentUser={currentUser} onRead={(cnt)=>setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)))} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage} forceCompact={true} inboxResetKey={inboxResetKey} depositPending={pendingDepositCount} onClosePanel={()=>setMessagesPanelOpen(false)}/>
           </div>
         </div>
       )}
@@ -2551,7 +2526,7 @@ function App() {
         <AnnouncesMarquee/>
         <StaffRequestsBanner bizId={currentBizId} role={role} branches={data?.branches} />
         {role !== "staff" && <DepositsAlertBanner
-          userBranches={userBranches}
+          count={pendingDepositCount} latest={depositLatest}
           onOpen={() => {
             window.__bliss_inbox_initial_tab = 'deposits';
             setMessagesPanelOpen(true);
@@ -2584,7 +2559,7 @@ function App() {
             <Route path="/sale-summary" element={<ScrollArea storageKey="page_sale_summary"><SaleSummary/></ScrollArea>}/>
             <Route path="/customers" element={<ScrollArea storageKey="page_customers"><CustomersPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} pendingOpenCust={pendingOpenCust} setPendingOpenCust={setPendingOpenCust} setPage={setPage} setPendingOpenRes={setPendingOpenRes}/></ScrollArea>}/>
             <Route path="/users" element={<ScrollArea storageKey="page_users"><UsersPage data={data} setData={setData} bizId={currentBizId}/></ScrollArea>}/>
-            <Route path="/messages" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><AdminInbox sb={sb} branches={data?.branches} data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} currentUser={currentUser} onRead={(cnt)=>setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)))} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage}/></div>}/>
+            <Route path="/messages" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><AdminInbox sb={sb} branches={data?.branches} data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} currentUser={currentUser} onRead={(cnt)=>setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)))} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage} depositPending={pendingDepositCount}/></div>}/>
             <Route path="/schedule" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}>{isMaster && <SchedulePage/>}</div>}/>
             <Route path="/settings/*" element={<ScrollArea storageKey="page_settings"><AdminPage data={data} setData={setData} bizId={currentBizId} serverV={serverV} onLogout={handleLogout} currentUser={currentUser} userBranches={userBranches} setPage={setPage} setPendingOpenCust={setPendingOpenCust}/></ScrollArea>}/>
             <Route path="/wizard" element={<Navigate to="/blissai" replace/>}/>
