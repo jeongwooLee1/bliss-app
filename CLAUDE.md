@@ -2660,3 +2660,9 @@ Liah(WhatsApp) 후속 2건.
 - **고객 스크롤 2→1** (CustomersPage): DataTable 내부 maxHeight 제거 → 바깥 scrollRef 하나만 세로 스크롤.
 - **카운트 필터 반영** (CustomersPage): 헤더 카운트가 검색·매장은 count=exact 서버 총원, **컬럼 ▼필터(excelFilters) 활성 시엔 필터된 개수**(custs.length) 표시. `_anyExcelActive` 판정 추가.
 - **매출등록 차감 후 선불잔액** (id_23yjtpfsuk, SaleForm): "선불잔액 차감 -N" 아래 "차감 후 선불잔액: M원"(현재 잔액−오늘 차감) 표시 — 고객 잔여금 안내용.
+
+### 서버 — 당일/전날 채팅 리마인더 010 손님 둘 다 발송 (2026-05-29, React 변경 0)
+**요청**(정우님): 외국 손님(WhatsApp 등)이 010 연락처를 줬을 때, 카카오 알림톡(rsv_today/rsv_1day)만 가고 채팅 채널엔 안 가서 직원이 WhatsApp으로 수동 재발송하던 문제. "둘 다 보내라".
+**진단**: 당일 리마인더 자체는 정상(카카오 rsv_today 오늘 43건 08:50 done, Tal도 카카오로 받음). 단 `_send_chat_reminders` **스킵②가 010이면 채팅 리마인더 전체 스킵**(카카오 중복 방지)이라, WhatsApp 손님이 채팅으론 못 받음. journalctl이 UTC라 09:00 KST 발송이 "00:00"으로 찍혀 처음엔 시각 오해.
+**fix** (`bliss_naver.py` `_send_chat_reminders` 스킵②): 010이어도 **channel이 whatsapp/instagram/line이면 채팅 리마인더 발송(카카오+채팅 둘 다)**, **naver(네이버톡)만 010이면 스킵**(카카오와 둘 다 한국 채널이라 중복). 백업 `bak_pre_reminderdual_20260529_025627`, `systemctl restart bliss-naver`. 단 채팅 발송되려면 예약에 chat_channel 또는 고객 sns_accounts에 채널 연결이 있어야 함(수동 예약·미연결이면 여전히 카카오만).
+**위임**: 키오스크 "예약 고객 선택" 화면에 손님별 QR 표시(폰으로 동의서 작성) → bliss-consent 세션(별도 레포).
