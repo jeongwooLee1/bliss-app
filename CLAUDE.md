@@ -2791,3 +2791,8 @@ Liah(WhatsApp) 후속 2건.
 - **`_ai_accuracy_audit.py`**(서버 보존, 재사용): 실제 최근 대화를 **production-replica**(실제 account/user/channel → 기존예약·세션기록 실데이터 조회, `_load_history` monkeypatch로 잘라낸 대화, 쓰기 전부 mock=부작용0)로 운영 에이전트가 답하게 → **봇이 실제 받은 전체 프롬프트를 심판(무료 Gemini)에게 주고** 사실 정확도 채점. 비용 0.
 - **결론**: 진짜 production 정확도 **≈4.0~4.3/5**(27건 중 21~25건 정확). 무료 Gemini 3.5 Flash로 양호. **프롬프트는 이미 한계** — 강화 2라운드(환각차단·과확정/작별) 무효(심판 노이즈 ±0.2가 개선폭보다 큼). 처음 본 "환각" 다수는 심판 오판(첫방문가·매장명·FAQ·기존예약 미인지)이었고 심판 보강하니 사라짐(=프롬프트가 이미 처리 중). 남은 갭=테스트 아티팩트(과거 대화를 오늘로 재생)+심판 노이즈+콜라보 게이트(위 fix). **정확도 향상의 핵심 레버는 비싼 모델이 아니라 프롬프트/데이터/게이트** — 비용 안 써도 됨(정우님 직감 맞음).
 - 미배포(검증 한계로 보류): allRooms 체인 메모이즈(드래그). 향후 `_ai_accuracy_audit.py`로 변경 후 재측정 가능.
+
+### v3.7.906 — reservations 전체 재fetch throttle (모바일 중복 10MB fetch 방지) (2026-05-30)
+- `AppShell` `onVisible`(앱 포그라운드 복귀)·`onOnline`(재연결) 핸들러가 **매번 30일 전체 reservations(~10MB, default `select=*`) 재fetch**하던 것 → **60초 throttle** 추가(`lastResFull` 공유 변수). 60초 내 이미 전체 동기화했으면 스킵 — 모바일 PWA 앱 전환·짧은 끊김마다 ~10MB 중복 fetch 방지. 그 사이는 reservations RT 구독 + 120s 폴링(최근 3일)이 커버 → 데이터 동기화 손실 없음. >60초 백그라운드 후엔 정상 전체 재동기화.
+- **검증**(로컬 dev): visibilitychange·online 3회씩 발생시켜도 `/reservations?` fetch 수 2→2 (스킵 정상). 부팅·렌더·콘솔0. 라이브 3.7.906, CF 퍼지 success.
+- **`select=*` 컬럼 축소는 보류(안전한 빠른 win 아님)**: 가장 큰 컬럼 `request_msg`(네이버 원문)가 **타임라인 블록 표시**([TimelinePage.jsx:5488](src/components/Timeline/TimelinePage.jsx:5488), 긴 예약)·ReservationModal·ReservationsPage 검색에 모두 사용됨 → 대량 로드에서 드롭하면 네이버정보 표시 깨짐. 안전히 하려면 "30일 대량 로드는 request_msg 제외 + 당일/검색은 포함"하는 per-day-fetch 리팩토링 필요 + 실 네이버데이터 검증 필요(데모엔 없음). 커넥션풀(장애 원인)은 채널통합으로 이미 해결됐고 이건 egress 최적화라 별도 신중 작업으로 분리.

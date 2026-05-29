@@ -1,7 +1,8 @@
 # HANDOFF
 
 ## 현재 버전
-- **라이브: v3.7.905** (https://blissme.ai/version.txt) — Realtime schedule_data **6채널→1 통합**(`schedule_data_all_rt` + schRtRef 레지스트리, 디바이스당 −5채널, 2026-05-23 장애 대응). 검증: 단일채널 joined·구6채널 제거·폴링폴백 유지·콘솔0. 서버(React무관, 이미 라이브): 콜라보 게이트 작별·거절 인식 fix(swanxdiary) + AI 정확도 감사 도구 `_ai_accuracy_audit.py`(진짜 정확도 ~4.0~4.3/5, 프롬프트 이미 한계). 상세 CLAUDE.md v3.7.905.
+- **라이브: v3.7.906** (https://blissme.ai/version.txt) — `onVisible`/`onOnline` reservations 30일 전체 재fetch에 **60초 throttle**(모바일 앱전환·재연결마다 ~10MB 중복 fetch 방지, RT+120s폴링이 커버). 검증: visibilitychange/online 3회→fetch 안 늘어남. ⚠️ `select=*` 컬럼축소는 보류 — `request_msg`가 타임라인 블록·모달·검색에 다 쓰여 안전한 드롭 불가(per-day-fetch 리팩토링+실데이터검증 필요). 상세 CLAUDE.md v3.7.906.
+- **라이브: v3.7.905** — Realtime schedule_data **6채널→1 통합**(`schedule_data_all_rt` + schRtRef 레지스트리, 디바이스당 −5채널, 2026-05-23 장애 대응). 검증: 단일채널 joined·구6채널 제거·폴링폴백 유지·콘솔0. 서버(React무관, 이미 라이브): 콜라보 게이트 작별·거절 인식 fix(swanxdiary) + AI 정확도 감사 도구 `_ai_accuracy_audit.py`(진짜 정확도 ~4.0~4.3/5, 프롬프트 이미 한계). 상세 CLAUDE.md v3.7.905.
 - **라이브: v3.7.904** — 코드점검 2차: ①데이터유실(SaleForm 고아고객 INSERT await+중단 / 보유권 생성실패 노출) ②타임라인 렌더 메모이즈(+2만행 날짜스캔 `todayReservations`). 상세 CLAUDE.md v3.7.904.
   - **⏸️ 남은 보류**: ⓐ allRooms→blocks→naverAssignments 메모이즈(드래그 부드러움 — 7클로저 전이 의존, deps 누락 시 stale, 프로파일링 동반). 코드점검 미착수: select=* 컬럼축소 / AI 모델 — **비싼 모델은 정확도 핵심레버 아님 확인(감사 결과), 무료 유지가 맞음** / Claude폴백 6/1 사용한도 차단.
 - **라이브: v3.7.903** (https://blissme.ai/version.txt) — 코드점검 추천묶음: pdfjs 동적화(메인번들 2373→1822KB) + bank_deposits 4중복→단일소스(채널3→1·폴링4→1) + 죽은파일 9개 삭제. 서버 `ai_booking.py` RAG 게이팅(`_rag_should_search` — 인사·확인 메시지 임베딩 스킵, 백업 `bak_pre_raggate_20260529_224734`)도 라이브. 상세 CLAUDE.md v3.7.903. 미착수 묶음: Realtime 채널통합/렌더최적화/select축소/AI모델비용(Claude폴백 6/1차단)/fire-and-forget await화.

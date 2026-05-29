@@ -27,7 +27,7 @@ import BlissRequests from '../components/BlissRequests/BlissRequests'
 import AdminPkgUnusedReview from '../components/Admin/AdminPkgUnusedReview'
 
 const uid = genId;
-const BLISS_V = "3.7.905"
+const BLISS_V = "3.7.906"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -2276,21 +2276,24 @@ function App() {
     let channel = null;
     const supaClient = _supaClient;
 
-    // iOS PWA: 백그라운드→포그라운드 복귀 시 한번만 fetch
+    // iOS PWA: 백그라운드→포그라운드 복귀 시 30일 전체 동기화.
+    // 단, 60초 내 이미 전체 동기화했으면 스킵 — 짧은 앱 전환마다 ~10MB 중복 fetch 방지(RT 구독 + 120s 폴링이 그 사이 커버).
+    let lastResFull = Date.now();
     const onVisible = async () => {
-      if (!document.hidden) {
-        try {
-          // 최근 30일 범위만 갱신 (전체 history reload 방지) — 윈도우 안은 교체(삭제 반영), 밖은 on-demand 로드분 보존
-          const _since = new Date(Date.now()-30*86400000).toISOString().slice(0,10);
-          const rows = await sb.getAll("reservations", `&business_id=eq.${currentBizId}&is_beta=eq.false&date=gte.${_since}&order=date.desc,time.asc`);
-          const parsed = fromDb("reservations", rows);
-          setData(prev => {
-            if (!prev) return prev;
-            const kept = (prev.reservations||[]).filter(r => !r.date || r.date < _since);
-            return {...prev, reservations: [...kept, ...parsed]};
-          });
-        } catch(e) {}
-      }
+      if (document.hidden) return;
+      if (Date.now() - lastResFull < 60000) return;
+      lastResFull = Date.now();
+      try {
+        // 최근 30일 범위만 갱신 (전체 history reload 방지) — 윈도우 안은 교체(삭제 반영), 밖은 on-demand 로드분 보존
+        const _since = new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+        const rows = await sb.getAll("reservations", `&business_id=eq.${currentBizId}&is_beta=eq.false&date=gte.${_since}&order=date.desc,time.asc`);
+        const parsed = fromDb("reservations", rows);
+        setData(prev => {
+          if (!prev) return prev;
+          const kept = (prev.reservations||[]).filter(r => !r.date || r.date < _since);
+          return {...prev, reservations: [...kept, ...parsed]};
+        });
+      } catch(e) {}
     };
     document.addEventListener("visibilitychange", onVisible);
 
@@ -2341,6 +2344,8 @@ function App() {
 
     // 연결 복귀 시 1회 재동기화 (네트워크 끊김 후 재연결용)
     const onOnline = async () => {
+      if (Date.now() - lastResFull < 60000) return;
+      lastResFull = Date.now();
       try {
         // 최근 30일 범위만 갱신 (전체 history reload 방지) — 윈도우 안은 교체(삭제 반영), 밖은 on-demand 로드분 보존
         const _since = new Date(Date.now()-30*86400000).toISOString().slice(0,10);
