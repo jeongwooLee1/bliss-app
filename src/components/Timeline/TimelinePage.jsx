@@ -993,7 +993,10 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         const emp = BASE_EMP_LIST.find(b => b.id === e.id);
         if (emp && emp.branch_id === branchId && !working.some(w => w.id === e.id)) {
           const exclusive = ov.exclusive === true;
-          if (exclusive) {
+          // 오버라이드에 home(원소속) 지점 세그먼트가 아예 없으면 = 완전 이동. (지원은 home 세그먼트를 명시 포함, 완전이동은 미포함 — doAdd 생성 규칙)
+          // → home 근무시간이 타지점 시간과 달라도(예: 천호 12:00~22:00 / 잠실 11:30~21:30) 허상 잔여구간(21:30~22:00)으로 home 컬럼에 다시 표시하지 않음.
+          const hasHomeSeg = ov.segments.some(s => s.branchId === branchId);
+          if (exclusive || !hasHomeSeg) {
             // 전체 이동: 컬럼 제거 (예약은 아래 재배치 로직에서 자동으로 미배정 컬럼으로 이동)
           } else {
             // 지원(부분 이동): 원래 지점에 남은 근무 구간 있으면 활성 칼럼으로 표시
