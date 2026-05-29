@@ -30,11 +30,13 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       setSel(null);
       setReply("");
       setReplyIsAi(false);
+      setAiBooked(null);
     }
   }, [inboxResetKey]);
   const [reply, setReply] = useState("");
   // AI로 생성된 답변인지 추적 (is_ai 플래그용)
   const [replyIsAi, setReplyIsAi] = useState(false);
+  const [aiBooked, setAiBooked] = useState(null); // 답변추천이 자동등록한 예약 정보(인박스 피드백 + 타임라인 포커스용)
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false); // 동기 더블서밋 가드 (setSending 비동기 race 방지)
   // 실제 번역 API 호출 중인지 표시 (번역 토글 버튼에 ON-AIR 표시용)
@@ -626,6 +628,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     const ch=m.channel||"naver";
     setSel({user_id:m.user_id,channel:ch,account_id:m.account_id});
     setReply("");
+    setAiBooked(null);
     markRead(m.user_id, ch);
     setLinkPickerOpen(false); setLinkSearch("");
     if(onChatOpen) onChatOpen(true);
@@ -834,7 +837,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         if (_staffName) { localEcho.sent_by_staff_id = _staffId; localEcho.sent_by_staff_name = _staffName; }
         if (translated && translated.trim()) localEcho.translated_text = translated.trim();
         setMsgs(prev=>[...prev,localEcho]);
-        setReply(""); setReplyIsAi(false); setAiKoDraft("");
+        setReply(""); setReplyIsAi(false); setAiKoDraft(""); setAiBooked(null);
         // 답변 송신 시점에 들어와있는 미읽음 메시지 일괄 처리 (열어놓고 답변 작성 중 도착한 신규 포함)
         markRead(sel.user_id, sel.channel||"naver");
       }
@@ -938,6 +941,8 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         setReply(dd.reply);
         setReplyIsAi(true);
         setAiKoDraft("");
+        // 답변추천이 예약을 자동 등록했으면 → 인박스 피드백 + 타임라인 포커스 정보 저장
+        setAiBooked(dd.booking && dd.booking.id ? dd.booking : null);
         // billing 차감
         try {
           const _bizId = data?.businesses?.[0]?.id;
@@ -1621,6 +1626,11 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           </select>
         </div>
         {aiKoDraft&&<div style={{fontSize:forceCompact?11:12,color:"#4338ca",padding:"4px 8px",background:"#eff6ff",borderRadius:6,marginBottom:6,borderLeft:"3px solid #818cf8"}}>🇰🇷 {aiKoDraft}</div>}
+        {aiBooked&&<div style={{fontSize:forceCompact?11:12,padding:"6px 10px",background:"#ECFDF5",border:"1px solid #A7F3D0",borderRadius:8,marginBottom:6,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <span style={{color:"#065F46",fontWeight:700}}>✅ {aiBooked.changed?"예약 변경됨":"예약 등록됨"} — {(aiBooked.date||"").slice(5)} {aiBooked.time} {aiBooked.branch_name||""}{aiBooked.is_new?" · 신규":""}</span>
+          <button type="button" onClick={()=>{ if(setPendingOpenRes&&setPage){ setPendingOpenRes({id:aiBooked.id,reservation_id:aiBooked.id,date:aiBooked.date,time:aiBooked.time,bid:aiBooked.bid,status:aiBooked.status||"request",_highlightOnly:true}); setPage("timeline"); } }}
+            style={{marginLeft:"auto",padding:"3px 10px",fontSize:forceCompact?10:11,fontWeight:800,background:"#10B981",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>타임라인에서 보기 →</button>
+        </div>}
         <div style={{position:"relative"}}>
           <textarea id="bliss-reply-ta" value={reply} onChange={e=>{ setReply(e.target.value); setAiKoDraft(""); setReplyIsAi(false); }}
             onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}}
@@ -1824,6 +1834,11 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
               </select>
             </div>
             {aiKoDraft&&<div style={{fontSize:11,color:"#4338ca",padding:"3px 8px",background:"#eff6ff",borderRadius:6,marginBottom:4,borderLeft:"3px solid #818cf8"}}>🇰🇷 {aiKoDraft}</div>}
+            {aiBooked&&<div style={{fontSize:11,padding:"6px 9px",background:"#ECFDF5",border:"1px solid #A7F3D0",borderRadius:8,marginBottom:5,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+              <span style={{color:"#065F46",fontWeight:700}}>✅ {aiBooked.changed?"예약 변경됨":"예약 등록됨"} — {(aiBooked.date||"").slice(5)} {aiBooked.time} {aiBooked.branch_name||""}{aiBooked.is_new?" · 신규":""}</span>
+              <button type="button" onClick={()=>{ if(setPendingOpenRes&&setPage){ setPendingOpenRes({id:aiBooked.id,reservation_id:aiBooked.id,date:aiBooked.date,time:aiBooked.time,bid:aiBooked.bid,status:aiBooked.status||"request",_highlightOnly:true}); setPage("timeline"); } }}
+                style={{marginLeft:"auto",padding:"3px 9px",fontSize:10,fontWeight:800,background:"#10B981",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>타임라인에서 보기 →</button>
+            </div>}
             <div style={{display:"flex",gap:8}}>
               <textarea id="bliss-reply-ta" value={reply} onChange={e=>{ setReply(e.target.value); setReplyIsAi(false); }}
                 onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}}

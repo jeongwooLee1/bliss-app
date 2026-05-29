@@ -2702,3 +2702,12 @@ Liah(WhatsApp) 후속 2건.
 - **직원 이동 시 출퇴근시간 바뀜** (강남 id_bwf2bxp0it, `TimelinePage.jsx`): 근무시간이 `empWorkHours[empId_지점_날짜]` 지점별 키로 저장되는데, 타지점 이동 시 그 지점 세그먼트의 시간 룩업이 **이동한 지점 운영시간으로 폴백**해 처음 설정한 시간(예: 홍대 10~20시)이 강남 운영시간으로 바뀌어 보임. v3.7.760이 base(empId/empId_date) 폴백은 넣었지만 **home(원소속) 지점 키 폴백이 빠짐**. fix: 3곳(`segHoursOf`·`getEmpActiveSegments`·이동/근무 팝업 근무시간 표시)의 폴백 체인에 `empWorkHours[empId_homeBid_date] || empWorkHours[empId_homeBid]`를 branchDefault 직전에 추가(additive — 기존 케이스 무영향, 타지점 이동 케이스만 원래 시간 유지). homeBid=BASE_EMP_LIST home branch.
 - **최무성 ★마지막회차 태그 안 붙음** (강남 id_p3acru8wrh, 데이터): 최무성(#54464) 토탈 PKG 5회 중 4회 사용=1회 남음(마지막회차 맞음). 트리거·설정·데이터 다 정상이고 ★마지막회차는 최근 3일 4건에 정상 부착 중 — **시스템 문제 아님**. 원인=태그는 예약 분석 시점(13:44, 1회)에만 계산되고 그 후 회차가 줄어도 재평가 안 함(rescrape는 selected_services 있으면 재분석 skip). 예약 `kioom2xvq3` selected_tags에 `8vacfofam` 수동 추가. **미해결(한계)**: 예약 등록 후 회차가 마지막회차로 떨어지는 케이스 자동 갱신 — 추후 별도(서버 rescrape 시 auto_tag 재평가 또는 클라 live 계산).
 **적용**: v3.7.896 라이브 배포(version.txt 검증, CF 퍼지 success). ⚠️ 직원이동 근무시간은 드래그 인터랙션이라 헤드리스 검증 불가 — 실제 이동(홍대→강남) 시 10~20시 유지되는지 확인 권장(additive 폴백이라 회귀 위험 낮음). 요청 2건 done + 답글.
+
+### v3.7.897 — AI 답변추천 자동예약 가시화 (피드백 + 타임라인 포커스) (2026-05-29)
+**배경**(정우님 보고): "AI 답변 추천"이 v3.7.864부터 예약 가능 상황이면 예약까지 자동 등록하는데, **화면에 아무 표시가 없어** 등록된 줄 모르고 또 등록 → 중복(Devona 5/30 잠실, 답변추천+자동응답 2건). 요구: ①세션연결 ②신규/기존 태그 ③자동등록 시 타임라인 블록 포커싱.
+**진단**: ①세션연결은 이미 됨(예약 chat_channel/user_id + 고객 sns_accounts). ②신규 태그도 답변추천 경로(`manual=True`→`create_booking_from_ai`의 `_new_tags`)에선 정상 부착됨(중복분은 자동응답 경로라 is_new 오판). 진짜 빈틈 = ③ 시각 피드백 0 → 중복.
+**fix**:
+- **서버** (`ai_booking.py`+`bliss_naver.py`, 백업 `bak_pre_suggestout_20260529_063239`): `ai_booking_agent(out=None)` 추가. suggest_only 자동예약이 rid 만들면 `out['booking']={id,date,time,bid,branch_name,is_new,status,changed}` 채움(예약+지점 1회 조회). `/ai-suggest`가 `{ok,reply,booking}` 반환. 멱등은 기존 `create_booking_from_ai`(같은 채널·날짜·시간이면 existing 반환)로 커버 — 순차 재클릭 시 중복 안 생김.
+- **클라** (`MessagesPage.jsx`, v3.7.897): `aiBooked` state. 답변추천 응답에 booking 있으면 입력창 위에 녹색 알림 "✅ 예약 등록됨 — MM-DD HH:MM 지점 (신규) [타임라인에서 보기]". 버튼 = `setPendingOpenRes({id,reservation_id,date,time,bid,status,_highlightOnly:true}); setPage("timeline")` → 그 블록으로 이동·반짝(v3.7.862 메커니즘 재사용). 기본·컴팩트 두 레이아웃 다. 대화 변경/리셋/발송 시 clear.
+**Devona 중복 정리**: 신규 태그 정확한 답변추천분(`ai_27fnt7ozxp0k`, English speaker 메모 병합) 유지, 자동응답 중복분(`ai_4fd37ac77a38`) 삭제.
+**적용**: v3.7.897 라이브 배포(version.txt 검증, CF 퍼지 success) + 서버 재시작. ⚠️ 인박스→타임라인 포커스는 헤드리스 검증 불가 — 답변추천 후 알림·버튼 실제 동작 확인 권장.
