@@ -467,6 +467,19 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   const [empList, setEmpList] = useState([]);
   const [empSettings, setEmpSettings] = useState({});
   // 공지 미확인 직원 표시용 — 빨간점
+  // ── schedule_data Realtime 단일 채널 (구 6개 채널 통합 — key별 dispatch, 연결풀 부하↓) ──
+  const schRtRef = useRef({}); // { schedule_data key: reloadFn(payload) }
+  useEffect(() => {
+    if (!window._sbClient || !_activeBizId) return;
+    const ch = window._sbClient.channel("schedule_data_all_rt")
+      .on("postgres_changes", { event: "*", schema: "public", table: "schedule_data", filter: `business_id=eq.${_activeBizId}` }, (payload) => {
+        const k = payload?.new?.key || payload?.old?.key;
+        const fn = k && schRtRef.current[k];
+        if (fn) { try { fn(payload); } catch(e){} }
+      })
+      .subscribe();
+    return () => { try { ch.unsubscribe(); } catch(e){} };
+  }, [_activeBizId]);
   const [notices, setNotices] = useState([]);
   useEffect(() => {
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
@@ -479,14 +492,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         }).catch(()=>{});
     };
     loadNotices();
-    let ch = null;
-    if (window._sbClient) {
-      ch = window._sbClient.channel("tl_notices")
-        ?.on("postgres_changes",{event:"*",schema:"public",table:"schedule_data",filter:"key=eq.bliss_notices_v1"}, loadNotices)
-        ?.subscribe();
-    }
+    schRtRef.current["bliss_notices_v1"] = loadNotices;
     const poll = setInterval(loadNotices, 120_000);
-    return () => { try{ch?.unsubscribe();}catch(e){} clearInterval(poll); };
+    return () => { clearInterval(poll); };
   }, [_activeBizId]);
   // 직원 이름 → 미확인 공지 개수
   // 여러 키 후보 (id, name, name without "(원장)" 등) 중 하나라도 acks에 있으면 ack로 인정
@@ -535,17 +543,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         setEmpSettings(parseSettings(setRows?.[0]?.value));
       }).catch(() => {});
     };
-    if (window._sbClient) {
-      empCh = window._sbClient.channel("employees_all_rt")
-        .on("postgres_changes", { event:"UPDATE", schema:"public", table:"schedule_data", filter:"key=eq.employees_v1" }, reload)
-        .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.employees_v1" }, reload)
-        .on("postgres_changes", { event:"UPDATE", schema:"public", table:"schedule_data", filter:"key=eq.empSettings_v1" }, reload)
-        .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.empSettings_v1" }, reload)
-        .subscribe();
-    }
-    return () => {
-      try { empCh?.unsubscribe(); } catch(e) {}
-    };
+    schRtRef.current["employees_v1"] = reload;
+    schRtRef.current["empSettings_v1"] = reload;
+    return () => {};
   }, []);
 
   // 남자직원 로테이션
@@ -655,12 +655,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         setSchHistory(p => mergeWithLock(newSch));
       }
     };
-    if (window._sbClient) {
-      channel = window._sbClient.channel("schedule_data_rt")
-        .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.schHistory_v1" }, onSchChange)
-        .on("postgres_changes", { event:"UPDATE", schema:"public", table:"schedule_data", filter:"key=eq.schHistory_v1" }, onSchChange)
-        .subscribe();
-    }
+    schRtRef.current["schHistory_v1"] = onSchChange;
     // 폴링 fallback (30초마다 - Realtime 불안정 시)
     pollTimer = setInterval(() => {
       if (Date.now() - lastRtUpdate < 25000) return; // Realtime 작동 중이면 스킵
@@ -675,7 +670,6 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     return () => {
       clearInterval(timer);
       clearInterval(pollTimer);
-      try { channel?.unsubscribe(); } catch(e) {}
     };
   }, []);
 
@@ -1532,15 +1526,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         }).catch(() => {});
     };
     loadExtra();
-    let ch = null;
-    if (window._sbClient) {
-      ch = window._sbClient.channel("extra_cols_rt")
-        .on("postgres_changes", { event:"UPDATE", schema:"public", table:"schedule_data", filter:"key=eq.extraCols_v1" }, loadExtra)
-        .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.extraCols_v1" }, loadExtra)
-        .subscribe();
-    }
+    schRtRef.current["extraCols_v1"] = loadExtra;
     const poll = setInterval(loadExtra, 120000);
-    return () => { try { ch?.unsubscribe(); } catch(e) {} clearInterval(poll); };
+    return () => { clearInterval(poll); };
   }, []);
   const _saveExtraCols = (next) => {
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
@@ -1585,15 +1573,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         }).catch(() => {});
     };
     load();
-    let ch = null;
-    if (window._sbClient) {
-      ch = window._sbClient.channel("naver_col_shifts_rt")
-        .on("postgres_changes", { event:"UPDATE", schema:"public", table:"schedule_data", filter:"key=eq.naverColShifts_v1" }, load)
-        .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.naverColShifts_v1" }, load)
-        .subscribe();
-    }
+    schRtRef.current["naverColShifts_v1"] = load;
     const poll = setInterval(load, 120000);
-    return () => { try { ch?.unsubscribe(); } catch(e) {} clearInterval(poll); };
+    return () => { clearInterval(poll); };
   }, []);
   const _saveNaverColShifts = (next) => {
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
@@ -1818,19 +1800,12 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     };
     loadOrder();
     // Realtime 구독 — 다른 세션/탭이 order를 바꿨을 때 즉시 반영
-    let ch = null;
-    if (window._sbClient) {
-      ch = window._sbClient.channel("emp_col_order_rt")
-        .on("postgres_changes", { event:"UPDATE", schema:"public", table:"schedule_data", filter:"key=eq.empColOrder_v1" }, loadOrder)
-        .on("postgres_changes", { event:"INSERT", schema:"public", table:"schedule_data", filter:"key=eq.empColOrder_v1" }, loadOrder)
-        .subscribe();
-    }
+    schRtRef.current["empColOrder_v1"] = loadOrder;
     // 폴링 — Realtime 실패 대비 (5분, 백업용). visibilitychange로 탭 복귀 시 즉시 1회 추가 동기화.
     const poll = setInterval(loadOrder, 300000);
     const onVis = () => { if (document.visibilityState === 'visible') loadOrder(); };
     document.addEventListener('visibilitychange', onVis);
     return () => {
-      try { ch?.unsubscribe(); } catch(e) {}
       clearInterval(poll);
       document.removeEventListener('visibilitychange', onVis);
     };

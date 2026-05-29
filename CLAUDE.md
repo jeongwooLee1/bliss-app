@@ -2772,3 +2772,22 @@ Liah(WhatsApp) 후속 2건.
 - **검증**: 로컬 dev(데모) — 타임라인 렌더 + 날짜이동(29↔30) 시 블록 정확 갱신 + 콘솔 에러 0. 빌드 OK. 라이브 3.7.904, CF 퍼지 success.
 - **보류 (별도 집중작업 — 핵심화면 검증 한계)**: ⓐ `allRooms`→`blocks`→`naverAssignments` 메모이즈(드래그 부드러움 효과 크지만 `getWorkingStaff`/`getEmpOverride`/`normalizeSegments`/`getEmpActiveSegments`/`getEmpBaseHours`/`parseSupportBranch`/`sortStaffByOrder` 7개 클로저 전이 의존 — schHistory·empOverride·empWorkHours·reservations·empList·extraCols·naverColShifts·empColOrder 중 1개라도 deps 누락 시 타임라인 stale) ⓑ schedule_data Realtime 6채널(notices·employees·schHistory·extraCols·naverColShifts·empColOrder)→1 통합(6핸들러 단일 디스패치 — 실시간 라우팅 검증 필요, 실패 시 120s 폴링 폴백이라 soft). 둘 다 프로파일링/실시간경로 검증 가능한 세션에서.
 - **안 건드린 것**: 정렬·토글·태그생성 등 fire-and-forget ~40곳은 실패해도 복구되는 무해 케이스라 의도적으로 유지.
+
+### v3.7.905 — Realtime schedule_data 6채널→1 통합 + (서버) 콜라보 게이트·AI 정확도 감사 (2026-05-30)
+
+#### Realtime 채널 통합 (TimelinePage, React) — 2026-05-23 커넥션풀 장애 대응
+- TimelinePage가 schedule_data를 **6개 채널**(tl_notices·employees_all_rt·schedule_data_rt·extra_cols_rt·naver_col_shifts_rt·emp_col_order_rt)로 따로 구독하던 것 → **단일 채널 `schedule_data_all_rt`** 로 통합. **디바이스당 schedule_data 채널 6→1 (−5)**.
+- 방식: `schRtRef`(useRef) 레지스트리 — 각 effect가 채널 생성 대신 `schRtRef.current["<key>"]=loader` 등록(채널·unsubscribe 제거, 폴링 폴백은 유지). 단일 채널이 `business_id=eq.{biz}` 필터로 전 키 수신 후 `payload.new.key`로 dispatch. dispatch가 payload 전달 → schHistory의 `onSchChange(payload)`도 호환, 나머지 loader는 인자 무시.
+- 등록 7키: bliss_notices_v1 / employees_v1·empSettings_v1(reload 공유) / schHistory_v1 / extraCols_v1 / naverColShifts_v1 / empColOrder_v1.
+- **검증**(로컬 dev 데모): 타임라인 렌더·날짜이동 정상, 콘솔 에러 0, `getChannels()` 확인 — 구 6채널 0개·신규 1채널 **state="joined"**(실시간 구독 성공). 폴링 폴백(30s/120s/300s) 그대로라 라우팅 누락 시에도 soft. 라이브 v3.7.905, CF 퍼지 success.
+- **유의**: 단일 채널은 전 schedule_data 키를 수신해 클라에서 key dispatch(미등록 키 무시). maleRotation 등 다른 키는 각자 채널(useData/useMaleRotation)이 처리 — 중복 없음. `let channel/empCh = null` 일부 미사용 잔재는 무해(빌드 정상).
+
+#### (서버 ai_booking.py, React 무관, 이미 라이브) 콜라보 게이트 작별·거절 인식
+- 버그: `_outbound_collab`(매장이 콜라보 언급한 적 있는 thread)이면 손님이 거절·작별("Will do! Thanks", "지금 한국에 없어요")해도 **매 메시지에 "마케팅 담당자 연락" 반복**(swanxdiary 사례 — 정확도 감사 매 회 등장).
+- fix: `_outbound_collab` 분기에 `_bye`(작별·감사·거절 키워드) + `_engage`(방문·수락·예약 의사) + `_is_q`(질문) 판정 추가 → **작별·거절이고 질문/방문의사 없으면** 마케팅 반복 대신 가볍게 마무리("감사합니다! 언제든 연락 주세요"/"Thank you! Take care"). 수락·질문은 기존 마케팅 안내 유지.
+- 검증: 정확도 감사에서 swanxdiary(작별) 2→5점, uni.korea(콜라보 수락) 5점 유지. 서버 직접 패치 + `systemctl restart`(active). 백업 `ai_booking.py.bak_collabfix_*`. React 변경 0 → 버전·CF 무관.
+
+#### (서버) AI 자동응답 정확도 감사 — 도구 구축 + 결론
+- **`_ai_accuracy_audit.py`**(서버 보존, 재사용): 실제 최근 대화를 **production-replica**(실제 account/user/channel → 기존예약·세션기록 실데이터 조회, `_load_history` monkeypatch로 잘라낸 대화, 쓰기 전부 mock=부작용0)로 운영 에이전트가 답하게 → **봇이 실제 받은 전체 프롬프트를 심판(무료 Gemini)에게 주고** 사실 정확도 채점. 비용 0.
+- **결론**: 진짜 production 정확도 **≈4.0~4.3/5**(27건 중 21~25건 정확). 무료 Gemini 3.5 Flash로 양호. **프롬프트는 이미 한계** — 강화 2라운드(환각차단·과확정/작별) 무효(심판 노이즈 ±0.2가 개선폭보다 큼). 처음 본 "환각" 다수는 심판 오판(첫방문가·매장명·FAQ·기존예약 미인지)이었고 심판 보강하니 사라짐(=프롬프트가 이미 처리 중). 남은 갭=테스트 아티팩트(과거 대화를 오늘로 재생)+심판 노이즈+콜라보 게이트(위 fix). **정확도 향상의 핵심 레버는 비싼 모델이 아니라 프롬프트/데이터/게이트** — 비용 안 써도 됨(정우님 직감 맞음).
+- 미배포(검증 한계로 보류): allRooms 체인 메모이즈(드래그). 향후 `_ai_accuracy_audit.py`로 변경 후 재측정 가능.
