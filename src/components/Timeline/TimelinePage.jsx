@@ -792,8 +792,11 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         : bts?.openTime ? {start:bts.openTime, end:bts.closeTime||"21:00"} : baseHours;
       // 직원 근무시간이 지점 운영시간보다 우선 — 직원 본인 시간(일별→기본)을 먼저 보고,
       // 직원 시간이 아예 없을 때만 지점 운영시간 fallback.
+      // 원소속(home) 지점에 저장된 시간도 폴백 — 타지점 이동 시 처음 설정한 근무시간 유지(지점 운영시간으로 안 바뀜)
       return empWorkHours[empId+"_"+bid+"_"+date] || empWorkHours[empId+"_"+bid]
-        || empWorkHours[empId+"_"+date] || empWorkHours[empId] || branchDefault;
+        || empWorkHours[empId+"_"+date] || empWorkHours[empId]
+        || (baseBid && (empWorkHours[empId+"_"+baseBid+"_"+date] || empWorkHours[empId+"_"+baseBid]))
+        || branchDefault;
     };
     // from 기준 정렬 (빈 값은 해당 지점 근무 시작으로 간주)
     const sorted = [...segments].sort((a,b) => (a.from||segHoursOf(a.branchId).start).localeCompare(b.from||segHoursOf(b.branchId).start));
@@ -1058,7 +1061,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     const branchTs = (data?.branches||[]).find(b=>b.id===branchId)?.timelineSettings;
     const branchHours = branchTs?.defaultWorkStart ? {start:branchTs.defaultWorkStart, end:branchTs.defaultWorkEnd||"21:00"}
       : branchTs?.openTime ? {start:branchTs.openTime, end:branchTs.closeTime||"21:00"} : null;
-    const empWh = empWorkHours[empId+"_"+branchId+"_"+date] || empWorkHours[empId+"_"+branchId] || empWorkHours[empId+"_"+date] || empWorkHours[empId];
+    const empWh = empWorkHours[empId+"_"+branchId+"_"+date] || empWorkHours[empId+"_"+branchId] || empWorkHours[empId+"_"+date] || empWorkHours[empId]
+      || (baseBid && (empWorkHours[empId+"_"+baseBid+"_"+date] || empWorkHours[empId+"_"+baseBid]));  // 원소속 지점 시간 폴백(이동 시 유지)
     // 직원 근무시간이 지점 운영시간보다 우선 — 타지점 이동 시에도 직원 본인 시간 그대로 사용.
     // 직원 시간이 아예 없을 때만 지점 운영시간 fallback.
     const wh = empWh || branchHours;
@@ -4371,8 +4375,10 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                 : _bts?.openTime ? {start:_bts.openTime, end:_bts.closeTime||"21:00"} : null;
                               // 1순위: 해당 직원+해당 지점에 직접 저장된 값
                               const explicitWh = empWorkHours[whKey] || empWorkHours[room.staffId+"_"+room.branch_id];
-                              // 2순위: 직원 base hours (날짜별 → 직원 default)
-                              const empBaseWh = empWorkHours[room.staffId+"_"+selDate] || empWorkHours[room.staffId];
+                              // 2순위: 직원 base hours (날짜별 → 직원 default → 원소속 지점 저장값) — 이동 팝업이 강남에서 열려도 홍대 설정시간 표시
+                              const _homeBid = BASE_EMP_LIST.find(e=>e.id===room.staffId)?.branch_id;
+                              const empBaseWh = empWorkHours[room.staffId+"_"+selDate] || empWorkHours[room.staffId]
+                                || (_homeBid && (empWorkHours[room.staffId+"_"+_homeBid+"_"+selDate] || empWorkHours[room.staffId+"_"+_homeBid]));
                               // 직원 근무시간이 지점 운영시간보다 우선 — 타지점에서도 클립 없이 직원 시간 그대로.
                               const savedWh = explicitWh || empBaseWh || branchHours || {start:"10:00",end:"21:00"};
                               const wh = empMovePopup.draftWh || savedWh;

@@ -2697,3 +2697,8 @@ Liah(WhatsApp) 후속 2건.
 - (기존 chart-done-blink 글로우는 미사용 — signed는 정적 솔리드)
 **② 뷰어 이미지 렌더 fix** (`ConsentDocsViewer.jsx`): "작성완료 클릭 시 이미지 대신 'PDF 새 창에서 열기' 폴백"이 뜨던 버그. 원인 — v3.7.891 포팅 때 `page.render({ canvas, viewport })`로 바꿨는데 **pdfjs 5.7은 `canvas`만 주면 렌더가 안 끝남**(15초 타임아웃→폴백). **키오스크(bliss-consent, 검증됨)와 동일하게 `page.render({ canvasContext: canvas.getContext('2d'), viewport })`로 되돌림** → 이미지 정상 렌더. (워커는 bliss-app은 `?url` 유지 — `new URL(bare,…)`는 bliss-app Vite에서 무한로딩, aiDocs와 동일 방식)
 **적용**: v3.7.895 라이브 배포(version.txt 검증, CF 퍼지 success). ⚠️ pdfjs 실제 래스터 이미지는 헤드리스에서 검증 불가 — 실 브라우저 1회 확인 권장(키오스크 동일 코드라 신뢰도 높음).
+
+### v3.7.896 — 요청 처리: 직원 이동 시 근무시간 유지 + 최무성 마지막회차 태그 (2026-05-29)
+- **직원 이동 시 출퇴근시간 바뀜** (강남 id_bwf2bxp0it, `TimelinePage.jsx`): 근무시간이 `empWorkHours[empId_지점_날짜]` 지점별 키로 저장되는데, 타지점 이동 시 그 지점 세그먼트의 시간 룩업이 **이동한 지점 운영시간으로 폴백**해 처음 설정한 시간(예: 홍대 10~20시)이 강남 운영시간으로 바뀌어 보임. v3.7.760이 base(empId/empId_date) 폴백은 넣었지만 **home(원소속) 지점 키 폴백이 빠짐**. fix: 3곳(`segHoursOf`·`getEmpActiveSegments`·이동/근무 팝업 근무시간 표시)의 폴백 체인에 `empWorkHours[empId_homeBid_date] || empWorkHours[empId_homeBid]`를 branchDefault 직전에 추가(additive — 기존 케이스 무영향, 타지점 이동 케이스만 원래 시간 유지). homeBid=BASE_EMP_LIST home branch.
+- **최무성 ★마지막회차 태그 안 붙음** (강남 id_p3acru8wrh, 데이터): 최무성(#54464) 토탈 PKG 5회 중 4회 사용=1회 남음(마지막회차 맞음). 트리거·설정·데이터 다 정상이고 ★마지막회차는 최근 3일 4건에 정상 부착 중 — **시스템 문제 아님**. 원인=태그는 예약 분석 시점(13:44, 1회)에만 계산되고 그 후 회차가 줄어도 재평가 안 함(rescrape는 selected_services 있으면 재분석 skip). 예약 `kioom2xvq3` selected_tags에 `8vacfofam` 수동 추가. **미해결(한계)**: 예약 등록 후 회차가 마지막회차로 떨어지는 케이스 자동 갱신 — 추후 별도(서버 rescrape 시 auto_tag 재평가 또는 클라 live 계산).
+**적용**: v3.7.896 라이브 배포(version.txt 검증, CF 퍼지 success). ⚠️ 직원이동 근무시간은 드래그 인터랙션이라 헤드리스 검증 불가 — 실제 이동(홍대→강남) 시 10~20시 유지되는지 확인 권장(additive 폴백이라 회귀 위험 낮음). 요청 2건 done + 답글.
