@@ -2711,3 +2711,13 @@ Liah(WhatsApp) 후속 2건.
 - **클라** (`MessagesPage.jsx`, v3.7.897): `aiBooked` state. 답변추천 응답에 booking 있으면 입력창 위에 녹색 알림 "✅ 예약 등록됨 — MM-DD HH:MM 지점 (신규) [타임라인에서 보기]". 버튼 = `setPendingOpenRes({id,reservation_id,date,time,bid,status,_highlightOnly:true}); setPage("timeline")` → 그 블록으로 이동·반짝(v3.7.862 메커니즘 재사용). 기본·컴팩트 두 레이아웃 다. 대화 변경/리셋/발송 시 clear.
 **Devona 중복 정리**: 신규 태그 정확한 답변추천분(`ai_27fnt7ozxp0k`, English speaker 메모 병합) 유지, 자동응답 중복분(`ai_4fd37ac77a38`) 삭제.
 **적용**: v3.7.897 라이브 배포(version.txt 검증, CF 퍼지 success) + 서버 재시작. ⚠️ 인박스→타임라인 포커스는 헤드리스 검증 불가 — 답변추천 후 알림·버튼 실제 동작 확인 권장.
+
+### 서버 — AI 예약: 기존/신규 물어보기 + 등록 연락처로 매칭 + 직원확인 메모 (2026-05-29, React 변경 0)
+**배경**(정우님 보고): Devona(WhatsApp +17725770005)가 사실 기존 고객 "디보나" #53746(010-4419-1205, 7회)인데, 채팅 번호 ≠ 등록 번호라 AI가 **새 고객 중복 생성**. 외국 번호로 채팅하는 기존 고객 일반 문제.
+**Devona 데이터 병합**: #53746(`cust_6a9ljtstg`)에 WhatsApp sns_accounts + phone2(+17725770005) 이전, 예약 재연결 + 신규태그 제거(기존고객), AI 중복레코드(`cust_ai_27fnt7ozxp0k`) 삭제. → 이후 Devona WhatsApp 메시지 #53746 자동매칭.
+**AI 흐름 fix** (`ai_booking.py`, 백업 `bak_pre_existingask_20260529_064434`):
+- 프롬프트 규칙 14 추가: 예약 정보(성별·연락처) 물을 때 **'처음/기존 방문 여부'도 함께** 질문. 기존이면 **등록 성함·연락처**를 받아 custName·custPhone에 + `existing_claim="true"`. (등록 번호로 검색 → 외국 번호 채팅이라도 기존 고객 연결, 중복 방지). 강요 금지·한 번만.
+- JSON 스키마에 `existing_claim` 필드 추가.
+- `create_booking_from_ai`: `existing_claim=true`인데 `_cust_created`(검색 실패로 새로 등록)면 → `schedule_log`에 "⚠ 기존 방문이라 하셨으나 검색 안 됨 → 새로 등록. 동일인 확인·병합 필요" 경고(예약모달에 노출, 직원 검토). 시술경고(_svc_warn)와 병합.
+- 매칭 자체는 기존 `create_booking_from_ai`(phone/sns/name+phone)가 그대로 — 등록 번호 받으면 phone 매칭으로 연결.
+**유의**: 서버 직접 패치(React 0 → 버전업·CF퍼지 불필요). 대화형 동작(AI가 기존/신규 자연스럽게 묻는지)은 실제 채팅에서 검증 권장 — 프롬프트 추가는 additive·메모는 _cust_created+existing_claim일 때만이라 회귀 위험 낮음.
