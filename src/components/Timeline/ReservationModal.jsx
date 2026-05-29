@@ -806,6 +806,30 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   const [chartReloadKey, setChartReloadKey] = useState(0); // 동의서 발송 후 차트 상태 새로고침
   const [docsViewerOpen, setDocsViewerOpen] = useState(false); // 📋 작성된 동의서·차트 이미지 뷰어
   const [docViewerFocus, setDocViewerFocus] = useState(null); // 뷰어에서 포커스할 작성본(차트 or 동의서)
+  const [naverKo, setNaverKo] = useState("");          // 외국인 네이버 예약정보 한국어 번역
+  const [naverKoLoading, setNaverKoLoading] = useState(false);
+  useEffect(() => { setNaverKo(""); }, [item?.id]);    // 예약 바뀌면 번역 초기화
+  // 외국인 네이버 예약정보 → 한국어 번역 (요청: 외국어 예약정보도 한국어로 보이게)
+  const translateNaver = async () => {
+    if (naverKoLoading) return;
+    let txt = "";
+    try {
+      const rm = (f.requestMsg || "").trim();
+      txt = rm.startsWith("[") ? JSON.parse(rm).map(it => `${it.label}: ${it.value}`).join("\n") : rm;
+    } catch { txt = (f.requestMsg || ""); }
+    if (f.ownerComment) txt += (txt ? "\n" : "") + f.ownerComment;
+    if (!txt.trim()) return;
+    setNaverKoLoading(true);
+    try {
+      const r = await fetch("https://blissme.ai/translate-ko", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: txt }) });
+      const dd = await r.json().catch(() => ({}));
+      if (dd && dd.ok && dd.ko) setNaverKo(dd.ko);
+      else alert("번역 실패: " + (dd?.error || "다시 시도해주세요"));
+    } catch (e) { alert("번역 오류: " + (e?.message || e)); }
+    finally { setNaverKoLoading(false); }
+  };
+  // 외국어(일본어 가나/한자/키릴/태국어) 포함 여부 → 번역 버튼 노출 판단
+  const _naverHasForeign = /[぀-ヿ一-鿿Ѐ-ӿ฀-๿]/.test((f.requestMsg || "") + " " + (f.ownerComment || ""));
   // 외국 이름 음역 fallback — 네이버/AI 예약 신규 고객은 customers.name_kor 비어있어서
   // _cust?.nameKor 조건만으론 화면에 안 뜸. 캐시 → Gemini 호출 → 결과 state + DB 백필
   const [autoNameKor, setAutoNameKor] = useState('');
@@ -2726,6 +2750,9 @@ ${naverText}
               <I name="naver" size={14}/>
               <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.successDk}}>네이버 예약정보</span>
               {f.reservationId && <span style={{fontSize:T.fs.xxs,fontWeight:T.fw.bolder,color:T.successDk,background:T.successLt,borderRadius:T.radius.sm,padding:"1px 6px",letterSpacing:0.5}}>#{f.reservationId}</span>}
+              {_naverHasForeign && !naverKo && <button type="button" onClick={translateNaver} disabled={naverKoLoading}
+                title="외국어 예약정보를 한국어로 번역" style={{marginLeft:"auto",fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:6,border:"1px solid "+T.successDk+"66",background:"#fff",color:T.successDk,cursor:naverKoLoading?"wait":"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:3}}>
+                <I name="languages" size={11}/>{naverKoLoading?"번역 중…":"한국어 번역"}</button>}
             </div>
             {/* 항목 리스트 - 통일된 row 디자인 */}
             {(()=>{
@@ -2790,6 +2817,11 @@ ${naverText}
                     return <NRow key={idx} label="요청" value={val}/>;
                   });
                 })()}
+                {/* 외국어 예약정보 한국어 번역 결과 */}
+                {naverKo && <div style={{marginTop:8,padding:"8px 10px",background:"#F0FDF4",border:"1px solid "+T.successDk+"40",borderRadius:T.radius.md}}>
+                  <div style={{fontSize:10,fontWeight:800,color:T.successDk,marginBottom:4,display:"flex",alignItems:"center",gap:3}}><I name="languages" size={11}/>한국어 번역</div>
+                  <div style={{fontSize:T.fs.sm,color:T.text,lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{naverKo}</div>
+                </div>}
                 {/* 직원 메모 */}
                 {f.ownerComment && naverColShow["직원메모"] !== false && <div style={{display:"flex",alignItems:"flex-start",gap:6,padding:"4px 0",borderBottom:"1px solid #E8F5E9"}}>
                   <span style={{fontSize:11,color:T.textMuted,fontWeight:500,minWidth:48,flexShrink:0,paddingTop:2}}>직원메모</span>
@@ -2858,11 +2890,11 @@ ${naverText}
               {regFmt && <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <I name="calendar" size={11} color={T.gray500}/>
                 <span style={{fontWeight:600}}>등록</span>
-                <span style={{marginLeft:"auto",fontFamily:"monospace"}}>{regFmt}</span>
+                <span style={{marginLeft:"auto",fontWeight:600,color:T.textMuted}}>{regFmt}</span>
               </div>}
               {schLines.length > 0 && <div style={{marginTop:regFmt?6:0,paddingTop:regFmt?6:0,borderTop:regFmt?"1px dashed "+T.border:"none",display:"flex",flexDirection:"column",gap:3}}>
                 {schLines.slice(0, 10).map((l, i) => (
-                  <div key={i} style={{fontSize:10.5,color:T.textMuted,fontFamily:"monospace",lineHeight:1.4}}>{l}</div>
+                  <div key={i} style={{fontSize:10.5,color:T.textMuted,lineHeight:1.5}}>{l.replace(/^\s*(?:📅|🗓️|🗓|📆|⏰|🕐|🕑|🕒)\s*/u,"").trim()}</div>
                 ))}
                 {schLines.length > 10 && <div style={{fontSize:10,color:T.gray400}}>... 외 {schLines.length - 10}건</div>}
               </div>}
