@@ -170,6 +170,10 @@
       @keyframes chartDoneBlink{0%,100%{box-shadow:0 0 0 0 rgba(5,150,105,.40)}50%{box-shadow:0 0 0 4px rgba(5,150,105,0)}}
       .chart-done-blink{animation:chartDoneBlink 1.8s ease-in-out infinite}
       @media (prefers-reduced-motion: reduce){ .chart-done-blink{animation:none} }
+      /* 차트/동의서 — 발송됐는데 고객 서명 대기: 녹색↔회색 교차 깜박 */
+      @keyframes docPendingBlink{0%,49%{background:#059669;color:#fff;border-color:#059669}50%,100%{background:#E5E7EB;color:#6B7280;border-color:#E5E7EB}}
+      .doc-pending-blink{animation:docPendingBlink 1.3s steps(1,end) infinite}
+      @media (prefers-reduced-motion: reduce){ .doc-pending-blink{animation:none;background:#059669;color:#fff;border-color:#059669} }
       /* 팀채팅 새 메시지 포커스 — 클릭(확인) 전까지 보라빛으로 계속 깜빡임 */
       @keyframes chatMsgPulse{
         0%,100%{background:rgba(124,124,200,.05);box-shadow:inset 4px 0 0 rgba(124,124,200,.30)}

@@ -44,7 +44,8 @@ async function renderPdfToImages(url) {
     const canvas = document.createElement('canvas')
     canvas.width = viewport.width
     canvas.height = viewport.height
-    const task = page.render({ canvas, viewport }) // pdfjs 5.7: canvas 주 파라미터
+    // 키오스크(검증됨)와 동일 — pdfjs 5.7은 canvas만 주면 렌더가 안 끝남. canvasContext로 줘야 함.
+    const task = page.render({ canvasContext: canvas.getContext('2d'), viewport })
     await withTimeout(task.promise, RENDER_TIMEOUT, task)
     imgs.push(canvas.toDataURL('image/jpeg', 0.74))
   }

@@ -2688,3 +2688,12 @@ Liah(WhatsApp) 후속 2건.
 - dedup `reservation_remind_log`(reservation_id+noti_key)로 **1회만**. 발송 시 차트 토큰(pf_) 발급 → 예약 모달이 자동 "차트 발송됨"으로.
 **검증**: 재시작 후 첫 폴링(13:21 KST)에 윤정현(강남 14:00)+이진화(위례 16:30) 각 1통 발송 `done`, 차트 토큰 생성 확인. 데모 0건(격리). React 변경 0 → 버전업·CF퍼지 불필요.
 **v3 정렬 완료** (2026-05-29, 백업 `bak_pre_v3chart_20260529_043747`): rsv_today 차트 토큰이 `["ct_condition_v2"]` 하드코딩이라 키오스크(v3)와 드리프트 + 신규고객도 컨디션만 받던 문제 → `_issue_pf_token(..., None, ...)`으로 변경해 내부 `_pick_chart_tpls(is_new_cust, same_day=True)` 사용. 활성 템플릿(`_active_chart_tpls`, is_active 기준 v3) 자동 추종 + 신규/기존 구분(당일+기존=컨디션 v3 / 당일+신규=신규차트+컨디션 v3). 모닝배치·캐치업 양쪽 적용. 기존 발송분(윤정현 v2 토큰)은 그대로 유효, 이후 신규 발송만 v3.
+
+### v3.7.895 — 예약모달 차트/동의서 버튼 3상태 색 + 뷰어 이미지 렌더 fix (2026-05-29)
+**① 버튼 라벨/색** (`ReservationModal.jsx` + `index.html`): "동의서·차트 작성완료" 긴 라벨 → **[차트] [동의서] 짧게 분리 + 색으로 상태 표현**:
+- 작성완료(서명 들어옴) = **솔리드 녹색**(#059669) 채움, 클릭→작성본 뷰어
+- 발송됨·미서명 = **녹↔회 교차 깜박**(`@keyframes docPendingBlink`, steps(1) 1.3s), 클릭→재전송
+- 미발송 = **회색**(#E5E7EB), 클릭→보내기
+- (기존 chart-done-blink 글로우는 미사용 — signed는 정적 솔리드)
+**② 뷰어 이미지 렌더 fix** (`ConsentDocsViewer.jsx`): "작성완료 클릭 시 이미지 대신 'PDF 새 창에서 열기' 폴백"이 뜨던 버그. 원인 — v3.7.891 포팅 때 `page.render({ canvas, viewport })`로 바꿨는데 **pdfjs 5.7은 `canvas`만 주면 렌더가 안 끝남**(15초 타임아웃→폴백). **키오스크(bliss-consent, 검증됨)와 동일하게 `page.render({ canvasContext: canvas.getContext('2d'), viewport })`로 되돌림** → 이미지 정상 렌더. (워커는 bliss-app은 `?url` 유지 — `new URL(bare,…)`는 bliss-app Vite에서 무한로딩, aiDocs와 동일 방식)
+**적용**: v3.7.895 라이브 배포(version.txt 검증, CF 퍼지 success). ⚠️ pdfjs 실제 래스터 이미지는 헤드리스에서 검증 불가 — 실 브라우저 1회 확인 권장(키오스크 동일 코드라 신뢰도 높음).

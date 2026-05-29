@@ -2025,7 +2025,7 @@ ${naverText}
                             <I name="alert" size={10}/>주의 (취소{_cp}/노쇼{_ns})
                           </span>;
                         })()}
-                        {/* 📋 차트/동의서 작성 상태 — 트랙 독립 표시. 작성완료=깜빡칩(클릭→뷰어), 발송됨=재전송, 미발송=보내기 */}
+                        {/* 📋 차트/동의서 — 트랙별 3상태: 작성완료(서명)=솔리드 녹색 / 발송·미서명=녹↔회 교차 깜박 / 미발송=회색 */}
                         {(() => {
                           const _canSend = f.custId && !String(f.custId).startsWith("new_") && !f.isNewCust;
                           const _openSend = (st) => { setConsentPreselect(st?.status === "sent" ? (st.tplIds || []) : []); setConsentOpen(true); };
@@ -2034,23 +2034,32 @@ ${naverText}
                             { key: "chart", label: "차트", st: chartInfo?.chart },
                             { key: "doc", label: "동의서", st: chartInfo?.doc },
                           ];
+                          const _base = { fontSize: 10, padding: "3px 11px", borderRadius: 10, fontWeight: 800, whiteSpace: "nowrap", cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 4, border: "1px solid transparent" };
                           return (
-                            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
                               {_tracks.map(tk => {
                                 const st = tk.st; if (!st) return null;
+                                // 작성완료(서명 들어옴): 솔리드 녹색 채움 → 클릭 시 작성본 보기
                                 if (st.status === "signed") return (
-                                  <button key={tk.key} type="button" className="chart-done-blink" onClick={(e) => { e.stopPropagation(); _openView(st); }}
-                                    title={`클릭해서 작성한 ${tk.label} 보기`}
-                                    style={{ fontSize: 10, padding: "2px 9px", borderRadius: 10, background: "#059669", color: "#fff", border: "none", fontWeight: 800, whiteSpace: "nowrap", cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                                    <I name="fileText" size={10} />{tk.label} 작성완료<I name="eye" size={10} /></button>
+                                  <button key={tk.key} type="button" onClick={(e) => { e.stopPropagation(); _openView(st); }}
+                                    title={`${tk.label} 작성완료 — 클릭해서 보기`}
+                                    style={{ ..._base, background: "#059669", color: "#fff", borderColor: "#059669" }}>
+                                    <I name="fileText" size={10} />{tk.label}<I name="eye" size={10} /></button>
                                 );
                                 if (!_canSend) return null;
-                                const _resend = st.status === "sent";
+                                // 발송됨·미서명: 녹↔회 교차 깜박 → 클릭 시 재전송
+                                if (st.status === "sent") return (
+                                  <button key={tk.key} type="button" className="doc-pending-blink" onClick={(e) => { e.stopPropagation(); _openSend(st); }}
+                                    title={`${tk.label} 발송됨 · 고객 서명 대기 — 클릭해서 재전송`}
+                                    style={{ ..._base }}>
+                                    <I name="fileText" size={10} />{tk.label}</button>
+                                );
+                                // 미발송: 회색 → 클릭 시 보내기
                                 return (
                                   <button key={tk.key} type="button" onClick={(e) => { e.stopPropagation(); _openSend(st); }}
-                                    title={`${tk.label} 작성 링크를 고객에게 ${_resend ? "재전송" : "보내기"} (알림톡·문자·QR)`}
-                                    style={{ fontSize: 10, padding: "2px 9px", borderRadius: 10, background: _resend ? "#FFF7ED" : "#EDE7F6", color: _resend ? "#c2410c" : "#5B21B6", border: "none", fontWeight: 800, whiteSpace: "nowrap", cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 3 }}>
-                                    <I name="fileText" size={10} />{tk.label} {_resend ? "재전송" : "보내기"}</button>
+                                    title={`${tk.label} 미발송 — 클릭해서 보내기`}
+                                    style={{ ..._base, background: "#E5E7EB", color: "#6B7280", borderColor: "#E5E7EB" }}>
+                                    <I name="fileText" size={10} />{tk.label}</button>
                                 );
                               })}
                             </div>
