@@ -2749,3 +2749,9 @@ Liah(WhatsApp) 후속 2건.
 
 ### v3.7.900 — AI 분석 호버 시에만 표시 (고객 민감정보 보호) (2026-05-29)
 정우님: AI 분석에 고객 은밀한 특이정보(부위 등)가 너무 적나라하게 노출됨. `ReservationModal` AI 분석 박스 — 기본 `filter:blur(7px)`+`userSelect:none`로 가림, 헤더에 "👁 올리면 보기" 힌트. `aiReveal` state를 onMouseEnter(호버) 시 true / onMouseLeave 시 false, onClick 토글(터치 대응). 호버/탭 시에만 선명하게. 적용: v3.7.900 라이브.
+
+### v3.7.901 — 시술 선택 검색창 (예약모달 + 매출입력) (2026-05-29)
+정우님: 시술상품 옆 검색창으로 바로 검색, 매출입력 카테고리도 검색.
+- **ReservationModal 시술상품 드롭다운**: 패널 상단에 검색 input(`svcSearch`) — 이름·카테고리 즉시 필터. 검색 중엔 보유패키지 블록 숨김 + "검색 결과 없음" 표시. (SVC_LIST.map을 필터된 _list로)
+- **SaleForm(매출입력) 시술 섹션**: "시술 (N)" 헤더 아래 검색 input(`svcSearch`) — `catGroups`·`uncatSvcs`의 svc를 이름으로 필터(`_svcMatch`), 빈 카테고리는 자동 숨김, **검색 중엔 매칭 카테고리 자동 펼침**(isOpen=_svcQ?true:isCatOpen). 결과 없으면 "검색 결과 없음".
+**적용**: v3.7.901 라이브(version.txt 검증, CF 퍼지 success). React only. 헤더 검색 1개로(각 카테고리별 다중 검색창 대신 — 카테고리 가로질러 필터+자동펼침이 더 편함).

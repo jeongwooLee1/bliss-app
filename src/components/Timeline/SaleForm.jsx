@@ -370,6 +370,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   const [selBranch, setSelBranch] = useState(branchId);
   const [gender, setGender] = useState(reservation?.custGender || "");
   const [openCats, setOpenCats] = useState({}); // catId → true/false (null=auto)
+  const [svcSearch, setSvcSearch] = useState(""); // 시술 검색어 (이름 즉시 필터, 검색 시 카테고리 자동 펼침)
   const toggleCat = (catId) => setOpenCats(p => ({...p, [catId]: !isCatOpen(catId, p)}));
   const isCatOpen = (catId, cats=openCats) => {
     if(cats[catId] !== undefined) return cats[catId];
@@ -3431,12 +3432,14 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   const leftSvcs = SVC_LIST.slice(0, halfSvc);
   const rightSvcs = SVC_LIST.slice(halfSvc);
   // 카테고리별 그룹 — '쿠폰' 카테고리는 증정/발행 대상이지 구매 대상이 아니므로 제외
+  const _svcQ = svcSearch.trim().toLowerCase();
+  const _svcMatch = s => !_svcQ || (s.name||"").toLowerCase().includes(_svcQ);
   const catGroups = CATS.filter(cat => cat.name !== '쿠폰').map(cat => ({
     cat,
-    svcs: SVC_LIST.filter(s => s.cat === cat.id)
+    svcs: SVC_LIST.filter(s => s.cat === cat.id && _svcMatch(s))
   })).filter(g => g.svcs.length > 0);
   const COUPON_CAT_IDS = CATS.filter(c => c.name === '쿠폰').map(c => c.id);
-  const uncatSvcs = SVC_LIST.filter(s => !CATS.find(c=>c.id===s.cat) && !COUPON_CAT_IDS.includes(s.cat));
+  const uncatSvcs = SVC_LIST.filter(s => !CATS.find(c=>c.id===s.cat) && !COUPON_CAT_IDS.includes(s.cat) && _svcMatch(s));
   const halfProd = Math.ceil(PROD_LIST.length / 2);
 
   // 모바일 감지: 700px 이하면 1단 세로 레이아웃 (좌·우 패널을 위아래로 쌓음)
@@ -3846,11 +3849,14 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
                 setData={setData}
               />, document.body)}
             <div style={{ color:T.primary, padding: "6px 0 4px", marginBottom: 6, fontSize:14, fontWeight:800 }}>시술 ({SVC_LIST.length})</div>
+            <input type="text" value={svcSearch} onChange={e=>setSvcSearch(e.target.value)} placeholder="시술 검색 (이름)…" autoComplete="off"
+              style={{width:"100%",boxSizing:"border-box",padding:"7px 11px",marginBottom:8,fontSize:13,border:"1px solid "+T.border,borderRadius:8,fontFamily:"inherit",outline:"none"}}/>
+            {_svcQ && catGroups.length===0 && uncatSvcs.length===0 && <div style={{padding:12,fontSize:13,color:T.gray500,textAlign:"center"}}>"{svcSearch}" 검색 결과 없음</div>}
             {hasCompedTag && <div style={{marginBottom:8,padding:"7px 10px",background:"#FFF3E0",border:"1.5px solid #E65100",borderRadius:8,fontSize:11,color:"#E65100",fontWeight:700,lineHeight:1.5}}>
               🎁 체험단 예약 — 체크한 시술·제품 행 오른쪽 <span style={{background:"#fff",padding:"1px 6px",borderRadius:4,border:"1px solid #E65100",fontWeight:800}}>🎁</span> 버튼을 눌러 무료 제공으로 전환하세요
             </div>}
             {catGroups.map(({cat, svcs}) => {
-              const isOpen = isCatOpen(cat.id);
+              const isOpen = _svcQ ? true : isCatOpen(cat.id);
               const hasChecked = svcs.some(s=>items[s.id]?.checked);
               return (
               <div key={cat.id} style={{marginBottom:6,border:"1px solid "+T.border,borderRadius:8,overflow:"hidden"}}>

@@ -1214,6 +1214,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
 
   // 시술 선택 패널 열기
   const [showSvcPicker, setShowSvcPicker] = useState(false);
+  const [svcSearch, setSvcSearch] = useState("");   // 시술상품 검색어 (이름·카테고리 즉시 필터)
   const [tagsOpen, setTagsOpen] = useState(false);
   const [srcOpen, setSrcOpen] = useState(!isNaverItem);
   // AI 자동분석 상태
@@ -2564,9 +2565,13 @@ ${naverText}
                 <span className={"tags-acc-chev"+(showSvcPicker?" open":"")}>▾</span>
               </div>
               <div className={"tags-acc-body"+(showSvcPicker?" open":"")}>
+              <div style={{padding:"6px 8px 4px"}} onClick={e=>e.stopPropagation()}>
+                <input type="text" value={svcSearch} onChange={e=>setSvcSearch(e.target.value)} placeholder="시술 검색 (이름·카테고리)…" autoComplete="off"
+                  style={{width:"100%",boxSizing:"border-box",padding:"6px 10px",fontSize:T.fs.sm,border:"1px solid "+T.border,borderRadius:T.radius.sm,fontFamily:"inherit",outline:"none"}}/>
+              </div>
               <div style={{maxHeight:280,overflow:"auto"}}>
-                {/* 보유 패키지 — 시술 목록 최상단 */}
-                {(()=>{
+                {/* 보유 패키지 — 시술 목록 최상단 (검색 중엔 숨김) */}
+                {!svcSearch.trim() && (()=>{
                   const multiPkgs = (custPkgsInfo||[]).filter(p => {
                     const n=(p.service_name||"").toLowerCase();
                     if(isMoneyPkg(p)) return false;
@@ -2604,7 +2609,11 @@ ${naverText}
                   </div>;
                 })()}
                 {SVC_LIST.length===0 && <div style={{padding:12,fontSize:T.fs.sm,color:T.gray500,textAlign:"center"}}>시술 상품이 없습니다 (관리설정 → 시술상품관리에서 등록)</div>}
-                {SVC_LIST.length>0 && SVC_LIST.map(svc=>{
+                {SVC_LIST.length>0 && (()=>{
+                  const _q = svcSearch.trim().toLowerCase();
+                  const _list = _q ? SVC_LIST.filter(s=>((s.name||"")+" "+(CATS.find(c=>c.id===s.cat)?.name||"")).toLowerCase().includes(_q)) : SVC_LIST;
+                  if (_q && _list.length===0) return <div style={{padding:12,fontSize:T.fs.sm,color:T.gray500,textAlign:"center"}}>"{svcSearch}" 검색 결과 없음</div>;
+                  return _list.map(svc=>{
                       const sel = (f.selectedServices||[]).includes(svc.id);
         const qty = (f.selectedServices||[]).filter(id=>id===svc.id).length;
         const aqty = svcAllowQty(svc);
@@ -2626,7 +2635,7 @@ ${naverText}
           <button onClick={()=>toggleService(svc.id,1)} style={{width:22,height:22,borderRadius:"50%",border:"1px solid "+T.border,background:qty>0?T.primary:T.bgCard,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",color:qty>0?T.bgCard:T.gray600}}>+</button>
         </div>}
         </div>;
-                    })}
+                    }); })()}
               </div>{/* maxHeight scroll */}
               </div>{/* tags-acc-body */}
               </div>{/* tags-acc */}
