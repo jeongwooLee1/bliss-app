@@ -241,6 +241,8 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   const [alertMsg, setAlertMsg] = useState(null);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const showAlert = (msg) => setAlertMsg(msg);
+  // DB 쓰기 실패를 조용히 삼키지 않고 사용자에게 알림 (제어흐름은 그대로 — 비차단). 돈·보유권 경로용.
+  const _dbWarn = (label) => (e) => { console.error("["+label+"]", e); showAlert("⚠️ "+label+" 저장에 실패했을 수 있어요. 네트워크 확인 후 매출 상세에서 다시 확인해주세요."); };
   // 통합 추가/할인 행 — 동적 row. 각 row: { id, kind:'svc'|'prod', action:'add'|'discount', name, amount }
   const [extraRows, setExtraRows] = useState([
     { id: 'er_'+uid(), kind: 'svc', action: 'add', name: '', amount: 0 }
@@ -2565,9 +2567,15 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
               } catch(e) { console.warn("[dup phone check]", e); }
             }
             if (proceed) {
-              sb.insert("customers", toDb("customers", newCustObj)).then(() => {
+              // 고객 INSERT는 await — 실패 시 매출 중단(고아 매출 방지). 성공해야 cust.id로 매출 진행.
+              try {
+                await sb.insert("customers", toDb("customers", newCustObj));
                 setData(prev => ({ ...prev, customers: [...(prev?.customers||[]), newCustObj] }));
-              }).catch(console.error);
+              } catch (e) {
+                console.error(e);
+                showAlert("고객 정보 저장에 실패했습니다. 네트워크 확인 후 다시 시도해주세요.");
+                return;
+              }
             } else {
               // 사용자가 취소 → 매출 저장 중단
               showAlert("매출 등록이 취소됐습니다. 기존 고객을 검색해서 다시 시도해주세요.");
@@ -2728,7 +2736,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
           note: _note,
           branch_id: branchId || null,
         };
-        sb.insert("customer_packages", newPkg).catch(console.error);
+        sb.insert("customer_packages", newPkg).catch(_dbWarn("보유권"));
         _newTriggerPkgIds.prepaid_purchase.push(newPkgId);
         // 즉시 차감 시 첫 사용일 = 오늘
         if (deduct > 0) _firstUsePkgIds.push({pkgId: newPkgId, firstUseDate: _todayStr});
@@ -2780,7 +2788,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
           note: _pkgNote,
           branch_id: branchId || null,
         };
-        sb.insert("customer_packages", newPkg).catch(console.error);
+        sb.insert("customer_packages", newPkg).catch(_dbWarn("보유권"));
         _newTriggerPkgIds.pkg_purchase.push(newPkgId);
         _earnLinkPkgs.push({ id: newPkgId, faceVal: items[svc.id]?.amount || 0, expISO: _pkgExpStr ? `${_pkgExpStr}T00:00:00+09:00` : null });
         if (used > 0) _firstUsePkgIds.push({pkgId: newPkgId, firstUseDate: _todayStr});
@@ -2873,7 +2881,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
           note: _note,
           branch_id: branchId || null,
         };
-        sb.insert("customer_packages", newPkg).catch(console.error);
+        sb.insert("customer_packages", newPkg).catch(_dbWarn("보유권"));
         _newTriggerPkgIds.annual_purchase.push(newPkgId);
         // 연간권은 구매 시점에 유효일이 항상 정해짐
         _earnLinkPkgs.push({ id: newPkgId, faceVal: items[svc.id]?.amount || 0, expISO: `${_expStr}T00:00:00+09:00` });

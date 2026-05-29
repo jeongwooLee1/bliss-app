@@ -1,6 +1,8 @@
 # HANDOFF
 
 ## 현재 버전
+- **라이브: v3.7.904** (https://blissme.ai/version.txt) — 코드점검 2차: ①데이터유실(SaleForm 고아고객 INSERT await+중단 / 보유권 생성실패 사용자노출) ②타임라인 렌더 메모이즈(SVC_LIST·allBranchList·accessibleBids·branchesToShow + 2만행 날짜스캔 `todayReservations`). 검증: 날짜이동 블록 갱신·콘솔에러0. 상세 CLAUDE.md v3.7.904.
+  - **⏸️ 보류(별도 집중작업 — 핵심화면 검증 한계)**: ⓐ allRooms→blocks→naverAssignments 메모이즈(드래그 부드러움 — 7개 클로저 전이 의존, deps 누락 시 타임라인 stale, 프로파일링 동반) ⓑ schedule_data Realtime 6채널→1 통합(실시간 라우팅 검증 필요, 실패 시 120s 폴링 폴백). 코드점검 미착수: select=* 컬럼축소 / AI 모델·비용 A/B + Claude폴백 6/1차단 해소.
 - **라이브: v3.7.903** (https://blissme.ai/version.txt) — 코드점검 추천묶음: pdfjs 동적화(메인번들 2373→1822KB) + bank_deposits 4중복→단일소스(채널3→1·폴링4→1) + 죽은파일 9개 삭제. 서버 `ai_booking.py` RAG 게이팅(`_rag_should_search` — 인사·확인 메시지 임베딩 스킵, 백업 `bak_pre_raggate_20260529_224734`)도 라이브. 상세 CLAUDE.md v3.7.903. 미착수 묶음: Realtime 채널통합/렌더최적화/select축소/AI모델비용(Claude폴백 6/1차단)/fire-and-forget await화.
 - **라이브: v3.7.889** (https://blissme.ai/version.txt) — 로컬 `BLISS_V`/`version.txt` 일치
 - 2026-05-28 요청 4건 처리: ①강남 고객명 변경 저장 ②현아 자동번역(최근5건 합산) ④신영 오류신고 버튼 = v3.7.888 / ③대표 AI 범위게이트 = 서버 ai_booking.py 라이브. 전부 done+답글.

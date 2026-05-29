@@ -270,7 +270,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   [betaGroupMode, _liveData, _betaReservations, _liveSetData]);
   // 타임라인 블록 표시 항목 — App에서 prop으로 받음
   const effectiveNaverColShow = naverColShow;
-  const SVC_LIST = (data?.services || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
+  const SVC_LIST = useMemo(() => (data?.services || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0)), [data?.services]);
   const PROD_LIST = (data?.products || []);
   // 새로고침·재진입 시 항상 오늘 날짜로 복귀 (유저 요청: 타임라인 refresh → today)
   const [selDate, setSelDate] = useState(todayStr());
@@ -1313,16 +1313,16 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   const [topbarH, setTopbarH] = useState(80);
 
   // Branch view: 편집가능(userBranches) + 열람가능(viewBranches)
-  const allBranchList = [...(data.branchSettings || data.branches || [])].filter(b => b.useYn !== false).sort((a,b)=>(a.sort||0)-(b.sort||0));
+  const allBranchList = useMemo(() => [...(data.branchSettings || data.branches || [])].filter(b => b.useYn !== false).sort((a,b)=>(a.sort||0)-(b.sort||0)), [data.branchSettings, data.branches]);
   // userBranches + viewBranches + branchGroups 연계 지점 (네이버 예약막기·매출조회 등 권한 일관성)
-  const accessibleBids = (() => {
+  const accessibleBids = useMemo(() => {
     const set = new Set([...(userBranches||[]), ...(viewBranches||[])]);
     (data?.branchGroups || []).forEach(g => {
       const ids = g.branch_ids || g.branchIds || [];
       if (ids.some(b => set.has(b))) ids.forEach(b => set.add(b));
     });
     return [...set];
-  })();
+  }, [userBranches, viewBranches, data?.branchGroups]);
   // 기본: 본인 지점(쓰기권한)만 표시, isMaster는 전지점
   const defaultViewBids = isMaster ? allBranchList.map(b=>b.id) : (userBranches.length > 0 ? userBranches : accessibleBids);
   // localStorage에서 저장된 viewBids 복원
@@ -1450,7 +1450,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     });
   }, [selDate, data?.reservations?.length, data?.services]);
 
-  const branchesToShow = allBranchList.filter(b => viewBids.includes(b.id) && (isMaster || accessibleBids.includes(b.id)));
+  const branchesToShow = useMemo(() => allBranchList.filter(b => viewBids.includes(b.id) && (isMaster || accessibleBids.includes(b.id))), [allBranchList, viewBids, isMaster, accessibleBids]);
 
   // ── Alarm system ──
   const ALARM_TAG_ID = (data?.serviceTags||[]).find(t=>t.name&&t.name.includes("알람"))?.id;
@@ -2062,8 +2062,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     return new Date(d.getTime() + 9*3600*1000).toISOString().slice(0,10);
   };
 
-  const blocks = (data?.reservations||[]).filter(r => {
-    if (r.date !== selDate) return false;
+  // 2만행 전체 reservations에서 선택일 필터는 비싸므로 메모이즈 (의존성: reservations·selDate만 — 명확). 드래그·알람틱 등 잦은 리렌더에서 재스캔 방지.
+  const todayReservations = useMemo(() => (data?.reservations||[]).filter(r => r.date === selDate), [data?.reservations, selDate]);
+  const blocks = todayReservations.filter(r => {
     if (!branchesToShow.some(b=>b.id===r.bid)) return false;
     // 변경으로 인한 구예약(naver_changed)은 항상 숨김 (메일로 정상 변경된 케이스 포함)
     if (r.status === "naver_changed") return false;
