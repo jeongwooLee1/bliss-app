@@ -48,6 +48,11 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   const [aiBookLoading, setAiBookLoading] = useState(false);
   const [aiErrBusy, setAiErrBusy] = useState(false);
   const [endCounselLoading, setEndCounselLoading] = useState(false);
+  // 📋 자주 쓰는 답변(클립보드) — 매장 공유(schedule_data quick_replies_v1). 클릭 시 입력창에 삽입
+  const [quickReplies, setQuickReplies] = useState([]);
+  const [qrOpen, setQrOpen] = useState(false);
+  const [qrManage, setQrManage] = useState(false);
+  const [qrDraft, setQrDraft] = useState(null); // {id?, label, text}
   // 번역 모드: "auto" (기본, 고객 언어 감지) / "force_en" (강제 영어) / "off" (번역 안 함)
   const [autoTranslate, setAutoTranslate] = useState(true);  // 기존 호환
   const [translateMode, setTranslateMode] = useState("auto");
@@ -1246,6 +1251,104 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     finally{ setAiErrBusy(false); }
   };
 
+  // 📋 자주 쓰는 답변(클립보드) — 매장 공유 로드/저장/삽입
+  const loadQuickReplies = useCallback(async()=>{
+    try{
+      const r=await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.quick_replies_v1&select=value`,{headers:{...sbHeaders,"Cache-Control":"no-cache"},cache:"no-store"});
+      const rows=await r.json(); const v=rows?.[0]?.value;
+      const list=typeof v==="string"?JSON.parse(v):(Array.isArray(v)?v:[]);
+      setQuickReplies(Array.isArray(list)?list:[]);
+    }catch(e){ console.warn("[quickReplies load]",e); }
+  },[]);
+  useEffect(()=>{ loadQuickReplies(); },[loadQuickReplies]);
+  const persistQuickReplies = async(list)=>{
+    setQuickReplies(list);
+    try{
+      await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`,{
+        method:"POST", headers:{...sbHeaders, Prefer:"resolution=merge-duplicates,return=minimal"},
+        body:JSON.stringify({ business_id:_activeBizId, id:"quick_replies_v1", key:"quick_replies_v1", value:JSON.stringify(list) }),
+      });
+    }catch(e){ console.warn("[quickReplies save]",e); alert("자주답변 저장 실패: "+(e?.message||e)); }
+  };
+  const insertQuickReply = (text)=>{
+    if(!text) return;
+    const ta=document.getElementById("bliss-reply-ta");
+    if(ta && typeof ta.selectionStart==="number"){
+      const s=ta.selectionStart, e=ta.selectionEnd, cur=reply||"";
+      const next=cur.slice(0,s)+text+cur.slice(e);
+      setReply(next); setReplyIsAi(false); setAiKoDraft("");
+      requestAnimationFrame(()=>{ try{ ta.focus(); const p=s+text.length; ta.setSelectionRange(p,p);}catch(_){} });
+    } else {
+      setReply(r=> r ? (r.replace(/\s*$/,"")+"\n"+text) : text); setReplyIsAi(false);
+    }
+    setQrOpen(false);
+  };
+  const saveQrDraft = ()=>{
+    const label=(qrDraft?.label||"").trim(), text=(qrDraft?.text||"").trim();
+    if(!text){ alert("내용을 입력하세요."); return; }
+    const list = qrDraft?.id
+      ? quickReplies.map(q=>q.id===qrDraft.id?{...q,label,text}:q)
+      : [...quickReplies,{id:genId(),label,text}];
+    persistQuickReplies(list); setQrDraft(null);
+  };
+  const delQr = (id)=>{ if(!window.confirm("이 답변을 삭제할까요?"))return; persistQuickReplies(quickReplies.filter(q=>q.id!==id)); if(qrDraft?.id===id) setQrDraft(null); };
+
+  // 자주답변 버튼 (입력창 위 버튼 행) — 모바일/데스크탑 공용
+  const renderQrButton = ()=> (
+    <button onClick={()=>setQrOpen(o=>!o)} title="자주 쓰는 답변 — 클릭해서 입력창에 넣기"
+      style={{padding:forceCompact?"5px 10px":"6px 12px",background:qrOpen?"#EEF2FF":"#F8FAFC",color:"#4338CA",border:"1px solid "+(qrOpen?"#A5B4FC":T.border),borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:"pointer",fontWeight:T.fw.bold,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
+      <I name="clipboard" size={13}/> 자주답변
+    </button>
+  );
+  // 자주답변 패널 (입력창 바로 위) — 클릭 삽입 + 관리(추가/수정/삭제)
+  const renderQrPanel = ()=> {
+    if(!qrOpen) return null;
+    return (
+      <div data-qr style={{border:"1px solid "+T.border,borderRadius:10,background:"#fff",padding:8,marginBottom:6,maxHeight:260,overflowY:"auto",boxShadow:"0 6px 18px rgba(0,0,0,0.10)"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+          <span style={{fontSize:12,fontWeight:800,color:"#4338CA",display:"inline-flex",alignItems:"center",gap:5}}><I name="clipboard" size={13} color="#4338CA"/>자주 쓰는 답변</span>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>{ setQrManage(m=>!m); setQrDraft(null); }} style={{padding:"3px 9px",fontSize:11,fontWeight:700,borderRadius:6,border:"1px solid "+T.border,background:qrManage?"#4338CA":"#fff",color:qrManage?"#fff":T.text,cursor:"pointer",fontFamily:"inherit"}}>{qrManage?"완료":"관리"}</button>
+            <button onClick={()=>{ setQrOpen(false); setQrManage(false); setQrDraft(null); }} style={{padding:"3px 8px",fontSize:11,fontWeight:700,borderRadius:6,border:"1px solid "+T.border,background:"#fff",color:T.textMuted,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
+          </div>
+        </div>
+        {quickReplies.length===0 && !qrManage &&
+          <div style={{fontSize:12,color:T.textMuted,padding:"8px 4px",lineHeight:1.5}}>저장된 답변이 없어요.<br/>[관리]에서 자주 쓰는 답변(예: 지점 예약금 계좌번호)을 추가하세요.</div>}
+        {quickReplies.map(q=>(
+          <div key={q.id} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 2px",borderBottom:"1px solid "+T.gray100}}>
+            {qrManage ? (
+              <>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:700,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{q.label||"(제목 없음)"}</div>
+                  <div style={{fontSize:11,color:T.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{q.text}</div>
+                </div>
+                <button onClick={()=>setQrDraft({...q})} title="편집" style={{padding:4,border:"1px solid "+T.border,borderRadius:6,background:"#fff",cursor:"pointer",flexShrink:0}}><I name="edit" size={13}/></button>
+                <button onClick={()=>delQr(q.id)} title="삭제" style={{padding:4,border:"1px solid #FCA5A5",borderRadius:6,background:"#FEF2F2",cursor:"pointer",flexShrink:0}}><I name="trash" size={13} color="#DC2626"/></button>
+              </>
+            ) : (
+              <button onClick={()=>insertQuickReply(q.text)} style={{flex:1,minWidth:0,textAlign:"left",padding:"4px 6px",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",borderRadius:6}}>
+                <div style={{fontSize:12,fontWeight:700,color:"#4338CA",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{q.label||"(제목 없음)"}</div>
+                <div style={{fontSize:11,color:T.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{q.text}</div>
+              </button>
+            )}
+          </div>
+        ))}
+        {qrManage && (
+          <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid "+T.border,display:"flex",flexDirection:"column",gap:6}}>
+            <input value={qrDraft?.label||""} onChange={e=>setQrDraft(d=>({...(d||{}),label:e.target.value}))}
+              placeholder="제목 (예: 강남 예약금 계좌)" style={{padding:"7px 10px",border:"1px solid "+T.border,borderRadius:8,fontSize:13,fontFamily:"inherit",outline:"none"}}/>
+            <textarea value={qrDraft?.text||""} onChange={e=>setQrDraft(d=>({...(d||{}),text:e.target.value}))}
+              placeholder="내용 (입력창에 넣을 답변)" rows={3} style={{padding:"7px 10px",border:"1px solid "+T.border,borderRadius:8,fontSize:13,fontFamily:"inherit",outline:"none",resize:"vertical",lineHeight:1.5}}/>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={saveQrDraft} style={{flex:1,padding:"7px 0",fontSize:12,fontWeight:800,borderRadius:8,border:"none",background:"#4338CA",color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>{qrDraft?.id?"수정 저장":"추가"}</button>
+              {qrDraft?.id && <button onClick={()=>setQrDraft(null)} style={{padding:"7px 14px",fontSize:12,fontWeight:700,borderRadius:8,border:"1px solid "+T.border,background:"#fff",color:T.text,cursor:"pointer",fontFamily:"inherit"}}>취소</button>}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // 🟢 상담완료 — 네이버 톡톡 파트너센터 [상담완료] 자동 호출
   // 우리 메시지함 내부에서도 모두 읽음 처리. 네이버 채널에서만 노출.
   // confirm() 제거 — iOS PWA·모바일 일부 환경에서 차단되어 동작 불가하던 문제 해결 (aiBook과 동일 패턴)
@@ -1610,6 +1713,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             style={{padding:forceCompact?"5px 10px":"6px 12px",background:aiErrBusy?T.gray400:"#FEF2F2",color:aiErrBusy?"#fff":"#DC2626",border:"1px solid "+(aiErrBusy?T.gray400:"#FCA5A5"),borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:aiErrBusy?"wait":"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
             <I name={aiErrBusy?"loader":"alert"} size={13}/> {aiErrBusy?"접수 중…":"오류신고"}
           </button>
+          {renderQrButton()}
           {/* 상담완료 — 네이버 톡톡 파트너센터 [상담완료] 자동 호출 (네이버 채널만) */}
           {(sel.channel||"naver") === "naver" && <button onClick={endCounsel} disabled={endCounselLoading}
             title="네이버 톡톡 파트너센터에 [상담완료] 자동 적용 + 메시지함 모두 읽음 처리"
@@ -1631,6 +1735,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           <button type="button" onClick={()=>{ if(setPendingOpenRes&&setPage){ setPendingOpenRes({id:aiBooked.id,reservation_id:aiBooked.id,date:aiBooked.date,time:aiBooked.time,bid:aiBooked.bid,status:aiBooked.status||"request",_highlightOnly:true}); setPage("timeline"); } }}
             style={{marginLeft:"auto",padding:"3px 10px",fontSize:forceCompact?10:11,fontWeight:800,background:"#10B981",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>타임라인에서 보기 →</button>
         </div>}
+        {renderQrPanel()}
         <div style={{position:"relative"}}>
           <textarea id="bliss-reply-ta" value={reply} onChange={e=>{ setReply(e.target.value); setAiKoDraft(""); setReplyIsAi(false); }}
             onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}}
@@ -1825,6 +1930,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                 style={{padding:"6px 12px",background:aiErrBusy?T.gray400:"#FEF2F2",color:aiErrBusy?"#fff":"#DC2626",border:"1px solid "+(aiErrBusy?T.gray400:"#FCA5A5"),borderRadius:T.radius.md,fontSize:12,cursor:aiErrBusy?"wait":"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
                 <I name={aiErrBusy?"loader":"alert"} size={13}/> {aiErrBusy?"접수 중…":"오류신고"}
               </button>
+              {renderQrButton()}
               <select value={selStaff} onChange={e=>updateSelStaff(e.target.value)}
                 title="답장 발신자 — 메시지 머리에 표시 (디폴트: 지점명, 변경 시 자동 저장)"
                 style={{padding:"6px 10px",background:"#fff",color:T.text,border:"1px solid "+T.border,borderRadius:T.radius.md,fontSize:12,fontWeight:T.fw.bold,fontFamily:"inherit",cursor:"pointer"}}>
@@ -1839,6 +1945,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
               <button type="button" onClick={()=>{ if(setPendingOpenRes&&setPage){ setPendingOpenRes({id:aiBooked.id,reservation_id:aiBooked.id,date:aiBooked.date,time:aiBooked.time,bid:aiBooked.bid,status:aiBooked.status||"request",_highlightOnly:true}); setPage("timeline"); } }}
                 style={{marginLeft:"auto",padding:"3px 9px",fontSize:10,fontWeight:800,background:"#10B981",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>타임라인에서 보기 →</button>
             </div>}
+            {renderQrPanel()}
             <div style={{display:"flex",gap:8}}>
               <textarea id="bliss-reply-ta" value={reply} onChange={e=>{ setReply(e.target.value); setReplyIsAi(false); }}
                 onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}}
