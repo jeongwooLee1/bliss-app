@@ -806,30 +806,52 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   const [chartReloadKey, setChartReloadKey] = useState(0); // 동의서 발송 후 차트 상태 새로고침
   const [docsViewerOpen, setDocsViewerOpen] = useState(false); // 📋 작성된 동의서·차트 이미지 뷰어
   const [docViewerFocus, setDocViewerFocus] = useState(null); // 뷰어에서 포커스할 작성본(차트 or 동의서)
-  const [naverKo, setNaverKo] = useState("");          // 외국인 네이버 예약정보 한국어 번역
+  const [naverKo, setNaverKo] = useState("");          // 외국인 네이버 예약정보 한국어 자동번역
   const [naverKoLoading, setNaverKoLoading] = useState(false);
-  useEffect(() => { setNaverKo(""); }, [item?.id]);    // 예약 바뀌면 번역 초기화
-  // 외국인 네이버 예약정보 → 한국어 번역 (요청: 외국어 예약정보도 한국어로 보이게)
-  const translateNaver = async () => {
-    if (naverKoLoading) return;
+  // 외국어 네이버 예약정보 → 모달 열 때 자동 한국어 번역 (sessionStorage 캐시로 재호출 비용 방지)
+  useEffect(() => {
+    setNaverKo("");
+    const rid = item?.id;
+    const rm = (f.requestMsg || ""), oc = (f.ownerComment || "");
+    if (!rid || !/[぀-ヿ一-鿿Ѐ-ӿ฀-๿]/.test(rm + " " + oc)) return;  // 외국어(일/한자/키릴/태국) 없으면 패스
+    const ck = "naverko_" + rid;
+    try { const c = sessionStorage.getItem(ck); if (c) { setNaverKo(c); return; } } catch {}
     let txt = "";
-    try {
-      const rm = (f.requestMsg || "").trim();
-      txt = rm.startsWith("[") ? JSON.parse(rm).map(it => `${it.label}: ${it.value}`).join("\n") : rm;
-    } catch { txt = (f.requestMsg || ""); }
-    if (f.ownerComment) txt += (txt ? "\n" : "") + f.ownerComment;
+    try { txt = rm.trim().startsWith("[") ? JSON.parse(rm).map(it => `${it.label}: ${it.value}`).join("\n") : rm; } catch { txt = rm; }
+    if (oc) txt += (txt ? "\n" : "") + oc;
     if (!txt.trim()) return;
-    setNaverKoLoading(true);
-    try {
-      const r = await fetch("https://blissme.ai/translate-ko", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: txt }) });
-      const dd = await r.json().catch(() => ({}));
-      if (dd && dd.ok && dd.ko) setNaverKo(dd.ko);
-      else alert("번역 실패: " + (dd?.error || "다시 시도해주세요"));
-    } catch (e) { alert("번역 오류: " + (e?.message || e)); }
-    finally { setNaverKoLoading(false); }
-  };
-  // 외국어(일본어 가나/한자/키릴/태국어) 포함 여부 → 번역 버튼 노출 판단
-  const _naverHasForeign = /[぀-ヿ一-鿿Ѐ-ӿ฀-๿]/.test((f.requestMsg || "") + " " + (f.ownerComment || ""));
+    let alive = true; setNaverKoLoading(true);
+    (async () => {
+      try {
+        const r = await fetch("https://blissme.ai/translate-ko", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: txt }) });
+        const dd = await r.json().catch(() => ({}));
+        if (alive && dd && dd.ok && dd.ko) { setNaverKo(dd.ko); try { sessionStorage.setItem(ck, dd.ko); } catch {} }
+      } catch {}
+      finally { if (alive) setNaverKoLoading(false); }
+    })();
+    return () => { alive = false; };
+  }, [item?.id, f.requestMsg]);
+  // AI 분석 요약이 옛 형식(시술:/하트 없음)이면 모달 열 때 자동 재생성 (self-heal). 빈값은 서버 lazy에 맡김.
+  const [regenSummary, setRegenSummary] = useState("");
+  useEffect(() => {
+    setRegenSummary("");
+    const cid = f.custId;
+    if (!cid || String(cid).startsWith("new_")) return;
+    const cur = (data?.customers || []).find(c => c.id === cid)?.serviceSummary || "";
+    if (!cur || /시술\s*[:：]/.test(cur) || /[❤🧡💛💙]/.test(cur)) return;  // 신규형식·빈값 → 패스
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch("https://blissme.ai/regen-summary", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cust_id: cid }) });
+        const dd = await r.json().catch(() => ({}));
+        if (alive && dd && dd.ok && dd.summary) {
+          setRegenSummary(dd.summary);
+          if (setData) setData(p => p ? { ...p, customers: (p.customers || []).map(c => c.id === cid ? { ...c, serviceSummary: dd.summary } : c) } : p);
+        }
+      } catch {}
+    })();
+    return () => { alive = false; };
+  }, [f.custId]);
   // 외국 이름 음역 fallback — 네이버/AI 예약 신규 고객은 customers.name_kor 비어있어서
   // _cust?.nameKor 조건만으론 화면에 안 뜸. 캐시 → Gemini 호출 → 결과 state + DB 백필
   const [autoNameKor, setAutoNameKor] = useState('');
@@ -874,7 +896,7 @@ function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBr
   const _hasVisitor = !!(f.visitorName && f.visitorName !== f.custName);
   const _primaryCustId = (_hasVisitor && f.primarySubject === 'visitor') ? (f.visitorCustId || '') : (f.custId || '');
   const _secondaryCustId = (_hasVisitor && f.primarySubject === 'visitor') ? (f.custId || '') : (f.visitorCustId || '');
-  const _custSummary = (data?.customers||[]).find(c => c.id === f.custId)?.serviceSummary || "";
+  const _custSummary = regenSummary || (data?.customers||[]).find(c => c.id === f.custId)?.serviceSummary || "";
   const _primaryName = (_hasVisitor && f.primarySubject === 'visitor') ? f.visitorName : f.custName;
   const _primaryPhone = (_hasVisitor && f.primarySubject === 'visitor') ? f.visitorPhone : f.custPhone;
   const _secondaryName = (_hasVisitor && f.primarySubject === 'visitor') ? f.custName : f.visitorName;
@@ -2750,9 +2772,7 @@ ${naverText}
               <I name="naver" size={14}/>
               <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.successDk}}>네이버 예약정보</span>
               {f.reservationId && <span style={{fontSize:T.fs.xxs,fontWeight:T.fw.bolder,color:T.successDk,background:T.successLt,borderRadius:T.radius.sm,padding:"1px 6px",letterSpacing:0.5}}>#{f.reservationId}</span>}
-              {_naverHasForeign && !naverKo && <button type="button" onClick={translateNaver} disabled={naverKoLoading}
-                title="외국어 예약정보를 한국어로 번역" style={{marginLeft:"auto",fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:6,border:"1px solid "+T.successDk+"66",background:"#fff",color:T.successDk,cursor:naverKoLoading?"wait":"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:3}}>
-                <I name="languages" size={11}/>{naverKoLoading?"번역 중…":"한국어 번역"}</button>}
+              {naverKoLoading && <span style={{marginLeft:"auto",fontSize:10,fontWeight:700,color:T.successDk,display:"inline-flex",alignItems:"center",gap:3}}><I name="languages" size={11}/>한국어 번역 중…</span>}
             </div>
             {/* 항목 리스트 - 통일된 row 디자인 */}
             {(()=>{
@@ -2888,7 +2908,6 @@ ${naverText}
             const schLines = schLog ? schLog.split("\n").filter(Boolean) : [];
             return <div style={{padding:"6px 10px",marginBottom:8,background:T.gray100,borderRadius:T.radius.md,fontSize:11,color:T.textSub}}>
               {regFmt && <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <I name="calendar" size={11} color={T.gray500}/>
                 <span style={{fontWeight:600}}>등록</span>
                 <span style={{marginLeft:"auto",fontWeight:600,color:T.textMuted}}>{regFmt}</span>
               </div>}
