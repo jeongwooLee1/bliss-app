@@ -2,8 +2,9 @@
 
 ## 진행 중 — 커플룸 자동 동반자 (정우님 "전부 다")
 - **① 앱 (v3.7.918 배포 완료)**: 커플룸 태그 체크 시 신규·기존·모바일 무관 동반자 자동 생성 (handleSave isNewItem 제거 + exists 경로 동반자 INSERT). 상세 CLAUDE.md v3.7.918.
-- **② 서버 `ai_booking.py` (TODO)**: AI 채팅예약에서 커플/커플룸 의도 감지 → 커플룸 태그(`bvkgtel09`) + 동반자 INSERT + reservation_groups. `create_booking_from_ai` row 1232·INSERT 1251 직후. 라이브 신중.
-- **③ 모바일 동반자 버튼 (TODO)**: ReservationModal에 "동반자 추가" 버튼 (Ctrl 드래그 `3068 !isTouch` 모바일 대체).
+- **② 서버 `ai_booking.py` ✅ 완료**: AI 채팅예약 커플 감지(프롬프트 룰#15+`couple` 필드) → 커플룸태그+동반자 INSERT+reservation_groups. 백업 `bak_pre_couple_20260530_141815`. 검증 직접·end-to-end 둘 다 PASS(정리됨). 상세 CLAUDE.md.
+- **③ 모바일 동반자 버튼 (TODO — 다음 집중)**: ReservationModal에 "동반자 추가" 버튼 (Ctrl 드래그 `3068 !isTouch` 모바일 대체). ※ 모바일 **커플룸**은 ①로 이미 자동 2건. ③은 비커플룸 일반 동반자 수동 추가용.
+- ✅ **별개 버그 같이 fix**: ai_booking.py ai-suggest out `_h_noct` NameError → ai_booking_agent 스코프에 정의 추가. 답변추천 out['booking'] 복구. end-to-end 검증 PASS. (spawn_task chip은 dismiss 가능)
 
 ## 현재 버전
 - **라이브: v3.7.918** (https://blissme.ai/version.txt) — 커플룸 자동 동반자 ①(앱): 커플룸 태그 체크 시 신규·기존·모바일 모두 동반자 2건 자동 (기존 isNewItem 신규만 제약 제거). ②서버 AI·③모바일버튼 진행예정.

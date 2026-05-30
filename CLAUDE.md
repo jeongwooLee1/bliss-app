@@ -2893,5 +2893,6 @@ Liah(WhatsApp) 후속 2건.
 - **① 앱 fix(이 배포)**: `2580` 조건에서 `isNewItem &&` 제거 → 커플룸 태그 붙으면 신규·기존 무관 동반자 생성(이미 동반자 있으면 `_alreadyHasCompanion` skip). `setData` exists(기존) 경로에도 `_coupleCompanion`을 allItems push + 로컬 reservations 추가. **handleSave는 PC·모바일 공통**이라 모바일에서 커플룸 체크 시에도 자동 2건.
 - 검증: 빌드 OK·babel PARSE_OK. 배포 v3.7.918.
 - **⏳ 남은(같은 요청, 정우님 "전부 다" 선택)**:
-  - **② 서버 `ai_booking.py`**: `create_booking_from_ai`에 — AI가 "커플/커플룸" 의도 감지(프롬프트 추출 `couple`) → 커플룸 태그(`bvkgtel09`) selected_tags 추가 + 동반자 row INSERT + `reservation_groups` INSERT(roomType 'shared'). row 구조 1232~1249, INSERT 1251.
+  - **② 서버 `ai_booking.py` ✅ 완료**: `create_booking_from_ai`에 커플룸 동반자 추가 — 프롬프트 JSON에 `couple` 필드 + 룰 #15(커플/커플룸/둘이서/two of us 감지). `couple=true`면 본인 row에 커플룸태그(`bvkgtel09`)+`reservation_group_id` 부여 + INSERT 후 동반자 row INSERT("OO 동반자1", cust 비움, 같은 group, 커플룸 태그) + `reservation_groups` INSERT(room_type 'shared'). **신규예약만**(not existing — 변경 시 중복 방지). 백업 `ai_booking.py.bak_pre_couple_20260530_141815`. **검증**: ⓐ create_booking 직접 호출(couple=true) → 2건 PASS ⓑ end-to-end(AI "강남 브라질리언 커플로 예약" 채팅 → couple 추출 → 본인+동반자1 2건, 같은 grp, 커플룸 태그) PASS. 둘 다 테스트 데이터 정리. React 무관(서버 직접).
+  - ✅ **같이 fix(별개 기존 버그)**: ai-suggest out 처리 `_h_noct` NameError → `ai_booking_agent` 스코프(3075)에 `_h_noct` 정의 1줄 추가. 답변추천 out['booking'] 복구(타임라인 포커스, v3.7.897). 배포 전 백업에도 있던 기존 버그(커플룸 무관). 백업 `bak_pre_hnoct_*`. 검증: end-to-end 재실행 → `out booking:{'id':'ai_...}` 채워짐 확인.
   - **③ 모바일**: 예약 모달(ReservationModal)에 "동반자 추가" 버튼 — Ctrl 드래그 복사(`3068 !isTouch`라 모바일 불가)의 모바일 대체. 일반(비커플룸) 동반자 수동 추가용.
