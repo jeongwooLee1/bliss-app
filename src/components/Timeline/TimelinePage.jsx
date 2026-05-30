@@ -2379,6 +2379,71 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     setShowModal(true);
   };
 
+  // ─── 동반자 추가 (예약 모달 버튼 — PC Ctrl 드래그 복사의 버튼/모바일 대체) ───
+  // 비커플룸 일반 동반자 1명을 같은 시간·관리사·시술 자리에 생성. (커플룸 동반자는 handleSave가 자동)
+  // Ctrl 드래그 복사(아래 isCopyDragRef 경로)와 동일 규칙:
+  //   친구=별도 사람(cust 정보 비움) · "동반자N" suffix · reservation_group_id로 원본과 묶음 · 결제/로그 끊김
+  const addCompanion = (baseItem) => {
+    if (!baseItem || baseItem.isSchedule || !baseItem.id) return;
+    const baseName = String(baseItem.custName || "").replace(/\s*동반자\d+\s*$/, "").trim();
+    if (!baseName) return;
+    // 동반자 번호 — 같은 date에 같은 base로 시작하는 예약 카운트
+    const sameBaseCount = (data?.reservations || []).filter(r => {
+      if (r.date !== baseItem.date) return false;
+      const rn = String(r.custName || "").replace(/\s*동반자\d+\s*$/, "").trim();
+      return rn === baseName;
+    }).length;
+    const newCustName = `${baseName} 동반자${sameBaseCount}`;
+    const newId = uid();
+    // endTime은 time+dur로 재계산 (모달 폼 endTime은 기본값이라 신뢰 안 함)
+    const _dur = Number(baseItem.dur) || 0;
+    const [_h, _m] = String(baseItem.time || "10:00").split(":").map(Number);
+    const _endMin = (_h || 0) * 60 + (_m || 0) + _dur;
+    const _endTime = `${String(Math.floor(_endMin / 60)).padStart(2, "0")}:${String(_endMin % 60).padStart(2, "0")}`;
+    // group_id — 원본에 없으면 새로 만들고 원본도 UPDATE (roomType 'separate' = 일반 동반자, 커플룸 아님)
+    let _grpId = baseItem.reservationGroupId;
+    if (!_grpId) {
+      _grpId = "rg_" + uid();
+      sb.insert("reservation_groups", toDb("reservation_groups", {
+        id: _grpId, bid: baseItem.bid || "", leaderCustId: baseItem.custId || "",
+        roomType: 'separate', memo: ''
+      })).catch(e => console.warn("[add-companion group insert]", e));
+      sb.update("reservations", baseItem.id, { reservation_group_id: _grpId }).catch(console.error);
+    }
+    // 결제 관련 시스템 태그("예약금완료") 제거 — 결제는 원본에만 귀속
+    const _prepaidTagId = (data?.serviceTags || []).find(t => t.name === "예약금완료")?.id;
+    const _baseTags = Array.isArray(baseItem.selectedTags) ? baseItem.selectedTags : [];
+    const _filteredTags = _prepaidTagId ? _baseTags.filter(t => t !== _prepaidTagId) : _baseTags;
+    const newRes = {
+      ...baseItem,
+      id: newId,
+      reservationId: "manual_" + newId,
+      prevReservationId: null,
+      reservationGroupId: _grpId,
+      isBeta: !!(betaGroupMode || baseItem.isBeta),
+      endDate: baseItem.date, endTime: _endTime,
+      // 친구 = 별도 사람 — 고객 정보 끊기
+      custName: newCustName,
+      custId: "", custPhone: "", custEmail: "", custGender: "", custNum: "",
+      visitorName: "", visitorPhone: "", visitorCustId: "", primarySubject: "reserver",
+      isNewCust: false,
+      selectedTags: _filteredTags,
+      // 결제 정보 끊기 — 선결제·네이버결제는 원본에만 귀속
+      isPrepaid: false, externalPrepaid: 0, externalPlatform: "", totalPrice: 0, npayMethod: "",
+      // 반복·매출·로그 흔적 리셋
+      repeat: "none", repeatUntil: "",
+      scheduleLog: "", tsLog: [],
+    };
+    setData(prev => ({
+      ...prev,
+      reservations: [
+        ...(prev?.reservations || []).map(r => (r.id === baseItem.id && !baseItem.reservationGroupId) ? { ...r, reservationGroupId: _grpId } : r),
+        newRes
+      ]
+    }));
+    sb.upsert("reservations", [toDb("reservations", newRes)]).catch(e => console.error("[add-companion] upsert", e));
+  };
+
   const handleSave = async (item) => {
     // 🔴 빨간 강조(highlightedBlockId) 자동 해제 — 블록을 손대면(이동·시간변경·저장 등) 강조 사라짐
     if (highlightedBlockId && (highlightedBlockId === item.id || highlightedBlockId === item.reservationId)) {
@@ -5678,7 +5743,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         <button onClick={()=>setAlarmFired(null)} style={{width:"100%",padding:"8px 0",background:"#F59E0B",color:"#fff",border:"none",borderRadius:6,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:13}}>확인</button>
       </div>}
 
-      {showModal && <TimelineModal item={modalData} onSave={handleSave} onDelete={handleDelete} onDeleteRequest={handleDeleteRequest} naverColShow={naverColShow} onClose={()=>_mc(()=>{setShowModal(false);setModalData(null)})} selBranch={userBranches[0]} userBranches={userBranches} data={{...data, staff: BASE_EMP_LIST.map(e=>({id:e.id,bid:e.branch_id,dn:e.id,name:e.id,branch_id:e.branch_id})), workingStaffIds: (() => { const ws = getWorkingStaff(modalData?.bid || userBranches[0], selDate); return ws ? ws.map(e=>e.id) : null; })() }} setData={setData} setPage={setPage} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust} betaGroupMode={betaGroupMode}/>}
+      {showModal && <TimelineModal item={modalData} onSave={handleSave} onAddCompanion={addCompanion} onDelete={handleDelete} onDeleteRequest={handleDeleteRequest} naverColShow={naverColShow} onClose={()=>_mc(()=>{setShowModal(false);setModalData(null)})} selBranch={userBranches[0]} userBranches={userBranches} data={{...data, staff: BASE_EMP_LIST.map(e=>({id:e.id,bid:e.branch_id,dn:e.id,name:e.id,branch_id:e.branch_id})), workingStaffIds: (() => { const ws = getWorkingStaff(modalData?.bid || userBranches[0], selDate); return ws ? ws.map(e=>e.id) : null; })() }} setData={setData} setPage={setPage} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust} betaGroupMode={betaGroupMode}/>}
 
       {isRefreshing && createPortal(
         <div style={{position:"fixed",inset:0,zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.35)"}}>

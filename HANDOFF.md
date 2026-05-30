@@ -1,13 +1,14 @@
 # HANDOFF
 
-## 진행 중 — 커플룸 자동 동반자 (정우님 "전부 다")
-- **① 앱 (v3.7.918 배포 완료)**: 커플룸 태그 체크 시 신규·기존·모바일 무관 동반자 자동 생성 (handleSave isNewItem 제거 + exists 경로 동반자 INSERT). 상세 CLAUDE.md v3.7.918.
-- **② 서버 `ai_booking.py` ✅ 완료**: AI 채팅예약 커플 감지(프롬프트 룰#15+`couple` 필드) → 커플룸태그+동반자 INSERT+reservation_groups. 백업 `bak_pre_couple_20260530_141815`. 검증 직접·end-to-end 둘 다 PASS(정리됨). 상세 CLAUDE.md.
-- **③ 모바일 동반자 버튼 (TODO — 다음 집중)**: ReservationModal에 "동반자 추가" 버튼 (Ctrl 드래그 `3068 !isTouch` 모바일 대체). ※ 모바일 **커플룸**은 ①로 이미 자동 2건. ③은 비커플룸 일반 동반자 수동 추가용.
-- ✅ **별개 버그 같이 fix**: ai_booking.py ai-suggest out `_h_noct` NameError → ai_booking_agent 스코프에 정의 추가. 답변추천 out['booking'] 복구. end-to-end 검증 PASS. (spawn_task chip은 dismiss 가능)
+## ✅ 완료 — 커플룸 자동 동반자 (정우님 "전부 다", v3.7.918~919) — 상세 CLAUDE.md
+- **① 앱 (v3.7.918)**: 커플룸 태그 체크 시 신규·기존·모바일 무관 동반자 자동 2건 (handleSave isNewItem 제거 + exists 경로 동반자 INSERT).
+- **② 서버 `ai_booking.py`**: AI 채팅예약 커플 감지(프롬프트 룰#15+`couple` 필드) → 커플룸태그+동반자 INSERT+reservation_groups. 검증 직접·end-to-end PASS. 백업 `bak_pre_couple_20260530_141815`.
+- **③ 모바일 동반자 버튼 (v3.7.919)**: ReservationModal footer "동반자 추가" 버튼(PC·모바일) — TimelinePage `addCompanion()`로 Ctrl 드래그 복사와 동일 규칙(같은 시간·관리사·시술, cust 비움, group 묶음, 결제·로그 끊김). 일반(다인원) 동반자 수동 추가용. 검증 로컬 데스크탑·모바일 PASS.
+- ✅ **별개 버그 fix**: ai_booking.py ai-suggest out `_h_noct` NameError → ai_booking_agent 스코프 정의 추가. 답변추천 out['booking'] 복구. (spawn_task chip은 dismiss 가능)
 
 ## 현재 버전
-- **라이브: v3.7.918** (https://blissme.ai/version.txt) — 커플룸 자동 동반자 ①(앱): 커플룸 태그 체크 시 신규·기존·모바일 모두 동반자 2건 자동 (기존 isNewItem 신규만 제약 제거). ②서버 AI·③모바일버튼 진행예정.
+- **라이브: v3.7.919** (https://blissme.ai/version.txt) — 커플룸 동반자 ③ 모바일 버튼: ReservationModal footer "동반자 추가" 버튼(PC·모바일)으로 PC Ctrl 드래그 복사와 동일하게 동반자 생성(같은 시간·관리사, group 묶음, 결제 끊김). **커플룸 자동 동반자 ①②③ 완결.** 상세 CLAUDE.md v3.7.919.
+- **라이브: v3.7.918** — 커플룸 자동 동반자 ①(앱): 커플룸 태그 체크 시 신규·기존·모바일 모두 동반자 2건 자동 (기존 isNewItem 신규만 제약 제거).
 - **라이브: v3.7.917** — 데스크탑 상단 **"오늘" 버튼 제거**(날짜탭 "오늘"로 대체, 중복). 오늘 점프는 날짜탭 "오늘 30" 클릭으로. 상세 CLAUDE.md v3.7.917.
 - **라이브: v3.7.916** — 타임라인 날짜 탭에 **"오늘" 표시**(정우님 "직원들이 오늘이 어느 칸인지 모른다"). 오늘 탭은 요일("토") 자리에 "오늘" 굵게+보라 강조, 나머지는 요일 유지. 상세 CLAUDE.md v3.7.916.
 - **라이브: v3.7.915** — 직원 이동/근무 팝업 **라이브-시안 1:1 정렬**(정우님 "라이브와 시안 비교해봐" 후): **담당자 교체 맨 아래로**(근무시간 다음 → 푸터 위, segments IIFE 안 이동)·**칩 색점 가시화**(연한 강남데모 color → 진한 팔레트색)·**바 아래 양끝 중복시간 제거**(눈금만). 검증: 빌드OK·babel OK·서연 팝업 스크린샷 시안 거의 1:1. 시안(shot3)과 레이아웃 일치. 상세 CLAUDE.md v3.7.915.

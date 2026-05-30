@@ -2896,3 +2896,18 @@ Liah(WhatsApp) 후속 2건.
   - **② 서버 `ai_booking.py` ✅ 완료**: `create_booking_from_ai`에 커플룸 동반자 추가 — 프롬프트 JSON에 `couple` 필드 + 룰 #15(커플/커플룸/둘이서/two of us 감지). `couple=true`면 본인 row에 커플룸태그(`bvkgtel09`)+`reservation_group_id` 부여 + INSERT 후 동반자 row INSERT("OO 동반자1", cust 비움, 같은 group, 커플룸 태그) + `reservation_groups` INSERT(room_type 'shared'). **신규예약만**(not existing — 변경 시 중복 방지). 백업 `ai_booking.py.bak_pre_couple_20260530_141815`. **검증**: ⓐ create_booking 직접 호출(couple=true) → 2건 PASS ⓑ end-to-end(AI "강남 브라질리언 커플로 예약" 채팅 → couple 추출 → 본인+동반자1 2건, 같은 grp, 커플룸 태그) PASS. 둘 다 테스트 데이터 정리. React 무관(서버 직접).
   - ✅ **같이 fix(별개 기존 버그)**: ai-suggest out 처리 `_h_noct` NameError → `ai_booking_agent` 스코프(3075)에 `_h_noct` 정의 1줄 추가. 답변추천 out['booking'] 복구(타임라인 포커스, v3.7.897). 배포 전 백업에도 있던 기존 버그(커플룸 무관). 백업 `bak_pre_hnoct_*`. 검증: end-to-end 재실행 → `out booking:{'id':'ai_...}` 채워짐 확인.
   - **③ 모바일**: 예약 모달(ReservationModal)에 "동반자 추가" 버튼 — Ctrl 드래그 복사(`3068 !isTouch`라 모바일 불가)의 모바일 대체. 일반(비커플룸) 동반자 수동 추가용.
+
+### v3.7.919 — 커플룸 동반자 ③ 모바일 동반자 버튼 (커플룸 작업 완결) (2026-05-30)
+**배경**: ③ 모바일 동반자 버튼 — 신영 요청(id_3po2ckyzmj)의 마지막 조각. PC는 Ctrl 드래그 복사로 동반자를 만들지만 `TimelinePage.jsx:3072 isCopyDragRef = !isTouch && (ctrlKey||metaKey)`라 모바일(터치)에선 불가 → 버튼으로 대체.
+**구현**:
+- `TimelinePage.jsx`에 `addCompanion(baseItem)` 함수 신설 — Ctrl 드래그 복사(3220~3289)와 동일 규칙을 **같은 자리**(time/room/staff/dur/bid/services 유지)에 적용. `onAddCompanion` prop으로 모달에 전달.
+  - 동반자 번호: `{baseName} 동반자N` (baseName=이름에서 `\s*동반자\d+\s*$` 제거, 같은 date·같은 base 카운트가 N). endTime은 time+dur로 재계산(폼 endTime은 기본값이라 신뢰 안 함).
+  - `reservation_group_id`: 원본에 없으면 새로 만들고(`rg_`, roomType `separate`) 원본도 UPDATE → 블록 색 도트로 묶임. 있으면 재사용.
+  - 친구=별도 사람: custId/phone/email/gender/num + visitor* 비움, primarySubject `reserver`, isNewCust false.
+  - 결제 끊김: isPrepaid/externalPrepaid/externalPlatform/totalPrice/npayMethod 0 + "예약금완료" 태그 제거. 반복·scheduleLog·tsLog 리셋. reservationId `manual_`+newId, prevReservationId null. setData + sb.upsert.
+- `ReservationModal.jsx`: props에 `onAddCompanion` + footer(삭제 다음, 저장 앞)에 **"동반자 추가"** 버튼(`I name="userPlus"`, 보라 outline). 노출 조건 `item?.id && !isSchedule && (f.custName||"").trim() && onAddCompanion`(저장된 예약·비내부일정·고객명 有, `!isReadOnly` 블록 안이라 열람전용 자동 숨김). 클릭 → `onAddCompanion(f)` + `onClose()`(모달 닫고 타임라인에 표시).
+**정책**(정우님 확인): 노출 = **PC·모바일 둘 다**(PC는 Ctrl 드래그도 유지). 추가 후 **모달 닫기**. 원본 예약의 시술·태그 상속(Ctrl 복사와 동일) — 커플룸 예약에서 누르면 커플룸 태그도 따라감. 커플룸 자동 동반자는 ①(handleSave)이 처리하므로 이 버튼은 **일반(다인원) 동반자 수동 추가용**.
+**검증**(로컬 dev 데모): 빌드 OK(exit 0). 데스크탑·모바일 둘 다 버튼 노출(모바일 4버튼 한 줄 fit). 클릭 → `안준서 동반자1` 생성(같은 시간·관리사, group 묶임)·모달 닫힘 확인. 테스트 데이터(동반자 1건 + 그룹 1개) eval로 정리 완료. 콘솔 에러 0(Realtime CHANNEL_ERROR는 로컬 환경 기존 이슈, 무관).
+**적용**: v3.7.919 라이브 배포(version.txt 검증, CF 퍼지 success).
+**→ 커플룸 자동 동반자 작업 ①(v3.7.918 앱)·②(서버 ai_booking.py)·③(v3.7.919 모바일 버튼) 전부 완료.**
+**유의**: `addCompanion`은 baseItem=모달 폼(`f`) 기준 — 저장된 예약을 base로 친구 1명 복제. 신규 등록(item.id 없음)·내부일정엔 버튼 미노출. 동반자에 매출·예약금은 안 따라감(결제는 원본 귀속, Ctrl 복사와 동일).

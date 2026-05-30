@@ -281,7 +281,7 @@ function CancelDecisionModal({ open, onResolve, onClose, custId, custName, branc
   );
 }
 
-function TimelineModal({ item, onSave, onDelete, onDeleteRequest, onClose, selBranch, userBranches, data, setData, setPage, naverColShow={}, setPendingChat, setPendingOpenCust, betaGroupMode=false }) {
+function TimelineModal({ item, onSave, onAddCompanion, onDelete, onDeleteRequest, onClose, selBranch, userBranches, data, setData, setPage, naverColShow={}, setPendingChat, setPendingOpenCust, betaGroupMode=false }) {
   // 카테고리 순서 → 카테고리 내 시술 순서 (시술상품관리와 동일)
   // 쿠폰·포인트 카테고리는 시술 선택 대상이 아니므로 제외 (증정/사용 대상)
   const _excludedCatIds = (data?.categories || []).filter(c => c.name === '쿠폰' || c.name === '포인트').map(c => c.id);
@@ -3019,6 +3019,14 @@ ${naverText}
                   <I name="trash" size={12}/> 삭제
                 </button>;
               })()}
+              {/* 동반자 추가 — 같은 시간·관리사·시술에 친구 1명 추가 (PC Ctrl 드래그 복사의 버튼 버전, 모바일 대체) */}
+              {item?.id && !isSchedule && (f.custName||"").trim() && onAddCompanion && (
+                <button onClick={()=>{ onAddCompanion(f); onClose?.(); }}
+                  style={{padding:"10px 14px",borderRadius:T.radius.md,fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5,lineHeight:1,transition:"all .15s",border:"2px solid "+T.primary,color:T.primary,background:T.bgCard}}
+                  title="같은 시간·관리사에 친구(동반자) 1명을 추가합니다">
+                  <I name="userPlus" size={12}/> 동반자 추가
+                </button>
+              )}
               <button
                 ref={commitBtnRef}
                 disabled={!isSchedule && f.type==="reservation" && !f.custName?.trim()}
