@@ -1653,6 +1653,15 @@ ${naverText}
             const newUsed = (p.used_count||0) + ded;
             const newNote = (p.note||'').replace(/잔액:[0-9,]+/, `잔액:${newBal.toLocaleString()}`);
             await sb.update("customer_packages", p.id, { used_count: newUsed, note: newNote }).catch(()=>{});
+            // 보유권 거래내역(package_transactions)에도 차감 기록 — 보유권 사용 이력에 노출 (강남 id_p46r9t7dpd)
+            sb.insert("package_transactions", {
+              id: "pkgtx_"+genId(), business_id: _bizId, bid: f.bid,
+              package_id: p.id, customer_id: f.custId, service_name: p.service_name || "",
+              type: 'deduct', unit: 'won', amount: ded,
+              balance_before: bal, balance_after: newBal,
+              note: `${reasonLabel} 페널티 (예약 ${f.id})`,
+              created_at: new Date().toISOString(),
+            }).catch(()=>{});
             remain -= ded;
             prepaidDed += ded;
           }
@@ -1671,7 +1680,17 @@ ${naverText}
         });
         if (multi.length) {
           const p = multi[0];
+          const _remainBefore = (p.total_count||0) - (p.used_count||0);
           await sb.update("customer_packages", p.id, { used_count: (p.used_count||0) + 1 }).catch(()=>{});
+          // 보유권 거래내역에도 차감 기록 — 보유권 사용 이력에 노출 (강남 id_p46r9t7dpd)
+          sb.insert("package_transactions", {
+            id: "pkgtx_"+genId(), business_id: _bizId, bid: f.bid,
+            package_id: p.id, customer_id: f.custId, service_name: p.service_name || "",
+            type: 'deduct', unit: 'count', amount: 1,
+            balance_before: _remainBefore, balance_after: _remainBefore - 1,
+            note: `${reasonLabel} 페널티 (예약 ${f.id})`,
+            created_at: new Date().toISOString(),
+          }).catch(()=>{});
           pkgUsedName = p.service_name || '';
           alert(`다회권 "${p.service_name}" 1회 차감 완료`);
         } else {

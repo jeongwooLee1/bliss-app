@@ -2917,3 +2917,12 @@ Liah(WhatsApp) 후속 2건.
 **fix** (`ReservationModal.jsx`): footer의 큰 동반자 버튼 제거 → 고객정보 액션 줄 `[변경][고객정보↗][메시지]`에 **`[동반자]`** 작은 텍스트 버튼(flex:1·`I name="userPlus"`·12px·borderLeft 구분선)으로 합류. buttonRow 2곳(방문자 케이스 ~2283 + 일반 케이스 ~2452) 둘 다. 노출 조건 동일(`item?.id && !isSchedule && (f.custName||"").trim() && onAddCompanion`). 클릭 동작(`onAddCompanion(f)`+`onClose()`)·생성 로직(`addCompanion`) 무변경.
 **검증**(로컬 dev 데모): 데스크탑·모바일 둘 다 고객정보 줄 `[변경][고객정보↗][메시지][동반자]` 한 줄 fit, footer는 `[매출등록][삭제][저장]`만(동반자 빠짐). 콘솔 에러 0.
 **적용**: v3.7.920 라이브 배포(version.txt 검증, CF 퍼지 success).
+
+### v3.7.921 — 노쇼·취소 페널티 선불권/다회권 차감을 보유권 거래내역에 기록 (강남 id_p46r9t7dpd) (2026-05-30)
+**요청**(강남): "노쇼 패널티 차감도 이력란에 떴으면 좋겠습니다. 메모만 달리고 이력엔 차감된 내역이 없어요."
+**원인**: `runPenaltyDeduction`(ReservationModal)의 페널티 차감이 결제수단별로 기록 비대칭 — 선결제(externalPrepaid)·포인트/선불권/다회권 어느 경로든 `sales`(매출)는 기록(1681~ 블록)하지만, **선불권/다회권은 `customer_packages` 잔액만 UPDATE하고 `package_transactions`(보유권 사용 이력)에 deduct를 안 남김** → 고객 보유권 거래내역에 페널티 차감이 안 보임(포인트는 `point_transactions`에 기록돼 보임).
+**fix**: 선불권 차감 루프(`잔액:` UPDATE) + 다회권 차감(`used_count` UPDATE) 직후에 `package_transactions` deduct INSERT 추가 — `CustomersPage.recordPkgTx` 컬럼 패턴 동일(type=`deduct`, unit=`won`(선불권)/`count`(다회권), amount, balance_before/after, note=`{사유} 페널티 (예약 …)`, created_at). 정우님 결정 "매출 + 보유권내역 둘 다".
+**결과**: 노쇼·취소 페널티로 선불권/다회권 차감 시 — 매출관리·고객 매출 히스토리(sales, 기존) + 고객 보유권 사용 내역(package_transactions, 신규) 둘 다 표시.
+**검증**: 빌드 OK. 실제 노쇼+차감 시나리오는 데모 재현 비용이 커서 코드 리뷰·빌드로 검증(INSERT 패턴은 CustomersPage `recordPkgTx`와 동일, balance_after ≥ 0 보장).
+**적용**: v3.7.921 라이브 배포(version.txt 검증, CF 퍼지 success).
+**유의**: 매출(sales) 페널티 기록은 원래부터 동작 중이었음(강남이 본 "이력"은 보유권 사용 내역). 차감 경로는 포인트→선불권→다회권 순(33,000원 기준). 보유권 거래내역 표시는 고객 상세 보유권 탭(`PkgCard`/`pkgHistoryMap`)에서 확인.
