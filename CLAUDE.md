@@ -2883,3 +2883,15 @@ Liah(WhatsApp) 후속 2건.
 **배경**: v3.7.916으로 날짜 탭에 "오늘"이 생겨, 상단 날짜 네비 옆 별도 "오늘" 버튼(`setSelDate(todayStr)`, `hide-mobile`이라 데스크탑 전용)이 중복 → 정우님 요청으로 제거. 오늘 점프는 날짜 탭의 "오늘 30" 클릭으로 대체.
 - [TimelinePage.jsx:3907](src/components/Timeline/TimelinePage.jsx:3907) chevR(다음날) 버튼 다음의 `<button …>오늘</button>` 제거.
 - 검증: 빌드 OK·babel PARSE_OK. 배포: v3.7.917 라이브(version.txt 검증, CF 퍼지 success).
+
+### v3.7.918 — 커플룸 자동 동반자 ①(앱): 신규만 → 신규·기존·모바일 (2026-05-30)
+**배경**: 신영 요청(`bliss_requests_v1` id_3po2ckyzmj) "커플룸 체크했는데 동반자 안 생김. PC는 Ctrl 복사로 되지만 모바일 어렵다". 정우님 "AI/모바일 커플룸 시 예약 2건 자동" 요청.
+**조사(보고서)**: 커플룸 태그(`bvkgtel09`, 전 지점 공통·114건 사용) 예약 중 **자동 동반자 단 2건**. 원인 2곳 —
+  - ① 앱 `handleSave`의 커플룸 자동 동반자(`2576`)가 `isNewItem`(신규 등록만) 조건 → 실무는 "예약 먼저 만들고 나중에 커플룸 체크"(=기존 수정)라 안 걸림.
+  - ② 서버 `ai_booking.py`는 커플룸 태그 자체를 안 붙임(`selected_tags=_new_tags=신규고객태그만`, 1220/1239). AI가 커플 의도 감지 안 함.
+  - [데이터: source별 — naver/네이버 57건 동반자0, 앱수동(전화/카톡/워크인/문자/인스타/빈) 56건 동반자2]
+- **① 앱 fix(이 배포)**: `2580` 조건에서 `isNewItem &&` 제거 → 커플룸 태그 붙으면 신규·기존 무관 동반자 생성(이미 동반자 있으면 `_alreadyHasCompanion` skip). `setData` exists(기존) 경로에도 `_coupleCompanion`을 allItems push + 로컬 reservations 추가. **handleSave는 PC·모바일 공통**이라 모바일에서 커플룸 체크 시에도 자동 2건.
+- 검증: 빌드 OK·babel PARSE_OK. 배포 v3.7.918.
+- **⏳ 남은(같은 요청, 정우님 "전부 다" 선택)**:
+  - **② 서버 `ai_booking.py`**: `create_booking_from_ai`에 — AI가 "커플/커플룸" 의도 감지(프롬프트 추출 `couple`) → 커플룸 태그(`bvkgtel09`) selected_tags 추가 + 동반자 row INSERT + `reservation_groups` INSERT(roomType 'shared'). row 구조 1232~1249, INSERT 1251.
+  - **③ 모바일**: 예약 모달(ReservationModal)에 "동반자 추가" 버튼 — Ctrl 드래그 복사(`3068 !isTouch`라 모바일 불가)의 모바일 대체. 일반(비커플룸) 동반자 수동 추가용.

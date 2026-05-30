@@ -2573,11 +2573,12 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     const allItems = [];
     const isNewItem = !data?.reservations?.find(r => r.id === item.id);
     const isExistItem = !isNewItem;
-    // ─── 커플룸 태그 자동 동반자 (신규 등록만) ───
-    // 같은 staff/time/dur로 동반자 1명 자동 INSERT (Ctrl 복사와 동일 패턴, room_type='shared')
+    // ─── 커플룸 태그 자동 동반자 (신규·기존 모두, 모바일 포함) ───
+    // 커플룸 태그가 붙으면 같은 staff/time/dur로 동반자 1명 자동 INSERT. 이미 동반자 있으면 skip(_alreadyHasCompanion).
+    // (기존엔 isNewItem 신규만이라, 예약 먼저 만들고 나중에 커플룸 체크하면 안 생기던 버그 — 신영 요청 2026-05-30)
     const COUPLE_TAG_ID = 'bvkgtel09';
     let _coupleCompanion = null;
-    if (isNewItem && !item.isSchedule && Array.isArray(item.selectedTags) && item.selectedTags.includes(COUPLE_TAG_ID)) {
+    if (!item.isSchedule && Array.isArray(item.selectedTags) && item.selectedTags.includes(COUPLE_TAG_ID)) {
       const _baseName = String(item.custName || "").replace(/\s*동반자\d+\s*$/, "").trim();
       if (_baseName) {
         const _alreadyHasCompanion = (data?.reservations || []).some(r =>
@@ -2630,7 +2631,10 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         }
         const updateRow = stripStaleNaverFields(toDb("reservations", item));
         sb.update("reservations", item.id, updateRow).catch(console.error);
-        return { ...prev, reservations: (prev?.reservations||[]).map(r => r.id === item.id ? item : r) };
+        // 기존 예약에 커플룸 태그를 새로 추가한 경우에도 동반자 생성 (위 _coupleCompanion)
+        if (_coupleCompanion) allItems.push(_coupleCompanion);
+        const _mappedRes = (prev?.reservations||[]).map(r => r.id === item.id ? item : r);
+        return { ...prev, reservations: _coupleCompanion ? [..._mappedRes, _coupleCompanion] : _mappedRes };
       }
       const items = [item];
       if (item.repeat && item.repeat !== "none" && item.repeatUntil) {
