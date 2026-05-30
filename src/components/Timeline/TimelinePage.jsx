@@ -4424,47 +4424,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                               </>;
                             })()}
                           </div>
-                          {/* 담당자 교체 — 이 컬럼의 예약을 다른 직원에게 넘기기 */}
-                          {(()=>{
-                            const rsvList = (data?.reservations||[]).filter(r=>r.date===selDate && r.staffId===room.staffId && r.bid===room.branch_id);
-                            if (rsvList.length === 0) return null;
-                            // 현재 컬럼의 직원 제외, 이 지점에 오늘 있는(또는 올) 직원만
-                            const currentStaffIds = new Set([room.staffId]);
-                            const candidates = BASE_EMP_LIST.filter(e => !currentStaffIds.has(e.id));
-                            const _repOpen = empMovePopup.showReplace;
-                            return <div style={{padding:"8px 12px",borderBottom:"1px solid "+T.border,background:_repOpen?"#FFF8E1":"transparent"}}>
-                              <div onClick={()=>setEmpMovePopup(p=>({...p,showReplace:!p.showReplace}))} style={{fontSize:12.5,fontWeight:700,color:_repOpen?"#E5820A":T.textSub,display:"flex",alignItems:"center",justifyContent:"space-between",gap:5,cursor:"pointer"}}><span style={{display:"flex",alignItems:"center",gap:5}}><I name="clipboard" size={12}/>담당자 교체 <span style={{color:T.textMuted,fontWeight:500}}>(예약 {rsvList.length}건)</span></span><span style={{color:T.textMuted,fontSize:11}}>{_repOpen?"▴":"▾"}</span></div>
-                              {_repOpen && <div style={{display:"flex",gap:4,marginTop:8}}>
-                                <select value={empMovePopup.replaceWith||""} onChange={e=>setEmpMovePopup(p=>({...p,replaceWith:e.target.value}))}
-                                  style={{flex:1,fontSize:11,padding:"4px 6px",borderRadius:6,border:"1px solid #ffb74d",fontFamily:"inherit"}}>
-                                  <option value="">새 담당자 선택</option>
-                                  {candidates.map(e=><option key={e.id} value={e.id}>{e.name||e.id}</option>)}
-                                </select>
-                                <button disabled={!empMovePopup.replaceWith}
-                                  onClick={()=>{
-                                    const newStaffId = empMovePopup.replaceWith;
-                                    if(!newStaffId) return;
-                                    const aStaffId = room.staffId;
-                                    // 스왑: A의 오늘 예약 ↔ B의 오늘 예약 서로 교환
-                                    const aRsvs = (data?.reservations||[]).filter(r => r.date===selDate && r.staffId===aStaffId);
-                                    const bRsvs = (data?.reservations||[]).filter(r => r.date===selDate && r.staffId===newStaffId);
-                                    const aName = (BASE_EMP_LIST.find(e=>e.id===aStaffId)?.name) || aStaffId;
-                                    const bName = (BASE_EMP_LIST.find(e=>e.id===newStaffId)?.name) || newStaffId;
-                                    if(!confirm(`담당자 스왑\n\n${aName}의 예약 ${aRsvs.length}건 → ${bName}\n${bName}의 예약 ${bRsvs.length}건 → ${aName}\n\n두 직원의 예약을 서로 맞바꿉니다. 진행할까요?`)) return;
-                                    aRsvs.forEach(r=>{ sb.update("reservations", r.id, { staff_id: newStaffId }).catch(console.error); });
-                                    bRsvs.forEach(r=>{ sb.update("reservations", r.id, { staff_id: aStaffId }).catch(console.error); });
-                                    setData(prev=>({...prev, reservations:(prev?.reservations||[]).map(r => {
-                                      if (r.date !== selDate) return r;
-                                      if (r.staffId === aStaffId) return {...r, staffId: newStaffId};
-                                      if (r.staffId === newStaffId) return {...r, staffId: aStaffId};
-                                      return r;
-                                    })}));
-                                    setEmpMovePopup(null);
-                                  }}
-                                  style={{padding:"4px 10px",fontSize:11,fontWeight:700,border:"none",borderRadius:6,background:empMovePopup.replaceWith?"#ff9800":T.gray300,color:"#fff",cursor:empMovePopup.replaceWith?"pointer":"not-allowed",fontFamily:"inherit"}}>스왑</button>
-                              </div>}
-                            </div>;
-                          })()}
+                          {/* 담당자 교체 — 맨 아래(푸터 위)로 이동됨 */}
                           {/* 현재 segments */}
                           {(()=>{
                             const overrideKey = room.staffId+"_"+selDate;
@@ -4771,16 +4731,14 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                     </>}
                                   </div>
                                   {/* 양 끝 시간 + 드래그 중 시간 bubble (바 아래) */}
-                                  <div style={{position:"relative",display:"flex",justifyContent:"space-between",fontSize:9,color:T.textMuted,marginTop:6,height:18}}>
-                                    <span style={{lineHeight:"18px"}}>{wh?.start||mnToTime(whStartMn)}</span>
-                                    {insertAt && <div style={{position:"absolute",left:`calc(${insertPct}% - 25px)`,top:-2,animation:"blissTimeFloat .12s ease-out"}}>
+                                  {insertAt && <div style={{position:"relative",height:18,marginTop:2}}>
+                                    <div style={{position:"absolute",left:`calc(${insertPct}% - 25px)`,top:-2,animation:"blissTimeFloat .12s ease-out"}}>
                                       <div style={{fontSize:11,fontWeight:800,color:"#fff",background:T.primary,padding:"2px 8px",borderRadius:5,whiteSpace:"nowrap",zIndex:5,lineHeight:"14px",boxShadow:`0 2px 6px ${T.primary}66`,position:"relative"}}>
                                         {insertAt.time}
                                         <div style={{position:"absolute",top:-4,left:"50%",transform:"translateX(-50%)",width:0,height:0,borderLeft:"4px solid transparent",borderRight:"4px solid transparent",borderBottom:`4px solid ${T.primary}`}}/>
                                       </div>
-                                    </div>}
-                                    <span style={{lineHeight:"18px"}}>{wh?.end||mnToTime(whEndMn)}</span>
-                                  </div>
+                                    </div>
+                                  </div>}
                                   {/* 지점 선택 팝업 — 드래그 끝난 후 slide-up */}
                                   {insertAt && !insertAt.dragging && <div style={{position:"absolute",top:42,left:12,right:12,background:T.bgCard,border:"1px solid "+T.border,borderTop:`3px solid ${T.primary}`,borderRadius:10,padding:"12px 14px",boxShadow:"0 8px 24px rgba(0,0,0,.1), 0 2px 6px rgba(0,0,0,.06)",zIndex:10,animation:"blissPopupUp .16s ease-out"}}>
                                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
@@ -4817,7 +4775,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                 {visualSegs.map((vs, idx) => {
                                   const br = allBranches.find(b=>b.id===vs.branchId);
                                   const mnToTime = (mn) => `${String(Math.floor(mn/60)).padStart(2,"0")}:${String(mn%60).padStart(2,"0")}`;
-                                  const c = br?.color||T.primary;
+                                  const _cc=br?.color; const _lt=_cc?(()=>{const h=_cc.replace("#","");if(h.length<6)return true;return (parseInt(h.slice(0,2),16)+parseInt(h.slice(2,4),16)+parseInt(h.slice(4,6),16))/3>205;})():true; const _PAL=["#4A90E2","#F5A623","#7ED321","#BD10E0","#50E3C2","#D0021B","#F8A0C0","#9013FE","#417505","#8B572A"]; const c = (_cc&&!_lt)?_cc:_PAL[Math.abs([...String(vs.branchId)].reduce((a,ch)=>a+ch.charCodeAt(0),0))%_PAL.length];
                                   return <div key={idx} style={{display:"flex",alignItems:"center",gap:9,background:T.gray100,borderRadius:9,padding:"8px 11px"}}>
                                     <span style={{width:9,height:9,borderRadius:"50%",background:c,flexShrink:0}}/>
                                     <span style={{fontWeight:700,fontSize:13.5,color:T.text,flexShrink:0,minWidth:44}}>{br?.short||br?.name}</span>
@@ -4876,6 +4834,44 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                   </button>
                                 </div>
                               )}
+                              {/* 담당자 교체 — 예약을 다른 직원에게 (맨 아래) */}
+                              {(()=>{
+                                const rsvList = (data?.reservations||[]).filter(r=>r.date===selDate && r.staffId===room.staffId && r.bid===room.branch_id);
+                                if (rsvList.length === 0) return null;
+                                const candidates = BASE_EMP_LIST.filter(e => e.id !== room.staffId);
+                                const _repOpen = empMovePopup.showReplace;
+                                return <div style={{padding:"10px 12px",borderTop:"1px solid "+T.border,background:_repOpen?"#FFF8E1":"transparent"}}>
+                                  <div onClick={()=>setEmpMovePopup(p=>({...p,showReplace:!p.showReplace}))} style={{fontSize:12.5,fontWeight:700,color:_repOpen?"#E5820A":T.textSub,display:"flex",alignItems:"center",justifyContent:"space-between",gap:5,cursor:"pointer"}}><span style={{display:"flex",alignItems:"center",gap:5}}><I name="clipboard" size={12}/>담당자 교체 <span style={{color:T.textMuted,fontWeight:500}}>(예약 {rsvList.length}건)</span></span><span style={{color:T.textMuted,fontSize:11}}>{_repOpen?"▴":"▾"}</span></div>
+                                  {_repOpen && <div style={{display:"flex",gap:4,marginTop:8}}>
+                                    <select value={empMovePopup.replaceWith||""} onChange={e=>setEmpMovePopup(p=>({...p,replaceWith:e.target.value}))}
+                                      style={{flex:1,fontSize:11,padding:"4px 6px",borderRadius:6,border:"1px solid #ffb74d",fontFamily:"inherit"}}>
+                                      <option value="">새 담당자 선택</option>
+                                      {candidates.map(e=><option key={e.id} value={e.id}>{e.name||e.id}</option>)}
+                                    </select>
+                                    <button disabled={!empMovePopup.replaceWith}
+                                      onClick={()=>{
+                                        const newStaffId = empMovePopup.replaceWith;
+                                        if(!newStaffId) return;
+                                        const aStaffId = room.staffId;
+                                        const aRsvs = (data?.reservations||[]).filter(r => r.date===selDate && r.staffId===aStaffId);
+                                        const bRsvs = (data?.reservations||[]).filter(r => r.date===selDate && r.staffId===newStaffId);
+                                        const aName = (BASE_EMP_LIST.find(e=>e.id===aStaffId)?.name) || aStaffId;
+                                        const bName = (BASE_EMP_LIST.find(e=>e.id===newStaffId)?.name) || newStaffId;
+                                        if(!confirm(`담당자 스왑\n\n${aName}의 예약 ${aRsvs.length}건 → ${bName}\n${bName}의 예약 ${bRsvs.length}건 → ${aName}\n\n두 직원의 예약을 서로 맞바꿉니다. 진행할까요?`)) return;
+                                        aRsvs.forEach(r=>{ sb.update("reservations", r.id, { staff_id: newStaffId }).catch(console.error); });
+                                        bRsvs.forEach(r=>{ sb.update("reservations", r.id, { staff_id: aStaffId }).catch(console.error); });
+                                        setData(prev=>({...prev, reservations:(prev?.reservations||[]).map(r => {
+                                          if (r.date !== selDate) return r;
+                                          if (r.staffId === aStaffId) return {...r, staffId: newStaffId};
+                                          if (r.staffId === newStaffId) return {...r, staffId: aStaffId};
+                                          return r;
+                                        })}));
+                                        setEmpMovePopup(null);
+                                      }}
+                                      style={{padding:"4px 10px",fontSize:11,fontWeight:700,border:"none",borderRadius:6,background:empMovePopup.replaceWith?"#ff9800":T.gray300,color:"#fff",cursor:empMovePopup.replaceWith?"pointer":"not-allowed",fontFamily:"inherit"}}>스왑</button>
+                                  </div>}
+                                </div>;
+                              })()}
                               {/* 푸터 — 오늘 휴무 / 취소 / 저장 한 줄 */}
                               <div style={{padding:"10px 12px 12px",borderTop:"2px solid "+T.border,display:"flex",gap:6,background:isDirty?"#FFF8E1":"transparent"}}>
                                 <button onClick={async (e) => {
