@@ -4413,6 +4413,14 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                   </select>
                                   <span style={{fontSize:11,color:T.textMuted,marginLeft:4}}>10분 단위</span>
                                 </div>
+                                <label style={{display:"flex",alignItems:"center",gap:6,marginTop:10,fontSize:12.5,cursor:"pointer",color:isDayMove?T.primary:T.textSub,fontWeight:isDayMove?700:600}}>
+                                  <input type="checkbox" checked={isDayMove} onChange={e=>onDayMoveToggle(e.target.checked)} style={{cursor:"pointer",accentColor:T.primary,width:15,height:15}}/>
+                                  타지점 종일 근무
+                                </label>
+                                {isDayMove && <select value={dayMoveBid} onChange={e=>onDayMoveBranchChange(e.target.value)}
+                                  style={{width:"100%",marginTop:6,fontSize:13,padding:"8px 10px",borderRadius:8,border:"1px solid "+T.primary,background:T.primaryLt,color:T.primary,fontWeight:700,fontFamily:"inherit"}}>
+                                  {(data?.branches||[]).filter(b=>b.id!==room.branch_id && b.useYn!==false).map(b=><option key={b.id} value={b.id}>{b.short||b.name}</option>)}
+                                </select>}
                               </>;
                             })()}
                           </div>
