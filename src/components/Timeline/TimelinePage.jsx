@@ -4369,7 +4369,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                               const _closeH = Math.min(23, parseInt(_opEnd.split(":")[0]) + 1);
                               const _spanH = Math.max(1, _closeH - _openH + 1); // closeH 정시까지 포함
                               // closeH+1:00까지 포함 (예: closeTime=21:00 → 마지막 옵션 22:00) — 직원 잔업 끝 시각 선택 가능
-                              const hours = Array.from({length:_spanH*12 + 1},(_,i)=>{const h=Math.floor(i/12)+_openH,m=(i%12)*5;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;});
+                              const hours = Array.from({length:_spanH*6 + 1},(_,i)=>{const h=Math.floor(i/6)+_openH,m=(i%6)*10;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;});
                               const selSt = {fontSize:14,fontWeight:600,padding:"7px 11px",borderRadius:8,border:"1px solid "+T.border,fontFamily:"inherit",background:T.bgCard,minWidth:92,flex:"0 1 auto"};
 
                               // 종일 근무지 변경 — 체크박스 + 지점 select
@@ -4511,7 +4511,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                             };
 
                             // 직원 이동 시간 단위: 10분
-                            const TIME_OPTS = Array.from({length:24*12},(_,i)=>{const h=Math.floor(i/12),m=(i%12)*5;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;}).filter(t=>{const hh=parseInt(t);return hh>=startHour&&hh<=endHour;});
+                            const TIME_OPTS = Array.from({length:24*6},(_,i)=>{const h=Math.floor(i/6),m=(i%6)*10;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;}).filter(t=>{const hh=parseInt(t);return hh>=startHour&&hh<=endHour;});
                             // segment 변경 → 시간순 정렬 후 다음 segment의 from을 until로 자동 chain (드래프트만)
                             const updateSeg = (branchId, field, value) => {
                               let newSegs = segs.map(s => s.branchId === branchId ? {...s, [field]: value || null} : s);
@@ -4694,7 +4694,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                   `}</style>
                                   <div style={{padding:"10px 12px 22px",position:"relative"}}>
                                   <div className="bliss-seg-hover" draggable={false} onDragStart={e=>e.preventDefault()}
-                                    style={{position:"relative",display:"flex",height:26,borderRadius:6,overflow:"visible",border:"1px solid "+T.border,userSelect:"none",WebkitUserDrag:"none",touchAction:"none",cursor:cropCursor,background:T.gray100,transition:"box-shadow .15s"}}
+                                    style={{position:"relative",display:"flex",height:44,borderRadius:8,overflow:"visible",border:"1px solid "+T.border,userSelect:"none",WebkitUserDrag:"none",touchAction:"none",cursor:cropCursor,background:T.gray100,transition:"box-shadow .15s"}}
                                     onPointerDown={onBarPointerDown}>
                                     {visualSegs.map((vs,i) => {
                                       const br = allBranches.find(b=>b.id===vs.branchId);
@@ -4705,8 +4705,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                       const isLast = i === visualSegs.length - 1;
                                       // 톤다운 파스텔: 20~28% opacity, glass 느낌
                                       const softBg = `linear-gradient(180deg, ${bg}28, ${bg}18)`;
-                                      return <div key={i} style={{position:"relative",width:w+"%",background:softBg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:bg,overflow:"hidden",whiteSpace:"nowrap",borderRight:isLast?"none":"1px solid "+bg+"55",letterSpacing:0.2}} title={`${name} ${mnToTime(vs.fromMn)}~${mnToTime(vs.untilMn)}`}>
-                                        <span style={{pointerEvents:"none",opacity:vs.isHome?0.5:0.95,textShadow:"0 1px 0 rgba(255,255,255,.5)"}}>{w>8?name:""}</span>
+                                      return <div key={i} style={{position:"relative",width:w+"%",background:softBg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:1,color:bg,overflow:"hidden",whiteSpace:"nowrap",borderRight:isLast?"none":"1px solid "+bg+"55",letterSpacing:0.2}} title={`${name} ${mnToTime(vs.fromMn)}~${mnToTime(vs.untilMn)}`}>
+                                        <span style={{pointerEvents:"none",opacity:vs.isHome?0.55:1,fontSize:12.5,fontWeight:700,textShadow:"0 1px 0 rgba(255,255,255,.5)"}}>{w>9?name:""}</span>
+                                        <span style={{pointerEvents:"none",opacity:vs.isHome?0.45:0.8,fontSize:9.5,fontWeight:600}}>{w>13?`${mnToTime(vs.fromMn)}~${mnToTime(vs.untilMn)}`:""}</span>
                                       </div>;
                                     })}
                                     {/* DJ 페이더 스타일 경계 핸들 — 바 아래로 튀어나온 그립 */}
@@ -4858,13 +4859,13 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                   <select value={addFrom} onChange={e=>setAddFrom(e.target.value)}
                                     style={{flex:1,fontSize:11,padding:"4px 5px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"}}>
                                     <option value="">시작(선택)</option>
-                                    {Array.from({length:48},(_,i)=>{const h=Math.floor(i/2),m=(i%2)*30;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;}).filter(t=>{const hh=parseInt(t);return hh>=startHour&&hh<endHour;}).map(t=><option key={t} value={t}>{t}</option>)}
+                                    {Array.from({length:24*6},(_,i)=>{const h=Math.floor(i/6),m=(i%6)*10;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;}).filter(t=>{const hh=parseInt(t);return hh>=startHour&&hh<endHour;}).map(t=><option key={t} value={t}>{t}</option>)}
                                   </select>
                                   <span style={{fontSize:11,color:T.textMuted}}>~</span>
                                   <select value={addUntil} onChange={e=>setAddUntil(e.target.value)}
                                     style={{flex:1,fontSize:11,padding:"4px 5px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"}}>
                                     <option value="">종료(선택)</option>
-                                    {Array.from({length:48},(_,i)=>{const h=Math.floor(i/2),m=(i%2)*30;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;}).filter(t=>{const hh=parseInt(t);return hh>=startHour&&hh<=endHour;}).map(t=><option key={t} value={t}>{t}</option>)}
+                                    {Array.from({length:24*6},(_,i)=>{const h=Math.floor(i/6),m=(i%6)*10;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;}).filter(t=>{const hh=parseInt(t);return hh>=startHour&&hh<=endHour;}).map(t=><option key={t} value={t}>{t}</option>)}
                                   </select>
                                 </div>
                                 <div style={{display:"flex",gap:4}}>
