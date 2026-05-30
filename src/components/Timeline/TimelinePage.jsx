@@ -4370,7 +4370,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                               const _spanH = Math.max(1, _closeH - _openH + 1); // closeH 정시까지 포함
                               // closeH+1:00까지 포함 (예: closeTime=21:00 → 마지막 옵션 22:00) — 직원 잔업 끝 시각 선택 가능
                               const hours = Array.from({length:_spanH*6 + 1},(_,i)=>{const h=Math.floor(i/6)+_openH,m=(i%6)*10;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;});
-                              const selSt = {fontSize:14,fontWeight:600,padding:"7px 11px",borderRadius:8,border:"1px solid "+T.border,fontFamily:"inherit",background:T.bgCard,minWidth:92,flex:"0 1 auto"};
+                              const selSt = {fontSize:16,fontWeight:700,padding:"9px 13px",borderRadius:9,border:"1px solid "+T.border,fontFamily:"inherit",background:T.bgCard,minWidth:100,flex:"0 1 auto"};
 
                               // 종일 근무지 변경 — 체크박스 + 지점 select
                               // 현재 segs가 exclusive=true 하나짜리면 "다른 지점 종일 근무" 상태
@@ -4430,9 +4430,10 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                             // 현재 컬럼의 직원 제외, 이 지점에 오늘 있는(또는 올) 직원만
                             const currentStaffIds = new Set([room.staffId]);
                             const candidates = BASE_EMP_LIST.filter(e => !currentStaffIds.has(e.id));
-                            return <div style={{padding:"8px 12px",borderBottom:"1px solid "+T.border,background:"#FFF8E1"}}>
-                              <div style={{fontSize:12,fontWeight:700,color:"#E5820A",marginBottom:6,display:"flex",alignItems:"center",gap:5}}><I name="clipboard" size={12}/>담당자 교체 <span style={{color:T.textMuted,fontWeight:500}}>(예약 {rsvList.length}건)</span></div>
-                              <div style={{display:"flex",gap:4}}>
+                            const _repOpen = empMovePopup.showReplace;
+                            return <div style={{padding:"8px 12px",borderBottom:"1px solid "+T.border,background:_repOpen?"#FFF8E1":"transparent"}}>
+                              <div onClick={()=>setEmpMovePopup(p=>({...p,showReplace:!p.showReplace}))} style={{fontSize:12.5,fontWeight:700,color:_repOpen?"#E5820A":T.textSub,display:"flex",alignItems:"center",justifyContent:"space-between",gap:5,cursor:"pointer"}}><span style={{display:"flex",alignItems:"center",gap:5}}><I name="clipboard" size={12}/>담당자 교체 <span style={{color:T.textMuted,fontWeight:500}}>(예약 {rsvList.length}건)</span></span><span style={{color:T.textMuted,fontSize:11}}>{_repOpen?"▴":"▾"}</span></div>
+                              {_repOpen && <div style={{display:"flex",gap:4,marginTop:8}}>
                                 <select value={empMovePopup.replaceWith||""} onChange={e=>setEmpMovePopup(p=>({...p,replaceWith:e.target.value}))}
                                   style={{flex:1,fontSize:11,padding:"4px 6px",borderRadius:6,border:"1px solid #ffb74d",fontFamily:"inherit"}}>
                                   <option value="">새 담당자 선택</option>
@@ -4460,7 +4461,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                     setEmpMovePopup(null);
                                   }}
                                   style={{padding:"4px 10px",fontSize:11,fontWeight:700,border:"none",borderRadius:6,background:empMovePopup.replaceWith?"#ff9800":T.gray300,color:"#fff",cursor:empMovePopup.replaceWith?"pointer":"not-allowed",fontFamily:"inherit"}}>스왑</button>
-                              </div>
+                              </div>}
                             </div>;
                           })()}
                           {/* 현재 segments */}
@@ -4847,7 +4848,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                               </div>}
                               {/* 이동 추가 */}
                               <div style={{padding:"6px 12px",borderTop:"1px solid "+T.border}}>
-                                <div style={{fontSize:12,color:T.textSub,marginBottom:6,fontWeight:700}}>이동 추가</div>
+                                <div onClick={()=>setEmpMovePopup(p=>({...p,showAddMove:!p.showAddMove}))} style={{fontSize:12,color:T.textSub,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between"}}><span>+ 직접 시간 지정 추가</span><span style={{color:T.textMuted,fontSize:11}}>{empMovePopup.showAddMove?"▴":"▾"}</span></div>
+                                {empMovePopup.showAddMove && <div style={{marginTop:6}}>
                                 <div style={{display:"flex",gap:4,marginBottom:5}}>
                                   <select value={addBranch} onChange={e=>setAddBranch(e.target.value)}
                                     style={{flex:1,fontSize:11,padding:"4px 5px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"}}>
@@ -4883,6 +4885,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                     추가
                                   </button>
                                 </div>
+                                </div>}
                               </div>
                               </> : (
                                 <div style={{padding:"10px 12px"}}>
