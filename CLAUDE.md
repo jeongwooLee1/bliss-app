@@ -2878,3 +2878,8 @@ Liah(WhatsApp) 후속 2건.
 **배경**: 정우님 "토 30 네모칸 중 오늘이 어딘지 직원들이 잘 모른다". 14일 날짜 탭에서 오늘 칸을 명확히.
 - 날짜 탭 렌더([TimelinePage.jsx:3957](src/components/Timeline/TimelinePage.jsx:3957))에 `isToday = (i + _off === 0)` 추가. 오늘이면 요일("토") 자리에 **"오늘"** 표시(다른 날은 요일 유지). 오늘 글자 굵게(800) + 미선택 시 보라(T.primary)로 강조. 선택+오늘이면 기존 보라 배경+흰 글자.
 - 검증: 빌드 OK·babel PARSE_OK·dev 스크린샷 "오늘 30" 보라 배경 확인. 배포: v3.7.916 라이브(version.txt 검증, CF 퍼지 success).
+
+### v3.7.917 — 데스크탑 상단 "오늘" 버튼 제거 (날짜탭 "오늘"로 대체) (2026-05-30)
+**배경**: v3.7.916으로 날짜 탭에 "오늘"이 생겨, 상단 날짜 네비 옆 별도 "오늘" 버튼(`setSelDate(todayStr)`, `hide-mobile`이라 데스크탑 전용)이 중복 → 정우님 요청으로 제거. 오늘 점프는 날짜 탭의 "오늘 30" 클릭으로 대체.
+- [TimelinePage.jsx:3907](src/components/Timeline/TimelinePage.jsx:3907) chevR(다음날) 버튼 다음의 `<button …>오늘</button>` 제거.
+- 검증: 빌드 OK·babel PARSE_OK. 배포: v3.7.917 라이브(version.txt 검증, CF 퍼지 success).

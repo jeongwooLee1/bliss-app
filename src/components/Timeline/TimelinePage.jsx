@@ -3904,7 +3904,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             {showCal && <MiniCal selDate={selDate} onSelect={d=>{setSelDate(d);setShowCal(false);}} onClose={()=>setShowCal(false)}/>}
           </div>
           <button onClick={()=>changeDate(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:T.fs.sm,color:T.gray600,padding:"2px 4px",flexShrink:0}}><I name="chevR" size={14}/></button>
-          <button onClick={()=>setSelDate(todayStr())} style={{padding:"0 10px",height:32,fontSize:T.fs.sm,border:"1px solid #d0d0d0",borderRadius:T.radius.md,background:T.bgCard,color:T.gray600,cursor:"pointer",fontFamily:"inherit",flexShrink:0,display:"flex",alignItems:"center"}} className="hide-mobile">오늘</button>
+          {/* "오늘" 버튼 제거 — 날짜 탭의 "오늘" 표시로 대체 (v3.7.917) */}
           {/* 새로고침 + 네이버 갱신 통합 — 네이버 list + 막기 상태 즉시 동기화 후 페이지 reload */}
           <button onClick={async (e)=>{
             const btn = e.currentTarget; btn.disabled = true;
