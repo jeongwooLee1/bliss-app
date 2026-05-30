@@ -3955,13 +3955,14 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             const ds = fmtLocal(dt);
             const dow = dt.getDay();
             const isSel = ds === selDate;
+            const isToday = (i + _off === 0);
             const dayColor = dow===0?T.female:dow===6?T.male:T.gray700;
             return <button key={i} onClick={()=>setSelDate(ds)}
               style={{minWidth:38,height:32,borderRadius:T.radius.md,border:isSel?"none":"1px solid #e8e8e8",
                 background:isSel?T.primary:T.bgCard,color:isSel?T.bgCard:dayColor,
                 fontSize:T.fs.sm,fontWeight:isSel?700:500,cursor:"pointer",fontFamily:"inherit",padding:"2px 3px",flexShrink:0,
                 display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",lineHeight:1.1}}>
-              <span style={{fontSize:T.fs.xs}}>{DAYS_KR[dow]}</span>
+              <span style={{fontSize:T.fs.xs,fontWeight:isToday?800:500,color:(isToday&&!isSel)?T.primary:undefined}}>{isToday?"오늘":DAYS_KR[dow]}</span>
               <span>{dt.getDate()}</span>
             </button>;
           }); })()}
