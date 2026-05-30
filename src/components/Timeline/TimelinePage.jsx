@@ -4586,6 +4586,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
 
                             return <>
                               {showMoveUI ? <>
+                              <div style={{padding:"8px 12px 0",fontSize:12.5,fontWeight:700,color:T.primary}}>근무 지점 · 이동</div>
                               {/* 시각적 타임라인 바 — 드래그로 구간 조절 가능 */}
                               {visualSegs.length>0 && whDur>0 && (() => {
                                 // 각 지점에 구분되는 색상 (branch.color 우선, 없으면 index 기반)
@@ -4694,6 +4695,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                     .bliss-branch-pick:active { transform:translateY(0) }
                                   `}</style>
                                   <div style={{padding:"10px 12px 22px",position:"relative"}}>
+                                  <div style={{display:"flex",justifyContent:"space-between",fontSize:9.5,color:T.textMuted,marginBottom:5,padding:"0 1px"}}>
+                                    {(()=>{const t=[];const sH=Math.ceil(whStartMn/60),eH=Math.floor(whEndMn/60),step=Math.max(1,Math.ceil((eH-sH)/6));for(let h=sH;h<=eH;h+=step)t.push(h);return t.map(h=><span key={h}>{h}</span>);})()}
+                                  </div>
                                   <div className="bliss-seg-hover" draggable={false} onDragStart={e=>e.preventDefault()}
                                     style={{position:"relative",display:"flex",height:44,borderRadius:8,overflow:"visible",border:"1px solid "+T.border,userSelect:"none",WebkitUserDrag:"none",touchAction:"none",cursor:cropCursor,background:T.gray100,transition:"box-shadow .15s"}}
                                     onPointerDown={onBarPointerDown}>
@@ -4807,42 +4811,18 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                 </div>
                                 </>;
                               })()}
-                              {/* 현재 구간 목록 — visualSegs 기반 (base 자동 구간 포함, 편집 구간과 동일 UI) */}
-                              {visualSegs.length>0 && <div style={{padding:"6px 12px"}}>
+                              {/* 현재 구간 목록 — 칩 (시간 미세조정은 바 드래그) */}
+                              {visualSegs.length>0 && <div style={{padding:"4px 12px 8px",display:"flex",flexDirection:"column",gap:5}}>
                                 {visualSegs.map((vs, idx) => {
                                   const br = allBranches.find(b=>b.id===vs.branchId);
                                   const mnToTime = (mn) => `${String(Math.floor(mn/60)).padStart(2,"0")}:${String(mn%60).padStart(2,"0")}`;
-                                  const fromT = mnToTime(vs.fromMn);
-                                  const untilT = mnToTime(vs.untilMn);
-                                  const selSt = {flex:1,fontSize:12,padding:"5px 7px",borderRadius:6,border:"1px solid "+T.border,fontFamily:"inherit"};
-                                  // 자동 구간(base 보완) — 같은 UI, select disabled
-                                  if (vs.isHome) {
-                                    return <div key={idx} style={{display:"flex",alignItems:"center",gap:3,marginBottom:4,fontSize:11}}>
-                                      <span style={{width:6,height:6,borderRadius:"50%",background:br?.color||T.primary,flexShrink:0}}/>
-                                      <span style={{fontWeight:600,minWidth:50}}>{br?.short||br?.name}</span>
-                                      <select value={fromT} disabled style={{...selSt, background:T.bgCard, color:T.text, cursor:"default"}}>
-                                        <option value={fromT}>{fromT}</option>
-                                      </select>
-                                      <span style={{color:T.textMuted}}>~</span>
-                                      <select value={untilT} disabled style={{...selSt, background:T.bgCard, color:T.text, cursor:"default"}}>
-                                        <option value={untilT}>{untilT}</option>
-                                      </select>
-                                      <span style={{width:16,flexShrink:0}}/>
-                                    </div>;
-                                  }
-                                  // 타 지점 이동 구간 — 편집 가능
-                                  const s = segs.find(x=>x.branchId===vs.branchId && (toMn(x.from)===vs.fromMn || (!x.from && vs.fromMn===whStartMn)));
-                                  return <div key={idx} style={{display:"flex",alignItems:"center",gap:3,marginBottom:4,fontSize:11}}>
-                                    <span style={{width:6,height:6,borderRadius:"50%",background:br?.color||T.primary,flexShrink:0}}/>
-                                    <span style={{fontWeight:600,minWidth:50}}>{br?.short||br?.name}</span>
-                                    <select value={s?.from||fromT} onChange={e=>updateSeg(vs.branchId,"from",e.target.value)} style={selSt}>
-                                      {TIME_OPTS.map(t=><option key={t} value={t}>{t}</option>)}
-                                    </select>
-                                    <span style={{color:T.textMuted}}>~</span>
-                                    <select value={s?.until||untilT} onChange={e=>updateSeg(vs.branchId,"until",e.target.value)} style={selSt}>
-                                      {TIME_OPTS.map(t=><option key={t} value={t}>{t}</option>)}
-                                    </select>
-                                    <button onClick={()=>removeSeg(vs.branchId)} style={{width:16,height:16,border:"none",background:"none",cursor:"pointer",color:T.danger,fontSize:14,padding:0,lineHeight:1,flexShrink:0}}>×</button>
+                                  const c = br?.color||T.primary;
+                                  return <div key={idx} style={{display:"flex",alignItems:"center",gap:9,background:T.gray100,borderRadius:9,padding:"8px 11px"}}>
+                                    <span style={{width:9,height:9,borderRadius:"50%",background:c,flexShrink:0}}/>
+                                    <span style={{fontWeight:700,fontSize:13.5,color:T.text,flexShrink:0,minWidth:44}}>{br?.short||br?.name}</span>
+                                    <span style={{fontSize:13,color:T.textSub,fontWeight:600,flex:1}}>{mnToTime(vs.fromMn)} ~ {mnToTime(vs.untilMn)}</span>
+                                    {vs.isHome ? <span style={{fontSize:10.5,color:T.textMuted,flexShrink:0}}>기본 근무</span>
+                                      : <button onClick={()=>removeSeg(vs.branchId)} style={{width:22,height:22,border:"none",background:"none",cursor:"pointer",color:T.danger,fontSize:17,padding:0,lineHeight:1,flexShrink:0}}>×</button>}
                                   </div>;
                                 })}
                               </div>}
