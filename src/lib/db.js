@@ -106,5 +106,7 @@ export function toDb(table,obj){const m=DBMAP[table];if(!m){const r={...obj};del
   const cols=DB_COLS[table];if(cols){const f={};for(const c of cols)if(r[c]!==undefined)f[c]=r[c];
   // Auto-inject business_id if active and column exists
   if(_activeBizId && cols.includes("business_id") && !f.business_id) f.business_id=_activeBizId;
+  // customers 저장 시 +82 한국모바일 → 010 정규화 (821..→010 / 820..→010). 그 외 형식(하이픈 등)은 그대로 보존
+  if(table==="customers"){for(const _k of ["phone","phone2"]){const _v=f[_k];if(!_v)continue;const _d=String(_v).replace(/\D/g,"");if(_d.startsWith("821")&&_d.length>=11)f[_k]="0"+_d.slice(2);else if(_d.startsWith("820")&&_d.length>=12)f[_k]=_d.slice(2);}}
   if(table==="reservations"||table==="sales") console.log(`toDb(${table}) final keys:`,Object.keys(f).join(","));
   return f;}return r;}

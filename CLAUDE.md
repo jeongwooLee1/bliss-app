@@ -2945,4 +2945,14 @@ Liah(WhatsApp) 후속 2건.
 - 서버 `bliss_naver.py`(백업 `bak_82norm_*`, scp 방식 — 로컬 받아 ast.parse 검증 후 업로드): `alimtalk_thread` 발송 phone(`phone_clean`, 2295 — 모든 alimtalk_queue 발송 최종 관문) + `care_sms` 진입(`ph_digits`, 2668)에 `if startswith("82") and len≥11: "0"+[2:]` 정규화(find_cust_by_phone 276의 동일 패턴). `systemctl restart bliss-naver`(active).
 **검증**: 앱 빌드 OK·HMR 콘솔 0. 서버 ast.parse syntax OK·재시작 active. 실 발송(82 고객 카카오 알림톡)은 라이브 실데이터 필요 — 코드 검증.
 **적용**: v3.7.923 라이브 배포 + 서버 patch.
-**유의**: 저장값(customers.phone) **무변경** — 발송 시점에만 010 변환(정우님 "기재" 제안이지만 저장 데이터엔 82가 없어 발송 변환이 정답). WhatsApp user_id 등 82 채팅 고객도 이제 알림톡 발송. ⚠️ rsv_today/1day reminder 등 다른 서버 발송 경로의 **진입 가드**(010 체크)는 미점검 — `alimtalk_thread` 최종 정규화(2295)로 발송 자체는 방어되나, 진입에서 82를 막으면 queue 미적재 가능(추가 점검 대상). 정우님 케이스(예약모달 직원 확정 rsv_confirm)는 앱 queueAlimtalk로 커버.
+**유의**: 저장값(customers.phone) **무변경** — 발송 시점에만 010 변환(정우님 "기재" 제안이지만 저장 데이터엔 82가 없어 발송 변환이 정답). WhatsApp user_id 등 82 채팅 고객도 이제 알림톡 발송. ⚠️ rsv_today/1day reminder 등 다른 서버 발송 경로의 **진입 가드**(010 체크)는 미점검 — `alimtalk_thread` 최종 정규화(2295)로 발송 자체는 방어되나, 진입에서 82를 막으면 queue 미적재 가능(추가 점검 대상). 정우님 케이스(예약모달 직원 확정 rsv_confirm)는 앱 queueAlimtalk로 커버. **(→ v3.7.924에서 저장값도 정규화하기로 정정 — 아래 참고)**
+
+### v3.7.924 — 전화번호 저장 정규화: +82 한국모바일 → 010 (정우님) (2026-05-30)
+**배경**(정우님): v3.7.923 발송 정규화 후 "이런 고객(Flora `8201077363978`) 저장값 자체를 정규화하는 게 낫지 않냐". + v3.7.923에서 customers `821%`만 조회해 "0건"이라 한 게 **누락** — 실제 케이스는 `820`(=`+82 010`, 0 두 번) 형식이라, `^82[01]`로 재조회하니 customers.phone 2건(Flora·Loula)+phone2 1건+reservations 2건.
+**처리**:
+- **기존 데이터 일괄**(DB): customers.phone/phone2 + reservations.cust_phone `^82[01]`(한국 모바일) → `82` 떼고 010. Flora `8201077363978`→`01077363978`, Loula `+8201039186019`→`01039186019`. `82` 비모바일 1건(유선/외국)은 제외.
+- **앱 입력**(`db.js toDb("customers")`): f 반환 직전에 phone/phone2 정규화(`821→010`/`820→010`, 그 외 형식 보존). 앱 customers 저장 대부분이 toDb 경유 → 단일 지점 커버.
+- **서버 자동생성**(`bliss_naver.py`+`ai_booking.py`, 백업 `bak_phonenorm`): `_kr_mobile(p)` 헬퍼(모듈 레벨) + customers INSERT 6곳(네이버신규 `_new_phone`·방문자 `_v_phone_raw`·카카오 `_phone_norm`·Trazy `phone`·기타신규 `phone`·AI예약 `phone`) phone 적용. scp 받아 ast.parse 검증 후 업로드·재시작(active).
+**검증**: 앱 빌드·HMR 콘솔 0, 서버 ast.parse OK·active, 기존 데이터 SELECT로 정규화 확인.
+**적용**: v3.7.924 라이브 배포 + 서버 patch.
+**유의**: 발송 정규화(v3.7.923)=발송 시점, 이번(v3.7.924)=저장 시점 → 82 고객이 저장·표시·발송 모두 010으로 통일. `toDb` 정규화는 `82` 형식만 변환(010·하이픈 등 기존 형식은 그대로 보존 — \D 제거는 82 케이스에만). reservations.cust_phone **입력** 정규화는 toDb("reservations")엔 미적용(표시는 customers.phone 우선·발송은 v3.7.923 커버, 기존 데이터만 일괄 정규화함) — 필요 시 추가.

@@ -14,7 +14,8 @@
 - 🟡 **id_yuorqmcv48 소이** — ⓐ"페이스 추가"=차트·동의서(정우님 확인) → **consent 앱 위임(spawn_task)** / ⓑ외국인 번역 영/한 버튼=메시지함 번역 토글(자동/영어/끄기) 이미 존재 → 현 기능 안내 + 정확한 니즈 되묻기 답글. status=reviewing(consent 작업 + 니즈 확인 대기).
 
 ## 현재 버전
-- **라이브: v3.7.923** (https://blissme.ai/version.txt) — 알림톡/SMS 발송 시 +82 한국번호 → 010 자동 정규화(앱 `toKrMobile`+queueAlimtalk+가드 / 서버 alimtalk_thread+care_sms). 채팅(WhatsApp) 82 고객도 발송. 저장값 무변경. 정우님 id_7g8h69xga7. 상세 CLAUDE.md v3.7.923.
+- **라이브: v3.7.924** (https://blissme.ai/version.txt) — 전화번호 **저장** 정규화: +82 한국모바일(820/821) → 010. 기존 데이터 일괄(Flora·Loula 등 customers·reservations) + 앱 `db.js toDb("customers")` + 서버 자동생성 6곳(`_kr_mobile`). 발송 정규화(v3.7.923)와 합쳐 저장·표시·발송 모두 010. 정우님. 상세 CLAUDE.md v3.7.924.
+- **라이브: v3.7.923** (https://blissme.ai/version.txt) — 알림톡/SMS 발송 시 +82 한국번호 → 010 자동 정규화(앱 `toKrMobile`+queueAlimtalk+가드 / 서버 alimtalk_thread+care_sms). 채팅(WhatsApp) 82 고객도 발송. 정우님 id_7g8h69xga7. 상세 CLAUDE.md v3.7.923.
 - **라이브: v3.7.922** (https://blissme.ai/version.txt) — 미응답 배너 안 사라지는 버그 fix: 상담창 열어 읽으면(markRead) 배너(unreadDelayedCount) 즉시 재계산되도록 `loadUnreadRef` 연결(기존 Realtime/120초 폴링 의존 → 즉시). 신영 id_rhh0b4expr. 상세 CLAUDE.md v3.7.922.
 - **라이브: v3.7.921** (https://blissme.ai/version.txt) — 노쇼·취소 페널티로 선불권/다회권 차감 시 보유권 거래내역(`package_transactions`)에 기록 → 매출+보유권 사용 이력 둘 다 노출(강남 id_p46r9t7dpd). 상세 CLAUDE.md v3.7.921.
 - **라이브: v3.7.920** (https://blissme.ai/version.txt) — 동반자 추가 버튼을 footer(큰 버튼)에서 **고객정보 줄 [변경][고객정보↗][메시지] 옆 작은 [동반자]** 로 이동(정우님 "잘 안 쓰는 버튼 작게"). 데스크탑·모바일 검증. 상세 CLAUDE.md v3.7.920.
