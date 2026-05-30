@@ -2285,6 +2285,11 @@ ${naverText}
                           style={{flex:1,padding:"8px 0",border:"none",background:"transparent",color:"#7C3AED",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                           <I name="msgSq" size={11} style={{marginRight:3}}/>메시지 {_hasVisitor && (<span style={{fontSize:9,opacity:0.7,marginLeft:2}}>({f.primarySubject==='visitor'?'방문자':'예약자'})</span>)}
                         </button>}
+                        {item?.id && !isSchedule && (f.custName||"").trim() && onAddCompanion && <button onClick={()=>{ onAddCompanion(f); onClose?.(); }}
+                          title="같은 시간·관리사에 친구(동반자) 1명 추가 — PC는 Ctrl 드래그 복사"
+                          style={{flex:1,padding:"8px 0",border:"none",borderLeft:"1px solid #e2e5ea",background:"transparent",color:T.primary,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                          <I name="userPlus" size={11} style={{marginRight:3}}/>동반자
+                        </button>}
                       </>
                     )}
                   </div>}
@@ -2453,6 +2458,11 @@ ${naverText}
                       title={(f.primarySubject==='visitor') ? `방문자 ${f.visitorName}에게 문자` : "예약자에게 문자 발송"}
                       style={{flex:1,padding:"8px 0",border:"none",background:"transparent",color:"#7C3AED",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                       <I name="msgSq" size={11} style={{marginRight:3}}/>메시지 <span style={{fontSize:9,opacity:0.7,marginLeft:2}}>({f.primarySubject==='visitor'?'방문자':'예약자'})</span>
+                    </button>}
+                    {item?.id && !isSchedule && (f.custName||"").trim() && onAddCompanion && <button onClick={()=>{ onAddCompanion(f); onClose?.(); }}
+                      title="같은 시간·관리사에 친구(동반자) 1명 추가 — PC는 Ctrl 드래그 복사"
+                      style={{flex:1,padding:"8px 0",border:"none",borderLeft:"1px solid #e2e5ea",background:"transparent",color:T.primary,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                      <I name="userPlus" size={11} style={{marginRight:3}}/>동반자
                     </button>}
                   </>
                 )}
@@ -3019,14 +3029,6 @@ ${naverText}
                   <I name="trash" size={12}/> 삭제
                 </button>;
               })()}
-              {/* 동반자 추가 — 같은 시간·관리사·시술에 친구 1명 추가 (PC Ctrl 드래그 복사의 버튼 버전, 모바일 대체) */}
-              {item?.id && !isSchedule && (f.custName||"").trim() && onAddCompanion && (
-                <button onClick={()=>{ onAddCompanion(f); onClose?.(); }}
-                  style={{padding:"10px 14px",borderRadius:T.radius.md,fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5,lineHeight:1,transition:"all .15s",border:"2px solid "+T.primary,color:T.primary,background:T.bgCard}}
-                  title="같은 시간·관리사에 친구(동반자) 1명을 추가합니다">
-                  <I name="userPlus" size={12}/> 동반자 추가
-                </button>
-              )}
               <button
                 ref={commitBtnRef}
                 disabled={!isSchedule && f.type==="reservation" && !f.custName?.trim()}
