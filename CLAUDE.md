@@ -2926,3 +2926,11 @@ Liah(WhatsApp) 후속 2건.
 **검증**: 빌드 OK. 실제 노쇼+차감 시나리오는 데모 재현 비용이 커서 코드 리뷰·빌드로 검증(INSERT 패턴은 CustomersPage `recordPkgTx`와 동일, balance_after ≥ 0 보장).
 **적용**: v3.7.921 라이브 배포(version.txt 검증, CF 퍼지 success).
 **유의**: 매출(sales) 페널티 기록은 원래부터 동작 중이었음(강남이 본 "이력"은 보유권 사용 내역). 차감 경로는 포인트→선불권→다회권 순(33,000원 기준). 보유권 거래내역 표시는 고객 상세 보유권 탭(`PkgCard`/`pkgHistoryMap`)에서 확인.
+
+### v3.7.922 — 미응답 배너 안 사라지는 버그 fix (대화창 읽음 → 배너 즉시 갱신) (신영 id_rhh0b4expr) (2026-05-30)
+**버그**(신영 — v3.7.921에서 "현재 동작 정상"으로 오판했으나 정우님 "버그다" 지적, 재확인 결과 실제 버그): 상단 미응답 배너("답변 확인")가 **상담창(대화)을 열어 읽어도 안 사라짐**. 기대 동작 = 대화창 열기(읽음 처리) → 배너 즉시 해제.
+**원인**: 배너 카운트 `unreadDelayedCount`(AppShell)는 `is_read=false`인 1분+ 미읽 IN 메시지 개수. 대화창 열면 `markRead`(MessagesPage:619)가 DB `is_read:true` PATCH + `onRead(unreadCount)` 호출하지만 — AppShell의 `onRead` 콜백이 **사이드바 배지(`unreadMsgCount`)만** 줄이고 배너(`unreadDelayedCount`)는 안 건드림. 배너는 Realtime UPDATE(`is_read===true`) 이벤트(1682)나 **120초 폴링**(1686)에만 의존 → Realtime 불안정 시 최대 120초간 안 사라짐(체감 "안 사라짐").
+**fix** (`AppShell.jsx`): `loadUnreadRef`(useRef) 신설 → useEffect 안에서 배너 재계산 함수(`load`) 저장 → `onRead` 콜백 2곳(AdminInbox forceCompact 패널 + `/messages` Route)에서 `loadUnreadRef.current()` 즉시 호출 추가. `markRead`의 DB PATCH(await 완료) 직후 `onRead` → 배너 재fetch(`is_read=false` 필터) → 읽음 반영 → 즉시 해제. Realtime/폴링과 무관하게 대화창 열면 바로 사라짐.
+**검증**: 빌드 OK, HMR 콘솔 에러 0. 데모에 미읽 IN 메시지 0건이라 배너 자체가 안 떠 시각 검증은 불가 — 로직 검증(`markRead: await PATCH → onRead(unreadCount>0) → loadUnreadRef.current() → load → setUnreadDelayedCount` 경로 정확). additive 변경(onRead에 호출 1개 추가)이라 회귀 위험 낮음.
+**적용**: v3.7.922 라이브 배포(version.txt 검증, CF 퍼지 success).
+**유의**: 라이브에서 미응답 배너 뜬 대화를 열어 즉시 사라지는지 1회 확인 권장(데모 검증 제약). 배너 기준은 여전히 "1분+ 미읽 IN 메시지"(마지막 방향 아님) — 대화창 열어 읽으면 해제, 고객이 새 메시지 보내면 다시 뜸(정상). AI 자동응답 여부와 무관.

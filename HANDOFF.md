@@ -9,10 +9,11 @@
 ## 공지&요청 처리 (2026-05-30)
 - ✅ **id_3po2ckyzmj 신영** (커플룸 모바일 동반자) — v3.7.918~920 완료. done+답글.
 - ✅ **id_p46r9t7dpd 강남** (노쇼 페널티 이력) — v3.7.921: 선불권/다회권 차감을 `package_transactions`에 기록(매출 sales는 기존부터 됨). done+답글.
-- ✅ **id_rhh0b4expr 신영** (AI 답변 후 '답변확인' 배너 안 사라짐) — 동작 설명 답글(배너=1분+ 미읽 IN 메시지 기준, AI 답변 무관·대화 열어 읽으면 사라짐, 새 메시지 오면 다시 뜸). 현재 동작이 의도된 것이라 코드변경 없이 안내. done.
+- ✅ **id_rhh0b4expr 신영** (상담창 열어도 미응답 배너 안 사라짐) — **실제 버그**(처음 동작설명으로 오판, 정우님 "버그다" 지적). v3.7.922: `markRead`(대화 읽음) 직후 `onRead`가 배너 카운트(`unreadDelayedCount`)를 즉시 재계산하도록 `loadUnreadRef` 연결. 기존엔 Realtime/120초 폴링 의존이라 안 사라짐. done. ⚠️ 라이브 시각 확인 권장(데모 미읽 0).
 - 🟡 **id_yuorqmcv48 소이** — ⓐ"페이스 추가"=차트·동의서(정우님 확인) → **consent 앱 위임(spawn_task)** / ⓑ외국인 번역 영/한 버튼=메시지함 번역 토글(자동/영어/끄기) 이미 존재 → 현 기능 안내 + 정확한 니즈 되묻기 답글. status=reviewing(consent 작업 + 니즈 확인 대기).
 
 ## 현재 버전
+- **라이브: v3.7.922** (https://blissme.ai/version.txt) — 미응답 배너 안 사라지는 버그 fix: 상담창 열어 읽으면(markRead) 배너(unreadDelayedCount) 즉시 재계산되도록 `loadUnreadRef` 연결(기존 Realtime/120초 폴링 의존 → 즉시). 신영 id_rhh0b4expr. 상세 CLAUDE.md v3.7.922.
 - **라이브: v3.7.921** (https://blissme.ai/version.txt) — 노쇼·취소 페널티로 선불권/다회권 차감 시 보유권 거래내역(`package_transactions`)에 기록 → 매출+보유권 사용 이력 둘 다 노출(강남 id_p46r9t7dpd). 상세 CLAUDE.md v3.7.921.
 - **라이브: v3.7.920** (https://blissme.ai/version.txt) — 동반자 추가 버튼을 footer(큰 버튼)에서 **고객정보 줄 [변경][고객정보↗][메시지] 옆 작은 [동반자]** 로 이동(정우님 "잘 안 쓰는 버튼 작게"). 데스크탑·모바일 검증. 상세 CLAUDE.md v3.7.920.
 - **라이브: v3.7.919** — 커플룸 동반자 ③ 모바일 버튼(앱). PC Ctrl 드래그 복사와 동일하게 동반자 생성(같은 시간·관리사, group 묶음, 결제 끊김). **커플룸 자동 동반자 ①②③ 완결.** v3.7.920에서 버튼 위치만 고객정보 줄로 이동. 상세 CLAUDE.md v3.7.919.
