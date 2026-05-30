@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { T, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, SYSTEM_TAG_NAME_NEW_CUST, SYSTEM_TAG_NAME_PREPAID, SYSTEM_SRC_NAME_NAVER } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY, sbHeaders, queueAlimtalk, buildTokenSearch } from '../../lib/sb'
 import { fromDb, toDb, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS, _activeBizId } from '../../lib/db'
-import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, getDow, genId, fmtLocal, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, getCustPkgBranchInitial, naverConfirmBooking, judgePenaltyType, customerGrade, isMoneyPkg } from '../../lib/utils'
+import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, getDow, genId, fmtLocal, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, getCustPkgBranchInitial, naverConfirmBooking, judgePenaltyType, customerGrade, isMoneyPkg, toKrMobile } from '../../lib/utils'
 import { createPortal } from 'react-dom'
 import I from '../common/I'
 import SendSmsModal from '../common/SendSmsModal'
@@ -3297,7 +3297,7 @@ ${naverText}
                       }
                     }
                     // 알리고 rsv_confirm 알림톡 큐 (010 휴대폰만) — 카톡/네이버톡 직발송과 별도로 항상 발송
-                    if(f.custPhone && f.custPhone.replace(/[^0-9]/g,"").startsWith("010")){
+                    if(f.custPhone && toKrMobile(f.custPhone).startsWith("010")){
                       const branch=(data?.branches||[]).find(b=>b.id===f.bid);
                       const rsvUrlId=f.reservationId||f.id||item?.id||"";
                       queueAlimtalk(f.bid,"rsv_confirm",f.custPhone,{

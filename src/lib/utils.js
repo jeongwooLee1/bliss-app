@@ -193,6 +193,15 @@ export const fmtPhone = (p) => {
   return p
 }
 
+// +82 국가코드 한국 모바일 → 010 국내 형식 정규화 (알림톡/SMS 발송용)
+// 채팅(WhatsApp 등) user_id나 외국 거주 고객이 +82 형식으로 들어온 경우, 발송 시점에 010으로 변환해야 카카오 알림톡/문자 발송됨.
+export const toKrMobile = (p) => {
+  let d = (p || '').replace(/\D/g, '')
+  if (d.startsWith('821') && d.length >= 11) d = '0' + d.slice(2)  // 8210..→010 / 8211..→011 등
+  else if (d.startsWith('820')) d = d.slice(2)                     // 820..→0.. (이미 0 포함된 +82 0 형식)
+  return d
+}
+
 // 서비스 이름 조합
 export const getSvcNames = (svcIds, services) => {
   if (!svcIds?.length) return ''

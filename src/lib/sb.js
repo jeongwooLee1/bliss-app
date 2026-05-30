@@ -94,7 +94,10 @@ export function buildFirstTokenSearch(raw, fields) {
 /** 알림톡 큐에 추가 — 서버(bliss_naver.py alimtalk_thread)가 10초 내 발송 */
 export function queueAlimtalk(branchId, notiKey, phone, params={}) {
   if (!branchId || !notiKey || !phone) return;
-  const clean = phone.replace(/[^0-9+]/g,"");
+  // +82 국가코드 한국 모바일 → 010 정규화 (채팅 user_id·외국거주 고객 등 82 형식도 발송되게)
+  let clean = (phone || "").replace(/\D/g,"");
+  if (clean.startsWith("821") && clean.length >= 11) clean = "0" + clean.slice(2);
+  else if (clean.startsWith("820")) clean = clean.slice(2);
   if (!clean.startsWith("010")) return; // 010 번호만
   sb.insert("alimtalk_queue", { branch_id:branchId, noti_key:notiKey, phone:clean, params, status:"pending" })
     .catch(e=>console.warn("[alimtalk] queue failed:", e));

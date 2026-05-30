@@ -5,7 +5,7 @@ import { sb, SB_URL, SB_KEY, sbHeaders, queueAlimtalk } from '../../lib/sb'
 import { useMaleRotation, useScheduleData } from '../../lib/useData'
 import { DEFAULT_CELL_TAGS } from '../Schedule/scheduleConstants'
 import { fromDb, toDb, resolveSystemIds, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS, _activeBizId } from '../../lib/db'
-import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, useSessionState, getCustPkgBranchInitial, naverConfirmBooking, naverPollNow } from '../../lib/utils'
+import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, useSessionState, getCustPkgBranchInitial, naverConfirmBooking, naverPollNow, toKrMobile } from '../../lib/utils'
 import I from '../common/I'
 import { transliterateName } from '../../lib/nameTransliterate'
 import TimelineModal from './ReservationModal'
@@ -2797,7 +2797,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       }
     }
     // 예약안내 팝업 (내부일정 제외, 010 시작 전화번호만)
-    const validPhone = item.custPhone && item.custPhone.startsWith("010");
+    const validPhone = item.custPhone && toKrMobile(item.custPhone).startsWith("010");
     if(!item.isSchedule && validPhone && isNewItem) {
       setAlimtalkConfirm({...item, _alimtalkType: "confirm"});
     }
@@ -3377,7 +3377,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           const mEndMin = mh*60+mm+trueDur;
           const movedEndTime = `${String(Math.floor(mEndMin/60)).padStart(2,"0")}:${String(mEndMin%60).padStart(2,"0")}`;
 
-          const validPhone = block.custPhone && block.custPhone.startsWith("010");
+          const validPhone = block.custPhone && toKrMobile(block.custPhone).startsWith("010");
           const branchChanged = movedBid && movedBid !== block.bid;
           const needsPopup = !block.isSchedule && (
             (validPhone && snap.time !== orig.time) || branchChanged
@@ -5692,7 +5692,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             </div>
             <div style={{display:'flex',flexDirection:'column',borderTop:'1px solid '+T.gray100}}>
               {(()=>{
-                const validPhone = block.custPhone && block.custPhone.startsWith("010");
+                const validPhone = block.custPhone && toKrMobile(block.custPhone).startsWith("010");
                 const isFromUnassigned = !orig.roomId || orig.roomId.startsWith("nv_") || orig.roomId.startsWith("blank_");
                 const isAssigning = type==="move" && isFromUnassigned;
                 const showAlimtalk = !block.isSchedule && validPhone && !isAssigning;

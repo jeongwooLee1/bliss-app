@@ -2934,3 +2934,15 @@ Liah(WhatsApp) 후속 2건.
 **검증**: 빌드 OK, HMR 콘솔 에러 0. 데모에 미읽 IN 메시지 0건이라 배너 자체가 안 떠 시각 검증은 불가 — 로직 검증(`markRead: await PATCH → onRead(unreadCount>0) → loadUnreadRef.current() → load → setUnreadDelayedCount` 경로 정확). additive 변경(onRead에 호출 1개 추가)이라 회귀 위험 낮음.
 **적용**: v3.7.922 라이브 배포(version.txt 검증, CF 퍼지 success).
 **유의**: 라이브에서 미응답 배너 뜬 대화를 열어 즉시 사라지는지 1회 확인 권장(데모 검증 제약). 배너 기준은 여전히 "1분+ 미읽 IN 메시지"(마지막 방향 아님) — 대화창 열어 읽으면 해제, 고객이 새 메시지 보내면 다시 뜸(정상). AI 자동응답 여부와 무관.
+
+### v3.7.923 — 알림톡/SMS 발송 시 +82 한국번호 → 010 정규화 (정우님 id_7g8h69xga7) (2026-05-30)
+**요청**(정우님): "이 고객 연락처가 82로 시작하는 한국 모바일인데 국제번호로 되어 있어 알림톡이 안 가는 것 같다. 010으로 바꿔서 (발송되게) 기재하면 어떤가."
+**원인**: 알림톡/SMS 발송 가드가 `010` 시작 번호만 통과 — 채팅(WhatsApp 등) user_id나 외국 거주 고객의 `+82 10...`(`8210...`) 형식은 정규화 시 `821012...`로 시작해 발송에서 누락. customers/reservations 저장값엔 82 형식 **0건** → 채팅 연동 고객 cust_phone이 82인 케이스로 추정.
+**fix**:
+- 앱 `utils.js` `toKrMobile(p)` 헬퍼 신설 — `821xxx`(+82 한국모바일, len≥11) → `010xxx`/`011xxx`, `820xxx` → `0xxx`.
+- `sb.js queueAlimtalk`: phone을 toKrMobile 정규화 후 010 체크 + queue에 정규화된 번호 저장(inline, utils 미import — 순환 회피).
+- 앱 발송 가드 4곳(TimelinePage `validPhone` ×3 [2800·3380·5695]·ReservationModal rsv_confirm 조건 [3300]): `startsWith("010")` → `toKrMobile(...).startsWith("010")` (82 형식도 발송 대상 포함). TimelinePage·ReservationModal에 `toKrMobile` import 추가.
+- 서버 `bliss_naver.py`(백업 `bak_82norm_*`, scp 방식 — 로컬 받아 ast.parse 검증 후 업로드): `alimtalk_thread` 발송 phone(`phone_clean`, 2295 — 모든 alimtalk_queue 발송 최종 관문) + `care_sms` 진입(`ph_digits`, 2668)에 `if startswith("82") and len≥11: "0"+[2:]` 정규화(find_cust_by_phone 276의 동일 패턴). `systemctl restart bliss-naver`(active).
+**검증**: 앱 빌드 OK·HMR 콘솔 0. 서버 ast.parse syntax OK·재시작 active. 실 발송(82 고객 카카오 알림톡)은 라이브 실데이터 필요 — 코드 검증.
+**적용**: v3.7.923 라이브 배포 + 서버 patch.
+**유의**: 저장값(customers.phone) **무변경** — 발송 시점에만 010 변환(정우님 "기재" 제안이지만 저장 데이터엔 82가 없어 발송 변환이 정답). WhatsApp user_id 등 82 채팅 고객도 이제 알림톡 발송. ⚠️ rsv_today/1day reminder 등 다른 서버 발송 경로의 **진입 가드**(010 체크)는 미점검 — `alimtalk_thread` 최종 정규화(2295)로 발송 자체는 방어되나, 진입에서 82를 막으면 queue 미적재 가능(추가 점검 대상). 정우님 케이스(예약모달 직원 확정 rsv_confirm)는 앱 queueAlimtalk로 커버.
