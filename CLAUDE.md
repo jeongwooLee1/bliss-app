@@ -2963,3 +2963,24 @@ Liah(WhatsApp) 후속 2건.
 **멀티테넌트**: 충전=각 매장(테넌트) 운영자가 **자기 지점** 충전 — 지점 원장(manager) 포함. owner 1명이 8지점 충전 관리는 비현실적. 각 계정은 자기 `userBranches` 지점만 보고 충전. [[feedback_bliss_multitenant]]
 **적용**: v3.7.925 라이브 배포. (충전 ENV `TOSS_BLISS_*`는 v3.7.924 설정 완료 → 이제 manager 계정으로 충전 테스트 가능)
 **유의**: 환불도 manager 가능(자기 지점 잔액 한도 + 사유 + confirm 가드로 완화). 요금제 변경만 owner 전용. 데모는 owner 계정이라 manager 충전 시각 검증은 라이브(지점 계정 로그인)에서 확인.
+
+### v3.7.926 — 월 이용료(구독) 자동결제 시스템 (지점별·가입일 기준) (2026-05-31)
+매장→Bliss 본사(테라포트) **월 이용료**를 빌링키 자동결제로 신규 구축. 충전(topup)과 동일한 본사 키(`TOSS_BLISS_*`) 사용, 지점별 카드 등록. (정우님 "월이용결제 만들어" + 설계 답변: 지점별 + 가입일 기준 매월)
+- **설계 결정**(정우님): ① 청구 단위 = **지점별**(각 지점 자기 카드 → 자기 플랜 금액) ② 금액 = 각 지점 `billing_subscriptions.price_monthly`(현재 전 지점 Pro 77,000) ③ 첫 결제 = **등록 즉시** + 이후 매월 등록일(가입일) 자동.
+- **핵심 구조**: billing-issue/charge가 원래 **매장 키**(`branches.payment_settings`, 손님 정기결제용)만 썼음 → 월 이용료는 매장→본사 결제라 **본사 키 분기 추가**(payment-confirm topup 분기와 동일 패턴). `purpose==='subscription'`이면 본사 키, 그 외는 기존 매장 키(무회귀).
+- **Edge Functions**:
+  - `billing-issue` v8 — subscription이면 본사 키로 빌링키 발급. 지점당 활성 카드 1개(기존 active는 `replaced`). billings INSERT 후 `billing_subscriptions`에 `billing_id` 연결 + `auto_renew=true` + `next_billing_at=now`(즉시 청구 대상) + `subscription-charge` 내부 호출(service role, 등록 즉시 첫 결제). 반환에 `firstCharge` 포함.
+  - `billing-charge` v7 — `bill.purpose==='subscription'`이면 본사 키 청구, 그 외 매장 키.
+  - `payment-info` v11 — `?billing=1&branchId=X` 카드등록 분기(본사 client key + `customer_key=sub_{branchId}` + `price_monthly` 반환). verify_jwt=false.
+  - `subscription-charge` v2 (신규) — 구독 청구. 단일(`{branchId}`/`{subscriptionId}`) 또는 **batch(`{}`: 도래한 모든 구독, pg_cron용)**. 중복청구 방지(`next_billing_at` 미래면 skip). 성공 시 `next_billing_at += 1개월`(월말 보정, 1/31→2월 말일). 내부에서 `billing-charge`를 service role로 호출. verify_jwt=true.
+- **DB**: `ALTER TABLE billing_subscriptions ADD COLUMN billing_id text`(연결 카드 = billings.id).
+- **pg_cron** `subscription-billing-daily` — 매일 02:00 KST(`0 17 * * *` UTC), `subscription-charge`에 `{}` POST(batch). anon JWT(다른 cron과 동일 패턴, headers := named param).
+- **프론트**(v3.7.926 빌드):
+  - `PaymentApp.jsx` — `/pay/billing/:branchId`(BillingRegister: payment-info billing → `tp.payment({customerKey}).requestBillingAuth({successUrl,failUrl})`) + `/pay/billing-success`(BillingSuccess: `billing-issue` 호출 → `firstCharge` 결과 표시). `SB_KEY` 상수 추가(billing-issue verify_jwt=true 호출 Authorization). 라우트 순서: billing-success·billing/:branchId를 `:orderId` 앞.
+  - `AdminPlan.jsx` — 지점별 카드에 "월 이용료 카드 등록/변경" 버튼(`/pay/billing/{br.id}` 새 탭) + 등록 상태(`sub.billing_id` 있으면 "카드 등록됨 · 다음 MM/DD" 초록, 없으면 "카드 미등록"). `isMaster`(manager 포함, 자기 지점만). `fmtBillDate` 헬퍼.
+- **로컬 검증**: `/pay/billing/br_4bcauqvrb` 카드 등록 화면 정상(강남점 77,000원·매월 자동 결제·카드 등록 버튼). 빌링 관련 콘솔 에러 0(RT CHANNEL_ERROR는 로컬 환경 무관).
+- **유의**:
+  - **카드사 심사(약 6월 중순, 6/13~18) 전엔 첫 결제가 `REJECT_CARD_COMPANY`로 거절** — 카드 등록은 되고 BillingSuccess가 "카드사 심사 완료 후 첫 결제" 안내. 충전과 동일(심사 끝나면 재작업 없이 자동 작동). 송정윤 매니저 010-4928-1242.
+  - **멀티테넌트**: 본사 키는 ENV(`TOSS_BLISS_*`) 단일, 지점별 `billing_subscriptions`로 분리. 손님 정기결제(매장 키)와 키 경로 완전 분리. 하드코딩 0.
+  - 청구 시각 = 매장 등록일 기준 매월 같은 날(02:00 KST 배치). next_billing_at이 "즉시 청구 대상" 플래그 역할(now면 청구, 미래면 skip).
+  - billing-issue verify_jwt=true → PaymentApp success가 anon SB_KEY로 호출. subscription-charge verify_jwt=true → billing-issue 내부(service role) + pg_cron(anon JWT) 호출.

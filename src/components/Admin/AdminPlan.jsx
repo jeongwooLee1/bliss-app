@@ -91,6 +91,9 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
     return byBr
   }, [usage])
 
+  // 다음 결제일 표기 (MM/DD)
+  const fmtBillDate = (iso) => { try { const d = new Date(iso); return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}` } catch { return '' } }
+
   const applyPlan = async (nextPlan) => {
     if (!isOwner) { alert('대표 관리자만 변경 가능합니다.'); return }
     const branchCount = branches.length
@@ -367,6 +370,20 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
                   )}
                 </div>
               </div>
+              {isMaster && (
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginTop:8,paddingTop:8,borderTop:`1px solid ${T.border}`,flexWrap:'wrap'}}>
+                  <div style={{fontSize:T.fs.xxs,color:T.textSub}}>
+                    월 이용료 {sub?.price_monthly ? `${sub.price_monthly.toLocaleString()}원` : '-'}
+                    {sub?.billing_id
+                      ? <span style={{color:T.success,fontWeight:T.fw.bolder,marginLeft:6}}>· 카드 등록됨{sub.next_billing_at ? ` · 다음 ${fmtBillDate(sub.next_billing_at)}` : ''}</span>
+                      : <span style={{color:T.textMuted,marginLeft:6}}>· 카드 미등록</span>}
+                  </div>
+                  <button onClick={()=>window.open(`/pay/billing/${br.id}`,'_blank','noopener,noreferrer')}
+                    style={{padding:'4px 10px',borderRadius:6,border:`1px solid ${sub?.billing_id?T.border:T.primary}`,background:sub?.billing_id?'#fff':T.primary,color:sub?.billing_id?T.textSub:'#fff',fontSize:T.fs.xxs,fontWeight:T.fw.bolder,cursor:'pointer',fontFamily:'inherit'}}>
+                    {sub?.billing_id ? '카드 변경' : '월 이용료 카드 등록'}
+                  </button>
+                </div>
+              )}
               {Object.keys(u.kinds).length > 0 && (
                 <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:6}}>
                   {Object.entries(u.kinds).map(([k, c]) => (

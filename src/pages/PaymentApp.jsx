@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { Routes, Route, useParams, useSearchParams, useNavigate } from 'react-router-dom'
 
 const SB_URL = 'https://dpftlrsuqxqqeouwbfjd.supabase.co'
+const SB_KEY = 'sb_publishable_3H-KTP0MoV_KuY74ocbefw_3Ze5xBJj'
 const PORTONE_SDK = 'https://cdn.portone.io/v2/browser-sdk.js'
 const TOSS_SDK = 'https://js.tosspayments.com/v2/standard'
 
@@ -260,10 +261,128 @@ function PaymentFail() {
   </Page>
 }
 
+// ─── 월 이용료(구독) 카드 등록 — 매장 → Bliss 본사. 빌링키 발급 ───
+function BillingRegister() {
+  const { branchId } = useParams()
+  const [info, setInfo] = useState(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`${SB_URL}/functions/v1/payment-info?billing=1&branchId=${encodeURIComponent(branchId)}`)
+      .then(r => r.json())
+      .then(d => { if (cancelled) return; if (d?.error) setError(d.error); else setInfo(d) })
+      .catch(e => !cancelled && setError(e?.message || '정보 조회 실패'))
+    return () => { cancelled = true }
+  }, [branchId])
+
+  const register = async () => {
+    if (!info?.client_key) { setError('토스 키 없음'); return }
+    setLoading(true)
+    try {
+      const TossPayments = await loadTossSDK()
+      const tp = TossPayments(info.client_key)
+      const payment = tp.payment({ customerKey: info.customer_key })
+      const successUrl = `${window.location.origin}/pay/billing-success?branchId=${encodeURIComponent(branchId)}`
+      const failUrl = `${window.location.origin}/pay/fail?code=BILLING&message=${encodeURIComponent('카드 등록이 취소되었습니다')}`
+      await payment.requestBillingAuth({ method: 'CARD', successUrl, failUrl })
+      // requestBillingAuth는 successUrl로 redirect되므로 이후 코드는 실패 시에만 실행
+    } catch (e) {
+      const code = String(e?.code || '')
+      if (!/USER_CANCEL|PAY_PROCESS_CANCELED/i.test(code)) setError(e?.message || '카드 등록창 호출 실패')
+      setLoading(false)
+    }
+  }
+
+  if (error) return <Page>
+    <div style={{ fontSize: 40, textAlign: 'center', marginBottom: 12 }}>⚠️</div>
+    <h2 style={{ textAlign: 'center', fontSize: 18, margin: '0 0 8px' }}>오류</h2>
+    <p style={{ textAlign: 'center', color: '#666', fontSize: 13 }}>{error}</p>
+  </Page>
+  if (!info) return <Page><p style={{ textAlign: 'center', color: '#888', padding: '30px 0' }}>불러오는 중...</p></Page>
+
+  return <Page>
+    <div style={{ textAlign: 'center', marginBottom: 4 }}>
+      <div style={{ fontSize: 13, color: '#999', marginBottom: 4 }}>{info.branch_name}</div>
+      <div style={{ fontSize: 17, fontWeight: 700, color: '#222' }}>월 이용료 자동결제 카드 등록</div>
+    </div>
+    {info.price_monthly > 0 && <div style={{ background: '#f5f3ff', borderRadius: 12, padding: 22, margin: '20px 0', textAlign: 'center' }}>
+      <div style={{ fontSize: 12, color: '#7C3AED', marginBottom: 6, fontWeight: 600 }}>월 이용료</div>
+      <div style={{ fontSize: 34, fontWeight: 800, color: '#5b21b6', letterSpacing: '-1px' }}>
+        {Number(info.price_monthly).toLocaleString()}<span style={{ fontSize: 18, marginLeft: 4 }}>원</span>
+      </div>
+      <div style={{ fontSize: 12, color: '#999', marginTop: 6 }}>매월 자동 결제</div>
+    </div>}
+    <div style={{ background: '#fafafa', borderRadius: 10, padding: 14, marginBottom: 16, fontSize: 12, color: '#666', lineHeight: 1.7 }}>
+      • 카드 등록 시 첫 달 이용료가 결제되고, 이후 매월 같은 날 자동 결제됩니다.<br/>
+      • 등록한 카드는 토스페이먼츠에 안전하게 보관됩니다.<br/>
+      • 해지는 매장 관리자에게 문의해 주세요.
+    </div>
+    {info.is_test && <div style={{ background: '#fef9c3', color: '#854d0e', padding: '10px 12px', borderRadius: 8, fontSize: 12, marginBottom: 14, textAlign: 'center', fontWeight: 600 }}>
+      ⚠️ 테스트 모드 — 실제 결제되지 않습니다
+    </div>}
+    <button onClick={register} disabled={loading} style={{
+      width: '100%', padding: 16, borderRadius: 12, border: 'none',
+      background: loading ? '#a78bfa' : '#7C3AED', color: '#fff',
+      fontSize: 16, fontWeight: 700, cursor: loading ? 'wait' : 'pointer', fontFamily: 'inherit'
+    }}>
+      {loading ? '카드 등록창 여는 중...' : '카드 등록하기'}
+    </button>
+    <p style={{ fontSize: 11, color: '#aaa', marginTop: 12, textAlign: 'center' }}>토스페이먼츠로 안전하게 등록됩니다</p>
+  </Page>
+}
+
+function BillingSuccess() {
+  const [params] = useSearchParams()
+  const customerKey = params.get('customerKey')
+  const authKey = params.get('authKey')
+  const branchId = params.get('branchId')
+  const [status, setStatus] = useState('issuing')
+  const [error, setError] = useState('')
+  const [result, setResult] = useState(null)
+
+  useEffect(() => {
+    if (!authKey || !customerKey || !branchId) { setError('인증 정보 누락'); setStatus('error'); return }
+    fetch(`${SB_URL}/functions/v1/billing-issue`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SB_KEY}`, apikey: SB_KEY },
+      body: JSON.stringify({ authKey, customerKey, branchId, purpose: 'subscription' })
+    })
+      .then(r => r.json())
+      .then(d => { if (d?.error) { setError(d.error); setStatus('error') } else { setResult(d); setStatus('done') } })
+      .catch(e => { setError(e?.message || '카드 등록 실패'); setStatus('error') })
+  }, [authKey, customerKey, branchId])
+
+  if (status === 'issuing') return <Page><p style={{ textAlign: 'center', color: '#888', padding: '30px 0' }}>카드 등록 중...</p></Page>
+  if (status === 'error') return <Page>
+    <div style={{ fontSize: 50, textAlign: 'center', marginBottom: 12 }}>⚠️</div>
+    <h2 style={{ textAlign: 'center', fontSize: 20 }}>카드 등록 실패</h2>
+    <p style={{ textAlign: 'center', color: '#666', fontSize: 13, marginTop: 8 }}>{error}</p>
+    <p style={{ textAlign: 'center', color: '#999', fontSize: 12, marginTop: 16 }}>매장 관리자에게 문의해 주세요.</p>
+  </Page>
+
+  const fc = result?.firstCharge
+  const chargeOk = fc?.ok && !fc?.skipped
+  return <Page>
+    <div style={{ fontSize: 60, textAlign: 'center', marginBottom: 12, color: '#10b981' }}>✓</div>
+    <h2 style={{ textAlign: 'center', fontSize: 22, margin: '0 0 8px', color: '#222' }}>카드 등록 완료</h2>
+    {result?.card_company && <p style={{ textAlign: 'center', color: '#666', fontSize: 13 }}>{result.card_company} {result.card_number_masked || ''}</p>}
+    <div style={{ background: '#f5f3ff', borderRadius: 12, padding: 16, margin: '18px 0', fontSize: 13, color: '#555', lineHeight: 1.7, textAlign: 'center' }}>
+      {chargeOk
+        ? <>첫 달 이용료가 결제되었습니다.<br/>이후 매월 같은 날 자동 결제됩니다.</>
+        : <>월 이용료는 매월 자동 결제됩니다.<br/><span style={{ color: '#999', fontSize: 12 }}>카드사 심사 완료 후 첫 결제가 진행됩니다.</span></>}
+    </div>
+    <p style={{ textAlign: 'center', color: '#aaa', fontSize: 11 }}>이 창은 닫으셔도 됩니다.</p>
+  </Page>
+}
+
 export default function PaymentApp() {
   return <Routes>
     <Route path="/pay/success" element={<PaymentSuccess />} />
     <Route path="/pay/fail" element={<PaymentFail />} />
+    <Route path="/pay/billing-success" element={<BillingSuccess />} />
+    <Route path="/pay/billing/:branchId" element={<BillingRegister />} />
     <Route path="/pay/:orderId" element={<PaymentLanding />} />
   </Routes>
 }
