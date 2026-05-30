@@ -2956,3 +2956,10 @@ Liah(WhatsApp) 후속 2건.
 **검증**: 앱 빌드·HMR 콘솔 0, 서버 ast.parse OK·active, 기존 데이터 SELECT로 정규화 확인.
 **적용**: v3.7.924 라이브 배포 + 서버 patch.
 **유의**: 발송 정규화(v3.7.923)=발송 시점, 이번(v3.7.924)=저장 시점 → 82 고객이 저장·표시·발송 모두 010으로 통일. `toDb` 정규화는 `82` 형식만 변환(010·하이픈 등 기존 형식은 그대로 보존 — \D 제거는 82 케이스에만). reservations.cust_phone **입력** 정규화는 toDb("reservations")엔 미적용(표시는 customers.phone 우선·발송은 v3.7.923 커버, 기존 데이터만 일괄 정규화함) — 필요 시 추가.
+
+### v3.7.925 — 포인트 충전·환불을 지점 원장(manager)도 + 계정별 자기 지점만 (정우님) (2026-05-30)
+**배경**(정우님): "각 지점이 알아서 충전, 계정별로". 토스 충전 ENV(v3.7.924) 설정 후 충전 버튼이 안 보임 — `AdminPlan` 충전·환불 버튼이 `isOwner`(owner/super)만이라 지점 원장(manager) 계정은 미노출(8지점 계정은 전부 manager, owner는 `housewaxing` 대표 1개뿐). 또 지점 목록이 `data.branches` 전체라 계정 무관 전 지점 노출. (참고: 화면 "OP"는 잔액 "0P"가 폰트상 O처럼 보인 것)
+**fix** (`AdminPlan.jsx`): ① `isMaster = isOwner || role==='manager'` 추가 ② `branches`를 `userBranches`로 필터(각 계정 자기 지점만, userBranches 빈 배열이면 전체 fallback) ③ 충전·환불 버튼 가드 `isOwner`→`isMaster`. 요금제 변경(290 isOwner)·변경 함수(94 isOwner alert)는 owner 유지.
+**멀티테넌트**: 충전=각 매장(테넌트) 운영자가 **자기 지점** 충전 — 지점 원장(manager) 포함. owner 1명이 8지점 충전 관리는 비현실적. 각 계정은 자기 `userBranches` 지점만 보고 충전. [[feedback_bliss_multitenant]]
+**적용**: v3.7.925 라이브 배포. (충전 ENV `TOSS_BLISS_*`는 v3.7.924 설정 완료 → 이제 manager 계정으로 충전 테스트 가능)
+**유의**: 환불도 manager 가능(자기 지점 잔액 한도 + 사유 + confirm 가드로 완화). 요금제 변경만 owner 전용. 데모는 owner 계정이라 manager 충전 시각 검증은 라이브(지점 계정 로그인)에서 확인.

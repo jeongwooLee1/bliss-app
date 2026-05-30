@@ -10,9 +10,10 @@ import AdminSmsLog from './AdminSmsLog'
 // 사업장 요금제 + 기능 토글 + 지점별 잔액·사용량 + 발송내역 통합
 function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTab = 'plan' }) {
   const isOwner = currentUser?.role === 'owner' || currentUser?.role === 'super'
+  const isMaster = isOwner || currentUser?.role === 'manager'  // 지점 원장도 자기 지점 충전·환불 가능
   const [subTab, setSubTab] = useState(initialSubTab)
   const biz = data?.businesses?.[0] || {}
-  const branches = data?.branches || []
+  const branches = (data?.branches || []).filter(b => userBranches.length ? userBranches.includes(b.id) : true)  // 계정별 자기 지점만 (manager=자기 지점, owner=전 지점)
   const [plan, setPlan] = useState(biz.plan || 'trial')
   const [industry, setIndustry] = useState(biz.industry || 'general')
   const [features, setFeaturesLocal] = useState(() => extractFeatures(biz.settings, biz.id, biz.plan))
@@ -350,7 +351,7 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
                 <div style={{textAlign:'right'}}>
                   <div style={{fontSize:T.fs.lg,fontWeight:T.fw.black,color:T.primary}}>{(bal?.balance||0).toLocaleString()}P</div>
                   <div style={{fontSize:T.fs.xxs,color:T.textMuted}}>{monthSel==='last'?'지난달':'이번 달'} 사용 {u.total.toLocaleString()}P</div>
-                  {isOwner && (
+                  {isMaster && (
                     <div style={{display:'flex',gap:6,marginTop:6,justifyContent:'flex-end'}}>
                       <button onClick={()=>setTopupModal({branchId:br.id,branchName:br.short||br.name,amount:30000})}
                         style={{padding:'4px 10px',borderRadius:6,border:`1px solid ${T.primary}`,background:T.primary,color:'#fff',fontSize:T.fs.xxs,fontWeight:T.fw.bolder,cursor:'pointer',fontFamily:'inherit'}}>
