@@ -4338,7 +4338,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                           ? {position:"fixed",top:12,left:12,right:12,bottom:12,width:"auto",maxWidth:"none",background:T.bgCard,borderRadius:14,boxShadow:"0 4px 24px rgba(0,0,0,.3)",zIndex:9999,padding:0,overflowY:"auto",overflowX:"hidden",boxSizing:"border-box",WebkitOverflowScrolling:"touch"}
                           : {position:"fixed",left:Math.max(8,Math.min(empMovePopup.x,window.innerWidth-380-8)),top:Math.max(8,Math.min(empMovePopup.y+8,window.innerHeight-120)),background:T.bgCard,borderRadius:12,boxShadow:"0 4px 24px rgba(0,0,0,.22)",zIndex:9999,padding:"10px 0 6px",width:"min(360px, calc(100vw - 16px))",maxHeight:"calc(100vh - 24px)",overflowY:"auto",boxSizing:"border-box"}}>
                           <div style={{padding:"10px 12px 8px",borderBottom:"1px solid "+T.border,display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,background:T.bgCard,zIndex:1}}>
-                            <span style={{fontSize:12,fontWeight:800,color:T.text}}>{room.staffId} · 직원 이동/근무</span>
+                            <div><div style={{fontSize:16,fontWeight:800,color:T.text,lineHeight:1.15}}>{room.staffId}</div><div style={{fontSize:11.5,color:T.textMuted,fontWeight:600,marginTop:2}}>직원 이동 · 근무</div></div>
                             <button onClick={e=>{e.stopPropagation();setEmpMovePopup(null);}}
                               style={{width:24,height:24,padding:0,border:"none",background:T.gray100,borderRadius:6,cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:800,color:T.textMuted,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}
                               title="닫기">×</button>
@@ -4411,15 +4411,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                     onChange={e=>setEmpMovePopup(p=>({...p, draftWh:{start:wh.start, end:e.target.value}}))}>
                                     {hours.map(h=><option key={h} value={h}>{h}</option>)}
                                   </select>
+                                  <span style={{fontSize:11,color:T.textMuted,marginLeft:4}}>10분 단위</span>
                                 </div>
-                                <label style={{display:"flex",alignItems:"center",gap:5,marginTop:8,fontSize:11,cursor:"pointer",color:isDayMove?T.primary:T.textSub,fontWeight:isDayMove?700:500}}>
-                                  <input type="checkbox" checked={isDayMove} onChange={e=>onDayMoveToggle(e.target.checked)} style={{cursor:"pointer",accentColor:T.primary}}/>
-                                  타지점 종일 근무
-                                </label>
-                                {isDayMove && <select value={dayMoveBid} onChange={e=>onDayMoveBranchChange(e.target.value)}
-                                  style={{width:"100%",marginTop:4,fontSize:11,padding:"4px 6px",borderRadius:6,border:"1px solid "+T.primary,background:T.primaryLt,color:T.primary,fontWeight:700,fontFamily:"inherit"}}>
-                                  {(data?.branches||[]).filter(b=>b.id!==room.branch_id && b.useYn!==false).map(b=><option key={b.id} value={b.id}>{b.short||b.name}</option>)}
-                                </select>}
                               </>;
                             })()}
                           </div>
@@ -4875,54 +4868,43 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                   </button>
                                 </div>
                               )}
-                              {/* 저장 / 취소 버튼 — 변경 사항이 있을 때만 적용 */}
-                              <div style={{padding:"8px 12px",borderTop:"2px solid "+T.border,display:"flex",gap:6,background:isDirty?"#FFF8E1":"transparent"}}>
+                              {/* 푸터 — 오늘 휴무 / 취소 / 저장 한 줄 */}
+                              <div style={{padding:"10px 12px 12px",borderTop:"2px solid "+T.border,display:"flex",gap:6,background:isDirty?"#FFF8E1":"transparent"}}>
+                                <button onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const colBlocks = (data?.reservations||[]).filter(r => r.date === selDate && r.staffId === room.staffId && r.bid === room.branch_id && !["cancelled","naver_cancelled","naver_changed"].includes(r.status));
+                                  if (colBlocks.length > 0) { alert(`이 컬럼에 예약/일정 ${colBlocks.length}건이 있어 휴무 처리할 수 없습니다.\n먼저 "담당자 교체"로 다른 직원에게 이전하거나 개별 이동해주세요.`); return; }
+                                  if (!confirm(`${room.staffId} 오늘(${selDate}) 휴무 처리할까요?\n(컬럼이 사라집니다)`)) return;
+                                  try {
+                                    const newSch = {...(schHistory||{})};
+                                    if (!newSch[room.staffId]) newSch[room.staffId] = {};
+                                    newSch[room.staffId][selDate] = "휴무";
+                                    setSchHistory(newSch);
+                                    const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
+                                    const rows = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.schHistory_v1&select=value`, { headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY} }).then(r=>r.json());
+                                    const raw = rows?.[0]?.value ? (typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value) : {};
+                                    const monthKey = selDate.slice(0,7);
+                                    if (!raw[monthKey]) raw[monthKey] = {};
+                                    if (!raw[monthKey][room.staffId]) raw[monthKey][room.staffId] = {};
+                                    raw[monthKey][room.staffId][selDate] = "휴무";
+                                    await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, { method:"POST", headers:H, body: JSON.stringify({business_id: _activeBizId, id:"schHistory_v1", key:"schHistory_v1", value: JSON.stringify(raw), updated_at: new Date().toISOString()}) });
+                                    setEmpMovePopup(null);
+                                  } catch (err) { console.error("휴무 처리 실패:", err); alert("실패: " + err.message); }
+                                }} style={{flex:1,padding:"9px 0",borderRadius:8,border:"1px solid "+T.gray400,background:T.gray100,color:T.text,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                                  오늘 휴무
+                                </button>
                                 <button onClick={cancelDraft}
-                                  style={{flex:1,padding:"8px 0",borderRadius:8,border:"1px solid "+T.border,background:"#fff",color:T.textSub,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                                  style={{flex:1,padding:"9px 0",borderRadius:8,border:"1px solid "+T.border,background:"#fff",color:T.textSub,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
                                   취소
                                 </button>
                                 <button onClick={commitDraft} disabled={!isDirty}
-                                  style={{flex:2,padding:"8px 0",borderRadius:8,border:"none",background:isDirty?T.primary:T.gray300,color:"#fff",fontSize:12,fontWeight:800,cursor:isDirty?"pointer":"not-allowed",fontFamily:"inherit"}}>
-                                  {isDirty ? <span style={{display:"inline-flex",alignItems:"center",gap:4}}><I name="check" size={12}/>저장</span> : "변경 없음"}
+                                  style={{flex:1.6,padding:"9px 0",borderRadius:8,border:"none",background:isDirty?T.primary:T.gray300,color:"#fff",fontSize:13,fontWeight:800,cursor:isDirty?"pointer":"not-allowed",fontFamily:"inherit"}}>
+                                  {isDirty ? <span style={{display:"inline-flex",alignItems:"center",gap:4}}><I name="check" size={13}/>저장</span> : "변경 없음"}
                                 </button>
                               </div>
                             </>;
                           })()}
-                          {/* 오늘 휴무 / 프리랜서 컬럼 삭제 */}
-                          <div style={{borderTop:"1px solid "+T.border,padding:"8px 12px",display:"flex",gap:6}}>
-                            <button onClick={async (e) => {
-                              e.stopPropagation();
-                              // 예약/일정 보호: 이 컬럼에 블록 있으면 차단
-                              const colBlocks = (data?.reservations||[]).filter(r =>
-                                r.date === selDate && r.staffId === room.staffId && r.bid === room.branch_id &&
-                                !["cancelled","naver_cancelled","naver_changed"].includes(r.status)
-                              );
-                              if (colBlocks.length > 0) {
-                                alert(`이 컬럼에 예약/일정 ${colBlocks.length}건이 있어 휴무 처리할 수 없습니다.\n먼저 "담당자 교체"로 다른 직원에게 이전하거나 개별 이동해주세요.`);
-                                return;
-                              }
-                              if (!confirm(`${room.staffId} 오늘(${selDate}) 휴무 처리할까요?\n(컬럼이 사라집니다)`)) return;
-                              try {
-                                // 로컬 flat state 업데이트 (UI 반영)
-                                const newSch = {...(schHistory||{})};
-                                if (!newSch[room.staffId]) newSch[room.staffId] = {};
-                                newSch[room.staffId][selDate] = "휴무";
-                                setSchHistory(newSch);
-                                // DB는 월별 구조 유지: raw를 읽어와서 monthKey 하위에 patch
-                                const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
-                                const rows = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.schHistory_v1&select=value`, { headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY} }).then(r=>r.json());
-                                const raw = rows?.[0]?.value ? (typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value) : {};
-                                const monthKey = selDate.slice(0,7);
-                                if (!raw[monthKey]) raw[monthKey] = {};
-                                if (!raw[monthKey][room.staffId]) raw[monthKey][room.staffId] = {};
-                                raw[monthKey][room.staffId][selDate] = "휴무";
-                                await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, { method:"POST", headers:H, body: JSON.stringify({business_id: _activeBizId, id:"schHistory_v1", key:"schHistory_v1", value: JSON.stringify(raw), updated_at: new Date().toISOString()}) });
-                                setEmpMovePopup(null);
-                              } catch (err) { console.error("휴무 처리 실패:", err); alert("실패: " + err.message); }
-                            }} style={{flex:1,padding:"7px 0",borderRadius:7,border:"1px solid "+T.gray400,background:T.gray100,color:T.text,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
-                              오늘 휴무
-                            </button>
-                          </div>
+                          {/* 오늘 휴무는 위 푸터(저장/취소 줄)에 통합됨 */}
                           {/* 프리랜서 컬럼 삭제 */}
                           {(() => {
                             const emp = empList.find(e => e.id === room.staffId);
