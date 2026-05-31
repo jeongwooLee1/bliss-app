@@ -1224,6 +1224,17 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     return { years: [...years].sort((a,b)=>b-a), byYM }; // 최신 연도 왼쪽 + 전체 연도(가로 스크롤)
   }, [allTimeStats.monthly]);
 
+  // 월별 고객 추이 (기존 o / 신규 n / 외국인신규 fn) — get_customer_visit_trend
+  const [custTrend, setCustTrend] = useState([]);
+  useEffect(() => {
+    let c = false;
+    fetch(`${SB_URL}/rest/v1/rpc/get_customer_visit_trend`, {
+      method:'POST', headers:{...sbHeaders, 'Content-Type':'application/json'},
+      body: JSON.stringify({ p_biz_id: _activeBizId, p_months: 13 }),
+    }).then(r => r.ok ? r.json() : []).catch(()=>[]).then(j => { if (!c) setCustTrend(Array.isArray(j) ? j : []); });
+    return () => { c = true; };
+  }, []);
+
   // 기간별 매장/매니저/결제수단 합계 — RPC (90일 메모리 한계 회피)
   const [periodSummary, setPeriodSummary] = useState({ totals: null, byBranch: [], byStaff: [], loading: true });
   useEffect(() => {
@@ -1722,6 +1733,37 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
         })}
       </div>}
     </GridLayout>
+
+    {/* 월별 고객 추이 (기존/신규/외국인신규 누적 막대) */}
+    {custTrend.length > 0 && (() => {
+      const rows = custTrend.slice().reverse(); // 오래된→최신
+      const maxV = Math.max(...rows.map(r=>(r.o||0)+(r.fo||0)+(r.n||0)+(r.fn||0)), 1);
+      const H = 120;
+      return <div className="card" style={{padding:20,marginBottom:16}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:8}}>
+          <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub}}>월별 고객 추이 <span style={{fontWeight:T.fw.medium,color:T.textMuted,fontSize:T.fs.xs}}>(최근 13개월)</span></div>
+          <div style={{display:"flex",gap:12,fontSize:T.fs.xxs}}>
+            <span style={{color:T.textSub}}><span style={{display:"inline-block",width:9,height:9,background:T.gray400,borderRadius:2,marginRight:4,verticalAlign:"middle"}}/>기존</span>
+            <span style={{color:T.textSub}}><span style={{display:"inline-block",width:9,height:9,background:T.primary,borderRadius:2,marginRight:4,verticalAlign:"middle"}}/>신규</span>
+            <span style={{color:T.textSub}}><span style={{display:"inline-block",width:9,height:9,background:T.orange,borderRadius:2,marginRight:4,verticalAlign:"middle"}}/>외국인신규</span>
+          </div>
+        </div>
+        <div style={{display:"flex",alignItems:"flex-end",gap:5,height:H+30,overflowX:"auto"}}>
+          {rows.map((r,i)=>{
+            const ex=(r.o||0)+(r.fo||0), nw=r.n||0, fnn=r.fn||0;
+            return <div key={i} style={{flex:"1 0 28px",display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+              <span style={{fontSize:9,color:T.textSub,fontWeight:T.fw.bold}}>{ex+nw+fnn}</span>
+              <div style={{width:"72%",maxWidth:26,display:"flex",flexDirection:"column",justifyContent:"flex-end",height:H}}>
+                <div title={`외국인신규 ${fnn}`} style={{height:`${fnn/maxV*H}px`,background:T.orange,borderRadius:"2px 2px 0 0"}}/>
+                <div title={`신규 ${nw}`} style={{height:`${nw/maxV*H}px`,background:T.primary}}/>
+                <div title={`기존 ${ex}`} style={{height:`${ex/maxV*H}px`,background:T.gray400}}/>
+              </div>
+              <span style={{fontSize:9,color:T.textSub,whiteSpace:"nowrap"}}>{(r.ym||"").slice(2)}</span>
+            </div>;
+          })}
+        </div>
+      </div>;
+    })()}
 
     {/* 🌍 외국인 예약 통계 — 제거(정우님 요청, 신규유입 통계로 대체 예정) */}
     {false && (() => {
