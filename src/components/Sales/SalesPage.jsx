@@ -1238,6 +1238,27 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     return () => { cancelled = true; };
   }, [vb, periodKey, startDate, endDate]);
 
+  // 기간대비 — 직전 동기간 총매출 (공비서 대비, 증감% 표시용). 전체기간은 비교 대상 없어 null
+  const [prevTotal, setPrevTotal] = useState(null);
+  useEffect(() => {
+    if (periodKey === "all" || !startDate || !endDate) { setPrevTotal(null); return; }
+    let cancelled = false;
+    const s = new Date(startDate), e = new Date(endDate);
+    const D = Math.max(1, Math.round((e - s) / 86400000) + 1);
+    const ps = new Date(s); ps.setDate(ps.getDate() - D);
+    const pe = new Date(s); pe.setDate(pe.getDate() - 1);
+    const fmtD = d => d.toISOString().slice(0,10);
+    fetch(`${SB_URL}/rest/v1/rpc/get_sales_stats_summary`, {
+      method:'POST', headers:{...sbHeaders,'Content-Type':'application/json'},
+      body: JSON.stringify({ p_biz_id:_activeBizId, p_start:fmtD(ps), p_end:fmtD(pe), p_bid: vb==="all"?null:vb }),
+    }).then(r => r.ok ? r.json() : null).catch(()=>null).then(j => {
+      if (cancelled) return;
+      const tt = j?.totals;
+      setPrevTotal(tt ? Number(tt.svc_total||0)+Number(tt.prod_total||0)+Number(tt.gift_total||0) : null);
+    });
+    return () => { cancelled = true; };
+  }, [vb, periodKey, startDate, endDate]);
+
   // 외국인 통계 (예약등록일 기준 신규/기존)
   const [foreignStats, setForeignStats] = useState({ rows: [], loading: true });
   useEffect(() => {
@@ -1511,6 +1532,15 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     <SmartDatePicker open={showSheet} onClose={()=>setShowSheet(false)} anchorEl={dateAnchorRef.current}
       startDate={startDate} endDate={endDate} mode="sales"
       onApply={(s,e,p)=>{ setStartDate(s); setEndDate(e); setPeriodKey(p); setShowSheet(false); }}/>
+    {/* 기간 대비 (공비서 대비 — 직전 동기간 총매출 증감%) */}
+    {prevTotal != null && prevTotal > 0 && (() => {
+      const _d = Math.round((t.total - prevTotal) / prevTotal * 100);
+      const _up = _d >= 0;
+      return <div style={{marginBottom:12,display:"inline-flex",alignItems:"center",gap:6,padding:"6px 13px",borderRadius:999,background:_up?"#ECFDF5":"#FEF2F2",fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:_up?"#059669":"#DC2626"}}>
+        {_up?"▲":"▼"} 지난 동기간 대비 {Math.abs(_d)}%
+        <span style={{color:T.textMuted,fontWeight:T.fw.medium}}>(이전 {fmt(prevTotal)}원)</span>
+      </div>;
+    })()}
     {/* Summary Cards */}
     <GridLayout className="stat-cards" cols="repeat(auto-fit,minmax(160px,1fr))" gap={12} style={{marginBottom:20}}>
       <SC label="총 매출" val={`${fmt(t.total)}원`} sub={`${t.count}건`} clr={T.info}/>
