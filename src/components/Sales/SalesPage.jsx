@@ -1230,10 +1230,22 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     let c = false;
     fetch(`${SB_URL}/rest/v1/rpc/get_customer_visit_trend`, {
       method:'POST', headers:{...sbHeaders, 'Content-Type':'application/json'},
-      body: JSON.stringify({ p_biz_id: _activeBizId, p_months: 13 }),
+      body: JSON.stringify({ p_biz_id: _activeBizId, p_months: 120 }),
     }).then(r => r.ok ? r.json() : []).catch(()=>[]).then(j => { if (!c) setCustTrend(Array.isArray(j) ? j : []); });
     return () => { c = true; };
   }, []);
+
+  // 월별 고객수 연도별 비교 (신규 n / 기존 o / 외국인 fn+fo)
+  const custYoy = useMemo(() => {
+    const byYM = {}; const years = new Set();
+    custTrend.forEach(r => {
+      const [y,m] = (r.ym||'').split('-').map(Number);
+      if (!y || !m) return;
+      years.add(y);
+      (byYM[y] = byYM[y] || {})[m] = { sin: r.n||0, gi: r.o||0, oi: (r.fn||0)+(r.fo||0) };
+    });
+    return { years: [...years].sort((a,b)=>b-a), byYM };
+  }, [custTrend]);
 
   // 기간별 매장/매니저/결제수단 합계 — RPC (90일 메모리 한계 회피)
   const [periodSummary, setPeriodSummary] = useState({ totals: null, byBranch: [], byStaff: [], loading: true });
@@ -1602,14 +1614,59 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
               <td style={{padding:"6px 8px",fontWeight:T.fw.bold,color:T.textSub,position:"sticky",left:0,background:T.bgCard,zIndex:1}}>{m}월</td>
               {yoyTable.years.map((y,yi)=>{
                 const v=vals[yi];
+                const prevV=yoyTable.byYM[y-1]?.[m];   // 전년 동월
+                const _gr=(cur)=>{
+                  if (!cur || !prevV || prevV<=0) return null;
+                  const g=Math.round((cur-prevV)/prevV*100);
+                  return <span style={{fontSize:9,marginLeft:3,fontWeight:T.fw.medium,color:g>=0?"#e2231a":"#1565d8"}}>({g>=0?"+":""}{g}%)</span>;
+                };
                 const _now=new Date();
                 const _isCur=(y===_now.getFullYear() && m===(_now.getMonth()+1));
                 if (_isCur && v>0) {
                   const _el=_now.getDate(), _tot=new Date(y,m,0).getDate();
                   const _proj=Math.round(v/_el*_tot);
-                  return <td key={y} title={`현재 ${fmt(v)}원 · 일평균×${_tot}일 예상`} style={{textAlign:"right",padding:"6px 8px",whiteSpace:"nowrap",fontWeight:T.fw.bolder,color:T.primary}}>{fmt(_proj)}<span style={{fontSize:9,color:T.primary,marginLeft:2,fontWeight:T.fw.medium}}>예상</span></td>;
+                  return <td key={y} title={`현재 ${fmt(v)}원 · 일평균×${_tot}일 예상`} style={{textAlign:"right",padding:"6px 8px",whiteSpace:"nowrap",fontWeight:T.fw.bolder,color:T.primary}}>{fmt(_proj)}<span style={{fontSize:9,color:T.primary,marginLeft:2,fontWeight:T.fw.medium}}>예상</span>{_gr(_proj)}</td>;
                 }
-                return <td key={y} style={{textAlign:"right",padding:"6px 8px",whiteSpace:"nowrap",fontWeight:v?T.fw.bolder:T.fw.medium,color:v?T.text:T.gray400}}>{v?fmt(v):"-"}</td>;
+                return <td key={y} style={{textAlign:"right",padding:"6px 8px",whiteSpace:"nowrap",fontWeight:v?T.fw.bolder:T.fw.medium,color:v?T.text:T.gray400}}>{v?fmt(v):"-"}{_gr(v)}</td>;
+              })}
+            </tr>;
+          })}
+        </tbody>
+      </table>
+    </div>}
+    {/* 월별 고객수 비교 (신규/기존/외국인) */}
+    {custYoy.years.length >= 1 && custTrend.length > 0 && <div className="card" style={{padding:16,marginBottom:16,overflowX:"auto"}}>
+      <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:4}}>월별 고객수 비교 <span style={{fontWeight:T.fw.medium,color:T.textMuted,fontSize:T.fs.xs}}>(연도별 · 매출발생 기준)</span></div>
+      <div style={{display:"flex",gap:10,fontSize:T.fs.xxs,marginBottom:10}}>
+        <span style={{color:T.textSub}}><span style={{display:"inline-block",width:8,height:8,background:T.primary,borderRadius:2,marginRight:3,verticalAlign:"middle"}}/>신규</span>
+        <span style={{color:T.textSub}}><span style={{display:"inline-block",width:8,height:8,background:T.gray400,borderRadius:2,marginRight:3,verticalAlign:"middle"}}/>기존</span>
+        <span style={{color:T.textSub}}><span style={{display:"inline-block",width:8,height:8,background:T.orange,borderRadius:2,marginRight:3,verticalAlign:"middle"}}/>외국인</span>
+      </div>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:T.fs.xs}}>
+        <thead><tr>
+          <th style={{textAlign:"left",padding:"6px 8px",color:T.textSub,fontWeight:T.fw.bolder,position:"sticky",left:0,background:T.bgCard,zIndex:1,minWidth:40}}>월</th>
+          {custYoy.years.map(y=><th key={y} style={{textAlign:"right",padding:"6px 8px",color:T.textSub,fontWeight:T.fw.bolder,whiteSpace:"nowrap",minWidth:104}}>{String(y).slice(2)}년</th>)}
+        </tr></thead>
+        <tbody>
+          {Array.from({length:12},(_,i)=>i+1).map(m=>{
+            const vals = custYoy.years.map(y=>custYoy.byYM[y]?.[m]);
+            if (vals.every(v=>v==null)) return null;
+            return <tr key={m} style={{borderTop:`1px solid ${T.border}`}}>
+              <td style={{padding:"6px 8px",fontWeight:T.fw.bold,color:T.textSub,position:"sticky",left:0,background:T.bgCard,zIndex:1,verticalAlign:"top"}}>{m}월</td>
+              {custYoy.years.map((y,yi)=>{
+                const v=vals[yi];
+                if (!v) return <td key={y} style={{textAlign:"right",padding:"6px 8px",color:T.gray400,verticalAlign:"top"}}>-</td>;
+                const prev=custYoy.byYM[y-1]?.[m];
+                const _row=(cur,pv,clr)=>{
+                  let pct=null;
+                  if (pv>0){ const g=Math.round((cur-pv)/pv*100); pct=<span style={{fontSize:9,marginLeft:2,fontWeight:T.fw.medium,color:g>=0?"#e2231a":"#1565d8"}}>({g>=0?"+":""}{g}%)</span>; }
+                  return <div style={{whiteSpace:"nowrap"}}><span style={{display:"inline-block",width:7,height:7,background:clr,borderRadius:2,marginRight:3,verticalAlign:"middle"}}/><b style={{color:T.text}}>{cur}</b>{pct}</div>;
+                };
+                return <td key={y} style={{textAlign:"right",padding:"6px 8px",whiteSpace:"nowrap",verticalAlign:"top"}}>
+                  {_row(v.sin, prev?.sin, T.primary)}
+                  {_row(v.gi, prev?.gi, T.gray400)}
+                  {_row(v.oi, prev?.oi, T.orange)}
+                </td>;
               })}
             </tr>;
           })}
@@ -1736,7 +1793,7 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
 
     {/* 월별 고객 추이 (기존/신규/외국인신규 누적 막대) */}
     {custTrend.length > 0 && (() => {
-      const rows = custTrend.slice(); // 최신→오래된 (최신이 맨 왼쪽)
+      const rows = custTrend.slice(0, 13); // 최근 13개월만 (최신→오래된)
       const maxV = Math.max(...rows.map(r=>(r.o||0)+(r.fo||0)+(r.n||0)+(r.fn||0)), 1);
       const H = 120;
       return <div className="card" style={{padding:20,marginBottom:16}}>
