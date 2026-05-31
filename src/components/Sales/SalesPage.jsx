@@ -305,9 +305,9 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
   };
   const [salesTab, setSalesTab] = useSessionState("sales_tab", "sales", { ttlMs: TTL.TAB }); // "sales" | "stats"
   const dateAnchorRef = React.useRef(null);
-  const [startDate, setStartDate] = useSessionState("sales_startDate", todayStr(), { ttlMs: TTL.DATE_RANGE });
+  const [startDate, setStartDate] = useSessionState("sales_startDate", todayStr().slice(0,7)+"-01", { ttlMs: TTL.DATE_RANGE });
   const [endDate, setEndDate] = useSessionState("sales_endDate", todayStr(), { ttlMs: TTL.DATE_RANGE });
-  const [periodKey, setPeriodKey] = useSessionState("sales_periodKey", "1day", { ttlMs: TTL.DATE_RANGE });
+  const [periodKey, setPeriodKey] = useSessionState("sales_periodKey", "month", { ttlMs: TTL.DATE_RANGE });
   const [showSheet, setShowSheet] = useState(false);
   const [vb, setVb] = useSessionState("sales_vb", "all", { ttlMs: TTL.TAB });
   const [showModal, setShowModal] = useState(false);
@@ -1591,6 +1591,13 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
               <td style={{padding:"6px 8px",fontWeight:T.fw.bold,color:T.textSub,position:"sticky",left:0,background:T.bgCard,zIndex:1}}>{m}월</td>
               {yoyTable.years.map((y,yi)=>{
                 const v=vals[yi];
+                const _now=new Date();
+                const _isCur=(y===_now.getFullYear() && m===(_now.getMonth()+1));
+                if (_isCur && v>0) {
+                  const _el=_now.getDate(), _tot=new Date(y,m,0).getDate();
+                  const _proj=Math.round(v/_el*_tot);
+                  return <td key={y} title={`현재 ${fmt(v)}원 · 일평균×${_tot}일 예상`} style={{textAlign:"right",padding:"6px 8px",whiteSpace:"nowrap",fontWeight:T.fw.bolder,color:T.primary}}>{fmt(_proj)}<span style={{fontSize:9,color:T.primary,marginLeft:2,fontWeight:T.fw.medium}}>예상</span></td>;
+                }
                 return <td key={y} style={{textAlign:"right",padding:"6px 8px",whiteSpace:"nowrap",fontWeight:v?T.fw.bolder:T.fw.medium,color:v?T.text:T.gray400}}>{v?fmt(v):"-"}</td>;
               })}
             </tr>;
@@ -1716,8 +1723,8 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
       </div>}
     </GridLayout>
 
-    {/* 🌍 외국인 예약 통계 */}
-    {(() => {
+    {/* 🌍 외국인 예약 통계 — 제거(정우님 요청, 신규유입 통계로 대체 예정) */}
+    {false && (() => {
       const rows = foreignStats.rows || [];
       const months = [...new Set(rows.map(r => r.month))].sort();
       const branches = [...new Set(rows.map(r => r.branch_short))];
