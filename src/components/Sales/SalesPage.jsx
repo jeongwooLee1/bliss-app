@@ -1213,6 +1213,17 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     return () => { cancelled = true; };
   }, [vb]);
 
+  // 연도×월 매출 피벗 (연도별 월별 비교표) — 최근 3개 연도
+  const yoyTable = useMemo(() => {
+    const byYM = {}; const years = new Set();
+    (allTimeStats.monthly || []).forEach(r => {
+      const p = (r.ym || '').split('-'); const y = +p[0], m = +p[1];
+      if (!y || !m) return;
+      years.add(y); (byYM[y] = byYM[y] || {})[m] = Number(r.total || 0);
+    });
+    return { years: [...years].sort().slice(-3), byYM };
+  }, [allTimeStats.monthly]);
+
   // 기간별 매장/매니저/결제수단 합계 — RPC (90일 메모리 한계 회피)
   const [periodSummary, setPeriodSummary] = useState({ totals: null, byBranch: [], byStaff: [], loading: true });
   useEffect(() => {
@@ -1564,6 +1575,29 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
       <SC label="일 평균" val={`${fmt(Math.round(t.total/days))}원`} sub={`${days}일 평균`} clr={T.info}/>
       <SC label="객단가" val={`${fmt(t.count>0?Math.round(t.total/t.count):0)}원`} sub="건당 평균" clr={T.gray400}/>
     </GridLayout>
+    {/* 연도별 월별 매출 비교 */}
+    {yoyTable.years.length >= 2 && <div className="card" style={{padding:16,marginBottom:16,overflowX:"auto"}}>
+      <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:12}}>월별 매출 비교 <span style={{fontWeight:T.fw.medium,color:T.textMuted,fontSize:T.fs.xs}}>(연도별)</span></div>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:T.fs.xs}}>
+        <thead><tr>
+          <th style={{textAlign:"left",padding:"6px 8px",color:T.textSub,fontWeight:T.fw.bolder}}>월</th>
+          {yoyTable.years.map(y=><th key={y} style={{textAlign:"right",padding:"6px 8px",color:T.textSub,fontWeight:T.fw.bolder,whiteSpace:"nowrap"}}>{String(y).slice(2)}년</th>)}
+        </tr></thead>
+        <tbody>
+          {Array.from({length:12},(_,i)=>i+1).map(m=>{
+            const vals = yoyTable.years.map(y=>yoyTable.byYM[y]?.[m]);
+            if (vals.every(v=>v==null)) return null;
+            return <tr key={m} style={{borderTop:`1px solid ${T.border}`}}>
+              <td style={{padding:"6px 8px",fontWeight:T.fw.bold,color:T.textSub}}>{m}월</td>
+              {yoyTable.years.map((y,yi)=>{
+                const v=vals[yi];
+                return <td key={y} style={{textAlign:"right",padding:"6px 8px",whiteSpace:"nowrap",fontWeight:v?T.fw.bolder:T.fw.medium,color:v?T.text:T.gray400}}>{v?fmt(v):"-"}</td>;
+              })}
+            </tr>;
+          })}
+        </tbody>
+      </table>
+    </div>}
     {/* Chart */}
     <div className="card" style={{padding:20,marginBottom:16}}>
       <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:16}}>
