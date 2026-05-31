@@ -807,7 +807,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
     </div>
   }
 
-  if (salesTab === "stats") return <div>
+  if (salesTab === "stats") return <div style={{overflowX:"hidden",maxWidth:"100%"}}>
     <div style={{display:"flex",gap:0,marginBottom:12}}>
       {_tabs.map(([k,l])=>(
         <button key={k} onClick={()=>setSalesTab(k)} style={{flex:1,padding:"10px 0",fontSize:T.fs.sm,fontWeight:salesTab===k?T.fw.bolder:T.fw.medium,
