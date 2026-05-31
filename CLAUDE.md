@@ -3014,3 +3014,13 @@ Liah(WhatsApp) 후속 2건.
 - 월별 매출 비교표: 각 연도 금액 옆에 **전년 동월 대비 %** (주식식 — 상승 빨강 `#e2231a` / 하락 파랑 `#1565d8`). 진행중인 달은 예상매출 기준 비교. 가장 오래된 연도는 비교 대상 없어 % 미표시.
 - **월별 고객수 비교표 신설** (월별 매출표 바로 아래): 연도×월 피벗, 각 셀에 신규(보라)/기존(회색)/외국인(주황) 3분류 + 각 전년 동월 대비 %. 매출발생 기준(체험단 0원 제외, get_customer_visit_trend 그대로). 외국인 = fn+fo.
 - `custTrend` get_customer_visit_trend `p_months` 13→120 (연도 비교용 충분), 추이 누적막대 그래프는 `slice(0,13)`로 최근 13개월 유지. custYoy useMemo로 연도×월 피벗.
+
+### v3.7.940 — 고객정보 수정 저장 UX (저장됨✓ + 예약모달 변경 누락 버그) (2026-06-01)
+요청 2건(강남점) 처리.
+- **고객관리(CustomersPage)**: 칸 onBlur 자동저장(기존)에 "저장됨✓" 토스트 추가(`savedFlash`, fixed). 저장 피드백 부재 해소(자동저장은 원래 되고 있었음).
+- **예약모달(ReservationModal) "변경" 버튼**: 고객정보(이름·연락처) 수정 기능임을 명확화.
+  - ① 변경 모드 칸만 수정하고 변경 "저장"을 안 누른 채 예약 저장하면 `_persistCustEdits` 누락 → 예약저장 onClick에 `if(editingCust) _persistCustEdits()` 보장(전화 저장 안 되던 버그 fix).
+  - ② 변경 "저장" 버튼 → "정보 저장"으로 라벨 변경 + `commitBtn.click` 제거 → 고객정보만 저장, 예약 저장과 분리(모달 유지).
+  - ③ `_persistCustEdits` 성공 시 "저장됨✓" 토스트.
+- 경고창 원칙 메모리화(`feedback_bliss_custom_dialogs`): native alert/confirm 금지, 디자인 모달.
+- 요청 done: id_80o771s0cp(예약모달 변경), id_fqys5owuev(고객관리 저장).

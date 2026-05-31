@@ -755,6 +755,7 @@ function TimelineModal({ item, onSave, onAddCompanion, onDelete, onDeleteRequest
   const [editingCust, setEditingCust] = useState(false);
   const [custSnapshot, setCustSnapshot] = useState(null);
   const commitBtnRef = React.useRef(null);
+  const [savedFlash, setSavedFlash] = useState(false); // 고객정보 저장됨✓ 피드백
   // editing 모드 진입 직전의 cust 필드 6종 저장 → 취소 시 복원용
   const _captureCustSnapshot = () => setCustSnapshot({
     custId: f.custId||"", custName: f.custName||"", custName2: f.custName2||"",
@@ -786,6 +787,7 @@ function TimelineModal({ item, onSave, onAddCompanion, onDelete, onDeleteRequest
     if ((f.custGender||"")       !== (custSnapshot.custGender||""))       upd.gender = f.custGender||"";
     if (!Object.keys(upd).length) return;
     sb.update("customers", cid, upd).catch(console.error);
+    setSavedFlash(true); setTimeout(()=>setSavedFlash(false), 1600);
     // 로컬 data.customers 동기화 → 재진입 시 옛 값으로 안 덮어쓰게
     if (setData) setData(d => ({...d, customers: (d.customers||[]).map(c => c.id===cid ? {...c, ...upd} : c)}));
   };
@@ -2441,10 +2443,9 @@ ${naverText}
                         _persistCustEdits();
                         setCustSnapshot(null);
                         setEditingCust(false); setCustSearch(""); setShowCustDropdown(false);
-                        setTimeout(()=>commitBtnRef.current?.click(), 0);
                       }}
                       style={{flex:1,padding:"8px 0",border:"none",background:"transparent",color:T.primary,fontSize:12,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
-                      <I name="check" size={11} style={{marginRight:3}}/>저장
+                      <I name="check" size={11} style={{marginRight:3}}/>정보 저장
                     </button>
                   </>
                 ) : (
@@ -3048,11 +3049,13 @@ ${naverText}
                   <I name="trash" size={12}/> 삭제
                 </button>;
               })()}
+              {savedFlash && <div style={{position:"fixed",top:18,left:"50%",transform:"translateX(-50%)",background:T.success,color:"#fff",padding:"8px 20px",borderRadius:20,fontSize:13,fontWeight:800,zIndex:99999,boxShadow:"0 4px 16px rgba(0,0,0,.22)",pointerEvents:"none",display:"flex",alignItems:"center",gap:5}}><I name="check" size={14} color="#fff"/>저장됨</div>}
               <button
                 ref={commitBtnRef}
                 disabled={!isSchedule && f.type==="reservation" && !f.custName?.trim()}
                 style={{marginLeft:"auto",padding:"10px 22px",borderRadius:T.radius.md,fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5,lineHeight:1,transition:"all .15s",border:"2px solid "+(isSchedule?T.orange:T.primary),color:"#fff",background:isSchedule?T.orange:T.primary,boxShadow:isSchedule?"0 4px 14px rgba(225,112,85,.35)":"0 4px 14px rgba(124,124,200,.35)"}}
                 onClick={async ()=>{
+                if (editingCust) _persistCustEdits(); // 변경 모드 칸만 수정하고 예약 저장 시 고객정보 누락 방지
                 // 외부선결제 금액 입력 시 플랫폼 필수
                 if ((f.externalPrepaid || 0) > 0 && !(f.externalPlatform || "").trim()) {
                   alert("선결제 금액을 입력하셨는데 플랫폼이 선택되지 않았습니다.\n\n네이버/트레이지/서울뷰티/크리에이트립/입금 중에서 선택해주세요.");

@@ -122,6 +122,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [detailCust, setDetailCust] = useState(null);
+  const [savedFlash, setSavedFlash] = useState(false); // 저장됨✓ 피드백
   const [expandedSaleId, setExpandedSaleId] = useState(null);
   // 풀스크린 상세 레이아웃 — '2col' (좌:380 / 우:매출) | '3col' (좌:260 / 중:360 / 우:매출)
   const [layoutMode, setLayoutMode] = useState(()=>{ try{return localStorage.getItem('cust_layoutMode')||'2col';}catch{return '2col';} });
@@ -723,6 +724,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       setDetailCust(merged);
       setPagedCusts(prev => prev.map(x => x.id === detailCust.id ? merged : x));
       setData(prev => ({ ...prev, customers: (prev?.customers || []).map(x => x.id === detailCust.id ? merged : x) }));
+      setSavedFlash(true); setTimeout(()=>setSavedFlash(false), 1600);
     } catch(e) { console.error('saveCustField', e); alert('필드 저장 실패: ' + (e?.message||'')); }
   };
   // 상세 패널 바뀌면 편집 모드 해제
@@ -2062,6 +2064,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                   {createPortal(
                   <div className="cust-fs-overlay" onClick={e=>{if(e.target===e.currentTarget) setDetailCust(null);}}
                     style={{position:"fixed",inset:0,zIndex:3000,background:"rgba(0,0,0,.5)",display:"flex",padding:window.innerWidth<768?"0":"1.5vh 20px",alignItems:"flex-start",justifyContent:"center"}}>
+                  {savedFlash && <div style={{position:"fixed",top:18,left:"50%",transform:"translateX(-50%)",background:T.success,color:"#fff",padding:"8px 20px",borderRadius:20,fontSize:13,fontWeight:800,zIndex:99999,boxShadow:"0 4px 16px rgba(0,0,0,.22)",pointerEvents:"none",display:"flex",alignItems:"center",gap:5}}><I name="check" size={14} color="#fff"/>저장됨</div>}
                   <div onClick={e=>e.stopPropagation()} className="cust-fs-modal"
                     style={{background:"#F4F5F7",borderRadius:16,width:"100%",maxWidth:1280,height:"97vh",overflow:"hidden",border:"1px solid "+T.border,position:"relative",display:"flex",flexDirection:"column"}}>
                   <style>{`
