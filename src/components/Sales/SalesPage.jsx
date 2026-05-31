@@ -1259,6 +1259,20 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     return () => { cancelled = true; };
   }, [vb, periodKey, startDate, endDate]);
 
+  // 지점별 신규고객 (외국인 구분) — 기간 내 첫 매출 기준
+  const [newByBranch, setNewByBranch] = useState([]);
+  useEffect(() => {
+    if (!isMaster || periodKey === 'all' || !startDate || !endDate) { setNewByBranch([]); return; }
+    let cancelled = false;
+    fetch(`${SB_URL}/rest/v1/rpc/get_new_customers_by_branch`, {
+      method: 'POST', headers: {...sbHeaders, 'Content-Type':'application/json'},
+      body: JSON.stringify({ p_biz: _activeBizId, p_start: startDate, p_end: endDate }),
+    }).then(r => r.ok ? r.json() : []).catch(()=>[]).then(j => {
+      if (!cancelled) setNewByBranch(Array.isArray(j) ? j : []);
+    });
+    return () => { cancelled = true; };
+  }, [vb, periodKey, startDate, endDate, isMaster]);
+
   // 외국인 통계 (예약등록일 기준 신규/기존)
   const [foreignStats, setForeignStats] = useState({ rows: [], loading: true });
   useEffect(() => {
@@ -1649,6 +1663,22 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
             <span style={{fontWeight:T.fw.bolder,width:92,textAlign:"right",whiteSpace:"nowrap",flexShrink:0}}>{fmt(v.total)}원</span>
           </div>
         ))}
+      </div>}
+      {/* 지점별 신규고객 (외국인 구분) */}
+      {isMaster && newByBranch.length > 0 && <div className="card" style={{padding:20}}>
+        <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:14}}>지점별 신규고객 <span style={{fontWeight:T.fw.medium,color:T.textMuted,fontSize:T.fs.xs}}>( )=외국인</span></div>
+        {newByBranch.map((r,i)=>{
+          const bn = (data.branches||[]).find(b=>b.id===r.bid)?.short || r.bid;
+          const mx = newByBranch[0]?.total || 1;
+          return <div key={i} style={{display:"flex",alignItems:"center",gap:T.sp.sm,marginBottom:8,fontSize:T.fs.sm}}>
+            <span style={{width:18,color:i<3?T.primary:T.gray400,fontWeight:T.fw.bolder}}>{i+1}</span>
+            <span style={{width:55,fontWeight:T.fw.bold}}>{bn}</span>
+            <div style={{flex:1,height:6,background:T.gray300,borderRadius:T.radius.sm,overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${mx>0?(r.total/mx)*100:0}%`,background:"linear-gradient(90deg,#5cb5c5,#7c7cc8)",borderRadius:T.radius.sm}}/>
+            </div>
+            <span style={{fontWeight:T.fw.bolder,width:92,textAlign:"right",whiteSpace:"nowrap",flexShrink:0}}>{r.total}명 <span style={{color:T.info,fontWeight:T.fw.medium}}>({r.foreign_cnt})</span></span>
+          </div>;
+        })}
       </div>}
     </GridLayout>
 
