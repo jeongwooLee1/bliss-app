@@ -1736,7 +1736,7 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
 
     {/* 월별 고객 추이 (기존/신규/외국인신규 누적 막대) */}
     {custTrend.length > 0 && (() => {
-      const rows = custTrend.slice().reverse(); // 오래된→최신
+      const rows = custTrend.slice(); // 최신→오래된 (최신이 맨 왼쪽)
       const maxV = Math.max(...rows.map(r=>(r.o||0)+(r.fo||0)+(r.n||0)+(r.fn||0)), 1);
       const H = 120;
       return <div className="card" style={{padding:20,marginBottom:16}}>
@@ -1748,7 +1748,7 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
             <span style={{color:T.textSub}}><span style={{display:"inline-block",width:9,height:9,background:T.orange,borderRadius:2,marginRight:4,verticalAlign:"middle"}}/>외국인신규</span>
           </div>
         </div>
-        <div style={{display:"flex",alignItems:"flex-end",gap:5,height:H+30,overflowX:"auto"}}>
+        <div style={{display:"flex",alignItems:"flex-end",gap:5,height:H+30,overflowX:"auto",paddingBottom:14}}>
           {rows.map((r,i)=>{
             const ex=(r.o||0)+(r.fo||0), nw=r.n||0, fnn=r.fn||0;
             return <div key={i} style={{flex:"1 0 28px",display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
