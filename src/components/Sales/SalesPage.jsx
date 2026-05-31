@@ -1221,7 +1221,7 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
       if (!y || !m) return;
       years.add(y); (byYM[y] = byYM[y] || {})[m] = Number(r.total || 0);
     });
-    return { years: [...years].sort().slice(-3), byYM };
+    return { years: [...years].sort((a,b)=>b-a), byYM }; // 최신 연도 왼쪽 + 전체 연도(가로 스크롤)
   }, [allTimeStats.monthly]);
 
   // 기간별 매장/매니저/결제수단 합계 — RPC (90일 메모리 한계 회피)
@@ -1580,15 +1580,15 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
       <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:12}}>월별 매출 비교 <span style={{fontWeight:T.fw.medium,color:T.textMuted,fontSize:T.fs.xs}}>(연도별)</span></div>
       <table style={{width:"100%",borderCollapse:"collapse",fontSize:T.fs.xs}}>
         <thead><tr>
-          <th style={{textAlign:"left",padding:"6px 8px",color:T.textSub,fontWeight:T.fw.bolder}}>월</th>
-          {yoyTable.years.map(y=><th key={y} style={{textAlign:"right",padding:"6px 8px",color:T.textSub,fontWeight:T.fw.bolder,whiteSpace:"nowrap"}}>{String(y).slice(2)}년</th>)}
+          <th style={{textAlign:"left",padding:"6px 8px",color:T.textSub,fontWeight:T.fw.bolder,position:"sticky",left:0,background:T.bgCard,zIndex:1,minWidth:44}}>월</th>
+          {yoyTable.years.map(y=><th key={y} style={{textAlign:"right",padding:"6px 8px",color:T.textSub,fontWeight:T.fw.bolder,whiteSpace:"nowrap",minWidth:96}}>{String(y).slice(2)}년</th>)}
         </tr></thead>
         <tbody>
           {Array.from({length:12},(_,i)=>i+1).map(m=>{
             const vals = yoyTable.years.map(y=>yoyTable.byYM[y]?.[m]);
             if (vals.every(v=>v==null)) return null;
             return <tr key={m} style={{borderTop:`1px solid ${T.border}`}}>
-              <td style={{padding:"6px 8px",fontWeight:T.fw.bold,color:T.textSub}}>{m}월</td>
+              <td style={{padding:"6px 8px",fontWeight:T.fw.bold,color:T.textSub,position:"sticky",left:0,background:T.bgCard,zIndex:1}}>{m}월</td>
               {yoyTable.years.map((y,yi)=>{
                 const v=vals[yi];
                 return <td key={y} style={{textAlign:"right",padding:"6px 8px",whiteSpace:"nowrap",fontWeight:v?T.fw.bolder:T.fw.medium,color:v?T.text:T.gray400}}>{v?fmt(v):"-"}</td>;
