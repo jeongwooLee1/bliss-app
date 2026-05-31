@@ -2984,3 +2984,12 @@ Liah(WhatsApp) 후속 2건.
   - **멀티테넌트**: 본사 키는 ENV(`TOSS_BLISS_*`) 단일, 지점별 `billing_subscriptions`로 분리. 손님 정기결제(매장 키)와 키 경로 완전 분리. 하드코딩 0.
   - 청구 시각 = 매장 등록일 기준 매월 같은 날(02:00 KST 배치). next_billing_at이 "즉시 청구 대상" 플래그 역할(now면 청구, 미래면 skip).
   - billing-issue verify_jwt=true → PaymentApp success가 anon SB_KEY로 호출. subscription-charge verify_jwt=true → billing-issue 내부(service role) + pg_cron(anon JWT) 호출.
+
+### v3.7.927 — 고객 세그먼트 프리셋 (공비서 비교 갭반영 ①) (2026-05-31)
+공비서(gongbiz.kr) 전체 비교(NAS `SynologyDrive/bliss/gongbiseo/` 분석문서) 후 도출한 갭 4종(①고객 프리셋 ②자동충전 ③통계 대시보드 ④연간결제) 중 **①** 반영. 고객관리에 원클릭 세그먼트 필터.
+- `CustomersPage.jsx`: 검색·매장 줄 아래 프리셋 버튼 **7종**(전체/신규/재방문/단골/이탈/노쇼주의/보유권). `preset` state + `buildFilter` 조건 분기. useEffect deps에 preset 추가.
+  - 신규 `visits≤1` / 재방문 `≥2` / 단골 `≥10` / 이탈 `visits≥1 & last_visit < today-90일 & last_visit≥2020` / 노쇼 `no_show_count≥1`
+  - **보유권**: RPC `get_customers_with_active_pkg(biz,bid,search,offset,limit)` — `customer_packages` 잔여(`total_count-used_count>0`) EXISTS. longValOnly처럼 fetchPage가 RPC 분기, count=exact는 폴백("N명+"). RLS: customers anon SELECT 통과(SECURITY INVOKER STABLE).
+- 기존 다중선택(`smsSel`)+`✉ 일괄문자`와 연동 → 세그먼트 골라 일괄 발송(공비서 동일 흐름, 블리스는 일괄문자 이미 있었음).
+- **유의**: 보유권 잔여 판정은 `total_count-used_count>0` 단순식 — 금액형(다담권) 잔액은 note 기반이라 일부 부정확 가능, 만료 보유권도 잔여>0이면 포함. 정밀화는 후속. 단골 10회·이탈 90일 등 기준은 코드 상수라 조정 쉬움.
+- 남은 갭 **②자동충전·③통계 대시보드·④연간결제**는 후속(②④는 카드사 심사 후 실청구).

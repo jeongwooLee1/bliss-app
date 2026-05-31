@@ -246,6 +246,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
   const PAGE_SIZE = 50;
   const [pagedCusts, setPagedCusts] = useState([]); // 누적
   const [smsSel, setSmsSel] = useState(()=>new Set()); // 다중 선택된 cust id
+  const [preset, setPreset] = useState('all'); // 세그먼트 프리셋: all/new/repeat/vip/churned/noshow (공비서 대비)
   const [smsOpen, setSmsOpen] = useState(false);
   const [smsCusts, setSmsCusts] = useState([]); // 모달에 넘길 고객 배열
   // 🔍 1년+ 잔존 보유권 필터 (note 유효:YYYY-MM-DD > 오늘+364 + 잔여≥1)
@@ -291,6 +292,16 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       });
       parts.push(`and=(${ands.join(',')})`);
     }
+    // 세그먼트 프리셋 (공비서 대비 — 신규/재방문/단골/이탈/노쇼). visits/last_visit/no_show_count 기반
+    if (preset === 'new') parts.push(`visits=lte.1`);
+    else if (preset === 'repeat') parts.push(`visits=gte.2`);
+    else if (preset === 'vip') parts.push(`visits=gte.10`);
+    else if (preset === 'churned') {
+      const _c = new Date(); _c.setDate(_c.getDate() - 90);
+      const cutoff = _c.getFullYear() + '-' + String(_c.getMonth()+1).padStart(2,'0') + '-' + String(_c.getDate()).padStart(2,'0');
+      parts.push(`visits=gte.1`); parts.push(`last_visit=lt.${cutoff}`); parts.push(`last_visit=gte.2020-01-01`);
+    }
+    else if (preset === 'noshow') parts.push(`no_show_count=gte.1`);
     // 정렬: created_at(DB INSERT 시각) 내림차순 단일
     // join_date.desc는 빈 문자열("")이 NULL 아니라 정렬 맨 뒤로 밀려 신규 고객 첫 페이지 누락
     // (Julia aquilino, cust_id_wgcw2jj26g 누락 케이스, 2026-05-05 fix)
@@ -341,6 +352,14 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
           }),
         });
         rows = r.ok ? await r.json() : [];
+      } else if (preset === 'pkg') {
+        // 보유권(정액권/다회권 잔여>0) 보유 고객 — RPC (customer_packages 조인, URL 길이 우회)
+        const tokens = (q||"").trim().split(/\s+/).filter(Boolean);
+        const r = await fetch(`${SB_URL}/rest/v1/rpc/get_customers_with_active_pkg`, {
+          method:'POST', headers:{...sbHeaders,'Content-Type':'application/json'},
+          body: JSON.stringify({ p_biz:_activeBizId, p_bid: vb!=='all'?vb:null, p_search: tokens[0]||null, p_offset:offset, p_limit:_limit }),
+        });
+        rows = r.ok ? await r.json() : [];
       } else {
         const filter = buildFilter(offset, _limit);
         rows = await sb.get("customers", filter);
@@ -351,7 +370,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       setHasMore(rows.length === _limit);
       // 현재 필터 기준 정확 총 인원 카운트 (count=exact → Content-Range 헤더). reset 시 1회만.
       // longValOnly(RPC 경로)는 제외 — 폴백 "N명+" 사용.
-      if (reset && !longValOnly) {
+      if (reset && !longValOnly && preset !== 'pkg') {
         (async () => {
           try {
             const cf = buildFilter(0, 1).slice(1); // 앞 '&' 제거 (order/offset/limit은 count에 무해)
@@ -398,7 +417,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
     if (lockSingleRef.current) return;
     const timer = setTimeout(() => { fetchPage(0, true); }, q ? 300 : 0);
     return () => clearTimeout(timer);
-  }, [q, vb, joinFrom, joinTo, pendingOpenCust, longValOnly]);
+  }, [q, vb, joinFrom, joinTo, pendingOpenCust, longValOnly, preset]);
 
   // 스크롤 핸들러: 하단 근접 시 다음 페이지 로드
   const onScroll = (e) => {
@@ -1709,6 +1728,21 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
         style={{padding:"4px 12px",fontSize:14,fontWeight:800,borderRadius:T.radius.md,border:"1px solid "+T.primaryDk,background:T.primary,color:"#fff",cursor:"pointer",fontFamily:"inherit",height:30,boxShadow:"0 1px 3px rgba(124,58,237,.35)",display:"inline-flex",alignItems:"center",gap:4}}>
         ✉ {smsSel.size>0?`(${smsSel.size})`:""}
       </button>
+    </div>
+
+    {/* 세그먼트 프리셋 (공비서 대비) — 클릭 1번으로 신규/재방문/단골/이탈/노쇼 필터 → 선택 후 ✉ 일괄 문자 */}
+    <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
+      {[['all','전체'],['new','신규'],['repeat','재방문'],['vip','단골'],['churned','이탈'],['noshow','노쇼주의'],['pkg','보유권']].map(([k,lbl])=>(
+        <button key={k} type="button"
+          onClick={()=>{unlockSingleAndReload();setPreset(k);}}
+          title={k==='new'?'1회 이하 방문':k==='repeat'?'2회 이상 방문':k==='vip'?'10회 이상 방문':k==='churned'?'90일 이상 미방문':k==='noshow'?'노쇼 이력 있는 고객':k==='pkg'?'정액권·다회권 잔여 보유':'전체 고객'}
+          style={{padding:"5px 13px",fontSize:T.fs.xs,fontWeight:preset===k?800:600,borderRadius:999,
+            border:"1px solid "+(preset===k?T.primary:T.border),
+            background:preset===k?T.primary:"#fff",color:preset===k?"#fff":T.textSub,
+            cursor:"pointer",fontFamily:"inherit",height:28,lineHeight:1}}>
+          {lbl}
+        </button>
+      ))}
     </div>
 
     {/* 무한 스크롤 고객 리스트 */}
