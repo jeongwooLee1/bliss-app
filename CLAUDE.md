@@ -2998,3 +2998,14 @@ Liah(WhatsApp) 후속 2건.
 공비서 통계 대시보드 갭 중 기간대비 증감 반영. 블리스 매출통계는 이미 풍부(총매출/시술/제품/상품권/일평균/객단가 + 일별·월별·연도별 차트 + 지점·매니저·결제수단·외국인 신규기존)라 실질 갭은 기간대비%였음.
 - `SalesPage.jsx` StatsPage: `prevTotal` state + useEffect — 선택 기간과 **같은 길이의 직전 동기간** `get_sales_stats_summary` 1회 더 호출(같은 vb/biz). Summary Cards 위에 "지난 동기간 대비 ▲N%" 배너(증가 초록 ECFDF5/감소 빨강 FEF2F2 + 이전 금액). periodKey='all'(전체기간)·기간 미설정은 비교대상 없어 미표시.
 - **후속(③ 나머지)**: 재방문율·시간 활용률(예약 dur 합/영업시간)은 별도 RPC 필요 — 미반영. ④연간결제·②자동충전(카드 심사 후 실청구)도 후속.
+
+### 케어 SMS 단문화 + 포인트 소멸 임박 알림 (2026-05-31, 서버+DB, React 변경 0)
+**케어 SMS 전멸 원인 규명 (강남 요청 id_cs1l36okk7 done)**: 케어 본문이 **장문(248자)**이라 UMS SMS 한도(**EUC-KR 90Byte/한글 ~45자**) 초과 → UMS가 `code:"100"`(성공)만 주고 `data:[]`(미발송)로 떨굼. 최근 10일 **801건 전멸**. 직원이 케어 문구를 길게 바꿔서 발생(5/16 이전엔 33~41자 단문 성공 이력). **`_is_success`가 `data` 비면 failed로 본 건 매뉴얼상 올발랐음**(실제 미발송). UMS 매뉴얼: `/send/sms`=EUC-KR 90Byte, code 100=성공이나 길이초과 시 data 빈 채 미발송.
+- **`send-sms` v14**: 단문 전용. (v13에서 90Byte 초과 시 LMS(`/send/mms` 파일無) 자동전환 넣었다가 **정우님 "장문 안돼"(비용)로 롤백**). 90Byte 초과 시 경고 로그만.
+- **케어 단문 7개 등록**(8지점 `noti_config`): after_1d_first_only/5d/10d/18d_first_only/21d/35d/60d 전부 90Byte 이내 단문으로 교체(5/16 이전 슬로건 톤 + `[하우스왁싱]` 태그). EUC-KR byte 검증 후 `jsonb_set` 일괄 UPDATE.
+**포인트 소멸 임박 알림 (정우님 추가, D-30·D-10)**:
+- RPC `get_expiring_points_targets(p_biz, p_day)` — `point_transactions` earn 중 `expires_at::date = today+p_day` & 잔액>0(=earn−deduct−expire) 고객. phone(010~)+sms_consent+미숨김. 소멸금액=`min(exp_amount, balance)`.
+- `point_expiry_sms_log` 테이블 `UNIQUE(customer_id,tier,exp_date)` 중복방지.
+- `bliss_naver.py` **`point_expiry_thread`** — 매일 **10:30 KST**(10:30~10:40 1회) D-30·D-10 RPC → 로그 선점 INSERT(UNIQUE 충돌=skip) → `send-sms` 직접 호출(publishable key, 지점 발신번호). 본문 `[하우스왁싱] OO님, 적립 포인트 N원이 M일 후 소멸돼요! 방문해서 사용하세요`(긴 외국이름+999만원도 89byte 단문). 백업 `bak_pexp_*`, 재시작 active 확인.
+- 오늘 기준 대상: D-30 7명/9.8만P, D-10 6명/6만P → 내일 10:30 첫 발송.
+**유의**: 케어·포인트 SMS는 UMS `/send/sms`(EUC-KR 90Byte) 단문 전용 — **본문 길이 관리 필수**(초과 시 `data:[]` 미발송, 직원이 noti_config 케어 문구 길게 바꾸면 또 전멸). LMS는 비용상 미사용. send-sms는 v14 단문 전용. 포인트 알림 실발송 검증은 내일 10:30(`point_expiry_sms_log`로 확인).
