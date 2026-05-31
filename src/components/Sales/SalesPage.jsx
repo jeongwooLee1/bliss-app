@@ -1632,7 +1632,7 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
               <div style={{height:"100%",width:`${staffRank[0][1].total>0?(v.total/staffRank[0][1].total)*100:0}%`,background:"linear-gradient(90deg,#5cb5c5,#3b82f6)",borderRadius:T.radius.sm}}/>
             </div>
             <span style={{color:T.textSub,fontSize:T.fs.xxs,width:32,textAlign:"right"}}>{v.count}건</span>
-            <span style={{fontWeight:T.fw.bolder,color:T.info,width:85,textAlign:"right",whiteSpace:"nowrap"}}>{fmt(v.total)}원</span>
+            <span style={{fontWeight:T.fw.bolder,color:T.info,width:92,textAlign:"right",whiteSpace:"nowrap",flexShrink:0}}>{fmt(v.total)}원</span>
           </div>
         ))}
       </div>
@@ -1646,7 +1646,7 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
             <div style={{flex:1,height:6,background:T.gray300,borderRadius:T.radius.sm,overflow:"hidden"}}>
               <div style={{height:"100%",width:`${branchRank[0][1].total>0?(v.total/branchRank[0][1].total)*100:0}%`,background:"linear-gradient(90deg,#5cb5c5,#7c7cc8)",borderRadius:T.radius.sm}}/>
             </div>
-            <span style={{fontWeight:T.fw.bolder,width:85,textAlign:"right"}}>{fmt(v.total)}원</span>
+            <span style={{fontWeight:T.fw.bolder,width:92,textAlign:"right",whiteSpace:"nowrap",flexShrink:0}}>{fmt(v.total)}원</span>
           </div>
         ))}
       </div>}
