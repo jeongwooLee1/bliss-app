@@ -4786,6 +4786,15 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                           <span style={{width:1.5,height:8,background:handleColor,opacity:.7,borderRadius:1}}/>
                                           <span style={{width:1.5,height:8,background:handleColor,opacity:.7,borderRadius:1}}/>
                                         </div>
+                                        {/* 경계 미세조정 −/+ (10분 단위) — 실제 segment 경계만 */}
+                                        {!visualSegs[i+1]?.isHome && <>
+                                          <button onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();const ns=visualSegs[i+1];if(!ns)return;const nm=Math.max(whStartMn+10,Math.min(whEndMn-10,vs.untilMn-10));updateSeg(ns.branchId,"from",mnToTime(nm));}}
+                                            title="10분 당기기"
+                                            style={{position:"absolute",left:`calc(${leftPct}% - 22px)`,top:"100%",transform:"translate(-50%,0)",marginTop:2,width:17,height:16,borderRadius:4,border:`1px solid ${handleColor}`,background:T.bgCard,color:handleColor,fontSize:14,fontWeight:700,lineHeight:1,cursor:"pointer",zIndex:7,padding:0,display:"flex",alignItems:"center",justifyContent:"center",touchAction:"manipulation"}}>−</button>
+                                          <button onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();const ns=visualSegs[i+1];if(!ns)return;const nm=Math.max(whStartMn+10,Math.min(whEndMn-10,vs.untilMn+10));updateSeg(ns.branchId,"from",mnToTime(nm));}}
+                                            title="10분 미루기"
+                                            style={{position:"absolute",left:`calc(${leftPct}% + 22px)`,top:"100%",transform:"translate(-50%,0)",marginTop:2,width:17,height:16,borderRadius:4,border:`1px solid ${handleColor}`,background:T.bgCard,color:handleColor,fontSize:13,fontWeight:700,lineHeight:1,cursor:"pointer",zIndex:7,padding:0,display:"flex",alignItems:"center",justifyContent:"center",touchAction:"manipulation"}}>+</button>
+                                        </>}
                                       </React.Fragment>;
                                     })}
                                     {/* 드래그 시 분할 효과 */}
