@@ -1400,7 +1400,12 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
         <span style={{fontSize:T.fs.xxs,fontWeight:T.fw.bolder,color:isExpired?T.danger:expiry?T.gray700:T.gray500,flex:1}}>
           {pkgEditId === p.id ? (
             <>유효 ~<input type="date" defaultValue={expiry || ""} id={`pkg-edit-expiry-${p.id}`}
-              style={{...INLINE_EDIT_INPUT_STYLE_NUM(112), textAlign:"left", color:isExpired?T.danger:T.gray700}}/></>
+              onFocus={e=>{try{e.target.select();}catch{}}}
+              style={{...INLINE_EDIT_INPUT_STYLE_NUM(112), textAlign:"left", color:isExpired?T.danger:T.gray700}}/>
+              {[["+6개월",6],["+1년",12],["+2년",24]].map(([lbl,mo])=>(
+                <button key={lbl} type="button" onClick={(e)=>{ e.stopPropagation(); const d=new Date(); d.setMonth(d.getMonth()+Number(mo)); d.setDate(d.getDate()-1); const inp=document.getElementById(`pkg-edit-expiry-${p.id}`); if(inp) inp.value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }}
+                  style={{fontSize:9,padding:"1px 5px",marginLeft:3,borderRadius:4,border:`1px solid ${T.border}`,background:"#fff",color:T.primary,cursor:"pointer",fontWeight:700,whiteSpace:"nowrap"}}>{lbl}</button>
+              ))}</>
           ) : (
             expiry ? `유효 ~${expiry} ${isExpired?"(만료)":""}` : "유효기간 미설정 (무제한)"
           )}

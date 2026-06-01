@@ -43,6 +43,21 @@ export default function NaverReviews({ data, branches, userBranches, currentUser
     setPlaceMap(m);
   }, [branches]);
 
+  const syncAndLoad = useCallback(async () => {
+    // 서버에 즉시 수집 요청 → 네이버 최신 has_reply 반영 후 DB 재조회
+    setLoading(true);
+    try { await fetch('https://blissme.ai/review-sync-now', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); } catch { }
+    let f = `&business_id=eq.${_activeBizId}&order=review_created_at.desc&limit=300`;
+    const bidIn = (bids || []).join(',');
+    if (bidIn) f += `&bid=in.(${bidIn})`;
+    if (filter === 'noreply') f += `&has_reply=eq.false`;
+    else if (filter === 'replied') f += `&has_reply=eq.true`;
+    let rows = [];
+    try { rows = (await sb.get('naver_reviews', f)) || []; } catch { }
+    setReviews(rows);
+    setLoading(false);
+  }, [bids, filter]);
+
   const load = useCallback(async () => {
     setLoading(true);
     let f = `&business_id=eq.${_activeBizId}&order=review_created_at.desc&limit=300`;
@@ -54,7 +69,6 @@ export default function NaverReviews({ data, branches, userBranches, currentUser
     try { rows = (await sb.get('naver_reviews', f)) || []; } catch { }
     setReviews(rows);
     setLoading(false);
-    // 배지 = has_reply=false 카운트 (AppShell 10분 폴링 기준). 탭 열어도 배지 안 꺼짐.
   }, [bids, filter]);
 
   useEffect(() => { load(); }, [load]);
@@ -119,7 +133,7 @@ export default function NaverReviews({ data, branches, userBranches, currentUser
             background: filter === k ? T.primary : T.primaryLt, color: filter === k ? '#fff' : T.primaryDk
           }}>{lbl}</button>
         ))}
-        <button onClick={load} title="새로고침" style={{ marginLeft: 'auto', border: 'none', background: 'transparent', cursor: 'pointer', color: T.textSub, display: 'flex', alignItems: 'center' }}><I name="loader" size={16} /></button>
+        <button onClick={syncAndLoad} title="네이버에서 최신 답글 상태 가져오기" style={{ marginLeft: 'auto', border: 'none', background: 'transparent', cursor: 'pointer', color: T.textSub, display: 'flex', alignItems: 'center' }}><I name="loader" size={16} /></button>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
