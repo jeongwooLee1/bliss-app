@@ -396,6 +396,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     const SKIP=["cancelled","naver_cancelled","naver_changed"];
     (data?.reservations||[]).forEach(r=>{
       if(!r.chatUserId||!r.chatChannel) return;
+      if(r.source==='creatrip') return; // 크리에이트립은 손님이 적은 메신저 ID라 능동 발송 불가 → 받은메시지함 제외 (소통은 크리에이트립 플랫폼)
       if(SKIP.includes(r.status)) return;
       const key=r.chatChannel+"_"+r.chatUserId;
       if(!m[key]||r.date>m[key].date) m[key]=r;

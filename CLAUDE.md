@@ -3030,3 +3030,9 @@ Liah(WhatsApp) 후속 2건.
 **원인**: `bliss_naver.py` `_send_booking_confirm`(5091)의 확정 카드("OO님, 예약이 등록되었습니다 📍🗓 변동사항이...")가 **손님 언어 판정 없이 한국어 하드코딩**. ai_booking.py의 reply_lang(AI 응답 언어)과 별개로, /ai-book 성공 시 이 카드가 코드로 생성·발송됨.
 **fix**: `_send_booking_confirm`에 손님 언어 판정 추가 — 마지막 inbound 3건 한글 우세 여부(`_ko>=2 and _ko>=_oth`). 영어권이면 영어 확정 카드(날짜 "Mon, Jun 1" + 시간 "11:00 AM" + 차트 안내 영어 + "your booking is confirmed! ... Let us know if anything changes!"). 한국어 손님은 기존 카드.
 **적용**: 서버 직접(백업 `bak_booking_lang_*`) + `systemctl restart bliss-naver`(active). React 변경 0 → 버전업·CF퍼지 불필요.
+
+### v3.7.941 + 서버 — 크리에이트립 예약 받은메시지함 제외 (2026-06-01)
+**증상**(정우님): 크리에이트립 손님 Renee(카톡 ID renee.h)가 받은메시지함에 카톡 대화방으로 떠서 "카톡도 없는데 카톡으로 이어지는 것처럼" 보임.
+**원인**: 크리에이트립 메일 파싱(`bliss_naver.py`)이 손님이 적은 메신저(`sns_type`/`sns_id`)를 chat_channel/chat_user_id로 저장 → 받은메시지함이 `reservations.chatChannel` 기반(`chatResMap`)으로 대화방 생성. 카톡은 개인 ID라 우리가 먼저 메시지 못 보냄(친구 아님).
+**fix**(정우님 결정 — 크리에이트립 전부 제외): 서버 크리에이트립 처리 chat_channel/chat_user_id 빈값 + 클라 `chatResMap`에 `r.source==='creatrip'` 제외 + 기존 6건(Renee·Chie·David·Clara·Loula·Carly) chat_* NULL 정정.
+**적용**: v3.7.941 라이브 + 서버 재시작(active, 백업 `bak_creatrip_chat_*`). 직전 확정카드 영어 분기도 같은 서버 배포에 포함.
