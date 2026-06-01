@@ -21,7 +21,7 @@ const fmtRevTime = iso => {
   } catch { return ''; }
 };
 
-export default function NaverReviews({ data, branches, userBranches, currentUser }) {
+export default function NaverReviews({ data, branches, userBranches, currentUser, setPage, setPendingOpenCust }) {
   const [reviews, setReviews] = useState([]);
   const [filter, setFilter] = useState('noreply');   // noreply | replied | all
   const [loading, setLoading] = useState(true);
@@ -89,11 +89,11 @@ export default function NaverReviews({ data, branches, userBranches, currentUser
     const prompt = `너는 미용 왁싱샵 "${bizName}"의 사장님이다. 아래 네이버 고객 리뷰에 달 따뜻한 사장님 답글을 작성해줘.
 조건:
 - 한국어, 2~4문장, 진심 어린 친근한 존댓말
-- 리뷰 내용이나 닉네임을 자연스럽게 언급하며 감사 인사
+- 고객을 "고객님"으로 호칭 (작성자 닉네임·실명 사용 금지)
+- 리뷰 내용(시술 경험, 느낌 등)을 자연스럽게 언급하며 감사 인사
 - 마지막에 재방문을 부드럽게 유도
 - 과한 영업 표현·이모지 남발 금지 (이모지는 0~1개)
 
-[작성자] ${r.author_name || ''}
 [받은 시술] ${r.biz_item_name || '-'}
 [별점] ${r.rating != null ? r.rating : '-'}
 [리뷰 내용] ${r.content || '(사진만, 텍스트 없음)'}
@@ -177,7 +177,30 @@ export default function NaverReviews({ data, branches, userBranches, currentUser
                 )}
                 <span style={{ fontSize: 11, color: T.primaryDk, background: T.primaryLt, borderRadius: 6, padding: '1px 7px' }}>{SRC_LABEL[r.source] || r.source || '리뷰'}</span>
                 {branches && branches.length > 1 && <span style={{ fontSize: 11, color: T.textSub }}>{branchName(r.bid)}</span>}
-                <span style={{ marginLeft: 'auto', fontSize: 11, color: T.textSub }}>{fmtRevTime(r.review_created_at)}</span>
+                {r.visitor_name && setPage && (
+                  <button onClick={async () => {
+                    // visitor_name으로 고객 검색 후 고객 상세 오픈
+                    try {
+                      const { SB_URL, sbHeaders } = await import('../../lib/sb');
+                      const { _activeBizId } = await import('../../lib/db');
+                      const res = await fetch(`${SB_URL}/rest/v1/customers?business_id=eq.${_activeBizId}&name=eq.${encodeURIComponent(r.visitor_name)}&select=id,name,cust_num&limit=3`, { headers: sbHeaders });
+                      const rows = await res.json();
+                      if (rows?.length === 1 && setPendingOpenCust) { setPendingOpenCust(rows[0].id); setPage('customers'); }
+                      else if (rows?.length > 1 && setPage) { setPage('customers'); }
+                    } catch { if (setPage) setPage('customers'); }
+                  }} title={`${r.visitor_name} 고객 정보 보기`}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, color: T.primaryDk, background: T.primaryLt, border: 'none', borderRadius: 6, padding: '2px 7px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700 }}>
+                    <I name="user" size={10} />{r.visitor_name} ↗
+                  </button>
+                )}
+                <span style={{ marginLeft: 'auto', fontSize: 11, color: T.textSub, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {fmtRevTime(r.review_created_at)}
+                  <a href={`https://new-m.smartplace.naver.com/bizes/booking/${placeMap[r.bid]?.biz || r.place_id}/reviews?hasReply=false&menu=visitor`}
+                    target="_blank" rel="noopener noreferrer"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: '#03C75A', textDecoration: 'none', fontSize: 11, fontWeight: 700, padding: '2px 6px', background: '#03C75A10', borderRadius: 5, border: '1px solid #03C75A30' }}>
+                    <I name="naver" size={10} color="#03C75A" /><I name="chevR" size={9} color="#03C75A" />
+                  </a>
+                </span>
               </div>
 
               {r.biz_item_name && (
@@ -198,33 +221,24 @@ export default function NaverReviews({ data, branches, userBranches, currentUser
 
               {!r.has_reply && (
                 <>
+                  {/* 답글 textarea — 항상 표시 */}
+                  <textarea
+                    value={dr.text || ''}
+                    onChange={e => setDrafts(d => ({ ...d, [r.id]: { ...(d[r.id] || {}), text: e.target.value } }))}
+                    placeholder="답글을 입력하거나 AI 초안을 사용하세요"
+                    rows={3}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: `1px solid ${T.border}`, fontFamily: 'inherit', fontSize: 13, lineHeight: 1.5, resize: 'vertical', color: T.text }}
+                  />
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    <button onClick={() => openNaver(r)} style={{ flex: 1, minWidth: 132, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '8px 10px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, background: '#03C75A', color: '#fff' }}>
-                      <I name="naver" size={13} color="#fff" />네이버에서 답글쓰기
+                    <button onClick={() => submitReply(r)} disabled={dr.submitting || !(dr.text || '').trim()} style={{ flex: 1, minWidth: 100, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '8px 10px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, background: '#03C75A', color: '#fff', opacity: (dr.submitting || !(dr.text || '').trim()) ? 0.55 : 1 }}>
+                      <I name="naver" size={13} color="#fff" />{dr.submitting ? '등록 중…' : '답글쓰기'}
                     </button>
-                    <button onClick={() => genDraft(r)} disabled={dr.loading} style={{ flex: 1, minWidth: 110, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '8px 10px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, background: T.primaryLt, color: T.primaryDk, opacity: dr.loading ? 0.6 : 1 }}>
-                      <I name="sparkles" size={13} />{dr.loading ? '작성 중…' : 'AI 답글 초안'}
+                    <button onClick={() => genDraft(r)} disabled={dr.loading} style={{ flex: 1, minWidth: 90, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '8px 10px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, background: T.primaryLt, color: T.primaryDk, opacity: dr.loading ? 0.6 : 1 }}>
+                      <I name="sparkles" size={13} />{dr.loading ? '작성 중…' : 'AI 초안'}
                     </button>
                   </div>
                   {dr.err && <div style={{ fontSize: 11, color: T.danger }}>AI 오류: {dr.err}</div>}
-                  {dr.text && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <textarea value={dr.text} onChange={e => setDrafts(d => ({ ...d, [r.id]: { ...d[r.id], text: e.target.value } }))} rows={4}
-                        style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: `1px solid ${T.border}`, fontFamily: 'inherit', fontSize: 13, lineHeight: 1.5, resize: 'vertical', color: T.text }} />
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                        <button onClick={() => copyDraft(r)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, background: dr.copied ? T.success : T.primary, color: '#fff' }}>
-                          <I name={dr.copied ? 'check' : 'clipboard'} size={12} color="#fff" />{dr.copied ? '복사됨' : '복사'}
-                        </button>
-                        <button onClick={() => genDraft(r)} disabled={dr.loading} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600, background: T.bg, color: T.textSub }}>
-                          <I name="sparkles" size={12} />다시
-                        </button>
-                        <button onClick={() => submitReply(r)} disabled={dr.submitting || !dr.text?.trim()} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, background: '#03C75A', color: '#fff', opacity: (dr.submitting || !dr.text?.trim()) ? 0.6 : 1 }}>
-                          <I name="naver" size={12} color="#fff" />{dr.submitting ? '등록 중…' : '블리스에서 달기'}
-                        </button>
-                        {dr.submitErr && <span style={{ fontSize: 11, color: T.danger }}>{dr.submitErr}</span>}
-                      </div>
-                    </div>
-                  )}
+                  {dr.submitErr && <div style={{ fontSize: 11, color: T.danger }}>{dr.submitErr}</div>}
                 </>
               )}
             </div>

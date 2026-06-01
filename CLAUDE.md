@@ -3145,3 +3145,9 @@ Liah(WhatsApp) 후속 2건.
 - `NaverReviews.jsx`: `submitReply(r)` 추가 — `blissme.ai/review-reply`로 `{reviewId, bizId, text}` POST → 성공 시 목록에서 제거(setReviews filter) + draft 삭제. 실패 시 에러 표시.
 - "복사 후 네이버에서 붙여넣기" 안내 → **"블리스에서 달기" 버튼**(네이버 그린 #03C75A + N 아이콘). 블리스 안에서 바로 네이버 리뷰 답글 등록.
 - React만 빌드·배포(서버는 이미 적용). 빌드 검증 통과. 네이버 답글 등록은 라이브 실제 리뷰로 확인 권장(데모 리뷰 데이터 없음).
+
+### v3.7.960 — 네이버 리뷰 답글 UI 개선 + 방문자 고객 바로가기 (작업세션 머지) (2026-06-01)
+- AI 답글 프롬프트: 작성자 닉네임/실명 사용 금지 → "고객님" 호칭(개인정보 보호). 리뷰 내용 위주 언급.
+- 답글 textarea 항상 표시 + 버튼 단순화: [답글쓰기](블리스에서 직접 등록) + [AI 초안] 2개로 (기존 복사/다시/달기 3버튼 정리).
+- 리뷰 헤더에 방문자 이름 칩 → 클릭 시 `visitor_name`으로 고객 검색 후 고객 상세 오픈(setPendingOpenCust). 네이버 바로가기 링크(모바일 미답변 필터)도 헤더에.
+- prop 배선: MessagesPage/AppShell → NaverReviews에 setPage/setPendingOpenCust 전달.
