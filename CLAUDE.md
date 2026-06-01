@@ -3064,3 +3064,9 @@ Liah(WhatsApp) 후속 2건.
 정우님 요청(요금제&사용내역 4개 탭 UI 개선 + 직원 SMS 탭 정리).
 - **직원 SMS 발송 탭(AdminSmsLog) → "발송 내역" 탭(AdminAlimtalkLog) 안 서브탭 [알림톡·자동 SMS][직원 발송 SMS] 로 통합**. 탭 4→3개. (직원 SMS 월 1656건 활발 → 제거 대신 통합). subTab 'sms' 진입 시 alimtalk+staff로 정규화(useEffect).
 - 탭 라벨·제목·통계 이모지 제거(💳📨📤📊 ✅❌) → 텍스트+색상(굵게). UI 이모지 금지 원칙.
+
+### v3.7.947 — 직원 SMS를 발송내역에 한 목록 통합 + RLS fix (2026-06-01)
+정우님: 직원 SMS 발송 이력 0건(데이터는 1810건 있음) + 서브탭 말고 한 페이지 통합 요청.
+- **0건 원인 = `sms_send_log` RLS 활성인데 anon 정책 없음** → 앱(anon)이 못 읽음. `CREATE POLICY anon_all_sms_send_log FOR ALL USING(true) WITH CHECK(true)` 추가([[reference_supabase_rls]] 패턴 누락분).
+- v3.7.946 서브탭([알림톡·자동][직원발송]) 제거 → **AdminAlimtalkLog 한 목록에 직원 SMS(sms_send_log) 병합**. load에서 sms_send_log도 fetch → alimtalk_queue 형식 정규화(channel='sms', noti_key='직원발송', params._staff_msg, _staff) → created_at desc 병합. 채널필터 전체/SMS일 때만 병합. 지점별 카운트·검색·통계에 자동 포함.
+- AdminPlan import AdminSmsLog는 미사용(유지, 무해).

@@ -238,18 +238,8 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
       ))}
     </div>
 
-    {/* 발송 내역 탭 — 자동(알림톡·케어SMS) + 직원 수동 SMS 서브탭 통합 */}
-    {subTab === 'alimtalk' && <div>
-      <div style={{display:'flex',gap:6,marginBottom:14}}>
-        {[['auto','알림톡·자동 SMS'],['staff','직원 발송 SMS']].map(([k,lbl])=>(
-          <button key={k} onClick={()=>setMsgSub(k)}
-            style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${msgSub===k?T.primary:T.border}`,
-              background:msgSub===k?T.primaryLt:'#fff',color:msgSub===k?T.primary:T.textSub,
-              fontSize:T.fs.xs,fontWeight:T.fw.bolder,cursor:'pointer',fontFamily:'inherit'}}>{lbl}</button>
-        ))}
-      </div>
-      {msgSub==='staff' ? <AdminSmsLog data={data} userBranches={userBranches}/> : <AdminAlimtalkLog data={data} userBranches={userBranches}/>}
-    </div>}
+    {/* 발송 내역 탭 — 알림톡·자동 SMS·직원 수동 SMS 한 목록 통합 */}
+    {subTab === 'alimtalk' && <AdminAlimtalkLog data={data} userBranches={userBranches}/>}
 
     {/* 포인트 히스토리 단독 탭 (요금제 페이지에서 분리) */}
     {subTab === 'history' && (

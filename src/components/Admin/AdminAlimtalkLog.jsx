@@ -143,7 +143,22 @@ export default function AdminAlimtalkLog({ data, userBranches }) {
       if (statusFilter) q += `&status=eq.${statusFilter}`
       if (keyFilter) q += `&noti_key=eq.${keyFilter}`
       const r = await sb.get('alimtalk_queue', q)
-      setRows(Array.isArray(r) ? r : [])
+      // 직원 수동 SMS(sms_send_log)도 한 목록에 병합 (채널 필터가 전체 또는 SMS일 때만)
+      let staffSms = []
+      if (!channelFilter || channelFilter === 'sms') {
+        let q2 = `&created_at=gte.${since}${until ? `&created_at=lt.${until}` : ''}&order=created_at.desc&limit=500`
+        if (branchFilter) q2 += `&branch_id=eq.${branchFilter}`
+        else if (branches.length > 0) q2 += `&branch_id=in.(${branches.map(b => b.id).join(',')})`
+        const r2 = await sb.get('sms_send_log', q2).catch(() => [])
+        staffSms = (Array.isArray(r2) ? r2 : []).map(s => ({
+          id: 'staff_' + s.id, created_at: s.created_at, branch_id: s.branch_id,
+          channel: 'sms', noti_key: '직원발송', phone: s.phone,
+          status: (String(s.result_code || '') === '100' || String(s.result_code || '') === '200') ? 'done' : 'failed',
+          params: { _staff_msg: s.message }, _staff: true,
+        }))
+      }
+      const merged = [...(Array.isArray(r) ? r : []), ...staffSms].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+      setRows(merged)
     } catch (e) {
       console.error('[alimtalk-log] load', e)
       setRows([])
