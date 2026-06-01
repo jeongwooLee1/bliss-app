@@ -3105,3 +3105,10 @@ Liah(WhatsApp) 후속 2건.
 ### v3.7.951 — 구독권 카드 테두리 제거 + 무료 적용 타이밍 버그 fix (2026-06-01)
 - **테두리 제거**(정우님 "테두리선 넣지 말라고"): 매출입력 구독권 안내 카드 `border` 제거, 배경색(#eff6ff)만 ([[feedback_bliss_no_border_on_color_box]]).
 - **무료 미적용 타이밍 버그**: 보유권(custPkgs) fetch 완료 전에 무료대상 시술을 먼저 체크하면 `subFreeSvcIds`가 비어 있어 `subFree`가 안 걸리고 정상가(154,000)로 남던 문제. → `subFreeSvcIds` 갱신 시 useEffect로 **이미 체크된 무료대상 시술을 자동 subFree 보정**. 정우님 스샷(브라질리언 체크인데 154,000) 원인.
+
+### v3.7.952 — 네이버 리뷰 미답변 배지 로직 정리 (작업세션 머지) (2026-06-01)
+작업세션(리뷰답변코드)에서 main 폴더 직접 작업한 것을 배포세션이 커밋·배포.
+- **배지 기준 = `has_reply=false` 카운트(is_read 무관)**. 탭 열어도 배지 안 꺼짐 — 네이버에서 실제 답글이 수집(has_reply=true)될 때만 배지 감소.
+- `NaverReviews.jsx`: 탭 진입 시 미답변 리뷰 `is_read=true` 읽음처리 블록 제거 + `onReviewChange` prop 제거(미사용).
+- `AppShell.jsx`: 사이드바 리뷰 배지 쿼리에서 `is_read=eq.false` 조건 제거(`has_reply=eq.false`만) + 폴링 5분→**10분**.
+- 유의: `MessagesPage.jsx:2057`의 `onReviewChange` 호출부는 남아있으나 NaverReviews가 prop을 안 받아 무시됨(무해). 배지는 AppShell `pendingReviewCount`(10분 폴링) 기준.

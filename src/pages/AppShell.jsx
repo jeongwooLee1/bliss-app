@@ -26,7 +26,7 @@ import QuickRequest from '../components/common/QuickRequest'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.951"
+const BLISS_V = "3.7.952"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1780,14 +1780,14 @@ function App() {
     const bidIn = userBranches.map(b=>`"${b}"`).join(',');
     const fetchPendingReviews = async () => {
       try {
-        const url = `${SB_URL}/rest/v1/naver_reviews?select=id&has_reply=eq.false&is_read=eq.false&bid=in.(${bidIn})&limit=999`;
+        const url = `${SB_URL}/rest/v1/naver_reviews?select=id&has_reply=eq.false&bid=in.(${bidIn})&limit=999`;
         const r = await fetch(url, { headers:{...sbHeaders,'Cache-Control':'no-cache'}, cache:'no-store' });
         if (!alive) return;
         if (r.ok) { const rows = await r.json(); setPendingReviewCount(Array.isArray(rows) ? rows.length : 0); }
       } catch {}
     };
     fetchPendingReviews();
-    const t = setInterval(fetchPendingReviews, 300000);
+    const t = setInterval(fetchPendingReviews, 600000);
     return () => { alive=false; clearInterval(t); };
   }, [userBranches?.join('|')]);
 

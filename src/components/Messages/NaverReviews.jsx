@@ -21,7 +21,7 @@ const fmtRevTime = iso => {
   } catch { return ''; }
 };
 
-export default function NaverReviews({ data, branches, userBranches, currentUser, onReviewChange }) {
+export default function NaverReviews({ data, branches, userBranches, currentUser }) {
   const [reviews, setReviews] = useState([]);
   const [filter, setFilter] = useState('noreply');   // noreply | replied | all
   const [loading, setLoading] = useState(true);
@@ -54,16 +54,8 @@ export default function NaverReviews({ data, branches, userBranches, currentUser
     try { rows = (await sb.get('naver_reviews', f)) || []; } catch { }
     setReviews(rows);
     setLoading(false);
-    // 답글 안 단 미읽 리뷰 → 읽음 처리 (배지 해제). 답글 유무(목록)는 그대로 유지.
-    const unread = rows.filter(r => !r.is_read && !r.has_reply).map(r => r.id);
-    if (unread.length) {
-      try {
-        await fetch(`${SB_URL}/rest/v1/naver_reviews?id=in.(${unread.join(',')})`,
-          { method: 'PATCH', headers: { ...sbHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ is_read: true }) });
-      } catch { }
-      onReviewChange && onReviewChange(0);
-    }
-  }, [bids, filter, onReviewChange]);
+    // 배지 = has_reply=false 카운트 (AppShell 10분 폴링 기준). 탭 열어도 배지 안 꺼짐.
+  }, [bids, filter]);
 
   useEffect(() => { load(); }, [load]);
 
