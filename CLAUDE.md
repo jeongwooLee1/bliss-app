@@ -3059,3 +3059,8 @@ Liah(WhatsApp) 후속 2건.
 요청: 알림톡/SMS 발송탭·직원 SMS 발송탭에 이번달/지난달 필터 없음.
 - `AdminSmsLog`(직원 SMS 발송 이력 sms_send_log)·`AdminAlimtalkLog`(알림톡·SMS 자동 발송내역 alimtalk_queue): days('최근 N일') 필터에 **'이번 달'/'지난달' 옵션 추가 + 디폴트 'this'(이번 달)**. days state가 `'this'|'last'|숫자` 혼용 → since/until 월경계 계산(this=이달1일~now, last=지난달1일~이달1일, 숫자=최근N일). q에 `created_at lt until` 추가.
 - 요금제 화면(AdminPlan) 지점별 사용량은 이미 [이번 달][지난달] 토글(디폴트 이번달)이 있었음(v3.7.748).
+
+### v3.7.946 — 요금제&사용내역 UI 정돈 + 직원SMS 탭 통합 (2026-06-01)
+정우님 요청(요금제&사용내역 4개 탭 UI 개선 + 직원 SMS 탭 정리).
+- **직원 SMS 발송 탭(AdminSmsLog) → "발송 내역" 탭(AdminAlimtalkLog) 안 서브탭 [알림톡·자동 SMS][직원 발송 SMS] 로 통합**. 탭 4→3개. (직원 SMS 월 1656건 활발 → 제거 대신 통합). subTab 'sms' 진입 시 alimtalk+staff로 정규화(useEffect).
+- 탭 라벨·제목·통계 이모지 제거(💳📨📤📊 ✅❌) → 텍스트+색상(굵게). UI 이모지 금지 원칙.

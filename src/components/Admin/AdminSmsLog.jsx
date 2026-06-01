@@ -81,7 +81,7 @@ export default function AdminSmsLog({ data, userBranches = [] }) {
     <div>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:14}}>
         <div>
-          <div style={{fontSize:18,fontWeight:800,color:T.text,marginBottom:4}}>📤 직원 SMS 발송 이력</div>
+          <div style={{fontSize:18,fontWeight:800,color:T.text,marginBottom:4}}>직원 SMS 발송 이력</div>
           <div style={{fontSize:T.fs.xxs,color:T.textMuted}}>
             직원이 고객관리에서 직접 발송한 SMS (sms_send_log). 자동 알림톡/케어 SMS는 "알림톡·SMS 전송내역"에서 조회.
           </div>
@@ -111,8 +111,8 @@ export default function AdminSmsLog({ data, userBranches = [] }) {
       {/* 통계 */}
       <div style={{display:'flex',gap:14,marginBottom:10,fontSize:T.fs.xxs,color:T.textSub}}>
         <span>총 {summary.total}건</span>
-        <span style={{color:'#2E7D32'}}>✅ 성공 {summary.ok}</span>
-        {summary.fail>0 && <span style={{color:'#C62828'}}>❌ 실패 {summary.fail}</span>}
+        <span style={{color:'#2E7D32',fontWeight:700}}>성공 {summary.ok}</span>
+        {summary.fail>0 && <span style={{color:'#C62828',fontWeight:700}}>실패 {summary.fail}</span>}
       </div>
 
       {/* 테이블 */}

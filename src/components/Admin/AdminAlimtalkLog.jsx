@@ -222,7 +222,7 @@ export default function AdminAlimtalkLog({ data, userBranches }) {
   return (
     <div style={{ padding: T.sp.md, maxWidth: 1400 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-        <h3 style={{ margin: 0, fontSize: T.fs.lg, fontWeight: T.fw.black, color: T.text }}>📨 알림톡·SMS 전송 내역</h3>
+        <h3 style={{ margin: 0, fontSize: T.fs.lg, fontWeight: T.fw.black, color: T.text }}>알림톡·SMS 전송 내역</h3>
         <button onClick={load} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, background: T.primary, color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
           {loading ? '로딩…' : '🔄 새로고침'}
         </button>
@@ -268,8 +268,8 @@ export default function AdminAlimtalkLog({ data, userBranches }) {
       {/* 통계 */}
       <div style={{ display: 'flex', gap: 14, marginBottom: 12, fontSize: 13 }}>
         <span><b>총</b> {stats.total}</span>
-        <span style={{ color: '#2E7D32' }}>✅ 성공 {stats.done}</span>
-        <span style={{ color: '#C62828' }}>❌ 실패 {stats.failed}</span>
+        <span style={{ color: '#2E7D32', fontWeight: 700 }}>성공 {stats.done}</span>
+        <span style={{ color: '#C62828', fontWeight: 700 }}>실패 {stats.failed}</span>
         <span style={{ color: '#F57F17' }}>⏳ 대기 {stats.pending}</span>
         {stats.total > 0 && <span style={{ color: T.textSub }}>(성공률 {Math.round(stats.done / stats.total * 100)}%)</span>}
       </div>
