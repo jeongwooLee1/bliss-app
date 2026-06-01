@@ -1,8 +1,9 @@
 # HANDOFF
 
-## 📌 현재 라이브: v3.7.954 (https://blissme.ai/version.txt) — 2026-06-01
+## 📌 현재 라이브: v3.7.955 (https://blissme.ai/version.txt) — 2026-06-01
 
-### ✅ 이번 세션 완료 (2026-06-01) — v3.7.939~954 (상세 CLAUDE.md 변경이력)
+### ✅ 이번 세션 완료 (2026-06-01) — v3.7.939~955 (상세 CLAUDE.md 변경이력)
+- **v3.7.955** 구독권 **회원가 자격 부여 연동** — 구독권 상품 `grants_member_price` ON 시 보유 고객이 무료대상 외 시술도 회원가 적용(`_subGrantsMember`). validPkgs 미포함 유지(우측 "+99회" 부작용 방지). 정우님 토글로 "정상가"→"회원가" 정책 전환.
 - **v3.7.954** 블리스 AI 플로팅 버튼(✨) **임시 숨김**(`AppShell {false&&<FloatingAI/>}`) — 팀채팅 공지 발송 버튼 가림. ⏳ **후속: 위치 조정 후 복구 필요**(false→true).
 - **v3.7.953** 네이버 "답글쓰기" 버튼 URL → 모바일(new-m) + `hasReply=false&menu=visitor`(미답변만 필터된 상태로 오픈). 작업세션 머지.
 - **v3.7.952** 네이버 리뷰 미답변 배지 로직 정리(작업세션 머지) — 배지=`has_reply=false` 카운트(is_read 무관), 탭 열어도 안 꺼지고 실제 답글 수집 시에만 감소. NaverReviews onReviewChange/읽음처리 제거 + AppShell 배지 쿼리·폴링 10분.

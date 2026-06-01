@@ -851,7 +851,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   // id_ebgbebctt3: 타지점에서도 회원가는 적용받을 수 있어야 함.
   const validPkgs = custPkgs.filter(p => {
     const t = _pkgType(p);
-    if (t === "subscription") return false; // 구독권은 아래 subPkgs로 별도 관리 (회원가·차감 대상 아님)
+    if (t === "subscription") return false; // 구독권은 별도(subPkgs)로 무료·회원가 판정. validPkgs(차감·우측 보유권 표시)엔 미포함
     if (t === "prepaid") return _pkgBalance(p) > 0 && _pkgNotExpired(p);
     if (t === "annual") return _pkgNotExpired(p);
     return (p.total_count - p.used_count) > 0 && _pkgNotExpired(p);
@@ -868,6 +868,8 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     });
     return { subPkgs: _sub, subFreeMap: m, subFreeSvcIds: new Set(Object.keys(m)) };
   }, [custPkgs, data?.services]);
+  // 구독권 중 "회원가 자격 부여"(grants_member_price) ON을 보유하면 무료대상 외 시술도 회원가 적용 (잔액 무관)
+  const _subGrantsMember = subPkgs.some(p => { const s = _subSvcOf(p); return s && (s.grantsMemberPrice || s.grants_member_price); });
   // 🎟 구독권 보유권 로드 완료(subFreeSvcIds 갱신) 시, 이미 체크된 무료대상 시술을 자동 무료(subFree)로 보정.
   //    — 보유권 fetch 전에 시술을 먼저 체크한 케이스에서 무료가 누락되던 타이밍 버그 방지.
   useEffect(() => {
@@ -975,6 +977,9 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   const _pkgGrantsMember = (p) => {
     if (!_pkgStillValid(p)) return false;
     if (_excludedSvcNames.has(p.service_name)) return false;
+    // 상품에 "회원가 자격 부여"(grants_member_price) 토글 ON이면 자격 인정 (구독권 등 명시 설정)
+    const _gsvc = _subSvcOf(p);
+    if (_gsvc && (_gsvc.grantsMemberPrice || _gsvc.grants_member_price)) return true;
     if (_qualifyingSvcNames) {
       // 새 구조: 자격 시술 명단에 있는지
       if (_qualifyingSvcNames.has(p.service_name)) return true;
@@ -1012,15 +1017,17 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
 
   // 회원 고객 여부 (쿠폰 회원할인·UI 배지 등 전역 판정용)
   const _computeIsMemberCustomer = () => {
+    if (_subGrantsMember) return true;
     if (validPkgs.some(_pkgGrantsMember)) return true;
     return _hasQualifyingInCart();
   };
 
   // 시술별 회원가 적용 가능 여부 (가격 결정용)
   const isMemberPriceFor = (svc, g) => {
+    if (_subGrantsMember) return true; // 구독권(회원가 자격 ON) 보유 → 무료대상 외 시술도 회원가
     if (validPkgs.some(p => {
       if (!_pkgGrantsMember(p)) return false;
-      if (_pkgType(p) === "annual") return true;
+      if (_pkgType(p) === "annual" || _pkgType(p) === "subscription") return true;
       const memPrice = g === "M" ? svc.memberPriceM : svc.memberPriceF;
       if (!memPrice) return false;
       return _pkgBalance(p) >= memPrice;

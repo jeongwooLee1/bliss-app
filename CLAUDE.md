@@ -3118,3 +3118,9 @@ Liah(WhatsApp) 후속 2건.
 
 ### v3.7.954 — 블리스 AI 플로팅 버튼 임시 숨김 (2026-06-01)
 정우님 "블리스ai 때문에 버튼을 못눌러 일단 숨겨" — 팀 채팅 하단 공지 발송 영역을 FloatingAI ✨ 버튼(우하단 fixed)이 가려 클릭 방해. `AppShell.jsx:2488` `<FloatingAI/>`를 `{false && ...}`로 숨김. **임시** — 복구는 false→true. ⏳ **후속**: FloatingAI 위치를 공지 입력 영역과 안 겹치게 조정 후 복구(또는 입력 영역 z-index/패딩 조정). import는 유지(미사용 경고 무해).
+
+### v3.7.955 — 구독권 회원가 자격 부여 연동 (2026-06-01)
+정우님이 구독권 상품에 "회원가 자격 부여"(`grants_member_price`) 토글 ON → **구독권 보유 고객이 무료대상(브라질리언) 외 시술도 회원가 적용**. 어제 "그 외 시술 정상가" 정책을 토글로 "회원가"로 전환.
+- **발견**: `services.grants_member_price` 컬럼을 SaleForm이 원래 안 봄(이름 기반 자격만) + 구독권은 `validPkgs`에서 제외돼 이중으로 막혀 있었음.
+- **fix**: `_subGrantsMember`(유효 구독권 중 grants_member_price ON 보유 여부) 신설 → `isMemberPriceFor`/`_computeIsMemberCustomer` 맨 앞에서 체크(잔액 무관 회원가). `validPkgs`엔 구독권 **미포함 유지**(차감·우측 보유권 표시에 "+99회" 부작용 방지). 강남·데모 구독권 grants_member_price=true 설정됨.
+- 로컬 검증: 구독권 보유 김서연 "간단" 66,000→44,000(회원) 적용 + 우측 "+99회" 미표시 확인.
