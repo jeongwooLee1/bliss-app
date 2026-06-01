@@ -1,5 +1,25 @@
 # HANDOFF
 
+## 📌 현재 라이브: v3.7.947 (https://blissme.ai/version.txt) — 2026-06-01
+
+### ✅ 이번 세션 완료 (2026-06-01) — v3.7.939~947 (상세 CLAUDE.md 변경이력)
+- **v3.7.939** 월별 매출 비교표 **전년 동월 대비 성장률**(주식색: 상승 빨강 `#e2231a`/하락 파랑 `#1565d8`) + **월별 고객수 비교표 신설**(신규/기존/외국인, 매출발생 기준, custTrend p_months 120·그래프는 slice(0,13)).
+- **v3.7.940** 고객정보 저장 UX — 고객관리 onBlur 자동저장+"저장됨✓" 토스트(savedFlash) / 예약모달 "변경"→**"정보 저장"**(예약저장과 분리, commitBtn.click 제거) + 예약저장 onClick에 `if(editingCust) _persistCustEdits()` 보장(전화 저장 누락 fix).
+- **v3.7.941 + 서버** **크리에이트립 받은메시지함 제외**(손님 메신저ID(`sns_id`)를 chat_channel로 저장→카톡 대화방 오표시. 서버 크리에이트립 chat_channel/chat_user_id 빈값 + 클라 chatResMap `source==='creatrip'` 제외 + 기존 6건 chat_* NULL) + `_send_booking_confirm` 손님 언어 분기(영어손님 영어 확정카드).
+- **v3.7.942 + 서버** **AI 답변추천 '직원 지시 모드'** — 입력칸에 한국어 지시("홍대점 주소 알려줘")+[AI 답변 추천]→고객 언어로 작성·입력칸 채움. `ai_booking.py` `instruction` param(reply_lang 손님 메시지 기준+user_msg 지시블록 변환), `/ai-suggest` instruction 전달, `genAI` body `instruction:(reply||"").trim()`. 매장 주소는 [지점] 실제값만.
+- **v3.7.943** **자주답변 지점별 분리**(`quick_replies_v1` 항목에 `branchId`, 표시=userBranches 포함/공용. 등록 폼에 지점 select) + **8지점 지점정보 한/영 16개 등록**(주소·전화·영업시간·교통·네이버/구글지도) + 용산 기존 3개 branchId 부여(총 19개) + 직원 공지.
+- **v3.7.944** 패키지 미사용 검토 페이지 삭제(AdminPkgUnusedReview, 참조 전부 정리).
+- **v3.7.945** 발송내역(알림톡/SMS/직원SMS) **이번달/지난달 필터** + 디폴트 이번달(AdminSmsLog·AdminAlimtalkLog `days` 'this'|'last'|숫자). 강남 id_v8cy7gh2d0 done.
+- **v3.7.946~947** **요금제&사용내역 정돈**: 직원SMS 탭을 "발송 내역"에 통합(처음 서브탭 → 정우님 "한페이지로" 재요청 → **서브탭 제거하고 AdminAlimtalkLog 한 목록에 sms_send_log 병합**, channel='sms'/noti_key='직원발송'/params._staff_msg 정규화) + **`sms_send_log` RLS 정책 추가**(0건 원인=RLS활성+anon정책없음, `anon_all_sms_send_log`) + 탭/제목/통계 이모지 제거.
+
+### 🟡 확인 대기 (정우님 — 다음 세션 이어받기)
+- **직원 SMS 목록 "결과·메시지" 칸 메시지 표시** 확인 — 통합 후 직원 SMS(`params._staff_msg`)가 목록 메시지 칸에 잘 뜨는지. 비어 보이면 `AdminAlimtalkLog` 목록 렌더에 `_staff || _staff_msg` 표시 분기 추가 필요(렌더는 alimtalk_queue params 기준이라).
+- **자주답변 지점정보 영문 주소** 정확성 — 도로명 로마자 직접 번역이라 실제 표기와 다를 수 있음(자주답변 [관리]→수정 가능).
+- **인스타 App Review** — Meta 검수 대기 중(5/26 제출, 콘솔 "검토 진행 중" 확인됨). 승인되면 24h+ 인스타 손님 능동 발송 자동(서버 코드 준비됨). 로그상 5/28까지 403, 5/29+ 24h밖 케이스 없어 로그론 승인 확인 불가 → Meta 콘솔(Bliss Messaging appId 1591870165413712 → App Review)에서 직접 확인.
+- 메모리 신규: `feedback_bliss_custom_dialogs`(경고·확인창은 커스텀 디자인 모달, native alert/confirm 금지).
+
+---
+
 ## ✅ 완료 — 커플룸 자동 동반자 (정우님 "전부 다", v3.7.918~919) — 상세 CLAUDE.md
 - **① 앱 (v3.7.918)**: 커플룸 태그 체크 시 신규·기존·모바일 무관 동반자 자동 2건 (handleSave isNewItem 제거 + exists 경로 동반자 INSERT).
 - **② 서버 `ai_booking.py`**: AI 채팅예약 커플 감지(프롬프트 룰#15+`couple` 필드) → 커플룸태그+동반자 INSERT+reservation_groups. 검증 직접·end-to-end PASS. 백업 `bak_pre_couple_20260530_141815`.
