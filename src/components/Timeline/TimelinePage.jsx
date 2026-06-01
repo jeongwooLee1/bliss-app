@@ -792,13 +792,14 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         || (baseBid && (empWorkHours[empId+"_"+baseBid+"_"+date] || empWorkHours[empId+"_"+baseBid]))
         || branchDefault;
     };
-    // from 기준 정렬 (빈 값은 해당 지점 근무 시작으로 간주)
-    const sorted = [...segments].sort((a,b) => (a.from||segHoursOf(a.branchId).start).localeCompare(b.from||segHoursOf(b.branchId).start));
+    // from 기준 정렬 (빈 값은 해당 지점 근무 시작으로 간주). wh null 방어.
+    const sorted = [...segments].sort((a,b) => (a.from||segHoursOf(a.branchId)?.start||"11:00").localeCompare(b.from||segHoursOf(b.branchId)?.start||"11:00"));
     return sorted.map((s, i) => {
       const wh = segHoursOf(s.branchId);
-      const from = s.from || (i === 0 ? wh.start : sorted[i-1].until || wh.start);
+      const from = s.from || (i === 0 ? (wh?.start||"11:00") : sorted[i-1].until || (wh?.start||"11:00"));
       const nextFrom = sorted[i+1]?.from;
-      let until = s.until || nextFrom || wh.end;
+      // until: 명시값 → 다음 세그먼트 시작 → 직원/지점 근무 종료. null 전파 방지.
+      let until = s.until || nextFrom || wh?.end || "21:00";
       // 역전 방어: 저장된 empWorkHours.end 가 from 보다 이전 (예: 잘못 찍힌 30분 근무)
       // → baseHours.end 시도 → 여전히 이전이면 "21:00"으로 fallback
       if (from && until && until <= from) {

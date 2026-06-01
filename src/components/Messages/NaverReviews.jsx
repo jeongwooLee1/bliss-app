@@ -165,7 +165,7 @@ export default function NaverReviews({ data, branches, userBranches, currentUser
                 </div>
               )}
               {r.content
-                ? <div style={{ fontSize: 13.5, color: T.text, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{r.content}</div>
+                ? <div style={{ fontSize: 13.5, color: T.text, lineHeight: 1.5 }}>{r.content}</div>
                 : <div style={{ fontSize: 12, color: T.textSub, fontStyle: 'italic' }}>(사진 리뷰 · 텍스트 없음)</div>}
 
               {r.has_reply && r.reply_text && (

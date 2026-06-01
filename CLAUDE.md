@@ -3133,3 +3133,9 @@ Liah(WhatsApp) 후속 2건.
 - **id_97nsuoms2b 대표 (서버, React 무관)**: 인플루언서 협업 대화 첫 답변에 몇 초 만에 "마케팅 담당자 연락" 자동응답 → 부자연. `ai_booking.py` `_outbound_collab` 분기를 `return ""`로(자동응답 OFF, 마케팅팀 직접 응대). manual(직원 ✨추천)은 게이트(`if not manual`) 우회라 추천은 그대로. `_inbound_collab`(손님이 콜라보 문의)은 안내 멘트 유지. 백업 `bak_collaboff_*`, restart. done+답글.
 - **id_stf36ptp7m 강남 (v3.7.957)**: 고객 보유권 **만료일 수정 UX** — date input에서 기존 날짜가 남아 직접 입력 시 밀리는 문제. `PkgCard` 만료일 편집에 `onFocus` 전체선택 + **빠른 연장 버튼 [+6개월][+1년][+2년]**(오늘 기준, 타이핑 없이 클릭). done+답글(밀림 여전하면 재확인 요청).
 - ⏳ 남음: **1·2 직원 타지점 이동 시 원지점 근무 사라짐**(현아 6/1 = 홍대{null,null}+강남{16:20,21}, getEmpActiveSegments가 종일 home세그먼트를 활성구간으로 못 풀어 사라짐. v3.7.907 회귀. 집중 세션 필요), **5 차트별 알림톡 멘트**(체크리스트/신규차트에 "구매 상품 안내" 오표기, 카카오 템플릿 검수 가능성), **4 동의서 중복·7 페이스추가**(consent 앱 위임).
+
+### v3.7.958 — 타임라인 직원 타지점 이동 시 원지점 근무 사라짐 버그 fix (2026-06-01)
+수정요청 1·2 (지은/강남 id_uk93cuje82/id_pmcdasxob0): 직원을 타지점으로 이동하면 원지점 직원 이름이 사라지는 버그.
+**원인**: `normalizeSegments`의 `segHoursOf(branchId)` 반환값 `wh`가 null일 때(empWorkHours 미설정 + branch timelineSettings 없음) `wh.start`/`wh.end`에 접근해 TypeError → sort 깨짐 → 세그먼트 from/until이 null 그대로 → `mySeg.from !== mySeg.until` = `null !== null = false` → `hasActiveSeg=false` → 원지점 직원 컬럼 working에 미추가 → 사라짐.
+**fix**: `wh.start`/`wh.end` → `wh?.start||"11:00"` / `wh?.end||"21:00"` null 안전 접근 + sort도 동일 방어. additive 변경이라 기존 동작(wh 있는 경우) 완전 보존.
+**유의**: 데모에 실제 이동직원 없어 로컬 검증 제한적. 라이브에서 현아(홍대→강남 16:20 이동)로 확인 권장.
