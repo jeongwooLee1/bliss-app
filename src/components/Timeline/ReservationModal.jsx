@@ -1104,8 +1104,8 @@ function TimelineModal({ item, onSave, onAddCompanion, onDelete, onDeleteRequest
       const isExp = expM && expM[1] < today;
       const cleanName = (n.split("(")[0]||"").trim();
       if (isSub) {
-        // 🎟 구독권 — 무제한(횟수 X). 유효기간 있으면 "무제한", 미설정이면 "사용 전"
-        out.push({type:"subscription", active:!isExp, label: cleanName || "구독권", value: expM ? "무제한" : "사용 전"});
+        // 🎟 구독권 — 횟수 X. 유효기간 날짜 표시(만료일), 미설정이면 "사용 전"
+        out.push({type:"subscription", active:!isExp, label: cleanName || "구독권", value: expM ? `~${expM[1]}` : "사용 전"});
       } else if (isPrepaid) {
         const m = (p.note||"").match(/잔액:([0-9,]+)/);
         const bal = m ? Number(m[1].replace(/,/g,"")) : 0;
