@@ -231,7 +231,7 @@ export default function NaverReviews({ data, branches, userBranches, currentUser
                   />
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     <button onClick={() => submitReply(r)} disabled={dr.submitting || !(dr.text || '').trim()} style={{ flex: 1, minWidth: 100, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '8px 10px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, background: '#03C75A', color: '#fff', opacity: (dr.submitting || !(dr.text || '').trim()) ? 0.55 : 1 }}>
-                      <I name="naver" size={13} color="#fff" />{dr.submitting ? '등록 중…' : '답글쓰기'}
+                      <I name="naver" size={13} color="#fff" />{dr.submitting ? '등록 중…' : '네이버에 등록'}
                     </button>
                     <button onClick={() => genDraft(r)} disabled={dr.loading} style={{ flex: 1, minWidth: 90, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '8px 10px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, background: T.primaryLt, color: T.primaryDk, opacity: dr.loading ? 0.6 : 1 }}>
                       <I name="sparkles" size={13} />{dr.loading ? '작성 중…' : 'AI 초안'}

@@ -3151,3 +3151,11 @@ Liah(WhatsApp) 후속 2건.
 - 답글 textarea 항상 표시 + 버튼 단순화: [답글쓰기](블리스에서 직접 등록) + [AI 초안] 2개로 (기존 복사/다시/달기 3버튼 정리).
 - 리뷰 헤더에 방문자 이름 칩 → 클릭 시 `visitor_name`으로 고객 검색 후 고객 상세 오픈(setPendingOpenCust). 네이버 바로가기 링크(모바일 미답변 필터)도 헤더에.
 - prop 배선: MessagesPage/AppShell → NaverReviews에 setPage/setPendingOpenCust 전달.
+
+### v3.7.961 + 서버 — 네이버 리뷰 배지 안 줄어듦 버그 fix + 버튼 라벨 (2026-06-01)
+정우님: 네이버에서 직원이 직접 답변 달았는데 블리스 리뷰 배지(16)가 안 줄어듦.
+**원인**: ① `review_sync.py sync_branch`가 "최근 30일 + 답글없는것"만 수집하고 답변완료 갱신도 30일 컷오프(`if dt<since: break`)에 걸려 중단 → 옛 미답변 건 영구 잔존. ② 더 결정적: DB에 옛날 수집된 리뷰 `review_id`가 네이버 현재 API의 review_id와 불일치(stale) → 답변완료 매칭 실패. 네이버엔 전 지점 미답변 0건인데 블리스 DB엔 17건 잔존.
+**fix (서버 `review_sync.py`)**: `sync_branch` 재작성 — 답변완료(`hasReply=true`) review_id는 **30일 컷오프 무관 끝까지 스캔**(최대 40페이지)해서 DB `has_reply=true` 갱신(100개씩 청크 PATCH). 신규 미답변 upsert만 30일 유지. 백업 `review_sync.py.bak_replysync_*`. **검증**: 강남 3건→260건 스캔.
+**데이터 정리**: 네이버 전 지점 미답변 0건 확인 후, DB 잔존 미답변 17건(stale review_id, 네이버 현재 리뷰에 없음)을 `has_reply=true` 일괄 정리 → 배지 0.
+**v3.7.961 (React)**: NaverReviews 답글 등록 버튼 라벨 "답글쓰기" → **"네이버에 등록"**(textarea에 작성 후 네이버 등록임을 명확히, 정우님).
+**유의**: 미래 네이버 review_id 체계가 또 바뀌면 stale 재발 가능 — 그땐 "네이버 전체 미답변 0이면 DB도 0" 식 동기화 보강 검토.
