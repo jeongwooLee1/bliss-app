@@ -3112,3 +3112,6 @@ Liah(WhatsApp) 후속 2건.
 - `NaverReviews.jsx`: 탭 진입 시 미답변 리뷰 `is_read=true` 읽음처리 블록 제거 + `onReviewChange` prop 제거(미사용).
 - `AppShell.jsx`: 사이드바 리뷰 배지 쿼리에서 `is_read=eq.false` 조건 제거(`has_reply=eq.false`만) + 폴링 5분→**10분**.
 - 유의: `MessagesPage.jsx:2057`의 `onReviewChange` 호출부는 남아있으나 NaverReviews가 prop을 안 받아 무시됨(무해). 배지는 AppShell `pendingReviewCount`(10분 폴링) 기준.
+
+### v3.7.953 — 네이버 "답글쓰기" 버튼 미답변 필터 URL (작업세션 머지) (2026-06-01)
+`NaverReviews.jsx openNaver`: 네이버 리뷰 답글쓰기 버튼 URL을 `new.smartplace`→**모바일 `new-m.smartplace`** + `?hasReply=false&menu=visitor`로 변경 → 클릭 시 네이버에서 **미답변 리뷰만 필터된 상태**로 열림(답글 작업 편의). 외부 URL이라 preview 검증 불가, 빌드만 확인.

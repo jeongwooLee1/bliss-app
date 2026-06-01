@@ -62,7 +62,7 @@ export default function NaverReviews({ data, branches, userBranches, currentUser
   const openNaver = (r) => {
     const pm = placeMap[r.bid];
     const biz = pm?.biz || r.place_id;
-    window.open(`https://new.smartplace.naver.com/bizes/booking/${biz}/reviews?menu=visitor`, '_blank');
+    window.open(`https://new-m.smartplace.naver.com/bizes/booking/${biz}/reviews?hasReply=false&menu=visitor`, '_blank');
   };
 
   const branchName = (bid) => (branches || []).find(b => b.id === bid)?.name || '';
