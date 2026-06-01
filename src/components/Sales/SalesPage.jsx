@@ -1288,7 +1288,11 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     if (periodKey === "all" || !startDate || !endDate) { setPrevTotal(null); return; }
     let cancelled = false;
     const s = new Date(startDate), e = new Date(endDate);
-    const D = Math.max(1, Math.round((e - s) / 86400000) + 1);
+    // 진행 중인 기간(이번달 등)은 미래 매출이 없으므로, 비교 대상도 "같은 경과일수"로 맞춤
+    // (예: 오늘 6/2면 6/1~6/2 2일치를 5월 전체 30일과 비교하면 -95% 같은 왜곡 발생 → 직전 동일 경과일수와 비교)
+    const _today = new Date(); _today.setHours(0,0,0,0);
+    const eEff = e > _today ? _today : e;
+    const D = Math.max(1, Math.round((eEff - s) / 86400000) + 1);
     const ps = new Date(s); ps.setDate(ps.getDate() - D);
     const pe = new Date(s); pe.setDate(pe.getDate() - 1);
     const fmtD = d => d.toISOString().slice(0,10);
@@ -1315,12 +1319,23 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     const branches = (periodSummary.byBranch||[]).map(r=>({지점:branchName(r.bid), 매출:Number(r.total||0), 건수:Number(r.cnt||0)})).sort((a,b)=>b.매출-a.매출).slice(0,8);
     const staff = (periodSummary.byStaff||[]).map(r=>({담당:r.staff_name, 매출:Number(r.total||0), 건수:Number(r.cnt||0)})).sort((a,b)=>b.매출-a.매출).slice(0,8);
     const growth = (prevTotal!=null && prevTotal>0) ? Math.round((total-prevTotal)/prevTotal*100) : null;
+    // 기간 진행 상황 — 진행 중인 부분 기간(이번달 등)이면 AI가 월 전체로 오인해 "위기" 단정하지 않도록
+    const _today = new Date(); _today.setHours(0,0,0,0);
+    let 경과일수 = null, 전체일수 = null, 진행중 = false;
+    if (startDate && endDate) {
+      const _s = new Date(startDate), _e = new Date(endDate);
+      전체일수 = Math.max(1, Math.round((_e-_s)/864e5)+1);
+      const _eff = _e > _today ? _today : _e;
+      경과일수 = Math.max(1, Math.round((_eff-_s)/864e5)+1);
+      진행중 = _e > _today;
+    }
     // 최근 6개월 고객 추이 (신규/기존/외국인)
     const custRecent = (custTrend||[]).slice(-6).map(r=>({월:r.ym, 신규:r.n||0, 기존:r.o||0, 외국인:(r.fn||0)+(r.fo||0)}));
     const stats = {
+      기간진행: { 진행중, 경과일수, 전체일수 },
       총매출: total, 시술매출: Number(_ts.svc_total||0), 제품매출: Number(_ts.prod_total||0), 상품권: Number(_ts.gift_total||0),
       건수: count, 객단가: count>0?Math.round(total/count):0,
-      전기간대비_성장률_pct: growth,
+      동일경과기간_대비_성장률_pct: growth,
       결제수단: { 현금: Number(_ts.svc_cash||0)+Number(_ts.prod_cash||0), 카드: Number(_ts.svc_card||0)+Number(_ts.prod_card||0), 이체: Number(_ts.svc_transfer||0)+Number(_ts.prod_transfer||0), 포인트: Number(_ts.svc_point||0)+Number(_ts.prod_point||0) },
       지점별: branches, 담당자별: staff, 최근6개월_고객추이: custRecent,
     };
