@@ -27,7 +27,7 @@ const GridLayout = ({ cols=2, gap=12, children, style={} }) => {
   return <div style={{display:"grid",gridTemplateColumns:tpl,gap,...style}}>{children}</div>;
 };
 
-const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amount, defPrice, regularPrice, toggle, setAmt, badgeText, badgeColor, badgeBg, comped, toggleComped, needsGender, onAlert, hasCoupon }) {
+const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amount, defPrice, regularPrice, toggle, setAmt, badgeText, badgeColor, badgeBg, comped, toggleComped, needsGender, onAlert, hasCoupon, subFree }) {
   const disabled = defPrice === 0;
   const isMember = regularPrice > 0 && regularPrice > defPrice;
   const handleClick = () => {
@@ -39,8 +39,8 @@ const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amou
   const [editing, setEditing] = useState(false);
   useEffect(() => { if(!editing) setLocalAmt(fmtAmt(amount)); }, [amount, checked]);
   // 한 박스에 셀 분리: [이름 | 분 | 금액]
-  const rowBg = comped ? "#FFF3E0" : (checked ? (T.primaryLt || "#EEF2FF") : "#F3F4F6");
-  const rowBorder = comped ? "#E65100" : (checked ? T.primary : "#E5E7EB");
+  const rowBg = subFree ? "#eff6ff" : comped ? "#FFF3E0" : (checked ? (T.primaryLt || "#EEF2FF") : "#F3F4F6");
+  const rowBorder = subFree ? "#0369a1" : comped ? "#E65100" : (checked ? T.primary : "#E5E7EB");
   const cellDiv = "1px solid rgba(0,0,0,.05)";
   return (
     <div className="sale-svc-row" onClick={handleClick}
@@ -56,6 +56,7 @@ const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amou
         {isMember && <span style={{fontSize:9,color:T.primary,fontWeight:700,flexShrink:0}}>회원</span>}
         {hasCoupon && <span title="고객 보유 쿠폰 적용 가능" style={{fontSize:9,color:"#b45309",background:"#fff8e1",border:"1px solid #f59e0b",padding:"1px 5px",borderRadius:8,fontWeight:700,flexShrink:0}}>🎫 쿠폰</span>}
         {badgeText && <span style={{fontSize:9,color:badgeColor||"#fff",background:badgeBg||T.primary,padding:"1px 5px",borderRadius:8,fontWeight:700,flexShrink:0}}>{badgeText}</span>}
+        {subFree && <span style={{fontSize:9,color:"#0369a1",background:"#dbeafe",border:"1px solid #0369a1",padding:"1px 5px",borderRadius:8,fontWeight:700,flexShrink:0}}>구독권 무료</span>}
       </div>
       {/* 🎁 셀 — 분 컬럼 왼쪽 고정 위치 (체험단 모드일 때만) */}
       {toggleComped && (
@@ -75,7 +76,13 @@ const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amou
         {dur}분
       </div>
       {/* 금액 셀 (입력 가능) */}
-      <div style={{width:110,padding:"2px 4px",borderLeft:cellDiv,display:"flex",alignItems:"center",flexShrink:0}}>
+      <div style={{width:110,padding:"2px 4px",borderLeft:cellDiv,display:"flex",alignItems:"center",justifyContent:"flex-end",flexShrink:0}}>
+        {subFree ? (
+          <span style={{textAlign:"right",lineHeight:1.2,whiteSpace:"nowrap"}}>
+            <span style={{fontSize:10,color:T.gray400,textDecoration:"line-through",marginRight:4}}>{(amount||0).toLocaleString()}</span>
+            <span style={{fontSize:12,color:"#0369a1",fontWeight:800}}>무료</span>
+          </span>
+        ) : (<>
         {isMember && <span style={{fontSize:9,color:T.gray400,textDecoration:"line-through",marginRight:2}}>{(regularPrice||0).toLocaleString()}</span>}
         <input type="text" inputMode="numeric" value={checked ? localAmt : ""} placeholder={disabled?"—":(defPrice||0).toLocaleString()}
           onClick={e => e.stopPropagation()} onFocus={()=>setEditing(true)}
@@ -84,6 +91,7 @@ const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amou
           style={{width:"100%",padding:"2px 4px",fontSize:13,textAlign:"right",border:"none",outline:"none",background:"transparent",
             color:comped?"#E65100":(checked?T.danger:T.gray400),fontWeight:checked?700:400,
             textDecoration:comped?"line-through":"none",fontFamily:"inherit",minWidth:0}}/>
+        </>)}
       </div>
     </div>
   );
@@ -813,6 +821,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     const svc = (p.service_id && (data?.services||[]).find(s => s.id === p.service_id))
              || (data?.services||[]).find(s => s.name === p.service_name);
     if (svc) {
+      if (svc.isSubscription || svc.is_subscription) return "subscription";
       const catName = (data?.categories||[]).find(c => c.id === svc.cat)?.name;
       if (catName === '쿠폰') return "coupon";
       if (catName === '선불권') return "prepaid";
@@ -842,10 +851,23 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   // id_ebgbebctt3: 타지점에서도 회원가는 적용받을 수 있어야 함.
   const validPkgs = custPkgs.filter(p => {
     const t = _pkgType(p);
+    if (t === "subscription") return false; // 구독권은 아래 subPkgs로 별도 관리 (회원가·차감 대상 아님)
     if (t === "prepaid") return _pkgBalance(p) > 0 && _pkgNotExpired(p);
     if (t === "annual") return _pkgNotExpired(p);
     return (p.total_count - p.used_count) > 0 && _pkgNotExpired(p);
   });
+  // 🎟 구독권 보유권 — 유효기간 내(미설정=사용 전=유효). 지정 시술 무제한 무료 적용용.
+  const _subSvcOf = (p) => (p.service_id && (data?.services||[]).find(s => s.id === p.service_id)) || (data?.services||[]).find(s => s.name === p.service_name);
+  const { subPkgs, subFreeMap, subFreeSvcIds } = React.useMemo(() => {
+    const _sub = custPkgs.filter(p => { const s = _subSvcOf(p); return (s?.isSubscription || s?.is_subscription) && _pkgNotExpired(p); });
+    const m = {};
+    _sub.forEach(p => {
+      const s = _subSvcOf(p);
+      let pc = s?.promoConfig; if (typeof pc === 'string') { try { pc = JSON.parse(pc); } catch { pc = null; } }
+      ((pc && pc.subFreeServiceIds) || []).forEach(sid => { if (!m[sid]) m[sid] = p.id; });
+    });
+    return { subPkgs: _sub, subFreeMap: m, subFreeSvcIds: new Set(Object.keys(m)) };
+  }, [custPkgs, data?.services]);
   // 현재 지점에서 사용 가능한 보유권 (차감/사용용). 구매지점 외에선 차단됨.
   const activePkgs = validPkgs.filter(p => canUsePkgAtBranch(p, (selBranch || branchId), data?.branches, data?.branchGroups));
   // 타지점 구매로 현 지점에서 사용 차단된 보유권 — 표시만 하고 차감/체크 비활성 (직원이 보유 현황 인지용)
@@ -1383,9 +1405,13 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       if (newChecked && hasCompedTag) {
         return { ...prev, [id]: { ...cur, checked: true, comped: true, amount: 0 } };
       }
-      return { ...prev, [id]: { ...cur, checked: newChecked, comped: newChecked ? (cur.comped || false) : false, amount: newChecked ? (cur.amount || defPrice || 0) : 0 } };
+      // 🎟 구독권 무료 대상 시술 → 체크 시 자동 무료(subFree). amount는 원가 유지(매출 기록·결제차감용)
+      if (newChecked && subFreeSvcIds.has(id)) {
+        return { ...prev, [id]: { ...cur, checked: true, subFree: true, comped: false, amount: defPrice || 0 } };
+      }
+      return { ...prev, [id]: { ...cur, checked: newChecked, comped: newChecked ? (cur.comped || false) : false, subFree: newChecked ? (cur.subFree || false) : false, amount: newChecked ? (cur.amount || defPrice || 0) : 0 } };
     });
-  }, [editMode, viewOnly, hasCompedTag]);
+  }, [editMode, viewOnly, hasCompedTag, subFreeSvcIds]);
   const setAmt = useCallback((id, v) => {
     if (editMode || viewOnly) return;
     setItems(prev => ({ ...prev, [id]: { ...prev[id], amount: Number(v) || 0 } }));
@@ -1429,6 +1455,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   const PREPAID_CAT_ID = "1s18w2l46"; // 선불권 카테고리
   const PKG_CAT_ID = "c1fbbbff-"; // PKG (패키지) 카테고리
   const _isAnnualSvc = (s) => {
+    if (s?.isSubscription || s?.is_subscription) return false; // 구독권은 annual 아님 (회원가 자격 X, 별도 무료 적용)
     const n = (s?.name||"").toLowerCase();
     if (s?.cat === PREPAID_CAT_ID) return false;
     return n.includes("연간") || n.includes("회원권") || n.includes("할인권");
@@ -1439,6 +1466,8 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   // 커플 패키지 — 구매 시 상대방 지정 → 보유권 2행 분리 발급
   const newCouplePkgs = newPkgPurchases.filter(s => s.isCouple || s.is_couple);
   const newAnnualPurchases = SVC_LIST.filter(s => _isAnnualSvc(s) && items[s.id]?.checked);
+  // 🎟 신규 구독권 구매 — 보유권으로 발급 (유효기간 미설정, 첫 무료 사용 시 시작)
+  const newSubscriptionPurchases = SVC_LIST.filter(s => (s.isSubscription || s.is_subscription) && items[s.id]?.checked);
   // 패키지 회수 결정 — 우선순위:
   //   1) services.pkgCount > 0 (관리자가 시술상품관리에서 명시 입력)
   //   2) 시술명 정규식 "5회" 추출 (legacy)
@@ -1456,6 +1485,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   const newPrepaidActiveTotal = newPrepaidPurchases.reduce((sum, s) => sum + (items[s.id]?.amount || 0), 0);
   const newPkgPurchaseTotal = newPkgPurchases.reduce((sum, s) => sum + (items[s.id]?.amount || 0), 0);
   const newAnnualPurchaseTotal = newAnnualPurchases.reduce((sum, s) => sum + (items[s.id]?.amount || 0), 0);
+  const newSubscriptionPurchaseTotal = newSubscriptionPurchases.reduce((sum, s) => sum + (items[s.id]?.amount || 0), 0);
   // 다담권으로 차감할 일반 시술/제품 합계 (다담권 본인은 제외) — 참고용
   const todayUseSvcTotal = SVC_LIST.reduce((sum, svc) => {
     if (svc.cat === PREPAID_CAT_ID) return sum; // 다담권 자체는 제외
@@ -1494,6 +1524,10 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   }, 0);
   const prodCompedTotal = PROD_LIST.reduce((sum, p) => {
     const it = items[p.id]; return sum + (it?.checked && it.comped ? (it.amount||0) : 0);
+  }, 0);
+  // 🎟 구독권 무료 — subFree 시술 원가 합 (결제에서 차감, sale_details엔 원가로 기록). 무제한이라 보유권 차감 없음.
+  const svcSubFreeTotal = SVC_LIST.reduce((sum, svc) => {
+    const it = items[svc.id]; return sum + (it?.checked && it.subFree ? (it.amount||0) : 0);
   }, 0);
   const discount = _discountTotal;
   const naverDeduct = 0; // 통합됨 → externalDeduct에서 처리
@@ -1900,7 +1934,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
 
   // 이벤트 자동 할인 (정액 + 시술 % → 정액 환산)
   // 순수 시술·제품액 (다담권/패키지/연간권 구매 금액 제외) — 시술 할인은 이 범위에만
-  const pureSvcTotal = Math.max(0, svcTotal - newPrepaidActiveTotal - newPkgPurchaseTotal - newAnnualPurchaseTotal);
+  const pureSvcTotal = Math.max(0, svcTotal - newPrepaidActiveTotal - newPkgPurchaseTotal - newAnnualPurchaseTotal - newSubscriptionPurchaseTotal);
   // 이벤트 할인 풀별 cap — 각 풀 내에서만 차감
   const eventDiscountSvc = Math.max(0, Math.min(
     pureSvcTotal + prodTotal,
@@ -1919,12 +1953,12 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   const svcAfterAllDiscounts = Math.max(0, pureSvcTotal + prodTotal - discount - promoDiscountTotal - couponDiscountTotal - evtCouponDiscountOnSvc - evtCouponDiscountOnProd - eventDiscountSvc - naverDeduct - externalToSvc - pkgDeduct);
   // 새 다담권 즉시차감: 할인 후 시술잔액과 (선결제 적용 후) 다담권 잔액 중 작은 값
   newPkgInstantDeduct = newPrepaidActiveTotal > 0 ? Math.min(svcAfterAllDiscounts, Math.max(0, newPrepaidActiveTotal - eventDiscountPrepaid)) : 0;
-  const grandTotal = Math.max(0, svcTotal + prodTotal - discount - promoDiscountTotal - couponDiscountTotal - evtCouponDiscountTotal - eventDiscountTotal - naverDeduct - externalDeduct - pkgDeduct - newPkgInstantDeduct - pointDeduct - svcCompedTotal - prodCompedTotal);
+  const grandTotal = Math.max(0, svcTotal + prodTotal - discount - promoDiscountTotal - couponDiscountTotal - evtCouponDiscountTotal - eventDiscountTotal - naverDeduct - externalDeduct - pkgDeduct - newPkgInstantDeduct - pointDeduct - svcCompedTotal - prodCompedTotal - svcSubFreeTotal);
   // 실제 결제할 금액 (예약금·할인·이벤트·쿠폰·보유권·신규다담권즉시차감·체험단제공 차감)
   // 시술쪽 모든 차감(일반할인·보유권·외부선결제·포인트·이벤트 등)을 합산해서 svcTotal을 초과하면 잉여분이 제품으로 spill됨.
   // grandTotal과 svcPay+prodPay를 항상 일치시키기 위함 (예: 다담권 잔액이 시술+제품 통합 결제하는 케이스).
   // svc 전용 쿠폰은 그대로 svc에서, prod 전용 쿠폰은 그대로 prod에서 차감.
-  const _svcDeductsAll = discount + promoDiscountTotal + couponDiscountOnSvc + evtCouponDiscountOnSvc + eventDiscountTotal + naverDeduct + externalDeduct + pkgDeduct + newPkgInstantDeduct + pointDeduct + svcCompedTotal;
+  const _svcDeductsAll = discount + promoDiscountTotal + couponDiscountOnSvc + evtCouponDiscountOnSvc + eventDiscountTotal + naverDeduct + externalDeduct + pkgDeduct + newPkgInstantDeduct + pointDeduct + svcCompedTotal + svcSubFreeTotal;
   const _svcSpillToProd = Math.max(0, _svcDeductsAll - svcTotal);
   const svcPayTotal = Math.max(0, svcTotal - _svcDeductsAll);
   const prodPayTotal = Math.max(0, prodTotal - couponDiscountOnProd - evtCouponDiscountOnProd - prodCompedTotal - _svcSpillToProd);
@@ -2678,6 +2712,29 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       }
     });
 
+    // 🎟 구독권 무료 첫 사용 → 유효기간 시작 (그날 + subMonths - 1일). 무제한이라 차감 없이 used_count만 누적(통계).
+    {
+      const _subUsedPkgIds = new Set();
+      SVC_LIST.forEach(svc => { const it = items[svc.id]; if (it?.checked && it.subFree && subFreeMap[svc.id]) _subUsedPkgIds.add(subFreeMap[svc.id]); });
+      _subUsedPkgIds.forEach(pkgId => {
+        const pkg = custPkgs.find(p => p.id === pkgId);
+        if (!pkg) return;
+        const _hasExp = /유효:\s*\d{4}-\d{2}-\d{2}/.test(pkg.note||"");
+        const upd = { used_count: (pkg.used_count||0) + 1 };
+        if (!_hasExp) {
+          const _svc = _subSvcOf(pkg);
+          let _pc = _svc?.promoConfig; if (typeof _pc === 'string') { try { _pc = JSON.parse(_pc); } catch { _pc = null; } }
+          const _months = (_pc && Number(_pc.subMonths)) || 12;
+          const _d = new Date(); _d.setMonth(_d.getMonth() + _months); _d.setDate(_d.getDate() - 1);
+          const _expStr = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,"0")}-${String(_d.getDate()).padStart(2,"0")}`;
+          const _n = pkg.note || "";
+          upd.note = _n ? `${_n} | 유효:${_expStr}` : `유효:${_expStr}`;
+        }
+        sb.update("customer_packages", pkgId, upd).catch(console.error);
+        _pkgTxRecords.push({ package_id: pkgId, service_name: pkg.service_name || "", type: "deduct", unit: "count", amount: 0, balance_before: 0, balance_after: 0, note: _hasExp ? "구독권 무료 사용" : "구독권 무료 첫 사용 (유효기간 시작)" });
+      });
+    }
+
     // 쿠폰 자동 소진: activeCoupons 중 consumeOnUse=true 이면 customer_packages.used_count +1
     activeCoupons.forEach(c => {
       if (!c.consumeOnUse) return;
@@ -2896,6 +2953,28 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
         });
       });
     }
+
+    // ── 신규 구독권 구매 — 보유권 발급 (유효기간 미설정 → 첫 무료 사용 시 시작) ──
+    if (cust.id && newSubscriptionPurchases.length > 0) {
+      newSubscriptionPurchases.forEach(svc => {
+        const newPkgId = uid();
+        const _subBranchShort = (data?.branches||[]).find(b=>b.id===branchId)?.short || "";
+        const _subNote = _subBranchShort ? `매장:${_subBranchShort.replace(/점$|본점$/,'')}` : "";
+        sb.insert("customer_packages", {
+          id: newPkgId, business_id: _activeBizId, customer_id: cust.id,
+          service_id: svc.id, service_name: svc.name,
+          total_count: 0, used_count: 0,  // 무제한 — 횟수 무의미
+          purchased_at: new Date().toISOString(),
+          note: _subNote,  // 유효기간 미설정 → 첫 무료 사용 시 시작
+          branch_id: branchId || null,
+        }).catch(_dbWarn("구독권"));
+        _pkgTxRecords.push({
+          package_id: newPkgId, service_name: svc.name,
+          type: "charge", unit: "count", amount: 0,
+          balance_before: 0, balance_after: 0, note: "구독권 신규 구매"
+        });
+      });
+    }
     // ── 결제수단 svc/prod 분할 — 통합 입력 박스에서 받은 금액을 시술액 우선 충당, 잔액은 제품으로
     //    items 분류(SVC_LIST/PROD_LIST) 기반의 svcPayTotal/prodPayTotal에 정확히 일치
     let _svcRem = svcPayTotal;
@@ -2986,7 +3065,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       const it = items[svc.id];
       if (it?.checked && (it.amount || 0) > 0) {
         // 체험단으로 제공된 시술은 [체험단] 프리픽스로 기록 (매출 상세에서 구분)
-        pushDetail(it.comped ? `[체험단] ${svc.name}` : svc.name, it.amount, 1, 'svc');
+        pushDetail(it.subFree ? `[구독권] ${svc.name}` : (it.comped ? `[체험단] ${svc.name}` : svc.name), it.amount, 1, 'svc');
       }
     });
     // 추가 시술 (extraRows)
@@ -4021,7 +4100,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
                   }
                   const rp = gender ? (gender==="M" ? svc.priceM : svc.priceF) : 0;
                   const _needsG = !gender && (svc.priceF||0) !== (svc.priceM||0) && ((svc.priceF||0) > 0 || (svc.priceM||0) > 0);
-                  return <SaleSvcRow key={svc.id} id={svc.id} name={svc.name} dur={svc.dur} checked={!!it.checked} amount={it.amount||0} defPrice={dp} regularPrice={rp} toggle={toggle} setAmt={setAmt} badgeText={svc.badgeText} badgeColor={svc.badgeColor} badgeBg={svc.badgeBg} comped={!!it.comped} toggleComped={hasCompedTag ? toggleComped : undefined} needsGender={_needsG} onAlert={showAlert} hasCoupon={couponEligibleSvcIds.has(svc.id)} />;
+                  return <SaleSvcRow key={svc.id} id={svc.id} name={svc.name} dur={svc.dur} checked={!!it.checked} amount={it.amount||0} defPrice={dp} regularPrice={rp} toggle={toggle} setAmt={setAmt} badgeText={svc.badgeText} badgeColor={svc.badgeColor} badgeBg={svc.badgeBg} comped={!!it.comped} toggleComped={hasCompedTag ? toggleComped : undefined} needsGender={_needsG} onAlert={showAlert} hasCoupon={couponEligibleSvcIds.has(svc.id)} subFree={!!it.subFree} />;
                   });
                 })()}</div>}
               </div>
@@ -4029,7 +4108,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
             })}
             {uncatSvcs.length>0 && <div style={{marginBottom:8}}>
               <div style={{fontSize:T.fs.nano,fontWeight:T.fw.bolder,color:T.textMuted,background:T.bg,borderRadius:T.radius.sm,padding:"2px 6px",marginBottom:2,display:"inline-block"}}>기타</div>
-              {uncatSvcs.map(svc => { const it=items[svc.id]||{}; const dp=_defPrice(svc,gender); const rp=gender?(gender==="M"?svc.priceM:svc.priceF):0; const _needsG = !gender && (svc.priceF||0) !== (svc.priceM||0) && ((svc.priceF||0) > 0 || (svc.priceM||0) > 0); return <SaleSvcRow key={svc.id} id={svc.id} name={svc.name} dur={svc.dur} checked={!!it.checked} amount={it.amount||0} defPrice={dp} regularPrice={rp} toggle={toggle} setAmt={setAmt} badgeText={svc.badgeText} badgeColor={svc.badgeColor} badgeBg={svc.badgeBg} comped={!!it.comped} toggleComped={hasCompedTag ? toggleComped : undefined} needsGender={_needsG} onAlert={showAlert} hasCoupon={couponEligibleSvcIds.has(svc.id)} />; })}
+              {uncatSvcs.map(svc => { const it=items[svc.id]||{}; const dp=_defPrice(svc,gender); const rp=gender?(gender==="M"?svc.priceM:svc.priceF):0; const _needsG = !gender && (svc.priceF||0) !== (svc.priceM||0) && ((svc.priceF||0) > 0 || (svc.priceM||0) > 0); return <SaleSvcRow key={svc.id} id={svc.id} name={svc.name} dur={svc.dur} checked={!!it.checked} amount={it.amount||0} defPrice={dp} regularPrice={rp} toggle={toggle} setAmt={setAmt} badgeText={svc.badgeText} badgeColor={svc.badgeColor} badgeBg={svc.badgeBg} comped={!!it.comped} toggleComped={hasCompedTag ? toggleComped : undefined} needsGender={_needsG} onAlert={showAlert} hasCoupon={couponEligibleSvcIds.has(svc.id)} subFree={!!it.subFree} />; })}
             </div>}
             {/* (추가·할인은 제품 영역 아래로 이동 — 시술/제품 토글 포함) */}
           </div>

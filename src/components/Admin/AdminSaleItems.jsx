@@ -55,7 +55,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
   const [sheet,setSheet]=useState(false);
   const [edit,setEdit]=useState(null);
   const [editPair,setEditPair]=useState(null); // 페어 편집 시 {half, full}
-  const [form,setForm]=useState({cat:"",name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,isCouple:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0,badgeText:"",badgeColor:"#ffffff",badgeBg:"#f97316",promoConfig:{},isActive:true,grantsMemberPrice:false});
+  const [form,setForm]=useState({cat:"",name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,isCouple:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0,badgeText:"",badgeColor:"#ffffff",badgeBg:"#f97316",promoConfig:{},isActive:true,grantsMemberPrice:false,isSubscription:false});
   // 옵션 그룹 (절반/전체 같은 한 부위에 변형 옵션)
   const [useOptions, setUseOptions] = useState(false);
   const [opt1, setOpt1] = useState({name:"절반", dur:25, priceF:0, priceM:0, memberPriceF:0, memberPriceM:0});
@@ -152,7 +152,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
   const openNew=()=>{
     setEdit(null);
     setEditPair(null);
-    setForm({cat:defaultCatId,name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,isCouple:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0,badgeText:"",badgeColor:"#ffffff",badgeBg:"#f97316",promoConfig:{},isActive:true,grantsMemberPrice:false});
+    setForm({cat:defaultCatId,name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,isCouple:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0,badgeText:"",badgeColor:"#ffffff",badgeBg:"#f97316",promoConfig:{},isActive:true,grantsMemberPrice:false,isSubscription:false});
     setUseOptions(false);
     setOpt1({name:"절반", dur:25, priceF:0, priceM:0, memberPriceF:0, memberPriceM:0});
     setOpt2({name:"전체", dur:40, priceF:0, priceM:0, memberPriceF:0, memberPriceM:0});
@@ -163,7 +163,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
     if (typeof pc === "string") { try { pc = JSON.parse(pc); } catch(e) { pc = {}; } }
     setEdit(s);
     setEditPair(null);
-    setForm({cat:s.cat||"",name:s.name||"",dur:s.dur||20,priceF:s.priceF||0,priceM:s.priceM||0,memberPriceF:s.memberPriceF||0,memberPriceM:s.memberPriceM||0,note:s.note||"",isPackage:!!s.isPackage,isCouple:!!s.isCouple,pkgCount:s.pkgCount||10,pkgPriceF:s.pkgPriceF||0,pkgPriceM:s.pkgPriceM||0,badgeText:s.badgeText||"",badgeColor:s.badgeColor||"#ffffff",badgeBg:s.badgeBg||"#f97316",promoConfig:pc||{},isActive:s.isActive!==false,grantsMemberPrice:!!s.grantsMemberPrice});
+    setForm({cat:s.cat||"",name:s.name||"",dur:s.dur||20,priceF:s.priceF||0,priceM:s.priceM||0,memberPriceF:s.memberPriceF||0,memberPriceM:s.memberPriceM||0,note:s.note||"",isPackage:!!s.isPackage,isCouple:!!s.isCouple,pkgCount:s.pkgCount||10,pkgPriceF:s.pkgPriceF||0,pkgPriceM:s.pkgPriceM||0,badgeText:s.badgeText||"",badgeColor:s.badgeColor||"#ffffff",badgeBg:s.badgeBg||"#f97316",promoConfig:pc||{},isActive:s.isActive!==false,grantsMemberPrice:!!s.grantsMemberPrice,isSubscription:!!s.isSubscription});
     setUseOptions(false);
     setSheet(true);
   };
@@ -217,11 +217,14 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
       if (rawPc.consumeOnUse !== undefined) cleanPc.consumeOnUse = !!rawPc.consumeOnUse;
       if (rawPc.priority !== undefined && rawPc.priority !== null && rawPc.priority !== "") cleanPc.priority = Number(rawPc.priority) || 0;
       if (rawPc.expiryMonths !== undefined && rawPc.expiryMonths !== null && rawPc.expiryMonths !== "" && Number(rawPc.expiryMonths) > 0) cleanPc.expiryMonths = Number(rawPc.expiryMonths);
+      // 🎟 구독권 — 무료 제공 시술 ID + 유효개월 (첫 사용 시점부터)
+      if (Array.isArray(rawPc.subFreeServiceIds) && rawPc.subFreeServiceIds.length > 0) cleanPc.subFreeServiceIds = rawPc.subFreeServiceIds;
+      if (rawPc.subMonths !== undefined && rawPc.subMonths !== null && rawPc.subMonths !== "" && Number(rawPc.subMonths) > 0) cleanPc.subMonths = Number(rawPc.subMonths);
       // 카테고리=패키지면 isPackage 강제 true (다회권 발급 시 회수 정확성 보장)
       const _saveCat = (data?.categories||[]).find(cc => cc.id === form.cat);
       const _saveIsPkg = _saveCat?.name === '패키지' ? true : !!form.isPackage;
       // pkgPriceF/M 폐기 (메인 가격 사용으로 통일) — 호환성 위해 0으로 저장
-      const baseCommon = {cat:form.cat,note:form.note,isPackage:_saveIsPkg,isCouple:_saveIsPkg?!!form.isCouple:false,pkgCount:+form.pkgCount||0,pkgPriceF:0,pkgPriceM:0,badgeText:form.badgeText||null,badgeColor:form.badgeColor||null,badgeBg:form.badgeBg||null,promoConfig:Object.keys(cleanPc).length>0?cleanPc:null,isActive:form.isActive!==false,grantsMemberPrice:!!form.grantsMemberPrice};
+      const baseCommon = {cat:form.cat,note:form.note,isPackage:_saveIsPkg,isCouple:_saveIsPkg?!!form.isCouple:false,pkgCount:+form.pkgCount||0,pkgPriceF:0,pkgPriceM:0,badgeText:form.badgeText||null,badgeColor:form.badgeColor||null,badgeBg:form.badgeBg||null,promoConfig:Object.keys(cleanPc).length>0?cleanPc:null,isActive:form.isActive!==false,grantsMemberPrice:!!form.grantsMemberPrice,isSubscription:!!form.isSubscription};
       if (useOptions && editPair) {
         // 페어 편집: 양쪽 record 동시 업데이트, [pair:XX] 플래그 보존
         const pairId = _getPairId(editPair.full.note) || _getPairId(editPair.half.note) || uid().slice(0,8);
@@ -496,6 +499,10 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
             <AToggle size="sm" on={!!form.grantsMemberPrice} onChange={v=>set("grantsMemberPrice",v)}/>
             <span style={{fontSize:T.fs.sm,color:form.grantsMemberPrice?"#6B21A8":T.text,fontWeight:form.grantsMemberPrice?700:400}}>⭐ 회원가 자격 부여</span>
           </label>
+          <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} title="이 상품을 보유한 고객이 지정한 시술을 유효기간 내 무제한 무료로 받음 (예: 구독권 → 브라질리언 무료)">
+            <AToggle size="sm" on={!!form.isSubscription} onChange={v=>set("isSubscription",v)}/>
+            <span style={{fontSize:T.fs.sm,color:form.isSubscription?"#0369a1":T.text,fontWeight:form.isSubscription?700:400}}>구독권 (무제한 무료)</span>
+          </label>
         </div>
         {(_isPkgCat || form.isPackage) && <div style={{marginBottom:14}}>
           <AField label="회수 (다회권 발급 시 사용)"><input style={AInp} type="number" min="1" value={form.pkgCount||""} onChange={e=>set("pkgCount",e.target.value)} placeholder="예: 5, 10" onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
@@ -507,6 +514,46 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
             <span style={{fontSize:T.fs.xxs,color:T.textMuted}}>구매 시 상대방 지정 → 구매자·상대방 각자 {(+form.pkgCount||0)}회씩 발급</span>
           </label>
         </div>}
+        {form.isSubscription && (()=>{
+          const selFreeIds = Array.isArray(form.promoConfig.subFreeServiceIds) ? form.promoConfig.subFreeServiceIds : [];
+          const toggleFree = (sid) => {
+            const next = selFreeIds.includes(sid) ? selFreeIds.filter(x=>x!==sid) : [...selFreeIds, sid];
+            set("promoConfig",{...form.promoConfig, subFreeServiceIds: next});
+          };
+          return <div style={{marginBottom:14,padding:10,borderRadius:8,background:'#eff6ff',border:'1px dashed #3b82f6'}}>
+            <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bold,color:T.textSub,marginBottom:8}}>구독권 설정 — 이 권을 보유한 고객은 아래 시술을 유효기간 내 무제한 무료로 받습니다</div>
+            <div style={{marginBottom:10,maxWidth:240}}>
+              <AField label="유효기간 (개월, 첫 무료 사용일부터)">
+                <input style={AInp} type="number" min="1" value={form.promoConfig.subMonths||""} onChange={e=>set("promoConfig",{...form.promoConfig,subMonths:+e.target.value||0})} placeholder="비우면 12개월"/>
+              </AField>
+            </div>
+            <div style={{fontSize:T.fs.xxs,fontWeight:T.fw.bold,color:T.textSub,marginBottom:4}}>무료 제공 시술 (복수 선택) <span style={{color:"#0369a1",fontWeight:900}}>({selFreeIds.length})</span></div>
+            <div style={{maxHeight:220,overflowY:"auto",border:"1px solid "+T.border,borderRadius:8,padding:8,background:"#fff"}}>
+              {(() => {
+                const allCats = (data?.categories || []).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
+                const allSvcs = (data?.services || []);
+                const rendered = allCats.map(c => {
+                  const catSvcs = allSvcs.filter(s => s.cat === c.id && s.id !== edit?.id && s.isActive !== false);
+                  if (catSvcs.length === 0) return null;
+                  return <div key={c.id} style={{marginBottom:10}}>
+                    <div style={{fontSize:10,fontWeight:700,color:T.textSub,marginBottom:4}}>{c.name}</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                      {catSvcs.map(s => {
+                        const on = selFreeIds.includes(s.id);
+                        return <label key={s.id} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"3px 8px",border:`1px solid ${on?"#0369a1":T.border}`,borderRadius:12,background:on?"#dbeafe":"#fff",cursor:"pointer",fontSize:11,color:on?"#0369a1":T.text,fontWeight:on?700:400}}>
+                          <input type="checkbox" checked={on} onChange={()=>toggleFree(s.id)} style={{accentColor:"#0369a1"}}/>
+                          {s.name}
+                        </label>;
+                      })}
+                    </div>
+                  </div>;
+                }).filter(Boolean);
+                if (rendered.length === 0) return <div style={{fontSize:11,color:T.textMuted,padding:"6px 4px"}}>등록된 시술이 없어요.</div>;
+                return rendered;
+              })()}
+            </div>
+          </div>;
+        })()}
         </>;
       })()}
 

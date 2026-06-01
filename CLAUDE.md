@@ -3070,3 +3070,26 @@ Liah(WhatsApp) 후속 2건.
 - **0건 원인 = `sms_send_log` RLS 활성인데 anon 정책 없음** → 앱(anon)이 못 읽음. `CREATE POLICY anon_all_sms_send_log FOR ALL USING(true) WITH CHECK(true)` 추가([[reference_supabase_rls]] 패턴 누락분).
 - v3.7.946 서브탭([알림톡·자동][직원발송]) 제거 → **AdminAlimtalkLog 한 목록에 직원 SMS(sms_send_log) 병합**. load에서 sms_send_log도 fetch → alimtalk_queue 형식 정규화(channel='sms', noti_key='직원발송', params._staff_msg, _staff) → created_at desc 병합. 채널필터 전체/SMS일 때만 병합. 지점별 카운트·검색·통계에 자동 포함.
 - AdminPlan import AdminSmsLog는 미사용(유지, 무해).
+
+### v3.7.948 — 구독권 (유효기간 내 지정 시술 무제한 무료) 신규 기능 (2026-06-01)
+**배경**(정우님): "구독권"을 사면 유효기간 내 브라질리언 왁싱이 무제한 무료인데, 이를 처리하는 코드가 없어 구독권 보유 고객의 매출(브라질리언 0원)을 등록 못 함. 기존 보유권 어디에도 "보유 시 특정 시술 무제한 무료" 개념이 없었음(다회권=회수차감/선불권=금액차감/회원권=할인/쿠폰=할인). 구독권 상품은 이미 회원권 카테고리로 등록돼 있었으나 `annual`로 분류돼 회원가(할인)만 적용됐음.
+**정책**(정우님 확정): ① 무료 대상 = 순수 브라질리언만(조합 제외, 단 코드 하드코딩 X·관리설정 지정) ② 유효기간 = 구매 시 미설정 → **첫 무료 사용 시점부터 1년−1일** 자동 시작(선불권 첫사용 패턴 동일) ③ 무료 대상 외 시술 = 정상가(구독권은 회원가 자격 안 줌).
+**구현 — 구독권을 회원권(annual)과 분리한 새 종류 `subscription`으로**:
+- **DB**: `services.is_subscription boolean default false`(migration `services_add_is_subscription`). 무료 시술·유효개월은 `promo_config`에 저장(`subFreeServiceIds[]`, `subMonths` 기본 12). `db.js` DBMAP/DB_COLS에 `is_subscription↔isSubscription`.
+- **AdminSaleItems**: 상품 편집창 토글 "구독권 (무제한 무료)" + ON 시 "무료 제공 시술 다중선택(카테고리별 chip, 쿠폰 svc picker 패턴 재사용)" + "유효기간(개월)". 저장 시 `isSubscription` + `promo_config.subFreeServiceIds/subMonths`.
+- **SaleForm**:
+  - `_pkgType`에 `subscription` 추가(is_subscription service). `validPkgs`에서 제외(회원가·차감 대상 아님), `_isAnnualSvc`에서 제외(회원가 자격 X).
+  - `subPkgs`/`subFreeMap`/`subFreeSvcIds` useMemo — 유효기간 내(미설정=사용전=유효) 구독권 보유권 + 무료 시술ID→pkgId 매핑.
+  - `toggle`: 무료 대상 시술 체크 시 자동 `subFree=true`(amount=원가 유지 — 매출기록·차감용).
+  - `svcSubFreeTotal`(subFree 시술 원가 합) → `grandTotal` 차감 + `_svcDeductsAll` 포함 → 결제 0. **comped 코드는 안 건드리고 독립 플래그**(comped는 amount=0 방식, 구독권은 원가+차감 방식 — sale_details에 원가 남기려고).
+  - 신규 구독권 구매(`newSubscriptionPurchases`) → `customer_packages` 발급(total/used 0=무제한, 유효기간 미설정). `_isAnnualSvc`/`newPkgPurchases` 중복 분류 안 됨. `pureSvcTotal`에서도 제외.
+  - **첫 무료 사용 → 유효기간 시작**: subFree 시술의 `subFreeMap` pkgId가 유효기간 미설정이면 그날+subMonths−1일 기록 + `used_count+1`(무제한이라 차감 아닌 사용횟수 누적·통계). `package_transactions`에 사용 기록(amount 0).
+  - **sale_details**: subFree 시술 → `[구독권] {시술명}` 원가(unit_price>0) 기록 + 결제 0([체험단] 패턴 동일).
+  - **UI(SaleSvcRow)**: subFree 시 파란 행 + "구독권 무료" 배지 + 원가 취소선 + "무료" 표시(amount는 원가지만 화면엔 무료로 직원 인지).
+- **검증**(로컬 dev, 데모 김서연에 구독권 부여): 브라질리언 체크 → "구독권 무료" 배지 + 154,000 취소선 + **총 결제금액 0원** ✓. 조합(케어/궁테라피/풀바디)은 정상가 유지 → "순수 브라질리언만" 정확 ✓. (저장 끝단 sale_details·유효기간은 데모에 근무직원 0이라 시술자선택 막혀 UI 마지막 클릭만 미실시 — 코드는 검증된 `_firstUsePkgIds` 패턴 동일.)
+- **강남 구독권 상품**(`d8b8dd02`) is_subscription=true + 브라질리언(`rjdigkgac`) 무료·12개월 설정 완료 → 신규 구독권 판매부터 라이브 작동.
+**유의**:
+- 구독권 식별 = `services.is_subscription` 플래그. customer_packages는 `service_id`로 services 조회(없으면 service_name 매칭). **service_id=null 구버전 구독권 보유권은 무료 적용 안 됨** → service_id 연결 정정 필요.
+- **박현지님(#32685) 기존 구독권 2건은 깨진 데이터**(쿠폰 `cpn_`·99회·service_id=null·유효기간 만료 2026-05-07) + 5/6 구매분(110만)은 보유권 미등록 → **데이터 정정 별도 필요**(정우님 확인 후): 5/6 구매분을 구독권 보유권(service_id=d8b8dd02)으로 등록 + 깨진 2건 정리 + 메모 "27/05/05까지" 유효기간 해석.
+- 무료는 전 지점 적용(구매지점 제한 미적용 — 1차). 멀티테넌트: 시술명 하드코딩 0, 관리설정에서 매장별 구독권 상품·무료시술 지정.
+- 데모 구독권(`demo_d8b8dd02`)도 시연용 설정됨 + 김서연 테스트 보유권(`pcd_demo_sub_test`) — 정리 미정.
