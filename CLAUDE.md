@@ -3226,3 +3226,11 @@ Liah(WhatsApp) 후속 2건.
 - **조회 `AdminLoginLog.jsx`**: 관리설정 → 내 계정 → "접속 이력"(slug `login-log`, **isOwner 전용**). 기간(7일/30일/이번달/지난달/전체)+검색(이름·로그인ID·IP). 행: 이름·권한·로그인ID / 시각(KST) / IP(+같은 계정 IP 3개↑이면 "다중IP" 빨강) / 국가 / 기기·OS·브라우저. business_id=현재 사업장 필터.
 - 로컬 검증(데모): 로그인 자동 기록 + 페이지 렌더 + 전 필드 표시 확인.
 **유의**: 경보·차단 없음(기록·수동조회만, 유저 선택). IP는 Cloudflare 실제 IP(CF-Connecting-IP). "다중IP" 표시는 보조 신호(휴리스틱). account_login_log는 anon_all(앱 application-level 인증 패턴). 추후 텔레그램 경보·신규기기 알림 필요 시 확장 가능.
+
+### v3.7.971 — 매출통계 AI 영업·마케팅 분석 (2026-06-01)
+정우님: 매출통계를 AI가 분석해 영업/마케팅 코멘트를 줬으면. → "페이지 열면 자동 + 진단+마케팅 액션 제안" 선택. 비용은 서버 캐시로 방어.
+- **DB** `sales_insight_cache` (migration `sales_insight_cache_init`): business_id/scope_key/stats_hash/insight/created_at, UNIQUE(business_id,scope_key). RLS+anon_all.
+- **서버 `bliss_naver.py` `/sales-insight`**(백업 `bak_pre_salesinsight_*`, nginx 라우팅 추가): {business_id,scope_key,stats_hash,label,stats} 받아 — 캐시 조회(**stats_hash 일치 시 항상 재사용 / 불일치라도 6시간 내면 재사용 = 비용 캡**) → miss면 `gemini_ask`(Gemini 2.5 flash 폴백체인)로 분석 생성 → upsert. 프롬프트: 진단 3~4(수치 인용·좋은점/우려점) + 마케팅 액션 2~4(재방문 리마인드·신규 타깃·외국인 대응·지점 프로모션·객단가 업셀 등 데이터 근거), 250~450자, 추측 금지, 불릿. 검증: 샘플 통계 → 실데이터 기반 진단+액션 정상 생성.
+- **클라 `SalesPage.jsx` StatsPage**: 통계 로드 후 stats payload(총매출·시술/제품·객단가·성장률·결제수단·지점별·담당자별·최근6개월 고객추이) + scope_key(`vb|period|start|end`) + statsHash(JS 해시) → `/sales-insight` POST → 요약카드 아래 **"AI 영업·마케팅 분석" 카드**(보라 그라데이션, 무테두리, sparkles 아이콘, `**` 제거 plain). 총매출 0이면 미표시. 수치 바뀔 때만 재생성(캐시).
+- 라이브 동일출처(blissme.ai)라 genAI처럼 정상(프리뷰 localhost는 교차출처라 미검증). 서버 엔드포인트·OPTIONS CORS·빌드 검증 완료.
+**유의**: 자동 호출이지만 stats_hash 캐시+6h캡으로 같은 수치 반복 조회는 AI 호출 0. 데이터 변동 시에만 재분석(비용 분산, [[feedback_bliss_avoid_bulk_paid_api]]). scope_key는 지점필터·기간 포함 → 지점/기간별 독립 캐시. 모델 Gemini(무료~저렴). 실데이터 화면 확인은 매출 있는 지점/기간에서 권장.

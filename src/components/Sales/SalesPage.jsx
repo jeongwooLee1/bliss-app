@@ -1303,6 +1303,45 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     return () => { cancelled = true; };
   }, [vb, periodKey, startDate, endDate]);
 
+  // ── AI 영업·마케팅 분석 (서버 /sales-insight, 수치 바뀔 때만 재생성·캐시) ──
+  const [aiInsight, setAiInsight] = useState({ text: "", loading: false, err: false });
+  useEffect(() => {
+    const _ts = periodSummary.totals;
+    if (periodSummary.loading || !_ts) return;
+    const total = Number(_ts.svc_total||0)+Number(_ts.prod_total||0)+Number(_ts.gift_total||0);
+    if (total <= 0) { setAiInsight({ text: "", loading: false, err: false }); return; }
+    const count = Number(_ts.cnt||0);
+    const branchName = (bid) => (data?.branches||[]).find(b=>b.id===bid)?.short || (data?.branches||[]).find(b=>b.id===bid)?.name || bid;
+    const branches = (periodSummary.byBranch||[]).map(r=>({지점:branchName(r.bid), 매출:Number(r.total||0), 건수:Number(r.cnt||0)})).sort((a,b)=>b.매출-a.매출).slice(0,8);
+    const staff = (periodSummary.byStaff||[]).map(r=>({담당:r.staff_name, 매출:Number(r.total||0), 건수:Number(r.cnt||0)})).sort((a,b)=>b.매출-a.매출).slice(0,8);
+    const growth = (prevTotal!=null && prevTotal>0) ? Math.round((total-prevTotal)/prevTotal*100) : null;
+    // 최근 6개월 고객 추이 (신규/기존/외국인)
+    const custRecent = (custTrend||[]).slice(-6).map(r=>({월:r.ym, 신규:r.n||0, 기존:r.o||0, 외국인:(r.fn||0)+(r.fo||0)}));
+    const stats = {
+      총매출: total, 시술매출: Number(_ts.svc_total||0), 제품매출: Number(_ts.prod_total||0), 상품권: Number(_ts.gift_total||0),
+      건수: count, 객단가: count>0?Math.round(total/count):0,
+      전기간대비_성장률_pct: growth,
+      결제수단: { 현금: Number(_ts.svc_cash||0)+Number(_ts.prod_cash||0), 카드: Number(_ts.svc_card||0)+Number(_ts.prod_card||0), 이체: Number(_ts.svc_transfer||0)+Number(_ts.prod_transfer||0), 포인트: Number(_ts.svc_point||0)+Number(_ts.prod_point||0) },
+      지점별: branches, 담당자별: staff, 최근6개월_고객추이: custRecent,
+    };
+    const scopeKey = `${vb}|${periodKey}|${startDate||""}|${endDate||""}`;
+    const sj = JSON.stringify(stats);
+    let h = 0; for (let i=0;i<sj.length;i++){ h=(h*31+sj.charCodeAt(i))|0; }
+    const statsHash = String(h);
+    let cancelled = false;
+    setAiInsight(p => ({ ...p, loading: true, err: false }));
+    fetch("https://blissme.ai/sales-insight", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ business_id: _activeBizId, scope_key: scopeKey, stats_hash: statsHash, label: dateLabel, stats }),
+    }).then(r => r.json()).then(j => {
+      if (cancelled) return;
+      if (j && j.ok && j.insight) setAiInsight({ text: j.insight, loading: false, err: false });
+      else setAiInsight({ text: "", loading: false, err: true });
+    }).catch(() => { if (!cancelled) setAiInsight({ text: "", loading: false, err: true }); });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vb, periodKey, startDate, endDate, periodSummary.totals, periodSummary.loading, prevTotal, custTrend]);
+
   // 지점별 신규고객 (외국인 구분) — 기간 내 첫 매출 기준
   const [newByBranch, setNewByBranch] = useState([]);
   useEffect(() => {
@@ -1608,6 +1647,17 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
       <SC label="일 평균" val={`${fmt(Math.round(t.total/days))}원`} sub={`${days}일 평균`} clr={T.info}/>
       <SC label="객단가" val={`${fmt(t.count>0?Math.round(t.total/t.count):0)}원`} sub="건당 평균" clr={T.gray400}/>
     </GridLayout>
+    {/* AI 영업·마케팅 분석 */}
+    {(aiInsight.loading || aiInsight.text) && (
+      <div style={{marginBottom:20,padding:"14px 16px",borderRadius:T.radius.lg,background:"linear-gradient(135deg,#F5F3FF 0%,#EEF2FF 100%)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:aiInsight.text?10:0}}>
+          <I name="sparkles" size={15} color={T.primary}/>
+          <span style={{fontSize:T.fs.sm,fontWeight:T.fw.black,color:T.primary}}>AI 영업·마케팅 분석</span>
+          {aiInsight.loading && <span style={{fontSize:T.fs.xs,color:T.textMuted,fontWeight:T.fw.medium}}>분석 중…</span>}
+        </div>
+        {aiInsight.text && <div style={{fontSize:13,lineHeight:1.7,color:T.text,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{aiInsight.text.replace(/\*\*/g,"")}</div>}
+      </div>
+    )}
     {/* 연도별 월별 매출 비교 */}
     {yoyTable.years.length >= 2 && <div className="card" style={{padding:16,marginBottom:16,overflowX:"auto"}}>
       <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:12}}>월별 매출 비교 <span style={{fontWeight:T.fw.medium,color:T.textMuted,fontSize:T.fs.xs}}>(연도별)</span></div>
