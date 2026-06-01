@@ -33,24 +33,14 @@ export default function NaverReviews({ data, branches, userBranches, currentUser
     return ub || (branches || []).map(b => b.id);
   }, [userBranches, branches]);
 
-  // 지점 → 스마트플레이스 placeSeq/bizId 매핑 (바로가기 URL용)
+  // 지점 → naver_biz_id 매핑 (바로가기 URL: /bizes/booking/{biz_id}/reviews?menu=visitor)
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      const m = {};
-      (branches || []).forEach(b => {
-        const seq = b.naver_place_seq || b.naverPlaceSeq;
-        if (seq) m[b.id] = { seq, biz: b.naver_biz_id || b.naverBizId };
-      });
-      if (Object.keys(m).length === 0) {
-        try {
-          const rows = await sb.get('branches', '&select=id,naver_place_seq,naver_biz_id&naver_place_id=not.is.null');
-          (rows || []).forEach(b => { if (b.naver_place_seq) m[b.id] = { seq: b.naver_place_seq, biz: b.naver_biz_id }; });
-        } catch { }
-      }
-      if (alive) setPlaceMap(m);
-    })();
-    return () => { alive = false; };
+    const m = {};
+    (branches || []).forEach(b => {
+      const biz = b.naver_biz_id || b.naverBizId;
+      if (biz) m[b.id] = { biz };
+    });
+    setPlaceMap(m);
   }, [branches]);
 
   const load = useCallback(async () => {
@@ -79,8 +69,8 @@ export default function NaverReviews({ data, branches, userBranches, currentUser
 
   const openNaver = (r) => {
     const pm = placeMap[r.bid];
-    if (!pm || !pm.seq) { window.open('https://new.smartplace.naver.com/', '_blank'); return; }
-    window.open(`https://new.smartplace.naver.com/bizes/place/${pm.seq}/reviews?bookingBusinessId=${pm.biz || ''}&menu=visitor`, '_blank');
+    const biz = pm?.biz || r.place_id;
+    window.open(`https://new.smartplace.naver.com/bizes/booking/${biz}/reviews?menu=visitor`, '_blank');
   };
 
   const branchName = (bid) => (branches || []).find(b => b.id === bid)?.name || '';

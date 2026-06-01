@@ -868,6 +868,20 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     });
     return { subPkgs: _sub, subFreeMap: m, subFreeSvcIds: new Set(Object.keys(m)) };
   }, [custPkgs, data?.services]);
+  // 🎟 구독권 보유권 로드 완료(subFreeSvcIds 갱신) 시, 이미 체크된 무료대상 시술을 자동 무료(subFree)로 보정.
+  //    — 보유권 fetch 전에 시술을 먼저 체크한 케이스에서 무료가 누락되던 타이밍 버그 방지.
+  useEffect(() => {
+    if (editMode || viewOnly) return;
+    setItems(prev => {
+      let changed = false; const next = { ...prev };
+      Object.keys(prev).forEach(id => {
+        if (prev[id]?.checked && subFreeSvcIds.has(id) && !prev[id].subFree) {
+          next[id] = { ...prev[id], subFree: true }; changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [subFreeSvcIds]);
   // 현재 지점에서 사용 가능한 보유권 (차감/사용용). 구매지점 외에선 차단됨.
   const activePkgs = validPkgs.filter(p => canUsePkgAtBranch(p, (selBranch || branchId), data?.branches, data?.branchGroups));
   // 타지점 구매로 현 지점에서 사용 차단된 보유권 — 표시만 하고 차감/체크 비활성 (직원이 보유 현황 인지용)
@@ -3765,7 +3779,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
           {/* Col 1+2: Services by category (span 2 columns) */}
           <div style={{gridColumn:"span 2"}}>
             {/* 구독권 보유 — 지정 시술 무제한 무료 안내 (직원 인지용) */}
-            {subPkgs.length > 0 && <div style={{marginBottom:6,border:"1px solid #0369a1",borderRadius:8,background:"#eff6ff",padding:"7px 10px"}}>
+            {subPkgs.length > 0 && <div style={{marginBottom:6,borderRadius:8,background:"#eff6ff",padding:"7px 10px"}}>
               <div style={{fontSize:13,fontWeight:700,color:"#0369a1",display:"flex",alignItems:"center",gap:6,marginBottom:2}}><I name="pkg" size={14}/>구독권 보유</div>
               {subPkgs.map(p => {
                 const _svc=_subSvcOf(p);
