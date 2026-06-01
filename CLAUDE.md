@@ -3115,3 +3115,6 @@ Liah(WhatsApp) 후속 2건.
 
 ### v3.7.953 — 네이버 "답글쓰기" 버튼 미답변 필터 URL (작업세션 머지) (2026-06-01)
 `NaverReviews.jsx openNaver`: 네이버 리뷰 답글쓰기 버튼 URL을 `new.smartplace`→**모바일 `new-m.smartplace`** + `?hasReply=false&menu=visitor`로 변경 → 클릭 시 네이버에서 **미답변 리뷰만 필터된 상태**로 열림(답글 작업 편의). 외부 URL이라 preview 검증 불가, 빌드만 확인.
+
+### v3.7.954 — 블리스 AI 플로팅 버튼 임시 숨김 (2026-06-01)
+정우님 "블리스ai 때문에 버튼을 못눌러 일단 숨겨" — 팀 채팅 하단 공지 발송 영역을 FloatingAI ✨ 버튼(우하단 fixed)이 가려 클릭 방해. `AppShell.jsx:2488` `<FloatingAI/>`를 `{false && ...}`로 숨김. **임시** — 복구는 false→true. ⏳ **후속**: FloatingAI 위치를 공지 입력 영역과 안 겹치게 조정 후 복구(또는 입력 영역 z-index/패딩 조정). import는 유지(미사용 경고 무해).

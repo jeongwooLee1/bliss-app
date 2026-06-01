@@ -26,7 +26,7 @@ import QuickRequest from '../components/common/QuickRequest'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.953"
+const BLISS_V = "3.7.954"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -2485,7 +2485,8 @@ function App() {
         🔄 새 버전 v{newVer} — 즉시 업데이트
       </div>}
       {/* 플로팅 AI — 우하단 항상 표시 */}
-      <FloatingAI data={data} currentUser={currentUser} isMaster={isMaster} bizId={currentBizId}/>
+      {/* 블리스 AI 플로팅 버튼 — 공지 발송 등 버튼 가림 이슈로 일단 숨김 (복구: false→true, 정우님 2026-06-01) */}
+      {false && <FloatingAI data={data} currentUser={currentUser} isMaster={isMaster} bizId={currentBizId}/>}
       {/* 우클릭 → 수정 요청(화면 캡처 + 바로 등록) — 전 직원 */}
       <QuickRequest currentUser={currentUser} userBranches={userBranches}/>
       {/* 받은메시지함 사이드 패널 — 좌측(사이드바 우측) 슬라이드, 다른 페이지 작업 가능 */}
