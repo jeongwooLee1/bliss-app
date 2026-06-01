@@ -2056,6 +2056,7 @@ function MessagesWithTeamTab(props) {
           currentUser={props.currentUser}
           setPage={props.setPage}
           setPendingOpenCust={props.setPendingOpenCust}
+          setPendingOpenRes={props.setPendingOpenRes}
           onReviewChange={(n)=>setReviewPending(n)}
         />
       </div>

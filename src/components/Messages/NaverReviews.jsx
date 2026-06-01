@@ -21,7 +21,7 @@ const fmtRevTime = iso => {
   } catch { return ''; }
 };
 
-export default function NaverReviews({ data, branches, userBranches, currentUser, setPage, setPendingOpenCust }) {
+export default function NaverReviews({ data, branches, userBranches, currentUser, setPage, setPendingOpenCust, setPendingOpenRes }) {
   const [reviews, setReviews] = useState([]);
   const [filter, setFilter] = useState('noreply');   // noreply | replied | all
   const [loading, setLoading] = useState(true);
@@ -179,16 +179,26 @@ export default function NaverReviews({ data, branches, userBranches, currentUser
                 {branches && branches.length > 1 && <span style={{ fontSize: 11, color: T.textSub }}>{branchName(r.bid)}</span>}
                 {r.visitor_name && setPage && (
                   <button onClick={async () => {
-                    // visitor_name으로 고객 검색 후 고객 상세 오픈
+                    // visitor_name → 고객의 최근 예약 블록을 타임라인에서 포커싱 (예약 없으면 고객 상세 폴백)
                     try {
                       const { SB_URL, sbHeaders } = await import('../../lib/sb');
                       const { _activeBizId } = await import('../../lib/db');
-                      const res = await fetch(`${SB_URL}/rest/v1/customers?business_id=eq.${_activeBizId}&name=eq.${encodeURIComponent(r.visitor_name)}&select=id,name,cust_num&limit=3`, { headers: sbHeaders });
-                      const rows = await res.json();
-                      if (rows?.length === 1 && setPendingOpenCust) { setPendingOpenCust(rows[0].id); setPage('customers'); }
-                      else if (rows?.length > 1 && setPage) { setPage('customers'); }
-                    } catch { if (setPage) setPage('customers'); }
-                  }} title={`${r.visitor_name} 고객 정보 보기`}
+                      // 1) 이름으로 고객 조회 (cust_id 확보)
+                      const cres = await fetch(`${SB_URL}/rest/v1/customers?business_id=eq.${_activeBizId}&name=eq.${encodeURIComponent(r.visitor_name)}&select=id&limit=1`, { headers: sbHeaders });
+                      const crows = await cres.json();
+                      const custId = crows?.[0]?.id;
+                      // 2) 최근 예약 조회 — cust_id 우선, 없으면 cust_name (내부일정 제외)
+                      const filt = custId ? `cust_id=eq.${custId}` : `cust_name=eq.${encodeURIComponent(r.visitor_name)}`;
+                      const rres = await fetch(`${SB_URL}/rest/v1/reservations?${filt}&is_schedule=eq.false&order=date.desc,time.desc&limit=1&select=id,reservation_id,date,time,bid,status`, { headers: sbHeaders });
+                      const rrows = await rres.json();
+                      if (rrows?.[0] && setPendingOpenRes) {
+                        const rv = rrows[0];
+                        setPendingOpenRes({ id: rv.id, reservation_id: rv.reservation_id, date: rv.date, time: rv.time, bid: rv.bid, status: rv.status, _highlightOnly: true });
+                        setPage('timeline');
+                      } else if (custId && setPendingOpenCust) { setPendingOpenCust(custId); setPage('customers'); }
+                      else { setPage('customers'); }  // 매칭 실패 → 고객관리 페이지로 (직원이 검색)
+                    } catch (e) { console.warn('[review] visitor focus err', e); }
+                  }} title={`${r.visitor_name} 최근 예약 보기`}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, color: T.primaryDk, background: T.primaryLt, border: 'none', borderRadius: 6, padding: '2px 7px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700 }}>
                     <I name="user" size={10} />{r.visitor_name} ↗
                   </button>

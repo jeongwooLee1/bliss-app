@@ -3159,3 +3159,8 @@ Liah(WhatsApp) 후속 2건.
 **데이터 정리**: 네이버 전 지점 미답변 0건 확인 후, DB 잔존 미답변 17건(stale review_id, 네이버 현재 리뷰에 없음)을 `has_reply=true` 일괄 정리 → 배지 0.
 **v3.7.961 (React)**: NaverReviews 답글 등록 버튼 라벨 "답글쓰기" → **"네이버에 등록"**(textarea에 작성 후 네이버 등록임을 명확히, 정우님).
 **유의**: 미래 네이버 review_id 체계가 또 바뀌면 stale 재발 가능 — 그땐 "네이버 전체 미답변 0이면 DB도 0" 식 동기화 보강 검토.
+
+### v3.7.962 — 네이버 리뷰 방문자명 클릭 → 최근 예약 블록 포커싱 (2026-06-01)
+정우님: 리뷰 방문자명(김윤지·이서연 등) 클릭 시 무반응(기존 v3.7.960은 고객 검색 후 상세 오픈인데 name 정확일치 0건이면 아무 동작 안 함) → "고객의 최근 예약 블록을 포커싱"으로 변경.
+- `NaverReviews` visitor_name 클릭 핸들러 재작성: ① 이름으로 customers 조회(cust_id) → ② 최근 예약(cust_id 우선, 없으면 cust_name, is_schedule=false, date·time desc limit 1) → `setPendingOpenRes({...,_highlightOnly:true})` + `setPage('timeline')`로 타임라인 예약 블록 포커싱+빨강 강조. 예약 없으면 고객 상세, 매칭 실패면 고객관리 페이지 폴백.
+- prop 배선: MessagesPage MessagesWithTeamTab → NaverReviews에 `setPendingOpenRes` 전달(AppShell→AdminInbox는 기존).
