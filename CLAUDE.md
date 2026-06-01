@@ -3164,3 +3164,10 @@ Liah(WhatsApp) 후속 2건.
 정우님: 리뷰 방문자명(김윤지·이서연 등) 클릭 시 무반응(기존 v3.7.960은 고객 검색 후 상세 오픈인데 name 정확일치 0건이면 아무 동작 안 함) → "고객의 최근 예약 블록을 포커싱"으로 변경.
 - `NaverReviews` visitor_name 클릭 핸들러 재작성: ① 이름으로 customers 조회(cust_id) → ② 최근 예약(cust_id 우선, 없으면 cust_name, is_schedule=false, date·time desc limit 1) → `setPendingOpenRes({...,_highlightOnly:true})` + `setPage('timeline')`로 타임라인 예약 블록 포커싱+빨강 강조. 예약 없으면 고객 상세, 매칭 실패면 고객관리 페이지 폴백.
 - prop 배선: MessagesPage MessagesWithTeamTab → NaverReviews에 `setPendingOpenRes` 전달(AppShell→AdminInbox는 기존).
+
+### 서버 — AI active mode 30분 시간 윈도우 추가 (영업시간 지연 무시 버그 fix) (2026-06-01, React 변경 0)
+정우님: 영업시간엔 미응답 3분 후 AI 답변(직원 우선)인데 실시간으로 답하고 있음.
+**원인**: `ai_booking.py` active mode 판정(AI가 한 번 답한 thread + 그 후 직원 outbound 없으면 즉시 응답)에 **시간 제한이 없었음** → 8일 전(5/22) AI 답변 하나로 영구 active → 영업시간 3분 지연 무시하고 즉시 응답.
+**fix**: active mode를 **최근 30분 이내 AI 답변**일 때만 인정(`processed_at` 30분 윈도우). 그 이상 지난 대화는 새 대화로 보고 영업시간 delay(3분) 정상 적용. 연속 대화 흐름(방금 AI가 답하고 손님이 바로 추가 질문)만 즉시 유지.
+**적용**: 서버 직접(백업 `ai_booking.py.bak_activewindow_*`) + restart. React 변경 0 → 버전업·CF퍼지 불필요.
+**정책 정리**: ① 야간(스케줄 윈도우): 즉시 ② 영업시간+delay ON: 3분 후 직원 미응답 시 AI ③ active mode(최근 30분 연속 대화): 즉시 ④ 영업시간+delay OFF: 차단.
