@@ -3171,3 +3171,9 @@ Liah(WhatsApp) 후속 2건.
 **fix**: active mode를 **최근 30분 이내 AI 답변**일 때만 인정(`processed_at` 30분 윈도우). 그 이상 지난 대화는 새 대화로 보고 영업시간 delay(3분) 정상 적용. 연속 대화 흐름(방금 AI가 답하고 손님이 바로 추가 질문)만 즉시 유지.
 **적용**: 서버 직접(백업 `ai_booking.py.bak_activewindow_*`) + restart. React 변경 0 → 버전업·CF퍼지 불필요.
 **정책 정리**: ① 야간(스케줄 윈도우): 즉시 ② 영업시간+delay ON: 3분 후 직원 미응답 시 AI ③ active mode(최근 30분 연속 대화): 즉시 ④ 영업시간+delay OFF: 차단.
+
+### v3.7.963 — 리뷰 방문자명 클릭 예약 포커싱 fix (cust_name+bid 매칭) (2026-06-01)
+정우님: v3.7.962 후에도 리뷰 고객명 클릭 시 예약 포커싱 안 되고 고객 상세만 열림.
+**원인**: v3.7.962 핸들러가 `cust_id=eq.{custId}`로 예약 조회했는데 **reservations에 cust_id가 비어있는 경우가 많음**(cust_name으로만 연결, rsv_by_id=0) → 예약 0건 → 폴백 고객상세. + 동명이인(김윤진 11명)이라 customers name=eq limit=1로 엉뚱한 사람 cust_id 잡힘.
+**fix**: 핸들러를 **`cust_name=eq.{visitor_name}&bid=eq.{리뷰 bid}`** 최근 예약 조회로 변경(cust_id 의존 제거, 같은 지점으로 동명이인 좁힘). 지점 예약 없으면 지점 무관 최근 예약, 그것도 없으면 고객관리 페이지 폴백. setPendingOpenRes로 타임라인 블록 포커싱.
+**유의**: cust_name 완전일치 + 같은 지점 기준. 동명이인이 같은 지점에 여러 명이면 가장 최근 예약자로 감(드묾). 리뷰 데이터에 전화 등 정밀 키 없어 이름+지점이 최선.

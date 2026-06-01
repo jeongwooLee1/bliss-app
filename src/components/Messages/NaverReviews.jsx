@@ -182,21 +182,21 @@ export default function NaverReviews({ data, branches, userBranches, currentUser
                     // visitor_name → 고객의 최근 예약 블록을 타임라인에서 포커싱 (예약 없으면 고객 상세 폴백)
                     try {
                       const { SB_URL, sbHeaders } = await import('../../lib/sb');
-                      const { _activeBizId } = await import('../../lib/db');
-                      // 1) 이름으로 고객 조회 (cust_id 확보)
-                      const cres = await fetch(`${SB_URL}/rest/v1/customers?business_id=eq.${_activeBizId}&name=eq.${encodeURIComponent(r.visitor_name)}&select=id&limit=1`, { headers: sbHeaders });
-                      const crows = await cres.json();
-                      const custId = crows?.[0]?.id;
-                      // 2) 최근 예약 조회 — cust_id 우선, 없으면 cust_name (내부일정 제외)
-                      const filt = custId ? `cust_id=eq.${custId}` : `cust_name=eq.${encodeURIComponent(r.visitor_name)}`;
-                      const rres = await fetch(`${SB_URL}/rest/v1/reservations?${filt}&is_schedule=eq.false&order=date.desc,time.desc&limit=1&select=id,reservation_id,date,time,bid,status`, { headers: sbHeaders });
-                      const rrows = await rres.json();
+                      const nm = encodeURIComponent(r.visitor_name);
+                      // 최근 예약을 이름+지점(bid)으로 조회 — reservations는 cust_id가 비어있는 경우가 많아 cust_name 기준.
+                      // 같은 지점(리뷰 bid)으로 좁혀 동명이인 혼선 최소화. 내부일정 제외.
+                      let rres = await fetch(`${SB_URL}/rest/v1/reservations?cust_name=eq.${nm}&bid=eq.${r.bid}&is_schedule=eq.false&order=date.desc,time.desc&limit=1&select=id,reservation_id,date,time,bid,status`, { headers: sbHeaders });
+                      let rrows = await rres.json();
+                      // 지점 예약 없으면 지점 무관 최근 예약
+                      if (!rrows?.length) {
+                        rres = await fetch(`${SB_URL}/rest/v1/reservations?cust_name=eq.${nm}&is_schedule=eq.false&order=date.desc,time.desc&limit=1&select=id,reservation_id,date,time,bid,status`, { headers: sbHeaders });
+                        rrows = await rres.json();
+                      }
                       if (rrows?.[0] && setPendingOpenRes) {
                         const rv = rrows[0];
                         setPendingOpenRes({ id: rv.id, reservation_id: rv.reservation_id, date: rv.date, time: rv.time, bid: rv.bid, status: rv.status, _highlightOnly: true });
                         setPage('timeline');
-                      } else if (custId && setPendingOpenCust) { setPendingOpenCust(custId); setPage('customers'); }
-                      else { setPage('customers'); }  // 매칭 실패 → 고객관리 페이지로 (직원이 검색)
+                      } else { setPage('customers'); }  // 예약 전혀 없으면 고객관리 페이지로
                     } catch (e) { console.warn('[review] visitor focus err', e); }
                   }} title={`${r.visitor_name} 최근 예약 보기`}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, color: T.primaryDk, background: T.primaryLt, border: 'none', borderRadius: 6, padding: '2px 7px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700 }}>
