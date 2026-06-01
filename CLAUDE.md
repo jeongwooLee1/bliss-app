@@ -3124,3 +3124,6 @@ Liah(WhatsApp) 후속 2건.
 - **발견**: `services.grants_member_price` 컬럼을 SaleForm이 원래 안 봄(이름 기반 자격만) + 구독권은 `validPkgs`에서 제외돼 이중으로 막혀 있었음.
 - **fix**: `_subGrantsMember`(유효 구독권 중 grants_member_price ON 보유 여부) 신설 → `isMemberPriceFor`/`_computeIsMemberCustomer` 맨 앞에서 체크(잔액 무관 회원가). `validPkgs`엔 구독권 **미포함 유지**(차감·우측 보유권 표시에 "+99회" 부작용 방지). 강남·데모 구독권 grants_member_price=true 설정됨.
 - 로컬 검증: 구독권 보유 김서연 "간단" 66,000→44,000(회원) 적용 + 우측 "+99회" 미표시 확인.
+
+### v3.7.956 — 매출 통계/관리 디폴트 기간 = 이번 달 1일~말일 (2026-06-01)
+정우님 "디폴트는 이번 달 한 달이라고 했잖아" — 디폴트가 `startDate=이번달1일, endDate=오늘`이라 오늘이 6/1이면 "6.1" 단일로 보였음. `SalesPage`에 마운트 useEffect 추가 — `periodKey==="month"`면 startDate=이번달1일, endDate=**이번달 말일**로 설정(기존 sessionStorage 단일날짜 값도 마운트 시 교정). 라벨 "6.1 ~ 6.30". 일 평균은 "매출 발생 일수"(RPC days) 기준이라 영향 없음, 미래 매출 0이라 합계 동일.

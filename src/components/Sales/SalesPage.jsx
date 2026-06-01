@@ -308,6 +308,16 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
   const [startDate, setStartDate] = useSessionState("sales_startDate", todayStr().slice(0,7)+"-01", { ttlMs: TTL.DATE_RANGE });
   const [endDate, setEndDate] = useSessionState("sales_endDate", todayStr(), { ttlMs: TTL.DATE_RANGE });
   const [periodKey, setPeriodKey] = useSessionState("sales_periodKey", "month", { ttlMs: TTL.DATE_RANGE });
+  // 디폴트 기간 = 이번 달 1일~말일 ("이번 달 한 달", 정우님). periodKey=month인 기존 세션값(예: 오늘 단일)도 마운트 시 교정.
+  useEffect(() => {
+    if (periodKey !== "month") return;
+    const d = new Date();
+    const ms = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
+    const le = new Date(d.getFullYear(), d.getMonth()+1, 0);
+    const me = `${le.getFullYear()}-${String(le.getMonth()+1).padStart(2,'0')}-${String(le.getDate()).padStart(2,'0')}`;
+    if (startDate !== ms) setStartDate(ms);
+    if (endDate !== me) setEndDate(me);
+  }, []);  // 마운트 1회
   const [showSheet, setShowSheet] = useState(false);
   const [vb, setVb] = useSessionState("sales_vb", "all", { ttlMs: TTL.TAB });
   const [showModal, setShowModal] = useState(false);
