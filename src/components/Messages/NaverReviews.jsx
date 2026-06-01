@@ -86,6 +86,19 @@ export default function NaverReviews({ data, branches, userBranches, currentUser
     if (!key) { alert('AI 키가 설정되어 있지 않습니다. 관리설정 > AI 설정을 확인해 주세요.'); return; }
     setDrafts(d => ({ ...d, [r.id]: { ...(d[r.id] || {}), loading: true, err: null } }));
     const bizName = branchName(r.bid) || '우리 매장';
+    // 고객 최근 방문 메모 조회 (visitor_name 1명 정확 매칭 시) → 가벼운 안부거리 반영용
+    let custNote = '';
+    if (r.visitor_name) {
+      try {
+        const cr = await fetch(`${SB_URL}/rest/v1/customers?business_id=eq.${_activeBizId}&name=eq.${encodeURIComponent(r.visitor_name)}&select=id&limit=2`, { headers: sbHeaders });
+        const crows = await cr.json();
+        if (Array.isArray(crows) && crows.length === 1) {
+          const srr = await fetch(`${SB_URL}/rest/v1/sales?cust_id=eq.${crows[0].id}&order=date.desc&limit=2&select=memo`, { headers: sbHeaders });
+          const srows = await srr.json();
+          custNote = (srows || []).map(s => s.memo).filter(Boolean).join('\n---\n').slice(0, 500);
+        }
+      } catch { }
+    }
     const prompt = `너는 미용 왁싱샵 "${bizName}"의 사장님이다. 아래 네이버 고객 리뷰에 달 따뜻한 사장님 답글을 작성해줘.
 조건:
 - 한국어, 2~4문장, 진심 어린 친근한 존댓말
@@ -96,7 +109,11 @@ export default function NaverReviews({ data, branches, userBranches, currentUser
 
 [받은 시술] ${r.biz_item_name || '-'}
 [별점] ${r.rating != null ? r.rating : '-'}
-[리뷰 내용] ${r.content || '(사진만, 텍스트 없음)'}
+[리뷰 내용] ${r.content || '(사진만, 텍스트 없음)'}${custNote ? `
+
+[고객 최근 방문 메모 — 매장 내부 기록, 참고용]
+${custNote}
+★ 위 메모에 '여행·이사·경조사·일상 행사' 처럼 가볍게 안부 물을 만한 내용이 명확히 있으면, 답글 끝에 자연스럽게 한 문장만 덧붙여 (예: 제주도 여행 즐겁게 다녀오셨길 바라요!). 단 시술 부위·패키지·금액·횟수·신체·건강 같은 민감하거나 내부적인 정보는 절대 답글에 쓰지 마. 가벼운 안부거리가 없으면 억지로 넣지 말고 생략해.` : ''}
 
 답글 텍스트만 출력:`;
     try {
