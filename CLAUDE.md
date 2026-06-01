@@ -3024,3 +3024,9 @@ Liah(WhatsApp) 후속 2건.
   - ③ `_persistCustEdits` 성공 시 "저장됨✓" 토스트.
 - 경고창 원칙 메모리화(`feedback_bliss_custom_dialogs`): native alert/confirm 금지, 디자인 모달.
 - 요청 done: id_80o771s0cp(예약모달 변경), id_fqys5owuev(고객관리 저장).
+
+### 서버 — AI 예약등록 확정 카드 손님 언어 분기 (2026-06-01, React 변경 0)
+**증상**(정우님): WhatsApp 영어 손님(Shashank)에게 "AI 예약등록" 했는데 확정 카드가 **한국어**로 나감.
+**원인**: `bliss_naver.py` `_send_booking_confirm`(5091)의 확정 카드("OO님, 예약이 등록되었습니다 📍🗓 변동사항이...")가 **손님 언어 판정 없이 한국어 하드코딩**. ai_booking.py의 reply_lang(AI 응답 언어)과 별개로, /ai-book 성공 시 이 카드가 코드로 생성·발송됨.
+**fix**: `_send_booking_confirm`에 손님 언어 판정 추가 — 마지막 inbound 3건 한글 우세 여부(`_ko>=2 and _ko>=_oth`). 영어권이면 영어 확정 카드(날짜 "Mon, Jun 1" + 시간 "11:00 AM" + 차트 안내 영어 + "your booking is confirmed! ... Let us know if anything changes!"). 한국어 손님은 기존 카드.
+**적용**: 서버 직접(백업 `bak_booking_lang_*`) + `systemctl restart bliss-naver`(active). React 변경 0 → 버전업·CF퍼지 불필요.
