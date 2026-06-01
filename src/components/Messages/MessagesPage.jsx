@@ -1288,9 +1288,10 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   const saveQrDraft = ()=>{
     const label=(qrDraft?.label||"").trim(), text=(qrDraft?.text||"").trim();
     if(!text){ alert("내용을 입력하세요."); return; }
+    const _bid = qrDraft?.branchId || undefined; // 지점별 자주답변 (없으면 전체 공용)
     const list = qrDraft?.id
-      ? quickReplies.map(q=>q.id===qrDraft.id?{...q,label,text}:q)
-      : [...quickReplies,{id:genId(),label,text}];
+      ? quickReplies.map(q=>q.id===qrDraft.id?{...q,label,text,branchId:_bid}:q)
+      : [...quickReplies,{id:genId(),label,text,branchId:_bid}];
     persistQuickReplies(list); setQrDraft(null);
   };
   const delQr = (id)=>{ if(!window.confirm("이 답변을 삭제할까요?"))return; persistQuickReplies(quickReplies.filter(q=>q.id!==id)); if(qrDraft?.id===id) setQrDraft(null); };
@@ -1316,7 +1317,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         </div>
         {quickReplies.length===0 && !qrManage &&
           <div style={{fontSize:12,color:T.textMuted,padding:"8px 4px",lineHeight:1.5}}>저장된 답변이 없어요.<br/>[관리]에서 자주 쓰는 답변(예: 지점 예약금 계좌번호)을 추가하세요.</div>}
-        {quickReplies.map(q=>(
+        {quickReplies.filter(q=>!q.branchId || !userBranches || userBranches.length===0 || userBranches.includes(q.branchId)).map(q=>(
           <div key={q.id} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 2px",borderBottom:"1px solid "+T.gray100}}>
             {qrManage ? (
               <>
@@ -1339,6 +1340,11 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid "+T.border,display:"flex",flexDirection:"column",gap:6}}>
             <input value={qrDraft?.label||""} onChange={e=>setQrDraft(d=>({...(d||{}),label:e.target.value}))}
               placeholder="제목 (예: 강남 예약금 계좌)" style={{padding:"7px 10px",border:"1px solid "+T.border,borderRadius:8,fontSize:13,fontFamily:"inherit",outline:"none"}}/>
+            <select value={qrDraft?.branchId||""} onChange={e=>setQrDraft(d=>({...(d||{}),branchId:e.target.value||undefined}))}
+              style={{padding:"7px 10px",border:"1px solid "+T.border,borderRadius:8,fontSize:13,fontFamily:"inherit",outline:"none",background:"#fff"}}>
+              <option value="">전체 지점 공용</option>
+              {(data?.branches||[]).filter(b=>!userBranches||userBranches.length===0||userBranches.includes(b.id)).map(b=><option key={b.id} value={b.id}>{b.short||b.name}</option>)}
+            </select>
             <textarea value={qrDraft?.text||""} onChange={e=>setQrDraft(d=>({...(d||{}),text:e.target.value}))}
               placeholder="내용 (입력창에 넣을 답변)" rows={3} style={{padding:"7px 10px",border:"1px solid "+T.border,borderRadius:8,fontSize:13,fontFamily:"inherit",outline:"none",resize:"vertical",lineHeight:1.5}}/>
             <div style={{display:"flex",gap:6}}>
