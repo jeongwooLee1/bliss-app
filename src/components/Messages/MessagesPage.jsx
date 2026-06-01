@@ -940,6 +940,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           account_id: sel.account_id,
           user_id: sel.user_id,
           business_id: _activeBizId,
+          instruction: (reply||"").trim() || undefined,  // 입력칸에 직원이 쓴 지시가 있으면 → 그 내용을 고객 언어로 작성
         }),
       });
       const dd = await res.json().catch(()=>({}));

@@ -3036,3 +3036,12 @@ Liah(WhatsApp) 후속 2건.
 **원인**: 크리에이트립 메일 파싱(`bliss_naver.py`)이 손님이 적은 메신저(`sns_type`/`sns_id`)를 chat_channel/chat_user_id로 저장 → 받은메시지함이 `reservations.chatChannel` 기반(`chatResMap`)으로 대화방 생성. 카톡은 개인 ID라 우리가 먼저 메시지 못 보냄(친구 아님).
 **fix**(정우님 결정 — 크리에이트립 전부 제외): 서버 크리에이트립 처리 chat_channel/chat_user_id 빈값 + 클라 `chatResMap`에 `r.source==='creatrip'` 제외 + 기존 6건(Renee·Chie·David·Clara·Loula·Carly) chat_* NULL 정정.
 **적용**: v3.7.941 라이브 + 서버 재시작(active, 백업 `bak_creatrip_chat_*`). 직전 확정카드 영어 분기도 같은 서버 배포에 포함.
+
+### v3.7.942 + 서버 — AI 답변추천 '직원 지시 모드' (입력칸 지시 → 고객 언어 작성) (2026-06-01)
+**요청**(정우님): 직원이 입력칸에 "홍대점 주소 알려줘" 같이 한국어로 지시를 쓰면, AI가 그 내용을 정리해 고객 언어로 작성해 전달.
+**구현**(정우님 결정 — 별도 버튼 X, 입력칸에 글 있으면 'AI 답변 추천'이 자동 반영):
+- 클라 `MessagesPage.genAI`: /ai-suggest body에 `instruction: (reply||"").trim()` 추가(입력칸 값). 결과는 setReply로 입력칸에 채움 → 직원 검토 후 발송.
+- 서버 `bliss_naver.py` /ai-suggest: `payload.instruction` → `ai_booking_agent(instruction=...)`.
+- 서버 `ai_booking.py` `ai_booking_agent`: `instruction` 파라미터. instruction이면 ① reply_lang을 손님 마지막 메시지 기준(직원 한국어 지시는 언어판정서 제외) ② user_msg를 "★직원 지시 모드 — 이 내용을 고객 언어로 작성, 예약 처리 말고 안내만, 주소·정보는 [지점] 실제값만, 지어내지 말 것" 블록으로 변환. suggest_only=True라 예약 INSERT 안 됨.
+- 매장 주소·전화·건물안내는 이미 프롬프트의 [지점] 실제값 사용(지어내기 차단).
+**적용**: v3.7.942 라이브 + 서버 재시작(active, 백업 `bak_instr_*`).
