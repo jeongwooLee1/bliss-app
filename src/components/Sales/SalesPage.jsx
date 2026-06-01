@@ -1331,9 +1331,12 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
   }, [vb, periodKey, startDate, endDate]);
 
   // 월별 전년대비 매출 시리즈 (계절성 + YoY 방향 — AI 컨텍스트용)
+  // ※ 진행 중인 당월은 풀먼스 합계가 1~2일치뿐이라 전년 동월 전체와 비교하면 -96% 같은 왜곡 → 완료된 과거 월만 포함
   const monthlyYoY = useMemo(() => {
+    const _now = new Date();
+    const _curYM = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}`;
     const map = {}; (allTimeStats.monthly||[]).forEach(r => { if (r.ym) map[r.ym] = Number(r.total||0); });
-    const yms = Object.keys(map).sort();
+    const yms = Object.keys(map).filter(ym => ym < _curYM).sort();
     return yms.slice(-13).map(ym => {
       const [y,m] = ym.split('-').map(Number);
       const prevYm = `${y-1}-${String(m).padStart(2,'0')}`;
