@@ -26,7 +26,7 @@ import QuickRequest from '../components/common/QuickRequest'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.944"
+const BLISS_V = "3.7.945"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1515,6 +1515,7 @@ function App() {
   // 받은메시지함 안 팀채팅 탭의 미읽 표시는 별도 hook(useTeamChat)이 담당 — 영향 없음.
   const [pendingDepositCount, setPendingDepositCount] = useState(0); // 미매칭 입금 (사이드바 합산용)
   const [depositLatest, setDepositLatest] = useState(null); // 미매칭 입금 최근 1건 (배너 미리보기)
+  const [pendingReviewCount, setPendingReviewCount] = useState(0); // 답글 안 단 네이버 리뷰 (사이드바 합산용)
   const [pendingReqCount, setPendingReqCount] = useState(0);
   const [unackNoticesPopup, setUnackNoticesPopup] = useState(null); // {count, ids}
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -1770,6 +1771,24 @@ function App() {
         .subscribe();
     }
     return () => { alive=false; clearInterval(t); if (ch && window._sbClient) window._sbClient.removeChannel(ch); };
+  }, [userBranches?.join('|')]);
+
+  // 답글 안 단 네이버 리뷰 — 단일 소스(사이드바 배지 + 메시지함 탭 배지). 폴링만(리뷰는 실시간성 낮음, Realtime 미사용 — 부하 다이어트).
+  useEffect(() => {
+    if (!userBranches?.length) { setPendingReviewCount(0); return; }
+    let alive = true;
+    const bidIn = userBranches.map(b=>`"${b}"`).join(',');
+    const fetchPendingReviews = async () => {
+      try {
+        const url = `${SB_URL}/rest/v1/naver_reviews?select=id&has_reply=eq.false&is_read=eq.false&bid=in.(${bidIn})&limit=999`;
+        const r = await fetch(url, { headers:{...sbHeaders,'Cache-Control':'no-cache'}, cache:'no-store' });
+        if (!alive) return;
+        if (r.ok) { const rows = await r.json(); setPendingReviewCount(Array.isArray(rows) ? rows.length : 0); }
+      } catch {}
+    };
+    fetchPendingReviews();
+    const t = setInterval(fetchPendingReviews, 300000);
+    return () => { alive=false; clearInterval(t); };
   }, [userBranches?.join('|')]);
 
   // App Badge API — 홈화면 아이콘 배지 (미읽 메시지 + 확정대기 예약)
@@ -2441,7 +2460,7 @@ function App() {
     { id:"sales", label:"매출관리", icon:<I name="wallet" size={16}/> },
     { id:"customers", label:"고객관리", icon:<I name="users" size={16}/> },
     ...((role==="owner"||role==="super")?[{ id:"users", label:"사용자관리", icon:<I name="user" size={16}/> }]:[]),
-    { id:"messages", label:"받은메시지함", icon:<I name="msgSq" size={16}/>, badge: unreadMsgCount + pendingDepositCount },
+    { id:"messages", label:"받은메시지함", icon:<I name="msgSq" size={16}/>, badge: unreadMsgCount + pendingDepositCount + pendingReviewCount },
     { id:"admin", label:"관리설정", icon:<I name="settings" size={16}/> },
     { id:"requests", label:"공지 & 요청", icon:"📢", badge:pendingReqCount },
   ];
@@ -2475,12 +2494,12 @@ function App() {
           <div style={{padding:"8px 12px",borderBottom:"1px solid "+T.border,background:T.bgCard,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
             <div style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:T.fw.bolder}}>
               <I name="msgSq" size={14}/> 받은메시지함
-              {(unreadMsgCount + pendingDepositCount) > 0 && <span style={{background:T.danger,color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px"}}>{unreadMsgCount + pendingDepositCount}</span>}
+              {(unreadMsgCount + pendingDepositCount + pendingReviewCount) > 0 && <span style={{background:T.danger,color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px"}}>{unreadMsgCount + pendingDepositCount + pendingReviewCount}</span>}
             </div>
             <button onClick={()=>setMessagesPanelOpen(false)} title="닫기" style={{width:24,height:24,borderRadius:12,border:"none",background:T.gray100,color:T.textSub,cursor:"pointer",fontSize:16,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>×</button>
           </div>
           <div style={{flex:1,minHeight:0,overflow:"hidden",position:"relative"}}>
-            <AdminInbox sb={sb} branches={data?.branches} data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} currentUser={currentUser} onRead={(cnt)=>{setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)));loadUnreadRef.current&&loadUnreadRef.current();}} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage} forceCompact={true} inboxResetKey={inboxResetKey} depositPending={pendingDepositCount} onClosePanel={()=>setMessagesPanelOpen(false)}/>
+            <AdminInbox sb={sb} branches={data?.branches} data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} currentUser={currentUser} onRead={(cnt)=>{setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)));loadUnreadRef.current&&loadUnreadRef.current();}} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage} forceCompact={true} inboxResetKey={inboxResetKey} depositPending={pendingDepositCount} reviewPending={pendingReviewCount} onClosePanel={()=>setMessagesPanelOpen(false)}/>
           </div>
         </div>
       )}
@@ -2564,7 +2583,7 @@ function App() {
             <Route path="/sale-summary" element={<ScrollArea storageKey="page_sale_summary"><SaleSummary/></ScrollArea>}/>
             <Route path="/customers" element={<ScrollArea storageKey="page_customers"><CustomersPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} pendingOpenCust={pendingOpenCust} setPendingOpenCust={setPendingOpenCust} setPage={setPage} setPendingOpenRes={setPendingOpenRes}/></ScrollArea>}/>
             <Route path="/users" element={<ScrollArea storageKey="page_users"><UsersPage data={data} setData={setData} bizId={currentBizId}/></ScrollArea>}/>
-            <Route path="/messages" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><AdminInbox sb={sb} branches={data?.branches} data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} currentUser={currentUser} onRead={(cnt)=>{setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)));loadUnreadRef.current&&loadUnreadRef.current();}} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage} depositPending={pendingDepositCount}/></div>}/>
+            <Route path="/messages" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><AdminInbox sb={sb} branches={data?.branches} data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} currentUser={currentUser} onRead={(cnt)=>{setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)));loadUnreadRef.current&&loadUnreadRef.current();}} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage} depositPending={pendingDepositCount} reviewPending={pendingReviewCount}/></div>}/>
             <Route path="/schedule" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}>{isMaster && <SchedulePage/>}</div>}/>
             <Route path="/settings/*" element={<ScrollArea storageKey="page_settings"><AdminPage data={data} setData={setData} bizId={currentBizId} serverV={serverV} onLogout={handleLogout} currentUser={currentUser} userBranches={userBranches} setPage={setPage} setPendingOpenCust={setPendingOpenCust}/></ScrollArea>}/>
             <Route path="/wizard" element={<Navigate to="/blissai" replace/>}/>

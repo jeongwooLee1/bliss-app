@@ -29,7 +29,7 @@ export default function AdminSmsLog({ data, userBranches = [] }) {
     [branches, userBranches]
   )
   const [filterBid, setFilterBid] = useState('')
-  const [days, setDays] = useState(7)
+  const [days, setDays] = useState('this')  // 'this'(이번 달)|'last'(지난달)|숫자(최근 N일)
   const [keyword, setKeyword] = useState('')
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
@@ -43,9 +43,13 @@ export default function AdminSmsLog({ data, userBranches = [] }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const since = new Date(Date.now() - days * 86400000).toISOString()
+      const _now = new Date()
+      let since, until = null
+      if (days === 'this') since = new Date(_now.getFullYear(), _now.getMonth(), 1).toISOString()
+      else if (days === 'last') { since = new Date(_now.getFullYear(), _now.getMonth() - 1, 1).toISOString(); until = new Date(_now.getFullYear(), _now.getMonth(), 1).toISOString() }
+      else since = new Date(Date.now() - Number(days) * 86400000).toISOString()
       const allowedIds = allowedBranches.map(b => b.id)
-      let q = `&created_at=gte.${encodeURIComponent(since)}&order=created_at.desc&limit=500`
+      let q = `&created_at=gte.${encodeURIComponent(since)}${until ? `&created_at=lt.${encodeURIComponent(until)}` : ''}&order=created_at.desc&limit=500`
       if (filterBid) q += `&branch_id=eq.${filterBid}`
       else if (allowedIds.length > 0) q += `&branch_id=in.(${allowedIds.join(',')})`
       const r = await sb.get('sms_send_log', q)
@@ -92,9 +96,10 @@ export default function AdminSmsLog({ data, userBranches = [] }) {
           <option value="">전체 지점</option>
           {allowedBranches.map(b => <option key={b.id} value={b.id}>{b.short || b.name}</option>)}
         </select>
-        <select value={days} onChange={e=>setDays(Number(e.target.value))}
+        <select value={days} onChange={e=>{const v=e.target.value; setDays(v==='this'||v==='last'?v:Number(v))}}
           style={{padding:'6px 8px',fontSize:12,border:'1px solid '+T.border,borderRadius:6,fontFamily:'inherit'}}>
-          <option value={1}>최근 1일</option>
+          <option value="this">이번 달</option>
+          <option value="last">지난달</option>
           <option value={7}>최근 7일</option>
           <option value={30}>최근 30일</option>
           <option value={90}>최근 90일</option>

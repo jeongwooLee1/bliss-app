@@ -115,7 +115,7 @@ export default function AdminAlimtalkLog({ data, userBranches }) {
     }
   }, [data?.branches])
 
-  const [days, setDays] = useState(7)
+  const [days, setDays] = useState('this')  // 'this'(이번 달)|'last'(지난달)|숫자(최근 N일)
   const [branchFilter, setBranchFilter] = useState('')
   const [channelFilter, setChannelFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -128,8 +128,12 @@ export default function AdminAlimtalkLog({ data, userBranches }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const since = new Date(Date.now() - days * 86400000).toISOString()
-      let q = `&created_at=gte.${since}&order=id.desc&limit=500`
+      const _now = new Date()
+      let since, until = null
+      if (days === 'this') since = new Date(_now.getFullYear(), _now.getMonth(), 1).toISOString()
+      else if (days === 'last') { since = new Date(_now.getFullYear(), _now.getMonth() - 1, 1).toISOString(); until = new Date(_now.getFullYear(), _now.getMonth(), 1).toISOString() }
+      else since = new Date(Date.now() - Number(days) * 86400000).toISOString()
+      let q = `&created_at=gte.${since}${until ? `&created_at=lt.${until}` : ''}&order=id.desc&limit=500`
       if (branchFilter) q += `&branch_id=eq.${branchFilter}`
       else if (branches.length > 0) {
         const ids = branches.map(b => b.id).join(',')
@@ -226,10 +230,10 @@ export default function AdminAlimtalkLog({ data, userBranches }) {
 
       {/* 필터 */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12, padding: 10, background: T.gray100, borderRadius: 8 }}>
-        <select value={days} onChange={e => setDays(Number(e.target.value))}
+        <select value={days} onChange={e => {const v=e.target.value; setDays(v==='this'||v==='last'?v:Number(v))}}
           style={{ padding: '6px 10px', fontSize: 12, border: '1px solid ' + T.border, borderRadius: 4 }}>
-          <option value={1}>최근 1일</option>
-          <option value={3}>최근 3일</option>
+          <option value="this">이번 달</option>
+          <option value="last">지난달</option>
           <option value={7}>최근 7일</option>
           <option value={14}>최근 14일</option>
           <option value={30}>최근 30일</option>
