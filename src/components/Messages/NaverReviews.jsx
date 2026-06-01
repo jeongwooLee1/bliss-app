@@ -1,8 +1,19 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { T } from '../../lib/constants'
 import { sb, SB_URL, sbHeaders } from '../../lib/sb'
 import { _activeBizId } from '../../lib/db'
 import I from '../common/I'
+
+// 내용에 맞춰 높이가 자동으로 늘어나는 답글 입력창
+function AutoTextarea({ value, onChange, placeholder, style }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (el) { el.style.height = 'auto'; el.style.height = Math.max(el.scrollHeight, 60) + 'px'; }
+  }, [value]);
+  return <textarea ref={ref} value={value} onChange={onChange} placeholder={placeholder} rows={2}
+    style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: `1px solid ${T.border}`, fontFamily: 'inherit', fontSize: 13, lineHeight: 1.5, resize: 'none', overflow: 'hidden', color: T.text, ...style }} />;
+}
 
 const getGeminiKey = () => window.__systemGeminiKey || window.__geminiKey || localStorage.getItem("bliss_gemini_key") || "";
 const SRC_LABEL = { Reservation: '예약 리뷰', Receipt: '영수증 리뷰', Booking: '예약 리뷰' };
@@ -21,7 +32,7 @@ const fmtRevTime = iso => {
   } catch { return ''; }
 };
 
-export default function NaverReviews({ data, branches, userBranches, currentUser, setPage, setPendingOpenCust, setPendingOpenRes }) {
+export default function NaverReviews({ data, branches, userBranches, currentUser, setPage, setPendingOpenCust, setPendingOpenRes, onReplyDone }) {
   const [reviews, setReviews] = useState([]);
   const [filter, setFilter] = useState('noreply');   // noreply | replied | all
   const [loading, setLoading] = useState(true);
@@ -103,8 +114,9 @@ export default function NaverReviews({ data, branches, userBranches, currentUser
 조건:
 - 20대 여직원이 쓰는 것처럼 밝고 친근하며 살짝 캐주얼한 말투로 ("~해요", "~하셨다니 너무 좋아요", "ㅎㅎ", "넘 감사해요" 같은 느낌)
 - 딱딱하고 사무적인 문어체는 절대 금지 (예: "~말씀에 보람을 느낍니다", "~약속해 주셔서 감사드리며", "~큰 보람을 느낍니다" 같은 표현 X)
+- ★리뷰 문장을 그대로 따라 인용하지 마 ("'안심하고 케어받을 수 있는 곳'이라고 말씀해 주셔서" 처럼 큰따옴표로 리뷰를 되읽는 것 절대 금지). 리뷰의 핵심 느낌만 내 말로 자연스럽게 녹여서 세련되고 담백하게
 - 한국어 2~4문장, 고객을 "고객님"으로 호칭 (작성자 닉네임·실명 사용 금지)
-- 리뷰 내용을 자연스럽게 콕 집어 언급하며 진심으로 감사
+- 진부한 상투어("정말 감동받았어요", "믿고 찾아주셔서") 대신 그 리뷰에만 어울리는 구체적이고 센스있는 한마디로
 - 마지막에 재방문을 부드럽고 캐주얼하게 유도
 - 이모지·이모티콘 절대 사용 금지 (텍스트로만, 'ㅎㅎ' 정도는 허용)
 
@@ -142,9 +154,10 @@ ${custNote}
       });
       const dd = await res.json();
       if (!dd.ok) throw new Error(dd.error || '등록 실패');
-      // 로컬 state 즉시 갱신 (목록에서 제거)
+      // 로컬 state 즉시 갱신 (목록에서 제거) + 배지 카운트 즉시 감소
       setReviews(prev => prev.filter(x => x.id !== r.id));
       setDrafts(d => { const n = { ...d }; delete n[r.id]; return n; });
+      onReplyDone && onReplyDone();
     } catch (e) {
       setDrafts(d => ({ ...d, [r.id]: { ...d[r.id], submitting: false, submitErr: String(e?.message || e) } }));
     }
@@ -251,12 +264,10 @@ ${custNote}
               {!r.has_reply && (
                 <>
                   {/* 답글 textarea — 항상 표시 */}
-                  <textarea
+                  <AutoTextarea
                     value={dr.text || ''}
                     onChange={e => setDrafts(d => ({ ...d, [r.id]: { ...(d[r.id] || {}), text: e.target.value } }))}
                     placeholder="답글을 입력하거나 AI 초안을 사용하세요"
-                    rows={3}
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: `1px solid ${T.border}`, fontFamily: 'inherit', fontSize: 13, lineHeight: 1.5, resize: 'vertical', color: T.text }}
                   />
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     <button onClick={() => submitReply(r)} disabled={dr.submitting || !(dr.text || '').trim()} style={{ flex: 1, minWidth: 100, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '8px 10px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, background: '#03C75A', color: '#fff', opacity: (dr.submitting || !(dr.text || '').trim()) ? 0.55 : 1 }}>

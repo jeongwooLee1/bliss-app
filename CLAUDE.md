@@ -3206,3 +3206,10 @@ Liah(WhatsApp) 후속 2건.
 작업세션(naver-review-rollout) main 직접 작업 → 배포세션 빌드·배포.
 - `NaverReviews.jsx` 고객 메모 기반 안부 한 문장: 여행 등 **이미 했는지/예정인지 시점 불확실**하면 과거형("다녀오셨어요?") 금지 → 응원·기원 미래형("제주도 여행 즐겁게 잘 다녀오세요!", "즐거운 여행 되시길 바라요!")으로. 민감/내부정보 미사용·안부거리 없으면 생략은 유지.
 - React only.
+
+### v3.7.968 — 네이버 리뷰 답글: 배지 즉시감소 + 입력창 자동높이 + 프롬프트 개선 (작업세션 머지) (2026-06-01)
+작업세션(naver-review-rollout) main 직접 작업 → 배포세션 빌드·배포.
+- **배지 즉시 감소**: 답글 등록(submitReply 성공) 시 `onReplyDone` → MessagesPage `setReviewPending(-1)` + `onReviewReplied` → AppShell `setPendingReviewCount(-1)`. 사이드바·탭 리뷰 배지가 답글 즉시 줄어듦(기존엔 10분 폴링/네이버 동기화 기다려야 했음). AdminInbox 2곳(패널·/messages) 배선.
+- **입력창 자동 높이**: 답글 textarea → `AutoTextarea`(내용 따라 높이 자동 확장, 최소 60px). 고정 3행 → 긴 답글도 잘림 없이.
+- **프롬프트 개선**: ① 리뷰 문장 큰따옴표 그대로 인용 금지(핵심 느낌만 내 말로) ② 진부한 상투어("정말 감동받았어요"·"믿고 찾아주셔서") 대신 그 리뷰에만 맞는 구체적 한마디.
+- React only.
