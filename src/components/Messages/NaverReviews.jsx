@@ -184,12 +184,13 @@ export default function NaverReviews({ data, branches, userBranches, currentUser
                       const { SB_URL, sbHeaders } = await import('../../lib/sb');
                       const nm = encodeURIComponent(r.visitor_name);
                       // 최근 예약을 이름+지점(bid)으로 조회 — reservations는 cust_id가 비어있는 경우가 많아 cust_name 기준.
-                      // 같은 지점(리뷰 bid)으로 좁혀 동명이인 혼선 최소화. 내부일정 제외.
-                      let rres = await fetch(`${SB_URL}/rest/v1/reservations?cust_name=eq.${nm}&bid=eq.${r.bid}&is_schedule=eq.false&order=date.desc,time.desc&limit=1&select=id,reservation_id,date,time,bid,status`, { headers: sbHeaders });
+                      // 같은 지점(리뷰 bid)으로 좁혀 동명이인 혼선 최소화. 내부일정 + 타임라인에 안 뜨는 상태(naver_changed/naver_cancelled) 제외.
+                      const _excl = '&status=not.in.(naver_changed,naver_cancelled)';
+                      let rres = await fetch(`${SB_URL}/rest/v1/reservations?cust_name=eq.${nm}&bid=eq.${r.bid}&is_schedule=eq.false${_excl}&order=date.desc,time.desc&limit=1&select=id,reservation_id,date,time,bid,status`, { headers: sbHeaders });
                       let rrows = await rres.json();
                       // 지점 예약 없으면 지점 무관 최근 예약
                       if (!rrows?.length) {
-                        rres = await fetch(`${SB_URL}/rest/v1/reservations?cust_name=eq.${nm}&is_schedule=eq.false&order=date.desc,time.desc&limit=1&select=id,reservation_id,date,time,bid,status`, { headers: sbHeaders });
+                        rres = await fetch(`${SB_URL}/rest/v1/reservations?cust_name=eq.${nm}&is_schedule=eq.false${_excl}&order=date.desc,time.desc&limit=1&select=id,reservation_id,date,time,bid,status`, { headers: sbHeaders });
                         rrows = await rres.json();
                       }
                       if (rrows?.[0] && setPendingOpenRes) {

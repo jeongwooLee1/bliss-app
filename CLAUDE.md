@@ -3177,3 +3177,8 @@ Liah(WhatsApp) 후속 2건.
 **원인**: v3.7.962 핸들러가 `cust_id=eq.{custId}`로 예약 조회했는데 **reservations에 cust_id가 비어있는 경우가 많음**(cust_name으로만 연결, rsv_by_id=0) → 예약 0건 → 폴백 고객상세. + 동명이인(김윤진 11명)이라 customers name=eq limit=1로 엉뚱한 사람 cust_id 잡힘.
 **fix**: 핸들러를 **`cust_name=eq.{visitor_name}&bid=eq.{리뷰 bid}`** 최근 예약 조회로 변경(cust_id 의존 제거, 같은 지점으로 동명이인 좁힘). 지점 예약 없으면 지점 무관 최근 예약, 그것도 없으면 고객관리 페이지 폴백. setPendingOpenRes로 타임라인 블록 포커싱.
 **유의**: cust_name 완전일치 + 같은 지점 기준. 동명이인이 같은 지점에 여러 명이면 가장 최근 예약자로 감(드묾). 리뷰 데이터에 전화 등 정밀 키 없어 이름+지점이 최선.
+
+### v3.7.964 — 리뷰 방문자명 예약 포커싱: 숨김 예약(naver_changed) 제외 (2026-06-01)
+정우님: v3.7.963 후에도 채승주 안 뜸.
+**원인**: 채승주 최근 예약이 `status=naver_changed`(변경되어 사라진 구예약) — 타임라인은 naver_changed를 항상 숨김(v3.7.727)이라 setPendingOpenRes로 가리켜도 블록이 없어 포커싱 실패.
+**fix**: 핸들러 예약 조회에 `status=not.in.(naver_changed,naver_cancelled)` 추가 → 타임라인에 실제 표시되는 예약만 포커싱. 채승주는 6/1 completed 예약으로 정상 점프.
