@@ -24,17 +24,16 @@ import BlissAI from '../components/BlissAI/BlissAI'
 import FloatingAI from '../components/BlissAI/FloatingAI'
 import QuickRequest from '../components/common/QuickRequest'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
-import AdminPkgUnusedReview from '../components/Admin/AdminPkgUnusedReview'
 
 const uid = genId;
-const BLISS_V = "3.7.943"
+const BLISS_V = "3.7.944"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
   const ref = useScrollRestore(storageKey)
   return <div ref={ref} className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}>{children}</div>
 }
-const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", users:"/users", messages:"/messages", admin:"/settings", schedule:"/schedule", requests:"/requests", blissai:"/blissai", pkgunused:"/pkg-unused" };
+const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", users:"/users", messages:"/messages", admin:"/settings", schedule:"/schedule", requests:"/requests", blissai:"/blissai" };
 // reservations 테이블엔 대용량 JSONB 없음 (snapshot_data는 sales 테이블에만 존재)
 // type/is_schedule/source/repeat 등 필터링 필수 컬럼이 누락되면 화면 비어짐 → * 사용이 안전
 const RES_SELECT = "*";
@@ -2445,7 +2444,6 @@ function App() {
     { id:"messages", label:"받은메시지함", icon:<I name="msgSq" size={16}/>, badge: unreadMsgCount + pendingDepositCount },
     { id:"admin", label:"관리설정", icon:<I name="settings" size={16}/> },
     { id:"requests", label:"공지 & 요청", icon:"📢", badge:pendingReqCount },
-    ...(isMaster ? [{ id:"pkgunused", label:"패키지 미사용 검토", icon:<I name="clipboard" size={16}/> }] : []),
   ];
 
   const branchNames = userBranches.map(bid => (data.branches||[]).find(b=>b.id===bid)?.short||bid).filter(Boolean).join(", ");
@@ -2571,7 +2569,6 @@ function App() {
             <Route path="/settings/*" element={<ScrollArea storageKey="page_settings"><AdminPage data={data} setData={setData} bizId={currentBizId} serverV={serverV} onLogout={handleLogout} currentUser={currentUser} userBranches={userBranches} setPage={setPage} setPendingOpenCust={setPendingOpenCust}/></ScrollArea>}/>
             <Route path="/wizard" element={<Navigate to="/blissai" replace/>}/>
             <Route path="/requests" element={<ScrollArea storageKey="page_requests"><BlissRequests data={data} currentUser={currentUser} userBranches={userBranches} isMaster={isMaster}/></ScrollArea>}/>
-            <Route path="/pkg-unused" element={<ScrollArea storageKey="page_pkgunused"><div style={{padding:16}}><AdminPkgUnusedReview data={data} bizId={currentBizId} userBranches={userBranches} setPage={setPage} setPendingOpenCust={setPendingOpenCust}/></div></ScrollArea>}/>
             <Route path="/blissai" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}><BlissAI data={data} setData={setData} currentUser={currentUser} userBranches={userBranches} isMaster={isMaster} bizId={currentBizId} bizName={bizName}/></div>}/>
             <Route path="*" element={<Navigate to="/timeline" replace/>}/>
           </Routes>

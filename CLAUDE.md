@@ -3051,3 +3051,6 @@ Liah(WhatsApp) 후속 2건.
 - **8지점 지점정보 자주답변 16개(한/영)** 등록: 주소·전화·영업시간·교통·주차·네이버지도·구글지도. 영문 주소 번역, 영업시간 `timeline_settings`(강남 11~22, 나머지 11~21).
 - 기존 용산 자주답변 3개(예약금3.3·커플예약금·당일취소패널티) → `branchId='br_ybo3rmulv'`(용산) 부여. 총 19개.
 - **공지**(bliss_notices_v1 맨 앞): AI 답변추천 직원 지시 모드 + 자주답변 지점정보/분리 안내(직원용).
+
+### v3.7.944 — 패키지 미사용 검토 페이지 삭제 (2026-06-01)
+정우님 요청으로 "패키지 당일 미사용 검토" 페이지(`AdminPkgUnusedReview`, `/pkg-unused`) 제거. AppShell(import·nav 항목·Route·PAGE_ROUTES) + Sidebar 시스템 카테고리에서 `pkgunused` 참조 전부 삭제 + 파일 `git rm`.
