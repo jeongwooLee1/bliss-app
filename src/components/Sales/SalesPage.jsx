@@ -1283,7 +1283,7 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
   }, [vb, periodKey, startDate, endDate]);
 
   // 기간대비 — 직전 동기간 총매출 (공비서 대비, 증감% 표시용). 전체기간은 비교 대상 없어 null
-  const [prevTotal, setPrevTotal] = useState(null);
+  const [prevTotal, setPrevTotal] = useState(undefined);
   useEffect(() => {
     if (periodKey === "all" || !startDate || !endDate) { setPrevTotal(null); return; }
     let cancelled = false;
@@ -1307,11 +1307,47 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     return () => { cancelled = true; };
   }, [vb, periodKey, startDate, endDate]);
 
+  // 전년 동기간 매출 — 계절성 업종(여름 성수기/겨울 비수기)이라 방향 판단은 전월보다 전년 동월(동기간) 대비가 핵심
+  // (진행 중 기간은 같은 경과일수로 작년 동일 구간과 비교)
+  const [yoyTotal, setYoyTotal] = useState(undefined); // undefined=미로딩 / null=비교대상없음 / number
+  useEffect(() => {
+    if (periodKey === "all" || !startDate || !endDate) { setYoyTotal(null); return; }
+    let cancelled = false;
+    const _today = new Date(); _today.setHours(0,0,0,0);
+    const s = new Date(startDate), e = new Date(endDate);
+    const eEff = e > _today ? _today : e;
+    const ys = new Date(s); ys.setFullYear(ys.getFullYear()-1);
+    const ye = new Date(eEff); ye.setFullYear(ye.getFullYear()-1);
+    const fmtD = d => d.toISOString().slice(0,10);
+    fetch(`${SB_URL}/rest/v1/rpc/get_sales_stats_summary`, {
+      method:'POST', headers:{...sbHeaders,'Content-Type':'application/json'},
+      body: JSON.stringify({ p_biz_id:_activeBizId, p_start:fmtD(ys), p_end:fmtD(ye), p_bid: vb==="all"?null:vb }),
+    }).then(r => r.ok ? r.json() : null).catch(()=>null).then(j => {
+      if (cancelled) return;
+      const tt = j?.totals;
+      setYoyTotal(tt ? Number(tt.svc_total||0)+Number(tt.prod_total||0)+Number(tt.gift_total||0) : null);
+    });
+    return () => { cancelled = true; };
+  }, [vb, periodKey, startDate, endDate]);
+
+  // 월별 전년대비 매출 시리즈 (계절성 + YoY 방향 — AI 컨텍스트용)
+  const monthlyYoY = useMemo(() => {
+    const map = {}; (allTimeStats.monthly||[]).forEach(r => { if (r.ym) map[r.ym] = Number(r.total||0); });
+    const yms = Object.keys(map).sort();
+    return yms.slice(-13).map(ym => {
+      const [y,m] = ym.split('-').map(Number);
+      const prevYm = `${y-1}-${String(m).padStart(2,'0')}`;
+      const cur = map[ym], prev = map[prevYm];
+      return { 월: ym, 매출: cur, 전년동월: (prev!=null?prev:null), 전년대비pct: (prev>0 ? Math.round((cur-prev)/prev*100) : null) };
+    });
+  }, [allTimeStats.monthly]);
+
   // ── AI 영업·마케팅 분석 (서버 /sales-insight, 수치 바뀔 때만 재생성·캐시) ──
   const [aiInsight, setAiInsight] = useState({ text: "", loading: false, err: false });
   useEffect(() => {
     const _ts = periodSummary.totals;
     if (periodSummary.loading || !_ts) return;
+    if (yoyTotal === undefined || prevTotal === undefined) return; // 전년/직전 비교 로딩 완료까지 대기 (불완전 분석이 그날 캐시되는 것 방지)
     const total = Number(_ts.svc_total||0)+Number(_ts.prod_total||0)+Number(_ts.gift_total||0);
     if (total <= 0) { setAiInsight({ text: "", loading: false, err: false }); return; }
     const count = Number(_ts.cnt||0);
@@ -1329,13 +1365,18 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
       경과일수 = Math.max(1, Math.round((_eff-_s)/864e5)+1);
       진행중 = _e > _today;
     }
+    // 전년 동기간 대비 (계절성 업종이라 방향 판단의 핵심 지표)
+    const yoyGrowth = (yoyTotal!=null && yoyTotal>0) ? Math.round((total-yoyTotal)/yoyTotal*100) : null;
     // 최근 6개월 고객 추이 (신규/기존/외국인)
     const custRecent = (custTrend||[]).slice(-6).map(r=>({월:r.ym, 신규:r.n||0, 기존:r.o||0, 외국인:(r.fn||0)+(r.fo||0)}));
     const stats = {
+      업종특성: "왁싱샵 — 계절성 큼(여름 성수기·겨울 비수기). 방향 판단은 전월 대비보다 전년 동월/동기간 대비 우선.",
       기간진행: { 진행중, 경과일수, 전체일수 },
       총매출: total, 시술매출: Number(_ts.svc_total||0), 제품매출: Number(_ts.prod_total||0), 상품권: Number(_ts.gift_total||0),
       건수: count, 객단가: count>0?Math.round(total/count):0,
-      동일경과기간_대비_성장률_pct: growth,
+      전월대비_성장률_pct: growth,
+      전년동기간_매출: (yoyTotal!=null?yoyTotal:null), 전년동기간_대비_성장률_pct: yoyGrowth,
+      월별_전년대비: monthlyYoY,
       결제수단: { 현금: Number(_ts.svc_cash||0)+Number(_ts.prod_cash||0), 카드: Number(_ts.svc_card||0)+Number(_ts.prod_card||0), 이체: Number(_ts.svc_transfer||0)+Number(_ts.prod_transfer||0), 포인트: Number(_ts.svc_point||0)+Number(_ts.prod_point||0) },
       지점별: branches, 담당자별: staff, 최근6개월_고객추이: custRecent,
     };
@@ -1355,7 +1396,7 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     }).catch(() => { if (!cancelled) setAiInsight({ text: "", loading: false, err: true }); });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vb, periodKey, startDate, endDate, periodSummary.totals, periodSummary.loading, prevTotal, custTrend]);
+  }, [vb, periodKey, startDate, endDate, periodSummary.totals, periodSummary.loading, prevTotal, yoyTotal, monthlyYoY, custTrend]);
 
   // 지점별 신규고객 (외국인 구분) — 기간 내 첫 매출 기준
   const [newByBranch, setNewByBranch] = useState([]);
@@ -1644,15 +1685,27 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     <SmartDatePicker open={showSheet} onClose={()=>setShowSheet(false)} anchorEl={dateAnchorRef.current}
       startDate={startDate} endDate={endDate} mode="sales"
       onApply={(s,e,p)=>{ setStartDate(s); setEndDate(e); setPeriodKey(p); setShowSheet(false); }}/>
-    {/* 기간 대비 (공비서 대비 — 직전 동기간 총매출 증감%) */}
-    {prevTotal != null && prevTotal > 0 && (() => {
-      const _d = Math.round((t.total - prevTotal) / prevTotal * 100);
-      const _up = _d >= 0;
-      return <div style={{marginBottom:12,display:"inline-flex",alignItems:"center",gap:6,padding:"6px 13px",borderRadius:999,background:_up?"#ECFDF5":"#FEF2F2",fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:_up?"#059669":"#DC2626"}}>
-        {_up?"▲":"▼"} 지난 동기간 대비 {Math.abs(_d)}%
-        <span style={{color:T.textMuted,fontWeight:T.fw.medium}}>(이전 {fmt(prevTotal)}원)</span>
-      </div>;
-    })()}
+    {/* 기간 대비 — 전년 동기간(계절성 업종 주지표) + 직전 동기간(보조) */}
+    {((yoyTotal!=null && yoyTotal>0) || (prevTotal!=null && prevTotal>0)) && (
+      <div style={{marginBottom:12,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+        {yoyTotal!=null && yoyTotal>0 && (() => {
+          const _d = Math.round((t.total - yoyTotal) / yoyTotal * 100);
+          const _up = _d >= 0;
+          return <div style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:999,background:_up?"#ECFDF5":"#FEF2F2",fontSize:T.fs.sm,fontWeight:T.fw.black,color:_up?"#059669":"#DC2626"}}>
+            {_up?"▲":"▼"} 전년 동기간 대비 {Math.abs(_d)}%
+            <span style={{color:T.textMuted,fontWeight:T.fw.medium,fontSize:T.fs.xs}}>(작년 {fmt(yoyTotal)}원)</span>
+          </div>;
+        })()}
+        {prevTotal!=null && prevTotal>0 && (() => {
+          const _d = Math.round((t.total - prevTotal) / prevTotal * 100);
+          const _up = _d >= 0;
+          return <div style={{display:"inline-flex",alignItems:"center",gap:5,padding:"6px 12px",borderRadius:999,background:T.gray100,fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:_up?"#059669":"#DC2626"}}>
+            {_up?"▲":"▼"} 직전 동기간 {Math.abs(_d)}%
+            <span style={{color:T.textMuted,fontWeight:T.fw.medium}}>(이전 {fmt(prevTotal)}원)</span>
+          </div>;
+        })()}
+      </div>
+    )}
     {/* Summary Cards */}
     <GridLayout className="stat-cards" cols="repeat(auto-fit,minmax(160px,1fr))" gap={12} style={{marginBottom:20}}>
       <SC label="총 매출" val={`${fmt(t.total)}원`} sub={`${t.count}건`} clr={T.info}/>
