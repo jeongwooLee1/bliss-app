@@ -3216,3 +3216,13 @@ Liah(WhatsApp) 후속 2건.
 
 ### v3.7.969 — 네이버 리뷰 답글 프롬프트 few-shot 예시 추가 (작업세션 머지) (2026-06-01)
 작업세션(naver-review-rollout) → 배포세션 빌드·배포. `NaverReviews.jsx` AI 답글 프롬프트에 **나쁜 예/좋은 예** 추가 — 나쁜 예(리뷰 큰따옴표 따라읽기+진부함) vs 좋은 예(핵심 느낌만 내 말로 캐주얼하게). 따라읽기 금지 룰 강화. React only.
+
+### v3.7.970 — 계정 접속 이력 기록·조회 (보안 감시) (2026-06-01)
+정우님: 계정 보안 감시용으로 로그인 접속정보(IP·OS·브라우저·기기) 저장 → "기록만, 수동 조회" 선택.
+- **컴퓨터 이름(hostname)은 불가**(브라우저 보안상 웹앱은 로컬 PC명 못 읽음) — 안내함. IP·국가·OS·브라우저·기기는 저장.
+- **DB** `account_login_log` (migration `account_login_log_init`): account_id/login_id/business_id/name/role/ip/country/os/browser/device/user_agent/created_at. RLS+anon_all.
+- **서버 `bliss_naver.py` `/log-login`**(백업 `bak_pre_loglogin_*`, nginx 라우팅에 추가): CF-Connecting-IP(실제 IP)·CF-IPCountry 헤더 + UA 파싱(OS/브라우저/기기) → INSERT. 클라가 보낸 account_id/login_id/business_id/name/role/ua 결합. 검증: 실제 IP `27.1.36.102` KR/macOS/Chrome/PC 정확 파싱.
+- **클라 `AppShell.jsx` handleLogin**: 로그인 성공 시 `/log-login` fire-and-forget(account_id·login_id·business_id·name·role·navigator.userAgent). 실패해도 로그인 영향 0.
+- **조회 `AdminLoginLog.jsx`**: 관리설정 → 내 계정 → "접속 이력"(slug `login-log`, **isOwner 전용**). 기간(7일/30일/이번달/지난달/전체)+검색(이름·로그인ID·IP). 행: 이름·권한·로그인ID / 시각(KST) / IP(+같은 계정 IP 3개↑이면 "다중IP" 빨강) / 국가 / 기기·OS·브라우저. business_id=현재 사업장 필터.
+- 로컬 검증(데모): 로그인 자동 기록 + 페이지 렌더 + 전 필드 표시 확인.
+**유의**: 경보·차단 없음(기록·수동조회만, 유저 선택). IP는 Cloudflare 실제 IP(CF-Connecting-IP). "다중IP" 표시는 보조 신호(휴리스틱). account_login_log는 anon_all(앱 application-level 인증 패턴). 추후 텔레그램 경보·신규기기 알림 필요 시 확장 가능.

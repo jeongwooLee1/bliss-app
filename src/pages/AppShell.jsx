@@ -26,7 +26,7 @@ import QuickRequest from '../components/common/QuickRequest'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.969"
+const BLISS_V = "3.7.970"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -2082,6 +2082,19 @@ function App() {
   const handleLogin = async (user, isAutoLogin) => {
     setCurrentUser(user);
     setRole(user.role);
+    // 계정 보안 감시 — 로그인 접속정보 기록 (IP/국가/OS/브라우저/기기는 서버가 CF헤더·UA로 채움)
+    try {
+      fetch("https://blissme.ai/log-login", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          account_id: user.account_id || user.accountId || "",
+          login_id: user.loginId || user.login_id || "",
+          business_id: user.businessId || user.business_id || "",
+          name: user.name || "", role: user.role || "",
+          ua: navigator.userAgent,
+        }),
+      }).catch(() => {});
+    } catch {}
     // Save session only on manual login (auto-login already has session)
     if (!isAutoLogin) {
       try{localStorage.setItem("bliss_session",JSON.stringify({userId:user.id,loginId:user.loginId||user.login_id}));}catch(e){}
