@@ -3764,6 +3764,17 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
 
           {/* Col 1+2: Services by category (span 2 columns) */}
           <div style={{gridColumn:"span 2"}}>
+            {/* 구독권 보유 — 지정 시술 무제한 무료 안내 (직원 인지용) */}
+            {subPkgs.length > 0 && <div style={{marginBottom:6,border:"1px solid #0369a1",borderRadius:8,background:"#eff6ff",padding:"7px 10px"}}>
+              <div style={{fontSize:13,fontWeight:700,color:"#0369a1",display:"flex",alignItems:"center",gap:6,marginBottom:2}}><I name="pkg" size={14}/>구독권 보유</div>
+              {subPkgs.map(p => {
+                const _svc=_subSvcOf(p);
+                let _pc=_svc?.promoConfig; if(typeof _pc==='string'){try{_pc=JSON.parse(_pc)}catch{_pc=null}}
+                const _freeNames=((_pc&&_pc.subFreeServiceIds)||[]).map(sid=>(data?.services||[]).find(s=>s.id===sid)?.name).filter(Boolean).join(", ");
+                const _exp=((p.note||"").match(/유효:\s*(\d{4}-\d{2}-\d{2})/)||[])[1];
+                return <div key={p.id} style={{fontSize:11.5,color:"#0369a1",fontWeight:600}}>· {_freeNames||"지정 시술"} 무제한 무료 {_exp?`(유효 ~${_exp})`:"(첫 사용 시 1년 시작)"}</div>;
+              })}
+            </div>}
             {/* 다회권 패키지 — 시술과 동일한 UI */}
             {(activeMultiPkgs.length + inactiveMultiPkgs.length) > 0 && <div style={{marginBottom:6,border:"1px solid "+T.border,borderRadius:8,overflow:"hidden"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 10px",background:hasPkgChecked()?T.primaryHover:T.gray100}}>

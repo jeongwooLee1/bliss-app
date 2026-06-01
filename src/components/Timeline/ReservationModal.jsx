@@ -1096,12 +1096,17 @@ function TimelineModal({ item, onSave, onAddCompanion, onDelete, onDeleteRequest
     (pkgs||[]).forEach(p => {
       const n = (p.service_name||"");
       const nl = n.toLowerCase();
-      const isPrepaid = isMoneyPkg(p);
-      const isAnnual  = n.includes("연간") || n.includes("할인권") || n.includes("회원권");
+      const _svc = (p.service_id && (data?.services||[]).find(s=>s.id===p.service_id)) || (data?.services||[]).find(s=>s.name===n);
+      const isSub = !!(_svc?.isSubscription || _svc?.is_subscription);
+      const isPrepaid = !isSub && isMoneyPkg(p);
+      const isAnnual  = !isSub && (n.includes("연간") || n.includes("할인권") || n.includes("회원권"));
       const expM = (p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/);
       const isExp = expM && expM[1] < today;
       const cleanName = (n.split("(")[0]||"").trim();
-      if (isPrepaid) {
+      if (isSub) {
+        // 🎟 구독권 — 무제한(횟수 X). 유효기간 있으면 "무제한", 미설정이면 "사용 전"
+        out.push({type:"subscription", active:!isExp, label: cleanName || "구독권", value: expM ? "무제한" : "사용 전"});
+      } else if (isPrepaid) {
         const m = (p.note||"").match(/잔액:([0-9,]+)/);
         const bal = m ? Number(m[1].replace(/,/g,"")) : 0;
         // 라벨에서 trailing 충전금액 제거: "다담권 100만"·"바프권 30만"·"다담권 1,000,000원" → "다담권"/"바프권"
