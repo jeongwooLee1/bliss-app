@@ -3139,3 +3139,9 @@ Liah(WhatsApp) 후속 2건.
 **원인**: `normalizeSegments`의 `segHoursOf(branchId)` 반환값 `wh`가 null일 때(empWorkHours 미설정 + branch timelineSettings 없음) `wh.start`/`wh.end`에 접근해 TypeError → sort 깨짐 → 세그먼트 from/until이 null 그대로 → `mySeg.from !== mySeg.until` = `null !== null = false` → `hasActiveSeg=false` → 원지점 직원 컬럼 working에 미추가 → 사라짐.
 **fix**: `wh.start`/`wh.end` → `wh?.start||"11:00"` / `wh?.end||"21:00"` null 안전 접근 + sort도 동일 방어. additive 변경이라 기존 동작(wh 있는 경우) 완전 보존.
 **유의**: 데모에 실제 이동직원 없어 로컬 검증 제한적. 라이브에서 현아(홍대→강남 16:20 이동)로 확인 권장.
+
+### v3.7.959 — 네이버 리뷰 "블리스에서 답글 직접 달기" (작업세션 머지) (2026-06-01)
+작업세션(리뷰답변코드)이 main 폴더 작업 → 배포세션 빌드·배포. 서버 `/review-reply` 엔드포인트는 작업세션이 이미 배포·재시작 완료.
+- `NaverReviews.jsx`: `submitReply(r)` 추가 — `blissme.ai/review-reply`로 `{reviewId, bizId, text}` POST → 성공 시 목록에서 제거(setReviews filter) + draft 삭제. 실패 시 에러 표시.
+- "복사 후 네이버에서 붙여넣기" 안내 → **"블리스에서 달기" 버튼**(네이버 그린 #03C75A + N 아이콘). 블리스 안에서 바로 네이버 리뷰 답글 등록.
+- React만 빌드·배포(서버는 이미 적용). 빌드 검증 통과. 네이버 답글 등록은 라이브 실제 리뷰로 확인 권장(데모 리뷰 데이터 없음).

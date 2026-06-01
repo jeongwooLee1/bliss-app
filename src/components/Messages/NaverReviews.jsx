@@ -111,6 +111,27 @@ export default function NaverReviews({ data, branches, userBranches, currentUser
     }
   };
 
+  const submitReply = async (r) => {
+    const text = (drafts[r.id]?.text || '').trim();
+    if (!text) return;
+    const pm = placeMap[r.bid];
+    const bizId = pm?.biz || r.place_id;
+    setDrafts(d => ({ ...d, [r.id]: { ...d[r.id], submitting: true, submitErr: null } }));
+    try {
+      const res = await fetch('https://blissme.ai/review-reply', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reviewId: r.review_id, bizId, text }),
+      });
+      const dd = await res.json();
+      if (!dd.ok) throw new Error(dd.error || '등록 실패');
+      // 로컬 state 즉시 갱신 (목록에서 제거)
+      setReviews(prev => prev.filter(x => x.id !== r.id));
+      setDrafts(d => { const n = { ...d }; delete n[r.id]; return n; });
+    } catch (e) {
+      setDrafts(d => ({ ...d, [r.id]: { ...d[r.id], submitting: false, submitErr: String(e?.message || e) } }));
+    }
+  };
+
   const copyDraft = async (r) => {
     const txt = drafts[r.id]?.text || '';
     if (!txt) return;
@@ -197,7 +218,10 @@ export default function NaverReviews({ data, branches, userBranches, currentUser
                         <button onClick={() => genDraft(r)} disabled={dr.loading} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600, background: T.bg, color: T.textSub }}>
                           <I name="sparkles" size={12} />다시
                         </button>
-                        <span style={{ fontSize: 11, color: T.textSub, marginLeft: 2 }}>복사 후 [네이버에서 답글쓰기]로 붙여넣기</span>
+                        <button onClick={() => submitReply(r)} disabled={dr.submitting || !dr.text?.trim()} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, background: '#03C75A', color: '#fff', opacity: (dr.submitting || !dr.text?.trim()) ? 0.6 : 1 }}>
+                          <I name="naver" size={12} color="#fff" />{dr.submitting ? '등록 중…' : '블리스에서 달기'}
+                        </button>
+                        {dr.submitErr && <span style={{ fontSize: 11, color: T.danger }}>{dr.submitErr}</span>}
                       </div>
                     </div>
                   )}
