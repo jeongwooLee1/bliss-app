@@ -1372,6 +1372,16 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     const yoyGrowth = (yoyTotal!=null && yoyTotal>0) ? Math.round((total-yoyTotal)/yoyTotal*100) : null;
     // 최근 6개월 고객 추이 (신규/기존/외국인)
     const custRecent = (custTrend||[]).slice(-6).map(r=>({월:r.ym, 신규:r.n||0, 기존:r.o||0, 외국인:(r.fn||0)+(r.fo||0)}));
+    // 진행중 기간 예상치 — 현재 일평균×전체일수로 월 전체 추정 + 작년 동월 전체 대비 (며칠치 동기간 비교는 노이즈라 이게 방향 핵심)
+    let 예상_전체월_매출 = null, 예상_전년대비_성장률_pct = null;
+    if (진행중 && 경과일수 && 전체일수 && 전체일수 > 경과일수) {
+      예상_전체월_매출 = Math.round(total / 경과일수 * 전체일수);
+      const _em = new Date(endDate);
+      const _lastYM = `${_em.getFullYear()-1}-${String(_em.getMonth()+1).padStart(2,'0')}`;
+      const _mmap = {}; (allTimeStats.monthly||[]).forEach(r=>{ if (r.ym) _mmap[r.ym]=Number(r.total||0); });
+      const _lastFull = _mmap[_lastYM];
+      if (_lastFull > 0) 예상_전년대비_성장률_pct = Math.round((예상_전체월_매출 - _lastFull)/_lastFull*100);
+    }
     const stats = {
       업종특성: "왁싱샵 — 계절성 큼(여름 성수기·겨울 비수기). 방향 판단은 전월 대비보다 전년 동월/동기간 대비 우선.",
       기간진행: { 진행중, 경과일수, 전체일수 },
@@ -1379,6 +1389,7 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
       건수: count, 객단가: count>0?Math.round(total/count):0,
       전월대비_성장률_pct: growth,
       전년동기간_매출: (yoyTotal!=null?yoyTotal:null), 전년동기간_대비_성장률_pct: yoyGrowth,
+      예상_전체월_매출, 예상_전년대비_성장률_pct,
       월별_전년대비: monthlyYoY,
       결제수단: { 현금: Number(_ts.svc_cash||0)+Number(_ts.prod_cash||0), 카드: Number(_ts.svc_card||0)+Number(_ts.prod_card||0), 이체: Number(_ts.svc_transfer||0)+Number(_ts.prod_transfer||0), 포인트: Number(_ts.svc_point||0)+Number(_ts.prod_point||0) },
       지점별: branches, 담당자별: staff, 최근6개월_고객추이: custRecent,
@@ -1399,7 +1410,7 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     }).catch(() => { if (!cancelled) setAiInsight({ text: "", loading: false, err: true }); });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vb, periodKey, startDate, endDate, periodSummary.totals, periodSummary.loading, prevTotal, yoyTotal, monthlyYoY, custTrend]);
+  }, [vb, periodKey, startDate, endDate, periodSummary.totals, periodSummary.loading, prevTotal, yoyTotal, monthlyYoY, custTrend, allTimeStats.monthly]);
 
   // 지점별 신규고객 (외국인 구분) — 기간 내 첫 매출 기준
   const [newByBranch, setNewByBranch] = useState([]);
