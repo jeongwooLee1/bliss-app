@@ -3383,3 +3383,14 @@ Liah(WhatsApp) 후속 2건.
 
 ### v3.7.980 — 타임라인 직원 헤더: 셀 태그를 이름 위로 (이름 위치 고정) (2026-06-03)
 정우님(희서 컬럼): 직원 컬럼 헤더에서 셀 태그(일출/용홍쉐 등 schTagsHistory)가 `[◀ 이름 ▶ 태그]` 한 줄 flexWrap이라, 태그 생기면 이름이 옆으로 밀려 위치가 바뀜. → 헤더를 **세로(column)**로: 태그를 **이름 위 별도 줄**, 이름줄(◀ 이름 ▶)은 그대로 가운데 고정. `getTagsForEmp` 1회 호출(IIFE)해 태그 있을 때만 상단 줄 렌더, 없으면 이름줄만(이름 위치 일관). TimelinePage 헤더 4382~ 구조 변경, 빌드 OK.
+
+### 포인트 소멸 안내 알림톡 템플릿 등록·검수 제출 (2026-06-03, 승인 대기)
+정우님: 포인트 소멸 안내를 알림톡으로(SMS→알림톡, 비용 절반). 8지점 등록+검수 요청 완료.
+- **본문**(변수 #{고객명}/#{포인트}/#{소멸일수}/#{링크}): `[하우스왁싱] #{고객명}님\n\n적립하신 포인트 #{포인트}원이 #{소멸일수}일 후 소멸 예정입니다.\n방문하시면 사용 가능하니 아래에서 예약해주세요.\n▶ #{링크}`
+- **버튼 시도 실패**: aligo `tpl_button`(WL, linkMo/linkPc) → `code 510 버튼 형식 유효하지 않음(link-Mobile 필수)`. → consent_doc처럼 **본문 링크 변수(▶ #{링크})** 방식으로 등록(검수 통과 패턴). #{링크}엔 발송 시 `blissme.ai/r/{code}` 주입.
+- **tplCode**: 강남 **UI_3958** / 마곡 UI_3959 / 왕십리 UI_3960 / 용산 UI_3961 / 위례 UI_3962 / 잠실 UI_3963 / 천호 UI_3964 / 홍대 UI_3965. status REQ. 등록 스크립트 `/tmp/aligo_pexp_register2.py`(서버).
+- **⏳ 승인 후 후속 (PENDING)**:
+  1. 8지점 `noti_config`에 새 키(예: `point_expiry`) {on:true, tplCode:지점별, msgTpl:본문} 추가.
+  2. `point_expiry_thread`(bliss_naver.py): 현재 send-sms 직접 호출 → **alimtalk_queue INSERT**(channel='alimtalk', noti_key, params `#{고객명}`=name·`#{포인트}`=amt:,·`#{소멸일수}`=tier·`#{링크}`=blissme.ai/r/{code}).
+  3. **SMS 폴백**: 카톡 없는 손님은 알림톡 실패 → SMS로 폴백 필요(alimtalk_thread가 자동 폴백 안 하면 별도 로직). 현행 SMS 코드 유지하며 알림톡 우선.
+**유의**: 알림톡 검수 통과 전엔 현행 SMS 발송 그대로(D-30/15/7). 케어 문자는 SMS 유지(별도 요청 시 알림톡화). 알리고 버튼은 aligo akv10 add에서 형식 까다로움 — 본문 링크 변수가 안전.
