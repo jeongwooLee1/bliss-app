@@ -1,6 +1,26 @@
 # HANDOFF
 
-## 📌 현재 라이브: v3.7.964 (https://blissme.ai/version.txt) — 2026-06-01
+## 🆕 네이버 리뷰 답글 시스템 + 구글 GBP 신청 (2026-06-01~02) ★다음 세션 핵심★
+> 상세 시스템 구성은 memory `reference_bliss_naver_reviews` / `reference_bliss_google_gbp` 참고.
+
+### 네이버 리뷰 (받은메세지함 '리뷰' 탭)
+- **전부 라이브 배포 완료(v3.7.965~976)**: 리뷰 탭·수집(booking 방식)·답글등록·배지(has_reply=false·10분폴링)·바로가기·AI톤 few-shot(따라읽기 차단)·20대 여직원톤·이모지금지·응원형 시제·최근 매출메모 안부거리·등록 시 배지 즉시 -1·AutoTextarea·"네이버에 등록" 버튼·방문자명→예약 포커싱·AI 답글모델 gemini-3.5-flash. (이전 "미배포" 메모는 해소됨)
+- **서버(이미 적용·재시작됨, git 미추적 `/home/ubuntu/naver-sync/`)**: `review_sync.py`(신규, 답글없는것+최근30일, 10분), `bliss_naver.py`(`/review-reply`·`/review-sync-now`·`_gbp_api_approval_checker` 스레드), `review_query_booking.graphql`·`review_reply_mutation.graphql`, nginx location에 review 경로 추가
+- placeId(플레이스 전체 리뷰)는 강남만 권한·7지점 "플레이스 권한없음" → **booking(예약연동 리뷰) 방식으로 8지점 통일**
+
+### 구글 GBP 리뷰 — API 승인 대기
+- 승인 신청함 **case 5-2636000040443** (7~10영업일, `housewaxing@gmail.com` 메일). Cloud 프로젝트 `bliss-gmail-push`(37640356601), 강남점으로 신청
+- 승인 메일 자동감지 → **텔레그램 알림 스레드 가동중**(`_gbp_api_approval_checker`, 24h 체크, 첫 체크 재시작+1h)
+- **승인 후 할 일**: GBP API 8개 활성화 + OAuth(housewaxing 계정) + 서버 수집(`reviews.list`)/답글(`reviews.updateReply`) 엔드포인트 → `naver_reviews`에 `source='google'` 통합
+
+### ⚠️ 워크플로우 사고 메모
+- 이 작업 초반 worktree 전환 전 **main 폴더에서 직접 작업** → 메인 세션 v3.7.945 커밋에 네이버 리뷰 코드 혼입·배포됨(다행히 파일 안 겹쳐 무손상). 이후 worktree(`naver-review-rollout`) 전환했으나 일부 Edit가 main 절대경로로 감. 다음 세션은 worktree/main 경로 주의.
+
+---
+
+## 📌 현재 라이브: v3.7.976 (https://blissme.ai/version.txt) — 2026-06-03
+> v3.7.965~976 + 서버(ai_booking/bliss_naver) 변경 상세는 CLAUDE.md 변경이력 참고. 미배포 bliss-app 코드 없음(동기화 완료).
+> **남은 내 영역 1건**: 희서 id_6f3bsl54sx — 체크리스트/신규차트 알림톡 문구 "구매하신 상품 관련" 분리 = ConsentModal 문서종류별 템플릿 분기 + **신규 카카오 템플릿 검수(3~5일) 필요**라 즉시 배포 불가(reviewing). 수연·경아 요청은 동의서앱(consent) 영역.
 
 ### ✅ 이번 세션 완료 (2026-06-01) — v3.7.939~964 (상세 CLAUDE.md 변경이력)
 - **v3.7.958** 직원 타지점 이동 시 원지점 근무 사라짐 **버그 fix** — `normalizeSegments` wh null 안전접근(segHoursOf 미설정 시 TypeError→sort 파괴→from/until=null→hasActiveSeg=false). ⚠️ **라이브 확인 권장**: 현아(홍대→강남16:20이동) 오늘 날짜에서 홍대 직원이름 뜨는지.
