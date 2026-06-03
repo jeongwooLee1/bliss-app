@@ -3359,3 +3359,9 @@ Liah(WhatsApp) 후속 2건.
 - **21일(after_21d) 문구 8지점 교체** (각 81byte 단문): `[하우스왁싱] 왁싱 3주차, 다시 거슬리는 시기! 예약 도와드릴게요 ▶ blissme.ai/r/{code}`. 손님이 링크 클릭 → 예약폼(book.html) 해당 지점으로.
 - **byte 학습**: UMS 단문 90byte(EUC-KR, 한글~45자). 풀본문+풀링크=107(장문). 링크 단축(/r/gn 15byte) + M문구(관리 한줄 뺌)로 81byte 단문 달성. 전번 링크 넣기는 검토했으나 정우님 "예약율 높으니 굳이"로 보류(전번 넣으면 풀본문 장문).
 **유의**: 케어 msgTpl은 정적 텍스트(고객 변수 없음) — 링크도 지점별 고정. SMS 클라가 `blissme.ai/r/gn` 자동 링크화. 새 지점 추가 시 nginx `location = /r/{code}` + noti_config 링크 둘 다 추가 필요. 리다이렉트는 exact location이라 우선순위 안전(순서 무관).
+
+### 케어 21일 이후 전부 예약링크 + 케어링크 예약 출처 구별 (2026-06-03, 서버/DB/book.html, React 변경 0)
+정우님: ① 21일 이후(35·60일) 메시지에도 예약링크 ② 자동예약 등록 시 "카톡 링크로 온 예약"인지 "대화 문장으로 온 예약"인지 구별.
+- **① 35일·60일에 링크 추가**(8지점 noti_config msgTpl, 트림해서 단문 유지): 35일 `[하우스왁싱] 왁싱 5주차! 모질개선 지금이 최선, 관리 받기 좋아요 ▶ blissme.ai/r/{code}`(82byte) / 60일 `[하우스왁싱] 마지막 방문 2개월째! 그 느낌 오시죠? 깔끔하게 정리 ▶ blissme.ai/r/{code}`(82byte). 21일(v3.7.979 후속)·35·60 전부 링크 = 재방문 유도 시점 3개 모두.
+- **② 케어링크 예약 출처 구별**: nginx 리다이렉트가 `book.html?branch=강남&src=care`로 넘김(`&src=care` 추가, SMS byte 영향 0 — 서버단). book.html이 `src`를 /book-submit payload에 전달 → 서버 `/book-submit`이 `src=='care'`면 reservation `source="케어예약"`, 아니면 기존 `"카톡"`. → 타임라인/예약목록 예약경로에서 **케어문자 링크로 들어온 예약** vs 카톡 채널 예약버튼/AI 대화예약 구별. `reservation_sources`에 "케어예약" 추가(id `src_care_*`).
+**유의**: 케어링크(`/r/gn`)=예약경로 "케어예약", 카톡 채널 일반 예약버튼(book.html?branch만, src 없음)=기존 "카톡", AI 대화 예약=채널명/"AI 예약". 셋 다 구별됨. nginx 백업 `bliss_nginx.bak_srccare_*`, 서버 `bak_booksrc_*`. book.html은 정적페이지라 복사+CF퍼지(버전업 없음).
