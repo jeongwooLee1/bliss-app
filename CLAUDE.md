@@ -3365,3 +3365,6 @@ Liah(WhatsApp) 후속 2건.
 - **① 35일·60일에 링크 추가**(8지점 noti_config msgTpl, 트림해서 단문 유지): 35일 `[하우스왁싱] 왁싱 5주차! 모질개선 지금이 최선, 관리 받기 좋아요 ▶ blissme.ai/r/{code}`(82byte) / 60일 `[하우스왁싱] 마지막 방문 2개월째! 그 느낌 오시죠? 깔끔하게 정리 ▶ blissme.ai/r/{code}`(82byte). 21일(v3.7.979 후속)·35·60 전부 링크 = 재방문 유도 시점 3개 모두.
 - **② 케어링크 예약 출처 구별**: nginx 리다이렉트가 `book.html?branch=강남&src=care`로 넘김(`&src=care` 추가, SMS byte 영향 0 — 서버단). book.html이 `src`를 /book-submit payload에 전달 → 서버 `/book-submit`이 `src=='care'`면 reservation `source="케어예약"`, 아니면 기존 `"카톡"`. → 타임라인/예약목록 예약경로에서 **케어문자 링크로 들어온 예약** vs 카톡 채널 예약버튼/AI 대화예약 구별. `reservation_sources`에 "케어예약" 추가(id `src_care_*`).
 **유의**: 케어링크(`/r/gn`)=예약경로 "케어예약", 카톡 채널 일반 예약버튼(book.html?branch만, src 없음)=기존 "카톡", AI 대화 예약=채널명/"AI 예약". 셋 다 구별됨. nginx 백업 `bliss_nginx.bak_srccare_*`, 서버 `bak_booksrc_*`. book.html은 정적페이지라 복사+CF퍼지(버전업 없음).
+
+### 케어 10일차에도 예약링크 추가 (2026-06-03, DB만)
+정우님 요청 — 10일차(인그로운 케어)에도 예약링크. after_10d 8지점 msgTpl: `[하우스왁싱] 왁싱 10일째, 인그로운 케어 적기! 기기 스크럽 예약 ▶ blissme.ai/r/{code}` (81byte 단문). → 예약링크 케어 = **10·21·35·60일** 4개. (1일 첫방문 인사·5일 인그로운 예방은 링크 없이 유지)
