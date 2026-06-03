@@ -3351,3 +3351,11 @@ Liah(WhatsApp) 후속 2건.
 - **블리스 RPC `consent_identity_search(p_business_id, p_phone, p_email)`** (migration `consent_identity_search_fn`, SECURITY DEFINER, anon GRANT): 연락처/이메일로 customers 검색(전화 82→010 정규화, phone·phone2·email), 후보 최대 8명 반환 {id, name, phone_tail(****5843), email_masked, visits, last_visit} — 공개 차트페이지용이라 **마스킹**. 번호공유 시 후보 여럿 반환 → 챗봇이 확인.
 - **챗봇 UI는 동의서앱(sign.blissme.ai, bliss-consent 레포)** — 차트 폼 전에 기존/신규 → (기존)이름+연락처/이메일→RPC검색→"OOO님 맞으세요?"확인 / (신규)이름+연락처/이메일→신규. 제출 시 customer_consents.customer_id를 **챗봇 확정 id**로 저장(토큰 예약자 id 덮어쓰기). spawn_task로 동의서앱에 위임(RPC 사용법 포함).
 **유의**: 블리스 본앱 변경 0(RPC migration만). ConsentModal 변경 불필요. 외국인고객/이종원 번호공유 데이터는 별도 점검 건(정우님 인지). 동의서앱이 RPC 호출해 챗봇 붙이면 완성.
+
+### 케어 SMS 21일 통합 + 단축 예약링크 (`/r/{code}`) (2026-06-03, 서버/DB만, React 변경 0)
+정우님: 18일 신규 케어 끄고 21일 하나로 + 예약 링크 추가(단문 유지, 전번은 안 넣음).
+- **18일 신규(after_18d_first_only) OFF** (8지점 noti_config `on=false`). 신규 고객 3주차 안내는 21일(전체 발송)이 커버.
+- **단축 예약링크 nginx 리다이렉트**: `blissme.ai/r/{code}` → 302 → `book.html?branch={지점}`(한글 percent-encoded). 8지점 코드: gn 강남·mg 마곡·ws 왕십리·ys 용산·wr 위례·js 잠실·ch 천호·hd 홍대. nginx 443 server 블록에 `location = /r/{code}` 8개 exact 추가(백업 `/home/ubuntu/bliss_nginx.bak_rlink_*`, sites-enabled **밖**). `/book.html?branch=강남`(40byte)→`/r/gn`(15byte)로 단축해 본문+링크 단문 유지.
+- **21일(after_21d) 문구 8지점 교체** (각 81byte 단문): `[하우스왁싱] 왁싱 3주차, 다시 거슬리는 시기! 예약 도와드릴게요 ▶ blissme.ai/r/{code}`. 손님이 링크 클릭 → 예약폼(book.html) 해당 지점으로.
+- **byte 학습**: UMS 단문 90byte(EUC-KR, 한글~45자). 풀본문+풀링크=107(장문). 링크 단축(/r/gn 15byte) + M문구(관리 한줄 뺌)로 81byte 단문 달성. 전번 링크 넣기는 검토했으나 정우님 "예약율 높으니 굳이"로 보류(전번 넣으면 풀본문 장문).
+**유의**: 케어 msgTpl은 정적 텍스트(고객 변수 없음) — 링크도 지점별 고정. SMS 클라가 `blissme.ai/r/gn` 자동 링크화. 새 지점 추가 시 nginx `location = /r/{code}` + noti_config 링크 둘 다 추가 필요. 리다이렉트는 exact location이라 우선순위 안전(순서 무관).
