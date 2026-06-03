@@ -3414,3 +3414,16 @@ Liah(WhatsApp) 후속 2건.
 **원인**: ai_booking 프롬프트에 고객 프로필 블록(보유권 잔액·포인트, "바로 안내" 규칙)은 이미 주입되는데, **[허용 주제] 목록(가격·예약·지점·FAQ·취소)에 "잔여 조회"가 빠져** "그 외는 담당자 확인" 규칙에 막힘.
 **fix**: [허용 주제]에 **7번 "회원권·보유권 잔여 조회(패키지 횟수/다담권·선불권 잔액/포인트)"** 추가 — [고객 세션 기록]에 데이터 있으면 그 수치로 바로 안내(만료·소진 사실대로). 단 ①미매칭 ②번호 다중매칭 모호 시엔 담당자. **사용 날짜별 상세·환불·정책은 여전히 담당자**(AI가 날짜별 이력 풀어내긴 부정확). 백업 `ai_booking.py.bak_baltopic_*`, restart active.
 **유의**: 매칭 우선순위 = booking_state custId → 채팅연결 예약 cust_id(sns_accounts 연결 시 정확) → 전화(1:1) → 이메일. 다담권 잔액은 customer_packages.note `잔액:` 파싱(차감 시 갱신돼 최신). 토탈 PKG는 소진분도 함께 표시되니 "활성 N회"로 안내됨. 잔여 조회는 본인 매칭 전제(번호공유 동명이인은 보류 — feedback_bliss_no_phone_matching).
+
+### v3.7.982 — AI 미룬 문의 "확인 필요" 플래그 (받은메시지함 배지·필터 + 직원 답장 시 해제) (2026-06-03)
+정우님 결정(옵션 나): 영업시간 종료 후 손님이 보유권 **상세 사용내역**을 물으면 AI는 잔여(금액·횟수)만 알려주고 상세는 "영업시간에 직원이 확인 후 안내, AI라 상세 이력은 어려워요"로 미룬 뒤, **그 대화를 '확인 필요'로 표시 → 받은메시지함에서 다음날 직원이 바로 봄(미읽음 유지)**. 텔레그램 알림 없음.
+- **서버(ai_booking.py, 이전 세션 — 유지 확인됨)**: ① 신규 테이블 `inbox_followup`(id/business_id/channel/account_id/user_id/cust_name/question/reason/created_at/resolved_at, active 부분 UNIQUE, RLS+anon_all) ② `_flag_inbox_followup(channel,account_id,user_id,cust_name,question)` 헬퍼(1393, active row 있으면 skip) ③ 응답 발송 직후(3121) `reply에 "담당자/직원이 확인/확인 후 안내/출근" 포함 & not suggest_only`면 플래그 INSERT ④ [허용 주제] #7에 잔여조회 + "상세는 영업시간 직원 확인" 문구(2398).
+- **클라(MessagesPage.jsx, v3.7.982)**:
+  - `followupMap` state(key=`{channel}_{user_id}` → {reason,question,cust_name}) + 30초 폴링 effect(`inbox_followup?business_id=eq.X&resolved_at=is.null`). aiBadgeMap 패턴 동일.
+  - `_renderFollowupBadge(key)` — 대화 카드에 인디고 **"확인 필요"** 배지(`I name="bell"`, 이모지 X — [[feedback_bliss_no_emoji_svg]]). AI 배지 왼쪽에 렌더(기본+forceCompact 2곳).
+  - 지점 필터 줄 우측에 **"확인 필요 N" 토글 칩**(followup 있을 때만 노출, 기본+forceCompact 2곳) → `followupOnly` → threads useMemo가 해당 대화만 필터.
+  - **직원 답장 시 해제**: `sendMsg` 성공 블록에서 그 thread의 active followup을 `resolved_at` PATCH + 로컬 followupMap 즉시 제거. (sendMsg = 받은메시지함 직원 수동발송 경로 — AI 자동응답은 서버 경로라 무관)
+  - **미읽음 유지**: AI defer는 inbound `is_read` 안 건드림 → 자동으로 미읽음 유지(클라 변경 0).
+- **검증**: 빌드 OK + 서버 `_flag_inbox_followup` 정의·호출·#7 문구 intact 확인 + `inbox_followup` 테이블 스키마 확인(현재 0건). ⚠️ 실제 배지/필터/해제는 라이브에서 AI가 "담당자 확인" 응답을 보낸 대화로 확인 권장(데모엔 followup 0건).
+- **적용**: v3.7.982 라이브 배포(version.txt 검증 3.7.982, CF 퍼지 success).
+- **유의**: defer 트리거 키워드("담당자/확인 후 안내" 등)는 길찾기·환불·정책·FAQ미스 등 **여러 응답에서 공통** → '확인 필요'는 "AI가 직원에게 미룬 모든 대화"를 폭넓게 잡음(잔여 상세 한정 X). active 부분 UNIQUE라 thread당 1건만. 직원이 답장하면 해제. 채널키는 `{channel}_{user_id}`(naver는 "naver")로 클라 thread key와 일치.

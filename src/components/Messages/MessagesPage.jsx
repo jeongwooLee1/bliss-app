@@ -71,6 +71,8 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   const [aiSchedule, setAiSchedule] = useState({enabled:false,start:"10:00",end:"22:00"}); // 전채널 공통
   const [aiDelay, setAiDelay] = useState({enabled:false,minutes:5}); // 미응답 N분 후 자동 답변
   const [aiBadgeMap, setAiBadgeMap] = useState({}); // key=ch+'_'+user_id → {status:'pending'|'sent', schedAt, processedAt}
+  const [followupMap, setFollowupMap] = useState({}); // key=ch+'_'+user_id → {reason, question, cust_name} (AI가 미룬 문의 → 직원 확인 필요)
+  const [followupOnly, setFollowupOnly] = useState(false); // "확인 필요" 대화만 필터
   // IG 계정이 brancheas 테이블에 등록 안 된 경우를 위한 override 매핑: {igAccountId: branchId}
   // 예: 공용 "하우스왁싱 서울" IG 계정을 강남본점에 매핑
   const [igBranchOverride, setIgBranchOverride] = useState({});
@@ -328,6 +330,29 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     return () => { alive=false; clearInterval(t); };
   }, []);
 
+  // 확인 필요(inbox_followup) — AI가 영업시간 종료 등으로 미룬 문의 → 직원이 다음날 확인
+  useEffect(() => {
+    if (!_activeBizId) return;
+    let alive = true;
+    const fetchFollowups = async () => {
+      try {
+        const url = `${SB_URL}/rest/v1/inbox_followup?business_id=eq.${_activeBizId}&resolved_at=is.null&select=channel,user_id,reason,question,cust_name`;
+        const r = await fetch(url, { headers: {...sbHeaders, 'Cache-Control':'no-cache'}, cache:'no-store' });
+        if (!alive || !r.ok) return;
+        const rows = await r.json();
+        const map = {};
+        for (const row of (rows||[])) {
+          const k = (row.channel||'') + '_' + (row.user_id||'');
+          if (!map[k]) map[k] = { reason: row.reason, question: row.question, cust_name: row.cust_name };
+        }
+        setFollowupMap(map);
+      } catch {}
+    };
+    fetchFollowups();
+    const t = setInterval(fetchFollowups, 30000);
+    return () => { alive=false; clearInterval(t); };
+  }, []);
+
   // AI 자동응대 배지 렌더 helper
   const _renderAiBadge = (key) => {
     const b = aiBadgeMap[key];
@@ -349,6 +374,12 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       return <span style={{fontSize:10,fontWeight:700,color:'#065F46',background:'#D1FAE5',padding:'2px 6px',borderRadius:8,whiteSpace:'nowrap',marginLeft:6,flexShrink:0,display:'inline-flex',alignItems:'center',gap:3}}><I name="bot" size={11} color="#065F46"/>AI 응대중</span>;
     }
     return null;
+  };
+
+  // 확인 필요 배지 렌더 helper (AI가 미룬 문의 → 직원 확인)
+  const _renderFollowupBadge = (key) => {
+    if (!followupMap[key]) return null;
+    return <span title={followupMap[key].question||"고객 문의 — 직원 확인 필요"} style={{fontSize:10,fontWeight:700,color:'#3730A3',background:'#E0E7FF',padding:'2px 6px',borderRadius:8,whiteSpace:'nowrap',marginLeft:6,flexShrink:0,display:'inline-flex',alignItems:'center',gap:3}}><I name="bell" size={11} color="#3730A3"/>확인 필요</span>;
   };
 
   // 매 초 카운트다운 트리거 (pending) + 30초 sent 만료 체크
@@ -559,8 +590,10 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     }
     // ai_test 채널 노출 제거 (요청)
     list = list.filter(m => (m.channel||"") !== "ai_test");
+    // 확인 필요 필터: AI가 미룬 문의가 있는 대화만
+    if (followupOnly) list = list.filter(m => followupMap[(m.channel||"naver")+"_"+m.user_id]);
     return list;
-  },[msgs, allowedIds.length, msgSearch, chatCustMapFull]);
+  },[msgs, allowedIds.length, msgSearch, chatCustMapFull, followupOnly, followupMap]);
 
   const convo = useMemo(()=>{
     if(!sel) return [];
@@ -890,6 +923,13 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         setReply(""); setReplyIsAi(false); setAiKoDraft(""); setAiBooked(null);
         // 답변 송신 시점에 들어와있는 미읽음 메시지 일괄 처리 (열어놓고 답변 작성 중 도착한 신규 포함)
         markRead(sel.user_id, sel.channel||"naver");
+        // 확인 필요(inbox_followup) 있으면 직원이 답장했으니 해제
+        const _fk = (sel.channel||"naver")+"_"+sel.user_id;
+        if (followupMap[_fk]) {
+          fetch(`${SB_URL}/rest/v1/inbox_followup?business_id=eq.${_activeBizId}&channel=eq.${encodeURIComponent(sel.channel||"naver")}&user_id=eq.${encodeURIComponent(sel.user_id)}&resolved_at=is.null`,
+            {method:"PATCH",headers:{...sbHeaders,Prefer:"return=minimal"},body:JSON.stringify({resolved_at:new Date().toISOString()})})
+            .then(()=>setFollowupMap(prev=>{const n={...prev};delete n[_fk];return n;})).catch(()=>{});
+        }
       }
     }finally{setSending(false);}
   };
@@ -1606,6 +1646,10 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             {c.label}
           </button>
         ))}
+        {Object.keys(followupMap).length>0 && <button onClick={()=>setFollowupOnly(v=>!v)}
+          style={{marginLeft:"auto",padding:"3px 12px",fontSize:11,fontWeight:followupOnly?700:600,border:"1px solid "+(followupOnly?"#6366F1":T.border),borderRadius:12,background:followupOnly?"#E0E7FF":"#fff",color:followupOnly?"#3730A3":T.gray600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}>
+          <I name="bell" size={11}/>확인 필요 {Object.keys(followupMap).length}
+        </button>}
       </div>
       <div style={{padding:"8px 12px",borderBottom:"1px solid "+T.border}}>
         <input value={msgSearch} onChange={e=>setMsgSearch(e.target.value)} placeholder="이름, 메시지 검색..." style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid "+T.border,fontSize:13,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
@@ -1651,7 +1695,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                 <span style={{fontSize:forceCompact?11:14,color:uc>0?"#111":"#555",fontWeight:uc>0?500:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>
                   {isOut?"나: ":""}{m.message_text}
                 </span>
-                {_renderAiBadge(key)}
+                {_renderFollowupBadge(key)}{_renderAiBadge(key)}
                 {uc>0&&<div style={{width:forceCompact?16:20,height:forceCompact?16:20,borderRadius:"50%",background:T.primary,color:"#fff",fontSize:forceCompact?9:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:4}}>{uc}</div>}
               </div>
               {(()=>{const res=chatLatestRes[key]||chatResMap[key];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"확정대기":res.status==="reserved"?"예약":res.status==="completed"?"완료":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":res.status==="reserved"?T.primary:res.status==="no_show"?"#EF5350":"#9E9E9E";return<div style={{display:"flex",alignItems:"center",gap:4,marginTop:3}}><span style={{fontSize:10,fontWeight:700,color:clr,background:clr+"18",borderRadius:3,padding:"1px 6px",display:"inline-flex",alignItems:"center",gap:3}}><I name="calendar" size={10}/>{st} {res.date?.slice(5)} {res.time}</span></div>;})()}
@@ -1841,6 +1885,10 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
               {c.label}
             </button>
           ))}
+          {Object.keys(followupMap).length>0 && <button onClick={()=>setFollowupOnly(v=>!v)}
+            style={{marginLeft:"auto",padding:"2px 10px",fontSize:10,fontWeight:followupOnly?700:600,border:"1px solid "+(followupOnly?"#6366F1":T.border),borderRadius:10,background:followupOnly?"#E0E7FF":"#fff",color:followupOnly?"#3730A3":T.gray600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}>
+            <I name="bell" size={10}/>확인 필요 {Object.keys(followupMap).length}
+          </button>}
         </div>
         <div style={{padding:"8px 10px",borderBottom:"1px solid "+T.border}}>
           <input value={msgSearch} onChange={e=>setMsgSearch(e.target.value)} placeholder="이름, 메시지 검색..." style={{width:"100%",padding:"6px 10px",borderRadius:6,border:"1px solid "+T.border,fontSize:12,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
@@ -1883,7 +1931,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                   <span style={{fontSize:13,color:uc>0?T.text:T.textMuted,fontWeight:uc>0?500:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:190}}>
                     {m.direction==="out"?"나: ":""}{m.message_text}
                   </span>
-                  {_renderAiBadge(key)}
+                  {_renderFollowupBadge(key)}{_renderAiBadge(key)}
                   {uc>0&&<div style={{width:20,height:20,borderRadius:"50%",background:T.primary,color:"#fff",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:4}}>{uc>9?"9+":uc}</div>}
                 </div>
                 {(()=>{const res=chatLatestRes[key]||chatResMap[key];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="reserved"?"예약":res.status==="request"?"확정대기":res.status==="completed"?"완료":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="reserved"?T.primary:res.status==="request"?"#FF9800":res.status==="no_show"?"#EF5350":"#9E9E9E";return<div style={{marginTop:3}}><span style={{fontSize:10,fontWeight:700,color:clr,background:clr+"18",borderRadius:3,padding:"1px 6px",display:"inline-flex",alignItems:"center",gap:3}}><I name="calendar" size={10}/>{st} {res.date?.slice(5)} {res.time}</span></div>;})()}
