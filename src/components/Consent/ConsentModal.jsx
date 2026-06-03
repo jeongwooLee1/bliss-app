@@ -78,7 +78,7 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
     setLoading(true)
     try {
       const token = genToken()
-      const expires_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+      const expires_at = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
       const cleanPrefill = Object.fromEntries(Object.entries(prefill).filter(([_, v]) => v && String(v).trim() !== ''))
       if (reservationId) cleanPrefill.reservation_id = reservationId  // 예약 모달에서 보낸 경우 — 예약별 차트 상태 연동
       // 지점명 prefill — consent 앱이 "하우스왁싱 {branch}"로 렌더 (없으면 "하우스왁싱"만)
@@ -105,7 +105,7 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
       } else if (via === 'sms') {
         const targetBid = cust?.bid || (data?.branches || [])[0]?.id || ''
         const brName = (data?.branches || []).find(b => b.id === targetBid)?.short || ''
-        const msg = `[${brName || '동의서'}] 동의서 작성 요청\n아래 링크에서 작성·서명 부탁드려요 (24시간 내 만료)\n${url}`
+        const msg = `[${brName || '동의서'}] 동의서 작성 요청\n아래 링크에서 작성·서명 부탁드려요 (48시간 내 만료)\n${url}`
         const r = await fetch(`${SB_URL}/functions/v1/send-sms`, {
           method: 'POST',
           headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' },
@@ -206,7 +206,7 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
             <a href={result.url} target="_blank" rel="noopener noreferrer" style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, background: T.primary, color: '#fff', borderRadius: 6, textDecoration: 'none' }}>🖥 열기</a>
             <button onClick={onClose} style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, background: '#fff', color: T.textSub, border: '1px solid ' + T.border, borderRadius: 6, cursor: 'pointer' }}>닫기</button>
           </div>
-          <div style={{ fontSize: 11, color: T.textMuted, marginTop: 10 }}>💡 24시간 이내 서명 안 하면 만료</div>
+          <div style={{ fontSize: 11, color: T.textMuted, marginTop: 10 }}>💡 48시간 이내 서명 안 하면 만료</div>
         </div>}
 
         {/* 작성 폼 */}

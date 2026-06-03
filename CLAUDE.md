@@ -3316,3 +3316,9 @@ Liah(WhatsApp) 후속 2건.
 - 로직: 각 사업장 messages 스레드(channel,user_id) → WhatsApp user_id(82→010)/cust_phone를 정규화 → customers.phone/phone2 **1:1(count=1) 매칭**만 sns_accounts에 `_via:phone_autolink` 추가. 이미 링크된 (channel,user_id)·번호공유 모호건·무매칭 제외. 멱등(재실행 추가 0).
 - 첫 실행: biz_khvurgshb 5명(수동 백필분, 중복 없이 skip 확인) + 데모 사업장 5명 연결. 이후 매일 신규 전화매칭 고객 자동 연결.
 **유의**: 함수는 전 사업장 대상(멀티테넌트). count=1 가드로 번호공유 오링크 방지. 채팅만 하고 전화 안 준 고객은 미연결(정상). 예약 시 서버 자동 sns 링크는 별개로 계속 동작.
+
+### v3.7.977 — 동의서/차트 작성 토큰 유효시간 연장 (수연 id_8yczkwdzy9) + 경아 건 결론 (2026-06-03)
+동의서 세션이 조사 후 메인앱으로 넘긴 2건 처리(핑퐁 종료).
+- **수연 — 작성 중 나갔다 재진입 시 "만료"**: 원인 = 서버 `_issue_pf_token`(rsv_today/confirm 자동 차트링크)이 `expires=예약일 23:59(KST)` → 오후 발송 시 9~12h뿐, 다음날 재진입 만료. **fix**: 모듈 헬퍼 `_pf_expires(date)` = **예약일 23:59 또는 발급+72h 중 더 늦은 쪽**. 호출 2곳(`_issue_pf_token` 2905 + ai_booking 차트토큰 5083) 적용. ConsentModal 수동발송도 24h→**48h**(+안내 문구). 백업 `bak_pre_tokenttl_*`, restart active. 검증: `_pf_expires` 오늘/과거예약→now+72h, 미래예약→예약일 우선.
+- **경아 — 신규차트 음모 범위가 "간단 펼쳐보기"에 안 나옴**: 조사 결과 **이미 v3.7.891에서 해결됨** — 옛 텍스트 요약(chartExpand/CHART_LABELS, 일부 필드 누락)을 제거하고 **차트 칩 클릭 → ConsentDocsViewer PDF 전체보기**로 전환. `form_data.survey.eumo_range`(누드핏 등)는 PDF에 정상 노출(경아도 PDF 정상 확인). CustomersPage 요약도 모든 survey 키 표시(unknown 키도 `LBL[k]||k`). **추가 코드 불필요 — 새로고침 시 차트 칩→PDF로 음모범위 보임.**
+**유의**: 차트/동의서 작성 토큰은 이제 최소 72h 유효(재진입 여유). 미래 예약은 예약일 23:59까지. consent 세션이 조사·진단, 메인앱(나)이 토큰 TTL 실수정. 희서(알림톡 문구)는 A/B/C 결정 대기(미배포).
