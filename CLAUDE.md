@@ -3371,3 +3371,6 @@ Liah(WhatsApp) 후속 2건.
 
 ### 포인트 소멸 안내 시점 D-30/D-10 → D-30/D-15/D-7 (2026-06-03, 서버, React 0)
 정우님: 포인트 소멸 안내를 한달전·15일전·7일전 3회로. `bliss_naver.py point_expiry_thread` tier `(30,10)`→`(30,15,7)`. 문구는 `{tier}일 후 소멸`로 자동. 같은 만료건 30·15·7일 전 각 1회(point_expiry_sms_log UNIQUE tier 분리). 백업 `bak_pexp_days_*`, restart active. 매일 10:30 KST.
+
+### 포인트 소멸 안내 SMS에 예약링크 추가 (2026-06-03, 서버, React 0)
+정우님: 포인트 소멸 문자에도 예약링크. `point_expiry_thread` msg → `[하우스왁싱] {name}님, 적립포인트 {amt:,}원 {tier}일후 소멸! 예약 ▶ blissme.ai/r/{code}`. bid→코드 맵({br_..→gn/mg/ws/ys/wr/js/ch/hd}, get(bid,"gn")). 본문 트림("적립 포인트"→"적립포인트", "일 후"→"일후")으로 최악(긴영문+9,999,000+링크)도 90byte 단문. 링크는 /r/{code}(→케어예약 source 공유). 백업 `bak_pexplink_*`, restart active.
