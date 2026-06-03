@@ -3267,3 +3267,14 @@ Liah(WhatsApp) 후속 2건.
 
 ### v3.7.975 — 네이버 리뷰 답글 AI 모델 gemini-2.5-flash → 3.5-flash (작업세션 머지) (2026-06-01)
 작업세션(naver-review-rollout) 워크트리 작업 → 배포세션 빌드·배포. `NaverReviews.jsx` AI 답글 초안 생성 모델 `gemini-2.5-flash` → `gemini-3.5-flash`(서버 ai_booking 추출과 동일 최신 모델로 통일). React only.
+
+### AI 모델 점검(2026.6) + gemini_ask 3.5 업그레이드 + 수정요청 처리 (2026-06-03)
+정우님: 블리스 AI 모델 전체 리스트 + 2026년 6월 기준 새 버전 체크 + 수정요청 처리.
+**모델 점검 결과** (WebSearch 2026-06): 6월 최신 = Claude Opus 4.8(6/2 신규)·Sonnet 4.6 / Gemini 3.5 Flash(5/19 GA)·3.5 Pro(예정) / GPT-5.5·5.4-mini.
+- 블리스 메인은 다 최신: 답변/번역 `claude-sonnet-4-6`(env), 예약추출/booking `gemini-3.5-flash`, 폴백 `gpt-5.4-mini`·`gpt-4.1-mini`·`gpt-4o-mini`.
+- (참고) bliss_naver.py:4985 `# claude-sonnet-4-5`·클라 MessagesPage `claude-haiku`는 **주석만 옛것**(실제는 env CLAUDE_MODEL=4-6 / 서버 /ai-suggest 호출). RAG 임베딩(gemini-embedding-2/004)은 변경 시 전 문서 재색인 필요라 그대로.
+- **업그레이드(서버, React 0)**: `bliss_naver.py`의 `gemini_ask` 헬퍼(매출 AI분석 /sales-insight·태그평가 등)가 `gemini-2.5-flash`였음 → **`gemini-3.5-flash`**로(`GEMINI_URL`+`GEMINI_FALLBACK_MODELS=[3.5-flash,2.5-flash,2.5-flash-lite]`). 이미 다른 곳은 3.5라 일관성+품질↑, 비용 동일. 백업 `bak_pre_gemini35_*`. 검증: /sales-insight 484자 정상 생성.
+**수정요청 4건**:
+- **#3 (대표, AI오류) 처리완료**: Kristian(WhatsApp) "New client chart completed!" 인사에 AI가 예약을 장황하게 재확인 + 리마인더와 중복. → `ai_booking.py` 프롬프트에 **[차트·완료 통보 응답]** 규칙 추가 — '차트/체크리스트 완료'·'completed'·'다 했어요' 통보엔 짧고 따뜻한 한 문장 인사만(action=chat), 예약 내용 재안내·재확인 금지(리마인더 중복 방지). 백업 `bak_pre_chartack_*`, restart active. 요청 status=done+답글.
+- **#1·#2·#4 동의서 영역 위임**(spawn_task): #1 수연 — 동의서 토큰 작성 중 나갔다 재진입 시 "만료" 막힘(consent 레포, 제출 전 재진입 허용). #2 서현 — 신규차트에 "전체제거 여부·외국인 여부" 항목 추가(consent 레포). #4 희서 — 체크리스트/신규차트 알림톡 문구가 "구매하신 상품 관련"이라 오해(bliss-app ConsentModal+신규 카카오 템플릿 검수). 셋 다 status=reviewing+위임 안내 답글.
+**유의**: ai_booking 메인 프롬프트는 **트리플 따옴표 리터럴 블록**(rule이 ★로 시작하는 실제 줄, `"...\n"` 연결 아님) — 패치 시 앵커에 `\n"` 붙이지 말 것. /sales-insight 프롬프트(내가 작성)만 `"...\n"` 연결식.
