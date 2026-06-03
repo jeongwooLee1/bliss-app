@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { T } from '../../lib/constants'
 import { SB_URL, SB_KEY, sbHeaders } from '../../lib/sb'
+import I from './I'
 
 /**
  * 직원이 고객에게 직접 SMS를 발송하는 공통 모달.
@@ -192,7 +193,8 @@ export default function SendSmsModal({ open, onClose, customers = [], branches =
     if (!message.trim()) { alert('메시지를 입력해주세요'); return }
     if (mb > 2000) { alert('LMS 한도 2,000byte 초과'); return }
     if (partition.valid.length === 0) { alert('발송 가능한 수신자가 없습니다'); return }
-    if (!confirm(`${partition.valid.length}명에게 SMS 발송할까요?\n(수신거부 ${partition.blocked.length}명, 휴대폰 아님 ${partition.invalidPhone.length}명 제외)`)) return
+    const _lms = mb > 90
+    if (!confirm(`${partition.valid.length}명에게 ${_lms ? '장문(LMS) ' : ''}문자를 발송할까요?\n(수신거부 ${partition.blocked.length}명, 휴대폰 아님 ${partition.invalidPhone.length}명 제외)${_lms ? '\n\n⚠ 본문 ' + mb + 'byte — 장문(LMS)으로 발송됩니다 (요금 단문의 약 3배).' : ''}`)) return
 
     setSending(true)
     setProgress({ sent: 0, total: partition.valid.length, ok: 0, fail: 0 })
@@ -421,12 +423,18 @@ export default function SendSmsModal({ open, onClose, customers = [], branches =
           style={{width:'100%',minHeight:120,padding:'10px 12px',border:'1px solid '+T.border,borderRadius:8,fontSize:13,resize:'vertical',fontFamily:'inherit',outline:'none',boxSizing:'border-box',lineHeight:1.5}} />
 
         {/* 바이트 카운터 */}
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:6,marginBottom:12}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:6,marginBottom:msgType==='LMS'?6:12}}>
           <span style={{fontSize:11,color:mb>2000?T.danger:mb>90?T.warning:T.gray500,fontWeight:600}}>
-            {mb} byte · {msgType}{msgType==='OVER'?' (한도 초과)':''}
+            {mb} byte · {msgType==='LMS'?'장문(LMS)':msgType}{msgType==='OVER'?' (한도 초과)':''}
           </span>
-          <span style={{fontSize:11,color:T.gray500}}>SMS 90byte 이하 / LMS 90~2000byte</span>
+          <span style={{fontSize:11,color:T.gray500}}>90byte 이하 단문(SMS) / 초과 시 장문(LMS)</span>
         </div>
+        {/* 장문 발송 안내 — 90byte 초과 시 LMS(요금 ↑) 명확히 알림 */}
+        {msgType==='LMS' && (
+          <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:12,padding:'8px 11px',background:'#FFF7ED',borderRadius:8,fontSize:12,color:'#B45309',fontWeight:600,lineHeight:1.45}}>
+            <I name="alert" size={13}/> 90byte를 초과해 <b style={{margin:'0 2px'}}>장문(LMS)</b>으로 발송됩니다. (요금이 단문 SMS의 약 3배)
+          </div>
+        )}
 
         {/* 미리보기 */}
         {previewMsg && partition.valid[0] && (

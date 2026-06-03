@@ -3333,3 +3333,11 @@ Liah(WhatsApp) 후속 2건.
   2. `ConsentModal.jsx` 발송 분기 — 선택 템플릿이 **차트/체크리스트면 chart_doc**, **결제 동의서면 consent_doc**. params: `#{사용자명}`(지점), `#{고객명}`, `#{차트링크}`(=sign 링크). SMS 폴백 문구도 종류별 분기.
   3. 문서 종류 판별: consent_templates 폴더("신규차트&체크리스트" vs "동의서")/이름 기준(ReservationModal chartInfo 분류 로직 재사용).
 - **유의**: 알리고 API는 **서버 IP만 등록**(Mac=-99). 등록 스크립트 `/tmp/aligo_chart_register.py`(서버). 응답 code 문자열 "0"=성공. 승인 전까지 chart_doc 미발송 → 현 동작(consent_doc) 유지.
+
+### v3.7.978 + send-sms v16 — 문자 90byte 초과 시 장문(LMS) 자동발송 + 직원 안내 (2026-06-03)
+정우님: 발송실패(긴 문구) 원인 규명 → "장문 켜기 + 직원에게 장문 발송임을 알려줘".
+**원인**: `send-sms`(UMS)가 단문(SMS) 전용 → 본문 **90byte(EUC-KR) 초과** 시 UMS가 `code:100`이지만 `data:[]`(미발송) 반환 → 클라 isAck가 발송실패 처리. 모달은 LMS 2000byte까지 입력·과금하는데 백엔드가 장문 미발송이라 불일치. 실패 사례: 긴 외국이름 포인트소멸 알림(TSUTSUMI KANON 91byte), 직원 긴 수동문자(139·129byte).
+- **서버 send-sms v16**: 90byte 초과 → **`/api/v1/send/mms`(LMS, 파일없이) 자동전환**(이하=SMS `/send/sms`). LMS는 subject(본문 앞 `[...]` 또는 "하우스왁싱 안내") 부착. 로그 result_desc에 `[LMS]` 태그. v13 방식 복원(정우님 비용우려로 막았던 것 → 재허용, 케어문자는 이미 단문이라 영향 적음). 검증: 짧은문구→SMS·msgKey, 174byte→LMS·msgKey 발송 성공.
+  - **⚠️ MCP deploy_edge_function이 verify_jwt를 true로 리셋 → 401 전면중단 사고** → verify_jwt:false 재배포(v16)로 복구. **send-sms는 자체 인증(BLISS_PUBLISHABLE_KEY)이라 deploy 시 반드시 `verify_jwt:false` 명시**.
+- **클라 SendSmsModal**(v3.7.978): 90byte 초과 시 ① byte표시 "장문(LMS)" ② 주황 안내배너 "장문(LMS)으로 발송됩니다 (요금 단문 약 3배)" ③ 발송 confirm에도 장문 경고. billing은 기존대로 lms 60P 과금(정합).
+**유의**: 이제 긴 문자·긴 이름 자동 LMS 발송(실패 없음). 케어 리마인더 템플릿은 단문(80~88byte)이라 대부분 SMS, 긴 이름 치환 시만 LMS. 비용: 장문만 LMS요금. Edge Function 재배포 시 verify_jwt:false 필수(안 그러면 전 SMS 401).
