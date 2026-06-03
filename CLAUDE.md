@@ -3427,3 +3427,13 @@ Liah(WhatsApp) 후속 2건.
 - **검증**: 빌드 OK + 서버 `_flag_inbox_followup` 정의·호출·#7 문구 intact 확인 + `inbox_followup` 테이블 스키마 확인(현재 0건). ⚠️ 실제 배지/필터/해제는 라이브에서 AI가 "담당자 확인" 응답을 보낸 대화로 확인 권장(데모엔 followup 0건).
 - **적용**: v3.7.982 라이브 배포(version.txt 검증 3.7.982, CF 퍼지 success).
 - **유의**: defer 트리거 키워드("담당자/확인 후 안내" 등)는 길찾기·환불·정책·FAQ미스 등 **여러 응답에서 공통** → '확인 필요'는 "AI가 직원에게 미룬 모든 대화"를 폭넓게 잡음(잔여 상세 한정 X). active 부분 UNIQUE라 thread당 1건만. 직원이 답장하면 해제. 채널키는 `{channel}_{user_id}`(naver는 "naver")로 클라 thread key와 일치.
+
+### v3.7.983 — 동의서 세션 인계 처리: "차트 보내기" 원클릭 프리셋 (2026-06-04)
+동의서 앱(bliss-consent) 세션이 consent_templates를 정리(신규차트 v3에 무료대여 주의사항·서명 통합 / 컨디션 v3 서명단계 제거+속눈썹 통합 / 구버전·light·속눈썹 신규차트 is_active=false)한 뒤 메인앱 인계 5건(HANDOFF 상단)을 점검·처리.
+- **#1 ConsentModal 목록**: ✅ 코드변경 불요 — `consent_templates?is_active=eq.true` 자동필터라 「신규차트&체크리스트」 폴더에 활성 **신규차트(ct_consent_full_ko_v3)+컨디션 체크리스트(ct_condition_v3) 2개만** 노출(DB 확인). 중복 컨디션·속눈썹 신규차트·light는 전부 비활성→자동 숨김.
+- **#2 컨디션 번들 id→v3**: ✅ 해당없음(메인앱) — 앱이 컨디션 template_id를 **하드코딩하지 않음**(`ct_condition_light`/`v3` 참조 0건). 번들·임신(maternity) swap은 동의서 앱이 처리. 메인앱은 활성 컨디션(v3)만 노출.
+- **#3 속눈썹 자동선택 제거**: ✅ 해당없음(메인앱) — 속눈썹 전용 차트 자동선택 로직 자체가 없음(차트/동의서 **트랙 기반 수동 선택**). chartInfo 분류 정규식(ReservationModal:943)의 `eyelash` 키워드는 과거 차트 분류용이라 유지(무해).
+- **#4 무료대여=신규차트 1회 서명 정책**: ✅ 정우님 OK — 동의서 앱 조정 불요.
+- **#5 "차트 보내기" 원클릭 (실제 코드 작업)**: 기존엔 예약모달 회색 **"차트"** 버튼 클릭 시 ConsentModal이 **빈 선택**으로 열려 직원이 신규차트+컨디션을 매번 체크해야 했음. → `ReservationModal.jsx` chartInfo effect에 `is_active` 조회 추가 → **활성 차트 폴더 템플릿 id(`chartPresetIds`=신규차트+컨디션)** 산출 + `_openSend(kind, st)` 분기(차트 미발송→chartPresetIds 자동 프리셋 / 재전송(sent)→직전 발송 tplIds / 동의서 미발송→빈 선택=직원이 구매상품별 선택). 이제 "차트" 클릭 = 신규차트+컨디션 자동 체크 상태로 열림 → 직원은 "알림톡 보내기"만. **신규/기존 구분은 동의서 앱이 자동**(기존 고객=신규차트 스킵, 컨디션만).
+- **적용**: v3.7.983 라이브 배포(version.txt 검증 3.7.983, CF 퍼지 success). 빌드 1회 rolldown UNRESOLVED_ENTRY 일시오류 → `cd 명시 + rm -rf dist && build`로 해결(기존 알려진 flaky).
+- **유의**: 동의서(doc) 트랙은 구매상품별로 달라 빈 선택 유지(직원 수동). 차트 프리셋은 **활성** 차트 폴더 템플릿 전체라, 동의서 앱이 차트 버전업(is_active 전환)해도 자동 추종. ConsentModal 자체는 여전히 수동 체크박스(다른 호출 경로 영향 0).

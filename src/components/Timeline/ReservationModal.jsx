@@ -930,7 +930,7 @@ function TimelineModal({ item, onSave, onAddCompanion, onDelete, onDeleteRequest
       // 템플릿 → 폴더/이름 맵 (차트 vs 동의서 분류용, 비활성 템플릿도 포함)
       const bizId = _activeBizId;
       const [tplRows, folderRows] = await Promise.all([
-        sb.get("consent_templates", `&business_id=eq.${bizId}&select=id,name,folder_id`).catch(()=>[]),
+        sb.get("consent_templates", `&business_id=eq.${bizId}&select=id,name,folder_id,is_active`).catch(()=>[]),
         sb.get("template_folders", `&business_id=eq.${bizId}&select=id,name`).catch(()=>[]),
       ]);
       const folderName = {}; (folderRows||[]).forEach(f => { folderName[f.id] = f.name || ""; });
@@ -971,7 +971,9 @@ function TimelineModal({ item, onSave, onAddCompanion, onDelete, onDeleteRequest
         else if (grpTokens.length) status = "sent";
         return { status, consent: consentDoc, tplIds, signedAt: consentDoc?.signed_at || null };
       };
-      setChartInfo({ chart: mk("chart"), doc: mk("doc") });
+      // 원클릭 '차트 보내기' 프리셋 = 활성 차트 폴더 템플릿(신규차트+컨디션). 신규/기존 분기는 동의서 앱이 자동(기존 고객은 신규차트 스킵)
+      const chartPresetIds = (tplRows || []).filter(t => t.is_active !== false && kindOf(t.id, t.name) === "chart").map(t => t.id);
+      setChartInfo({ chart: mk("chart"), doc: mk("doc"), chartPresetIds });
     })();
     return () => { alive = false; };
   }, [item?.id, chartReloadKey]);
@@ -2102,7 +2104,13 @@ ${naverText}
                         {/* 📋 차트/동의서 — 트랙별 3상태: 작성완료(서명)=솔리드 녹색 / 발송·미서명=녹↔회 교차 깜박 / 미발송=회색 */}
                         {(() => {
                           const _canSend = f.custId && !String(f.custId).startsWith("new_") && !f.isNewCust;
-                          const _openSend = (st) => { setConsentPreselect(st?.status === "sent" ? (st.tplIds || []) : []); setConsentOpen(true); };
+                          // 재전송(sent)=직전 발송 템플릿 / 차트 미발송=활성 차트 프리셋(신규차트+컨디션, 원클릭) / 동의서 미발송=빈 선택(직원이 구매상품별 선택)
+                          const _openSend = (kind, st) => {
+                            if (st?.status === "sent") setConsentPreselect(st.tplIds || []);
+                            else if (kind === "chart") setConsentPreselect(chartInfo?.chartPresetIds || []);
+                            else setConsentPreselect([]);
+                            setConsentOpen(true);
+                          };
                           const _openView = (st) => { setDocViewerFocus(st?.consent || null); setDocsViewerOpen(true); };
                           const _tracks = [
                             { key: "chart", label: "차트", st: chartInfo?.chart },
@@ -2123,14 +2131,14 @@ ${naverText}
                                 if (!_canSend) return null;
                                 // 발송됨·미서명: 녹↔회 교차 깜박 → 클릭 시 재전송
                                 if (st.status === "sent") return (
-                                  <button key={tk.key} type="button" className="doc-pending-blink" onClick={(e) => { e.stopPropagation(); _openSend(st); }}
+                                  <button key={tk.key} type="button" className="doc-pending-blink" onClick={(e) => { e.stopPropagation(); _openSend(tk.key, st); }}
                                     title={`${tk.label} 발송됨 · 고객 서명 대기 — 클릭해서 재전송`}
                                     style={{ ..._base }}>
                                     <I name="fileText" size={10} />{tk.label}</button>
                                 );
                                 // 미발송: 회색 → 클릭 시 보내기
                                 return (
-                                  <button key={tk.key} type="button" onClick={(e) => { e.stopPropagation(); _openSend(st); }}
+                                  <button key={tk.key} type="button" onClick={(e) => { e.stopPropagation(); _openSend(tk.key, st); }}
                                     title={`${tk.label} 미발송 — 클릭해서 보내기`}
                                     style={{ ..._base, background: "#E5E7EB", color: "#6B7280", borderColor: "#E5E7EB" }}>
                                     <I name="fileText" size={10} />{tk.label}</button>
