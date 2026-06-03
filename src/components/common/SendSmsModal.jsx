@@ -287,7 +287,7 @@ export default function SendSmsModal({ open, onClose, customers = [], branches =
     <div onClick={() => !sending && onClose?.()} style={{position:'fixed',inset:0,zIndex:9000,background:'rgba(0,0,0,.45)',display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
       <div onClick={e=>e.stopPropagation()} style={{background:'#fff',borderRadius:14,maxWidth:560,width:'100%',maxHeight:'90vh',overflowY:'auto',padding:20,fontFamily:'inherit'}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
-          <div style={{fontSize:18,fontWeight:800}}>📱 문자 발송 ({total}명{customers.length>0&&manualParsed.length>0?` · ${customers.length}+${manualParsed.length}`:''})</div>
+          <div style={{fontSize:18,fontWeight:800}}><I name="msgSq" size={16} style={{verticalAlign:"-3px",marginRight:6}}/>문자 발송 ({total}명{customers.length>0&&manualParsed.length>0?` · ${customers.length}+${manualParsed.length}`:''})</div>
           <button onClick={()=>!sending && onClose?.()} style={{background:'none',border:'none',cursor:'pointer',fontSize:22,color:'#999',padding:0,lineHeight:1}}>×</button>
         </div>
 
@@ -303,11 +303,11 @@ export default function SendSmsModal({ open, onClose, customers = [], branches =
           </select>
         </div>
 
-        {/* 📋 템플릿 */}
+        {/* <I name="clipboard" size={12} style={{verticalAlign:"-2px",marginRight:3}}/>템플릿 */}
         <div style={{marginBottom:12,padding:'10px 12px',background:'#F0F9FF',border:'1px solid #BAE6FD',borderRadius:8}}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:tplManageOpen?8:0}}>
             <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',flex:1}}>
-              <span style={{fontSize:12,fontWeight:700,color:'#0369A1'}}>📋 템플릿</span>
+              <span style={{fontSize:12,fontWeight:700,color:'#0369A1'}}><I name="clipboard" size={12} style={{verticalAlign:"-2px",marginRight:3}}/>템플릿</span>
               {tplLoading ? <span style={{fontSize:11,color:T.gray500}}>로드중...</span>
               : templates.length===0 ? <span style={{fontSize:11,color:T.gray500}}>저장된 템플릿 없음</span>
               : <select onChange={e=>{const t=templates.find(x=>x.id===e.target.value); if(t) applyTemplate(t); e.target.value='';}} disabled={sending}
@@ -343,13 +343,13 @@ export default function SendSmsModal({ open, onClose, customers = [], branches =
                       <div key={t.id} style={{display:'flex',alignItems:'center',gap:6,padding:'4px 6px',background:'#fff',borderRadius:5,border:'1px solid '+T.border}}>
                         <span style={{flex:1,fontSize:12,fontWeight:600,color:T.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.label}</span>
                         <button onClick={()=>applyTemplate(t)} title="이 템플릿 적용" style={{padding:'2px 6px',fontSize:10,border:'1px solid #0EA5E9',background:'#fff',color:'#0369A1',borderRadius:4,cursor:'pointer',fontFamily:'inherit'}}>적용</button>
-                        <button onClick={()=>startEditTpl(t)} title="편집" style={{padding:'2px 6px',fontSize:10,border:'1px solid '+T.border,background:'#fff',borderRadius:4,cursor:'pointer',fontFamily:'inherit'}}>✏️</button>
-                        <button onClick={()=>deleteTpl(t)} title="삭제" style={{padding:'2px 6px',fontSize:10,border:'1px solid #fecaca',background:'#fff',color:'#dc2626',borderRadius:4,cursor:'pointer',fontFamily:'inherit'}}>🗑️</button>
+                        <button onClick={()=>startEditTpl(t)} title="편집" style={{padding:'2px 6px',fontSize:10,border:'1px solid '+T.border,background:'#fff',borderRadius:4,cursor:'pointer',fontFamily:'inherit'}}><I name="edit" size={10}/></button>
+                        <button onClick={()=>deleteTpl(t)} title="삭제" style={{padding:'2px 6px',fontSize:10,border:'1px solid #fecaca',background:'#fff',color:'#dc2626',borderRadius:4,cursor:'pointer',fontFamily:'inherit'}}><I name="trash" size={10}/></button>
                       </div>
                     ))}
                   </div>
                   <button onClick={startNewTpl} style={{marginTop:6,padding:'5px 10px',fontSize:11,border:'1px dashed #0EA5E9',background:'#fff',color:'#0369A1',borderRadius:5,cursor:'pointer',fontFamily:'inherit',fontWeight:600,width:'100%'}}>
-                    ➕ 현재 메시지를 템플릿으로 저장 / 새 템플릿 추가
+                    <I name="plus" size={11} style={{verticalAlign:"-2px",marginRight:3}}/>현재 메시지를 템플릿으로 저장 / 새 템플릿 추가
                   </button>
                 </>
               )}
@@ -359,7 +359,7 @@ export default function SendSmsModal({ open, onClose, customers = [], branches =
 
         {/* 수신자 요약 */}
         <div style={{marginBottom:12,padding:'10px 12px',background:T.gray100,borderRadius:8,fontSize:12,lineHeight:1.6}}>
-          <div>✅ 발송 가능: <b style={{color:T.success}}>{partition.valid.length}명</b>
+          <div>발송 가능: <b style={{color:T.success}}>{partition.valid.length}명</b>
             {manualParsed.length>0 && <span style={{color:T.gray500,marginLeft:6}}>(직접입력 {manualParsed.length}명 포함)</span>}
           </div>
           {/* 발송 대상 리스트 — 누가 받는지 명확히 */}
@@ -368,7 +368,7 @@ export default function SendSmsModal({ open, onClose, customers = [], branches =
               {partition.valid.slice(0, 10).map((c, i) => (
                 <div key={c.id || i} style={{display:'flex',alignItems:'center',gap:6,padding:'2px 0',fontSize:11}}>
                   <span style={{color:T.text,fontWeight:600,minWidth:80,maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                    {c._manual ? '✏️ ' : '👤 '}{c.name || '(이름 없음)'}
+                    {''}{c.name || '(이름 없음)'}
                   </span>
                   <span style={{color:T.textSub,fontFamily:'monospace'}}>
                     {(() => {
@@ -386,14 +386,14 @@ export default function SendSmsModal({ open, onClose, customers = [], branches =
               )}
             </div>
           )}
-          {partition.blocked.length>0 && <div style={{marginTop:4}}>🚫 수신거부 자동 제외: <b style={{color:'#dc2626'}}>{partition.blocked.length}명</b></div>}
-          {partition.invalidPhone.length>0 && <div>📵 휴대폰 번호 아님 제외: <b style={{color:T.gray500}}>{partition.invalidPhone.length}명</b></div>}
+          {partition.blocked.length>0 && <div style={{marginTop:4}}>수신거부 자동 제외: <b style={{color:'#dc2626'}}>{partition.blocked.length}명</b></div>}
+          {partition.invalidPhone.length>0 && <div>휴대폰 번호 아님 제외: <b style={{color:T.gray500}}>{partition.invalidPhone.length}명</b></div>}
         </div>
 
-        {/* ✏️ 직접 번호 입력 (등록 안 된 고객) */}
+        {/* 직접 번호 입력 (등록 안 된 고객) */}
         <div style={{marginBottom:12}}>
           <div style={{fontSize:12,fontWeight:700,marginBottom:4,color:T.gray600,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-            <span>✏️ 직접 번호 입력 (등록 안 된 번호도 가능)</span>
+            <span><I name="edit" size={11} style={{verticalAlign:"-2px",marginRight:4}}/>직접 번호 입력 (등록 안 된 번호도 가능)</span>
             {manualParsed.length>0 && <span style={{fontSize:11,color:T.success,fontWeight:600}}>{manualParsed.length}명 인식</span>}
           </div>
           <textarea value={manualText} onChange={e=>setManualText(e.target.value)} disabled={sending}
@@ -439,7 +439,7 @@ export default function SendSmsModal({ open, onClose, customers = [], branches =
         {/* 미리보기 */}
         {previewMsg && partition.valid[0] && (
           <div style={{marginBottom:14,padding:'10px 12px',background:'#FEF3C7',borderRadius:8,fontSize:12,lineHeight:1.5}}>
-            <div style={{fontSize:11,fontWeight:700,color:'#92400E',marginBottom:4}}>👤 {partition.valid[0].name}님 미리보기</div>
+            <div style={{fontSize:11,fontWeight:700,color:'#92400E',marginBottom:4}}>{partition.valid[0].name}님 미리보기</div>
             <div style={{whiteSpace:'pre-wrap'}}>{previewMsg}</div>
           </div>
         )}
@@ -454,7 +454,7 @@ export default function SendSmsModal({ open, onClose, customers = [], branches =
         {/* 액션 */}
         <div style={{display:'flex',gap:8}}>
           <button onClick={handleTest} disabled={sending} style={{padding:'10px 14px',border:'1px solid '+T.primary,background:'#fff',color:T.primary,borderRadius:8,fontWeight:700,fontSize:13,cursor:sending?'not-allowed':'pointer',opacity:sending?0.5:1,fontFamily:'inherit'}}>
-            🧪 테스트 1건
+            테스트 1건
           </button>
           <button onClick={handleSend} disabled={sending||partition.valid.length===0||!message.trim()||mb>2000}
             style={{flex:1,padding:'10px 14px',border:'none',background:sending?T.gray400:T.primary,color:'#fff',borderRadius:8,fontWeight:800,fontSize:14,cursor:sending?'wait':'pointer',fontFamily:'inherit'}}>

@@ -3341,3 +3341,6 @@ Liah(WhatsApp) 후속 2건.
   - **⚠️ MCP deploy_edge_function이 verify_jwt를 true로 리셋 → 401 전면중단 사고** → verify_jwt:false 재배포(v16)로 복구. **send-sms는 자체 인증(BLISS_PUBLISHABLE_KEY)이라 deploy 시 반드시 `verify_jwt:false` 명시**.
 - **클라 SendSmsModal**(v3.7.978): 90byte 초과 시 ① byte표시 "장문(LMS)" ② 주황 안내배너 "장문(LMS)으로 발송됩니다 (요금 단문 약 3배)" ③ 발송 confirm에도 장문 경고. billing은 기존대로 lms 60P 과금(정합).
 **유의**: 이제 긴 문자·긴 이름 자동 LMS 발송(실패 없음). 케어 리마인더 템플릿은 단문(80~88byte)이라 대부분 SMS, 긴 이름 치환 시만 LMS. 비용: 장문만 LMS요금. Edge Function 재배포 시 verify_jwt:false 필수(안 그러면 전 SMS 401).
+
+### v3.7.979 — 문자발송 모달(SendSmsModal) 이모지 → SVG 정리 (2026-06-03)
+정우님 "이모지 쓰고 허접". `SendSmsModal.jsx` 이모지 전량 제거/교체: 📱문자발송→I msgSq, 📋템플릿→I clipboard, ✏️직접번호입력→I edit, ✏️/🗑️ 템플릿버튼→I edit/trash, ➕→I plus, 🧪테스트→텍스트, ✅발송가능/🚫수신거부/📵휴대폰아님/👤미리보기→이모지 제거. 빌드 통과. [[feedback_bliss_no_emoji_svg]]
