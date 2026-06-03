@@ -3293,3 +3293,11 @@ Liah(WhatsApp) 후속 2건.
 - **검증**: `claude_ask`/`_claude_msgs` **실제 호출처 0개**(런타임 Claude 경로 전무). 함수 정의는 죽은 코드로 남겨둠(롤백용). 받은메시지함(_ai_ask_msgs 최후폴백 gpt-4o-mini, 직전 c48d047)·번역·BlissAI 모두 Gemini/GPT만 사용.
 - env `CLAUDE_MODEL`/`CLAUDE_TRANSLATE_MODEL`은 이제 런타임 미사용(무해, 유지). 품질 떨어지면 코드 복원으로 Sonnet 재활성 가능.
 **유의**: 전 AI 경로 = Gemini 3.5 Flash 주력 + GPT(4.1-mini/4o-mini) 폴백. Anthropic(유료) 호출 0. claude 헬퍼 함수는 보존(미사용).
+
+### v3.7.976 — 받은메시지함 대화 헤더에 고객 기존/신규 요약 배지 (2026-06-03)
+정우님: 받은메시지함 대화창에서 고객의 방문·예약·노쇼 횟수를 보여줘 직원이 기존/신규를 바로 알게(기존 고객인데 신규차트 보내는 실수 방지 — Sadaf Kim 사례).
+- `MessagesPage.jsx` 대화 헤더(모바일 forceCompact + 데스크탑) 전화 subline 아래에 **`renderCustSummary`** 배지 줄 추가: **[기존 고객]/[신규 고객]** + 방문 N회 + 예약 N회 + 노쇼 N회(빨강) + 최근 MM/DD.
+- 데이터: 방문=`cust.visits`·노쇼=`cust.noShowCount`·최근=`cust.lastVisit`(고객 레코드, 즉시) + 예약횟수=대화 열릴 때 `reservations?cust_id=eq.X&is_schedule=false` **count=exact 1회 조회**(`custResCount` state). 기존/신규 = visits>0 또는 예약>0.
+- **연결된 고객에만 표시**(chatCustMapFull 매칭). 미연결 대화는 기존대로 "고객 연결" 버튼만(배지 숨김) — 연결하면 즉시 요약 표시.
+- 빌드 검증. 데모는 sns_accounts 링크가 없어 대부분 미연결이라 화면 검증은 연결된 케이스에서 확인 권장.
+**유의**: 예약횟수는 `cust_id` 연결 기준이라 구(Oracle) 고객은 적게 잡힐 수 있음(방문수 `visits`가 기존/신규의 정확한 지표). 미연결 고객(예: 다른 번호로 채팅)은 배지 안 뜸 — 그건 sns_accounts/전화 매칭 영역(별개). [[feedback_bliss_no_phone_matching]]

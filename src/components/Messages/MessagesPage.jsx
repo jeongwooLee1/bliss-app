@@ -464,6 +464,50 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   // chatCustMap에 lazy 매칭 결과 합치기
   const chatCustMapFull = useMemo(() => ({ ...chatCustMap, ...lazyCustMap }), [chatCustMap, lazyCustMap]);
 
+  // 연결 고객 예약 횟수 (기존/신규 판단 보조) — 대화 열릴 때 1회 count 조회
+  const [custResCount, setCustResCount] = useState({}); // {`${ch}_${uid}`: number}
+  useEffect(() => {
+    if (!sel) return;
+    const key = `${sel.channel}_${sel.user_id}`;
+    const cust = chatCustMapFull[key];
+    if (!cust?.id || custResCount[key] != null) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`${SB_URL}/rest/v1/reservations?cust_id=eq.${cust.id}&is_schedule=eq.false&select=id`,
+          { headers: { ...sbHeaders, Prefer: 'count=exact', Range: '0-0' } });
+        const cr = r.headers.get('content-range') || '';
+        const total = parseInt((cr.split('/')[1] || '0'), 10);
+        if (!cancelled) setCustResCount(prev => ({ ...prev, [key]: isNaN(total) ? 0 : total }));
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [sel?.channel, sel?.user_id, chatCustMapFull]);
+
+  // 대화 헤더용 고객 요약 배지 (방문·예약·노쇼 + 기존/신규) — 직원이 즉시 판단
+  const renderCustSummary = (cust, key) => {
+    if (!cust) return null;
+    const visits = Number(cust.visits || 0);
+    const noShow = Number(cust.noShowCount || 0);
+    const resCnt = custResCount[key];
+    const lastV = cust.lastVisit ? String(cust.lastVisit).slice(5, 10) : "";
+    const isExisting = visits > 0 || (resCnt != null && resCnt > 0);
+    const chip = (txt, clr, bg) => (
+      <span style={{ fontSize: forceCompact ? 9 : 10.5, fontWeight: 700, color: clr, background: bg, borderRadius: 5, padding: "1px 6px", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 3 }}>{txt}</span>
+    );
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", marginTop: 3 }}>
+        {isExisting
+          ? chip("기존 고객", "#059669", "#ECFDF5")
+          : chip("신규 고객", "#D97706", "#FFF7ED")}
+        {chip(`방문 ${visits}회`, "#374151", "#F3F4F6")}
+        {resCnt != null && chip(`예약 ${resCnt}회`, "#374151", "#F3F4F6")}
+        {noShow > 0 && chip(`노쇼 ${noShow}회`, "#DC2626", "#FEF2F2")}
+        {lastV && chip(`최근 ${lastV}`, "#6B7280", "#F3F4F6")}
+      </div>
+    );
+  };
+
   // 채팅 → 가장 최근 예약 (chatResMap 우선 → 없으면 고객 cust_id로 최근 active 예약)
   const chatLatestRes = useMemo(()=>{
     const m={};
@@ -1631,6 +1675,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             {(()=>{ const cust = chatCustMapFull[sel.channel+"_"+sel.user_id]; if(cust) return <span style={{display:"inline-flex",alignItems:"center",gap:2,fontSize:forceCompact?9:11,fontWeight:700,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary+"40",borderRadius:6,padding:"1px 5px",whiteSpace:"nowrap",flexShrink:0}}><I name="user" size={10}/> {cust.name}{cust.custNum?` #${cust.custNum}`:""}<button onClick={unlinkCustomer} title="고객 연결 해제" style={{marginLeft:2,background:"none",border:"none",padding:"0 2px",fontSize:11,fontWeight:900,color:T.textMuted,cursor:"pointer",lineHeight:1,fontFamily:"inherit"}}>×</button></span>; return <button onClick={()=>setLinkPickerOpen(v=>!v)} style={{fontSize:forceCompact?9:10,fontWeight:800,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary,borderRadius:6,padding:"2px 7px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0,display:"inline-flex",alignItems:"center",gap:3}}><I name="globe" size={10}/>연결</button>; })()}
           </div>
           <div style={{fontSize:forceCompact?10:12,color:T.textSub,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{CH_NAME[sel.channel]||sel.channel}{(()=>{ const ph=convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone||(sel.channel==="whatsapp"&&sel.user_id?(sel.user_id.startsWith("82")?"0"+sel.user_id.slice(2):sel.user_id):""); return ph?" · "+ph:""; })()}{(()=>{ const cust = chatCustMapFull[sel.channel+"_"+sel.user_id]; if(!cust?.phone) return null; return " · "+cust.phone; })()}</div>
+          {renderCustSummary(chatCustMapFull[sel.channel+"_"+sel.user_id], sel.channel+"_"+sel.user_id)}
           {linkPickerOpen && !chatCustMapFull[sel.channel+"_"+sel.user_id] && (
             <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:50,background:"#fff",border:"1px solid "+T.border,borderRadius:8,boxShadow:"0 4px 20px rgba(0,0,0,.15)",padding:8,width:280}}>
               <input autoFocus value={linkSearch} onChange={e=>setLinkSearch(e.target.value)} placeholder="이름·전화·이메일·번호 검색"
@@ -1858,6 +1903,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                 {(()=>{ const cust = chatCustMapFull[sel.channel+"_"+sel.user_id]; if(cust) return <span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:11,fontWeight:700,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary+"40",borderRadius:6,padding:"2px 6px",whiteSpace:"nowrap"}} title={cust.phone||""}><I name="user" size={10}/> {cust.name}{cust.custNum?` #${cust.custNum}`:""}<button onClick={unlinkCustomer} title="고객 연결 해제" style={{marginLeft:2,background:"none",border:"none",padding:"0 2px",fontSize:12,fontWeight:900,color:T.textMuted,cursor:"pointer",lineHeight:1,fontFamily:"inherit"}}>×</button></span>; return <button onClick={()=>setLinkPickerOpen(v=>!v)} style={{fontSize:10,fontWeight:700,color:T.textMuted,background:"#fff",border:"1px dashed "+T.gray400,borderRadius:6,padding:"2px 6px",cursor:"pointer",fontFamily:"inherit"}}>🔗 고객 연결</button>; })()}
               </div>
               <div style={{fontSize:T.fs.xs,color:T.textMuted}}>{CH_NAME[sel.channel]||sel.channel}{(()=>{ const ph=convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone||(sel.channel==="whatsapp"&&sel.user_id?(sel.user_id.startsWith("82")?"0"+sel.user_id.slice(2):sel.user_id):""); return ph?" · "+ph:""; })()}{(()=>{ const cust = chatCustMapFull[sel.channel+"_"+sel.user_id]; if(!cust?.phone) return null; return " · "+cust.phone; })()}</div>
+              {renderCustSummary(chatCustMapFull[sel.channel+"_"+sel.user_id], sel.channel+"_"+sel.user_id)}
               {linkPickerOpen && !chatCustMapFull[sel.channel+"_"+sel.user_id] && (
                 <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:50,background:"#fff",border:"1px solid "+T.border,borderRadius:8,boxShadow:"0 4px 20px rgba(0,0,0,.15)",padding:8,width:300}}>
                   <input autoFocus value={linkSearch} onChange={e=>setLinkSearch(e.target.value)} placeholder="이름·전화·이메일·번호 검색"
