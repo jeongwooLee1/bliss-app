@@ -3374,3 +3374,9 @@ Liah(WhatsApp) 후속 2건.
 
 ### 포인트 소멸 안내 SMS에 예약링크 추가 (2026-06-03, 서버, React 0)
 정우님: 포인트 소멸 문자에도 예약링크. `point_expiry_thread` msg → `[하우스왁싱] {name}님, 적립포인트 {amt:,}원 {tier}일후 소멸! 예약 ▶ blissme.ai/r/{code}`. bid→코드 맵({br_..→gn/mg/ws/ys/wr/js/ch/hd}, get(bid,"gn")). 본문 트림("적립 포인트"→"적립포인트", "일 후"→"일후")으로 최악(긴영문+9,999,000+링크)도 90byte 단문. 링크는 /r/{code}(→케어예약 source 공유). 백업 `bak_pexplink_*`, restart active.
+
+### 정정: 문자 링크 예약 → 예약경로 "문자" + "문자예약" 태그 (2026-06-03, 서버/DB)
+정우님: 케어/포인트 문자 링크로 온 예약을 source="케어예약"으로 하지 말고 **예약경로="문자" + 태그로 구별**.
+- service_tags에 **"문자예약"** 태그 신규(`tag_sms_book`, 보라 #7C3AED). reservation_sources "문자"(`rs_id_ridiimfpok`) 추가, **"케어예약" source 삭제**.
+- 서버 `/book-submit`: `src=='care'`(=/r/{code} 링크 경유)면 `source="문자"` + `selected_tags`에 `tag_sms_book` 추가. (이전 "케어예약" source 부여 폐기, bak_smstag_*)
+- 결과: 케어(10/21/35/60일)·포인트소멸(30/15/7일) 문자의 `/r/{code}` 링크로 온 예약 = **예약경로 "문자" + 타임라인 "문자예약" 태그**. 카톡 채널 일반 예약버튼(src 없음)=경로 "카톡", AI 대화예약=채널명/"AI 예약".
