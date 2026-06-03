@@ -3310,3 +3310,9 @@ Liah(WhatsApp) 후속 2건.
 **안전장치**: 전화→고객 **count=1(유일)**일 때만 연결(번호 공유 오링크 방지, [[feedback_bliss_no_phone_matching]] 존중). WhatsApp은 user_id 자체가 전화라 신뢰도 높음.
 **효과**: v3.7.976 대화 헤더 고객 요약 배지가 이 고객들에 즉시 표시(방문·노쇼·기존/신규).
 **유의**: 일회성 백필. 신규 채팅 고객은 서버가 예약 시 자동 sns 링크(기존 동작). 채팅만 하고 예약 안 한 신규/전화 안 준 고객은 미연결(정상). 주기적 자동 백필(daily)은 유저 결정 대기.
+
+### 채팅↔고객 자동 연결 daily cron (2026-06-03, DB만)
+위 백필을 매일 자동화. RPC `auto_link_chat_customers()`(SECURITY DEFINER, 멀티테넌트 — 사업장별 매칭) + pg_cron `auto-link-chat-customers` 매일 **18:30 UTC=03:30 KST**.
+- 로직: 각 사업장 messages 스레드(channel,user_id) → WhatsApp user_id(82→010)/cust_phone를 정규화 → customers.phone/phone2 **1:1(count=1) 매칭**만 sns_accounts에 `_via:phone_autolink` 추가. 이미 링크된 (channel,user_id)·번호공유 모호건·무매칭 제외. 멱등(재실행 추가 0).
+- 첫 실행: biz_khvurgshb 5명(수동 백필분, 중복 없이 skip 확인) + 데모 사업장 5명 연결. 이후 매일 신규 전화매칭 고객 자동 연결.
+**유의**: 함수는 전 사업장 대상(멀티테넌트). count=1 가드로 번호공유 오링크 방지. 채팅만 하고 전화 안 준 고객은 미연결(정상). 예약 시 서버 자동 sns 링크는 별개로 계속 동작.
