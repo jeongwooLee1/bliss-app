@@ -4379,7 +4379,12 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                       </div>
                     ) : <span className="tl-room-sub" style={{fontSize:14,fontWeight:800,color:T.gray500}}>미배정</span>
                   ) : room.isStaffCol ? (
-                    <div style={{position:"relative",display:"flex",alignItems:"center",gap:2,justifyContent:"center",flexWrap:"wrap"}}>
+                    <div style={{position:"relative",display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
+                      {(() => { const _ct = getTagsForEmp(room.staffId, selDate); return _ct.length ? (
+                        <div style={{display:"flex",gap:2,flexWrap:"wrap",justifyContent:"center",lineHeight:1}}>
+                          {_ct.map(t => (<span key={t.id} title={t.name} style={{fontSize:9,color:t.color,background:t.color+'22',border:`1px solid ${t.color}66`,borderRadius:3,padding:'0 4px',fontWeight:700,lineHeight:1.3,whiteSpace:'nowrap'}}>{t.name}</span>))}
+                        </div>) : null; })()}
+                      <div style={{display:"flex",alignItems:"center",gap:2,justifyContent:"center"}}>
                       {!room.hideName && <button title="왼쪽으로" onClick={e=>{e.stopPropagation();moveEmpCol(room.branch_id,room.staffId,-1);}}
                         style={{width:16,height:16,padding:0,border:"none",background:"transparent",color:T.gray500,cursor:"pointer",fontSize:11,lineHeight:1,fontWeight:700,opacity:.55}}
                         onMouseEnter={e=>{e.currentTarget.style.opacity="1";e.currentTarget.style.color=T.primary;}}
@@ -4400,9 +4405,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                         style={{width:16,height:16,padding:0,border:"none",background:"transparent",color:T.gray500,cursor:"pointer",fontSize:11,lineHeight:1,fontWeight:700,opacity:.55}}
                         onMouseEnter={e=>{e.currentTarget.style.opacity="1";e.currentTarget.style.color=T.primary;}}
                         onMouseLeave={e=>{e.currentTarget.style.opacity=".55";e.currentTarget.style.color=T.gray500;}}>▶</button>}
-                      {getTagsForEmp(room.staffId, selDate).map(t => (
-                        <span key={t.id} title={t.name} style={{fontSize:9,color:t.color,background:t.color+'22',border:`1px solid ${t.color}66`,borderRadius:3,padding:'0 4px',fontWeight:700,lineHeight:1.3,whiteSpace:'nowrap'}}>{t.name}</span>
-                      ))}
+                      </div>
                       {empMovePopup?.empId===room.staffId && empMovePopup?.date===selDate && empMovePopup?.branchId===room.branch_id && createPortal(<>
                         <div style={{position:"fixed",inset:0,zIndex:9998,background:window.innerWidth<768?"rgba(0,0,0,.4)":"transparent"}} onClick={e=>{e.stopPropagation();setEmpMovePopup(null);}}/>
                         <div onClick={e=>e.stopPropagation()} style={window.innerWidth<768

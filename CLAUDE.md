@@ -3380,3 +3380,6 @@ Liah(WhatsApp) 후속 2건.
 - service_tags에 **"문자예약"** 태그 신규(`tag_sms_book`, 보라 #7C3AED). reservation_sources "문자"(`rs_id_ridiimfpok`) 추가, **"케어예약" source 삭제**.
 - 서버 `/book-submit`: `src=='care'`(=/r/{code} 링크 경유)면 `source="문자"` + `selected_tags`에 `tag_sms_book` 추가. (이전 "케어예약" source 부여 폐기, bak_smstag_*)
 - 결과: 케어(10/21/35/60일)·포인트소멸(30/15/7일) 문자의 `/r/{code}` 링크로 온 예약 = **예약경로 "문자" + 타임라인 "문자예약" 태그**. 카톡 채널 일반 예약버튼(src 없음)=경로 "카톡", AI 대화예약=채널명/"AI 예약".
+
+### v3.7.980 — 타임라인 직원 헤더: 셀 태그를 이름 위로 (이름 위치 고정) (2026-06-03)
+정우님(희서 컬럼): 직원 컬럼 헤더에서 셀 태그(일출/용홍쉐 등 schTagsHistory)가 `[◀ 이름 ▶ 태그]` 한 줄 flexWrap이라, 태그 생기면 이름이 옆으로 밀려 위치가 바뀜. → 헤더를 **세로(column)**로: 태그를 **이름 위 별도 줄**, 이름줄(◀ 이름 ▶)은 그대로 가운데 고정. `getTagsForEmp` 1회 호출(IIFE)해 태그 있을 때만 상단 줄 렌더, 없으면 이름줄만(이름 위치 일관). TimelinePage 헤더 4382~ 구조 변경, 빌드 OK.
