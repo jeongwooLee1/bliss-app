@@ -3285,3 +3285,11 @@ Liah(WhatsApp) 후속 2건.
 **변경**: 안전을 위해 최후 폴백 `claude-sonnet-4-6` → **`gpt-4o-mini`**(저렴)로 교체 → 받은메시지함 AI는 어떤 경우에도 Sonnet 미사용. 체인: gemini-3.5(cached)→gemini-3.5(uncached)→gpt-4.1-mini→gpt-4o-mini. 백업 `ai_booking.py.bak_pre_nosonnet_*`, restart active. 스모크: Gemini 3.5 cached로 정상 응답 확인.
 **⚠️ 스모크 테스트 부작용+원복**: `ai_booking_agent(manual=True, suggest_only=True)`는 v3.7.897 이후 예약 가능 상황이면 **자동 예약 생성/변경**함. 테스트가 실손님(Lyne Richer) 예약을 16:45→16:30으로 변경(메시지 발송은 안 됨, DB만). 즉시 원복(16:45 reserved 복원, 테스트생성 16:30 삭제). **교훈: suggest_only 스모크는 manual=True 금지 또는 비예약 메시지로만**.
 **남은 Sonnet 사용처(받은메시지함 아님 — 별도 확인 필요)**: ① BlissAI 직원 인앱 AI(`/bliss-ai-chat`, bliss_naver.py CLAUDE_MODEL) = Sonnet **주력** ② 번역(translate_to_korean) = GPT-4o-mini 주력·Sonnet 폴백(CLAUDE_TRANSLATE_MODEL). 이 둘도 끌지는 유저 결정 대기.
+
+### Claude Sonnet(유료) 전 경로 제거 — BlissAI·번역·ai_ask (2026-06-03, 서버, React 0)
+정우님: 받은메시지함뿐 아니라 BlissAI 직원비서·번역 폴백의 Sonnet도 전부 제거.
+- **BlissAI `/bliss-ai-chat`** (bliss_naver.py): anthropic client(CLAUDE_MODEL=Sonnet) → **Gemini 3.5 Flash** generateContent(systemInstruction+contents) 직접 호출로 재작성. 키도 claude_key→gemini_key. 스모크: model=gemini-3.5-flash 정상 응답. 백업 `bak_pre_blissai3_*`.
+- **`ai_ask`** (bliss_naver.py, 번역 폴백 등 사용): "Claude 주력→Gemini 폴백" → **GPT-4.1-mini 주력 + Gemini 폴백**(claude_ask 호출 제거). translate_to_korean 폴백(3433)·또다른 번역(4952)이 ai_ask 경유라 자동으로 Sonnet 제외됨.
+- **검증**: `claude_ask`/`_claude_msgs` **실제 호출처 0개**(런타임 Claude 경로 전무). 함수 정의는 죽은 코드로 남겨둠(롤백용). 받은메시지함(_ai_ask_msgs 최후폴백 gpt-4o-mini, 직전 c48d047)·번역·BlissAI 모두 Gemini/GPT만 사용.
+- env `CLAUDE_MODEL`/`CLAUDE_TRANSLATE_MODEL`은 이제 런타임 미사용(무해, 유지). 품질 떨어지면 코드 복원으로 Sonnet 재활성 가능.
+**유의**: 전 AI 경로 = Gemini 3.5 Flash 주력 + GPT(4.1-mini/4o-mini) 폴백. Anthropic(유료) 호출 0. claude 헬퍼 함수는 보존(미사용).
