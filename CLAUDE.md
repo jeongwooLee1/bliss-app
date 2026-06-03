@@ -3401,3 +3401,10 @@ Liah(WhatsApp) 후속 2건.
 - **서버(/sales-insight 프롬프트)**: "진행중+예상_전년대비 있으면 그걸 방향 핵심으로. 며칠치 전년동기간_대비는 노이즈라 그것만으로 감소·위기·우려 단정 금지. 어긋나면 예상_전년대비 우선('현재 추세라면 전년 대비 X% 예상')." 백업 `bak_insightproj_*`.
 - 캐시(sales_insight_cache biz_khvurgshb) 삭제 → 새 payload·프롬프트로 재생성. payload 필드 추가로 stats_hash도 바뀜.
 **유의**: 같은 부류(진행중 부분기간 비교 왜곡) 3차 보강 — v3.7.972(prevTotal clamp)·974(monthlyYoY 당월제외)·981(예상치 우선). 예상치는 일평균×전체일수 단순 추정이라 월초엔 변동 큼(추세 지표).
+
+### 매출 AI 분석 모델 Gemini 3.5 Flash → 2.5-pro (2026-06-03, 서버, React 0)
+정우님: 무료 모델 비교(같은 6월 데이터) 후 "가장 똑똑한 무료" = Gemini 2.5-pro 선택. (전체 1등은 GPT-5.5, 2.5-pro가 무료 최강·거의 동급. flash-lite·gpt-4o-mini는 예상치 10배 오기로 탈락.)
+- **`gemini_ask(prompt, timeout, models=None)`**: `models` 파라미터 추가(없으면 GEMINI_FALLBACK_MODELS). **200이어도 빈 텍스트면 다음 모델로 폴백**(2.5-pro thinking 빈응답 대비) + 모든 parts.text 합쳐 추출.
+- **/sales-insight**: `gemini_ask(prompt, timeout=40, models=["gemini-2.5-pro","gemini-3.5-flash"])` — 2.5-pro 우선, 빈응답/실패 시 3.5-flash 폴백(flash-lite 제외). 다른 gemini_ask 호출(태그평가 등)은 기존 FALLBACK 그대로.
+- 캐시 삭제 후 라이브 스모크: 2.5-pro가 "현재 추세 전년 대비 +20% 성장 예상, 초반 -22%는 잠시 주춤" 정확 응답(624자). 백업 `bak_25pro_*`.
+**유의**: 2.5-pro는 reasoning 모델이라 가끔 빈응답(thinking 토큰 소진) → 3.5-flash 자동 폴백으로 방어. 매출 분석은 하루1회·캐시라 2.5-pro 속도(느림)·무료티어 한도 무난. 채팅/번역/예약추출은 여전히 3.5-flash 주력(이 변경 무관).
