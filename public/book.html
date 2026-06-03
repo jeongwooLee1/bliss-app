@@ -369,6 +369,7 @@
       name: document.getElementById("name").value.trim(),
       phone: document.getElementById("phone").value.trim(),
       memo: document.getElementById("memo").value.trim(),
+      src: (qs.get("src") || "").trim(),
     };
     // 검증
     if (!data.date || !data.time || !data.gender || !data.name || !data.phone) {
