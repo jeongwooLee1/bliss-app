@@ -3344,3 +3344,10 @@ Liah(WhatsApp) 후속 2건.
 
 ### v3.7.979 — 문자발송 모달(SendSmsModal) 이모지 → SVG 정리 (2026-06-03)
 정우님 "이모지 쓰고 허접". `SendSmsModal.jsx` 이모지 전량 제거/교체: 📱문자발송→I msgSq, 📋템플릿→I clipboard, ✏️직접번호입력→I edit, ✏️/🗑️ 템플릿버튼→I edit/trash, ➕→I plus, 🧪테스트→텍스트, ✅발송가능/🚫수신거부/📵휴대폰아님/👤미리보기→이모지 제거. 빌드 통과. [[feedback_bliss_no_emoji_svg]]
+
+### 차트 본인확인 챗봇 — 블리스 식별 검색 RPC (2026-06-03, DB만 / 챗봇 UI는 동의서앱)
+정우님: 차트 링크 열 때 챗봇으로 기존/신규 묻고, 기존이면 이름+연락처(또는 이메일)로 본인확인 후 작성 → 방문자 본인 귀속(예약자/"외국인고객" placeholder 오귀속 원천 차단). 검색키=연락처·이메일(이름은 확인용).
+- **버그 원인 재확인**: consent_tokens.customer_id=예약자로 발송 → customer_consents.customer_id가 예약자로 저장(방문자 본명 무시). 예약 f9iv0z9pfa: customer "외국인고객"(cust_naver_mvgqi3dh62), 차트 본명 "Hang Do". (단순 "이름 다르면 새 고객" 자동화는 미진→김미진 분할·외국인고객→Hang Do 중복 사고라 폐기 → 챗봇 self-identify 방식 채택)
+- **블리스 RPC `consent_identity_search(p_business_id, p_phone, p_email)`** (migration `consent_identity_search_fn`, SECURITY DEFINER, anon GRANT): 연락처/이메일로 customers 검색(전화 82→010 정규화, phone·phone2·email), 후보 최대 8명 반환 {id, name, phone_tail(****5843), email_masked, visits, last_visit} — 공개 차트페이지용이라 **마스킹**. 번호공유 시 후보 여럿 반환 → 챗봇이 확인.
+- **챗봇 UI는 동의서앱(sign.blissme.ai, bliss-consent 레포)** — 차트 폼 전에 기존/신규 → (기존)이름+연락처/이메일→RPC검색→"OOO님 맞으세요?"확인 / (신규)이름+연락처/이메일→신규. 제출 시 customer_consents.customer_id를 **챗봇 확정 id**로 저장(토큰 예약자 id 덮어쓰기). spawn_task로 동의서앱에 위임(RPC 사용법 포함).
+**유의**: 블리스 본앱 변경 0(RPC migration만). ConsentModal 변경 불필요. 외국인고객/이종원 번호공유 데이터는 별도 점검 건(정우님 인지). 동의서앱이 RPC 호출해 챗봇 붙이면 완성.
