@@ -3278,3 +3278,10 @@ Liah(WhatsApp) 후속 2건.
 - **#3 (대표, AI오류) 처리완료**: Kristian(WhatsApp) "New client chart completed!" 인사에 AI가 예약을 장황하게 재확인 + 리마인더와 중복. → `ai_booking.py` 프롬프트에 **[차트·완료 통보 응답]** 규칙 추가 — '차트/체크리스트 완료'·'completed'·'다 했어요' 통보엔 짧고 따뜻한 한 문장 인사만(action=chat), 예약 내용 재안내·재확인 금지(리마인더 중복 방지). 백업 `bak_pre_chartack_*`, restart active. 요청 status=done+답글.
 - **#1·#2·#4 동의서 영역 위임**(spawn_task): #1 수연 — 동의서 토큰 작성 중 나갔다 재진입 시 "만료" 막힘(consent 레포, 제출 전 재진입 허용). #2 서현 — 신규차트에 "전체제거 여부·외국인 여부" 항목 추가(consent 레포). #4 희서 — 체크리스트/신규차트 알림톡 문구가 "구매하신 상품 관련"이라 오해(bliss-app ConsentModal+신규 카카오 템플릿 검수). 셋 다 status=reviewing+위임 안내 답글.
 **유의**: ai_booking 메인 프롬프트는 **트리플 따옴표 리터럴 블록**(rule이 ★로 시작하는 실제 줄, `"...\n"` 연결 아님) — 패치 시 앵커에 `\n"` 붙이지 말 것. /sales-insight 프롬프트(내가 작성)만 `"...\n"` 연결식.
+
+### 받은메시지함 AI에서 Claude Sonnet(유료) 완전 제거 (2026-06-03, 서버, React 0)
+정우님: 비용 때문에 받은메시지함 AI에 Sonnet(유료) 쓰지 말 것.
+**확인 결과**: `ai_booking.py` `_ai_ask_msgs`는 이미 **Gemini 3.5 Flash 주력**(cached→uncached) → gpt-4.1-mini → (최후)claude-sonnet-4-6 순이었고, **최근 24h Sonnet 폴백 0회**(평상시 Gemini로만 동작). 즉 받은메시지함은 이미 Sonnet 비용 거의 0이었음.
+**변경**: 안전을 위해 최후 폴백 `claude-sonnet-4-6` → **`gpt-4o-mini`**(저렴)로 교체 → 받은메시지함 AI는 어떤 경우에도 Sonnet 미사용. 체인: gemini-3.5(cached)→gemini-3.5(uncached)→gpt-4.1-mini→gpt-4o-mini. 백업 `ai_booking.py.bak_pre_nosonnet_*`, restart active. 스모크: Gemini 3.5 cached로 정상 응답 확인.
+**⚠️ 스모크 테스트 부작용+원복**: `ai_booking_agent(manual=True, suggest_only=True)`는 v3.7.897 이후 예약 가능 상황이면 **자동 예약 생성/변경**함. 테스트가 실손님(Lyne Richer) 예약을 16:45→16:30으로 변경(메시지 발송은 안 됨, DB만). 즉시 원복(16:45 reserved 복원, 테스트생성 16:30 삭제). **교훈: suggest_only 스모크는 manual=True 금지 또는 비예약 메시지로만**.
+**남은 Sonnet 사용처(받은메시지함 아님 — 별도 확인 필요)**: ① BlissAI 직원 인앱 AI(`/bliss-ai-chat`, bliss_naver.py CLAUDE_MODEL) = Sonnet **주력** ② 번역(translate_to_korean) = GPT-4o-mini 주력·Sonnet 폴백(CLAUDE_TRANSLATE_MODEL). 이 둘도 끌지는 유저 결정 대기.
