@@ -18,8 +18,10 @@ function genToken() {
  *  3) 대상 태블릿(kiosk) 선택 → 전송 → 태블릿이 realtime으로 즉시 서명 UI 띄움
  *  4) 키오스크 없는 매장: "링크 복사/QR 보기"로 폴백 (고객 폰으로 QR 스캔)
  */
-export default function ConsentModal({ cust, bizId, data, onClose, reservationId, initialSelectedIds, initialPrefill, sendKind }) {
+export default function ConsentModal({ cust, bizId, data, onClose, reservationId, initialSelectedIds, initialPrefill, sendKind, chartIds = [], chartStatus, docStatus, onViewDoc }) {
   const isChart = sendKind === 'chart'  // 차트 보내기 모드: 신규차트+오늘관리 묶음을 단일 카드로 (직원이 신규/기존 안 고름 — 동의서앱이 자동 분기)
+  const isBoth = sendKind === 'both'    // 차트 & 동의서 한 화면: 차트 자동카드 + 동의서 체크박스 + 작성완료 보기
+  const linkWord = isBoth ? '차트·동의서' : isChart ? '차트' : '동의서'  // 안내·발송 문구
   const [tpls, setTpls] = useState([])
   const [folders, setFolders] = useState([])
   const [selectedIds, setSelectedIds] = useState(initialSelectedIds || [])
@@ -106,7 +108,7 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
       } else if (via === 'sms') {
         const targetBid = cust?.bid || (data?.branches || [])[0]?.id || ''
         const brName = (data?.branches || []).find(b => b.id === targetBid)?.short || ''
-        const msg = `[${brName || '동의서'}] 동의서 작성 요청\n아래 링크에서 작성·서명 부탁드려요 (48시간 내 만료)\n${url}`
+        const msg = `[${brName || '안내'}] ${linkWord} 작성 요청\n아래 링크에서 작성·서명 부탁드려요 (48시간 내 만료)\n${url}`
         const r = await fetch(`${SB_URL}/functions/v1/send-sms`, {
           method: 'POST',
           headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' },
@@ -159,6 +161,22 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
     grouped[key].items.push(t)
   })
 
+  // 거래 정보 prefill (동의서·차트&동의서 모드 공용)
+  const prefillBlock = tpls.length > 0 ? (
+    <details style={{ marginTop: 4, marginBottom: 10, borderTop: '1px solid ' + T.border, paddingTop: 10 }}>
+      <summary style={{ cursor: 'pointer', fontSize: 12, color: T.textSub, fontWeight: 700 }}>▼ 거래 정보 (선택, prefill)</summary>
+      <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+        {[['points', '금액/포인트'], ['valid_from', '시작일'], ['valid_until', '종료일'], ['memo', '메모']].map(([k, lbl]) => (
+          <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+            <span style={{ width: 90, color: T.textSub }}>{lbl}</span>
+            <input value={prefill[k] || ''} onChange={e => setPrefill(p => ({ ...p, [k]: e.target.value }))}
+              style={{ flex: 1, padding: '4px 8px', fontSize: 12, border: '1px solid ' + T.border, borderRadius: 4 }} />
+          </label>
+        ))}
+      </div>
+    </details>
+  ) : null
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9000 }} onClick={handleClose}>
       <div style={{ width: 'min(540px, 95vw)', maxHeight: '90vh', overflow: 'auto', background: '#fff', borderRadius: 12, boxShadow: '0 20px 40px rgba(0,0,0,.2)' }} onClick={e => e.stopPropagation()}>
@@ -182,7 +200,7 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
           <div style={{ fontSize: 60, marginBottom: 14 }}>💬</div>
           <div style={{ fontSize: 18, fontWeight: 800, color: '#10b981', marginBottom: 8 }}>카카오 알림톡 발송 완료</div>
           <div style={{ fontSize: 13, color: T.textMuted, marginBottom: 20 }}>
-            <b>{result.phone}</b> 카카오톡으로 동의서 링크를 보냈습니다.<br />고객님이 링크에서 작성·서명하시면 됩니다.
+            <b>{result.phone}</b> 카카오톡으로 {linkWord} 링크를 보냈습니다.<br />고객님이 링크에서 작성·서명하시면 됩니다.
           </div>
           <button onClick={onClose} style={{ padding: '10px 24px', fontSize: 14, fontWeight: 700, background: T.primary, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>확인</button>
         </div>}
@@ -193,7 +211,7 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
             {result.sent ? '문자 발송 완료' : '문자 발송 실패'}
           </div>
           <div style={{ fontSize: 13, color: T.textMuted, marginBottom: 20 }}>
-            {result.sent ? <><b>{result.phone}</b> 으로 동의서 링크를 보냈습니다.<br />고객님이 링크에서 작성·서명하시면 됩니다.</> : <>QR/링크로 대신 전달해주세요.</>}
+            {result.sent ? <><b>{result.phone}</b> 으로 {linkWord} 링크를 보냈습니다.<br />고객님이 링크에서 작성·서명하시면 됩니다.</> : <>QR/링크로 대신 전달해주세요.</>}
           </div>
           <button onClick={onClose} style={{ padding: '10px 24px', fontSize: 14, fontWeight: 700, background: T.primary, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>확인</button>
         </div>}
@@ -216,8 +234,61 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
             등록된 템플릿 없음.<br />
             <a href={`${SIGN_HOST}/?admin=1`} target="_blank" rel="noopener noreferrer" style={{ color: T.primary }}>관리자 편집기</a>에서 추가하세요.
           </div>}
-          {/* 차트 모드: 신규차트+오늘관리 묶음을 단일 카드(직원이 신규/기존 안 고름, 동의서앱이 자동 분기) / 동의서 모드: 폴더별 체크박스 */}
-          {isChart ? (
+          {/* 차트&동의서 한 화면 / 차트 단일카드 / 동의서 폴더 체크박스 */}
+          {isBoth ? (<>
+            {/* ── 차트 ── 신규=신규차트+오늘관리 / 기존=오늘관리만 (동의서앱 자동 분기) */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: T.textSub, marginBottom: 6 }}>차트</div>
+              {chartStatus?.status === 'signed' ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '10px 12px', background: '#ecfdf5', borderRadius: 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#059669' }}>✓ 차트 작성완료</span>
+                  {onViewDoc && chartStatus.consent && <button onClick={() => onViewDoc(chartStatus.consent)} style={{ padding: '4px 12px', fontSize: 12, fontWeight: 700, background: '#fff', color: '#059669', border: '1px solid #a7f3d0', borderRadius: 6, cursor: 'pointer' }}>보기</button>}
+                </div>
+              ) : (
+                <div style={{ padding: 14, background: '#eff6ff', borderRadius: 10 }}>
+                  <div style={{ display: 'grid', gap: 5, marginBottom: 10 }}>
+                    {tpls.filter(t => chartIds.includes(t.id)).map(t => (
+                      <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13.5, fontWeight: 700, color: T.text }}>
+                        <span style={{ color: '#2563eb', fontWeight: 800 }}>·</span>{t.name}
+                      </div>
+                    ))}
+                    {chartIds.length === 0 && <div style={{ fontSize: 12, color: T.danger }}>보낼 차트 템플릿이 없습니다.</div>}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: T.textSub, lineHeight: 1.7, background: '#fff', borderRadius: 8, padding: '8px 10px' }}>
+                    고객 상태에 따라 자동으로 나뉘어 전송됩니다.<br />
+                    · <b>신규 고객</b> → 신규차트 + 오늘 관리 체크리스트<br />
+                    · <b>기존 고객</b> → 오늘 관리 체크리스트만 (신규차트 자동 생략)
+                  </div>
+                </div>
+              )}
+            </div>
+            {/* ── 동의서 ── 구매 상품 동의서 (차트 폴더 제외, 필요한 것만 체크) ── */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: T.textSub, marginBottom: 6 }}>동의서 <span style={{ fontWeight: 500, color: T.textMuted }}>(구매 상품 — 필요한 것만 선택)</span></div>
+              {docStatus?.status === 'signed' && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 12px', background: '#ecfdf5', borderRadius: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: '#059669' }}>✓ 동의서 작성완료</span>
+                {onViewDoc && docStatus.consent && <button onClick={() => onViewDoc(docStatus.consent)} style={{ padding: '3px 10px', fontSize: 11.5, fontWeight: 700, background: '#fff', color: '#059669', border: '1px solid #a7f3d0', borderRadius: 6, cursor: 'pointer' }}>보기</button>}
+              </div>}
+              {(() => {
+                const docFolders = Object.entries(grouped)
+                  .map(([gid, g]) => [gid, { name: g.name, items: g.items.filter(t => !chartIds.includes(t.id)) }])
+                  .filter(([, g]) => g.items.length > 0)
+                if (docFolders.length === 0) return <div style={{ fontSize: 12, color: T.textMuted, padding: '4px 2px' }}>등록된 동의서 템플릿이 없습니다.</div>
+                return docFolders.map(([gid, g]) => (
+                  <div key={gid} style={{ marginBottom: 6 }}>
+                    {g.name && g.name !== '미분류' && <div style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, marginBottom: 3 }}>{g.name}</div>}
+                    {g.items.map(t => (
+                      <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', fontSize: 13, cursor: 'pointer', borderRadius: 6 }}>
+                        <input type="checkbox" checked={selectedIds.includes(t.id)} onChange={() => toggleTpl(t.id)} />
+                        <span>{t.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                ))
+              })()}
+            </div>
+            {prefillBlock}
+          </>) : isChart ? (
             <div style={{ marginBottom: 12, padding: 14, background: '#eff6ff', borderRadius: 10 }}>
               <div style={{ display: 'grid', gap: 5, marginBottom: 10 }}>
                 {tpls.filter(t => selectedIds.includes(t.id)).map(t => (
@@ -245,26 +316,14 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
                 ))}
               </div>
             ))}
-
-            {tpls.length > 0 && <details style={{ marginTop: 10, marginBottom: 10, borderTop: '1px solid ' + T.border, paddingTop: 10 }}>
-              <summary style={{ cursor: 'pointer', fontSize: 12, color: T.textSub, fontWeight: 700 }}>▼ 거래 정보 (선택, prefill)</summary>
-              <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
-                {[['points', '금액/포인트'], ['valid_from', '시작일'], ['valid_until', '종료일'], ['memo', '메모']].map(([k, lbl]) => (
-                  <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
-                    <span style={{ width: 90, color: T.textSub }}>{lbl}</span>
-                    <input value={prefill[k] || ''} onChange={e => setPrefill(p => ({ ...p, [k]: e.target.value }))}
-                      style={{ flex: 1, padding: '4px 8px', fontSize: 12, border: '1px solid ' + T.border, borderRadius: 4 }} />
-                  </label>
-                ))}
-              </div>
-            </details>}
+            {prefillBlock}
           </>)}
 
           {/* 전송 방식 — 카카오 알림톡(권장) + QR/링크 폴백 */}
           {tpls.length > 0 && <div style={{ marginTop: 14, padding: 12, background: T.gray100, borderRadius: 8 }}>
             <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 8, lineHeight: 1.5 }}>
               {smsHasPhone
-                ? '고객 카카오톡으로 동의서 링크를 보냅니다. 카톡이 안 되면 QR/링크로 전달하세요.'
+                ? `고객 카카오톡으로 ${linkWord} 링크를 보냅니다. 카톡이 안 되면 QR/링크로 전달하세요.`
                 : '이 고객은 휴대폰 번호(010~)가 없어 알림톡 발송이 안 됩니다. QR/링크로 전달하세요.'}
             </div>
             {smsHasPhone && <button onClick={() => send('alimtalk')} disabled={loading || selectedIds.length === 0}

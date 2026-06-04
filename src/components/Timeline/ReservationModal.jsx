@@ -2102,50 +2102,31 @@ ${naverText}
                             <I name="alert" size={10}/>주의 (취소{_cp}/노쇼{_ns})
                           </span>;
                         })()}
-                        {/* 📋 차트/동의서 — 트랙별 3상태: 작성완료(서명)=솔리드 녹색 / 발송·미서명=녹↔회 교차 깜박 / 미발송=회색 */}
+                        {/* 📋 차트 & 동의서 — 한 버튼 → 한 화면(차트 자동카드 + 동의서 체크박스 + 작성완료 보기). 색=상태: 서명대기 깜박 / 작성완료 녹색 / 미발송 회색 */}
                         {(() => {
                           const _canSend = f.custId && !String(f.custId).startsWith("new_") && !f.isNewCust;
-                          // 재전송(sent)=직전 발송 템플릿 / 차트 미발송=활성 차트 프리셋(신규차트+컨디션, 원클릭) / 동의서 미발송=빈 선택(직원이 구매상품별 선택)
-                          const _openSend = (kind, st) => {
-                            setConsentSendKind(kind);
-                            if (st?.status === "sent") setConsentPreselect(st.tplIds || []);
-                            else if (kind === "chart") setConsentPreselect(chartInfo?.chartPresetIds || []);
-                            else setConsentPreselect([]);
+                          const c = chartInfo?.chart, d = chartInfo?.doc;
+                          if (!c && !d) return null;
+                          const anySigned = c?.status === "signed" || d?.status === "signed";
+                          const anySent = c?.status === "sent" || d?.status === "sent";
+                          if (!_canSend && !anySigned) return null;
+                          // 차트 & 동의서 한 화면 모달 — 차트 미서명이면 번들 포함, 서명됐으면 제외(재전송 안 함)
+                          const _openBoth = () => {
+                            setConsentSendKind("both");
+                            setConsentPreselect(c?.status === "signed" ? [] : (chartInfo?.chartPresetIds || []));
                             setConsentOpen(true);
                           };
-                          const _openView = (st) => { setDocViewerFocus(st?.consent || null); setDocsViewerOpen(true); };
-                          const _tracks = [
-                            { key: "chart", label: "차트", st: chartInfo?.chart },
-                            { key: "doc", label: "동의서", st: chartInfo?.doc },
-                          ];
                           const _base = { fontSize: 10, padding: "3px 11px", borderRadius: 10, fontWeight: 800, whiteSpace: "nowrap", cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 4, border: "1px solid transparent" };
+                          const sty = anySent ? { ..._base }
+                            : anySigned ? { ..._base, background: "#059669", color: "#fff", borderColor: "#059669" }
+                            : { ..._base, background: "#E5E7EB", color: "#6B7280", borderColor: "#E5E7EB" };
+                          const title = anySent ? "차트·동의서 발송됨 · 서명 대기 — 클릭해서 한 화면에서 보기/추가 발송"
+                            : anySigned ? "차트·동의서 작성완료 — 클릭해서 보기/추가 발송"
+                            : "차트·동의서 보내기";
                           return (
                             <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                              {_tracks.map(tk => {
-                                const st = tk.st; if (!st) return null;
-                                // 작성완료(서명 들어옴): 솔리드 녹색 채움 → 클릭 시 작성본 보기
-                                if (st.status === "signed") return (
-                                  <button key={tk.key} type="button" onClick={(e) => { e.stopPropagation(); _openView(st); }}
-                                    title={`${tk.label} 작성완료 — 클릭해서 보기`}
-                                    style={{ ..._base, background: "#059669", color: "#fff", borderColor: "#059669" }}>
-                                    <I name="fileText" size={10} />{tk.label}<I name="eye" size={10} /></button>
-                                );
-                                if (!_canSend) return null;
-                                // 발송됨·미서명: 녹↔회 교차 깜박 → 클릭 시 재전송
-                                if (st.status === "sent") return (
-                                  <button key={tk.key} type="button" className="doc-pending-blink" onClick={(e) => { e.stopPropagation(); _openSend(tk.key, st); }}
-                                    title={`${tk.label} 발송됨 · 고객 서명 대기 — 클릭해서 재전송`}
-                                    style={{ ..._base }}>
-                                    <I name="fileText" size={10} />{tk.label}</button>
-                                );
-                                // 미발송: 회색 → 클릭 시 보내기
-                                return (
-                                  <button key={tk.key} type="button" onClick={(e) => { e.stopPropagation(); _openSend(tk.key, st); }}
-                                    title={`${tk.label} 미발송 — 클릭해서 보내기`}
-                                    style={{ ..._base, background: "#E5E7EB", color: "#6B7280", borderColor: "#E5E7EB" }}>
-                                    <I name="fileText" size={10} />{tk.label}</button>
-                                );
-                              })}
+                              <button type="button" className={anySent ? "doc-pending-blink" : ""} onClick={(e) => { e.stopPropagation(); _openBoth(); }} title={title} style={sty}>
+                                <I name="fileText" size={10} />차트 & 동의서{anySigned && !anySent ? <I name="eye" size={10} /> : null}</button>
                             </div>
                           );
                         })()}
@@ -3706,6 +3687,10 @@ ${naverText}
           reservationId={item?.id}
           sendKind={consentSendKind}
           initialSelectedIds={consentPreselect}
+          chartIds={chartInfo?.chartPresetIds || []}
+          chartStatus={chartInfo?.chart}
+          docStatus={chartInfo?.doc}
+          onViewDoc={(consent) => { setConsentOpen(false); setConsentSendKind(null); setConsentPreselect([]); setDocViewerFocus(consent || null); setDocsViewerOpen(true); }}
           onClose={() => { setConsentOpen(false); setConsentPreselect([]); setConsentSendKind(null); setChartReloadKey(k => k + 1); }}/>,
         document.body)}
       {/* 📋 작성된 동의서·차트 이미지 뷰어 — 작성완료 칩 클릭 시 (클릭한 트랙 문서 포커스) */}
