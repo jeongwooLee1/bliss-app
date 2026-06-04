@@ -18,7 +18,8 @@ function genToken() {
  *  3) 대상 태블릿(kiosk) 선택 → 전송 → 태블릿이 realtime으로 즉시 서명 UI 띄움
  *  4) 키오스크 없는 매장: "링크 복사/QR 보기"로 폴백 (고객 폰으로 QR 스캔)
  */
-export default function ConsentModal({ cust, bizId, data, onClose, reservationId, initialSelectedIds, initialPrefill }) {
+export default function ConsentModal({ cust, bizId, data, onClose, reservationId, initialSelectedIds, initialPrefill, sendKind }) {
+  const isChart = sendKind === 'chart'  // 차트 보내기 모드: 신규차트+오늘관리 묶음을 단일 카드로 (직원이 신규/기존 안 고름 — 동의서앱이 자동 분기)
   const [tpls, setTpls] = useState([])
   const [folders, setFolders] = useState([])
   const [selectedIds, setSelectedIds] = useState(initialSelectedIds || [])
@@ -162,7 +163,7 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9000 }} onClick={handleClose}>
       <div style={{ width: 'min(540px, 95vw)', maxHeight: '90vh', overflow: 'auto', background: '#fff', borderRadius: 12, boxShadow: '0 20px 40px rgba(0,0,0,.2)' }} onClick={e => e.stopPropagation()}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid ' + T.border, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, flex: 1 }}>📝 동의서 요청 · {cust?.name || ''}</div>
+          <div style={{ fontSize: 15, fontWeight: 800, flex: 1 }}>{isChart ? '차트 보내기' : '동의서 요청'} · {cust?.name || ''}</div>
           <button onClick={handleClose} style={{ border: 'none', background: 'none', fontSize: 20, cursor: 'pointer', color: T.textMuted }}>×</button>
         </div>
 
@@ -215,30 +216,49 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
             등록된 템플릿 없음.<br />
             <a href={`${SIGN_HOST}/?admin=1`} target="_blank" rel="noopener noreferrer" style={{ color: T.primary }}>관리자 편집기</a>에서 추가하세요.
           </div>}
-          {Object.entries(grouped).map(([gid, g]) => g.items.length > 0 && (
-            <div key={gid} style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: T.textSub, marginBottom: 6 }}>📁 {g.name}</div>
-              {g.items.map(t => (
-                <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', fontSize: 13, cursor: 'pointer', borderRadius: 6 }}>
-                  <input type="checkbox" checked={selectedIds.includes(t.id)} onChange={() => toggleTpl(t.id)} />
-                  <span>{t.name}</span>
-                </label>
-              ))}
+          {/* 차트 모드: 신규차트+오늘관리 묶음을 단일 카드(직원이 신규/기존 안 고름, 동의서앱이 자동 분기) / 동의서 모드: 폴더별 체크박스 */}
+          {isChart ? (
+            <div style={{ marginBottom: 12, padding: 14, background: '#eff6ff', borderRadius: 10 }}>
+              <div style={{ display: 'grid', gap: 5, marginBottom: 10 }}>
+                {tpls.filter(t => selectedIds.includes(t.id)).map(t => (
+                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13.5, fontWeight: 700, color: T.text }}>
+                    <span style={{ color: '#2563eb', fontWeight: 800 }}>·</span>{t.name}
+                  </div>
+                ))}
+                {selectedIds.length === 0 && <div style={{ fontSize: 12, color: T.danger }}>보낼 차트 템플릿이 없습니다. 관리자 편집기에서 확인하세요.</div>}
+              </div>
+              <div style={{ fontSize: 11.5, color: T.textSub, lineHeight: 1.7, background: '#fff', borderRadius: 8, padding: '8px 10px' }}>
+                고객 상태에 따라 자동으로 나뉘어 전송됩니다.<br />
+                · <b>신규 고객</b> → 신규차트 + 오늘 관리 체크리스트<br />
+                · <b>기존 고객</b> → 오늘 관리 체크리스트만 (신규차트 자동 생략)
+              </div>
             </div>
-          ))}
+          ) : (<>
+            {Object.entries(grouped).map(([gid, g]) => g.items.length > 0 && (
+              <div key={gid} style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: T.textSub, marginBottom: 6 }}>📁 {g.name}</div>
+                {g.items.map(t => (
+                  <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', fontSize: 13, cursor: 'pointer', borderRadius: 6 }}>
+                    <input type="checkbox" checked={selectedIds.includes(t.id)} onChange={() => toggleTpl(t.id)} />
+                    <span>{t.name}</span>
+                  </label>
+                ))}
+              </div>
+            ))}
 
-          {tpls.length > 0 && <details style={{ marginTop: 10, marginBottom: 10, borderTop: '1px solid ' + T.border, paddingTop: 10 }}>
-            <summary style={{ cursor: 'pointer', fontSize: 12, color: T.textSub, fontWeight: 700 }}>▼ 거래 정보 (선택, prefill)</summary>
-            <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
-              {[['points', '금액/포인트'], ['valid_from', '시작일'], ['valid_until', '종료일'], ['memo', '메모']].map(([k, lbl]) => (
-                <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
-                  <span style={{ width: 90, color: T.textSub }}>{lbl}</span>
-                  <input value={prefill[k] || ''} onChange={e => setPrefill(p => ({ ...p, [k]: e.target.value }))}
-                    style={{ flex: 1, padding: '4px 8px', fontSize: 12, border: '1px solid ' + T.border, borderRadius: 4 }} />
-                </label>
-              ))}
-            </div>
-          </details>}
+            {tpls.length > 0 && <details style={{ marginTop: 10, marginBottom: 10, borderTop: '1px solid ' + T.border, paddingTop: 10 }}>
+              <summary style={{ cursor: 'pointer', fontSize: 12, color: T.textSub, fontWeight: 700 }}>▼ 거래 정보 (선택, prefill)</summary>
+              <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+                {[['points', '금액/포인트'], ['valid_from', '시작일'], ['valid_until', '종료일'], ['memo', '메모']].map(([k, lbl]) => (
+                  <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                    <span style={{ width: 90, color: T.textSub }}>{lbl}</span>
+                    <input value={prefill[k] || ''} onChange={e => setPrefill(p => ({ ...p, [k]: e.target.value }))}
+                      style={{ flex: 1, padding: '4px 8px', fontSize: 12, border: '1px solid ' + T.border, borderRadius: 4 }} />
+                  </label>
+                ))}
+              </div>
+            </details>}
+          </>)}
 
           {/* 전송 방식 — 카카오 알림톡(권장) + QR/링크 폴백 */}
           {tpls.length > 0 && <div style={{ marginTop: 14, padding: 12, background: T.gray100, borderRadius: 8 }}>

@@ -805,6 +805,7 @@ function TimelineModal({ item, onSave, onAddCompanion, onDelete, onDeleteRequest
   const [chartInfo, setChartInfo] = useState(null); // { chart:{status,consent,tplIds}, doc:{status,consent,tplIds} } — 차트/동의서 트랙 독립
   const [consentOpen, setConsentOpen] = useState(false); // 📋 동의서 보내기 모달
   const [consentPreselect, setConsentPreselect] = useState([]); // 재전송 시 이전 발송 템플릿 미리선택
+  const [consentSendKind, setConsentSendKind] = useState(null); // 'chart' | 'doc' — 발송 모달 모드(차트=단일 카드, 동의서=체크박스)
   const [chartReloadKey, setChartReloadKey] = useState(0); // 동의서 발송 후 차트 상태 새로고침
   const [docsViewerOpen, setDocsViewerOpen] = useState(false); // 📋 작성된 동의서·차트 이미지 뷰어
   const [docViewerFocus, setDocViewerFocus] = useState(null); // 뷰어에서 포커스할 작성본(차트 or 동의서)
@@ -2106,6 +2107,7 @@ ${naverText}
                           const _canSend = f.custId && !String(f.custId).startsWith("new_") && !f.isNewCust;
                           // 재전송(sent)=직전 발송 템플릿 / 차트 미발송=활성 차트 프리셋(신규차트+컨디션, 원클릭) / 동의서 미발송=빈 선택(직원이 구매상품별 선택)
                           const _openSend = (kind, st) => {
+                            setConsentSendKind(kind);
                             if (st?.status === "sent") setConsentPreselect(st.tplIds || []);
                             else if (kind === "chart") setConsentPreselect(chartInfo?.chartPresetIds || []);
                             else setConsentPreselect([]);
@@ -3702,8 +3704,9 @@ ${naverText}
           bizId={_activeBizId}
           data={data}
           reservationId={item?.id}
+          sendKind={consentSendKind}
           initialSelectedIds={consentPreselect}
-          onClose={() => { setConsentOpen(false); setConsentPreselect([]); setChartReloadKey(k => k + 1); }}/>,
+          onClose={() => { setConsentOpen(false); setConsentPreselect([]); setConsentSendKind(null); setChartReloadKey(k => k + 1); }}/>,
         document.body)}
       {/* 📋 작성된 동의서·차트 이미지 뷰어 — 작성완료 칩 클릭 시 (클릭한 트랙 문서 포커스) */}
       {docsViewerOpen && createPortal(
