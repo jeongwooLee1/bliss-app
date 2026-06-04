@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>직원 이동/근무 팝업 — 재설계 시안</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Apple SD Gothic Neo", sans-serif;
+    background: #20232e; color: #e8eaf0; padding: 34px 24px 56px;
+  }
+  .pagehead { text-align:center; margin-bottom: 28px; }
+  .pagehead h1 { font-size: 19px; font-weight: 800; letter-spacing:-0.3px; }
+  .pagehead p { font-size: 13px; color:#9aa0b4; margin-top:7px; }
+  .stage { display: flex; gap: 40px; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
+  .col { display:flex; flex-direction:column; align-items:center; gap:13px; }
+  .tag { font-size:12.5px; font-weight:700; padding:5px 13px; border-radius:999px; letter-spacing:0.2px; }
+  .tag.bad { background:#3a2526; color:#ff9d9d; }
+  .tag.good { background:#1f3a2e; color:#7fe0a8; }
+  .phone { width: 360px; background:#f3f4f7; border-radius:30px; padding:11px; box-shadow: 0 22px 50px rgba(0,0,0,.45); }
+  .screen { background:#eceef2; border-radius:21px; overflow:hidden; height:560px; position:relative; }
+  .cap { font-size:11.5px; color:#9aa0b4; text-align:center; max-width:330px; line-height:1.65; }
+
+  /* ===== BEFORE (current) ===== */
+  .b-dim { position:absolute; inset:0; background:rgba(20,22,30,.34); }
+  .b-pop { position:absolute; left:9px; right:9px; top:96px; background:#fff; border-radius:13px; padding:13px 12px 12px; box-shadow:0 12px 30px rgba(0,0,0,.25); font-size:11px; color:#23262f; }
+  .b-pop .h { font-size:12.5px; font-weight:700; margin-bottom:11px; }
+  .b-lab { font-size:10px; color:#8c8c8c; margin-bottom:4px; }
+  .b-row { display:flex; align-items:center; gap:4px; margin-bottom:9px; }
+  .b-sel { border:1px solid #d8d8de; border-radius:4px; padding:3px 5px; font-size:10px; background:#fafafb; color:#33363f; display:flex; align-items:center; justify-content:space-between; gap:3px; }
+  .b-sel.f1 { flex:1; } .b-sel.w { min-width:56px; }
+  .b-tilde { color:#aaa; font-size:10px; }
+  .b-bar { height:13px; border-radius:3px; display:flex; overflow:hidden; margin:3px 0 10px; }
+  .b-bar i { display:block; height:100%; }
+  .b-seg { display:flex; align-items:center; gap:3px; margin-bottom:7px; }
+  .b-x { color:#c9542f; font-size:11px; padding:0 2px;}
+  .b-add { font-size:10px; color:#7c3aed; border:1px dashed #c9b6f0; border-radius:5px; padding:5px; text-align:center; margin-bottom:10px; }
+  .b-foot { display:flex; gap:5px; }
+  .b-btn { flex:1; font-size:10px; padding:7px; border-radius:6px; text-align:center; border:1px solid #ddd; color:#555; }
+  .b-btn.p { background:#7c3aed; color:#fff; border-color:#7c3aed; }
+  .b-note { background:#fff7f6; color:#c0573a; font-size:9.5px; text-align:center; padding:5px; border-radius:6px; margin-top:9px; line-height:1.5; }
+
+  /* ===== AFTER (compact popup) ===== */
+  .a-dim { position:absolute; inset:0; background:rgba(20,22,30,.28); }
+  .a-pop { position:absolute; left:13px; right:13px; top:78px; background:#fff; border-radius:16px; padding:15px 15px 14px; box-shadow:0 16px 38px rgba(0,0,0,.26); color:#23262f; }
+  .a2-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:11px; }
+  .a2-head .nm { font-size:16px; font-weight:800; color:#191c26; }
+  .a2-head .nm small { font-size:12px; font-weight:600; color:#9398a8; margin-left:6px; }
+  .a2-x { width:26px; height:26px; border-radius:8px; background:#f3f4f7; display:flex; align-items:center; justify-content:center; color:#9398a8; font-size:14px; }
+  .a2-row { display:flex; align-items:center; gap:10px; padding:8px 0; }
+  .a2-lab { font-size:12.5px; font-weight:700; color:#6d28d9; }
+  .a2-time { display:flex; align-items:center; gap:7px; }
+  .a2-chip { font-size:14.5px; font-weight:700; color:#1c1f29; background:#f4f4f8; border-radius:8px; padding:6px 12px; }
+  .a2-chip .ar { color:#b7bcca; font-size:10px; margin-left:4px; }
+  .a2-unit { font-size:11px; color:#a6abba; margin-left:auto; }
+  .a2-div { height:1px; background:#f0f0f3; margin:2px 0; }
+  .a2-ticks { display:flex; justify-content:space-between; font-size:9.5px; color:#abb0c0; margin:1px 2px 4px; }
+  .a2-bar { position:relative; height:40px; border-radius:9px; display:flex; }
+  .a2-seg { height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#fff; }
+  .a2-seg:first-child{border-radius:9px 0 0 9px} .a2-seg:last-child{border-radius:0 9px 9px 0}
+  .a2-seg .nm { font-size:13px; font-weight:700; }
+  .a2-seg .tm { font-size:10px; opacity:.92; margin-top:1px; }
+  .a2-handle { position:absolute; top:-3px; bottom:-3px; width:14px; transform:translateX(-50%); display:flex; align-items:center; justify-content:center; z-index:3; }
+  .a2-handle i { width:3px; height:100%; background:#fff; border-radius:2px; box-shadow:0 0 0 1px rgba(0,0,0,.06); }
+  .a2-handle b { position:absolute; width:15px; height:15px; border-radius:50%; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.32); }
+  .a2-add { font-size:12px; color:#7c3aed; font-weight:600; text-align:center; padding:8px; background:#f3effd; border-radius:8px; margin-top:9px; }
+  .a2-foot { display:flex; gap:7px; margin-top:12px; }
+  .a2-off { font-size:12.5px; font-weight:600; color:#b4475a; background:#fdeef1; border-radius:9px; padding:9px 13px; }
+  .a2-cancel { font-size:12.5px; color:#6b7280; background:#f3f4f7; border-radius:9px; padding:9px 16px; }
+  .a2-save { flex:1; font-size:13.5px; font-weight:700; color:#fff; background:#6d28d9; border-radius:9px; padding:10px; text-align:center; box-shadow:0 4px 11px rgba(109,40,217,.28); }
+</style>
+</head>
+<body>
+  <div class="pagehead">
+    <h1>직원 이동·근무 설정 팝업</h1>
+    <p>같은 상황 (민아 — 오전 강남점 → 오후 잠실점 이동) · 둘 다 작은 팝업</p>
+  </div>
+
+  <div class="stage">
+
+    <!-- ============ BEFORE ============ -->
+    <div class="col">
+      <span class="tag bad">지금</span>
+      <div class="phone"><div class="screen">
+        <div class="b-dim"></div>
+        <div class="b-pop">
+          <div class="h">민아 · 직원 이동/근무</div>
+          <div class="b-lab">근무시간</div>
+          <div class="b-row">
+            <div class="b-sel w">11:00 <span>▾</span></div>
+            <span class="b-tilde">~</span>
+            <div class="b-sel w">21:00 <span>▾</span></div>
+            <div class="b-sel f1">담당자 교체 ▾</div>
+          </div>
+          <div class="b-bar"><i style="width:40%;background:#8e7bd4"></i><i style="width:60%;background:#d98b6a"></i></div>
+          <div class="b-lab">이동 / 지점별 근무</div>
+          <div class="b-seg">
+            <div class="b-sel f1">강남점 ▾</div>
+            <div class="b-sel w">11:00▾</div><span class="b-tilde">~</span><div class="b-sel w">15:00▾</div>
+            <span class="b-x">✕</span>
+          </div>
+          <div class="b-seg">
+            <div class="b-sel f1">잠실점 ▾</div>
+            <div class="b-sel w">15:00▾</div><span class="b-tilde">~</span><div class="b-sel w">21:00▾</div>
+            <span class="b-x">✕</span>
+          </div>
+          <div class="b-add">+ 다른 지점으로 이동</div>
+          <div class="b-foot">
+            <div class="b-btn">오늘 휴무</div>
+            <div class="b-btn">취소</div>
+            <div class="b-btn p">저장</div>
+          </div>
+          <div class="b-note">글자 작고 · 가로로 빽빽 · 같은 시간이 3군데 · 잘 안 쓰는 담당자교체가 맨 위</div>
+        </div>
+      </div></div>
+    </div>
+
+    <!-- ============ AFTER ============ -->
+    <div class="col">
+      <span class="tag good">개선안</span>
+      <div class="phone"><div class="screen">
+        <div class="a-dim"></div>
+        <div class="a-pop">
+          <div class="a2-head">
+            <div class="nm">민아 <small>직원 이동·근무</small></div>
+            <div class="a2-x">✕</div>
+          </div>
+
+          <div class="a2-row">
+            <div class="a2-lab">근무시간</div>
+            <div class="a2-time">
+              <div class="a2-chip">11:00<span class="ar">▾</span></div>
+              <span style="color:#c2c7d4">~</span>
+              <div class="a2-chip">21:00<span class="ar">▾</span></div>
+            </div>
+            <div class="a2-unit">10분 단위</div>
+          </div>
+
+          <div class="a2-div"></div>
+
+          <div style="padding:8px 0 2px">
+            <div class="a2-lab" style="margin-bottom:7px">근무 지점 · 이동</div>
+            <div class="a2-ticks"><span>11</span><span>13</span><span>15</span><span>17</span><span>19</span><span>21</span></div>
+            <div class="a2-bar">
+              <div class="a2-seg" style="width:40%;background:#8e7bd4"><div class="nm">강남</div><div class="tm">11~15</div></div>
+              <div class="a2-seg" style="width:60%;background:#e08a5f"><div class="nm">잠실</div><div class="tm">15~21</div></div>
+              <div class="a2-handle" style="left:40%"><i></i><b></b></div>
+            </div>
+            <div class="a2-add">+ 다른 지점으로 이동</div>
+          </div>
+
+          <div class="a2-div"></div>
+
+          <div class="a2-row">
+            <div class="a2-lab" style="color:#3a3f4f">담당자 교체</div>
+            <div style="flex:1"></div>
+            <div class="a2-chip" style="font-weight:600;color:#7a8092;font-size:13px">안 함 <span class="ar">▾</span></div>
+          </div>
+
+          <div class="a2-foot">
+            <div class="a2-off">오늘 휴무</div>
+            <div class="a2-cancel">취소</div>
+            <div class="a2-save">저장</div>
+          </div>
+        </div>
+      </div></div>
+      <div class="cap">작은 팝업 그대로 · 한 화면에 다 · 바 유지 · 10분 단위 · 가로 정리 + 글자 적당히</div>
+    </div>
+
+  </div>
+</body>
+</html>

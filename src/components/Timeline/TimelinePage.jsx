@@ -346,6 +346,10 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   }, [selDate, betaGroupMode]);
   // ── 네이버 막기 상태: { [bizId]: { [date]: { [itemId]: {name, hour_bit(48자)} } } } ──
   const [naverBlockState, setNaverBlockState] = useState({});
+  // 최근 토글한 슬롯 비트를 TTL 동안 고정 — 백그라운드 재조회가 네이버 반영지연(stale)으로 되돌리는 것 방지
+  const blockOvrRef = useRef({});   // key `${bizId}|${date}|${iid}|${slot}` → {bit, until}
+  const blockBusyRef = useRef(false); // 전체 토글 중복 호출 가드
+  const _setBlockOvr = (bizId, date, iid, slot, bit) => { blockOvrRef.current[`${bizId}|${date}|${iid}|${slot}`] = { bit, until: Date.now() + 30000 }; };
   const [blockSlotPopup, setBlockSlotPopup] = useState(null); // {bizId, branchId, date, slotIdx, time, x, y}
   // ── 셀 태그 (쉐어/일출 등) — 직원 컬럼 헤더에 날짜별 배지 표시용 ──
   const { data:cellTagDefsRaw } = useScheduleData('cellTagDefs_v1', null);
@@ -710,10 +714,22 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       if (cancel) return;
       setNaverBlockState(prev => {
         const next = { ...prev };
+        const _now = Date.now();
         results.forEach(r => {
           if (!r) return;
           if (!next[r.bizId]) next[r.bizId] = {};
-          next[r.bizId][selDate] = r.items;
+          const items = { ...r.items };
+          // 최근 토글 override 재적용 — 네이버 반영 지연된 stale 재조회가 방금 토글을 되돌리지 않게
+          for (const k of Object.keys(blockOvrRef.current)) {
+            const o = blockOvrRef.current[k];
+            if (o.until < _now) { delete blockOvrRef.current[k]; continue; }
+            const [b, d, iid, slot] = k.split('|');
+            if (b !== String(r.bizId) || d !== String(selDate)) continue;
+            const cur = items[iid]; if (!cur || !cur.hour_bit) continue;
+            const bits = cur.hour_bit.split('');
+            if (bits[+slot] !== o.bit) { bits[+slot] = o.bit; items[iid] = { ...cur, hour_bit: bits.join('') }; }
+          }
+          next[r.bizId][selDate] = items;
         });
         return next;
       });
@@ -5937,6 +5953,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             next[blockSlotPopup.bizId] = { ...(next[blockSlotPopup.bizId]||{}), [blockSlotPopup.date]: items };
             return next;
           });
+          _setBlockOvr(blockSlotPopup.bizId, blockSlotPopup.date, itemId, blockSlotPopup.slotIdx, newBit);
           try {
             const r = await fetch('https://blissme.ai/naver-toggle-slot', {
               method:'POST', headers:{'Content-Type':'application/json'},
@@ -5957,11 +5974,14 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
               next[blockSlotPopup.bizId] = { ...(next[blockSlotPopup.bizId]||{}), [blockSlotPopup.date]: items };
               return next;
             });
+            _setBlockOvr(blockSlotPopup.bizId, blockSlotPopup.date, itemId, blockSlotPopup.slotIdx, currentlyBlocked ? '0' : '1');
             alert('네이버 적용 실패: ' + e.message);
           }
         };
         const toggleAll = async (block) => {
           if (!canEditBlock) { alert('타지점이라 막기/풀기 변경은 불가합니다. 조회만 가능합니다.'); return; }
+          if (blockBusyRef.current) return; // 중복 호출 가드 (버튼 더블탭/더블바인드 방지)
+          blockBusyRef.current = true;
           // 변경 대상 추출 (이미 원하는 상태/비활성/운영외는 제외)
           const targets = itemIds.filter(iid => {
             if (itemsState[iid].is_active === false) return false;
@@ -5970,7 +5990,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             const isBlocked = bit === '0';
             return block ? !isBlocked : isBlocked;
           });
-          if (!targets.length) return;
+          if (!targets.length) { blockBusyRef.current = false; return; }
           const newBit = block ? '0' : '1';
           const rollbackBit = block ? '1' : '0';
           // 옵티미스틱 — targets 일괄 적용
@@ -5987,6 +6007,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             next[blockSlotPopup.bizId] = { ...(next[blockSlotPopup.bizId]||{}), [blockSlotPopup.date]: items };
             return next;
           });
+          for (const iid of targets) _setBlockOvr(blockSlotPopup.bizId, blockSlotPopup.date, iid, blockSlotPopup.slotIdx, newBit);
           // batch endpoint 호출
           try {
             const r = await fetch('https://blissme.ai/naver-toggle-slot-bulk', {
@@ -6011,6 +6032,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                 next[blockSlotPopup.bizId] = { ...(next[blockSlotPopup.bizId]||{}), [blockSlotPopup.date]: items };
                 return next;
               });
+              for (const iid of failed) _setBlockOvr(blockSlotPopup.bizId, blockSlotPopup.date, iid, blockSlotPopup.slotIdx, rollbackBit);
               const failNames = failed.map(iid => itemsState[iid]?.name || iid).join(', ');
               alert(`${failed.length}건 ${block ? '막기' : '풀기'} 실패 (네이버 일시 오류):\n${failNames}\n\n잠시 후 다시 시도해주세요.`);
             }
@@ -6029,7 +6051,10 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
               next[blockSlotPopup.bizId] = { ...(next[blockSlotPopup.bizId]||{}), [blockSlotPopup.date]: items };
               return next;
             });
+            for (const iid of targets) _setBlockOvr(blockSlotPopup.bizId, blockSlotPopup.date, iid, blockSlotPopup.slotIdx, rollbackBit);
             alert(`네이버 일괄 ${block ? '막기' : '풀기'} 실패: ${e?.message || e}`);
+          } finally {
+            blockBusyRef.current = false;
           }
         };
         return (
