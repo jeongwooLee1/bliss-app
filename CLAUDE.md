@@ -3437,3 +3437,9 @@ Liah(WhatsApp) 후속 2건.
 - **#5 "차트 보내기" 원클릭 (실제 코드 작업)**: 기존엔 예약모달 회색 **"차트"** 버튼 클릭 시 ConsentModal이 **빈 선택**으로 열려 직원이 신규차트+컨디션을 매번 체크해야 했음. → `ReservationModal.jsx` chartInfo effect에 `is_active` 조회 추가 → **활성 차트 폴더 템플릿 id(`chartPresetIds`=신규차트+컨디션)** 산출 + `_openSend(kind, st)` 분기(차트 미발송→chartPresetIds 자동 프리셋 / 재전송(sent)→직전 발송 tplIds / 동의서 미발송→빈 선택=직원이 구매상품별 선택). 이제 "차트" 클릭 = 신규차트+컨디션 자동 체크 상태로 열림 → 직원은 "알림톡 보내기"만. **신규/기존 구분은 동의서 앱이 자동**(기존 고객=신규차트 스킵, 컨디션만).
 - **적용**: v3.7.983 라이브 배포(version.txt 검증 3.7.983, CF 퍼지 success). 빌드 1회 rolldown UNRESOLVED_ENTRY 일시오류 → `cd 명시 + rm -rf dist && build`로 해결(기존 알려진 flaky).
 - **유의**: 동의서(doc) 트랙은 구매상품별로 달라 빈 선택 유지(직원 수동). 차트 프리셋은 **활성** 차트 폴더 템플릿 전체라, 동의서 앱이 차트 버전업(is_active 전환)해도 자동 추종. ConsentModal 자체는 여전히 수동 체크박스(다른 호출 경로 영향 0).
+
+### consent_templates 라벨 변경: "컨디션 체크리스트" → "오늘 관리 체크리스트" (2026-06-04, DB only)
+정우님: 컨디션 체크리스트가 이제 왁싱·속눈썹·오늘 컨디션 등을 포괄(care_type "오늘 어떤 관리" + 컨디션 문진, 동의서 세션 v3 통합) → 명칭 일반화.
+- **변경**: `consent_templates.name` `ct_condition_v3`(활성) + `ct_condition_light_v3`(재방문용) → **"오늘 관리 체크리스트"**. 비활성 구버전(ct_condition/v2/v4)은 그대로(어디도 안 보임). 산모(ct_maternity_v3 "산모님 컨디션 체크리스트")는 별개라 유지.
+- **안전성**(이름 의존 0 확인): 서버 `_active_chart_tpls`·`_condition_chart_done`=ID 접두사(`ct_condition*`) / bliss-consent App·Kiosk=ID 상수(`ct_condition_v3`) / 메인앱 `kindOf`=폴더명("신규차트&체크리스트")+ID, 새 이름에도 '체크리스트' 잔존이라 이름 정규식도 매칭 / SalesPage `_consentTplForName`=구매상품→ID 매핑(컨디션 미참조). → **순수 라벨, 앱 코드·배포 불요**. ConsentDocsViewer는 라벨에서 '체크리스트' 떼고 표시("오늘 관리").
+- **유의**: 향후 컨디션 템플릿을 재참조할 코드는 **ID(`ct_condition*`)로** 할 것(이름 "컨디션"은 더 이상 안 씀). 동의서 앱이 새 컨디션 버전(v4 등) 활성화하면 서버가 `id.like.ct_condition*`로 자동 추종.
