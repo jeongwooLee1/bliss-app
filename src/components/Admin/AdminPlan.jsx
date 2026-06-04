@@ -322,8 +322,8 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
       )}
     </div>
 
-    {/* 지점별 잔액 + 이번 달 사용량 */}
-    {balances.length > 0 && (
+    {/* 지점별 잔액 + 이번 달 사용량 — 지점만 있으면 표시 (잔액 0/충전이력 없어도 충전·카드등록 노출. 신규 테넌트·데모 포함) */}
+    {branches.length > 0 && (
       <div style={{marginBottom:16}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap',marginBottom:8}}>
           <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.text}}>지점별 잔액 + 사용량</div>

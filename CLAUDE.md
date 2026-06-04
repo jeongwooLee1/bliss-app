@@ -3443,3 +3443,11 @@ Liah(WhatsApp) 후속 2건.
 - **변경**: `consent_templates.name` `ct_condition_v3`(활성) + `ct_condition_light_v3`(재방문용) → **"오늘 관리 체크리스트"**. 비활성 구버전(ct_condition/v2/v4)은 그대로(어디도 안 보임). 산모(ct_maternity_v3 "산모님 컨디션 체크리스트")는 별개라 유지.
 - **안전성**(이름 의존 0 확인): 서버 `_active_chart_tpls`·`_condition_chart_done`=ID 접두사(`ct_condition*`) / bliss-consent App·Kiosk=ID 상수(`ct_condition_v3`) / 메인앱 `kindOf`=폴더명("신규차트&체크리스트")+ID, 새 이름에도 '체크리스트' 잔존이라 이름 정규식도 매칭 / SalesPage `_consentTplForName`=구매상품→ID 매핑(컨디션 미참조). → **순수 라벨, 앱 코드·배포 불요**. ConsentDocsViewer는 라벨에서 '체크리스트' 떼고 표시("오늘 관리").
 - **유의**: 향후 컨디션 템플릿을 재참조할 코드는 **ID(`ct_condition*`)로** 할 것(이름 "컨디션"은 더 이상 안 씀). 동의서 앱이 새 컨디션 버전(v4 등) 활성화하면 서버가 `id.like.ct_condition*`로 자동 추종.
+
+### v3.7.984 — 요금제 "지점별 잔액 + 사용량" 섹션 게이트 fix (충전·카드등록 버튼 노출) (2026-06-04)
+**증상**(정우님): 데모 계정(하우스왁싱 체험, 대표 관리자) 요금제 화면에 "+ 충전"·"월 이용료 카드 등록" 버튼이 안 보임(실제 사업장엔 보임).
+**원인** (`AdminPlan.jsx:326`): "지점별 잔액 + 사용량" 섹션 전체가 `{balances.length > 0 && (...)}` 게이트로 가려짐. `balances`=`billing_balances` 행 → **충전을 해야 잔액 행이 생기는데, 잔액 행이 없으면 충전 버튼이 안 보이는 닭-달걀 구조**. 데모(biz_demo_hw01)는 billing_balances 0행이라 섹션 통째 숨김. 데모뿐 아니라 **결제 한 번도 안 한 모든 신규 테넌트** 동일.
+**fix**: 게이트 `balances.length > 0` → **`branches.length > 0`**(지점만 있으면 표시). 섹션 안 각 지점 행은 잔액/구독 없어도 `bal?.balance||0`(0P)·`'무료'`·`'미가입'`으로 graceful 처리 + 충전 버튼은 `isMaster`(owner/manager)면 노출 → 잔액 0이어도 충전·카드등록 가능. 환불 버튼만 `(bal?.balance||0)>0`이라 0P엔 안 뜸(정상). 데모 owner=`isMaster` true, `userBranches=[br_demo_hw01]`, `branches.length=1`.
+**검증**(로컬 dev server, 데모 로그인): 요금제 화면 "지점별 잔액 + 사용량" 섹션 노출 + 강남데모 0P + "+ 충전"·"월 이용료 카드 등록" 버튼 정상 표시 확인.
+**유의**: 데모는 외부발송 OFF 샌드박스라 실제 충전 결제까진 격리되지만, 버튼·섹션은 노출(데모 시연·신규 테넌트 온보딩 목적). 충전 클릭 시 `/pay/{orderId}` 결제(본사 키)는 토스 카드사 심사 후 작동(v3.7.926과 동일 조건).
+- (별건 진단, 미수정) **데모 공지&요청 배지 "2"**: `AppShell.jsx:1692` 수정요청 pending 배지 useEffect가 deps `[]`(빈 배열)이라 **테넌트 전환 시 즉시 재조회 안 함** → 직전 사업장(실제 biz_khvurgshb, pending 2건) stale 값이 최대 120초(폴링 주기)간 데모에 남음. 데모/실제 데이터 0/2 확인. fix안=배지 effect deps에 `currentBizId`(React state) 추가 + load null-guard → 전환 즉시 0 재조회. (이번 배포엔 미포함, 정우님 요금제 건 우선)
