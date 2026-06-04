@@ -3450,4 +3450,11 @@ Liah(WhatsApp) 후속 2건.
 **fix**: 게이트 `balances.length > 0` → **`branches.length > 0`**(지점만 있으면 표시). 섹션 안 각 지점 행은 잔액/구독 없어도 `bal?.balance||0`(0P)·`'무료'`·`'미가입'`으로 graceful 처리 + 충전 버튼은 `isMaster`(owner/manager)면 노출 → 잔액 0이어도 충전·카드등록 가능. 환불 버튼만 `(bal?.balance||0)>0`이라 0P엔 안 뜸(정상). 데모 owner=`isMaster` true, `userBranches=[br_demo_hw01]`, `branches.length=1`.
 **검증**(로컬 dev server, 데모 로그인): 요금제 화면 "지점별 잔액 + 사용량" 섹션 노출 + 강남데모 0P + "+ 충전"·"월 이용료 카드 등록" 버튼 정상 표시 확인.
 **유의**: 데모는 외부발송 OFF 샌드박스라 실제 충전 결제까진 격리되지만, 버튼·섹션은 노출(데모 시연·신규 테넌트 온보딩 목적). 충전 클릭 시 `/pay/{orderId}` 결제(본사 키)는 토스 카드사 심사 후 작동(v3.7.926과 동일 조건).
-- (별건 진단, 미수정) **데모 공지&요청 배지 "2"**: `AppShell.jsx:1692` 수정요청 pending 배지 useEffect가 deps `[]`(빈 배열)이라 **테넌트 전환 시 즉시 재조회 안 함** → 직전 사업장(실제 biz_khvurgshb, pending 2건) stale 값이 최대 120초(폴링 주기)간 데모에 남음. 데모/실제 데이터 0/2 확인. fix안=배지 effect deps에 `currentBizId`(React state) 추가 + load null-guard → 전환 즉시 0 재조회. (이번 배포엔 미포함, 정우님 요금제 건 우선)
+- (별건 진단, 미수정) **데모 공지&요청 배지 "2"**: `AppShell.jsx:1692` 수정요청 pending 배지 useEffect가 deps `[]`(빈 배열)이라 **테넌트 전환 시 즉시 재조회 안 함** → 직전 사업장(실제 biz_khvurgshb, pending 2건) stale 값이 최대 120초(폴링 주기)간 데모에 남음. 데모/실제 데이터 0/2 확인. fix안=배지 effect deps에 `currentBizId`(React state) 추가 + load null-guard → 전환 즉시 0 재조회. (이번 배포엔 미포함, 정우님 요금제 건 우선) → **v3.7.985에서 수정**
+
+### v3.7.985 — 공지&요청 배지 테넌트 전환 시 stale 값 fix (2026-06-04)
+v3.7.984 진단에서 미룬 데모 공지&요청 배지 "2" 건 수정.
+**원인** (`AppShell.jsx` 수정요청 pending 배지 useEffect): deps가 `[]`라 effect가 AppShell 최초 마운트 시 1회만 실행 + 폴링(120초)·Realtime에만 의존. 테넌트 전환(로그아웃→데모 로그인 등)으로 `currentBizId`/`_activeBizId`가 바뀌어도 **즉시 재조회하지 않아** 직전 사업장의 pending 카운트(실제 biz=2)가 데모(0)에 최대 120초 stale로 남음. 탭(BlissRequests)은 진입 시 현재 biz로 fresh fetch라 0 정상 → 배지만 어긋남.
+**fix**: 배지 effect deps `[]` → `[currentBizId]`. 전환 시 effect 재실행(이전 채널 unsubscribe + interval clear → 새 biz로 즉시 load). 추가: ① effect 진입 시 `setPendingReqCount(0)`로 stale 즉시 초기화(폴링 대기 안 함) ② `load`에 `!_activeBizId` null-guard ③ Realtime 채널명 `requests_badge_{currentBizId}`로 biz별 분리(전환 시 재구독 충돌 방지) ④ `!currentBizId`면 0 reset 후 구독 skip.
+**검증**: 빌드 통과. 기존 hook/변수만 수정(새 hook·import 0 → ReferenceError 크래시 위험 없음). 라이브 동작은 데모↔실제 전환 시 배지 즉시 0 확인 권장.
+**유의**: 배지는 `bliss_requests_v1` 중 `status='pending'` 개수만 셈(공지 notices는 배지에 미반영 — 라벨만 "공지 & 요청"). 다른 사이드바 배지(메시지함=deps `[userBranches,isMaster]`, 입금=`userBranches`)는 이미 테넌트 의존 deps라 무관.

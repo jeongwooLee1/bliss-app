@@ -26,7 +26,7 @@ import QuickRequest from '../components/common/QuickRequest'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.984"
+const BLISS_V = "3.7.985"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1688,9 +1688,12 @@ function App() {
     const int = setInterval(load, 120_000);
     return ()=>{ try{rt?.unsubscribe();}catch(e){} clearInterval(int); };
   }, [userBranches, isMaster]);
-  // 수정요청 pending 카운트
+  // 수정요청 pending 카운트 — 테넌트(currentBizId)별. 전환 시 즉시 재조회 (직전 사업장 stale 값 방지)
   useEffect(() => {
+    if (!currentBizId) { setPendingReqCount(0); return; }
+    setPendingReqCount(0);  // 테넌트 전환 순간 직전 사업장 stale 값 즉시 초기화 (폴링 120초 대기 안 함)
     const load = () => {
+      if (!_activeBizId) { setPendingReqCount(0); return; }
       fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.bliss_requests_v1&select=value`, {
         headers: { apikey: SB_KEY, Authorization: "Bearer "+SB_KEY, "Cache-Control":"no-cache" },
         cache: "no-store",
@@ -1703,13 +1706,13 @@ function App() {
       }).catch(()=>{});
     };
     load();
-    const rt = window._sbClient?.channel("requests_badge")
+    const rt = window._sbClient?.channel("requests_badge_"+currentBizId)
       ?.on("postgres_changes",{event:"UPDATE",schema:"public",table:"schedule_data",filter:"key=eq.bliss_requests_v1"}, load)
       ?.on("postgres_changes",{event:"INSERT",schema:"public",table:"schedule_data",filter:"key=eq.bliss_requests_v1"}, load)
       ?.subscribe();
     const poll = setInterval(load, 120_000);
     return () => { try{rt?.unsubscribe();}catch(e){} clearInterval(poll); };
-  }, []);
+  }, [currentBizId]);
   // 미확인 공지 팝업 — 본인 이름이 employees_v1에 있고 acks에 없는 공지가 있으면 팝업
   useEffect(() => {
     if (!currentUser?.name) return;
