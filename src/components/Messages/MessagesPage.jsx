@@ -2111,7 +2111,7 @@ function MessagesWithTeamTab(props) {
       color: tab===key ? T.primaryDk : T.textSub, fontWeight: tab===key ? 800 : 600,
       fontFamily:'inherit', fontSize:13, cursor:'pointer',
       borderBottom: tab===key ? `2px solid ${T.primary}` : '2px solid transparent',
-      display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+      display:'flex', alignItems:'center', justifyContent:'center', gap:6, whiteSpace:'nowrap',
     }}>
       {label}
       {badge > 0 && <span style={{background:T.danger,color:'#fff',borderRadius:10,fontSize:10,fontWeight:700,padding:'1px 6px',minWidth:16,textAlign:'center'}}>{badge>99?'99+':badge}</span>}
@@ -2122,7 +2122,7 @@ function MessagesWithTeamTab(props) {
       <div style={{display:'flex', borderBottom:`1px solid ${T.border}`, background: T.bgCard, flexShrink:0}}>
         {tabBtn('inbox', <span style={{display:'inline-flex',alignItems:'center',gap:5}}><I name="msgSq" size={14}/>받은메시지</span>)}
         {tabBtn('team', <span style={{display:'inline-flex',alignItems:'center',gap:5}}><I name="users" size={14}/>팀 채팅</span>, teamUnread)}
-        {tabBtn('deposits', <span style={{display:'inline-flex',alignItems:'center',gap:5}}><I name="building" size={14}/>입금문자</span>, depositPending)}
+        {tabBtn('deposits', <span style={{display:'inline-flex',alignItems:'center',gap:5}}><I name="building" size={14}/>입금</span>, depositPending)}
         {tabBtn('reviews', <span style={{display:'inline-flex',alignItems:'center',gap:5}}><I name="naver" size={14}/>리뷰</span>, reviewPending)}
       </div>
       <div style={{flex:1, minHeight:0, display: tab==='inbox' ? 'flex' : 'none', flexDirection:'column'}}>
