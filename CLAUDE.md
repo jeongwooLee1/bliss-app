@@ -3512,3 +3512,10 @@ v3.7.984 진단에서 미룬 데모 공지&요청 배지 "2" 건 수정.
 - **1분마다 4번 반복**: 신규 effect — pending·request가 **남아있는 동안** `setInterval(60s)`로 `_playBeep("pending", 4)`. 확정대기 0건 되면 interval clear. unmount cleanup 별도.
 - **적용**: v3.7.990 라이브 배포(version.txt 검증, CF 퍼지 success).
 - **유의**: 탭 백그라운드/화면잠금 시 AudioContext suspend로 무음(정상). 야간에 확정대기 방치 + 탭 포그라운드 유지 시 계속 울릴 수 있음(직원이 확정하면 멈춤) — 필요시 영업시간 게이트 추가 가능. request(AI예약신청)도 포함.
+
+### 서버 — AI 예약 중복 생성 fix (/ai-book 강제 INSERT 기존예약 무시) (2026-06-04, React 변경 0)
+**증상**(정우님, Rachna Chawla 인스타): 한 고객 예약이 타임라인에 2건 중복. 06-13 13:00 강남 — #1(손전체+다리전체) + #2(손전체+다리절반).
+**원인**(로그 추적): ① 07:17 AI 자동응답이 "full or half?" 물으면서 동시에 #1을 풀(다리전체)로 미리 생성. ② 07:54 고객 "Half legs and full hands" → AI 자동응답 경로(`ai_booking_agent`)는 `find_existing`으로 #1 찾아 **멱등 스킵(중복 안 만듦, 정상)**. ③ 그러나 `/ai-book`(AI 예약등록 버튼) **강제 INSERT가 기존 #1 체크 없이 #2를 또 삽입** → 중복.
+**fix** (`bliss_naver.py` `/ai-book` 강제 INSERT, 백업 `bak_aibookdedup_20260604_170418`): INSERT 전에 **같은 chat_channel+chat_user_id+date의 활성 예약(reserved/confirmed/pending/request, is_schedule=false) 조회** → 있으면 **그 예약을 UPDATE**(selected_services·time·bid·tags·cust·memo 갱신, 시술 범위 변경 반영), 없으면 신규 INSERT. → 같은 스레드 같은 날짜는 1건만, 정정 시 덮어씀.
+**데이터 정리**: Rachna 중복 #1(ai_81qfut5cy8vm, 다리전체) 삭제, #2(ai_aae85d3bc834, 다리절반=고객 최종) 유지.
+**유의**: 날짜가 다르면(다른 날 예약) 매칭 안 돼 신규 생성(정상 — 날짜 변경은 change 플로우). 같은 날 시간만 바뀌어도 UPDATE. `/ai-book`은 직원 "AI 예약등록" + 답변추천 자동예약이 쓰는 경로. ai_booking_agent 자동응답 경로는 이미 멱등(중복 안 만듦)이었음 — 이번 fix는 강제 INSERT 경로 보강.
