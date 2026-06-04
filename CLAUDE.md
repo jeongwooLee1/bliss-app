@@ -3525,3 +3525,10 @@ v3.7.984 진단에서 미룬 데모 공지&요청 배지 "2" 건 수정.
 1. 포인트 지급/소멸 메시지는 **발송 업체명을 지점까지 고정값**으로(예 `[하우스왁싱 홍대점]`) 기재 필요.
 2. **"방문하시면 사용 가능하니 아래에서 예약해주세요 ▶ #{링크}"는 혜택 사용·구매 독려(광고성)라 KISA 가이드상 알림톡 불가** → 삭제 요구. 광고성은 '브랜드메시지'로 권장.
 → **알림톡엔 예약 링크를 못 넣음.** 정우님 결정: **그냥 SMS 유지**(/r/ 예약링크 살려 재방문 유도). 포인트 소멸 안내는 이미 `point_expiry_thread`가 SMS로 직접 발송 중(매일 10:30 KST, D-30/15/7) — **추가 작업·코드 변경 없음**. 반려 알림톡 템플릿(UI_3958~3965)은 미사용이라 방치(또는 알리고 콘솔 수동 삭제). **포인트 소멸 알림톡화 시도는 종료**(다음 세션 재시도 불필요).
+
+### 서버 — 카카오 예약폼(/book-submit) 신규 고객 신규태그 누락 fix (2026-06-04, React 변경 0)
+**증상**(정우님, 타오 01021352051): 카카오 예약폼으로 온 신규 고객인데 예약에 **신규 태그 없음 + is_new_cust=false**. (네이버·AI 예약 경로는 신규 판정·태그 하는데 **/book-submit만 누락**)
+**원인**: `bliss_naver.py` `/book-submit`이 ai_tag_ids만 selected_tags에 넣고, **신규 고객 판정(is_new_cust)·신규 태그(`lggzktc9f`) 부착 코드가 없었음**. (ai_booking.py create_booking_from_ai는 NEW_CUST_TAG_ID·_is_new_cust 처리함)
+**fix** (백업 `bak_booknew_20260604_175815`): /book-submit body 직전에 AI 경로와 동일 로직 추가 — `_is_new_cust = not _matched`(전화 매칭 안 됨=신규 생성) + 매칭됐어도 유료 매출 0이면 신규. `_bk_tags = ai_tag_ids + (신규면 lggzktc9f) + (care면 tag_sms_book)`. body에 `selected_tags=_bk_tags, is_new_cust=_is_new_cust`.
+**소급**: 미래(6/4~) 카카오폼 예약 중 신규고객(매출0)+신규태그 누락분 backfill → 타오 1건 적용(is_new_cust=true+lggzktc9f).
+**유의**: 신규 태그 id `lggzktc9f` 하드코딩(ai_booking NEW_CUST_TAG_ID과 동일, 단일 테넌트). 전화 매칭된 기존 고객(매출 有)은 신규 태그 안 붙음. 신규 판정은 매출 유무 기준(체험단 0원 케이스는 신규로 — 기존 정책과 동일).
