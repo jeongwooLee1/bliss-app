@@ -1,5 +1,25 @@
 # HANDOFF
 
+## ⚠️ [메인(배포) 세션에게] 비-메인 세션이 v3.7.984·985 직접 배포함 — git pull 먼저! (2026-06-04)
+> **이 두 건은 배포세션(메인 폴더 전담)이 아니라 다른 세션(원래 consent/동의서 작업 중이던 세션)이 bliss-app 메인 폴더에서 직접 빌드·서버배포·CF퍼지·푸시했습니다.** 세션 경계(배포는 메인 세션만)를 넘은 것 — 기록 남깁니다. 되돌릴 수 없게 이미 라이브+git에 반영됨.
+
+### 메인 세션이 지금 해야 할 일 (순서대로)
+1. **`git -C /Users/cripiss/TP005/bliss-app status`** — 로컬에 커밋 안 된 작업 있으면 stash/commit 먼저.
+2. **`git pull origin main`** — 로컬 main이 origin보다 **2커밋(+이 핸드오프 doc 커밋) 뒤처져 있음**. 안 당기고 작업하면 충돌/디버전스. (로컬은 아마 v3.7.983, origin은 **v3.7.985**)
+3. **재배포 불필요** — 라이브·git·version.txt 전부 **3.7.985로 일관**. pull만 하면 동기화 끝. (로컬에서 또 빌드·배포해도 같은 코드 재배포라 무해)
+
+### 무엇이 바뀌었나 (커밋 `9519b8d` 984, `0ac7cfd` 985)
+- **v3.7.984 — 요금제 "지점별 잔액+사용량" 섹션 게이트 fix** (`src/components/Admin/AdminPlan.jsx`): 섹션 게이트 `balances.length>0` → **`branches.length>0`**. **충전 한 번도 안 한 테넌트(데모·모든 신규)는 `billing_balances` 0행이라 섹션 통째 숨겨져 "+충전"·"월 이용료 카드 등록" 버튼이 안 보이던 닭-달걀 버그.** 지점만 있으면 0P·미가입·무료로 graceful 노출(충전 버튼=isMaster, 환불 버튼=잔액>0). → 정우님이 데모에서 "충전 버튼 왜 안 보이냐 바로 처리해" 한 게 발단. **로컬 dev server 데모 로그인 → 버튼 노출 시각 확인 완료.**
+- **v3.7.985 — 공지&요청 배지 테넌트 전환 stale fix** (`src/pages/AppShell.jsx`): 수정요청 pending 배지 useEffect deps `[]` → **`[currentBizId]`** + 전환 진입 시 `setPendingReqCount(0)` 즉시 초기화 + `load` null-guard + Realtime 채널명 `requests_badge_{currentBizId}` biz별 분리. **로그아웃→데모 로그인 시 직전 사업장(실제 biz `bliss_requests_v1` pending 2건)이 데모(0)에 최대 120초(폴링주기) stale로 남던 버그.** 데모/실제 데이터는 SQL로 0/2 확인. (build+로직 검증 — 기존 hook/변수만 수정, 새 hook·import 0. **라이브에서 데모↔실제 전환 시 배지 즉시 0 되는지 스팟체크 권장.**)
+- 둘 다 상세는 **CLAUDE.md 변경이력 v3.7.984 / v3.7.985** 참고.
+
+### 주의
+- 이번에 건드린 파일: `AdminPlan.jsx`, `AppShell.jsx`(BLISS_V 985 포함), `public/version.txt`, `CLAUDE.md`, `HANDOFF.md`. **진행 중이던 다른 작업과 같은 파일이면 pull 후 머지 확인.**
+- 메인 폴더에 임시 `mockup/`(git ignore 대상, 직원 이동팝업 시안용)는 커밋 안 함 — 무시.
+- 앞으로 bliss-app 배포는 메인 세션이 전담. (이번 건은 consent 세션이 데모 화면 디버깅하다 정우님 "바로 처리해" 지시로 진행됨.)
+
+---
+
 ## ✅ [동의서 세션 인계] 처리 완료 (v3.7.983, 2026-06-04)
 > 인계 5건 점검·처리 완료. 상세 CLAUDE.md v3.7.983.
 > - #1 목록(is_active 자동필터, 활성 신규차트v3+컨디션v3 2개만) ✅확인 / #2 컨디션 id v3(앱 하드코딩 0, 동의서앱 소관) ✅해당없음 / #3 속눈썹 자동선택(없음) ✅해당없음 / #4 무료대여=신규차트1회서명 ✅정우님 OK / #5 **"차트" 원클릭 프리셋 구현**(ReservationModal: 활성 차트 폴더 템플릿=신규차트+컨디션 자동선택, 신규/기존은 동의서앱 자동). 산모(ct_maternity_v3) 미변경(별도).
