@@ -26,7 +26,7 @@ import QuickRequest from '../components/common/QuickRequest'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.989"
+const BLISS_V = "3.7.990"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1810,7 +1810,9 @@ function App() {
   // 🔔 알림 사운드 — 확정대기/미답변 배너가 0→1 으로 전환될 때 짧은 비프음 재생
   const _prevCountsRef = React.useRef({ msg: 0, pending: 0, initialized: false });
   const _audioCtxRef = React.useRef(null);
-  const _playBeep = React.useCallback((pattern = "msg") => {
+  const _pendingAlarmRef = React.useRef(null); // 확정대기 1분 반복 알람 interval
+  // times: 패턴 반복 횟수 (처음=1, 반복알람=4). 음량 0.7로 키움(직원이 놓치지 않게)
+  const _playBeep = React.useCallback((pattern = "msg", times = 1) => {
     try {
       // 사용자 제스처 후에만 AudioContext 생성 가능 — 실패 시 무음
       if (!_audioCtxRef.current) {
@@ -1822,18 +1824,22 @@ function App() {
       if (ctx.state === "suspended") ctx.resume().catch(()=>{});
       const tones = pattern === "pending" ? [880, 1175, 880] : [1046, 1318]; // 확정대기: 도미도 / 메시지: 도미
       const dur = 0.16;
-      tones.forEach((freq, i) => {
-        const t0 = ctx.currentTime + i * (dur + 0.05);
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = "sine";
-        osc.frequency.value = freq;
-        osc.connect(gain); gain.connect(ctx.destination);
-        gain.gain.setValueAtTime(0.0001, t0);
-        gain.gain.exponentialRampToValueAtTime(0.25, t0 + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-        osc.start(t0); osc.stop(t0 + dur + 0.02);
-      });
+      const patLen = tones.length * (dur + 0.05);
+      for (let rep = 0; rep < Math.max(1, times); rep++) {
+        const base = ctx.currentTime + rep * (patLen + 0.3); // 반복 사이 0.3초 간격
+        tones.forEach((freq, i) => {
+          const t0 = base + i * (dur + 0.05);
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = "sine";
+          osc.frequency.value = freq;
+          osc.connect(gain); gain.connect(ctx.destination);
+          gain.gain.setValueAtTime(0.0001, t0);
+          gain.gain.exponentialRampToValueAtTime(0.7, t0 + 0.02); // 0.25 → 0.7 (더 크게)
+          gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+          osc.start(t0); osc.stop(t0 + dur + 0.02);
+        });
+      }
     } catch(e) { /* 무음 */ }
   }, []);
   useEffect(() => {
@@ -1848,11 +1854,26 @@ function App() {
       _prevCountsRef.current = { msg: unreadMsgCount, pending: pendingCnt, initialized: true };
       return;
     }
-    // 확정대기 증가 감지 (우선)
-    if (pendingCnt > prev.pending) { _playBeep("pending"); }
-    else if (unreadMsgCount > prev.msg) { _playBeep("msg"); }
+    // 확정대기 증가 감지 (우선) — 처음 1번
+    if (pendingCnt > prev.pending) { _playBeep("pending", 1); }
+    else if (unreadMsgCount > prev.msg) { _playBeep("msg", 1); }
     _prevCountsRef.current = { msg: unreadMsgCount, pending: pendingCnt, initialized: true };
   }, [unreadMsgCount, data?.reservations, userBranches, isMaster, _playBeep]);
+  // 🔔 확정대기 반복 알람 — 처음 1번 울린 뒤, 확정대기가 남아있는 동안 1분마다 4번씩 (직원이 확인할 때까지)
+  useEffect(() => {
+    const hasPending = (data?.reservations||[]).some(r =>
+      (r.status === "pending" || r.status === "request") &&
+      !(r.memo && r.memo.includes("확정완료")) &&
+      (isMaster || (userBranches||[]).includes(r.bid))
+    );
+    if (hasPending && !_pendingAlarmRef.current) {
+      _pendingAlarmRef.current = setInterval(() => _playBeep("pending", 4), 60000);
+    } else if (!hasPending && _pendingAlarmRef.current) {
+      clearInterval(_pendingAlarmRef.current);
+      _pendingAlarmRef.current = null;
+    }
+  }, [data?.reservations, userBranches, isMaster, _playBeep]);
+  useEffect(() => () => { if (_pendingAlarmRef.current) clearInterval(_pendingAlarmRef.current); }, []);
   // server_logs에서 서버 버전 + 스크래퍼 상태 1분마다 폴링
   React.useEffect(()=>{
     const fetchServerV = async ()=>{
