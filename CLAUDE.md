@@ -3532,3 +3532,15 @@ v3.7.984 진단에서 미룬 데모 공지&요청 배지 "2" 건 수정.
 **fix** (백업 `bak_booknew_20260604_175815`): /book-submit body 직전에 AI 경로와 동일 로직 추가 — `_is_new_cust = not _matched`(전화 매칭 안 됨=신규 생성) + 매칭됐어도 유료 매출 0이면 신규. `_bk_tags = ai_tag_ids + (신규면 lggzktc9f) + (care면 tag_sms_book)`. body에 `selected_tags=_bk_tags, is_new_cust=_is_new_cust`.
 **소급**: 미래(6/4~) 카카오폼 예약 중 신규고객(매출0)+신규태그 누락분 backfill → 타오 1건 적용(is_new_cust=true+lggzktc9f).
 **유의**: 신규 태그 id `lggzktc9f` 하드코딩(ai_booking NEW_CUST_TAG_ID과 동일, 단일 테넌트). 전화 매칭된 기존 고객(매출 有)은 신규 태그 안 붙음. 신규 판정은 매출 유무 기준(체험단 0원 케이스는 신규로 — 기존 정책과 동일).
+
+### 신규 태그 전 경로 자동화(DB 트리거) + AI 상담중 배너·알람 (v3.7.991 + DB, 2026-06-04)
+정우님 2건: ① 카톡뿐 아니라 모든 예약등록에 신규 태그 ② 받은메시지에 직원 미응답으로 AI가 답변 시작하면 타임라인 상단 배너 "AI 상담중입니다" + 소리 1분 4번.
+
+**① 신규 태그 전 경로 (DB 트리거, migration `auto_new_customer_tag_trigger`)**: `reservations` BEFORE INSERT 트리거 `_auto_new_customer_tag` — 내부일정·고객미연결 제외, **사업장별 '신규' 태그 id 조회**(멀티테넌트 안전), 이미 태그됨 skip, **유료 매출 0인 신규 고객이면 selected_tags에 신규태그 추가 + is_new_cust=true**. 어떤 경로(네이버·AI·카카오폼·카카오챗봇·앱수동·외부플랫폼)로 INSERT돼도 자동. BEFORE INSERT만이라 이후 직원 수정(태그 제거)은 보존. 트리거 내부 exception은 무시(예약 등록 안 막음). 검증: 신규고객 test insert→`["lggzktc9f"]`+is_new_cust=true PASS. (앞서 v3.7.988의 /book-submit 코드 신규태그는 트리거와 중복돼도 무해 — 트리거가 이미 있으면 skip)
+
+**② AI 상담중 배너 + 알람 (v3.7.991)**:
+- **AppShell** `aiActiveCount` — 최근 10분 내 `messages` outbound 중 **스레드별 마지막 발신이 is_ai=true**인 대화 수(직원이 받아 답하면 마지막 발신=직원→제외→해제). 30초 폴링(`[currentBizId]` deps).
+- **알람**: 확정대기 반복 알람 effect 조건을 `hasPending || aiActiveCount>0`로 확장 → AI 상담중도 **1분마다 4번** 울림(`_playBeep("pending",4)`). + aiActiveCount 0→증가 시 즉시 1번.
+- **배너**(TimelinePage 상단, 미응답 배너 위): `aiActiveCount>0 && !messagesPanelOpen`일 때 보라 배너 "AI 상담중입니다 · N건 — 직원이 답하지 않아 AI가 응대 중, 이어받아 주세요" + 깜빡임, 클릭 시 메시지함. `aiActiveCount` prop은 /timeline Route에서 전달.
+- **적용**: v3.7.991 라이브 배포(version.txt 검증, CF 퍼지 success).
+- **유의**: AI 상담중 신호 = "마지막 발신이 AI"(10분 창). 직원 답장 시 해제, 대화 끊기면 10분 후 자동 해제. 알람은 확정대기와 동일 사운드(도미도 4회) 공유 — 둘 중 하나라도 있으면 1분 4번.

@@ -26,7 +26,7 @@ import QuickRequest from '../components/common/QuickRequest'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.7.990"
+const BLISS_V = "3.7.991"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1511,6 +1511,7 @@ function App() {
   const [unreadDelayedCount, setUnreadDelayedCount] = useState(0); // 1분 이상 미응답 (타임라인 배너용)
   const loadUnreadRef = useRef(null); // 미읽/배너 카운트 재계산 함수 ref — 대화창 읽음(markRead) 직후 즉시 호출용 (Realtime 미수신 시에도 배너 즉시 해제)
   const [unreadSample, setUnreadSample] = useState([]); // 배너용: [{user_id, channel, user_name, message_text, created_at, account_id}]
+  const [aiActiveCount, setAiActiveCount] = useState(0); // AI 상담중(직원 미응답으로 AI가 답변 시작) 대화 수 — 타임라인 배너 + 알람용
   // 팀채팅 미읽음 카운트는 사이드바 배지에 합산하지 않음 (유저 요청 2026-05-20).
   // 받은메시지함 안 팀채팅 탭의 미읽 표시는 별도 hook(useTeamChat)이 담당 — 영향 없음.
   const [pendingDepositCount, setPendingDepositCount] = useState(0); // 미매칭 입금 (사이드바 합산용)
@@ -1859,21 +1860,48 @@ function App() {
     else if (unreadMsgCount > prev.msg) { _playBeep("msg", 1); }
     _prevCountsRef.current = { msg: unreadMsgCount, pending: pendingCnt, initialized: true };
   }, [unreadMsgCount, data?.reservations, userBranches, isMaster, _playBeep]);
-  // 🔔 확정대기 반복 알람 — 처음 1번 울린 뒤, 확정대기가 남아있는 동안 1분마다 4번씩 (직원이 확인할 때까지)
+  // 🤖 AI 상담중 — 직원이 답 안 해서 AI가 답변 시작한 대화 (최근 10분 내 마지막 발신이 AI). 30초 폴링
+  useEffect(() => {
+    if (!currentBizId) { setAiActiveCount(0); return; }
+    let alive = true;
+    const load = async () => {
+      try {
+        const since = new Date(Date.now() - 10*60*1000).toISOString().replace('+','%2B');
+        const r = await fetch(`${SB_URL}/rest/v1/messages?business_id=eq.${currentBizId}&direction=eq.out&created_at=gte.${since}&select=channel,user_id,is_ai,created_at&order=created_at.desc&limit=300`,
+          { headers: {...sbHeaders, 'Cache-Control':'no-cache'}, cache:'no-store' });
+        if (!alive || !r.ok) return;
+        const rows = await r.json();
+        const latest = {};
+        for (const m of (rows||[])) { const k=(m.channel||'')+'_'+m.user_id; if(!latest[k]) latest[k]=m; } // desc → 첫 게 최신
+        setAiActiveCount(Object.values(latest).filter(m=>m.is_ai).length);
+      } catch {}
+    };
+    load();
+    const t = setInterval(load, 30000);
+    return () => { alive=false; clearInterval(t); };
+  }, [currentBizId]);
+  // 🔔 확정대기/AI상담중 반복 알람 — 처음 1번 울린 뒤, 남아있는 동안 1분마다 4번씩 (직원이 확인할 때까지)
   useEffect(() => {
     const hasPending = (data?.reservations||[]).some(r =>
       (r.status === "pending" || r.status === "request") &&
       !(r.memo && r.memo.includes("확정완료")) &&
       (isMaster || (userBranches||[]).includes(r.bid))
     );
-    if (hasPending && !_pendingAlarmRef.current) {
+    const hasAlarm = hasPending || aiActiveCount > 0;
+    if (hasAlarm && !_pendingAlarmRef.current) {
       _pendingAlarmRef.current = setInterval(() => _playBeep("pending", 4), 60000);
-    } else if (!hasPending && _pendingAlarmRef.current) {
+    } else if (!hasAlarm && _pendingAlarmRef.current) {
       clearInterval(_pendingAlarmRef.current);
       _pendingAlarmRef.current = null;
     }
-  }, [data?.reservations, userBranches, isMaster, _playBeep]);
+  }, [data?.reservations, userBranches, isMaster, aiActiveCount, _playBeep]);
   useEffect(() => () => { if (_pendingAlarmRef.current) clearInterval(_pendingAlarmRef.current); }, []);
+  // AI 상담중 0→증가 시 즉시 1번 (확정대기 증가감지 effect와 별개)
+  const _prevAiActiveRef = React.useRef(0);
+  useEffect(() => {
+    if (aiActiveCount > _prevAiActiveRef.current) _playBeep("pending", 1);
+    _prevAiActiveRef.current = aiActiveCount;
+  }, [aiActiveCount, _playBeep]);
   // server_logs에서 서버 버전 + 스크래퍼 상태 1분마다 폴링
   React.useEffect(()=>{
     const fetchServerV = async ()=>{
@@ -2614,7 +2642,7 @@ function App() {
         <div className="page-pad" style={{flex:1,padding:(page==="timeline"||page==="messages"||page==="schedule")?"0":"16px 20px 16px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
           <Routes>
             <Route path="/announce-test" element={<AnnounceDesignGallery/>}/>
-            <Route path="/timeline" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust} unreadMsgCount={unreadMsgCount} unreadDelayedCount={unreadDelayedCount} unreadSample={unreadSample} messagesPanelOpen={messagesPanelOpen}/></div>}/>
+            <Route path="/timeline" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust} unreadMsgCount={unreadMsgCount} unreadDelayedCount={unreadDelayedCount} unreadSample={unreadSample} messagesPanelOpen={messagesPanelOpen} aiActiveCount={aiActiveCount}/></div>}/>
             <Route path="/timeline-preview" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust} unreadMsgCount={unreadMsgCount} unreadSample={unreadSample} previewBlockStyle={true}/></div>}/>
             <Route path="/reservations" element={<ScrollArea storageKey="page_reservations"><ReservationList data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} setNaverColShow={setNaverColShow}/></ScrollArea>}/>
             <Route path="/sales" element={<ScrollArea storageKey="page_sales"><SalesPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} role={role} setPendingOpenCust={setPendingOpenCust}/></ScrollArea>}/>
