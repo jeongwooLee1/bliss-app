@@ -2109,6 +2109,8 @@ ${naverText}
                           if (!c && !d) return null;
                           const anySigned = c?.status === "signed" || d?.status === "signed";
                           const anySent = c?.status === "sent" || d?.status === "sent";
+                          const chartDone = c?.status === "signed";   // 차트 작성완료 = 완료 우선(동의서 미서명 토큰 있어도 깜빡 X)
+                          const blink = !chartDone && anySent;        // 차트 미완 + 발송대기일 때만 깜빡
                           if (!_canSend && !anySigned) return null;
                           // 차트 & 동의서 한 화면 모달 — 차트 미서명이면 번들 포함, 서명됐으면 제외(재전송 안 함)
                           const _openBoth = () => {
@@ -2117,16 +2119,16 @@ ${naverText}
                             setConsentOpen(true);
                           };
                           const _base = { fontSize: 10, padding: "3px 11px", borderRadius: 10, fontWeight: 800, whiteSpace: "nowrap", cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 4, border: "1px solid transparent" };
-                          const sty = anySent ? { ..._base }
-                            : anySigned ? { ..._base, background: "#059669", color: "#fff", borderColor: "#059669" }
+                          const sty = blink ? { ..._base }
+                            : (chartDone || anySigned) ? { ..._base, background: "#059669", color: "#fff", borderColor: "#059669" }
                             : { ..._base, background: "#E5E7EB", color: "#6B7280", borderColor: "#E5E7EB" };
-                          const title = anySent ? "차트·동의서 발송됨 · 서명 대기 — 클릭해서 한 화면에서 보기/추가 발송"
-                            : anySigned ? "차트·동의서 작성완료 — 클릭해서 보기/추가 발송"
+                          const title = blink ? "차트·동의서 발송됨 · 서명 대기 — 클릭해서 한 화면에서 보기/추가 발송"
+                            : (chartDone || anySigned) ? "차트·동의서 작성완료 — 클릭해서 보기/추가 발송"
                             : "차트·동의서 보내기";
                           return (
                             <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                              <button type="button" className={anySent ? "doc-pending-blink" : ""} onClick={(e) => { e.stopPropagation(); _openBoth(); }} title={title} style={sty}>
-                                <I name="fileText" size={10} />차트 & 동의서{anySigned && !anySent ? <I name="eye" size={10} /> : null}</button>
+                              <button type="button" className={blink ? "doc-pending-blink" : ""} onClick={(e) => { e.stopPropagation(); _openBoth(); }} title={title} style={sty}>
+                                <I name="fileText" size={10} />차트 & 동의서{(chartDone || anySigned) && !blink ? <I name="eye" size={10} /> : null}</button>
                             </div>
                           );
                         })()}

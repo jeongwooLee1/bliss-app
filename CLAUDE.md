@@ -3496,3 +3496,10 @@ v3.7.984 진단에서 미룬 데모 공지&요청 배지 "2" 건 수정.
 - **① (대표 id_ua6z57s8s6) 카카오폼 마곡선택→홍대예약**: 조사 결과 **systemic 아님** — 최근 카카오폼 예약 23건 중 김상헌(kakao_c115b44fa9) 1건만 memo=마곡/bid=홍대, 나머지 전부 정상. /book-submit BRANCH_MAP·branches 매핑 정확(마곡=br_k57zpkbx1, 홍대=br_l6yzs2pkq), book.html도 branch 1소스. 단일 호출론 불가능 → 생성 후 수동이동 또는 6/3 일시적 추정(updated_at은 schedule_log 편집도 안 올려 신뢰 불가). reviewing — 대표에 정정 여부 확인 요청.
 - **④ (대표 id_65awzfzfrk) 5/16 다담권 차감에 브라질리언왁싱(산모) 누락**: 명수현(#48788) 5/16 기록 없음(4/16·5/12·6/4만) → 다른 고객. 스크린샷 고객 미상이라 reviewing — 대표에 고객 성함/번호 확인 요청.
 - **⑥ (희서 id_6f3bsl54sx) 체크리스트/신규차트 알림톡 문구**: chart_doc 카카오 템플릿(UI_3916~3923) 검수 대기 — 승인돼야 연결(reviewing 유지).
+
+### v3.7.989 — 차트&동의서 버튼: 차트 작성완료면 깜빡임 X (완료 우선) + both 모달 제목 정정 (2026-06-04)
+정우님(이인해 #40387): 차트 작성완료인데 "차트 & 동의서" 버튼이 계속 깜빡임. 원인 = 차트(ct_condition_light_v3)는 서명완료지만 **미서명 패키지 동의서 토큰 2개(ct_package, used=no)**가 있어 doc track='sent' → `anySent` true → 깜빡. 모달엔 그 미서명 동의서가 안 보여(체크박스만) 혼란.
+- **fix** (`ReservationModal`): 버튼 상태에 `chartDone = chart.status==='signed'` 도입. **`blink = !chartDone && anySent`** — **차트 작성완료면 동의서 미서명 토큰이 있어도 초록(완료), 깜빡 안 함**. 차트 미완 + 발송대기일 때만 깜빡. 색/제목/눈아이콘 모두 `blink`/`(chartDone||anySigned)` 기준으로 변경.
+- **fix** (`ConsentModal`): both 모드 제목이 "동의서 요청"으로 잘못 뜨던 것 → **"차트 & 동의서"** (isBoth 분기 추가, isChart만 보던 버그).
+- **적용**: v3.7.989 라이브 배포(version.txt 검증, CF 퍼지 success).
+- **유의**: 차트 완료 후 미서명 동의서(패키지 등)는 버튼에 깜빡으로 안 뜨지만 모달 열면 동의서 섹션에서 확인·발송 가능. 정우님 "작성완료면 깜빡이지마" 정책.
