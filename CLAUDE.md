@@ -3458,3 +3458,14 @@ v3.7.984 진단에서 미룬 데모 공지&요청 배지 "2" 건 수정.
 **fix**: 배지 effect deps `[]` → `[currentBizId]`. 전환 시 effect 재실행(이전 채널 unsubscribe + interval clear → 새 biz로 즉시 load). 추가: ① effect 진입 시 `setPendingReqCount(0)`로 stale 즉시 초기화(폴링 대기 안 함) ② `load`에 `!_activeBizId` null-guard ③ Realtime 채널명 `requests_badge_{currentBizId}`로 biz별 분리(전환 시 재구독 충돌 방지) ④ `!currentBizId`면 0 reset 후 구독 skip.
 **검증**: 빌드 통과. 기존 hook/변수만 수정(새 hook·import 0 → ReferenceError 크래시 위험 없음). 라이브 동작은 데모↔실제 전환 시 배지 즉시 0 확인 권장.
 **유의**: 배지는 `bliss_requests_v1` 중 `status='pending'` 개수만 셈(공지 notices는 배지에 미반영 — 라벨만 "공지 & 요청"). 다른 사이드바 배지(메시지함=deps `[userBranches,isMaster]`, 입금=`userBranches`)는 이미 테넌트 의존 deps라 무관.
+
+### v3.7.986 — 요금제 결제 진단: 정기결제(빌링) "준비 중" 임시 막기 + 충전 팝업 동기화 (2026-06-04)
+정우님 "요금제 충전·특히 정기결제 버튼 누르면 빈 화면". 라이브 실재현(Chrome MCP)으로 원인 분리:
+- **충전(포인트 충전, 일반결제)**: ✅ **정상** — 결제 페이지 + "카드로 결제하기" → 토스 결제창 정상 오픈(카드 선택까지). 본사 일반결제 계약 활성. (테스트 주문 생성→확인→삭제)
+- **정기결제(월 이용료 카드 등록, 빌링)**: ❌ "카드 등록하기" 클릭 시 **토스 SDK가 자체 오류 모달** "일시적인 오류가 발생했습니다. 자동 결제(빌링) 계약이 안 되어 있습니다." → **코드 문제 아님, 토스 자동결제(빌링) 계약 미완료**(카드사/빌링 심사 ~6월 중순, 송정윤 매니저). 토스 모달 흰 박스가 "빈 화면"으로 보인 것.
+- **잠재 버그(충전)**: 충전 `window.open`이 `await`(주문 INSERT) **뒤**라 사파리·팝업차단 시 빈탭 가능.
+**fix** (`AdminPlan.jsx`):
+1. **정기결제 버튼 "준비 중" 임시 막기**: 모듈 상수 `BILLING_READY=false` 추가. false면 "월 이용료 카드 등록/변경" 버튼 대신 **회색 비활성 "월 이용료 자동결제 준비 중"**(title="토스 자동결제(빌링) 계약 완료 후 오픈") 표시 → 토스 오류 모달 안 뜸. **빌링 계약 완료 후 `BILLING_READY=true`로 바꾸면 즉시 재오픈**(`payment-info` billing 분기·BillingRegister·billing-issue 코드는 그대로 정상).
+2. **충전 팝업 동기화**: `handleTopup`에서 클릭 즉시 `window.open('','_blank')`로 **빈 탭 먼저 동기 오픈** → 주문 INSERT 후 `payWin.location.href=/pay/{orderId}`. 실패 시 `payWin.close()`. 팝업차단으로 못 열었으면 동기 재시도. → 사파리·팝업차단에서도 빈탭 안 뜸.
+**적용**: v3.7.986 라이브 배포(version.txt 검증 3.7.986, CF 퍼지 success).
+**유의**: 정기결제는 **토스 빌링 계약 활성화가 유일한 차단 요인** — 코드는 v3.7.926부터 완비. 계약 완료되면 `BILLING_READY` 한 줄만 true. 그 전엔 충전(일반결제)만 작동. 일반결제·빌링은 같은 본사 키(`TOSS_BLISS_*`)지만 토스에서 **계약(일반결제 vs 자동결제)이 별도**라 일반결제만 먼저 열린 상태.

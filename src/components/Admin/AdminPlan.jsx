@@ -7,6 +7,11 @@ import I from '../common/I'
 import AdminAlimtalkLog from './AdminAlimtalkLog'
 import AdminSmsLog from './AdminSmsLog'
 
+// ⚠️ 토스 자동결제(빌링) 계약 활성화 전까지 false — 월 이용료 카드 등록 버튼을 "준비 중"으로 막음
+// (빌링 계약 미완료 시 토스 SDK가 "자동 결제(빌링) 계약이 안 되어 있습니다" 오류 모달을 띄움)
+// 계약 완료(카드사 심사 ~6월 중순, 송정윤 매니저) 후 true로 변경하면 카드 등록 활성화.
+const BILLING_READY = false
+
 // 사업장 요금제 + 기능 토글 + 지점별 잔액·사용량 + 발송내역 통합
 function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTab = 'plan' }) {
   const isOwner = currentUser?.role === 'owner' || currentUser?.role === 'super'
@@ -155,6 +160,8 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
     const { branchId, amount } = topupModal
     if (!amount || amount < 1000) { alert('충전 금액을 선택해주세요'); return }
     setTopupBusy(true)
+    // ⚠️ 새 탭은 클릭 제스처 내에서 '동기'로 먼저 열어야 함 (await 뒤 window.open은 사파리·팝업차단에서 빈탭/차단됨)
+    const payWin = window.open('', '_blank')
     try {
       const orderId = 'topup_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
       const H = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=representation' }
@@ -172,11 +179,14 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
         })
       })
       if (!r.ok) { const t = await r.text().catch(()=>''); throw new Error(t || '주문 생성 실패') }
-      // 새 탭으로 결제 페이지 열기 (PaymentApp.jsx 재사용)
-      window.open(`/pay/${orderId}`, '_blank', 'noopener,noreferrer')
+      // 미리 연 탭의 주소를 결제 페이지로 — 팝업 차단으로 못 열었으면 동기 재시도
+      const payUrl = `/pay/${orderId}`
+      if (payWin) payWin.location.href = payUrl
+      else window.open(payUrl, '_blank', 'noopener,noreferrer')
       setTopupModal(null)
       alert('새 탭에서 결제를 완료해주세요. 결제 후 이 페이지를 새로고침하면 잔액에 반영됩니다.')
     } catch (e) {
+      if (payWin) payWin.close()
       alert('충전 시작 실패: ' + (e?.message || e))
     } finally {
       setTopupBusy(false)
@@ -378,10 +388,15 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
                       ? <span style={{color:T.success,fontWeight:T.fw.bolder,marginLeft:6}}>· 카드 등록됨{sub.next_billing_at ? ` · 다음 ${fmtBillDate(sub.next_billing_at)}` : ''}</span>
                       : <span style={{color:T.textMuted,marginLeft:6}}>· 카드 미등록</span>}
                   </div>
-                  <button onClick={()=>window.open(`/pay/billing/${br.id}`,'_blank','noopener,noreferrer')}
-                    style={{padding:'4px 10px',borderRadius:6,border:`1px solid ${sub?.billing_id?T.border:T.primary}`,background:sub?.billing_id?'#fff':T.primary,color:sub?.billing_id?T.textSub:'#fff',fontSize:T.fs.xxs,fontWeight:T.fw.bolder,cursor:'pointer',fontFamily:'inherit'}}>
-                    {sub?.billing_id ? '카드 변경' : '월 이용료 카드 등록'}
-                  </button>
+                  {BILLING_READY
+                    ? <button onClick={()=>window.open(`/pay/billing/${br.id}`,'_blank','noopener,noreferrer')}
+                        style={{padding:'4px 10px',borderRadius:6,border:`1px solid ${sub?.billing_id?T.border:T.primary}`,background:sub?.billing_id?'#fff':T.primary,color:sub?.billing_id?T.textSub:'#fff',fontSize:T.fs.xxs,fontWeight:T.fw.bolder,cursor:'pointer',fontFamily:'inherit'}}>
+                        {sub?.billing_id ? '카드 변경' : '월 이용료 카드 등록'}
+                      </button>
+                    : <span title="토스 자동결제(빌링) 계약 완료 후 오픈됩니다"
+                        style={{padding:'4px 10px',borderRadius:6,border:`1px solid ${T.border}`,background:T.gray100,color:T.textMuted,fontSize:T.fs.xxs,fontWeight:T.fw.bolder,whiteSpace:'nowrap'}}>
+                        월 이용료 자동결제 준비 중
+                      </span>}
                 </div>
               )}
               {Object.keys(u.kinds).length > 0 && (
