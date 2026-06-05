@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>블리스미 매장 세팅 신청 — Bliss</title>
+<meta name="description" content="블리스미(Bliss) 신규 매장 도입 정보 제출. 매장 정보·가격표·자료를 한 번에 보내주시면 예약·매출·알림톡·AI 세팅을 해드립니다.">
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<style>
+:root{
+  --purple:#5B21B6; --purple-lt:#EDE9FE; --gray-bg:#F8F7FB; --gray-line:#E5E7EB;
+  --text:#1A1A2E; --text-sub:#6B7280; --text-mute:#9CA3AF;
+  --green:#10B981; --green-lt:#D1FAE5; --orange:#F59E0B; --red:#EF4444;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;padding:0;font-family:-apple-system,"system-ui","Apple SD Gothic Neo","Pretendard",sans-serif;background:var(--gray-bg);color:var(--text);font-size:15px;line-height:1.5;}
+.wrap{max-width:560px;margin:0 auto;padding:0 16px 40px;}
+.hdr{text-align:center;padding:26px 18px 18px;background:linear-gradient(135deg,#C4B5FD,#DDD6FE);border-radius:0 0 20px 20px;margin-bottom:18px;color:var(--purple);}
+.hdr h1{margin:0 0 5px;font-size:19px;font-weight:800;letter-spacing:-0.3px;}
+.hdr p{margin:0;font-size:12.5px;font-weight:500;opacity:.9;line-height:1.5;}
+.intro{background:#fff;border-radius:12px;padding:14px 16px;margin-bottom:14px;font-size:13px;color:var(--text-sub);box-shadow:0 1px 3px rgba(0,0,0,.04);}
+.intro b{color:var(--purple);}
+.card{background:#fff;border-radius:14px;padding:18px 16px;box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:14px;}
+.card .ttl{display:flex;align-items:center;gap:8px;margin:0 0 4px;font-size:15px;font-weight:800;color:var(--text);}
+.card .num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--purple);color:#fff;font-size:12px;font-weight:800;flex:0 0 auto;}
+.card .sub{font-size:12px;color:var(--text-mute);margin:0 0 14px;padding-left:30px;}
+.req{color:var(--red);font-size:11px;font-weight:800;margin-left:4px;}
+.opt{color:var(--text-mute);font-size:11px;font-weight:600;margin-left:4px;}
+.field{margin-bottom:13px;}
+.label{display:block;font-size:12.5px;font-weight:700;color:var(--text-sub);margin-bottom:5px;}
+.input,textarea.input{width:100%;padding:12px 14px;font-size:16px;border:1.5px solid var(--gray-line);border-radius:9px;font-family:inherit;background:#fff;-webkit-appearance:none;appearance:none;}
+textarea.input{min-height:74px;resize:vertical;line-height:1.55;}
+.input:focus{outline:none;border-color:var(--purple);}
+.row2{display:flex;gap:9px;}
+.row2 .field{flex:1;}
+.chk{display:flex;align-items:flex-start;gap:9px;padding:10px 12px;border:1.5px solid var(--gray-line);border-radius:9px;margin-bottom:7px;cursor:pointer;font-size:13.5px;}
+.chk.on{border-color:var(--purple);background:var(--purple-lt);}
+.chk input{margin-top:2px;width:17px;height:17px;accent-color:var(--purple);flex:0 0 auto;}
+.chk .ct{flex:1;}
+.chk .cd{display:block;font-size:11px;color:var(--text-mute);margin-top:2px;}
+.up{border:1.5px dashed var(--gray-line);border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:#FAFAFC;transition:border-color .15s,background .15s;}
+.up:active{background:#F3F0FB;}
+.up.has{border-color:var(--purple);border-style:solid;background:#fff;}
+.up .uic{font-size:13px;font-weight:700;color:var(--purple);}
+.up .uhint{font-size:11px;color:var(--text-mute);margin-top:3px;}
+.filechips{margin-top:9px;display:flex;flex-direction:column;gap:6px;}
+.fchip{display:flex;align-items:center;gap:8px;background:#F3F4F6;border-radius:8px;padding:8px 10px;font-size:12.5px;}
+.fchip .fn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);}
+.fchip .fx{color:var(--red);font-weight:800;cursor:pointer;font-size:15px;line-height:1;padding:0 2px;}
+.fchip .fst{font-size:11px;color:var(--orange);font-weight:700;}
+.fchip.done .fst{color:var(--green);}
+.info-box{background:var(--purple-lt);border-radius:9px;padding:11px 13px;font-size:12.5px;color:#4C1D95;line-height:1.6;}
+.info-box b{font-weight:800;}
+.submit-card{background:#fff;border-radius:14px;padding:18px 16px;box-shadow:0 1px 3px rgba(0,0,0,.04);}
+.btn{width:100%;padding:15px;font-size:16px;font-weight:800;border:none;border-radius:11px;cursor:pointer;background:var(--purple);color:#fff;font-family:inherit;transition:opacity .15s;}
+.btn:active{opacity:.85;}
+.btn[disabled]{background:#D1D5DB;cursor:not-allowed;}
+.msg{padding:11px 13px;border-radius:9px;font-size:13.5px;margin-top:12px;line-height:1.5;}
+.msg.err{background:#FEE2E2;color:#991B1B;}
+.msg.ok{background:var(--green-lt);color:#065F46;}
+.done-screen{text-align:center;padding:40px 20px;}
+.done-screen .dchk{width:64px;height:64px;border-radius:50%;background:var(--green-lt);display:flex;align-items:center;justify-content:center;margin:0 auto 18px;font-size:34px;}
+.done-screen h2{font-size:20px;font-weight:800;margin:0 0 10px;color:var(--text);}
+.done-screen p{font-size:14px;color:var(--text-sub);margin:0;line-height:1.7;}
+.foot{text-align:center;font-size:11px;color:var(--text-mute);padding:18px 8px 4px;line-height:1.6;}
+</style>
+</head>
+<body>
+<div class="wrap" id="form">
+  <div class="hdr">
+    <h1>블리스미 매장 세팅 신청</h1>
+    <p>아래 정보를 한 번에 보내주시면<br>예약 · 매출 · 알림톡 · AI 자동응대까지 세팅해드립니다</p>
+  </div>
+
+  <div class="intro">
+    <b>★ 별표(필수) 4가지</b>만 먼저 적으셔도 시작됩니다. 나머지는 나중에 추가해도 돼요.<br>
+    가격표·동의서·자료는 <b>사진/파일로 올려주시면</b> 저희가 정리합니다.
+  </div>
+
+  <!-- 0. 기본 정보 -->
+  <div class="card">
+    <div class="ttl"><span class="num">1</span> 기본 정보 <span class="req">필수</span></div>
+    <div class="sub">연락드릴 대표 정보예요.</div>
+    <div class="field"><label class="label">상호(업체명) ★</label><input class="input" id="bizName" placeholder="예: 모담왁싱&래쉬"></div>
+    <div class="row2">
+      <div class="field"><label class="label">대표·원장 성함 ★</label><input class="input" id="ownerName" placeholder="홍길동"></div>
+      <div class="field"><label class="label">연락처 ★</label><input class="input" id="phone" type="tel" placeholder="010-0000-0000" maxlength="13"></div>
+    </div>
+    <div class="field"><label class="label">이메일 <span class="opt">권장</span></label><input class="input" id="email" type="email" placeholder="store@email.com"></div>
+    <div class="field">
+      <label class="label">사업자등록증 <span class="opt">업로드</span></label>
+      <div class="up" data-cat="biz_reg"><div class="uic">＋ 사업자등록증 올리기</div><div class="uhint">사진 또는 PDF</div></div>
+      <div class="filechips" data-chips="biz_reg"></div>
+    </div>
+  </div>
+
+  <!-- 1. 매장/지점 -->
+  <div class="card">
+    <div class="ttl"><span class="num">2</span> 매장 정보 <span class="req">필수</span></div>
+    <div class="sub">지점이 여러 개면 아래 칸에 모두 적어주세요.</div>
+    <div class="field"><label class="label">매장 주소 ★</label><input class="input" id="addr" placeholder="서울시 ○○구 ○○로 00, 0층"></div>
+    <div class="row2">
+      <div class="field"><label class="label">매장 전화 ★</label><input class="input" id="storeTel" type="tel" placeholder="02-000-0000"></div>
+      <div class="field"><label class="label">영업시간 ★</label><input class="input" id="hours" placeholder="11:00~21:00"></div>
+    </div>
+    <div class="field"><label class="label">휴무일 / 추가 지점 <span class="opt">선택</span></label><textarea class="input" id="branchesMemo" placeholder="예) 매주 화요일 휴무 / 2호점: 마곡 ○○로 00, 11~20시"></textarea></div>
+  </div>
+
+  <!-- 2. 네이버 -->
+  <div class="card">
+    <div class="ttl"><span class="num">3</span> 네이버 예약·리뷰 연동 <span class="req">필수</span></div>
+    <div class="sub">운영자 초대 하나로 예약·리뷰·확정이 자동으로 들어와요.</div>
+    <div class="info-box">
+      네이버 <b>스마트플레이스 → 업체정보 → 권한 관리 → 운영자 추가</b>에서<br>
+      아이디 <b>cripiss</b> 를 운영자로 초대해주세요. (별도 프로그램 설치 없음)
+    </div>
+    <label class="chk" data-toggle="naverDone" style="margin-top:10px;"><input type="checkbox"><span class="ct">운영자 초대 완료했어요<span class="cd">아직이면 비워두셔도 됩니다 — 저희가 안내드려요</span></span></label>
+  </div>
+
+  <!-- 3. 카카오 알림톡 -->
+  <div class="card">
+    <div class="ttl"><span class="num">4</span> 카카오 알림톡 · 문자 <span class="req">필수</span></div>
+    <div class="sub">예약 확정·전날·당일 안내를 자동 발송하려면 필요해요.</div>
+    <div class="field"><label class="label">카카오톡 채널명 / 검색용 아이디 / URL</label><textarea class="input" id="kakaoCh" placeholder="채널명: 모담왁싱&래쉬&#10;검색 아이디: 모담왁싱앤래쉬&#10;URL: pf.kakao.com/_xxxx"></textarea></div>
+    <div class="field"><label class="label">알림톡·문자 발신번호</label><input class="input" id="sendPhone" type="tel" placeholder="손님에게 찍힐 번호 (매장 대표번호 가능)"></div>
+    <div class="info-box">카카오 채널을 <b>비즈니스 채널로 인증</b>(채널 관리자센터 → 비즈니스 채널 신청, 사업자등록증)해주세요. 발신번호 <b>통신가입증명원</b>도 올려주시면 빨라요.</div>
+    <div class="field" style="margin-top:11px;">
+      <label class="label">통신가입증명원 <span class="opt">업로드</span></label>
+      <div class="up" data-cat="sms_proof"><div class="uic">＋ 증빙 올리기</div><div class="uhint">통신가입증명원 또는 사업자등록증</div></div>
+      <div class="filechips" data-chips="sms_proof"></div>
+    </div>
+  </div>
+
+  <!-- 4. 시술/가격 -->
+  <div class="card">
+    <div class="ttl"><span class="num">5</span> 시술 메뉴 · 가격 <span class="req">필수</span></div>
+    <div class="sub">가격표를 사진으로 올려주시면 저희가 등록합니다.</div>
+    <div class="field">
+      <label class="label">가격표 사진 ★ <span class="opt">여러 장 가능</span></label>
+      <div class="up" data-cat="price_table"><div class="uic">＋ 가격표 사진 올리기</div><div class="uhint">메뉴판·가격표 사진/이미지 (여러 장)</div></div>
+      <div class="filechips" data-chips="price_table"></div>
+    </div>
+    <div class="field"><label class="label">추가 설명 <span class="opt">선택</span></label><textarea class="input" id="priceMemo" placeholder="예) 남녀 가격 다름, 소요시간, 카테고리 구분 등 보충 설명"></textarea></div>
+  </div>
+
+  <!-- 5. 패키지/이벤트 -->
+  <div class="card">
+    <div class="ttl"><span class="num">6</span> 패키지 · 정액권 · 이벤트 <span class="opt">선택</span></div>
+    <div class="sub">혜택 안내문(PDF·사진)이 있으면 그대로 올려주세요.</div>
+    <div class="field">
+      <label class="label">혜택 안내 자료 업로드</label>
+      <div class="up" data-cat="package_pdf"><div class="uic">＋ 패키지·이벤트 자료 올리기</div><div class="uhint">혜택안내 PDF / 사진</div></div>
+      <div class="filechips" data-chips="package_pdf"></div>
+    </div>
+    <div class="field"><label class="label">첫방문 할인·적립·회원가 정책</label><textarea class="input" id="eventMemo" placeholder="예) 첫방문 브라질리언 할인, 정액권 적립률, 단골 회원가 등"></textarea></div>
+  </div>
+
+  <!-- 6. 동의서 -->
+  <div class="card">
+    <div class="ttl"><span class="num">7</span> 동의서 · 차트 <span class="opt">선택</span></div>
+    <div class="sub">손님께 받을 동의서 종류를 골라주세요. 쓰던 양식이 있으면 올려주세요.</div>
+    <div data-chkgroup="consent">
+      <label class="chk"><input type="checkbox" value="개인정보 수집·이용 동의"><span class="ct">개인정보 수집·이용 동의</span></label>
+      <label class="chk"><input type="checkbox" value="시술 동의서(신규차트)"><span class="ct">시술 동의서 / 신규 차트</span></label>
+      <label class="chk"><input type="checkbox" value="패키지·환불 동의"><span class="ct">패키지·선불권 구매/환불 동의</span></label>
+      <label class="chk"><input type="checkbox" value="사진촬영·마케팅 동의"><span class="ct">사진 촬영 · 마케팅 활용 동의</span></label>
+      <label class="chk"><input type="checkbox" value="미성년자·보호자 동의"><span class="ct">미성년자 보호자 동의</span></label>
+    </div>
+    <div class="field" style="margin-top:6px;">
+      <label class="label">기존 동의서 양식 업로드</label>
+      <div class="up" data-cat="consent_form"><div class="uic">＋ 동의서 양식 올리기</div><div class="uhint">현재 쓰는 양식 (사진·PDF·문서)</div></div>
+      <div class="filechips" data-chips="consent_form"></div>
+    </div>
+    <div class="field"><label class="label">추가 요청 <span class="opt">선택</span></label><textarea class="input" id="consentMemo" placeholder="동의서에 꼭 넣어야 할 문구·항목이 있으면 적어주세요"></textarea></div>
+  </div>
+
+  <!-- 7. AI 응대 -->
+  <div class="card">
+    <div class="ttl"><span class="num">8</span> AI 자동응대 정보 <span class="opt">선택·강력추천</span></div>
+    <div class="sub">손님 문의에 AI가 정확히 답하도록 알려주세요.</div>
+    <div class="field"><label class="label">건물·찾아오는 길</label><textarea class="input" id="building" placeholder="주차 / 엘리베이터·계단 / 대중교통 / 건물·층 안내 / 네이버·구글 지도 링크"></textarea></div>
+    <div class="field"><label class="label">자주 묻는 질문(FAQ) + 답변</label><textarea class="input" id="faq" placeholder="예) 마취크림 쓰나요? / 임산부 가능? / 통증 정도 / 시술 주기 — 질문과 답을 적어주세요"></textarea></div>
+    <div class="field"><label class="label">응대 말투·주의사항</label><textarea class="input" id="tone" placeholder="예) 친근한 반말 X 존댓말, 꼭 안내할 점, 하면 안 되는 말 등"></textarea></div>
+    <div class="field">
+      <label class="label">AI 학습 자료 업로드 <span class="opt">선택</span></label>
+      <div class="up" data-cat="ai_docs"><div class="uic">＋ 학습 자료 올리기</div><div class="uhint">FAQ 문서·교육자료·스킨케어 메뉴 등 (여러 개)</div></div>
+      <div class="filechips" data-chips="ai_docs"></div>
+    </div>
+  </div>
+
+  <!-- 8. 결제/직원/채널 -->
+  <div class="card">
+    <div class="ttl"><span class="num">9</span> 결제 · 직원 · 기타 채널 <span class="opt">선택</span></div>
+    <div class="sub">나중에 추가해도 됩니다.</div>
+    <div class="field"><label class="label">계좌이체 입금 자동확인</label><input class="input" id="bank" placeholder="은행 + 입금계좌번호 (예: 국민 123-45-6789)"></div>
+    <label class="chk" data-toggle="tossWant"><input type="checkbox"><span class="ct">예약금·포인트 충전(카드결제) 쓰고 싶어요<span class="cd">토스페이먼츠 가맹 안내드립니다</span></span></label>
+    <div class="field" style="margin-top:11px;"><label class="label">직원 명단 (이름 / 담당 지점)</label><textarea class="input" id="staff" placeholder="예) 김○○ - 강남 / 이○○ - 마곡"></textarea></div>
+    <div class="field"><label class="label">인스타·왓츠앱·라인 자동응대 / 외부플랫폼</label><textarea class="input" id="channels" placeholder="사용하는 계정·플랫폼(트레이지·크리에이트립 등)이 있으면 적어주세요"></textarea></div>
+  </div>
+
+  <!-- 제출 -->
+  <div class="submit-card">
+    <button class="btn" id="btnSubmit">제출하기</button>
+    <div id="submitMsg"></div>
+    <div style="font-size:11px;color:var(--text-mute);text-align:center;margin-top:10px;line-height:1.6;">
+      제출 후에도 추가 자료는 담당자에게 보내주시면 됩니다.<br>핵심(★) 4가지만 받아도 세팅을 시작합니다.
+    </div>
+  </div>
+
+  <div class="foot">Bliss · blissme.ai &nbsp;|&nbsp; 매장 예약·운영 올인원</div>
+</div>
+
+<div class="wrap" id="done" style="display:none;">
+  <div class="done-screen">
+    <div class="dchk">✓</div>
+    <h2>제출 완료되었습니다</h2>
+    <p>보내주신 정보로 세팅을 시작할게요.<br>확인 후 담당자가 연락드리겠습니다. 감사합니다!</p>
+  </div>
+  <div class="foot">Bliss · blissme.ai</div>
+</div>
+
+<script>
+const API = location.origin.includes("localhost") ? "https://blissme.ai" : "";
+const SB_URL = "https://dpftlrsuqxqqeouwbfjd.supabase.co";
+const SB_KEY = "sb_publishable_3H-KTP0MoV_KuY74ocbefw_3Ze5xBJj";
+const BUCKET = "bliss-uploads";
+
+const uploaded = [];   // {id, category, name, url}
+let uidSeq = 0;
+
+// 전화 자동 하이픈
+function hyphen(el){ el.addEventListener('input', e=>{ let v=e.target.value.replace(/[^0-9]/g,'').slice(0,11); if(v.length>7)v=v.slice(0,3)+'-'+v.slice(3,7)+'-'+v.slice(7); else if(v.length>3)v=v.slice(0,3)+'-'+v.slice(3); e.target.value=v; }); }
+hyphen(document.getElementById('phone'));
+hyphen(document.getElementById('sendPhone'));
+
+// 체크박스 칩 토글 스타일
+document.querySelectorAll('.chk input[type=checkbox]').forEach(cb=>{
+  cb.addEventListener('change',()=>{ cb.closest('.chk').classList.toggle('on', cb.checked); });
+});
+
+function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+// 업로드 영역 클릭 → 파일 선택
+document.querySelectorAll('.up').forEach(up=>{
+  const cat = up.getAttribute('data-cat');
+  const inp = document.createElement('input');
+  inp.type='file'; inp.style.display='none';
+  inp.multiple = true;
+  inp.accept = (cat==='price_table'||cat==='biz_reg'||cat==='sms_proof'||cat==='consent_form') ? 'image/*,.pdf' : 'image/*,.pdf,.doc,.docx,.xlsx,.txt,.hwp,.hwpx';
+  document.body.appendChild(inp);
+  up.addEventListener('click',()=>inp.click());
+  inp.addEventListener('change',()=>{ Array.from(inp.files).forEach(f=>handleFile(f,cat,up)); inp.value=''; });
+});
+
+function chipsWrap(cat){ return document.querySelector('.filechips[data-chips="'+cat+'"]'); }
+
+async function handleFile(file, cat, upEl){
+  if(file.size > 25*1024*1024){ alert('파일이 너무 큽니다 (25MB 이하). : '+file.name); return; }
+  const id = ++uidSeq;
+  const rec = { id, category:cat, name:file.name, url:'' };
+  uploaded.push(rec);
+  upEl.classList.add('has');
+  renderChips(cat);
+  try{
+    const safe = file.name.replace(/[^\w.\-가-힣]/g,'_');
+    const fname = Date.now()+'_'+Math.random().toString(36).slice(2,7)+'_'+safe;
+    const path = 'onboarding/'+encodeURIComponent(fname);
+    const r = await fetch(SB_URL+'/storage/v1/object/'+BUCKET+'/'+path, {
+      method:'POST',
+      headers:{ apikey:SB_KEY, Authorization:'Bearer '+SB_KEY, 'x-upsert':'true' },
+      body:file
+    });
+    if(!r.ok) throw new Error('업로드 실패 '+r.status);
+    rec.url = SB_URL+'/storage/v1/object/public/'+BUCKET+'/'+path;
+  }catch(e){
+    rec.error = true;
+    console.warn('upload err', e);
+  }
+  renderChips(cat);
+}
+
+function renderChips(cat){
+  const w = chipsWrap(cat);
+  const list = uploaded.filter(u=>u.category===cat);
+  w.innerHTML = list.map(u=>{
+    const st = u.error ? '<span class="fst" style="color:var(--red)">실패</span>'
+            : (u.url ? '<span class="fst">완료</span>' : '<span class="fst">올리는 중…</span>');
+    return '<div class="fchip'+(u.url?' done':'')+'"><span class="fn">'+escapeHtml(u.name)+'</span>'+st+'<span class="fx" data-rm="'+u.id+'">×</span></div>';
+  }).join('');
+  w.querySelectorAll('[data-rm]').forEach(x=>x.addEventListener('click',()=>{
+    const id=+x.getAttribute('data-rm'); const i=uploaded.findIndex(u=>u.id===id); if(i>=0)uploaded.splice(i,1); renderChips(cat);
+  }));
+}
+
+function val(id){ return (document.getElementById(id).value||'').trim(); }
+function toggleVal(name){ const el=document.querySelector('[data-toggle="'+name+'"] input'); return el?el.checked:false; }
+function chkGroup(name){ return Array.from(document.querySelectorAll('[data-chkgroup="'+name+'"] input:checked')).map(c=>c.value); }
+
+const btn = document.getElementById('btnSubmit');
+const submitMsg = document.getElementById('submitMsg');
+function showMsg(t,c){ submitMsg.innerHTML='<div class="msg '+c+'">'+t+'</div>'; }
+
+btn.addEventListener('click', async ()=>{
+  const bizName=val('bizName'), ownerName=val('ownerName'), phone=val('phone');
+  if(!bizName||!ownerName||!phone){
+    showMsg('필수(★) 항목을 채워주세요: 상호 · 대표 성함 · 연락처','err');
+    document.getElementById(!bizName?'bizName':(!ownerName?'ownerName':'phone')).scrollIntoView({behavior:'smooth',block:'center'});
+    return;
+  }
+  if(uploaded.some(u=>!u.url && !u.error)){ showMsg('파일 업로드가 끝날 때까지 잠시만 기다려주세요…','err'); return; }
+
+  const payload = {
+    basic:{ bizName, ownerName, phone, email:val('email') },
+    store:{ addr:val('addr'), tel:val('storeTel'), hours:val('hours'), branchesMemo:val('branchesMemo') },
+    naver:{ delegated: toggleVal('naverDone') },
+    kakao:{ channel:val('kakaoCh'), sendPhone:val('sendPhone') },
+    services:{ memo:val('priceMemo') },
+    packages:{ memo:val('eventMemo') },
+    consent:{ needs: chkGroup('consent'), memo:val('consentMemo') },
+    ai:{ building:val('building'), faq:val('faq'), tone:val('tone') },
+    etc:{ bank:val('bank'), tossWant:toggleVal('tossWant'), staff:val('staff'), channels:val('channels') }
+  };
+  const files = uploaded.filter(u=>u.url).map(u=>({category:u.category,name:u.name,url:u.url}));
+
+  btn.disabled=true; btn.textContent='제출 중…';
+  try{
+    const r = await fetch(API+'/onboarding-submit', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ biz_name:bizName, owner_name:ownerName, phone, email:val('email'), payload, files })
+    });
+    const j = await r.json().catch(()=>({}));
+    if(r.ok && j.ok){
+      document.getElementById('form').style.display='none';
+      document.getElementById('done').style.display='block';
+      window.scrollTo(0,0);
+    }else{
+      showMsg('제출 실패: '+(j.error||('오류 '+r.status))+'. 잠시 후 다시 시도해주세요.','err');
+      btn.disabled=false; btn.textContent='제출하기';
+    }
+  }catch(e){
+    showMsg('네트워크 오류: '+e.message,'err');
+    btn.disabled=false; btn.textContent='제출하기';
+  }
+});
+</script>
+</body>
+</html>

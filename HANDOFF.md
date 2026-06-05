@@ -18,17 +18,15 @@
    - 시술 id `svc_md_001`~`svc_md_082` (브라질리언 001~006 / 페이스 010~019 / 바디 030~043 / 인그로운 050~052 / 발각질 060~061 / 패키지 070~071 / 정액권 080~082)
    - 필드 규칙: `price_f`/`price_m`=정상가, `member_price_f`/`member_price_m`=회원가(디자인/발각질만), `dur`=소요시간(분, 네이버 블록 자동매칭용), 한쪽 성별만 있는 시술은 반대 성별 NULL, 패키지=`is_package=true`+`pkg_count`, 정액권=`is_package=false`(충전형 선불권). `show_in_guide`는 대표 시술만 true(누드핏·비키니·풀페이스·겨드랑이·다리전체·풀바디·패디플레닝·3회권·5회권).
    - **소스 = 유저 제공 가격표 이미지 + 패키지 혜택안내 PDF** (`/Users/cripiss/Downloads/패키지 혜택안내pdf.pdf`).
+4. **이벤트 4종 등록 + master ON (DB, 2026-06-05)** — `businesses.settings`에 jsonb merge(`settings::jsonb || {...}`로 plan/planExpiry 보존) `events` 배열 + `events_master_enabled=true`. PDF 금액 재검증 완료. 등록:
+   - `evt_md_first_brz` 첫방문 브라질리언 할인 — `new_first_sale` / `discount_flat 22000 base:svc` / `categoriesAny:["sc_md_brz"]` (여 88,000→66,000 / 남 110,000→88,000, 카드 첫방문가. 현금 추가할인은 직원 수동)
+   - `evt_md_prepaid_15` 정액권 15만 적립 — `prepaid_purchase` / `point_earn fixed 15000` (expiry 6mo) / `prepaidServiceIds:["svc_md_080"]` (→사용가능 165,000)
+   - `evt_md_prepaid_30` 정액권 30만 적립 — `point_earn fixed 60000` (expiry 12mo) / `["svc_md_081"]` (오픈 더블 20%, →360,000)
+   - `evt_md_total50` 토탈50 현금 적립 — `point_earn fixed 50000` / `["svc_md_082"]` + **`paymentMethodType:"cash"`** (유저 결정: 결제수단 현금 선택 시 자동 적용. 엔진 `eventEngine.js:272` + `SaleForm.jsx:1840 paymentUsesCash` 지원 확인)
+   - **이벤트 밖(수동/회원가)**: 재방문 6주내 할인(시간 트리거 없음), 3회권 케어 50%·5회권 발각질 무료(차감형=직원 수동), 포토리뷰 시트팩, 브라질리언+단품 10%. → 원장에게 "수동 처리" 안내 필요.
+5. **Pro 요금제 활성 — 오프라인 결제 (2026-06-05 사용 시작)** — 77,000원/월 오프라인(계좌/현장) 결제 완료. `businesses.plan='pro'`(컬럼) + settings.plan/planExpiry=2026-07-05 동기화 + `billing_subscriptions` 1행(지점 br_id_x316ludvqq, pro 77000 active, **auto_renew=false, billing_id=null** = 하우스왁싱 오프라인 패턴). `settings.features` 키 없음 → plan='pro'로 PRO 전기능 자동 derive(extractFeatures). 다음 결제 2026-07-05 **수동**(토스 빌링 계약 활성화 + 모담 카드 등록 전까지 auto 청구 X). trial(~6/19)에서 전환.
 
 ### ⏳ 남은 일 (새 세션이 진행)
-**A. 이벤트 등록 (설계 완료, 등록만 하면 됨)** — 유저 결정: PDF 혜택 기준 + **master ON(지금 켜기)**.
-   - `businesses.settings`(text에 JSON 저장 — `::jsonb` 캐스팅 후 수정, **JSON.stringify로 다시 저장**, 문자열 스프레드 금지) `events` 배열 + `events_master_enabled=true`.
-   - 스키마 = 하우스왁싱 `evt_custom_*` 그대로 복제(conditions 전체 필드 포함). 참고 쿼리: `SELECT jsonb_pretty(e) FROM businesses b, jsonb_array_elements(b.settings::jsonb->'events') e WHERE b.id='biz_khvurgshb' AND e->>'trigger'='prepaid_purchase'`.
-   - 등록할 이벤트 3종:
-     1. **첫방문 브라질리언 할인** — `trigger:new_first_sale`, reward `discount_flat value:22000 base:svc`, `conditions.categoriesAny:["sc_md_brz"]`. (여 88,000→66,000 / 남 110,000→88,000, 둘 다 22,000 flat = 카드 첫방문가. 현금 추가할인 6~8천은 직원 수동.)
-     2. **정액권 적립** — `trigger:prepaid_purchase`, reward `point_earn base:fixed`: 15만권(`prepaidServiceIds:["svc_md_080"]` value 15000=10%) + 30만권(`["svc_md_081"]` value 60000=20% 더블) **이벤트 2개로 분리**. PDF "적립금" = point_earn으로(사용가능 165,000/360,000 매칭).
-     3. **토탈50 현금 적립** — `trigger:prepaid_purchase`, `prepaidServiceIds:["svc_md_082"]`, reward point_earn 10%(현금결제 조건). 현금조건 필드는 하우스왁싱 이벤트에 paymentUses* 참고(없으면 무조건 10%로 단순화).
-   - **이벤트 안 되는 것(엔진 밖, 수동/회원가)**: 재방문 6주내 할인(엔진에 시간 트리거 없음), 패키지 3회권 케어 50%·5회권 발각질 무료(방문할 때마다 차감형 혜택=직원 수동), 포토리뷰 시트팩 증정, 브라질리언+단품 10% 할인. → 원장에게 "수동 처리" 안내.
-
 **B. 카카오 알림톡 (유저가 senderKey+발신번호 받아오면 시작)** — 발송 코드는 이미 멀티테넌트(`alimtalk_thread`가 `branch_id`로 noti_config 읽음). **모담 noti_config 현재 비어있음**(aligoKey/senderKey/tplCode 전무 → 발송 skip 상태).
    - 유저가 줄 것: 모담 **senderKey**(알리고 카카오 발신프로필 연동 후 발급, 카카오채널 비즈니스 인증 선행) + 모담 **발신번호**(SMS 발신용 등록번호). 알리고 계정은 cripiss 재사용(aligoKey/aligoId 동일).
    - 받으면 새 세션이: ① 하우스왁싱 템플릿들(rsv_confirm 예약확정 / rsv_1day 전날 / rsv_today 당일+차트링크 / 케어 / point_expiry 포인트소멸 / consent_doc 동의서 / chart_doc 차트)을 **모담 senderKey로 알리고 API 재등록+검수 제출** (알리고 API는 서버 IP에서만, Mac은 -99 / 스크립트 패턴 `/tmp/aligo_*.py` 서버에서 / 응답 code 문자열 "0"=성공 / 버튼은 까다로우니 본문 링크 방식) ② 검수 승인(3~5영업일) 후 모담 `branch` noti_config에 `aligoKey`(cripiss)/`aligoId`(cripiss)/`senderPhone`(모담)/`senderKey`(모담)/각 키별 `tplCode`+`msgTpl` 입력 → 멀티테넌트 코드라 바로 발송.
