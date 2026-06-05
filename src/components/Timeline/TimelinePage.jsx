@@ -1952,7 +1952,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   // pendingSeedRef effect 제거 — empColOrder 자동 갱신 X (룰)
 
   const allRooms = branchesToShow.flatMap((br, brIdx) => {
-    const baseNaver = br.naverEmail ? (br.naverColCount || 1) : 0;
+    // 네이버 연동(이메일 또는 비즈ID) 지점은 미배정 컬럼이 기본으로 맨 왼쪽에 생성됨
+    const baseNaver = (br.naverEmail || br.naverBizId) ? (br.naverColCount || 1) : 0;
     const extraCount = extraCols[`${br.id}__${selDate}`] || 0;
     const naverCount = baseNaver + extraCount;
     const naverRooms = Array.from({length: naverCount}, (_, i) => ({
