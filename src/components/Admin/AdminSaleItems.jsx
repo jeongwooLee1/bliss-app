@@ -55,7 +55,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
   const [sheet,setSheet]=useState(false);
   const [edit,setEdit]=useState(null);
   const [editPair,setEditPair]=useState(null); // 페어 편집 시 {half, full}
-  const [form,setForm]=useState({cat:"",name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,isCouple:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0,badgeText:"",badgeColor:"#ffffff",badgeBg:"#f97316",promoConfig:{},isActive:true,grantsMemberPrice:false,isSubscription:false});
+  const [form,setForm]=useState({cat:"",name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,isCouple:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0,badgeText:"",badgeColor:"#ffffff",badgeBg:"#f97316",promoConfig:{},isActive:true,grantsMemberPrice:false,isSubscription:false,showInGuide:false});
   // 옵션 그룹 (절반/전체 같은 한 부위에 변형 옵션)
   const [useOptions, setUseOptions] = useState(false);
   const [opt1, setOpt1] = useState({name:"절반", dur:25, priceF:0, priceM:0, memberPriceF:0, memberPriceM:0});
@@ -104,7 +104,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
     if (typeof pc === "string") { try { pc = JSON.parse(pc); } catch(e) { pc = {}; } }
     setEdit(null);
     setEditPair({half: g.half, full: g.full});
-    setForm({cat:g.full.cat||"", name:g.base, dur:0, priceF:0, priceM:0, memberPriceF:0, memberPriceM:0, note:_stripPairTag(g.full.note||g.half.note||""), isPackage:false, isCouple:false, pkgCount:10, pkgPriceF:0, pkgPriceM:0, badgeText:g.full.badgeText||"", badgeColor:g.full.badgeColor||"#ffffff", badgeBg:g.full.badgeBg||"#f97316", promoConfig:pc||{}, isActive:g.full.isActive!==false, grantsMemberPrice:!!g.full.grantsMemberPrice});
+    setForm({cat:g.full.cat||"", name:g.base, dur:0, priceF:0, priceM:0, memberPriceF:0, memberPriceM:0, note:_stripPairTag(g.full.note||g.half.note||""), isPackage:false, isCouple:false, pkgCount:10, pkgPriceF:0, pkgPriceM:0, badgeText:g.full.badgeText||"", badgeColor:g.full.badgeColor||"#ffffff", badgeBg:g.full.badgeBg||"#f97316", promoConfig:pc||{}, isActive:g.full.isActive!==false, grantsMemberPrice:!!g.full.grantsMemberPrice, showInGuide:!!g.full.showInGuide});
     const halfBo = _getBaseAndOpt(g.half.name);
     const fullBo = _getBaseAndOpt(g.full.name);
     setOpt1({name: halfBo?.opt||"절반", dur:g.half.dur||0, priceF:g.half.priceF||0, priceM:g.half.priceM||0, memberPriceF:g.half.memberPriceF||0, memberPriceM:g.half.memberPriceM||0});
@@ -152,7 +152,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
   const openNew=()=>{
     setEdit(null);
     setEditPair(null);
-    setForm({cat:defaultCatId,name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,isCouple:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0,badgeText:"",badgeColor:"#ffffff",badgeBg:"#f97316",promoConfig:{},isActive:true,grantsMemberPrice:false,isSubscription:false});
+    setForm({cat:defaultCatId,name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,isCouple:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0,badgeText:"",badgeColor:"#ffffff",badgeBg:"#f97316",promoConfig:{},isActive:true,grantsMemberPrice:false,isSubscription:false,showInGuide:false});
     setUseOptions(false);
     setOpt1({name:"절반", dur:25, priceF:0, priceM:0, memberPriceF:0, memberPriceM:0});
     setOpt2({name:"전체", dur:40, priceF:0, priceM:0, memberPriceF:0, memberPriceM:0});
@@ -163,7 +163,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
     if (typeof pc === "string") { try { pc = JSON.parse(pc); } catch(e) { pc = {}; } }
     setEdit(s);
     setEditPair(null);
-    setForm({cat:s.cat||"",name:s.name||"",dur:s.dur||20,priceF:s.priceF||0,priceM:s.priceM||0,memberPriceF:s.memberPriceF||0,memberPriceM:s.memberPriceM||0,note:s.note||"",isPackage:!!s.isPackage,isCouple:!!s.isCouple,pkgCount:s.pkgCount||10,pkgPriceF:s.pkgPriceF||0,pkgPriceM:s.pkgPriceM||0,badgeText:s.badgeText||"",badgeColor:s.badgeColor||"#ffffff",badgeBg:s.badgeBg||"#f97316",promoConfig:pc||{},isActive:s.isActive!==false,grantsMemberPrice:!!s.grantsMemberPrice,isSubscription:!!s.isSubscription});
+    setForm({cat:s.cat||"",name:s.name||"",dur:s.dur||20,priceF:s.priceF||0,priceM:s.priceM||0,memberPriceF:s.memberPriceF||0,memberPriceM:s.memberPriceM||0,note:s.note||"",isPackage:!!s.isPackage,isCouple:!!s.isCouple,pkgCount:s.pkgCount||10,pkgPriceF:s.pkgPriceF||0,pkgPriceM:s.pkgPriceM||0,badgeText:s.badgeText||"",badgeColor:s.badgeColor||"#ffffff",badgeBg:s.badgeBg||"#f97316",promoConfig:pc||{},isActive:s.isActive!==false,grantsMemberPrice:!!s.grantsMemberPrice,isSubscription:!!s.isSubscription,showInGuide:!!s.showInGuide});
     setUseOptions(false);
     setSheet(true);
   };
@@ -224,7 +224,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
       const _saveCat = (data?.categories||[]).find(cc => cc.id === form.cat);
       const _saveIsPkg = _saveCat?.name === '패키지' ? true : !!form.isPackage;
       // pkgPriceF/M 폐기 (메인 가격 사용으로 통일) — 호환성 위해 0으로 저장
-      const baseCommon = {cat:form.cat,note:form.note,isPackage:_saveIsPkg,isCouple:_saveIsPkg?!!form.isCouple:false,pkgCount:+form.pkgCount||0,pkgPriceF:0,pkgPriceM:0,badgeText:form.badgeText||null,badgeColor:form.badgeColor||null,badgeBg:form.badgeBg||null,promoConfig:Object.keys(cleanPc).length>0?cleanPc:null,isActive:form.isActive!==false,grantsMemberPrice:!!form.grantsMemberPrice,isSubscription:!!form.isSubscription};
+      const baseCommon = {cat:form.cat,note:form.note,isPackage:_saveIsPkg,isCouple:_saveIsPkg?!!form.isCouple:false,pkgCount:+form.pkgCount||0,pkgPriceF:0,pkgPriceM:0,badgeText:form.badgeText||null,badgeColor:form.badgeColor||null,badgeBg:form.badgeBg||null,promoConfig:Object.keys(cleanPc).length>0?cleanPc:null,isActive:form.isActive!==false,grantsMemberPrice:!!form.grantsMemberPrice,isSubscription:!!form.isSubscription,showInGuide:!!form.showInGuide};
       if (useOptions && editPair) {
         // 페어 편집: 양쪽 record 동시 업데이트, [pair:XX] 플래그 보존
         const pairId = _getPairId(editPair.full.note) || _getPairId(editPair.half.note) || uid().slice(0,8);
@@ -498,6 +498,10 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
           <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} title="이 상품을 보유한 고객에게 회원가 적용 자격 부여 (연간권·다담권·패키지 등)">
             <AToggle size="sm" on={!!form.grantsMemberPrice} onChange={v=>set("grantsMemberPrice",v)}/>
             <span style={{fontSize:T.fs.sm,color:form.grantsMemberPrice?"#6B21A8":T.text,fontWeight:form.grantsMemberPrice?700:400}}>⭐ 회원가 자격 부여</span>
+          </label>
+          <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} title="받은메시지함 자주답변 가격안내(왁싱/스킨케어)에 이 시술을 노출 — 대표 시술만 켜세요">
+            <AToggle size="sm" on={!!form.showInGuide} onChange={v=>set("showInGuide",v)}/>
+            <span style={{fontSize:T.fs.sm,color:form.showInGuide?"#4338CA":T.text,fontWeight:form.showInGuide?700:400}}>가격안내 표시</span>
           </label>
           <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} title="이 상품을 보유한 고객이 지정한 시술을 유효기간 내 무제한 무료로 받음 (예: 구독권 → 브라질리언 무료)">
             <AToggle size="sm" on={!!form.isSubscription} onChange={v=>set("isSubscription",v)}/>
