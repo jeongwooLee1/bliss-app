@@ -18,10 +18,11 @@ async function loadPdfjs() {
   _pdfjs = lib
   return lib
 }
-// 목표 렌더 폭(px) — 큰 화면에서도 선명. 원본 PDF 페이지 크기와 무관하게 일정.
+// 목표 렌더 폭(px) — 폭 기준 적응형 scale로 글자 가독성 확보(페이지 크기 무관 일정).
 const TARGET_W = 1400
-// 최종 캔버스 한 변 상한 — 초대형 스캔 PDF에서 22MP+ 캔버스가 렌더를 멈추는 것 방지
-const MAX_DIM = 2600
+// 한 캔버스(밴드)의 최대 높이 — 신규차트처럼 초장신(5000pt+) 단일 페이지를 세로로 잘라
+// 정상 작동하는 일반 페이지와 같은 크기 등급으로 렌더(거대 단일 캔버스 렌더 실패 방지).
+const BAND_H = 2200
 const RENDER_TIMEOUT = 15000 // 페이지 렌더가 멈추면 PDF 링크 fallback (무한 로딩 방지)
 const withTimeout = (promise, ms, task) => Promise.race([
   promise,
@@ -35,19 +36,26 @@ async function renderPdfToImages(url) {
   const pages = Math.min(pdf.numPages, 4)
   for (let p = 1; p <= pages; p++) {
     const page = await pdf.getPage(p)
-    // 원본 페이지 폭 기준으로 적응형 scale 계산 (고정 scale은 큰 PDF에서 캔버스 폭발)
+    // 폭 기준 적응형 scale (글자 가독성). 높이는 밴드로 분할하므로 줄이지 않음.
     const base = page.getViewport({ scale: 1 })
-    let scale = Math.max(0.8, Math.min(TARGET_W / base.width, 2.2))
-    const big = Math.max(base.width, base.height) * scale
-    if (big > MAX_DIM) scale *= MAX_DIM / big
-    const viewport = page.getViewport({ scale })
-    const canvas = document.createElement('canvas')
-    canvas.width = viewport.width
-    canvas.height = viewport.height
-    // 키오스크(검증됨)와 동일 — pdfjs 5.7은 canvas만 주면 렌더가 안 끝남. canvasContext로 줘야 함.
-    const task = page.render({ canvasContext: canvas.getContext('2d'), viewport })
-    await withTimeout(task.promise, RENDER_TIMEOUT, task)
-    imgs.push(canvas.toDataURL('image/jpeg', 0.74))
+    const scale = Math.max(0.8, Math.min(TARGET_W / base.width, 2.2))
+    const vp = page.getViewport({ scale })
+    const W = Math.ceil(vp.width)
+    const H = Math.ceil(vp.height)
+    // 세로 BAND_H 단위로 분할 렌더. 각 밴드는 W×bandH(작은 캔버스) → 초장신 페이지도 안정.
+    // pdfjs 밴딩 레시피: transform [1,0,0,1,0,-top] 으로 해당 밴드만 캔버스에 그림.
+    for (let top = 0; top < H; top += BAND_H) {
+      const bandH = Math.min(BAND_H, H - top)
+      const canvas = document.createElement('canvas')
+      canvas.width = W
+      canvas.height = bandH
+      const ctx = canvas.getContext('2d')
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, bandH)
+      // 키오스크(검증됨)와 동일 — pdfjs 5.7은 canvasContext로 줘야 렌더 완료됨.
+      const task = page.render({ canvasContext: ctx, viewport: vp, transform: [1, 0, 0, 1, 0, -top] })
+      await withTimeout(task.promise, RENDER_TIMEOUT, task)
+      imgs.push(canvas.toDataURL('image/jpeg', 0.74))
+    }
   }
   return imgs
 }
