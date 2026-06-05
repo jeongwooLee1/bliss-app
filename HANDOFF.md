@@ -1,5 +1,17 @@
 # HANDOFF
 
+## ⏳ [PENDING] 외국인 영어 알림톡 — 카카오 승인 후 wiring (2026-06-05)
+**SMS는 완료·라이브** (케어·포인트 외국인 영어 발송 중). 알림톡 영어 24종 **검수 제출 완료, 카카오 승인 대기(3~5영업일)**. 승인되면 아래 2가지:
+1. **noti_config에 tplCodeEn+msgTplEn 주입** (8지점 × rsv_confirm/rsv_1day/rsv_today). tplCode 매핑(강남/마곡/왕십리/용산/위례/잠실/천호/홍대):
+   - rsv_confirm: UI_4318~4325 / rsv_1day: UI_4326~4333 / rsv_today: UI_4334~4341
+   - msgTplEn = 등록한 영어 본문(CLAUDE.md 참고, rsv_today는 본문에 `https://sign.blissme.ai/?t=#{차트토큰}`)
+   - `process_item`은 이미 `tplCodeEn` 지원 → 주입만 하면 외국인+알림톡 자동 영어.
+2. **채팅 리마인더 중복 제거**(정우님: 알림톡 우선): `_send_chat_reminders`에서 한국폰 외국인이 영어 알림톡 받을 예정(noti에 tplCodeEn 존재)이면 채팅 리마인더 스킵. **tplCodeEn 게이트** → 승인 전엔 채팅 영어 유지.
+- 승인 확인: 알리고 콘솔 또는 `template/list` API. 상세 = CLAUDE.md "외국인 고객 영어 SMS/알림톡" 항목.
+- 서버 전용(React 0) — wiring도 DB(noti_config)+`_send_chat_reminders` 패치만, 버전업·배포 무관.
+
+---
+
 ## ⚠️ [메인 세션에게] v3.7.986 버전 충돌 — 차트(B)가 너희 986 위에 섞임, 정합 완료 (2026-06-04)
 > **동시 작업 충돌이 또 났습니다. 두 세션이 같은 메인 폴더에서 bliss-app을 동시에 배포 중 → 한 세션만 배포하도록 조율 필요.**
 

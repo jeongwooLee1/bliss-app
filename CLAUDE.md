@@ -3557,3 +3557,29 @@ v3.7.984 진단에서 미룬 데모 공지&요청 배지 "2" 건 수정.
 - **fix**: ① **모달**(`ReservationModal`): 태그 칩 렌더에서 `tag.name === f.source`면 skip(예약경로와 같은 이름 태그 중복 숨김) → "문자" 1개만. ② **서버 `/book-submit`**(백업 `bak_smsmemo_*`): memo 첫줄 `("[문자 예약 폼 접수]" if src=="care" else "[카카오 채널 예약 폼 접수]")`. ③ **소급**: source='문자' & memo에 "[카카오 채널 예약 폼 접수]" 있는 기존 예약 memo 일괄 교체(박소연 등).
 - **적용**: v3.7.993 라이브(version.txt 검증, CF 퍼지 success) + 서버 재시작.
 - **유의**: 문자 링크 예약 = 예약경로 "문자" + tag_sms_book("문자") 둘 다 유지(경로=리스트필터·태그=타임라인 블록 표시). 모달에선 이름 같으면 1개만 보이게 dedup. tag_sms_book 이름은 이제 "문자"(직전 변경).
+
+### 외국인 고객 영어 SMS/알림톡 — Phase 1(SMS 완료) + Phase 2(알림톡 검수 제출) (2026-06-05, 서버+DB, React 변경 0)
+정우님: 외국인 고객한테 문자/알림톡이 한국어로만 나감 → 영어로 보낼 수 있게. (판별 기준=외국 채널/외국어 대화 우선, **한글 읽기 이름이 한국인으로 오판하면 안 됨**. 범위=SMS 먼저 + 알림톡 검수 동시.)
+**현황 진단**: 채팅(인스타/WhatsApp/LINE) 리마인더·확정카드·AI응답은 이미 영어 분기 있음. 빈틈 = **전화번호 경로**(카카오 알림톡 `alimtalk_thread`·케어 SMS·포인트 SMS)가 단일 한국어 템플릿만 사용 → 한국 휴대폰 가진 외국인(예: Lila 인스타 예약+010)이 전부 한국어로 받음.
+**판별 헬퍼 `_recipient_prefers_en(phone/cust_id/cust_name/chat_user_id)`** (`bliss_naver.py`, detect_lang 다음, 30분 캐시):
+- 1순위 **최근 inbound 대화 언어** — 고객 sns_accounts user_id로 `messages` direction=in 최근 6건 `detect_lang` → 외국어면 영어. (한글 '읽기' 이름이라도 대화가 영어면 영어 — Lila 케이스)
+- 2순위 대화 없으면 **이름에 한글 전무 + 영문자 있음** → 영어. 그 외 한국어.
+- **검증**: Lila(01024582705, 이름 "라일라"·인스타 영어대화) → en ✓ / 서민우·홍지훈·김선화(한국인) → ko(오발송 0) ✓
+**Phase 1 — SMS 영어 (완료·라이브)**:
+- `process_item`(alimtalk_thread): 외국인이면 `noti.msgTplEn` 사용(SMS는 바로, 알림톡은 `tplCodeEn` 있을 때만 — Phase 2 대비). `params.__lang`(케어가 주입) 우선, 없으면 phone→고객 조회로 판정.
+- `care_sms_scheduler_thread`: enqueue 시 `params["__lang"]` 주입.
+- `point_expiry_thread`: 외국인이면 영어 본문(`[House Waxing] {name}, {amt} KRW in points expires in {tier} days! Book > blissme.ai/r/{code}`).
+- **DB**: 8지점 케어 `noti_config.{after_1d_first_only,5d,10d,18d_first_only,21d,35d,60d}.msgTplEn` 영어판 주입(전부 EUC-KR 90byte 이내 단문, 링크 `/r/{code}` 한국어판에서 추출 유지). 한국어판 `msgTpl`은 그대로 — 외국인일 때만 영어판 사용(무회귀).
+- 백업 `bliss_naver.py.bak_en_sms_*`, py_compile OK, restart active.
+**Phase 2 — 카카오 알림톡 영어 (등록·검수 제출 완료, 승인 대기 3~5일)**:
+- 예약확정(rsv_confirm)·전날(rsv_1day)·당일(rsv_today) 영어 템플릿 8지점씩 = **24종 aligo 등록+검수요청 완료**. 변수 #{사용자명}#{날짜}#{시간}(+rsv_today #{차트토큰}).
+- ⚠️ rsv_today는 WL 버튼(`tpl_button`) code 510(link-Mobile) 거부 → **본문 링크 방식**(`https://sign.blissme.ai/?t=#{차트토큰}`)으로 재등록 성공(point_expiry·consent_doc 때와 동일 교훈: aligo 버튼 까다로움, 본문 링크가 안전).
+- **tplCode 매핑** (지점순 강남/마곡/왕십리/용산/위례/잠실/천호/홍대):
+  - rsv_confirm: UI_4318/4319/4320/4321/4322/4323/4324/4325
+  - rsv_1day: UI_4326/4327/4328/4329/4330/4331/4332/4333
+  - rsv_today: UI_4334/4335/4336/4337/4338/4339/4340/4341
+- 등록 스크립트(서버): `/tmp/aligo_rsv_en_register.py`(confirm+1day+today버튼실패) + `/tmp/aligo_rsv_today_en.py`(today 본문링크 재등록).
+**⏳ 승인 후 후속 (PENDING — HANDOFF)**:
+  1. 8지점 `noti_config`의 rsv_confirm/rsv_1day/rsv_today에 `tplCodeEn`(위 매핑) + `msgTplEn`(등록한 영어 본문) 추가 → `process_item`이 외국인+알림톡일 때 자동 영어 발송(코드는 이미 `tplCodeEn` 지원).
+  2. **중복 방지**(정우님: 알림톡 우선·채팅 생략): `_send_chat_reminders`에서 한국 휴대폰 외국인이 영어 알림톡 받을 예정(해당 noti에 tplCodeEn 존재)이면 채팅 리마인더 스킵. **tplCodeEn 존재 여부로 게이트** → 승인 전엔 채팅 영어 유지(공백 없음), 승인 후 알림톡 영어로 단일화.
+**유의**: 카카오 알림톡 영어는 **승인 전 발송 불가**(미승인 tplCode 발송 실패) → 승인 전까지 외국인 알림톡은 한국어 유지(케어·포인트 SMS만 영어). 승인 메일/콘솔 확인 후 1·2 wiring. 케어 msgTplEn은 정적 텍스트(고객 변수 없음). 서버 `bliss_naver.py`는 bliss-app git 미추적(별도 repo) — ssh+scp+restart로 적용, 버전업·CF퍼지 무관.
