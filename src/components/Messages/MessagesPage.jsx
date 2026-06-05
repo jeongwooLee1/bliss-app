@@ -53,6 +53,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   const [quickReplies, setQuickReplies] = useState([]);
   const [qrOpen, setQrOpen] = useState(false);
   const [qrManage, setQrManage] = useState(false);
+  const [qrBranchFilter, setQrBranchFilter] = useState("");  // 지점 전용 섹션 드롭다운 선택
   const [qrDraft, setQrDraft] = useState(null); // {id?, label, text}
   // 번역 모드: "auto" (기본, 고객 언어 감지) / "force_en" (강제 영어) / "off" (번역 안 함)
   const [autoTranslate, setAutoTranslate] = useState(true);  // 기존 호환
@@ -1428,25 +1429,34 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     visibleQr.filter(q=>q.branchId).forEach(q=>{ (branchGroups[q.branchId]=branchGroups[q.branchId]||[]).push(q); });
     const brName = (bid)=>{ const b=(data?.branches||[]).find(x=>x.id===bid); return b?.short||b?.name||bid; };
     const renderCard = (q)=> qrManage ? (
-      <div key={q.id} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 10px",border:"1px solid "+T.border,borderRadius:10,background:"#fff",marginBottom:6}}>
+      <div key={q.id} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 9px",border:"1px solid "+T.border,borderRadius:10,background:"#fff",minWidth:0}}>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:12.5,fontWeight:800,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{q.label||"(제목 없음)"}</div>
-          <div style={{fontSize:11,color:T.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{q.text}</div>
+          <div style={{fontSize:12,fontWeight:800,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{q.label||"(제목 없음)"}</div>
+          <div style={{fontSize:10.5,color:T.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{q.text}</div>
         </div>
-        <button onClick={()=>setQrDraft({...q})} title="편집" style={{padding:5,border:"1px solid "+T.border,borderRadius:7,background:"#fff",cursor:"pointer",flexShrink:0}}><I name="edit" size={13}/></button>
-        <button onClick={()=>delQr(q.id)} title="삭제" style={{padding:5,border:"1px solid #FCA5A5",borderRadius:7,background:"#FEF2F2",cursor:"pointer",flexShrink:0}}><I name="trash" size={13} color="#DC2626"/></button>
+        <button onClick={()=>setQrDraft({...q})} title="편집" style={{padding:4,border:"1px solid "+T.border,borderRadius:6,background:"#fff",cursor:"pointer",flexShrink:0}}><I name="edit" size={12}/></button>
+        <button onClick={()=>delQr(q.id)} title="삭제" style={{padding:4,border:"1px solid #FCA5A5",borderRadius:6,background:"#FEF2F2",cursor:"pointer",flexShrink:0}}><I name="trash" size={12} color="#DC2626"/></button>
       </div>
     ) : (
       <button key={q.id} onClick={()=>insertQuickReply(q.text)} title="클릭해서 입력창에 넣기"
-        style={{display:"block",width:"100%",textAlign:"left",padding:"10px 12px",border:"1px solid "+T.border,borderRadius:11,background:"#fff",cursor:"pointer",fontFamily:"inherit",marginBottom:7,boxShadow:"0 1px 3px rgba(0,0,0,0.05)"}}>
-        <div style={{fontSize:13,fontWeight:800,color:"#4338CA",marginBottom:3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{q.label||"(제목 없음)"}</div>
-        <div style={{fontSize:11.5,color:T.textMuted,lineHeight:1.45,maxHeight:33,overflow:"hidden"}}>{q.text}</div>
+        style={{display:"block",width:"100%",minWidth:0,textAlign:"left",padding:"9px 11px",border:"1px solid "+T.border,borderRadius:11,background:"#fff",cursor:"pointer",fontFamily:"inherit",boxShadow:"0 1px 3px rgba(0,0,0,0.05)"}}>
+        <div style={{fontSize:12.5,fontWeight:800,color:"#4338CA",marginBottom:3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{q.label||"(제목 없음)"}</div>
+        <div style={{fontSize:11,color:T.textMuted,lineHeight:1.4,maxHeight:30,overflow:"hidden"}}>{q.text}</div>
       </button>
     );
-    const sectionHdr = (txt,clr)=>(<div style={{fontSize:11,fontWeight:800,color:clr||T.textSub,margin:"12px 2px 7px",letterSpacing:0.3,display:"flex",alignItems:"center",gap:5}}><span style={{width:5,height:5,borderRadius:3,background:clr||T.textSub}}/>{txt}</div>);
+    const grid = (items)=>(<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>{items.map(renderCard)}</div>);
+    const sectionHdr = (txt,clr)=>(<div style={{fontSize:11,fontWeight:800,color:clr||T.textSub,margin:"13px 2px 7px",letterSpacing:0.3,display:"flex",alignItems:"center",gap:5}}><span style={{width:5,height:5,borderRadius:3,background:clr||T.textSub}}/>{txt}</div>);
+    const branchOpts = Object.keys(branchGroups);
+    const curBranch = (qrBranchFilter && branchGroups[qrBranchFilter]) ? qrBranchFilter : (branchOpts[0]||"");
+    // 받은메시지함(.msg-panel) 오른쪽 끝에 붙이기 — 공간 부족(모바일 등)하면 우측 플로팅 폴백
+    let pos = { right:8, top:88, maxHeight:"calc(100vh - 116px)", width:380, maxWidth:"94vw" };
+    try { const mp=document.querySelector(".msg-panel"); const r=mp&&mp.getBoundingClientRect();
+      if(r && (window.innerWidth - r.right) > 300) pos = { left:Math.round(r.right), top:Math.round(r.top), height:Math.round(r.height), width:Math.min(460, window.innerWidth - r.right - 8) };
+    } catch(_){}
+    const isDocked = pos.left!==undefined;
     return createPortal(
-      <div data-qr style={{position:"fixed",top:88,right:16,width:340,maxWidth:"92vw",maxHeight:"calc(100vh - 116px)",display:"flex",flexDirection:"column",background:"#F8FAFC",border:"1px solid "+T.border,borderRadius:14,boxShadow:"0 18px 55px rgba(0,0,0,0.25)",zIndex:9600}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",borderBottom:"1px solid "+T.border,flexShrink:0}}>
+      <div data-qr style={{position:"fixed",...pos,display:"flex",flexDirection:"column",background:"#F8FAFC",border:"1px solid "+T.border,borderRadius:isDocked?"0 14px 14px 0":14,boxShadow:isDocked?"8px 0 30px rgba(0,0,0,0.14)":"0 18px 55px rgba(0,0,0,0.25)",zIndex:9600}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",borderBottom:"1px solid "+T.border,flexShrink:0,background:"#fff",borderRadius:isDocked?"0 14px 0 0":"14px 14px 0 0"}}>
           <span style={{fontSize:13,fontWeight:800,color:"#4338CA",display:"inline-flex",alignItems:"center",gap:6}}><I name="clipboard" size={14} color="#4338CA"/>자주 쓰는 답변</span>
           <div style={{display:"flex",gap:6}}>
             <button onClick={()=>{ setQrManage(m=>!m); setQrDraft(null); }} style={{padding:"4px 11px",fontSize:11.5,fontWeight:700,borderRadius:7,border:"1px solid "+T.border,background:qrManage?"#4338CA":"#fff",color:qrManage?"#fff":T.text,cursor:"pointer",fontFamily:"inherit"}}>{qrManage?"완료":"관리"}</button>
@@ -1456,8 +1466,16 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         <div style={{flex:1,overflowY:"auto",padding:"4px 14px 14px"}}>
           {visibleQr.length===0 && !qrManage &&
             <div style={{fontSize:12,color:T.textMuted,padding:"12px 4px",lineHeight:1.5}}>저장된 답변이 없어요.<br/>[관리]에서 자주 쓰는 답변을 추가하세요.</div>}
-          {commonQr.length>0 && <>{sectionHdr("전지점 공용","#4338CA")}{commonQr.map(renderCard)}</>}
-          {Object.keys(branchGroups).map(bid=>(<React.Fragment key={bid}>{sectionHdr(brName(bid)+" 전용","#0EA5E9")}{branchGroups[bid].map(renderCard)}</React.Fragment>))}
+          {commonQr.length>0 && <>{sectionHdr("전지점 공용","#4338CA")}{grid(commonQr)}</>}
+          {branchOpts.length>0 && (<>
+            <div style={{display:"flex",alignItems:"center",gap:7,margin:"15px 2px 8px"}}>
+              <span style={{fontSize:11,fontWeight:800,color:"#0EA5E9",display:"inline-flex",alignItems:"center",gap:5,flexShrink:0}}><span style={{width:5,height:5,borderRadius:3,background:"#0EA5E9"}}/>지점 전용</span>
+              <select value={curBranch} onChange={e=>setQrBranchFilter(e.target.value)} style={{flex:1,minWidth:0,padding:"5px 9px",border:"1px solid "+T.border,borderRadius:8,fontSize:12,fontFamily:"inherit",background:"#fff",outline:"none",fontWeight:700,color:T.text}}>
+                {branchOpts.map(bid=><option key={bid} value={bid}>{brName(bid)} ({branchGroups[bid].length})</option>)}
+              </select>
+            </div>
+            {curBranch && branchGroups[curBranch]?.length>0 ? grid(branchGroups[curBranch]) : <div style={{fontSize:11.5,color:T.textMuted,padding:"4px"}}>이 지점 전용 답변 없음</div>}
+          </>)}
           {qrManage && (
             <div style={{marginTop:10,paddingTop:11,borderTop:"1px solid "+T.border,display:"flex",flexDirection:"column",gap:7}}>
               <input value={qrDraft?.label||""} onChange={e=>setQrDraft(d=>({...(d||{}),label:e.target.value}))}
