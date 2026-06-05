@@ -54,6 +54,18 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   const [qrOpen, setQrOpen] = useState(false);
   const [qrManage, setQrManage] = useState(false);
   const [qrBranchFilter, setQrBranchFilter] = useState("");  // 지점 전용 섹션 드롭다운 선택
+  const [qrSvc, setQrSvc] = useState(null);  // 가격표 토큰용 시술/카테고리 (패널 열 때 직접 fetch — data prop 비어있어도 보장)
+  useEffect(()=>{
+    if(!qrOpen) return;
+    let alive=true;
+    (async()=>{
+      try{
+        const [sv,ct]=await Promise.all([sb.getByBiz("services",_activeBizId), sb.getByBiz("service_categories",_activeBizId)]);
+        if(alive) setQrSvc({ services: fromDb("services", sv||[]), cats: fromDb("service_categories", ct||[]) });
+      }catch(_){}
+    })();
+    return ()=>{ alive=false; };
+  },[qrOpen]);
   const [qrDraft, setQrDraft] = useState(null); // {id?, label, text}
   // 번역 모드: "auto" (기본, 고객 언어 감지) / "force_en" (강제 영어) / "off" (번역 안 함)
   const [autoTranslate, setAutoTranslate] = useState(true);  // 기존 호환
@@ -1364,8 +1376,10 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   const _EN_SVC = { "브라질리언":"Brazilian","브라질리언 + 케어":"Brazilian + Care","안아픈왁싱":"Painless Waxing","브라질리언 + 궁테라피":"Brazilian + Gung Therapy","깨끗":"Clean-up","간단":"Basic","항문 왁싱":"Anal","비키니":"Bikini","지정관리":"Custom Area","산모관리":"Maternity","브라질리언 + 풀바디":"Brazilian + Full Body","풀바디":"Full Body","다리 전체":"Full Legs","다리 절반":"Half Legs","팔 전체":"Full Arms","팔 절반":"Half Arms","등 전체":"Full Back","등 절반":"Half Back","가슴":"Chest","뒷목":"Nape","겨드랑이":"Underarm","손 전체":"Full Hands","손 절반":"Half Hands","엉덩이":"Buttocks","유륜":"Areola","발가락":"Toes","배":"Stomach","앞목":"Front Neck","발등":"Top of Feet","브라질리언 + 머슬랜더":"Brazilian + MuscleLander","하이드라 스킨케어":"Hydra Skin Care","하이드라 스킨케어 플러스":"Hydra Skin Care Plus","리버스 하이드라 케어":"Reverse Hydra Care","리얼 애프터 케어":"Real After Care","리버스 필링 케어":"Reverse Peeling Care","리버스 에이징 케어(+글로우 필)":"Reverse Aging Care (+Glow Peel)","천방케어 100":"Premium Care 100","천방케어 200":"Premium Care 200","천방케어 300":"Premium Care 300","클래식 플러스 천방케어 500":"Premium Care 500","프리미엄 천방케어 700":"Premium Care 700","시그니처 천방케어 1000":"Signature Care 1000","에너지 20분":"Energy 20min","에너지 부분 30분":"Energy Partial 30min","에너지 60분":"Energy 60min","근육증강 머슬랜더 30분":"MuscleLander 30min","케어":"Care","진정팩":"Soothing Pack","기기진정관리":"Device Soothing","기기스크럽":"Device Scrub","재생관리":"Regeneration Care" };
   const buildPriceTable = (groupKey, lang)=>{
     const catNames=_PRICE_CAT_GROUPS[groupKey]||[];
-    const cats=(data?.cats||[]).filter(c=>catNames.includes(c.name)).sort((a,b)=>(a.sort||0)-(b.sort||0));
-    const svcs=(data?.services||[]).filter(s=>s.name&&(s.priceF||s.priceM)&&!/[0-9]+\s*회/.test(s.name));
+    const _cats=(qrSvc?.cats?.length?qrSvc.cats:(data?.cats||[]));
+    const _svcs=(qrSvc?.services?.length?qrSvc.services:(data?.services||[]));
+    const cats=_cats.filter(c=>catNames.includes(c.name)).sort((a,b)=>(a.sort||0)-(b.sort||0));
+    const svcs=_svcs.filter(s=>s.name&&(s.priceF||s.priceM)&&!/[0-9]+\s*회/.test(s.name));
     const lines=[];
     cats.forEach(c=>{
       const items=svcs.filter(s=>s.cat===c.id).sort((a,b)=>(Number(b.priceF)||Number(b.priceM)||0)-(Number(a.priceF)||Number(a.priceM)||0));
