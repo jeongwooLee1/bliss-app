@@ -1429,14 +1429,11 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     visibleQr.filter(q=>q.branchId).forEach(q=>{ (branchGroups[q.branchId]=branchGroups[q.branchId]||[]).push(q); });
     const brName = (bid)=>{ const b=(data?.branches||[]).find(x=>x.id===bid); return b?.short||b?.name||bid; };
     const renderCard = (q)=> qrManage ? (
-      <div key={q.id} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 9px",border:"1px solid "+T.border,borderRadius:10,background:"#fff",minWidth:0}}>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:12,fontWeight:800,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{q.label||"(제목 없음)"}</div>
-          <div style={{fontSize:10.5,color:T.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{q.text}</div>
-        </div>
-        <button onClick={()=>setQrDraft({...q})} title="편집" style={{padding:4,border:"1px solid "+T.border,borderRadius:6,background:"#fff",cursor:"pointer",flexShrink:0}}><I name="edit" size={12}/></button>
-        <button onClick={()=>delQr(q.id)} title="삭제" style={{padding:4,border:"1px solid #FCA5A5",borderRadius:6,background:"#FEF2F2",cursor:"pointer",flexShrink:0}}><I name="trash" size={12} color="#DC2626"/></button>
-      </div>
+      <button key={q.id} onClick={()=>setQrDraft({...q})} title="클릭해서 수정"
+        style={{display:"block",width:"100%",minWidth:0,textAlign:"left",padding:"9px 11px",border:"1px solid "+(qrDraft?.id===q.id?"#4338CA":T.border),borderRadius:11,background:qrDraft?.id===q.id?"#EEF2FF":"#fff",cursor:"pointer",fontFamily:"inherit",boxShadow:"0 1px 3px rgba(0,0,0,0.05)"}}>
+        <div style={{fontSize:12.5,fontWeight:800,color:T.text,marginBottom:3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{q.label||"(제목 없음)"}</div>
+        <div style={{fontSize:11,color:T.textMuted,lineHeight:1.4,maxHeight:30,overflow:"hidden"}}>{q.text}</div>
+      </button>
     ) : (
       <button key={q.id} onClick={()=>insertQuickReply(q.text)} title="클릭해서 입력창에 넣기"
         style={{display:"block",width:"100%",minWidth:0,textAlign:"left",padding:"9px 11px",border:"1px solid "+T.border,borderRadius:11,background:"#fff",cursor:"pointer",fontFamily:"inherit",boxShadow:"0 1px 3px rgba(0,0,0,0.05)"}}>
@@ -1445,9 +1442,9 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       </button>
     );
     const grid = (items)=>(<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>{items.map(renderCard)}</div>);
-    const sectionHdr = (txt,clr)=>(<div style={{fontSize:11,fontWeight:800,color:clr||T.textSub,margin:"13px 2px 7px",letterSpacing:0.3,display:"flex",alignItems:"center",gap:5}}><span style={{width:5,height:5,borderRadius:3,background:clr||T.textSub}}/>{txt}</div>);
     const branchOpts = Object.keys(branchGroups);
     const curBranch = (qrBranchFilter && branchGroups[qrBranchFilter]) ? qrBranchFilter : (branchOpts[0]||"");
+    const addBtn = (scopeBranchId)=>(<button onClick={()=>setQrDraft({label:"",text:"",branchId:scopeBranchId||undefined})} title="새 답변 추가" style={{padding:"1px 9px",fontSize:16,fontWeight:800,lineHeight:1.25,borderRadius:7,border:"1px solid #C7D2FE",background:"#EEF2FF",color:"#4338CA",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>+</button>);
     // 받은메시지함(.msg-panel) 오른쪽 끝에 붙이기 — 공간 부족(모바일 등)하면 우측 플로팅 폴백
     let pos = { right:8, top:88, maxHeight:"calc(100vh - 116px)", width:380, maxWidth:"94vw" };
     try { const mp=document.querySelector(".msg-panel"); const r=mp&&mp.getBoundingClientRect();
@@ -1464,20 +1461,14 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           </div>
         </div>
         <div style={{flex:1,overflowY:"auto",padding:"4px 14px 14px"}}>
-          {visibleQr.length===0 && !qrManage &&
-            <div style={{fontSize:12,color:T.textMuted,padding:"12px 4px",lineHeight:1.5}}>저장된 답변이 없어요.<br/>[관리]에서 자주 쓰는 답변을 추가하세요.</div>}
-          {commonQr.length>0 && <>{sectionHdr("전지점 공용","#4338CA")}{grid(commonQr)}</>}
-          {branchOpts.length>0 && (<>
-            <div style={{display:"flex",alignItems:"center",gap:7,margin:"15px 2px 8px"}}>
-              <span style={{fontSize:11,fontWeight:800,color:"#0EA5E9",display:"inline-flex",alignItems:"center",gap:5,flexShrink:0}}><span style={{width:5,height:5,borderRadius:3,background:"#0EA5E9"}}/>지점 전용</span>
-              <select value={curBranch} onChange={e=>setQrBranchFilter(e.target.value)} style={{flex:1,minWidth:0,padding:"5px 9px",border:"1px solid "+T.border,borderRadius:8,fontSize:12,fontFamily:"inherit",background:"#fff",outline:"none",fontWeight:700,color:T.text}}>
-                {branchOpts.map(bid=><option key={bid} value={bid}>{brName(bid)} ({branchGroups[bid].length})</option>)}
-              </select>
-            </div>
-            {curBranch && branchGroups[curBranch]?.length>0 ? grid(branchGroups[curBranch]) : <div style={{fontSize:11.5,color:T.textMuted,padding:"4px"}}>이 지점 전용 답변 없음</div>}
-          </>)}
-          {qrManage && (
-            <div style={{marginTop:10,paddingTop:11,borderTop:"1px solid "+T.border,display:"flex",flexDirection:"column",gap:7}}>
+          {/* 상단 editor — 추가/수정 공통, 저장/취소/삭제 상단 */}
+          {qrManage && qrDraft && (
+            <div style={{margin:"2px 0 12px",padding:11,border:"1px solid #C7D2FE",borderRadius:11,background:"#fff",display:"flex",flexDirection:"column",gap:7,boxShadow:"0 2px 12px rgba(67,56,202,0.14)"}}>
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={saveQrDraft} style={{flex:1,padding:"8px 0",fontSize:12.5,fontWeight:800,borderRadius:9,border:"none",background:"#4338CA",color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>{qrDraft?.id?"저장":"추가"}</button>
+                <button onClick={()=>setQrDraft(null)} style={{padding:"8px 14px",fontSize:12.5,fontWeight:700,borderRadius:9,border:"1px solid "+T.border,background:"#fff",color:T.text,cursor:"pointer",fontFamily:"inherit"}}>취소</button>
+                {qrDraft?.id && <button onClick={()=>delQr(qrDraft.id)} title="삭제" style={{padding:"8px 11px",fontSize:12.5,fontWeight:700,borderRadius:9,border:"1px solid #FCA5A5",background:"#FEF2F2",color:"#DC2626",cursor:"pointer",fontFamily:"inherit"}}>삭제</button>}
+              </div>
               <input value={qrDraft?.label||""} onChange={e=>setQrDraft(d=>({...(d||{}),label:e.target.value}))}
                 placeholder="제목 (예: 강남 예약금 계좌)" style={{padding:"8px 11px",border:"1px solid "+T.border,borderRadius:9,fontSize:13,fontFamily:"inherit",outline:"none"}}/>
               <select value={qrDraft?.branchId||""} onChange={e=>setQrDraft(d=>({...(d||{}),branchId:e.target.value||undefined}))}
@@ -1486,13 +1477,28 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                 {(data?.branches||[]).filter(b=>!userBranches||userBranches.length===0||userBranches.includes(b.id)).map(b=><option key={b.id} value={b.id}>{b.short||b.name}</option>)}
               </select>
               <textarea value={qrDraft?.text||""} onChange={e=>setQrDraft(d=>({...(d||{}),text:e.target.value}))}
-                placeholder="내용 (가격표는 {{가격표:왁싱}} / {{가격표:스킨케어}} 토큰 사용 가능)" rows={3} style={{padding:"8px 11px",border:"1px solid "+T.border,borderRadius:9,fontSize:13,fontFamily:"inherit",outline:"none",resize:"vertical",lineHeight:1.5}}/>
-              <div style={{display:"flex",gap:6}}>
-                <button onClick={saveQrDraft} style={{flex:1,padding:"8px 0",fontSize:12.5,fontWeight:800,borderRadius:9,border:"none",background:"#4338CA",color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>{qrDraft?.id?"수정 저장":"추가"}</button>
-                {qrDraft?.id && <button onClick={()=>setQrDraft(null)} style={{padding:"8px 14px",fontSize:12.5,fontWeight:700,borderRadius:9,border:"1px solid "+T.border,background:"#fff",color:T.text,cursor:"pointer",fontFamily:"inherit"}}>취소</button>}
-              </div>
+                placeholder="내용 (가격표는 {{가격표:왁싱}} / {{가격표:스킨케어}} 토큰 사용 가능)" rows={4} style={{padding:"8px 11px",border:"1px solid "+T.border,borderRadius:9,fontSize:13,fontFamily:"inherit",outline:"none",resize:"vertical",lineHeight:1.5}}/>
             </div>
           )}
+          {visibleQr.length===0 && !qrManage &&
+            <div style={{fontSize:12,color:T.textMuted,padding:"12px 4px",lineHeight:1.5}}>저장된 답변이 없어요.<br/>[관리]에서 자주 쓰는 답변을 추가하세요.</div>}
+          {(commonQr.length>0 || qrManage) && (<>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"13px 2px 7px"}}>
+              <span style={{fontSize:11,fontWeight:800,color:"#4338CA",letterSpacing:0.3,display:"inline-flex",alignItems:"center",gap:5}}><span style={{width:5,height:5,borderRadius:3,background:"#4338CA"}}/>전지점 공용</span>
+              {qrManage && addBtn(undefined)}
+            </div>
+            {commonQr.length>0 ? grid(commonQr) : (qrManage && <div style={{fontSize:11.5,color:T.textMuted,padding:"2px 4px"}}>+ 로 공용 답변 추가</div>)}
+          </>)}
+          {(branchOpts.length>0 || qrManage) && (<>
+            <div style={{display:"flex",alignItems:"center",gap:7,margin:"15px 2px 8px"}}>
+              <span style={{fontSize:11,fontWeight:800,color:"#0EA5E9",display:"inline-flex",alignItems:"center",gap:5,flexShrink:0}}><span style={{width:5,height:5,borderRadius:3,background:"#0EA5E9"}}/>지점 전용</span>
+              {branchOpts.length>0 && <select value={curBranch} onChange={e=>setQrBranchFilter(e.target.value)} style={{flex:1,minWidth:0,padding:"5px 9px",border:"1px solid "+T.border,borderRadius:8,fontSize:12,fontFamily:"inherit",background:"#fff",outline:"none",fontWeight:700,color:T.text}}>
+                {branchOpts.map(bid=><option key={bid} value={bid}>{brName(bid)} ({branchGroups[bid].length})</option>)}
+              </select>}
+              {qrManage && addBtn(curBranch || (userBranches&&userBranches[0]) || "")}
+            </div>
+            {curBranch && branchGroups[curBranch]?.length>0 ? grid(branchGroups[curBranch]) : (qrManage && <div style={{fontSize:11.5,color:T.textMuted,padding:"2px 4px"}}>+ 로 지점 전용 답변 추가 (저장 시 지점 선택)</div>)}
+          </>)}
         </div>
       </div>, document.body);
   };
