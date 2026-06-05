@@ -37,6 +37,16 @@
 **D~H. 선택/후속**:
    - D. 건물정보 `branches.access_info` 입력(AI 길안내, 관리설정→예약장소). E. 결제 PG(토스 가맹 — 예약금/포인트, 필요시). F. 직원 근무표·멤버십 계정(원장 최로운 등). G. RAG 학습문서(모담 FAQ/스킨케어 별도 인제스트 — `gemini-embedding-2/768`, 하우스왁싱과 동일 공간). H. 카카오채널 챗봇 메뉴(가격안내/내보유권조회 mypage 등 — 하우스왁싱처럼 선택).
 
+**I. ⚠️ 네이버톡(받은메시지함) 모담 미연동 — 멀티테넌트 아님**: `bliss_naver.py:114 NAVER_TALK_ACCOUNTS`가 하우스왁싱 8지점 `auth`+`handle` **하드코딩**. 모담 account_id(11682173) 없어 톡톡 0건. 필요: 모담 네이버 톡톡 **handle(partner.talk.naver.com)+auth 토큰** 추출(운영자 cripiss 세션으로 파트너센터에서 캡처) → dict 추가. **권장: NAVER_TALK_ACCOUNTS를 DB(branches 필드)로 이전**해 멀티테넌트화. 모담 `naver_place_id/seq/email`도 비어있음(예약·리뷰는 동작하나 일부 기능 확인 필요).
+
+**J. 직원 근무표 / 기존 데이터 이전 (온보딩 폼으로 수집 시작)**: `onboarding.html`이 직원(이름·직급·근무시간·휴무요일)·이전 프로그램 고객/매출/보유권(엑셀 업로드)을 받음 → 제출(`onboarding_submissions.payload.staff/legacy` + storage). 받으면 employees_v1·고객·매출 import 세팅.
+
+### ✅ 입금문자 안드로이드 앱 (완료, 2026-06-05)
+맥 chat.db 스크래핑 대체. 앱=입금SMS만 전달, 서버=중앙파싱. 상세 memory [[reference_bliss_deposit_app]].
+- **APK 라이브**: https://blissme.ai/bliss-deposit.apk (debug-signed) / 설치안내 https://blissme.ai/deposit-app.html
+- 서버 `/bank-deposit-sms`(KB·하나·수협·우리 파싱) + `bank_sms_tokens`(RLS잠금+`bank_sms_token_lookup` RPC). 앱 소스 `/Users/cripiss/TP005/bliss-deposit-app/`(Kotlin, `./gradlew assembleDebug`; JAVA_HOME=openjdk@17, ANDROID_HOME=/opt/homebrew/share/android-commandlinetools).
+- 모담 토큰 `bsms_98ac341c04c2476c981bd8c2386df0c1`. 새 매장=토큰 발급(bank_sms_tokens INSERT)→앱에 입력.
+
 ### 새 업체 추가 표준 절차 (이 케이스로 확립 — 향후 레퍼런스)
 ① 중앙 네이버 아이디(cripiss/teraport)에 그 업체 스마트플레이스 **운영자 위임** → ② branch `naver_biz_id` 설정(코드 추가 0, 이미 업체별 스코프) → ③ **시술상품(services)+카테고리 등록**(네이버 매칭·AI 가격·매출) → ④ 카카오 **알림톡 senderKey 연동 + noti_config** → ⑤ **이벤트**(settings.events) → ⑥ 직원/멤버십 계정. 서버 멀티테넌트는 `_load_ai_settings(business_id)`·`_process_one` `_biz_id` 파생·`db_upsert` business_id·review_sync `sync_branch(business_id)`로 이미 업체별 분리됨(CLAUDE.md 참고).
 
