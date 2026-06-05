@@ -26,7 +26,7 @@ import QuickRequest from '../components/common/QuickRequest'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.8.1"
+const BLISS_V = "3.8.2"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -2155,17 +2155,12 @@ function App() {
       setLoadMsg("매장 데이터 로딩 중...");
       setPhase("loading");
       try {
-        // 세션에 저장된 bizId 또는 housewaxing 업체로 바로 진입
+        // 직전에 보던 업체가 있으면 재진입, 없으면 관리자 화면(업체 선택)으로
+        // (하우스왁싱 자동 진입 하드코딩 제거 — 어드민은 특정 업체 소속이 아님)
         let targetBiz;
         try { targetBiz = JSON.parse(localStorage.getItem("bliss_session")||"{}").bizId; } catch(e){}
-        if (!targetBiz) {
-          // businesses 목록에서 housewaxing 찾기
-          const bizList = await sb.get("businesses", "");
-          const hw = bizList.find(b => b.code === "housewaxing" || (b.name && b.name.includes("하우스왁싱")));
-          targetBiz = hw?.id || bizList.find(b => b.id !== "biz_system")?.["id"];
-        }
         if (targetBiz) { handleEnterBiz(targetBiz); return; }
-        // fallback: 슈퍼 화면
+        // 기억된 업체 없음 → 관리자 화면(업체 목록에서 골라 접속)
         const sd = await loadAllFromDb(null);
         setSuperData(sd);
         setPhase("super");
@@ -2531,7 +2526,13 @@ function App() {
   ];
 
   const branchNames = userBranches.map(bid => (data.branches||[]).find(b=>b.id===bid)?.short||bid).filter(Boolean).join(", ");
-  const bizName = currentBiz?.name || "";
+  // 데모/체험 테넌트는 실제 브랜드명(하우스왁싱 등) 노출 금지 — 화면 표시만 가명
+  const _isDemoBiz = (b) => !!b && (/^(DEMOHW|TOSS_DEMO)$/i.test(b.code||"") || /체험|데모|demo/i.test(b.code||"") || /체험|데모/.test(b.name||""));
+  const bizName = (() => {
+    const n = currentBiz?.name || "";
+    if (_isDemoBiz(currentBiz) && /하우스왁싱/.test(n)) return "체험 매장";
+    return n;
+  })();
 
   return (
     <div style={S.root}>

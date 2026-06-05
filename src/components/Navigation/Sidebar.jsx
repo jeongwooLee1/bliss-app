@@ -35,9 +35,10 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
     <div style={{padding:`${T.sp.md}px ${T.sp.lg}px`,borderBottom:`1px solid ${T.border}`,display:"flex",flexDirection:"column",gap:10,background:`linear-gradient(135deg, ${T.primaryLt} 0%, transparent 60%)`}}>
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
         <div style={{flex:1,minWidth:0,cursor:"pointer",userSelect:"none"}} onClick={()=>{ window.location.href = '/timeline'; }} title="타임라인 오늘 날짜로 이동">
-          <div style={{fontSize:T.fs.lg,fontWeight:T.fw.black,color:T.primary,letterSpacing:-.5,lineHeight:1.15,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{bizName||"Bliss"}</div>
+          <div style={{fontSize:T.fs.lg,fontWeight:T.fw.black,color:T.primary,letterSpacing:-.5,lineHeight:1.15,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{isSuper ? `관리자 · ${bizName||"블리스"}` : (bizName||"Bliss")}</div>
           <div style={{fontSize:T.fs.xs,color:T.textSub,marginTop:3,fontWeight:T.fw.bold}}>{
-            role==="owner" ? "대표 관리자"
+            isSuper ? "블리스 슈퍼관리자 · 점검 모드"
+            : role==="owner" ? "대표 관리자"
             : role==="super" ? "슈퍼관리자"
             : role==="manager" ? ("지점 원장" + (branchNames ? ` · ${branchNames}` : ""))
             : (branchNames || "직원")
