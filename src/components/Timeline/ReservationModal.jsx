@@ -2683,10 +2683,11 @@ ${naverText}
                     const txt = (0.299*r+0.587*g+0.114*b)/255>0.55?T.text:T.bgCard;
                     return <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bold,color:txt,background:bg,borderRadius:T.radius.sm,padding:"1px 7px"}}>{f.source}</span>;
                   })()}
-                  {/* 예약태그 칩들 */}
+                  {/* 예약태그 칩들 — 예약경로와 이름 같은 태그는 중복이라 숨김(예: 문자 경로 + 문자 태그) */}
                   {(f.selectedTags||[]).map(tid => {
                     const tag = (data?.serviceTags||[]).find(t=>t.id===tid);
                     if (!tag) return null;
+                    if (tag.name === f.source) return null;
                     const bg = tag.color || T.primary;
                     const txt = (() => { const h=bg.replace("#",""); const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16); return (0.299*r+0.587*g+0.114*b)/255>0.55?T.text:T.bgCard; })();
                     return <span key={tid} style={{fontSize:T.fs.xxs,fontWeight:T.fw.bold,background:bg,color:txt,borderRadius:0,padding:"1px 8px"}}>{tag.name}</span>;
