@@ -1,5 +1,49 @@
 # HANDOFF
 
+## 🟢 [진행중·전담세션] 모담왁싱&래쉬 신규 업체 온보딩 (처음~끝) (2026-06-05)
+> **이 항목은 별도 세션에서 모담 온보딩 전체를 전담 진행하기 위한 인수인계.** 두 번째 업체(하우스왁싱 외) 첫 케이스라, 새 업체 추가 표준 절차의 레퍼런스도 됨. 자족적으로 작성 — 이 항목만 읽고 이어받을 것.
+
+### 업체 식별 정보
+- **business_id**: `biz_id_yq41r06fdp` (업체명 "모담왁싱&래쉬 송파본점")
+- **branch**: id `br_id_x316ludvqq`, short "모담왁싱"
+- **네이버 스마트플레이스**: `naver_biz_id=1605478` (place 11682173, `?bookingBusinessId=1605478`). 운영자 위임 = 중앙 네이버 아이디 **cripiss**(서버 세션 NAVER_ID) + teraport에도 위임(언급). 세션 1개가 위임받은 전 업체 커버 — 모담 추가 세션 불필요.
+- **카카오채널**: 이름 "모담왁싱&래쉬", 검색용 아이디 **`모담왁싱앤래쉬`**, URL `pf.kakao.com/_jqmQn`, 채널 관리 계정 `modam251201@naver.com`, 고객센터 `01058571712`, 카테고리 뷰티>피부관리.
+- **원장**: 최로운 (팀채팅 표기). 멤버십 계정은 별도(추후).
+
+### ✅ 완료된 것
+1. **네이버 멀티테넌트 연동 (라이브)** — `naver_biz_id` 설정 + cripiss 위임. 30분 폴링 자동수집(예약 4건+리뷰 19건 모담 업체로 정확 INSERT 검증). 서버(`bliss_naver.py`/`review_sync.py`) 멀티테넌트 패치 완료 — 상세는 CLAUDE.md "신규 업체 온보딩 — 모담왁싱&래쉬 네이버 멀티테넌트 연동" 항목. 예약·리뷰·막기·확정 다 모담 스코프로 동작.
+2. **v3.8.1 미배정 컬럼 fix (라이브, 커밋 `15c686a`)** — `TimelinePage.jsx:1955` `baseNaver = (br.naverEmail || br.naverBizId) ? (naverColCount||1) : 0`. naver_email 없이 naver_biz_id만 있는 모담도 미배정 컬럼이 기본 맨 왼쪽 생성. 하우스왁싱(이메일 있음) 무영향. ⚠️ **CLAUDE.md 변경이력에 v3.8.1 항목 미기재 — 새 세션이 추가할 것**(또는 모담 묶음 완료 시 함께).
+3. **시술상품 40개 + 카테고리 7개 등록 (DB, 2026-06-05)** — `services`/`service_categories` INSERT 완료. 기존 테스트 카테고리("121321") 삭제.
+   - 카테고리(sort): `sc_md_brz`(브라질리언) `sc_md_face`(페이스) `sc_md_body`(바디) `sc_md_ing`(인그로운 케어) `sc_md_foot`(발각질 케어) `sc_md_pkg`(패키지) `sc_md_pre`(정액권)
+   - 시술 id `svc_md_001`~`svc_md_082` (브라질리언 001~006 / 페이스 010~019 / 바디 030~043 / 인그로운 050~052 / 발각질 060~061 / 패키지 070~071 / 정액권 080~082)
+   - 필드 규칙: `price_f`/`price_m`=정상가, `member_price_f`/`member_price_m`=회원가(디자인/발각질만), `dur`=소요시간(분, 네이버 블록 자동매칭용), 한쪽 성별만 있는 시술은 반대 성별 NULL, 패키지=`is_package=true`+`pkg_count`, 정액권=`is_package=false`(충전형 선불권). `show_in_guide`는 대표 시술만 true(누드핏·비키니·풀페이스·겨드랑이·다리전체·풀바디·패디플레닝·3회권·5회권).
+   - **소스 = 유저 제공 가격표 이미지 + 패키지 혜택안내 PDF** (`/Users/cripiss/Downloads/패키지 혜택안내pdf.pdf`).
+
+### ⏳ 남은 일 (새 세션이 진행)
+**A. 이벤트 등록 (설계 완료, 등록만 하면 됨)** — 유저 결정: PDF 혜택 기준 + **master ON(지금 켜기)**.
+   - `businesses.settings`(text에 JSON 저장 — `::jsonb` 캐스팅 후 수정, **JSON.stringify로 다시 저장**, 문자열 스프레드 금지) `events` 배열 + `events_master_enabled=true`.
+   - 스키마 = 하우스왁싱 `evt_custom_*` 그대로 복제(conditions 전체 필드 포함). 참고 쿼리: `SELECT jsonb_pretty(e) FROM businesses b, jsonb_array_elements(b.settings::jsonb->'events') e WHERE b.id='biz_khvurgshb' AND e->>'trigger'='prepaid_purchase'`.
+   - 등록할 이벤트 3종:
+     1. **첫방문 브라질리언 할인** — `trigger:new_first_sale`, reward `discount_flat value:22000 base:svc`, `conditions.categoriesAny:["sc_md_brz"]`. (여 88,000→66,000 / 남 110,000→88,000, 둘 다 22,000 flat = 카드 첫방문가. 현금 추가할인 6~8천은 직원 수동.)
+     2. **정액권 적립** — `trigger:prepaid_purchase`, reward `point_earn base:fixed`: 15만권(`prepaidServiceIds:["svc_md_080"]` value 15000=10%) + 30만권(`["svc_md_081"]` value 60000=20% 더블) **이벤트 2개로 분리**. PDF "적립금" = point_earn으로(사용가능 165,000/360,000 매칭).
+     3. **토탈50 현금 적립** — `trigger:prepaid_purchase`, `prepaidServiceIds:["svc_md_082"]`, reward point_earn 10%(현금결제 조건). 현금조건 필드는 하우스왁싱 이벤트에 paymentUses* 참고(없으면 무조건 10%로 단순화).
+   - **이벤트 안 되는 것(엔진 밖, 수동/회원가)**: 재방문 6주내 할인(엔진에 시간 트리거 없음), 패키지 3회권 케어 50%·5회권 발각질 무료(방문할 때마다 차감형 혜택=직원 수동), 포토리뷰 시트팩 증정, 브라질리언+단품 10% 할인. → 원장에게 "수동 처리" 안내.
+
+**B. 카카오 알림톡 (유저가 senderKey+발신번호 받아오면 시작)** — 발송 코드는 이미 멀티테넌트(`alimtalk_thread`가 `branch_id`로 noti_config 읽음). **모담 noti_config 현재 비어있음**(aligoKey/senderKey/tplCode 전무 → 발송 skip 상태).
+   - 유저가 줄 것: 모담 **senderKey**(알리고 카카오 발신프로필 연동 후 발급, 카카오채널 비즈니스 인증 선행) + 모담 **발신번호**(SMS 발신용 등록번호). 알리고 계정은 cripiss 재사용(aligoKey/aligoId 동일).
+   - 받으면 새 세션이: ① 하우스왁싱 템플릿들(rsv_confirm 예약확정 / rsv_1day 전날 / rsv_today 당일+차트링크 / 케어 / point_expiry 포인트소멸 / consent_doc 동의서 / chart_doc 차트)을 **모담 senderKey로 알리고 API 재등록+검수 제출** (알리고 API는 서버 IP에서만, Mac은 -99 / 스크립트 패턴 `/tmp/aligo_*.py` 서버에서 / 응답 code 문자열 "0"=성공 / 버튼은 까다로우니 본문 링크 방식) ② 검수 승인(3~5영업일) 후 모담 `branch` noti_config에 `aligoKey`(cripiss)/`aligoId`(cripiss)/`senderPhone`(모담)/`senderKey`(모담)/각 키별 `tplCode`+`msgTpl` 입력 → 멀티테넌트 코드라 바로 발송.
+   - 알림톡 검수 대기 동안 SMS는 senderPhone만 있으면 즉시 가능(send-sms는 발신번호만 필요).
+
+**C. 시술상품 검수/조정** — 원장이 시술상품관리에서 첫방문/재방문가·소요시간·회원가 확인·조정. (네이버 예약 시술 자동매칭은 services 등록됐으니 신규 예약부터 이미 동작.)
+
+**D~H. 선택/후속**:
+   - D. 건물정보 `branches.access_info` 입력(AI 길안내, 관리설정→예약장소). E. 결제 PG(토스 가맹 — 예약금/포인트, 필요시). F. 직원 근무표·멤버십 계정(원장 최로운 등). G. RAG 학습문서(모담 FAQ/스킨케어 별도 인제스트 — `gemini-embedding-2/768`, 하우스왁싱과 동일 공간). H. 카카오채널 챗봇 메뉴(가격안내/내보유권조회 mypage 등 — 하우스왁싱처럼 선택).
+
+### 새 업체 추가 표준 절차 (이 케이스로 확립 — 향후 레퍼런스)
+① 중앙 네이버 아이디(cripiss/teraport)에 그 업체 스마트플레이스 **운영자 위임** → ② branch `naver_biz_id` 설정(코드 추가 0, 이미 업체별 스코프) → ③ **시술상품(services)+카테고리 등록**(네이버 매칭·AI 가격·매출) → ④ 카카오 **알림톡 senderKey 연동 + noti_config** → ⑤ **이벤트**(settings.events) → ⑥ 직원/멤버십 계정. 서버 멀티테넌트는 `_load_ai_settings(business_id)`·`_process_one` `_biz_id` 파생·`db_upsert` business_id·review_sync `sync_branch(business_id)`로 이미 업체별 분리됨(CLAUDE.md 참고).
+
+---
+
 ## ⏳ [PENDING] 외국인 영어 알림톡 — 카카오 승인 후 wiring (2026-06-05)
 **SMS는 완료·라이브** (케어·포인트 외국인 영어 발송 중). 알림톡 영어 24종 **검수 제출 완료, 카카오 승인 대기(3~5영업일)**. 승인되면 아래 2가지:
 1. **noti_config에 tplCodeEn+msgTplEn 주입** (8지점 × rsv_confirm/rsv_1day/rsv_today). tplCode 매핑(강남/마곡/왕십리/용산/위례/잠실/천호/홍대):
