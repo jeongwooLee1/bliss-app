@@ -315,6 +315,8 @@ const BUCKET = "bliss-uploads";
 
 const uploaded = [];
 let uidSeq = 0;
+// 매장 식별(프리필 링크가 실어줌) — 있으면 제출 시 자동적용 대상
+let OB_REF = (()=>{ const q=new URLSearchParams(location.search); return { bizid:q.get('bizid')||'', bid:q.get('bid')||'' }; })();
 
 // 알림톡/SMS 기본 문구
 const DEFAULT_TPL = {
@@ -439,7 +441,7 @@ btn.addEventListener('click', async ()=>{
   const files=uploaded.filter(u=>u.url).map(u=>({category:u.category,name:u.name,url:u.url}));
   btn.disabled=true; btn.textContent='제출 중…';
   try{
-    const r=await fetch(API+'/onboarding-submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({biz_name:bizName,owner_name:ownerName,phone,email:val('email'),payload,files})});
+    const r=await fetch(API+'/onboarding-submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({biz_name:bizName,owner_name:ownerName,phone,email:val('email'),payload,files,business_id:OB_REF.bizid||undefined,bid:OB_REF.bid||undefined})});
     const j=await r.json().catch(()=>({}));
     if(r.ok&&j.ok){
       try{ localStorage.removeItem(DRAFT_KEY); }catch(e){}
@@ -458,7 +460,7 @@ const TOGGLE_NAMES=['naverDone','kakaoOpDone','smsReminderOn','tossWant'];
 function collectDraft(){
   const f={}; FIELD_IDS.forEach(id=>{ const el=document.getElementById(id); if(el)f[id]=el.value; });
   const t={}; TOGGLE_NAMES.forEach(n=>t[n]=toggleVal(n));
-  return { f, t, consent:chkGroup('consent'), staff:collectStaff(), uploaded:uploaded.filter(u=>u.url), ts:Date.now() };
+  return { f, t, consent:chkGroup('consent'), staff:collectStaff(), uploaded:uploaded.filter(u=>u.url), ref:OB_REF, ts:Date.now() };
 }
 function saveDraft(){ try{ localStorage.setItem(DRAFT_KEY, JSON.stringify(collectDraft())); }catch(e){} }
 let _saveTimer=null;
@@ -468,6 +470,7 @@ function autoSave(){ clearTimeout(_saveTimer); _saveTimer=setTimeout(saveDraft,4
 function restoreDraft(){
   let d=null; try{ d=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null'); }catch(e){ d=null; }
   if(!d) return false;
+  if(!OB_REF.bizid && d.ref && d.ref.bizid){ OB_REF = d.ref; }
   if(d.f) Object.keys(d.f).forEach(id=>{ const el=document.getElementById(id); if(el&&d.f[id]!=null)el.value=d.f[id]; });
   if(d.t) TOGGLE_NAMES.forEach(n=>{ if(d.t[n]){ const el=document.querySelector('[data-toggle="'+n+'"] input'); if(el){el.checked=true; el.closest('.chk').classList.add('on');} } });
   if(Array.isArray(d.consent)) document.querySelectorAll('[data-chkgroup="consent"] input').forEach(cb=>{ if(d.consent.includes(cb.value)){cb.checked=true; cb.closest('.chk').classList.add('on');} });
