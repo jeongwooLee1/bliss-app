@@ -3590,3 +3590,21 @@ v3.7.984 진단에서 미룬 데모 공지&요청 배지 "2" 건 수정.
 **fix** (`ConsentDocsViewer.jsx`): MAX_DIM 단일 클램프 제거 → **세로 밴드 분할 렌더**. 폭 기준 적응형 scale(가독성, `TARGET_W=1400`)로 vp 잡고, 높이를 `BAND_H=2200` 단위로 나눠 각 밴드를 W×bandH 작은 캔버스로 렌더(pdfjs 밴딩 레시피 `transform:[1,0,0,1,0,-top]`). 신규차트(1710×5841→scale 0.819→1400×4783)는 1400×2200 ×2 + 1400×383 3밴드 → **정상 작동하는 오늘관리(1400×1669)와 같은 크기 등급** → 확실히 렌더. 밴드 이미지는 기존처럼 `<img width:100%>` 스택돼 연속 표시. 타임아웃(15s)·PDF링크 폴백 유지.
 **적용**: v3.7.994 라이브 배포(version.txt 검증 3.7.994, CF 퍼지 success). React only.
 **유의**: 헤드리스에서 pdfjs `page.render()`가 멈춰 픽셀 검증 불가(기존 알려진 한계) → **실 브라우저 스팟체크 권장**(신규차트 탭 내용 표시). 단 밴드 캔버스가 정상 작동 중인 오늘관리와 동일 크기라 신뢰도 높음. 동의서앱(bliss-consent)이 jsPDF로 차트 PDF 생성하는 구조는 무변경 — 뷰어만 긴 PDF 대응.
+
+### 신규 업체 온보딩 — 모담왁싱&래쉬 네이버 멀티테넌트 연동 (2026-06-05, 서버, React 변경 0)
+하우스왁싱 외 **두 번째 업체(모담왁싱&래쉬, biz_id_yq41r06fdp)** 네이버 연동. 핵심: **단일 네이버 세션(cripiss)으로 운영자 위임받은 여러 업체를 다 커버** + 서버 스크래퍼를 업체별 스코프로.
+**네이버 계정 전략**: teraport/cripiss 같은 **중앙 네이버 아이디**가 각 업체 네이버 스마트플레이스 **운영자 위임**받음 → 세션 1개가 위임받은 전 업체 예약·리뷰·막기·확정 다 봄(다중 세션 불필요). 현재 서버 세션 = **cripiss**(개인 네이버, login_local.py NAVER_ID). 모담을 **cripiss에 운영자 위임** → 검증: cripiss 세션으로 모담(biz 1605478) 예약 37건·리뷰 읽힘 확인.
+**모담 naver_biz_id = 1605478** (스마트플레이스 URL `?bookingBusinessId=`). 지점 `br_id_x316ludvqq`에 설정.
+**서버 멀티테넌트 패치 (bliss_naver.py, additive·하우스왁싱 무회귀 — 예약 업체ID 파생값=하우스왁싱이라 동일)**:
+- `_load_ai_settings(business_id=None)` — 단일 캐시 → **업체별 캐시 dict**(`_ai_settings_cache_by_biz`). 기본=BUSINESS_ID라 기존 16개 호출부(AI응답·WhatsApp·IG·번역) 전부 무회귀. businesses/service_tags/services 쿼리를 business_id로.
+- `_process_one(rid, biz_id, ...)`: 시작에 `_biz_id = _branches[biz_id].business_id or BUSINESS_ID` 파생 → `find_cust_by_phone`(5곳)·신규고객 INSERT(2곳)·`db_data["business_id"]`·`ai_queue` job에 전파. (6532/6568 카카오 핸들러는 _process_one 밖이라 제외 — BUSINESS_ID 유지)
+- `db_upsert` new_row: `**data`가 `business_id` 덮음 → 모담 예약이 모담 업체로 INSERT (안 하면 하우스왁싱 밑으로 들어가는 치명버그).
+- `ai_analyze_reservation(..., business_id="")` → `_load_ai_settings(business_id)` + `_services` 전역 → `settings.get("services")`. 모담 예약은 모담 시술/태그로 매칭.
+- 폴링(`naver_booking_list_poll_thread`)은 이미 `for nbid in _branches.keys()` 전체 순회 → naver_biz_id 설정만으로 모담 자동 폴링. **30분 간격** + 신규 rid는 task_queue 큐잉 → scraper_thread가 _process_one으로 처리.
+**리뷰 멀티테넌트 (review_sync.py)**: `sync_branch(naver_biz_id, bid, business_id)` — 리뷰를 **지점 business_id로** 저장(이전엔 `_cfg["biz"]`=하우스왁싱 고정 → 모담 리뷰가 하우스왁싱 밑으로 가던 버그 fix). thread 쿼리에 business_id select 추가.
+**검증 (end-to-end, 라이브)**: 재시작 후 scraper/gmail/리뷰/alimtalk/ai 전부 alive·에러 0. naver_biz_id 켠 뒤 서비스 폴링 → **모담 예약 4건 → 모담 업체·지점으로 정확히 INSERT** (source=naver) + **리뷰 19건 → 모담 업체** 수집 확인.
+**유의/남은 것**:
+- 서버 `bliss_naver.py`/`review_sync.py`는 bliss-app git 미추적(별도 repo). ssh+scp+restart 적용. 버전업·CF퍼지 무관. 백업 `bak_mt1_*`/`bak_mt2_*`/`review_sync.py.bak_mt_*`.
+- **모담 시술 자동매칭은 모담이 블리스 시술상품(services) 등록해야 됨** — 현재 모담 services 0개라 예약은 들어오되 selected_services 빈값(직원 보완). 네이버 예약상품(WELCOME/MEMBER/VIP/VVIP)은 블리스 시술상품과 별개. ⚠️ 빈 분석 1회 후 같은 input hash면 재분석 안 함(가드) → 모담 시술 등록 후 **신규 예약부터** 매칭.
+- 모담 예약 알림 메일을 housewaxing@gmail로 보내면 즉시반영(현재 30분 폴링 수집). 모담 알림톡(noti_config)·시술상품은 모담 측 별도 설정.
+- **멀티테넌트 패턴 확립**: 새 업체 추가 = ① 중앙 네이버 아이디에 그 업체 플레이스 운영자 위임 ② 지점 naver_biz_id 설정 ③ (선택) 블리스 시술상품 등록. 코드 추가 불필요(이미 업체별 스코프).
