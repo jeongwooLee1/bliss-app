@@ -1356,7 +1356,38 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       });
     }catch(e){ console.warn("[quickReplies save]",e); alert("자주답변 저장 실패: "+(e?.message||e)); }
   };
-  const insertQuickReply = (text)=>{
+  // 동적 가격표 토큰 {{가격표:왁싱}} {{가격표:스킨케어}} (+:en) → data.services 실시간 생성 (단일 소스)
+  const _PRICE_CAT_GROUPS = { "왁싱":["브라질리언","바디"], "스킨케어":["스킨케어","에너지테라피","케어"] };
+  const _EN_CAT = { "브라질리언":"Brazilian Waxing","바디":"Body Waxing","스킨케어":"Skin Care","에너지테라피":"Energy Therapy","케어":"After Care" };
+  const _EN_SVC = { "브라질리언":"Brazilian","브라질리언 + 케어":"Brazilian + Care","안아픈왁싱":"Painless Waxing","브라질리언 + 궁테라피":"Brazilian + Gung Therapy","깨끗":"Clean-up","간단":"Basic","항문 왁싱":"Anal","비키니":"Bikini","지정관리":"Custom Area","산모관리":"Maternity","브라질리언 + 풀바디":"Brazilian + Full Body","풀바디":"Full Body","다리 전체":"Full Legs","다리 절반":"Half Legs","팔 전체":"Full Arms","팔 절반":"Half Arms","등 전체":"Full Back","등 절반":"Half Back","가슴":"Chest","뒷목":"Nape","겨드랑이":"Underarm","손 전체":"Full Hands","손 절반":"Half Hands","엉덩이":"Buttocks","유륜":"Areola","발가락":"Toes","배":"Stomach","앞목":"Front Neck","발등":"Top of Feet","브라질리언 + 머슬랜더":"Brazilian + MuscleLander","하이드라 스킨케어":"Hydra Skin Care","하이드라 스킨케어 플러스":"Hydra Skin Care Plus","리버스 하이드라 케어":"Reverse Hydra Care","리얼 애프터 케어":"Real After Care","리버스 필링 케어":"Reverse Peeling Care","리버스 에이징 케어(+글로우 필)":"Reverse Aging Care (+Glow Peel)","천방케어 100":"Premium Care 100","천방케어 200":"Premium Care 200","천방케어 300":"Premium Care 300","클래식 플러스 천방케어 500":"Premium Care 500","프리미엄 천방케어 700":"Premium Care 700","시그니처 천방케어 1000":"Signature Care 1000","에너지 20분":"Energy 20min","에너지 부분 30분":"Energy Partial 30min","에너지 60분":"Energy 60min","근육증강 머슬랜더 30분":"MuscleLander 30min","케어":"Care","진정팩":"Soothing Pack","기기진정관리":"Device Soothing","기기스크럽":"Device Scrub","재생관리":"Regeneration Care" };
+  const buildPriceTable = (groupKey, lang)=>{
+    const catNames=_PRICE_CAT_GROUPS[groupKey]||[];
+    const cats=(data?.cats||[]).filter(c=>catNames.includes(c.name)).sort((a,b)=>(a.sort||0)-(b.sort||0));
+    const svcs=(data?.services||[]).filter(s=>s.name&&(s.priceF||s.priceM)&&!/[0-9]+\s*회/.test(s.name));
+    const lines=[];
+    cats.forEach(c=>{
+      const items=svcs.filter(s=>s.cat===c.id).sort((a,b)=>(Number(b.priceF)||Number(b.priceM)||0)-(Number(a.priceF)||Number(a.priceM)||0));
+      if(!items.length) return;
+      lines.push(lang==="en" ? `[${_EN_CAT[c.name]||c.name}]` : `[${c.name}]`);
+      items.forEach(s=>{
+        const nm=lang==="en" ? (_EN_SVC[s.name]||s.name) : s.name;
+        const f=s.priceF?Number(s.priceF).toLocaleString():null, m=s.priceM?Number(s.priceM).toLocaleString():null;
+        let price;
+        if(f&&m&&Number(s.priceF)===Number(s.priceM)) price=lang==="en"?`${f} KRW`:`${f}원`;
+        else if(f&&m) price=lang==="en"?`Women ${f} / Men ${m} KRW`:`여 ${f} / 남 ${m}`;
+        else price=lang==="en"?`${f||m} KRW`:`${f||m}원`;
+        lines.push(`· ${nm} ${price}`);
+      });
+    });
+    return lines.join("\n");
+  };
+  const expandPriceTokens = (text)=>{
+    if(!text || text.indexOf("{{가격표")<0) return text;
+    return text.replace(/\{\{가격표:(왁싱|스킨케어)(:en)?\}\}/g,(_m,g,en)=> buildPriceTable(g, en?"en":"ko") || (en?"(price unavailable)":"(가격 정보 없음)"));
+  };
+
+  const insertQuickReply = (rawText)=>{
+    const text = expandPriceTokens(rawText);
     if(!text) return;
     const ta=document.getElementById("bliss-reply-ta");
     if(ta && typeof ta.selectionStart==="number"){
