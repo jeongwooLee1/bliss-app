@@ -37,7 +37,7 @@
 **D~H. 선택/후속**:
    - D. 건물정보 `branches.access_info` 입력(AI 길안내, 관리설정→예약장소). E. 결제 PG(토스 가맹 — 예약금/포인트, 필요시). F. 직원 근무표·멤버십 계정(원장 최로운 등). G. RAG 학습문서(모담 FAQ/스킨케어 별도 인제스트 — `gemini-embedding-2/768`, 하우스왁싱과 동일 공간). H. 카카오채널 챗봇 메뉴(가격안내/내보유권조회 mypage 등 — 하우스왁싱처럼 선택).
 
-**I. ⚠️ 네이버톡(받은메시지함) 모담 미연동 — 멀티테넌트 아님**: `bliss_naver.py:114 NAVER_TALK_ACCOUNTS`가 하우스왁싱 8지점 `auth`+`handle` **하드코딩**. 모담 account_id(11682173) 없어 톡톡 0건. 필요: 모담 네이버 톡톡 **handle(partner.talk.naver.com)+auth 토큰** 추출(운영자 cripiss 세션으로 파트너센터에서 캡처) → dict 추가. **권장: NAVER_TALK_ACCOUNTS를 DB(branches 필드)로 이전**해 멀티테넌트화. 모담 `naver_place_id/seq/email`도 비어있음(예약·리뷰는 동작하나 일부 기능 확인 필요).
+**I. 네이버톡 모담 연동 — 서버 완료, 파트너센터 마무리 대기 (2026-06-06)**: 톡톡은 챗봇 API webhook 방식(`/naver-talk/<account_id>`). 파트너센터 경로 = **계정관리 홈 → 연동 관리 → 챗봇 API 설정**(`/web/accounts/{acc}/devtools/chatbot-api`). 모담 값: **account_id `103364134` · handle `wlw2lme` · auth `/J4ld9K+QlqnNBCLL/bs`**. 서버 `bliss_naver.py NAVER_TALK_ACCOUNTS`에 모담 추가 완료(+`business_id`=biz_id_yq41r06fdp·`bid` 필드 신설, echo/수신 insert를 `_talk_biz`로 per-account 저장 → 하우스왁싱과 안 섞임). open 이벤트 테스트로 인식 확인. **⏳ 정우님 파트너센터 마무리**: ① 이벤트 받을 URL=`https://blissme.ai/naver-talk/103364134` 저장 ② 이벤트 send,open ③ 커스텀챗봇에디터(챗봇1) OFF. **권장 후속: NAVER_TALK_ACCOUNTS를 DB로 이전**(현재 하드코딩, 새 매장마다 서버 수정). 모담 `naver_place_id/seq/email` 비어있음(예약·리뷰는 동작).
 
 **J. 직원 근무표 / 기존 데이터 이전 (온보딩 폼으로 수집 시작)**: `onboarding.html`이 직원(이름·직급·근무시간·휴무요일)·이전 프로그램 고객/매출/보유권(엑셀 업로드)을 받음 → 제출(`onboarding_submissions.payload.staff/legacy` + storage). 받으면 employees_v1·고객·매출 import 세팅.
 
