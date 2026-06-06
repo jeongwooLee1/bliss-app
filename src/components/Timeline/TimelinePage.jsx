@@ -4192,11 +4192,11 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             const isNewBranch = ci === 0 || room.branch_id !== allRooms[ci-1]?.branch_id;
             // 첫 컬럼에만 지점 앵커 텍스트 (구분선은 제거 — 지점명 배지로 충분)
             const isFirstOfBranch = room._isFirstOfBranch || (ci === 0 || allRooms[ci-1]?.branch_id !== room.branch_id);
-            // 각 지점 첫 미배정 칼럼은 연두 → 우측 흰색 그라데이션 (시각 fade)
+            // 각 지점 첫 미배정 칼럼은 연핑크/라벤더(블리스 랜딩 색) → 우측 흰색 그라데이션 (시각 fade)
             // 막기 칼럼은 다른 일반 칼럼과 동일 배경 (좁은 36px 컬럼이라 헤더 SVG로 충분히 구분)
             const isFirstNaverOfBranch = room.isNaver && room._naverIdx === 0;
             const colBg = isFirstNaverOfBranch
-              ? 'linear-gradient(to right, #E8F5E9 0%, #F5FBF5 60%, #ffffff 100%)'
+              ? 'linear-gradient(to right, #FDF3F9 0%, #FBF5FC 60%, #ffffff 100%)'
               : SOFT_BG;
             const _colWidth = room.isBlockCol ? 18 : colW;
             return (
