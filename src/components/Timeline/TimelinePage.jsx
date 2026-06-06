@@ -4196,7 +4196,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             // 막기 칼럼은 다른 일반 칼럼과 동일 배경 (좁은 36px 컬럼이라 헤더 SVG로 충분히 구분)
             const isFirstNaverOfBranch = room.isNaver && room._naverIdx === 0;
             const colBg = isFirstNaverOfBranch
-              ? 'linear-gradient(to right, #FBD8EC 0%, #F6E6FA 55%, #ffffff 100%)'
+              ? 'linear-gradient(to right, #F0D9EA 0%, #F7ECF3 55%, #ffffff 100%)'
               : SOFT_BG;
             const _colWidth = room.isBlockCol ? 18 : colW;
             return (
