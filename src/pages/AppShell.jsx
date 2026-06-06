@@ -26,7 +26,7 @@ import QuickRequest from '../components/common/QuickRequest'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.8.2"
+const BLISS_V = "3.8.3"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1529,6 +1529,7 @@ function App() {
   const dataRef = useRef(null); // 항상 최신 data를 참조 (클로저 문제 방지)
   useEffect(() => { dataRef.current = data; }, [data]);
   const [superData, setSuperData] = useState(null);
+  const [superBizList, setSuperBizList] = useState([]); // 어드민(super) 매장 전환 드롭다운용 전체 업체 목록
   const [role, setRole] = useState("staff");
   const [userBranches, setUserBranches] = useState([]);
   const isMaster = role === "owner" || role === "super" || role === "manager";
@@ -2155,12 +2156,16 @@ function App() {
       setLoadMsg("매장 데이터 로딩 중...");
       setPhase("loading");
       try {
-        // 직전에 보던 업체가 있으면 재진입, 없으면 관리자 화면(업체 선택)으로
-        // (하우스왁싱 자동 진입 하드코딩 제거 — 어드민은 특정 업체 소속이 아님)
+        // 어드민은 로그인 시 매장 타임라인으로 바로 진입(모니터링) — 직전 본 업체 또는 첫 업체.
+        // 매장 전환은 사이드바 드롭다운으로. 업체 CRUD 관리화면은 "← 관리자"로 접근. (하우스왁싱 하드코딩 없음)
         let targetBiz;
         try { targetBiz = JSON.parse(localStorage.getItem("bliss_session")||"{}").bizId; } catch(e){}
+        if (!targetBiz) {
+          const bizList = await sb.get("businesses", "");
+          targetBiz = (bizList.find(b => b.id !== "biz_system") || {}).id;
+        }
         if (targetBiz) { handleEnterBiz(targetBiz); return; }
-        // 기억된 업체 없음 → 관리자 화면(업체 목록에서 골라 접속)
+        // 업체가 하나도 없을 때만 관리자 화면
         const sd = await loadAllFromDb(null);
         setSuperData(sd);
         setPhase("super");
@@ -2272,6 +2277,10 @@ function App() {
       setCurrentBiz(bizList[0] || { name: "매장" });
       setCurrentBizId(bizId);
       setActiveBiz(bizId);
+      // 어드민(super) 매장 전환 드롭다운용 전체 업체 목록 (한 번만 로드)
+      if (currentUser?.role === "super") {
+        sb.get("businesses", "").then(all => setSuperBizList((all||[]).filter(b => b.id !== "biz_system"))).catch(()=>{});
+      }
       const db = await loadAllFromDb(bizId);
       const staff = db.rooms.map(r => ({ id: r.id, dn: r.name, bid: r.branch_id }));
       resolveSystemIds(db.serviceTags, db.resSources);
@@ -2533,18 +2542,27 @@ function App() {
     if (_isDemoBiz(currentBiz) && /하우스왁싱/.test(n)) return "체험 매장";
     return n;
   })();
+  // 어드민(super) 매장 전환 드롭다운 — 매장을 휙휙 바꿔가며 타임라인 모니터링 (데모는 가명 표시)
+  const bizSwitcher = isSuper ? {
+    current: currentBizId,
+    onSwitch: handleEnterBiz,
+    options: (superBizList||[]).map(b => ({
+      id: b.id,
+      name: (_isDemoBiz(b) && /하우스왁싱/.test(b.name||"")) ? "체험 매장" : (b.name || b.id),
+    })),
+  } : null;
 
   return (
     <div style={S.root}>
       <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" rel="stylesheet"/>
-      
+
       <aside className="sidebar-d" style={S.sidebar}>
-        <Sidebar nav={nav} page={page} setPage={setPage} role={role} branchNames={branchNames} onLogout={handleLogout} bizName={bizName} isSuper={isSuper} onBackToSuper={handleBackToSuper} serverV={serverV} BLISS_V={BLISS_V} billingState={billingState} scraperStatus={scraperStatus}/>
+        <Sidebar nav={nav} page={page} setPage={setPage} role={role} branchNames={branchNames} onLogout={handleLogout} bizName={bizName} isSuper={isSuper} onBackToSuper={handleBackToSuper} serverV={serverV} BLISS_V={BLISS_V} billingState={billingState} scraperStatus={scraperStatus} bizSwitcher={bizSwitcher}/>
       </aside>
       {sideOpen && <div className="sidebar-m" style={{position:"fixed",inset:0,zIndex:300}}>
         <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,.5)"}} onClick={()=>setSideOpen(false)}/>
         <div style={{position:"relative",width:260,height:"100%",background:T.bgCard,display:"flex",flexDirection:"column",animation:"slideIn .5s cubic-bezier(.22,1,.36,1)"}}>
-          <Sidebar nav={nav} page={page} setPage={p=>{setPage(p);setSideOpen(false)}} role={role} branchNames={branchNames} onLogout={handleLogout} bizName={bizName} isSuper={isSuper} onBackToSuper={handleBackToSuper} serverV={serverV} BLISS_V={BLISS_V} billingState={billingState} scraperStatus={scraperStatus} isMobile/>
+          <Sidebar nav={nav} page={page} setPage={p=>{setPage(p);setSideOpen(false)}} role={role} branchNames={branchNames} onLogout={handleLogout} bizName={bizName} isSuper={isSuper} onBackToSuper={handleBackToSuper} serverV={serverV} BLISS_V={BLISS_V} billingState={billingState} scraperStatus={scraperStatus} bizSwitcher={bizSwitcher} isMobile/>
         </div>
       </div>}
       {newVer && <div onClick={()=>{try{window.location.href=window.location.pathname+"?v="+newVer;}catch(e){window.location.reload();}}} style={{position:"fixed",top:10,right:10,zIndex:9999,background:T.primary,color:"#fff",padding:"10px 16px",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 12px rgba(0,0,0,.25)",animation:"ovFadeIn .3s"}}>

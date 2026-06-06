@@ -20,7 +20,7 @@ const fmtPlanEnd = (iso) => {
 
 const fmtP = (n) => (n||0).toLocaleString() + 'P'
 
-function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", isSuper=false, onBackToSuper, serverV, scraperStatus=null, BLISS_V="", isMobile=false, billingState={} }) {
+function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", isSuper=false, onBackToSuper, serverV, scraperStatus=null, BLISS_V="", isMobile=false, billingState={}, bizSwitcher=null }) {
   const [chatExpanded, setChatExpanded] = useState(false);
   const cats = [
     { label:"예약 관리", items: nav.filter(n=>["timeline","reservations"].includes(n.id)) },
@@ -46,6 +46,14 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
         </div>
         <button onClick={onLogout} title="로그아웃" style={{flexShrink:0,padding:"4px 9px",fontSize:10,fontWeight:T.fw.bolder,border:`1px solid ${T.border}`,background:T.bgCard,color:T.textSub,borderRadius:6,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>로그아웃</button>
       </div>
+      {bizSwitcher && bizSwitcher.options?.length > 0 && (
+        <select value={bizSwitcher.current||""}
+          onChange={e=>{ if(e.target.value && e.target.value!==bizSwitcher.current) bizSwitcher.onSwitch(e.target.value); }}
+          title="모니터링할 매장 선택"
+          style={{width:"100%",padding:"7px 9px",fontSize:12,fontWeight:700,fontFamily:"inherit",borderRadius:7,border:`1px solid ${T.primary}`,background:T.bgCard,color:T.primaryDk,cursor:"pointer"}}>
+          {bizSwitcher.options.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </select>
+      )}
       {/* 토스 심사 대응 (2026-05-15) — 보유 P/플랜 표시 hide. 부활 시 false → true */}
       {false && (billingState.planKey || billingState.totalBalance >= 0) && (
         <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:T.bgCard,border:`1px solid ${T.border}`,borderRadius:8}}>
