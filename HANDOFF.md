@@ -1,5 +1,20 @@
 # HANDOFF
 
+## 🔔 [동의서 세션 → 메인 세션] 수정요청 2건 인계 (2026-06-06)
+> 동의서(차트) 세션이 메인이 검토·위임한 reviewing 2건을 처리했습니다. 아래 ①은 **메인앱(ConsentModal) 작업**이라 인계, ②는 동의서 세션이 자체 처리.
+
+### ① [메인 처리 필요] 패키지 동의서만 따로/먼저 발송 (희서 id_ra2sd89vaw, 용산)
+- **원문**: "패키지 동의서 발송하면 신규차트/체크리스트로만 발송돼요, 고객이 앞에걸 안 해서 패키지 동의서가 안 가는건가요?"
+- **원인**: "차트 & 동의서" 묶음은 **한 토큰에 [차트(신규/오늘관리) → 패키지 동의서] 순서**로 들어가, 고객이 차트만 작성하고 멈추면 패키지 동의서가 미완료로 남음. (동의서앱은 토큰 template_ids 순서대로 렌더만 함 — 정상)
+- **메인앱 할 일(ConsentModal/ReservationModal)**: 예약 모달에서 **패키지 동의서만 단독 토큰으로 발송**하는 옵션 추가(차트와 분리). 또는 발송 시 패키지 동의서를 **앞 순서**로. 현재는 차트 프리셋에 묶여 나감. 직원이 "패키지 동의서"를 고르면 그것만 가도록.
+- 임시 안내(메인이 이미 staff에 답함): ① 고객이 링크 끝까지 작성 ② 고객관리→동의서에서 패키지 동의서만 따로 발송.
+
+### ② [동의서 세션 처리완료] 차트 링크 "페이지를 읽을 수 없습니다" (지은 id_1jl0yb7bt0, 강남 — 조주연)
+- **결론: 앱 버그 아님.** 원문이 "링크 들어가면 즉시" → 산모차트(임신=예 답해야 등장) 렌더 전 **페이지 로딩 자체 실패 = 카카오톡 인앱 브라우저가 SPA 못 띄움**. ChatChart는 산모 필드 전부 처리(scale 폴백 有)라 크래시 없음. → 메인 답변(Safari/크롬으로 열기·재전송)이 정답.
+- **부수 발견 → 동의서 세션이 정리 중**: `ct_maternity_v3`가 v3 구조 미갱신(서명 단계 잔존 → 임신 신규고객 신규차트+산모차트 **이중 서명**). task #10. 정우님 승인받아 산모차트 서명 단계 제거(신규차트로 일원화) 진행. is_active=false는 유지(자동 스왑 전용, 수동 발송 목록서 숨김 — 정상).
+
+---
+
 ## 🟢 [진행중·전담세션] 모담왁싱&래쉬 신규 업체 온보딩 (처음~끝) (2026-06-05)
 > **이 항목은 별도 세션에서 모담 온보딩 전체를 전담 진행하기 위한 인수인계.** 두 번째 업체(하우스왁싱 외) 첫 케이스라, 새 업체 추가 표준 절차의 레퍼런스도 됨. 자족적으로 작성 — 이 항목만 읽고 이어받을 것.
 
@@ -25,6 +40,9 @@
    - `evt_md_total50` 토탈50 현금 적립 — `point_earn fixed 50000` / `["svc_md_082"]` + **`paymentMethodType:"cash"`** (유저 결정: 결제수단 현금 선택 시 자동 적용. 엔진 `eventEngine.js:272` + `SaleForm.jsx:1840 paymentUsesCash` 지원 확인)
    - **이벤트 밖(수동/회원가)**: 재방문 6주내 할인(시간 트리거 없음), 3회권 케어 50%·5회권 발각질 무료(차감형=직원 수동), 포토리뷰 시트팩, 브라질리언+단품 10%. → 원장에게 "수동 처리" 안내 필요.
 5. **Pro 요금제 활성 — 오프라인 결제 (2026-06-05 사용 시작)** — 77,000원/월 오프라인(계좌/현장) 결제 완료. `businesses.plan='pro'`(컬럼) + settings.plan/planExpiry=2026-07-05 동기화 + `billing_subscriptions` 1행(지점 br_id_x316ludvqq, pro 77000 active, **auto_renew=false, billing_id=null** = 하우스왁싱 오프라인 패턴). `settings.features` 키 없음 → plan='pro'로 PRO 전기능 자동 derive(extractFeatures). 다음 결제 2026-07-05 **수동**(토스 빌링 계약 활성화 + 모담 카드 등록 전까지 auto 청구 X). trial(~6/19)에서 전환.
+
+6. **✅ AI 분석 멀티테넌트 키 폴백 (2026-06-06, 서버)** — `ai_analyze_reservation`(line 2050)·`_ai_extract_booking_info`(1842)가 per-business `settings.gemini_key`만 보고 env 폴백이 없어, gemini_key 없는 신규 매장(모담)은 네이버/카카오 예약 분석이 통째 스킵돼 `selected_services` 빈값이었음. → 두 곳에 `or GEMINI_KEY`(env `BLISS_GEMINI_KEY`) 폴백 추가(백업 `bliss_naver.py.bak_gemfb_*`). **신규 매장은 gemini_key 없어도 자동 분석.** 검증: 모담 예약 6건 중 5건(미래·어제) 재분석 → 브라질리언/눈썹/풀페이스·성별·dur·특이사항 매칭. 조혜민(6/4)만 폴링 범위(days_back=1) 밖이라 미처리. 재분석 트리거 방법: `status='pending'+ai_input_hash=NULL` 후 `POST /naver-poll-now {biz_id:naver_biz_id}` (폴링 범위 내 건만, 끝나면 naver 실제 status로 복원). [[reference_bliss_ai_engine]]
+7. **✅ 모담 예약 메일 즉시수신 + 톡 노출 (2026-06-06)** — 네이버 스마트플레이스 알림설정에서 cripiss 수신토글 ON → housewaxing@gmail로 모담 예약메일 옴(8초 즉시 파싱). `branches.naver_account_id` 11682173→**103364134**(톡 account_id) 수정 → 받은메시지함 톡 노출(MessagesPage allowedIds 필터). 온보딩 체크리스트에 "cripiss 수신토글 ON" 단계+캡처 기록.
 
 ### ⏳ 남은 일 (새 세션이 진행)
 **B. 카카오 알림톡 (유저가 senderKey+발신번호 받아오면 시작)** — 발송 코드는 이미 멀티테넌트(`alimtalk_thread`가 `branch_id`로 noti_config 읽음). **모담 noti_config 현재 비어있음**(aligoKey/senderKey/tplCode 전무 → 발송 skip 상태).
