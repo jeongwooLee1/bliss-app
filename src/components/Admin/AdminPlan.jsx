@@ -100,6 +100,8 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
 
   // 다음 결제일 표기 (MM/DD)
   const fmtBillDate = (iso) => { try { const d = new Date(iso); return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}` } catch { return '' } }
+  // 이용 만료일 표기 (YYYY.MM.DD)
+  const fmtExpiry = (iso) => { try { const d = new Date(iso); return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}` } catch { return '' } }
 
   const applyPlan = async (nextPlan) => {
     if (!isOwner) { alert('대표 관리자만 변경 가능합니다.'); return }
@@ -360,6 +362,7 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
                 <div>
                   <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder}}>{br.short || br.name}</div>
                   <div style={{fontSize:T.fs.xxs,color:T.textMuted}}>{PLANS[sub?.plan_key]?.label || '미가입'} · {sub?.price_monthly ? `월 ${sub.price_monthly.toLocaleString()}원` : '무료'}</div>
+                  {sub?.current_period_end && <div style={{fontSize:T.fs.xxs,color:T.textSub,fontWeight:T.fw.bolder,marginTop:1}}>이용 만료일 {fmtExpiry(sub.current_period_end)}</div>}
                 </div>
                 <div style={{textAlign:'right'}}>
                   <div style={{fontSize:T.fs.lg,fontWeight:T.fw.black,color:T.primary}}>{(bal?.balance||0).toLocaleString()}P</div>
