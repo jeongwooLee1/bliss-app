@@ -486,27 +486,34 @@ document.querySelectorAll('input, textarea').forEach(el=>{ el.addEventListener('
 document.getElementById('btnSaveDraft').addEventListener('click',()=>{ saveDraft(); showMsg('임시저장했어요. 다음에 이 링크를 다시 열면 이어서 작성할 수 있어요.','ok'); flashSaved(); });
 document.getElementById('btnNewDraft').addEventListener('click',()=>{ if(!confirm('작성하던 내용을 모두 지우고 처음부터 새로 시작할까요?'))return; try{localStorage.removeItem(DRAFT_KEY);}catch(e){} location.reload(); });
 
-function applyPrefill(){
-  const q = new URLSearchParams(location.search);
-  if (![...q.keys()].length) return;
+function fillPrefill(get){
   const map = { biz:'bizName', owner:'ownerName', phone:'phone', email:'email', addr:'addr', tel:'storeTel', hours:'hours', dayoff:'dayoff', kakao:'kakaoCh', sendphone:'sendPhone' };
-  Object.keys(map).forEach(k=>{ const v=q.get(k); if(v!=null){ const el=document.getElementById(map[k]); if(el) el.value=v; } });
-  if (q.get('naver')==='1'){ const el=document.querySelector('[data-toggle="naverDone"] input'); if(el){ el.checked=true; el.closest('.chk').classList.add('on'); } }
+  Object.keys(map).forEach(k=>{ const v=get(k); if(v!=null && v!==''){ const el=document.getElementById(map[k]); if(el) el.value=v; } });
+  const nv=get('naver'); if(nv==='1'||nv===1){ const el=document.querySelector('[data-toggle="naverDone"] input'); if(el){ el.checked=true; el.closest('.chk').classList.add('on'); } }
+  const bizid=get('bizid'), bid=get('bid'); if(bizid) OB_REF.bizid=bizid; if(bid) OB_REF.bid=bid;
+  const tk=get('apptoken'); if(tk){ const box=document.getElementById('appTokenBox'), v=document.getElementById('appTokenVal'); if(box&&v){ v.textContent=tk; box.style.display='block'; } }
   saveDraft();
 }
-function showAppToken(){
-  const tk = new URLSearchParams(location.search).get('apptoken');
-  if (!tk) return;
-  const box=document.getElementById('appTokenBox'), v=document.getElementById('appTokenVal');
-  if (box&&v){ v.textContent=tk; box.style.display='block'; }
+async function loadPrefill(){
+  const q = new URLSearchParams(location.search);
+  const ref = q.get('ref');
+  if (ref){
+    try{
+      const r = await fetch(SB_URL+'/rest/v1/rpc/onboarding_prefill_get', {
+        method:'POST', headers:{ apikey:SB_KEY, Authorization:'Bearer '+SB_KEY, 'Content-Type':'application/json' },
+        body: JSON.stringify({ p_ref: ref })
+      });
+      if (r.ok){ const o = await r.json(); if (o && typeof o==='object'){ fillPrefill(k=>o[k]); return; } }
+    }catch(e){}
+  }
+  if ([...q.keys()].length) fillPrefill(k=>q.get(k));
 }
 
 if (restoreDraft()) {
   const b=document.getElementById('restoreBanner'); if(b){ b.hidden=false; b.style.display='flex'; }
 } else {
-  applyPrefill();
+  loadPrefill();
 }
-showAppToken();
 </script>
 </body>
 </html>
