@@ -2643,7 +2643,14 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       const _isNewRes = !data?.reservations?.find(r => r.id === item.id);
       if (_isNewRes && item.custId) {
         const _cust = (data?.customers||[]).find(c=>c.id===item.custId);
-        const _defTags = Array.isArray(_cust?.defaultTags) ? _cust.defaultTags : [];
+        let _defTags = Array.isArray(_cust?.defaultTags) ? _cust.defaultTags : null;
+        // 캐시(초기 100건)에 없거나 defaultTags 미로드면 DB에서 직접 조회 — 캐시 밖 고객도 기본태그 적용 (현아 요청 2026-06-06)
+        if (_defTags === null) {
+          try {
+            const _rows = await sb.get("customers", `&id=eq.${item.custId}&select=default_tags`);
+            _defTags = Array.isArray(_rows?.[0]?.default_tags) ? _rows[0].default_tags : [];
+          } catch(e) { _defTags = []; }
+        }
         if (_defTags.length > 0) {
           const _cur = Array.isArray(item.selectedTags) ? item.selectedTags : [];
           const _validTagIds = new Set((data?.serviceTags||[]).filter(t=>t.useYn!==false && t.scheduleYn!=="Y").map(t=>t.id));
