@@ -70,7 +70,7 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
         </div>
       )}
       {isSuper && <div style={{display:"flex",justifyContent:"flex-end"}}>
-        <button onClick={onBackToSuper} style={{fontSize:10,padding:"2px 6px",border:`1px solid ${T.border}`,background:"transparent",color:T.textSub,borderRadius:4,cursor:"pointer",fontFamily:"inherit"}}>← 관리자</button>
+        <button onClick={onBackToSuper} style={{fontSize:10,padding:"2px 6px",border:`1px solid ${T.border}`,background:"transparent",color:T.textSub,borderRadius:4,cursor:"pointer",fontFamily:"inherit"}}>← 매장 선택</button>
       </div>}
     </div>
     <div style={{flex:1,minHeight:0,padding:"8px 0",overflowY:"auto"}}>

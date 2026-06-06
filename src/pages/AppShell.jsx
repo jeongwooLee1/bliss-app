@@ -26,7 +26,7 @@ import QuickRequest from '../components/common/QuickRequest'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.8.3"
+const BLISS_V = "3.8.4"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -112,7 +112,38 @@ function mapMembership(m, account) {
     status: m.status,
   };
 }
-function SuperDashboard({ superData, setSuperData, currentUser, onLogout, onEnterBiz }) {
+// 어드민(super) 로그인 시 "매장 선택" 화면 — 원하는 업체를 골라 그 매장 타임라인으로 진입
+function BizPicker({ businesses=[], onPick, onManage, onLogout }) {
+  const alias = (b) => ((/체험|데모|demo/i.test(b.code||"") || /체험|데모/.test(b.name||"")) && /하우스왁싱/.test(b.name||"")) ? "체험 매장" : (b.name || b.id);
+  const real = (businesses||[]).filter(Boolean);
+  return (
+    <div style={{position:"fixed",inset:0,background:T.gray100,display:"flex",alignItems:"center",justifyContent:"center",padding:20,fontFamily:"'Pretendard',sans-serif",overflow:"auto"}}>
+      <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" rel="stylesheet"/>
+      <div style={{width:"100%",maxWidth:520,background:T.bgCard,borderRadius:16,padding:"28px 24px",boxShadow:"0 8px 40px rgba(0,0,0,.12)"}}>
+        <div style={{fontSize:13,fontWeight:800,color:T.primary,letterSpacing:.3}}>블리스 관리자</div>
+        <div style={{fontSize:22,fontWeight:900,color:T.text,marginTop:6,letterSpacing:-.5}}>어느 매장을 보시겠어요?</div>
+        <div style={{fontSize:13,color:T.textSub,marginTop:6,marginBottom:18}}>모니터링할 매장을 선택하면 그 매장 타임라인으로 들어갑니다.</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          {real.map(b => (
+            <button key={b.id} onClick={()=>onPick(b.id)}
+              style={{padding:"16px 14px",borderRadius:11,border:`1.5px solid ${T.border}`,background:T.bgCard,color:T.text,cursor:"pointer",fontFamily:"inherit",fontSize:15,fontWeight:800,textAlign:"left",transition:"all .12s"}}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor=T.primary;e.currentTarget.style.background=T.primaryHover;}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor=T.border;e.currentTarget.style.background=T.bgCard;}}>
+              {alias(b)}
+            </button>
+          ))}
+          {real.length===0 && <div style={{gridColumn:"1/-1",textAlign:"center",color:T.gray500,padding:30}}>등록된 매장이 없습니다</div>}
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:22,paddingTop:16,borderTop:`1px solid ${T.border}`}}>
+          <button onClick={onManage} style={{fontSize:13,fontWeight:700,color:T.textSub,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>⚙ 업체 관리(추가·수정)</button>
+          <button onClick={onLogout} style={{fontSize:13,fontWeight:700,color:T.textSub,background:T.bgCard,border:`1px solid ${T.border}`,borderRadius:7,padding:"6px 12px",cursor:"pointer",fontFamily:"inherit"}}>로그아웃</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SuperDashboard({ superData, setSuperData, currentUser, onLogout, onEnterBiz, onBackToPicker }) {
   const [tab, setTab] = useState("businesses");
   const { businesses=[], groups=[], groupMembers=[], users=[] } = superData || {};
 
@@ -198,6 +229,7 @@ function SuperDashboard({ superData, setSuperData, currentUser, onLogout, onEnte
       ))}
     </div>
     <div style={{padding:12,borderTop:"1px solid "+T.border}}>
+      {onBackToPicker && <button onClick={onBackToPicker} style={{width:"100%",marginBottom:8,padding:"8px 14px",borderRadius:T.radius.sm,border:`1px solid ${T.primary}`,background:T.bgCard,color:T.primaryDk,cursor:"pointer",fontSize:T.fs.sm,fontWeight:T.fw.bold,fontFamily:"inherit"}}>← 매장 선택</button>}
       <button onClick={onLogout} style={{width:"100%",padding:"8px 14px",borderRadius:T.radius.sm,border:"1px solid #d0d0d0",background:T.bgCard,color:T.textSub,cursor:"pointer",fontSize:T.fs.sm,fontWeight:T.fw.bold,fontFamily:"inherit"}}>로그아웃</button>
     </div>
   </>;
@@ -2156,19 +2188,10 @@ function App() {
       setLoadMsg("매장 데이터 로딩 중...");
       setPhase("loading");
       try {
-        // 어드민은 로그인 시 매장 타임라인으로 바로 진입(모니터링) — 직전 본 업체 또는 첫 업체.
-        // 매장 전환은 사이드바 드롭다운으로. 업체 CRUD 관리화면은 "← 관리자"로 접근. (하우스왁싱 하드코딩 없음)
-        let targetBiz;
-        try { targetBiz = JSON.parse(localStorage.getItem("bliss_session")||"{}").bizId; } catch(e){}
-        if (!targetBiz) {
-          const bizList = await sb.get("businesses", "");
-          targetBiz = (bizList.find(b => b.id !== "biz_system") || {}).id;
-        }
-        if (targetBiz) { handleEnterBiz(targetBiz); return; }
-        // 업체가 하나도 없을 때만 관리자 화면
-        const sd = await loadAllFromDb(null);
-        setSuperData(sd);
-        setPhase("super");
+        // 어드민은 로그인 시 "매장 선택" 화면 — 원하는 업체를 직접 골라야 그 매장 타임라인이 보임(자동 진입 X).
+        const bizList = (await sb.get("businesses", "")).filter(b => b.id !== "biz_system");
+        setSuperBizList(bizList);
+        setPhase("pick_biz");
       } catch(e) {
         console.error(e);
         setSuperData({ businesses:[], groups:[], groupMembers:[], users:[] });
@@ -2480,20 +2503,28 @@ function App() {
   }, [phase, currentBizId]);
 
 
+  // "← 매장 선택" — 매장 선택 화면(picker)으로 복귀 (다른 매장 골라 모니터링)
   const handleBackToSuper = async () => {
     try{const s=JSON.parse(localStorage.getItem("bliss_session")||"{}");delete s.bizId;localStorage.setItem("bliss_session",JSON.stringify(s));}catch(e){}
-    setLoadMsg("관리자 데이터 로딩 중...");
+    setLoadMsg("매장 목록 불러오는 중...");
     setPhase("loading");
     try {
-      const sd = await loadAllFromDb(null);
-      setSuperData(sd);
+      const bizList = (await sb.get("businesses", "")).filter(b => b.id !== "biz_system");
+      setSuperBizList(bizList);
       setRole("super");
       setCurrentBizId(null); setCurrentBiz(null); setData(null); setActiveBiz(null);
-      setPhase("super");
+      setPhase("pick_biz");
     } catch(e) {
       console.error("handleBackToSuper error:", e);
-      setPhase("super");
+      setPhase("pick_biz");
     }
+  };
+  // 업체 관리(추가/수정/삭제) — 전체 SuperDashboard CRUD 화면으로
+  const handleOpenManage = async () => {
+    setLoadMsg("관리자 데이터 로딩 중...");
+    setPhase("loading");
+    try { const sd = await loadAllFromDb(null); setSuperData(sd); setRole("super"); setPhase("super"); }
+    catch(e) { console.error(e); setSuperData({ businesses:[], groups:[], groupMembers:[], users:[] }); setPhase("super"); }
   };
 
   if (phase === "loading") return <Loading msg={loadMsg} />;
@@ -2505,7 +2536,8 @@ function App() {
       onJoinSuccess={()=>setPhase("staff_pending")}
       onCreateBiz={(membership)=>handleLogin(membership)}
       onLogout={handleLogout} />;
-  if (phase === "super") return <SuperDashboard superData={superData} setSuperData={setSuperData} currentUser={currentUser} onLogout={handleLogout} onEnterBiz={handleEnterBiz} />;
+  if (phase === "pick_biz") return <BizPicker businesses={superBizList} onPick={handleEnterBiz} onManage={handleOpenManage} onLogout={handleLogout} />;
+  if (phase === "super") return <SuperDashboard superData={superData} setSuperData={setSuperData} currentUser={currentUser} onLogout={handleLogout} onEnterBiz={handleEnterBiz} onBackToPicker={handleBackToSuper} />;
 
   // Phase: app (owner or staff)
 
