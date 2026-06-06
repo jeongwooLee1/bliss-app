@@ -26,7 +26,7 @@ import QuickRequest from '../components/common/QuickRequest'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.8.5"
+const BLISS_V = "3.8.6"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1880,7 +1880,7 @@ function App() {
     const pendingCnt = (data?.reservations||[]).filter(r =>
       (r.status === "pending" || r.status === "request") &&
       !(r.memo && r.memo.includes("확정완료")) &&
-      (isMaster || (userBranches||[]).includes(r.bid))
+      (userBranches||[]).includes(r.bid)   // 알림음은 본인 접근 지점만 (마스터=전지점 userBranches, 원장=본인지점) — 소이 요청 2026-06-06
     ).length;
     const prev = _prevCountsRef.current;
     // 첫 로드에선 사운드 울리지 않음 (기존 상태 동기화용)
@@ -1918,7 +1918,7 @@ function App() {
     const hasPending = (data?.reservations||[]).some(r =>
       (r.status === "pending" || r.status === "request") &&
       !(r.memo && r.memo.includes("확정완료")) &&
-      (isMaster || (userBranches||[]).includes(r.bid))
+      (userBranches||[]).includes(r.bid)   // 본인 접근 지점만 (소이 요청 2026-06-06)
     );
     const hasAlarm = hasPending || aiActiveCount > 0;
     if (hasAlarm && !_pendingAlarmRef.current) {
