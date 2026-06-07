@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { T } from '../../lib/constants'
 import { SB_URL, sbHeaders } from '../../lib/sb'
+import ConsentDocsViewer from './ConsentDocsViewer'
 
 /**
- * 고객 상세 '동의서' 탭 내용 — 서명 이력 리스트 + 신규 요청 버튼
- * Realtime 구독으로 서명 완료 시 자동 갱신.
+ * 고객 상세 '동의서' 탭 내용 — 서명 이력(신규차트·동의서) 리스트 + 신규 요청 버튼
+ * 행 클릭 시 앱 안에서 바로 차트 이미지로 보기(ConsentDocsViewer). Realtime 구독으로 서명 완료 시 자동 갱신.
  */
 export default function ConsentPanel({ cust, onRequestNew }) {
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
+  const [viewId, setViewId] = useState(null)  // 인앱 뷰어로 볼 consent id
 
   const load = useCallback(async () => {
     if (!cust?.id) return
@@ -56,7 +58,8 @@ export default function ConsentPanel({ cust, onRequestNew }) {
       ) : (
         <div style={{ border: '1px solid ' + T.border, borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
           {history.map((h, i) => (
-            <div key={h.id} style={{ padding: '10px 14px', borderBottom: i === history.length - 1 ? 'none' : '1px solid ' + T.border, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div key={h.id} onClick={() => setViewId(h.id)} title="눌러서 차트/동의서 보기"
+              style={{ padding: '10px 14px', borderBottom: i === history.length - 1 ? 'none' : '1px solid ' + T.border, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', cursor: 'pointer' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 2 }}>{h.template_name || h.template_id}</div>
                 <div style={{ fontSize: 11, color: T.textMuted }}>
@@ -64,14 +67,15 @@ export default function ConsentPanel({ cust, onRequestNew }) {
                   {h.signer_name ? ' · ' + h.signer_name : ''}
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                {h.document_url && <a href={h.document_url} target="_blank" rel="noopener noreferrer" style={{ padding: '5px 12px', background: T.primary, color: '#fff', borderRadius: 4, fontSize: 11, textDecoration: 'none', fontWeight: 600 }}>📄 PDF</a>}
-                {h.signature_url && <a href={h.signature_url} target="_blank" rel="noopener noreferrer" style={{ padding: '5px 12px', background: T.gray200, color: T.text, borderRadius: 4, fontSize: 11, textDecoration: 'none', fontWeight: 600 }}>🖼 서명</a>}
+              <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
+                <span style={{ padding: '5px 12px', background: T.primary, color: '#fff', borderRadius: 5, fontSize: 11, fontWeight: 700 }}>보기</span>
+                {h.document_url && <a href={h.document_url} onClick={e=>e.stopPropagation()} target="_blank" rel="noopener noreferrer" style={{ padding: '5px 10px', background: T.gray200, color: T.text, borderRadius: 5, fontSize: 11, textDecoration: 'none', fontWeight: 600 }}>PDF</a>}
               </div>
             </div>
           ))}
         </div>
       )}
+      {viewId && <ConsentDocsViewer customerId={cust.id} customerName={cust.name} focusConsentId={viewId} onClose={() => setViewId(null)} />}
     </div>
   )
 }

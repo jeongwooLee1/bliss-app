@@ -2180,7 +2180,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                   <div data-pkg-scroll="1" className="cust-fs-pkg-card" style={{background:"#fff",borderRadius:12,border:"1px solid "+T.border,minWidth:0,minHeight:0,overflowY:"auto",position:"relative"}}>
                     {/* 탭 */}
                     <div style={{display:"flex",gap:0,borderBottom:"1px solid "+T.border,background:T.bgCard}}>
-                      {[["pkg","보유권 ("+custPkgs.filter(p=>{const t=pkgType(p);const ex=(p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/);const isExp=ex&&ex[1]<todayStr();if(isExp)return false;return t==="prepaid"?((p.note||"").match(/잔액:([0-9,]+)/)?.[1]||"0").replace(/,/g,"")>0:(p.total_count-p.used_count)>0;}).length+")","ticket"],["share","쉐어 ("+shareCusts.length+")","users"],["consent","동의서","fileText"]].map(([tab,lbl,icon])=>(
+                      {[["pkg","보유권 ("+custPkgs.filter(p=>{const t=pkgType(p);const ex=(p.note||"").match(/유효:(\d{4}-\d{2}-\d{2})/);const isExp=ex&&ex[1]<todayStr();if(isExp)return false;return t==="prepaid"?((p.note||"").match(/잔액:([0-9,]+)/)?.[1]||"0").replace(/,/g,"")>0:(p.total_count-p.used_count)>0;}).length+")","ticket"],["share","쉐어 ("+shareCusts.length+")","users"],["consent","동의서·차트","fileText"]].map(([tab,lbl,icon])=>(
                         <button key={tab} className="tab-btn" onClick={()=>setDetailTab(tab)}
                           style={{padding:"10px 16px",fontSize:T.fs.xs,fontWeight:detailTab===tab?T.fw.bolder:T.fw.medium,
                             color:detailTab===tab?T.primary:T.textSub,background:detailTab===tab?T.primary+"10":"none",border:"none",
