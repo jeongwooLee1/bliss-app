@@ -2690,7 +2690,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           }
           const _cid = uid();
           _coupleCompanion = {
-            id: _cid, bid: item.bid, roomId: item.roomId || "",
+            id: _cid, businessId: bizId, bid: item.bid, roomId: item.roomId || "",
             custName: `${_baseName} 동반자1`,
             custPhone: "", custEmail: "", custGender: "", custNum: "",
             custId: "", isNewCust: false,
