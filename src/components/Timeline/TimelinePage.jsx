@@ -376,19 +376,21 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       return next;
     });
   }, []);
-  // 초기 로드
+  // 초기 로드 + Realtime 등록 (근무장소 이동 실시간 반영)
   React.useEffect(() => {
     if (empOverrideLoaded.current) return;
     empOverrideLoaded.current = true;
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
-    fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.empOverride_v1&select=value`, { headers: H })
-      .then(r => r.json())
-      .then(rows => {
-        if (rows?.[0]?.value) {
-          const v = typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value;
-          _setEmpBranchOverride(v);
-        }
-      }).catch(console.error);
+    const loadEmpOverride = () => {
+      fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.empOverride_v1&select=value`, { headers: H, cache: "no-store" })
+        .then(r => r.json())
+        .then(rows => {
+          const raw = rows?.[0]?.value;
+          _setEmpBranchOverride(raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : {});
+        }).catch(console.error);
+    };
+    loadEmpOverride();
+    schRtRef.current["empOverride_v1"] = loadEmpOverride;  // 단일 Realtime 채널이 이 키 변경 시 호출
   }, []);
 
   // 직원 근무시간: {empId: {start,end}, empId_date: {start,end}}
@@ -397,14 +399,16 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   React.useEffect(() => {
     if (empWorkHoursLoaded.current) return;
     empWorkHoursLoaded.current = true;
-    fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.empWorkHours_v1&select=value`, {
-      headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
-    }).then(r => r.json()).then(rows => {
-      if (rows?.[0]?.value) {
-        const v = typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value;
-        _setEmpWorkHours(v);
-      }
-    }).catch(console.error);
+    const loadEmpWorkHours = () => {
+      fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.empWorkHours_v1&select=value`, {
+        headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }, cache: "no-store"
+      }).then(r => r.json()).then(rows => {
+        const raw = rows?.[0]?.value;
+        _setEmpWorkHours(raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : {});
+      }).catch(console.error);
+    };
+    loadEmpWorkHours();
+    schRtRef.current["empWorkHours_v1"] = loadEmpWorkHours;  // 단일 Realtime 채널이 이 키 변경 시 호출 (근무시간 실시간 반영)
   }, []);
   const setEmpWorkHours = React.useCallback(async (updater) => {
     // race condition fix — 저장 직전 서버 latest fetch → diff 기반 merge → 저장
