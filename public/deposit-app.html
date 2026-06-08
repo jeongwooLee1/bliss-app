@@ -8,7 +8,7 @@
 <meta name="robots" content="noindex,nofollow">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <style>
-:root{--purple:#5B21B6;--purple-lt:#EDE9FE;--gray-bg:#F8F7FB;--gray-line:#E5E7EB;--text:#1A1A2E;--text-sub:#6B7280;--text-mute:#9CA3AF;--green:#10B981;}
+:root{--purple:#5B21B6;--purple-lt:#EDE9FE;--gray-bg:#F8F7FB;--gray-line:#E5E7EB;--text:#1A1A2E;--text-sub:#6B7280;--text-mute:#9CA3AF;--green:#10B981;--amber:#B45309;--amber-bg:#FEF3C7;}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 html,body{margin:0;padding:0;font-family:-apple-system,"system-ui","Apple SD Gothic Neo","Pretendard",sans-serif;background:var(--gray-bg);color:var(--text);font-size:15px;line-height:1.5;}
 .wrap{max-width:480px;margin:0 auto;padding:0 16px 40px;}
@@ -18,20 +18,39 @@ html,body{margin:0;padding:0;font-family:-apple-system,"system-ui","Apple SD Got
 .card{background:#fff;border-radius:14px;padding:18px 16px;box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:14px;}
 .dl{display:block;text-align:center;width:100%;padding:16px;font-size:17px;font-weight:800;border:none;border-radius:12px;background:var(--purple);color:#fff;text-decoration:none;}
 .dl:active{opacity:.85;}
-.step{display:flex;gap:11px;margin-bottom:13px;}
+.step{display:flex;gap:11px;margin-bottom:14px;}
+.step:last-child{margin-bottom:0;}
 .step .n{flex:0 0 auto;width:24px;height:24px;border-radius:50%;background:var(--purple);color:#fff;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;}
-.step .t{font-size:14px;color:var(--text);line-height:1.55;}
+.step .t{font-size:14px;color:var(--text);line-height:1.6;}
 .step .t b{color:var(--purple);}
 h2{font-size:15px;font-weight:800;margin:0 0 14px;}
 .note{background:var(--purple-lt);border-radius:9px;padding:11px 13px;font-size:12.5px;color:#4C1D95;line-height:1.6;}
+.warn{background:var(--amber-bg);border-radius:9px;padding:12px 13px;font-size:13px;color:var(--amber);line-height:1.65;}
+.warn b{font-weight:800;}
 .foot{text-align:center;font-size:11px;color:var(--text-mute);padding:16px 8px;}
+.tokbox{background:#F3F0FF;border-radius:10px;padding:13px;}
+.tokbox .lbl{font-size:12px;color:var(--text-sub);margin-bottom:6px;font-weight:700;}
+.tokval{font-size:13px;font-weight:700;color:var(--purple);word-break:break-all;background:#fff;border-radius:8px;padding:10px;line-height:1.5;}
+.copy{display:block;width:100%;margin-top:8px;padding:11px;border:none;border-radius:9px;background:var(--purple);color:#fff;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer;}
+.copy:active{opacity:.85;}
+.sub{font-size:12.5px;color:var(--text-sub);line-height:1.6;}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="hdr">
     <h1>Bliss 입금문자 앱</h1>
-    <p>매장 안드로이드 폰에 설치하세요</p>
+    <p id="hdrSub">매장 안드로이드 폰에 설치하세요</p>
+  </div>
+
+  <!-- 지점 토큰 (링크에 token 파라미터 있을 때 표시) -->
+  <div class="card" id="tokCard" style="display:none;">
+    <div class="tokbox">
+      <div class="lbl" id="tokLbl">매장 설정 토큰</div>
+      <div class="tokval" id="tokVal"></div>
+      <button class="copy" id="tokCopy">토큰 복사하기</button>
+    </div>
+    <div class="sub" style="margin-top:9px;">설치 후 앱 <b>5단계</b>에서 이 토큰을 붙여넣으세요.</div>
   </div>
 
   <div class="card" style="text-align:center;">
@@ -41,20 +60,62 @@ h2{font-size:15px;font-weight:800;margin:0 0 14px;}
   </div>
 
   <div class="card">
-    <h2>설치 방법</h2>
-    <div class="step"><div class="n">1</div><div class="t">위 <b>앱 다운로드</b> 버튼을 누릅니다.</div></div>
-    <div class="step"><div class="n">2</div><div class="t">다운로드된 파일을 열면 <b>"출처를 알 수 없는 앱"</b> 경고가 떠요 → <b>설정 → 허용</b> 후 설치합니다.</div></div>
-    <div class="step"><div class="n">3</div><div class="t">앱을 열고 <b>설정 토큰</b>을 붙여넣고 <b>저장</b> → <b>문자 권한 허용</b>합니다.</div></div>
-    <div class="step"><div class="n">4</div><div class="t"><b>연결 테스트</b>를 눌러 "정상"이 뜨면 끝!</div></div>
-    <div class="note">이후 매장 계좌로 입금되면 입금 문자가 자동으로 Bliss에 기록됩니다. 받은 적 있는 입금문자를 다시 넣고 싶으면 <b>최근 입금문자 다시 보내기</b>를 누르세요.</div>
+    <h2>설치 방법 (순서대로)</h2>
+    <div class="step"><div class="n">1</div><div class="t">위 <b>[앱 다운로드]</b> 누르기 → 다운로드되면 <b>[열기]</b> 누르기</div></div>
+    <div class="step"><div class="n">2</div><div class="t"><b>"출처를 알 수 없는 앱"</b> 경고 → <b>[설정] → "이 출처 허용" 켜기</b> → 뒤로 → <b>[무시하고 설치]</b></div></div>
+    <div class="step"><div class="n">3</div><div class="t"><b style="color:var(--amber);">"기기 보호를 위해 앱 차단됨"</b>(구글 Play 프로텍트)이 뜨면 → 아래 <b>주황 박스</b>를 보고 Play 프로텍트를 잠깐 끄세요. (안 뜨면 4번으로)</div></div>
+    <div class="step"><div class="n">4</div><div class="t">설치되면 앱 열기</div></div>
+    <div class="step"><div class="n">5</div><div class="t"><b>설정 토큰 붙여넣기 → [저장]</b></div></div>
+    <div class="step"><div class="n">6</div><div class="t"><b>[문자 권한 허용]</b> → 허용 → <b>[연결 테스트]</b> → <b>"정상"</b> 뜨면 끝!</div></div>
   </div>
 
   <div class="card">
+    <h2 style="color:var(--amber);">⚠ "기기 보호를 위해 앱 차단됨" 뜰 때</h2>
+    <div class="warn" style="margin-bottom:12px;">입금문자를 읽는 앱이라 구글이 자동으로 막아요. <b>우리가 만든 정상 앱</b>이니 Play 프로텍트를 잠깐 끄고 설치하면 됩니다.</div>
+    <div class="step"><div class="n">1</div><div class="t"><b>Play 스토어</b> 앱 열기</div></div>
+    <div class="step"><div class="n">2</div><div class="t">오른쪽 위 <b>동그란 프로필</b> 누르기</div></div>
+    <div class="step"><div class="n">3</div><div class="t"><b>Play 프로텍트</b> → 오른쪽 위 <b>톱니(설정)</b></div></div>
+    <div class="step"><div class="n">4</div><div class="t"><b>"Play 프로텍트로 앱 검사"</b> 스위치 <b>끄기</b></div></div>
+    <div class="step"><div class="n">5</div><div class="t">다운로드 폴더(또는 <b>"내 파일"</b>)에서 <b>bliss-deposit.apk</b> 다시 눌러 설치</div></div>
+    <div class="step"><div class="n">6</div><div class="t">설치 끝나면 위 1~4 다시 가서 <b>"앱 검사" 다시 켜기</b> (이미 설치된 앱은 그대로 작동)</div></div>
+  </div>
+
+  <div class="card" id="noTokCard">
     <h2>설정 토큰이 없으신가요?</h2>
-    <div style="font-size:13px;color:var(--text-sub);line-height:1.6;">담당자에게 요청하시면 매장 전용 토큰(<b>bsms_</b>로 시작)을 보내드려요. 토큰은 매장마다 다릅니다.</div>
+    <div class="sub">담당자에게 요청하시면 매장 전용 토큰(<b>bsms_</b>로 시작)을 보내드려요. 토큰은 <b>매장마다 다릅니다.</b></div>
+  </div>
+
+  <div class="card">
+    <h2>설치 다 됐으면</h2>
+    <div class="note">이후 매장 계좌로 입금되면 입금 문자가 <b>자동으로</b> Bliss에 기록됩니다 (받은메시지함 → 입금). 받은 적 있는 입금문자를 다시 넣고 싶으면 앱에서 <b>[최근 입금문자 다시 보내기]</b>를 누르세요.</div>
   </div>
 
   <div class="foot">Bliss · blissme.ai</div>
 </div>
+
+<script>
+(function(){
+  var q = new URLSearchParams(location.search);
+  var tok = q.get('token') || '';
+  var br  = q.get('branch') || '';
+  if (br) { document.getElementById('hdrSub').textContent = br + ' · 안드로이드 폰에 설치'; }
+  if (tok) {
+    document.getElementById('tokCard').style.display = 'block';
+    document.getElementById('noTokCard').style.display = 'none';
+    document.getElementById('tokVal').textContent = tok;
+    if (br) document.getElementById('tokLbl').textContent = br + ' 설정 토큰';
+    document.getElementById('tokCopy').addEventListener('click', function(){
+      var b = this;
+      (navigator.clipboard ? navigator.clipboard.writeText(tok) : Promise.reject()).then(function(){
+        b.textContent = '복사됨 ✓'; setTimeout(function(){ b.textContent='토큰 복사하기'; }, 1800);
+      }).catch(function(){
+        var r=document.createRange(); r.selectNodeContents(document.getElementById('tokVal'));
+        var s=window.getSelection(); s.removeAllRanges(); s.addRange(r);
+        b.textContent = '길게 눌러 복사하세요';
+      });
+    });
+  }
+})();
+</script>
 </body>
 </html>

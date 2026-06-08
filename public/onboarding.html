@@ -243,9 +243,9 @@ textarea.tpl{min-height:62px;font-size:14px;}
     <div class="sub">계좌이체 입금을 자동으로 잡아드릴 수 있어요.</div>
     <div class="field"><label class="label">입금받을 계좌</label><input class="input" id="bank" placeholder="은행 + 계좌번호 (예: 국민 123-45-6789, 예금주)"></div>
     <div class="field"><label class="label">입금 문자(SMS) 예시 <span class="opt">붙여넣기</span></label><textarea class="input" id="depositSample" placeholder="휴대폰에 온 입금 알림 문자를 그대로 붙여넣어 주세요. (입금자명·금액·잔액 자동 인식에 사용)"></textarea></div>
-    <div class="info-box">입금 문자 자동 인식은 매장 <b>안드로이드 폰</b>에 전용 앱을 설치하면 됩니다. 아래 버튼으로 받으세요. 위 예시 문자로 은행 형식을 맞춥니다.</div>
-    <a href="/bliss-deposit.apk" download style="display:block;text-align:center;margin-top:10px;padding:14px;border-radius:11px;background:var(--purple);color:#fff;font-weight:800;text-decoration:none;font-size:15px;">📲 입금 앱(APK) 다운로드</a>
-    <div style="text-align:center;margin-top:6px;font-size:11px;color:var(--text-mute);">안드로이드 전용 · 설치 안내: blissme.ai/deposit-app.html</div>
+    <div class="info-box">입금 문자 자동 인식은 매장 <b>안드로이드 폰</b>에 전용 앱을 설치하면 됩니다. 아래 버튼(설치 안내 페이지)에서 받으세요. 위 예시 문자로 은행 형식을 맞춥니다.<br><b style="color:var(--amber,#B45309);">설치 중 "기기 보호를 위해 앱 차단됨"이 뜨면</b> — 입금문자를 읽는 앱이라 구글이 막는 거예요. 안내 페이지에 끄는 법이 있습니다.</div>
+    <a id="depositAppLink" href="/deposit-app.html" target="_blank" rel="noopener" style="display:block;text-align:center;margin-top:10px;padding:14px;border-radius:11px;background:var(--purple);color:#fff;font-weight:800;text-decoration:none;font-size:15px;">입금 앱 설치하기 (안내 + 다운로드)</a>
+    <div style="text-align:center;margin-top:6px;font-size:11px;color:var(--text-mute);">안드로이드 전용</div>
     <div id="appTokenBox" style="display:none;margin-top:10px;" class="info-box">앱 설정 토큰 (앱 설치 후 붙여넣기):<br><b id="appTokenVal" style="word-break:break-all;font-size:13px;"></b></div>
     <label class="chk" data-toggle="tossWant" style="margin-top:10px;"><input type="checkbox"><span class="ct">예약금·포인트 충전(카드결제)도 쓰고 싶어요<span class="cd">토스페이먼츠 가맹 안내드립니다</span></span></label>
   </div>
@@ -491,7 +491,7 @@ function fillPrefill(get){
   Object.keys(map).forEach(k=>{ const v=get(k); if(v!=null && v!==''){ const el=document.getElementById(map[k]); if(el) el.value=v; } });
   const nv=get('naver'); if(nv==='1'||nv===1){ const el=document.querySelector('[data-toggle="naverDone"] input'); if(el){ el.checked=true; el.closest('.chk').classList.add('on'); } }
   const bizid=get('bizid'), bid=get('bid'); if(bizid) OB_REF.bizid=bizid; if(bid) OB_REF.bid=bid;
-  const tk=get('apptoken'); if(tk){ const box=document.getElementById('appTokenBox'), v=document.getElementById('appTokenVal'); if(box&&v){ v.textContent=tk; box.style.display='block'; } }
+  const tk=get('apptoken'); if(tk){ const box=document.getElementById('appTokenBox'), v=document.getElementById('appTokenVal'); if(box&&v){ v.textContent=tk; box.style.display='block'; } const dl=document.getElementById('depositAppLink'); if(dl){ const bn=get('biz')||''; dl.href='/deposit-app.html?token='+encodeURIComponent(tk)+(bn?'&branch='+encodeURIComponent(bn):''); } }
   saveDraft();
 }
 async function loadPrefill(){
