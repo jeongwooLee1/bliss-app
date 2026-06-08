@@ -24,6 +24,9 @@ export const KakaoTalkLogo = ({size=20,color="#3C1E1E"}) => (
   </svg>
 )
 
+// SMS(문자) — Material sms 말풍선(점3개)
+export const SmsLogo = (p) => <S {...p} d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM9 11H7V9h2v2zm4 0h-2V9h2v2zm4 0h-2V9h2v2z"/>
+
 export const ChannelLogo = ({channel, size=20, color="#fff"}) => {
   switch(channel){
     case 'naver': return <NaverLogo size={size} color={color}/>
@@ -32,6 +35,7 @@ export const ChannelLogo = ({channel, size=20, color="#fff"}) => {
     case 'telegram': return <TelegramLogo size={size} color={color}/>
     case 'kakao': return <KakaoTalkLogo size={size} color="#3C1E1E"/>
     case 'line': return <LineLogo size={size} color={color}/>
+    case 'sms': return <SmsLogo size={size} color={color}/>
     default: return null
   }
 }

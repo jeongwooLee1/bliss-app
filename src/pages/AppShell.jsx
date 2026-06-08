@@ -26,7 +26,7 @@ import QuickRequest from '../components/common/QuickRequest'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.8.12"
+const BLISS_V = "3.8.13"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1686,6 +1686,10 @@ function App() {
             if (ch === "ai_test") return false;                  // 패널 미노출 채널
             if (ch === "whatsapp" || ch === "line") return true; // 전지점 공통
             const accId = String(m.account_id || "");
+            if (ch === "sms") {                                  // SMS account_id = 지점 bid
+              if (userBranches === null) return true;
+              return (userBranches||[]).includes(accId);
+            }
             if (!accId || accId === "unknown") return true;      // 지점 미지정 메시지 → 노출
             if (allowedAccIds.size === 0) return true;
             return allowedAccIds.has(accId);

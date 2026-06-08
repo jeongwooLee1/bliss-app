@@ -24,7 +24,7 @@ import urllib.request
 import urllib.parse
 import urllib.error
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 # ─── 설정 ────────────────────────────────────────────
 HOME = Path.home()
@@ -153,6 +153,16 @@ def _money(s):
     return int(s.replace(',', '')) if s else 0
 
 
+def _stated_dt(mm, dd, hh, mn):
+    """문자에 적힌 은행 거래시각(MM/DD HH:MM, KST) -> ISO. 서버/앱과 공통 키로 중복제거."""
+    try:
+        kst = timezone(timedelta(hours=9))
+        yr = datetime.now(kst).year
+        return datetime(yr, int(mm), int(dd), int(hh), int(mn), 0, tzinfo=kst).isoformat()
+    except Exception:
+        return None
+
+
 # 카드사 정산 입금 판별 — 입금자명에 숫자 포함 또는 '카드' 키워드.
 # 실제 고객 이체는 입금자명이 사람 이름이라 숫자가 없음. 카드정산은 status='card'로
 # 저장해 입금문자 목록·미매칭 배너·배지에서 제외 (앱은 '카드정산' 필터로만 노출).
@@ -168,9 +178,9 @@ def parse_kb(text):
     m = KB_PATTERN.search(text)
     if not m:
         return None
-    _, _, _, _, masked, name, kind, amount_s, balance_s = m.groups()
+    mm, dd, hh, mn, masked, name, kind, amount_s, balance_s = m.groups()
     return {'account_masked': masked, 'transferer_name': name.strip(), 'kind': kind,
-            'amount': _money(amount_s), 'balance': _money(balance_s)}
+            'amount': _money(amount_s), 'balance': _money(balance_s), 'dt': _stated_dt(mm, dd, hh, mn)}
 
 
 def parse_hana(text):
@@ -179,9 +189,9 @@ def parse_hana(text):
     m = HANA_PATTERN.search(text)
     if not m:
         return None
-    _, _, _, _, masked, kind, amount_s, name, balance_s = m.groups()
+    mm, dd, hh, mn, masked, kind, amount_s, name, balance_s = m.groups()
     return {'account_masked': masked, 'transferer_name': name.strip(), 'kind': kind,
-            'amount': _money(amount_s), 'balance': _money(balance_s)}
+            'amount': _money(amount_s), 'balance': _money(balance_s), 'dt': _stated_dt(mm, dd, hh, mn)}
 
 
 def parse_sh(text):
@@ -190,9 +200,9 @@ def parse_sh(text):
     m = SH_PATTERN.search(text)
     if not m:
         return None
-    _, _, _, _, masked, kind, amount_s, balance_s, name = m.groups()
+    mm, dd, hh, mn, masked, kind, amount_s, balance_s, name = m.groups()
     return {'account_masked': masked, 'transferer_name': name.strip(), 'kind': kind,
-            'amount': _money(amount_s), 'balance': _money(balance_s)}
+            'amount': _money(amount_s), 'balance': _money(balance_s), 'dt': _stated_dt(mm, dd, hh, mn)}
 
 
 def parse_woori(text):
@@ -201,9 +211,9 @@ def parse_woori(text):
     m = WOORI_PATTERN.search(text)
     if not m:
         return None
-    _, _, _, _, masked, kind, amount_s, name = m.groups()
+    mm, dd, hh, mn, masked, kind, amount_s, name = m.groups()
     return {'account_masked': masked, 'transferer_name': name.strip(), 'kind': kind,
-            'amount': _money(amount_s), 'balance': 0}
+            'amount': _money(amount_s), 'balance': 0, 'dt': _stated_dt(mm, dd, hh, mn)}
 
 
 # 은행 정의 — 발신번호 → 파서 매핑
@@ -349,7 +359,7 @@ def main():
             'transferer_name': parsed['transferer_name'],
             'amount': parsed['amount'],
             'balance': parsed['balance'],
-            'sms_sent_at': ts.isoformat(),
+            'sms_sent_at': parsed.get('dt') or ts.isoformat(),
             'raw_text': msg_body(text, ab),
             'source': bank['source'],
         }
