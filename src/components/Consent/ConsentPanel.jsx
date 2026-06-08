@@ -14,12 +14,35 @@ export default function ConsentPanel({ cust, onRequestNew }) {
 
   const load = useCallback(async () => {
     if (!cust?.id) return
+    const SEL = 'id,template_id,template_name,signature_url,document_url,signer_name,signed_at,ip'
     try {
-      const r = await fetch(
-        `${SB_URL}/rest/v1/customer_consents?customer_id=eq.${cust.id}&select=id,template_id,template_name,signature_url,document_url,signer_name,signed_at,ip&order=signed_at.desc&limit=100`,
+      // 1) customer_id로 매칭
+      const byCust = await fetch(
+        `${SB_URL}/rest/v1/customer_consents?customer_id=eq.${cust.id}&select=${SEL}&order=signed_at.desc&limit=100`,
         { headers: sbHeaders }
-      ).then(r => r.json())
-      if (Array.isArray(r)) setHistory(r)
+      ).then(r => r.json()).catch(() => [])
+      // 2) 이 고객의 예약(reservation_id)에 달린 차트도 매칭
+      //    — consent.customer_id가 삭제된/다른(중복) 레코드여도 잡아 예약 모달과 동일하게 표시
+      let byRsv = []
+      try {
+        const rsvs = await fetch(
+          `${SB_URL}/rest/v1/reservations?cust_id=eq.${cust.id}&select=reservation_id&limit=300`,
+          { headers: sbHeaders }
+        ).then(r => r.json())
+        const rids = Array.isArray(rsvs) ? [...new Set(rsvs.map(x => x.reservation_id).filter(Boolean))] : []
+        if (rids.length) {
+          byRsv = await fetch(
+            `${SB_URL}/rest/v1/customer_consents?form_data->>reservation_id=in.(${rids.join(',')})&select=${SEL}&order=signed_at.desc&limit=100`,
+            { headers: sbHeaders }
+          ).then(r => r.json()).catch(() => [])
+        }
+      } catch { /* 예약 조회 실패해도 byCust만으로 표시 */ }
+      // 병합 (id 기준 dedup) + 서명시각 내림차순
+      const map = new Map()
+      ;[...(Array.isArray(byCust) ? byCust : []), ...(Array.isArray(byRsv) ? byRsv : [])]
+        .forEach(h => { if (h?.id) map.set(h.id, h) })
+      const merged = [...map.values()].sort((a, b) => String(b.signed_at || '').localeCompare(String(a.signed_at || '')))
+      setHistory(merged)
     } catch (e) { console.error('[consent panel] load', e) }
     finally { setLoading(false) }
   }, [cust?.id])
@@ -75,7 +98,7 @@ export default function ConsentPanel({ cust, onRequestNew }) {
           ))}
         </div>
       )}
-      {viewId && <ConsentDocsViewer customerId={cust.id} customerName={cust.name} focusConsentId={viewId} onClose={() => setViewId(null)} />}
+      {viewId && <ConsentDocsViewer customerId={cust.id} customerName={cust.name} consentIds={history.map(h => h.id)} focusConsentId={viewId} onClose={() => setViewId(null)} />}
     </div>
   )
 }

@@ -74,19 +74,26 @@ const fmtDate = (iso) => {
   } catch { return '' }
 }
 
-export default function ConsentDocsViewer({ customerId, customerName, focusConsentId, onClose }) {
+export default function ConsentDocsViewer({ customerId, customerName, consentIds, focusConsentId, onClose }) {
   const [docs, setDocs] = useState(null)
   const [active, setActive] = useState(0)
   const [cache, setCache] = useState({}) // docId -> images[] | 'loading' | 'error'
   const [err, setErr] = useState(null)
 
+  // consentIds가 주어지면 그 id들로 직접 조회(차트 customer_id가 삭제된/다른 레코드여도 표시).
+  // 없으면 기존대로 customer_id로 조회.
+  const idKey = Array.isArray(consentIds) ? consentIds.slice().sort().join(',') : ''
+
   useEffect(() => {
-    if (!customerId) { setDocs([]); return }
+    if (!customerId && !idKey) { setDocs([]); return }
     let cancelled = false
     ;(async () => {
       try {
+        const q = idKey
+          ? `id=in.(${idKey})`
+          : `customer_id=eq.${customerId}`
         const r = await fetch(
-          `${SB_URL}/rest/v1/customer_consents?customer_id=eq.${customerId}&select=id,template_name,signer_name,signed_at,document_url&order=signed_at.desc&limit=8`,
+          `${SB_URL}/rest/v1/customer_consents?${q}&select=id,template_name,signer_name,signed_at,document_url&order=signed_at.desc&limit=8`,
           { headers: sbHeaders }
         ).then(r => r.json())
         if (cancelled) return
@@ -100,7 +107,7 @@ export default function ConsentDocsViewer({ customerId, customerName, focusConse
       }
     })()
     return () => { cancelled = true }
-  }, [customerId, focusConsentId])
+  }, [customerId, idKey, focusConsentId])
 
   // 활성 문서만 렌더 (lazy)
   useEffect(() => {
