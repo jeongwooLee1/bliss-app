@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>발신번호 등록 위임장 — Bliss</title>
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<style>
+:root{--purple:#5B21B6;--bg:#F4F2F8;--line:#D9D5E3;--text:#1A1A2E;--sub:#6B7280;}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;padding:0;font-family:-apple-system,"system-ui","Apple SD Gothic Neo","Pretendard",sans-serif;background:var(--bg);color:var(--text);font-size:15px;}
+.wrap{max-width:760px;margin:0 auto;padding:14px 12px 60px;}
+.bar{display:flex;gap:8px;margin-bottom:12px;}
+.btn{flex:1;padding:13px;border:none;border-radius:10px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;}
+.btn.primary{background:var(--purple);color:#fff;}
+.btn.ghost{background:#fff;color:var(--sub);border:1px solid var(--line);}
+.btn:active{opacity:.85;}
+.btn:disabled{opacity:.45;}
+/* 문서 본체 (A4 느낌) */
+.doc{background:#fff;border-radius:6px;padding:34px 30px;box-shadow:0 1px 4px rgba(0,0,0,.08);line-height:1.75;}
+.doc h1{text-align:center;font-size:24px;font-weight:800;letter-spacing:4px;margin:4px 0 26px;}
+.doc h2{font-size:15px;font-weight:800;margin:22px 0 8px;color:var(--purple);}
+.row{display:flex;border-bottom:1px solid #EEE;padding:8px 0;font-size:14.5px;}
+.row .k{flex:0 0 130px;color:var(--sub);font-weight:700;}
+.row .v{flex:1;}
+.row .v input{width:100%;border:none;border-bottom:1px dashed #CBC6D8;font-size:14.5px;font-family:inherit;padding:2px 0;background:transparent;color:var(--text);}
+.row .v input:focus{outline:none;border-bottom-color:var(--purple);}
+.body-txt{font-size:14.5px;line-height:1.9;margin:6px 0 4px;}
+.body-txt b{color:var(--purple);}
+.dateline{text-align:center;font-size:15px;font-weight:700;margin:26px 0 10px;}
+.signbox{margin-top:14px;}
+.signbox .lbl{font-size:13px;color:var(--sub);font-weight:700;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;}
+.signbox .clr{font-size:12px;color:var(--purple);background:none;border:none;font-weight:700;cursor:pointer;font-family:inherit;}
+.sigwrap{position:relative;border:1.5px solid var(--line);border-radius:8px;background:#FCFBFE;}
+#sig{display:block;width:100%;height:170px;border-radius:8px;touch-action:none;}
+.sigph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#BBB;font-size:14px;pointer-events:none;}
+.signrow{display:flex;align-items:flex-end;gap:14px;margin-top:8px;}
+.signrow .nm{flex:1;}
+.signrow .nm .k{font-size:12px;color:var(--sub);font-weight:700;}
+.signrow .nm input{width:100%;border:none;border-bottom:1px solid #999;font-size:16px;font-weight:700;font-family:inherit;padding:3px 0;background:transparent;}
+.note{background:#EDE9FE;color:#4C1D95;border-radius:8px;padding:11px 13px;font-size:12.5px;line-height:1.6;margin-top:14px;}
+.foot{text-align:center;font-size:11px;color:#9CA3AF;padding:14px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bar">
+    <button class="btn ghost" id="clrAll" type="button">서명 지우기</button>
+    <button class="btn primary" id="savePdf" type="button">PDF로 저장 / 출력</button>
+  </div>
+
+  <div class="doc" id="doc">
+    <h1>위 임 장</h1>
+
+    <h2>위임인 (휴대전화 명의자)</h2>
+    <div class="row"><div class="k">성명</div><div class="v"><input id="f_name" placeholder="이름"></div></div>
+    <div class="row"><div class="k">휴대전화번호</div><div class="v"><input id="f_phone" placeholder="010-0000-0000"></div></div>
+    <div class="row"><div class="k">상호 (매장)</div><div class="v"><input id="f_biz" placeholder="매장명"></div></div>
+
+    <h2>수임인 (발신번호 등록·이용자)</h2>
+    <div class="row"><div class="k">상호</div><div class="v"><input id="f_to" placeholder="수임 사업자명"></div></div>
+
+    <h2>위임 내용</h2>
+    <div class="body-txt">
+      위임인은 본인 명의의 휴대전화번호 <b id="t_phone">010-0000-0000</b> 를(을),
+      수임인 <b id="t_to">수임인</b> 이(가) 문자메시지 서비스(EMFO/NPRO 등)의
+      <b>발신번호로 등록·이용</b>하는 것에 동의하며, 그 등록 및 이용에 관한 일체의 권한을 위임합니다.
+    </div>
+    <div class="body-txt" style="color:var(--sub);font-size:13px;">
+      ※ 본 위임은 위 발신번호의 메시지 발송 용도에 한하며, 위임인은 위 내용을 충분히 이해하고 자필 서명합니다.
+    </div>
+
+    <div class="dateline" id="dateline">20    년    월    일</div>
+
+    <div class="signbox">
+      <div class="lbl"><span>위임인 서명</span><button class="clr" id="clrSig" type="button">다시 서명</button></div>
+      <div class="sigwrap">
+        <canvas id="sig"></canvas>
+        <div class="sigph" id="sigph">여기에 손가락 / 마우스로 서명해주세요</div>
+      </div>
+      <div class="signrow">
+        <div class="nm"><div class="k">위임인 성명</div><input id="f_signname" placeholder="이름 (서명)"></div>
+        <div style="font-size:15px;font-weight:700;padding-bottom:4px;">(인 / 서명)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    작성 방법: ① 위 정보 확인(필요 시 수정) → ② 서명란에 서명 → ③ <b>[PDF로 저장 / 출력]</b> 누르면 위임장 PDF가 저장됩니다 → ④ 그 PDF를 담당자에게 보내주세요.
+  </div>
+  <div class="foot">Bliss · blissme.ai</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+(function(){
+  var q = new URLSearchParams(location.search);
+  var setv = function(id,val){ var e=document.getElementById(id); if(e&&val) e.value=val; };
+  setv('f_name', q.get('name')||'');
+  setv('f_phone', q.get('phone')||'');
+  setv('f_biz', q.get('biz')||'');
+  setv('f_to', q.get('to')||'하우스왁싱');
+  setv('f_signname', q.get('name')||'');
+
+  // 날짜 (오늘)
+  var d = new Date();
+  document.getElementById('dateline').textContent = d.getFullYear()+'년 '+(d.getMonth()+1)+'월 '+d.getDate()+'일';
+
+  // 본문 미러 (입력 → 본문 굵은 글씨 동기화)
+  function sync(){
+    document.getElementById('t_phone').textContent = document.getElementById('f_phone').value || '010-0000-0000';
+    document.getElementById('t_to').textContent = document.getElementById('f_to').value || '수임인';
+  }
+  document.getElementById('f_phone').addEventListener('input', sync);
+  document.getElementById('f_to').addEventListener('input', sync);
+  sync();
+
+  // 서명 캔버스
+  var cv = document.getElementById('sig'), ph = document.getElementById('sigph');
+  var ctx, drawing=false, dirty=false;
+  function setupCanvas(){
+    var ratio = window.devicePixelRatio||1;
+    var w = cv.clientWidth, h = cv.clientHeight;
+    cv.width = w*ratio; cv.height = h*ratio;
+    ctx = cv.getContext('2d');
+    ctx.scale(ratio,ratio);
+    ctx.lineWidth=2.4; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#10103a';
+  }
+  setupCanvas();
+  window.addEventListener('resize', function(){ if(!dirty) setupCanvas(); });
+  function pos(e){
+    var r=cv.getBoundingClientRect();
+    var p = e.touches? e.touches[0]: e;
+    return { x:p.clientX-r.left, y:p.clientY-r.top };
+  }
+  function start(e){ e.preventDefault(); drawing=true; dirty=true; ph.style.display='none'; var p=pos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); }
+  function move(e){ if(!drawing) return; e.preventDefault(); var p=pos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); }
+  function end(e){ drawing=false; }
+  cv.addEventListener('mousedown',start); cv.addEventListener('mousemove',move); window.addEventListener('mouseup',end);
+  cv.addEventListener('touchstart',start,{passive:false}); cv.addEventListener('touchmove',move,{passive:false}); cv.addEventListener('touchend',end);
+
+  function clearSig(){ ctx.clearRect(0,0,cv.width,cv.height); dirty=false; ph.style.display='flex'; }
+  document.getElementById('clrSig').addEventListener('click', clearSig);
+  document.getElementById('clrAll').addEventListener('click', function(){ clearSig(); });
+
+  // PDF 저장
+  document.getElementById('savePdf').addEventListener('click', async function(){
+    var btn=this;
+    if(!dirty){ alert('서명을 먼저 해주세요.'); return; }
+    if(!document.getElementById('f_signname').value.trim()){ alert('위임인 성명을 입력해주세요.'); return; }
+    btn.disabled=true; var orig=btn.textContent; btn.textContent='PDF 만드는 중…';
+    try{
+      var node = document.getElementById('doc');
+      var canvas = await html2canvas(node, { scale:2, backgroundColor:'#ffffff', useCORS:true });
+      var img = canvas.toDataURL('image/jpeg', 0.92);
+      var jsPDF = window.jspdf.jsPDF;
+      var pdf = new jsPDF('p','mm','a4');
+      var pw = 210, ph2 = 297, margin=10;
+      var iw = pw - margin*2;
+      var ih = canvas.height * iw / canvas.width;
+      if (ih <= ph2 - margin*2){
+        pdf.addImage(img, 'JPEG', margin, margin, iw, ih);
+      } else {
+        // 길면 여러 페이지로 분할
+        var pageH = ph2 - margin*2;
+        var sliceH = canvas.width * pageH / iw; // 원본 픽셀 기준 페이지 높이
+        var y=0, first=true;
+        while(y < canvas.height){
+          var part = document.createElement('canvas');
+          part.width = canvas.width;
+          part.height = Math.min(sliceH, canvas.height - y);
+          part.getContext('2d').drawImage(canvas, 0, y, canvas.width, part.height, 0, 0, canvas.width, part.height);
+          var pimg = part.toDataURL('image/jpeg',0.92);
+          var pih = part.height * iw / canvas.width;
+          if(!first) pdf.addPage();
+          pdf.addImage(pimg,'JPEG', margin, margin, iw, pih);
+          first=false; y += part.height;
+        }
+      }
+      var nm = (document.getElementById('f_name').value||'위임장').trim();
+      pdf.save('위임장_'+nm+'.pdf');
+    }catch(err){
+      alert('PDF 생성 중 오류가 났어요. 브라우저 인쇄(공유→인쇄→PDF로 저장)로도 가능합니다.');
+      console.error(err);
+    }finally{
+      btn.disabled=false; btn.textContent=orig;
+    }
+  });
+})();
+</script>
+</body>
+</html>
