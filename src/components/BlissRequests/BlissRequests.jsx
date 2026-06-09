@@ -13,6 +13,39 @@ const STATUS = {
   rejected: { label: "보류",      color: "#6B7280", bg: "#F3F4F6" },
 };
 
+// 공지 본문 — URL은 클릭 가능 링크로, 토큰(bsms_…)은 줄 옆에 [복사] 버튼 (모바일 클릭·복사 대응)
+function NoticeBody({ text }) {
+  const URL_RE = /(https?:\/\/[^\s]+)/g;
+  const TOKEN_RE = /(bsms_[a-zA-Z0-9]{16,})/;
+  const copyTok = (t, e) => {
+    const btn = e.currentTarget; const orig = btn.textContent;
+    const done = () => { btn.textContent = "복사됨 ✓"; btn.style.background = "#059669"; setTimeout(() => { btn.textContent = orig; btn.style.background = T.primary; }, 1300); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(t).then(done, () => fb());
+    } else fb();
+    function fb() { const ta = document.createElement("textarea"); ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta); ta.focus(); ta.select(); try { document.execCommand("copy"); done(); } catch (_) { alert("복사 실패 — 토큰을 길게 눌러 복사하세요"); } document.body.removeChild(ta); }
+  };
+  const lines = String(text || "").split("\n");
+  return (
+    <div style={{ fontSize: 13.5, color: T.text, lineHeight: 1.85, padding: "12px 0", wordBreak: "break-word" }}>
+      {lines.map((line, i) => {
+        if (line.trim() === "") return <div key={i} style={{ height: "0.7em" }} />;
+        const tok = line.match(TOKEN_RE);
+        const parts = line.split(URL_RE);
+        const body = parts.map((p, j) => /^https?:\/\//.test(p)
+          ? <a key={j} href={p} target="_blank" rel="noopener noreferrer" style={{ color: T.primary, fontWeight: 800, textDecoration: "underline", wordBreak: "break-all" }}>{p}</a>
+          : <span key={j}>{p}</span>);
+        return (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
+            <span style={{ flex: tok ? "1 1 auto" : "0 1 auto", minWidth: 0, wordBreak: "break-all" }}>{body}</span>
+            {tok && <button onClick={(e) => copyTok(tok[1], e)} style={{ flexShrink: 0, padding: "4px 12px", fontSize: 11.5, fontWeight: 800, fontFamily: "inherit", border: "none", background: T.primary, color: "#fff", borderRadius: 7, cursor: "pointer" }}>복사</button>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 import MarkupEditor from '../common/MarkupEditor'
 import OffRequestCard from './OffRequestCard'
 
@@ -588,7 +621,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
                 </div>}
               </div>}
               {isOpen && n.kind!=="off_request" && <div style={{padding:"0 16px 16px",borderTop:"1px solid "+T.gray100}}>
-                <div style={{fontSize:13,color:T.text,lineHeight:1.7,whiteSpace:"pre-wrap",padding:"12px 0"}}>{n.content}</div>
+                <NoticeBody text={n.content} />
                 {imgs.length > 0 && <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:10}}>
                   {imgs.map((img, i) => (
                     <div key={i} style={{position:"relative",display:"inline-block"}}>
