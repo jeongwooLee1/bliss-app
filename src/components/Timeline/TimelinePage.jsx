@@ -2672,7 +2672,12 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     // (기존엔 isNewItem 신규만이라, 예약 먼저 만들고 나중에 커플룸 체크하면 안 생기던 버그 — 신영 요청 2026-05-30)
     const COUPLE_TAG_ID = 'bvkgtel09';
     let _coupleCompanion = null;
-    if (!item.isSchedule && Array.isArray(item.selectedTags) && item.selectedTags.includes(COUPLE_TAG_ID)) {
+    // ★ 동반자 자신("…동반자N")을 수정/이동하거나, 이미 같은 reservation_group에 짝이 있으면 자동 동반자 생성 안 함.
+    //   (기존 가드는 같은 날짜·시간·관리사+이름 기준이라 동반자를 옮기면 못 잡고 또 만들던 버그)
+    const _isCompanionSelf = /\s*동반자\d+\s*$/.test(String(item.custName || ""));
+    const _hasGroupPartner = !!item.reservationGroupId && (data?.reservations || []).some(r =>
+      r.id !== item.id && r.reservationGroupId && r.reservationGroupId === item.reservationGroupId);
+    if (!item.isSchedule && !_isCompanionSelf && !_hasGroupPartner && Array.isArray(item.selectedTags) && item.selectedTags.includes(COUPLE_TAG_ID)) {
       const _baseName = String(item.custName || "").replace(/\s*동반자\d+\s*$/, "").trim();
       if (_baseName) {
         const _alreadyHasCompanion = (data?.reservations || []).some(r =>

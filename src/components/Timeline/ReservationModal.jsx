@@ -791,6 +791,24 @@ function TimelineModal({ item, onSave, onAddCompanion, onDelete, onDeleteRequest
     // 로컬 data.customers 동기화 → 재진입 시 옛 값으로 안 덮어쓰게
     if (setData) setData(d => ({...d, customers: (d.customers||[]).map(c => c.id===cid ? {...c, ...upd} : c)}));
   };
+  // ── 변경 모드에서 검색 없이 이름만 바꾼 경우 — 같은 분(오타 수정) vs 다른 분(연결/신규) resolve ──
+  const [nameResolve, setNameResolve] = useState(null); // null | {oldName,newName,matches:[]}
+  const nameResolveOkRef = React.useRef(false);
+  const _nameEditedInline = () =>
+    editingCust && custSnapshot && !custSnapshot.isNewCust && !f.isNewCust &&
+    f.custId && f.custId === custSnapshot.custId &&
+    (f.custName||"").trim() && (f.custName||"").trim() !== (custSnapshot.custName||"").trim();
+  const _openNameResolve = async () => {
+    const newN = (f.custName||"").trim();
+    const oldN = (custSnapshot?.custName||"").trim();
+    let matches = [];
+    try {
+      const rows = await sb.get("customers",
+        `&business_id=eq.${_activeBizId}&name=eq.${encodeURIComponent(newN)}&select=id,cust_num,name,phone,gender&limit=8`);
+      matches = (rows||[]).filter(r => r.id !== f.custId);
+    } catch {}
+    setNameResolve({ oldName: oldN, newName: newN, matches });
+  };
   // 🆕 reserver/visitor 별 raw state — primarySubject 토글 시 깜빡임 방지 (다시 fetch X)
   // 각 cust_id 변경 시만 fetch. 카드 표시 등은 이 raw state 직접 사용
   const [reserverPkgsRaw, setReserverPkgsRaw] = useState([]);
@@ -2241,9 +2259,10 @@ ${naverText}
                           취소
                         </button>
                         <button onClick={()=>{
-                            setCustSnapshot(null);
-                            setEditingCust(false); setCustSearch(""); setShowCustDropdown(false);
-                            setTimeout(()=>commitBtnRef.current?.click(), 0);
+                            // 검색 없이 이름만 바꿨으면 resolve 다이얼로그(같은 분 오타 / 다른 분 연결·신규)
+                            if (_nameEditedInline() && !nameResolveOkRef.current) { _openNameResolve(); return; }
+                            setShowCustDropdown(false);
+                            setTimeout(()=>commitBtnRef.current?.click(), 0);  // 메인 저장이 _persistCustEdits 후 onSave(모달 닫힘)
                           }}
                           style={{flex:1,padding:"8px 0",border:"none",background:"transparent",color:T.primary,fontSize:12,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
                           <I name="check" size={11} style={{marginRight:3}}/>저장
@@ -3054,6 +3073,9 @@ ${naverText}
                 disabled={!isSchedule && f.type==="reservation" && !f.custName?.trim()}
                 style={{marginLeft:"auto",padding:"10px 22px",borderRadius:T.radius.md,fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5,lineHeight:1,transition:"all .15s",border:"2px solid "+(isSchedule?T.orange:T.primary),color:"#fff",background:isSchedule?T.orange:T.primary,boxShadow:isSchedule?"0 4px 14px rgba(225,112,85,.35)":"0 4px 14px rgba(124,124,200,.35)"}}
                 onClick={async ()=>{
+                // 변경 모드에서 검색 없이 이름만 바꿨으면 — 저장 전에 resolve(같은 분 오타 / 다른 분 연결·신규)
+                if (_nameEditedInline() && !nameResolveOkRef.current) { _openNameResolve(); return; }
+                nameResolveOkRef.current = false;
                 if (editingCust) _persistCustEdits(); // 변경 모드 칸만 수정하고 예약 저장 시 고객정보 누락 방지
                 // 외부선결제 금액 입력 시 플랫폼 필수
                 if ((f.externalPrepaid || 0) > 0 && !(f.externalPlatform || "").trim()) {
@@ -3703,6 +3725,55 @@ ${naverText}
           customerName={f.custName}
           focusConsentId={docViewerFocus?.id || null}
           onClose={() => { setDocsViewerOpen(false); setDocViewerFocus(null); }}/>,
+        document.body)}
+      {/* 이름 변경 resolve — 검색 없이 이름만 바꿨을 때 (같은 분 오타 / 다른 분 연결·신규) */}
+      {nameResolve && createPortal(
+        <div onClick={()=>setNameResolve(null)} style={{position:"fixed",inset:0,zIndex:100000,background:"rgba(20,18,40,.5)",display:"flex",alignItems:"center",justifyContent:"center",padding:16,fontFamily:"inherit"}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:380,background:"#fff",borderRadius:16,overflow:"hidden",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
+            <div style={{padding:"16px 18px 10px"}}>
+              <div style={{fontSize:15,fontWeight:800,color:T.text,marginBottom:6,display:"flex",alignItems:"center",gap:6}}><I name="users" size={15} color={T.primary}/>고객 이름 변경</div>
+              <div style={{fontSize:13,color:T.textSub,lineHeight:1.5}}>
+                <b style={{color:T.text}}>{nameResolve.oldName||"(이름 없음)"}</b> → <b style={{color:T.primary}}>{nameResolve.newName}</b>
+                <br/>{nameResolve.matches.length>0 ? "같은 이름의 기존 고객이 있어요. 어떻게 할까요?" : "같은 분 오타 수정인가요, 다른 분인가요?"}
+              </div>
+            </div>
+            {nameResolve.matches.length>0 && (
+              <div style={{maxHeight:180,overflowY:"auto",borderTop:"1px solid "+T.border}}>
+                {nameResolve.matches.map(m=>(
+                  <div key={m.id} onClick={()=>{ selectCust(m); setEditingCust(false); nameResolveOkRef.current=true; setNameResolve(null); setTimeout(()=>commitBtnRef.current?.click(),0); }}
+                    style={{padding:"10px 16px",borderBottom:"1px solid "+T.border+"40",cursor:"pointer",display:"flex",alignItems:"center",gap:7,fontSize:13}}
+                    onMouseOver={e=>e.currentTarget.style.background=T.gray100} onMouseOut={e=>e.currentTarget.style.background="transparent"}>
+                    <span className="badge" style={{background:m.gender==="M"?T.infoLt:m.gender==="F"?T.femaleLt:T.gray200,color:m.gender==="M"?T.primary:m.gender==="F"?T.female:T.gray500,fontSize:10}}>{m.gender==="M"?"남":m.gender==="F"?"여":"-"}</span>
+                    {m.cust_num && <span style={{fontSize:11,color:T.text,background:T.gray100,padding:"1px 5px",borderRadius:3,fontWeight:700}}>{m.cust_num}</span>}
+                    <span style={{fontWeight:700}}>{m.name}</span>
+                    <span style={{color:T.textSub}}>{m.phone}</span>
+                    <span style={{marginLeft:"auto",fontSize:11,fontWeight:800,color:T.primary}}>연결 ›</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{display:"flex",flexDirection:"column",gap:8,padding:"12px 16px 16px",borderTop:"1px solid "+T.border}}>
+              {nameResolve.matches.length===0 && (
+                <button onClick={()=>{ setF(p=>({...p,isNewCust:true,custId:null})); setEditingCust(false); setCustSnapshot(null); nameResolveOkRef.current=true; setNameResolve(null); setTimeout(()=>commitBtnRef.current?.click(),0); }}
+                  style={{padding:"10px 0",borderRadius:9,border:"none",background:T.primary,color:"#fff",fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                  <I name="plus" size={12} style={{marginRight:4}}/>신규 고객으로 등록
+                </button>
+              )}
+              <button onClick={()=>{ nameResolveOkRef.current=true; setNameResolve(null); setTimeout(()=>commitBtnRef.current?.click(),0); }}
+                style={{padding:"10px 0",borderRadius:9,border:"1.5px solid "+T.border,background:"#fff",color:T.text,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                같은 분 · 이름만 수정 (오타)
+              </button>
+              <button onClick={()=>{ const q=nameResolve.newName; setNameResolve(null); setCustSearch(q); setShowCustDropdown(true); }}
+                style={{padding:"9px 0",borderRadius:9,border:"none",background:"transparent",color:T.textSub,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                <I name="search" size={11} style={{marginRight:3}}/>다른 고객 직접 검색
+              </button>
+              <button onClick={()=>setNameResolve(null)}
+                style={{padding:"6px 0",border:"none",background:"transparent",color:T.gray500,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>
+                취소
+              </button>
+            </div>
+          </div>
+        </div>,
         document.body)}
     </div>
   );
