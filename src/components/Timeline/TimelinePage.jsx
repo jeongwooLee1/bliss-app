@@ -819,7 +819,11 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     let _segs = segments;
     if (baseBid) {
       const homeStart = baseHours?.start || "11:00";
-      const earliest = segments.reduce((m,s)=>{ const f = s.from || segHoursOf(s.branchId)?.start || "11:00"; return (m===null || f < m) ? f : m; }, null);
+      // ★ away(타지점) 세그먼트의 '명시적' from(시작시각)만 본다. from이 null이면 종일/완전이동 →
+      //   home 앞을 채우지 않는다(완전이동 칼럼이 되살아나던 회귀 방지). 명시적 from이 있는 부분이동
+      //   (예: 마곡 18:20~, 19:00~)일 때만 그 앞(근무시작~첫이동)을 원소속 근무로 채운다.
+      const explicitFroms = segments.filter(s => s.branchId !== baseBid && s.from && s.from !== '').map(s => s.from);
+      const earliest = explicitFroms.length ? explicitFroms.sort()[0] : null;
       const coversFront = segments.some(s => s.branchId === baseBid && (s.from == null || s.from === '' || s.from <= homeStart));
       if (earliest && earliest > homeStart && !coversFront) {
         _segs = [{ branchId: baseBid, from: homeStart, until: earliest }, ...segments];
