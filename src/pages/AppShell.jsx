@@ -26,7 +26,7 @@ import QuickRequest from '../components/common/QuickRequest'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.8.21"
+const BLISS_V = "3.8.22"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -425,6 +425,7 @@ function Login({ users, onAccountLogin, onSignup }) {
           <a href="/terms.html" target="_blank" rel="noopener" style={{color:"rgba(45,38,75,.9)",margin:"0 5px",textDecoration:"underline"}}>이용약관</a>
           <a href="/privacy.html" target="_blank" rel="noopener" style={{color:"rgba(45,38,75,.9)",margin:"0 5px",textDecoration:"underline"}}>개인정보처리방침</a>
           <a href="/refund.html" target="_blank" rel="noopener" style={{color:"rgba(45,38,75,.9)",margin:"0 5px",textDecoration:"underline"}}>환불정책</a>
+          <a href="https://www.ftc.go.kr/bizCommPop.do?wrkr_no=6328102070" target="_blank" rel="noopener" style={{color:"rgba(45,38,75,.9)",margin:"0 5px",textDecoration:"underline"}}>사업자정보확인</a>
         </div>
       </div>
     </div>
@@ -2751,6 +2752,8 @@ function App() {
             <a href="/privacy.html" target="_blank" rel="noopener" style={{color:T.textSub,textDecoration:"none",fontWeight:600}}>개인정보처리방침</a>
             <span style={{color:T.gray300}}>·</span>
             <a href="/refund.html" target="_blank" rel="noopener" style={{color:T.textSub,textDecoration:"none"}}>환불정책</a>
+            <span style={{color:T.gray300}}>·</span>
+            <a href="https://www.ftc.go.kr/bizCommPop.do?wrkr_no=6328102070" target="_blank" rel="noopener" style={{color:T.textSub,textDecoration:"none"}}>사업자정보확인</a>
           </div>
           <div style={{color:T.textMuted,fontSize:10,display:"flex",gap:6,flexWrap:"wrap"}}>
             <span>(주)테라포트</span><span>·</span>
