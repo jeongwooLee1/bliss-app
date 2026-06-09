@@ -234,7 +234,7 @@ function TopAnnounceBubble_DEPRECATED() {
   );
 }
 
-function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBranches=[], isMaster, currentUser, setPage, bizId, onMenuClick, bizName, pendingOpenRes, setPendingOpenRes, naverColShow={}, scraperStatus=null, setPendingChat, setPendingOpenCust, unreadMsgCount=0, unreadDelayedCount=0, unreadSample=[], messagesPanelOpen=false, aiActiveCount=0, previewBlockStyle=false, betaGroupMode=false }) {
+function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBranches=[], isMaster, currentUser, setPage, bizId, onMenuClick, bizName, pendingOpenRes, setPendingOpenRes, naverColShow={}, scraperStatus=null, setPendingChat, setPendingOpenCust, unreadMsgCount=0, unreadDelayedCount=0, unreadSample=[], messagesPanelOpen=false, aiActiveCount=0, dismissAiActive, previewBlockStyle=false, betaGroupMode=false }) {
   // ─── 베타 모드: reservations 격리 (is_beta=true만 별도 fetch + setData wrap) ───
   const [_betaReservations, _setBetaReservations] = useState([]);
   useEffect(() => {
@@ -3857,9 +3857,12 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           <I name="bot" size={18} style={{color:"#6D28D9"}}/>
           <div style={{flex:1,minWidth:0}}>
             <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#6D28D9"}}>AI 상담중입니다 · {aiActiveCount}건</span>
-            <span style={{fontSize:T.fs.xxs,color:"#6D28D9",marginLeft:8}}>직원이 답하지 않아 AI가 응대 중이에요. 확인 후 직원이 이어받아 주세요.</span>
+            <span style={{fontSize:T.fs.xxs,color:"#6D28D9",marginLeft:8}}>직원이 답하지 않아 AI가 응대 중이에요. 메시지함에서 보거나, 확인했으면 [확인]을 눌러주세요.</span>
           </div>
-          <span style={{fontSize:T.fs.xxs,color:"#6D28D9",fontWeight:T.fw.bold,flexShrink:0}}>확인 <I name="chevR" size={11} color="#6D28D9"/></span>
+          <span onClick={(e)=>{ e.stopPropagation(); setPage&&setPage("messages"); }}
+            style={{fontSize:T.fs.xxs,color:"#6D28D9",fontWeight:T.fw.bold,flexShrink:0,cursor:"pointer"}}>메시지함 <I name="chevR" size={11} color="#6D28D9"/></span>
+          <button onClick={(e)=>{ e.stopPropagation(); dismissAiActive&&dismissAiActive(); }}
+            style={{flexShrink:0,padding:"4px 12px",fontSize:T.fs.xxs,fontWeight:T.fw.bolder,fontFamily:"inherit",border:"1px solid #6D28D9",background:"#6D28D9",color:"#fff",borderRadius:7,cursor:"pointer"}}>확인</button>
         </div>
       )}
       {/* Unanswered Messages Alert — 1분 이상 미응답만 배너 (즉시 응답 중인 상담 제외). 패널 열려있으면 hide */}

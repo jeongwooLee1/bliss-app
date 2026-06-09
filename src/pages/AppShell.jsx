@@ -26,7 +26,7 @@ import QuickRequest from '../components/common/QuickRequest'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.8.18"
+const BLISS_V = "3.8.19"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1898,6 +1898,17 @@ function App() {
     _prevCountsRef.current = { msg: unreadMsgCount, pending: pendingCnt, initialized: true };
   }, [unreadMsgCount, data?.reservations, userBranches, isMaster, _playBeep]);
   // 🤖 AI 상담중 — 직원이 답 안 해서 AI가 답변 시작한 대화 (최근 10분 내 마지막 발신이 AI). 30초 폴링
+  // 직원이 [확인]으로 dismiss하면 그 시점까지 확인 처리 → 새 AI 활동(더 최근 AI 발신) 생길 때만 다시 뜸.
+  const _aiActiveRawRef = React.useRef({}); // {sessionKey: 최신 AI 발신 created_at}
+  const _aiAckKey = `bliss_ai_ack_${currentBizId||''}`;
+  const dismissAiActive = React.useCallback(() => {
+    try {
+      const ack = JSON.parse(localStorage.getItem(_aiAckKey) || '{}');
+      for (const [k, ts] of Object.entries(_aiActiveRawRef.current||{})) ack[k] = ts;
+      localStorage.setItem(_aiAckKey, JSON.stringify(ack));
+    } catch {}
+    setAiActiveCount(0);
+  }, [_aiAckKey]);
   useEffect(() => {
     if (!currentBizId) { setAiActiveCount(0); return; }
     let alive = true;
@@ -1910,13 +1921,18 @@ function App() {
         const rows = await r.json();
         const latest = {};
         for (const m of (rows||[])) { const k=(m.channel||'')+'_'+m.user_id; if(!latest[k]) latest[k]=m; } // desc → 첫 게 최신
-        setAiActiveCount(Object.values(latest).filter(m=>m.is_ai).length);
+        let ack = {};
+        try { ack = JSON.parse(localStorage.getItem(_aiAckKey) || '{}'); } catch {}
+        // 마지막 발신이 AI + 직원이 확인(dismiss)한 적 없거나 그 후 새 AI 발신이 있는 세션만
+        const live = Object.entries(latest).filter(([k,m]) => m.is_ai && !(ack[k] && ack[k] >= m.created_at));
+        _aiActiveRawRef.current = Object.fromEntries(live.map(([k,m]) => [k, m.created_at]));
+        setAiActiveCount(live.length);
       } catch {}
     };
     load();
     const t = setInterval(load, 30000);
     return () => { alive=false; clearInterval(t); };
-  }, [currentBizId]);
+  }, [currentBizId, _aiAckKey]);
   // 🔔 확정대기/AI상담중 반복 알람 — 처음 1번 울린 뒤, 남아있는 동안 1분마다 4번씩 (직원이 확인할 때까지)
   useEffect(() => {
     const hasPending = (data?.reservations||[]).some(r =>
@@ -2697,7 +2713,7 @@ function App() {
         <div className="page-pad" style={{flex:1,padding:(page==="timeline"||page==="messages"||page==="schedule")?"0":"16px 20px 16px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
           <Routes>
             <Route path="/announce-test" element={<AnnounceDesignGallery/>}/>
-            <Route path="/timeline" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust} unreadMsgCount={unreadMsgCount} unreadDelayedCount={unreadDelayedCount} unreadSample={unreadSample} messagesPanelOpen={messagesPanelOpen} aiActiveCount={aiActiveCount}/></div>}/>
+            <Route path="/timeline" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust} unreadMsgCount={unreadMsgCount} unreadDelayedCount={unreadDelayedCount} unreadSample={unreadSample} messagesPanelOpen={messagesPanelOpen} aiActiveCount={aiActiveCount} dismissAiActive={dismissAiActive}/></div>}/>
             <Route path="/timeline-preview" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust} unreadMsgCount={unreadMsgCount} unreadSample={unreadSample} previewBlockStyle={true}/></div>}/>
             <Route path="/reservations" element={<ScrollArea storageKey="page_reservations"><ReservationList data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} setNaverColShow={setNaverColShow}/></ScrollArea>}/>
             <Route path="/sales" element={<ScrollArea storageKey="page_sales"><SalesPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} role={role} setPendingOpenCust={setPendingOpenCust}/></ScrollArea>}/>
