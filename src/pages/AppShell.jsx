@@ -24,6 +24,7 @@ import BlissAI from '../components/BlissAI/BlissAI'
 import FloatingAI from '../components/BlissAI/FloatingAI'
 import QuickRequest from '../components/common/QuickRequest'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
+import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 
 const uid = genId;
 const BLISS_V = "3.8.22"
@@ -33,7 +34,7 @@ function ScrollArea({ storageKey, children }) {
   const ref = useScrollRestore(storageKey)
   return <div ref={ref} className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}>{children}</div>
 }
-const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", users:"/users", messages:"/messages", admin:"/settings", schedule:"/schedule", requests:"/requests", blissai:"/blissai" };
+const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", marketing:"/marketing", users:"/users", messages:"/messages", admin:"/settings", schedule:"/schedule", requests:"/requests", blissai:"/blissai" };
 // reservations 테이블엔 대용량 JSONB 없음 (snapshot_data는 sales 테이블에만 존재)
 // type/is_schedule/source/repeat 등 필터링 필수 컬럼이 누락되면 화면 비어짐 → * 사용이 안전
 const RES_SELECT = "*";
@@ -2591,6 +2592,7 @@ function App() {
     { id:"reservations", label:"예약목록", icon:<I name="clipboard" size={16}/> },
     { id:"sales", label:"매출관리", icon:<I name="wallet" size={16}/> },
     { id:"customers", label:"고객관리", icon:<I name="users" size={16}/> },
+    { id:"marketing", label:"마케팅", icon:<I name="msgSq" size={16}/> },
     ...((role==="owner"||role==="super")?[{ id:"users", label:"사용자관리", icon:<I name="user" size={16}/> }]:[]),
     { id:"messages", label:"받은메시지함", icon:<I name="msgSq" size={16}/>, badge: unreadMsgCount + pendingDepositCount + pendingReviewCount },
     { id:"admin", label:"관리설정", icon:<I name="settings" size={16}/> },
@@ -2730,6 +2732,7 @@ function App() {
             <Route path="/sales" element={<ScrollArea storageKey="page_sales"><SalesPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} role={role} setPendingOpenCust={setPendingOpenCust}/></ScrollArea>}/>
             <Route path="/sale-summary" element={<ScrollArea storageKey="page_sale_summary"><SaleSummary/></ScrollArea>}/>
             <Route path="/customers" element={<ScrollArea storageKey="page_customers"><CustomersPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} pendingOpenCust={pendingOpenCust} setPendingOpenCust={setPendingOpenCust} setPage={setPage} setPendingOpenRes={setPendingOpenRes}/></ScrollArea>}/>
+            <Route path="/marketing" element={<ScrollArea storageKey="page_marketing"><MarketingBroadcast data={data} userBranches={userBranches} bizId={currentBizId} currentUser={currentUser} isMaster={isMaster}/></ScrollArea>}/>
             <Route path="/users" element={<ScrollArea storageKey="page_users"><UsersPage data={data} setData={setData} bizId={currentBizId}/></ScrollArea>}/>
             <Route path="/messages" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><AdminInbox sb={sb} branches={data?.branches} data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} currentUser={currentUser} onRead={(cnt)=>{setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)));loadUnreadRef.current&&loadUnreadRef.current();}} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage} depositPending={pendingDepositCount} reviewPending={pendingReviewCount} setPendingOpenCust={setPendingOpenCust} onReviewReplied={()=>setPendingReviewCount(p=>Math.max(0,p-1))}/></div>}/>
             <Route path="/schedule" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}>{isMaster && <SchedulePage/>}</div>}/>
