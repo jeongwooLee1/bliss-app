@@ -812,8 +812,21 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         || (baseBid && (empWorkHours[empId+"_"+baseBid+"_"+date] || empWorkHours[empId+"_"+baseBid]))
         || branchDefault;
     };
+    // ★ 앞 구간 빈틈을 home(원소속) 근무로 채움 — 저녁 이동(예: 마곡 19:00~)처럼 앞부분 home 세그먼트가
+    //   누락된 override도 정상 표시(원지점 라인 사라짐 버그). 첫 away 세그먼트가 근무 시작보다 늦게 시작하면
+    //   그 앞(근무시작~첫이동)은 원소속 근무로 채운다. tail은 안 채움 — 완전이동의 지점 근무시간 차이로 인한
+    //   허상 잔여(예: 잠실 21:30 마감인데 home 22:00) 방지(v3.7.907 케이스 보존).
+    let _segs = segments;
+    if (baseBid) {
+      const homeStart = baseHours?.start || "11:00";
+      const earliest = segments.reduce((m,s)=>{ const f = s.from || segHoursOf(s.branchId)?.start || "11:00"; return (m===null || f < m) ? f : m; }, null);
+      const coversFront = segments.some(s => s.branchId === baseBid && (s.from == null || s.from === '' || s.from <= homeStart));
+      if (earliest && earliest > homeStart && !coversFront) {
+        _segs = [{ branchId: baseBid, from: homeStart, until: earliest }, ...segments];
+      }
+    }
     // from 기준 정렬 (빈 값은 해당 지점 근무 시작으로 간주). wh null 방어.
-    const sorted = [...segments].sort((a,b) => (a.from||segHoursOf(a.branchId)?.start||"11:00").localeCompare(b.from||segHoursOf(b.branchId)?.start||"11:00"));
+    const sorted = [..._segs].sort((a,b) => (a.from||segHoursOf(a.branchId)?.start||"11:00").localeCompare(b.from||segHoursOf(b.branchId)?.start||"11:00"));
     return sorted.map((s, i) => {
       const wh = segHoursOf(s.branchId);
       const from = s.from || (i === 0 ? (wh?.start||"11:00") : sorted[i-1].until || (wh?.start||"11:00"));
