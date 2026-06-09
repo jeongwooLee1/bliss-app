@@ -26,7 +26,7 @@ import QuickRequest from '../components/common/QuickRequest'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 
 const uid = genId;
-const BLISS_V = "3.8.20"
+const BLISS_V = "3.8.21"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -417,6 +417,16 @@ function Login({ users, onAccountLogin, onSignup }) {
         </div>
       </div>
       {showHelp && <AuthHelpModal initialMode={showHelp} onClose={()=>setShowHelp(null)} onUseId={(id)=>{setLoginId(id);setErr("");}}/>}
+      {/* 사업자정보 푸터 — PG(토스) 심사용. 모바일에서도 항상 노출 */}
+      <div style={{position:"absolute",bottom:0,left:0,right:0,zIndex:2,padding:"7px 12px 9px",textAlign:"center",fontSize:10,lineHeight:1.65,color:"rgba(45,38,75,.82)",background:"rgba(255,255,255,.5)",backdropFilter:"blur(2px)"}}>
+        <div>(주)테라포트 · 대표 권신영 · 사업자등록번호 632-81-02070 · 통신판매업 제2022-성남수정-0100호</div>
+        <div>서울특별시 강남구 논현로 641, 420호 · 070-8983-6838 · contact@blissme.ai</div>
+        <div style={{marginTop:2}}>
+          <a href="/terms.html" target="_blank" rel="noopener" style={{color:"rgba(45,38,75,.9)",margin:"0 5px",textDecoration:"underline"}}>이용약관</a>
+          <a href="/privacy.html" target="_blank" rel="noopener" style={{color:"rgba(45,38,75,.9)",margin:"0 5px",textDecoration:"underline"}}>개인정보처리방침</a>
+          <a href="/refund.html" target="_blank" rel="noopener" style={{color:"rgba(45,38,75,.9)",margin:"0 5px",textDecoration:"underline"}}>환불정책</a>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2744,8 +2754,9 @@ function App() {
           </div>
           <div style={{color:T.textMuted,fontSize:10,display:"flex",gap:6,flexWrap:"wrap"}}>
             <span>(주)테라포트</span><span>·</span>
-            <span>632-81-02070</span><span>·</span>
             <span>대표 권신영</span><span>·</span>
+            <span>632-81-02070</span><span>·</span>
+            <span>서울특별시 강남구 논현로 641, 420호</span><span>·</span>
             <span>070-8983-6838</span><span>·</span>
             <span>contact@blissme.ai</span>
           </div>
