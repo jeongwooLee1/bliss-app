@@ -1595,8 +1595,11 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         const _ko = (_lastInTxt.match(/[\uAC00-\uD7A3\u1100-\u11FF]/g)||[]).length;
         const _en = (_lastInTxt.match(/[a-zA-Z]/g)||[]).length;
         const _enPriority = _en >= 5 || (_en > 0 && _ko === 0);
-        // 번역 결정: force_en=강제영어 / auto=영어 우선 케이스 / off=안함
-        const _shouldTranslate = translateMode === "force_en" || (translateMode === "auto" && _enPriority);
+        // ★ 고객이 최근 대화에서 영어를 한 글자도 안 쓴 명백한 한국 고객이면 영어 번역 금지 (강제영어 토글이 켜져 있어도).
+        //   강제영어 토글이 대화 간 전역 유지되는 함정 → 한국 고객에게 영어가 나가는 사고 방지.
+        const _pureKoreanCust = _ko >= 5 && _en === 0;
+        // 번역 결정: force_en=강제영어 / auto=영어 우선 케이스 / off=안함. 단 명백한 한국 고객은 제외.
+        const _shouldTranslate = !_pureKoreanCust && (translateMode === "force_en" || (translateMode === "auto" && _enPriority));
         const lang = "en";
         if(_shouldTranslate){
           // 최근 6건의 대화 맥락 (시각·발화자 구분) — 번역 품질 + stale fact 방지용
