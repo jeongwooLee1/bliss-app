@@ -27,7 +27,7 @@ import BlissRequests from '../components/BlissRequests/BlissRequests'
 import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 
 const uid = genId;
-const BLISS_V = "3.8.44"
+const BLISS_V = "3.8.45"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1970,6 +1970,7 @@ function App() {
   // 🔔 확정대기/AI상담중 반복 알람 — 처음 1번 울린 뒤, 남아있는 동안 1분마다 4번씩 (직원이 확인할 때까지)
   // 울리기 직전 ref로 최신 조건 재확인 — effect 재실행이 늦어도(절전·백그라운드 탭) 조건 꺼지면 즉시 무음 (유령 알람 방지)
   const _alarmOnRef = React.useRef(false);
+  const _alarmCtxRef = React.useRef({ userBranches: [], aiActiveCount: 0 }); // 인터벌 콜백용 최신 컨텍스트 (인터벌은 한 번 만들면 클로저가 고정이라 ref 경유)
   useEffect(() => {
     const hasPending = (data?.reservations||[]).some(r =>
       (r.status === "pending" || r.status === "request") &&
@@ -1978,8 +1979,26 @@ function App() {
     );
     const hasAlarm = hasPending || aiActiveCount > 0;
     _alarmOnRef.current = hasAlarm;
+    _alarmCtxRef.current = { userBranches: userBranches||[], aiActiveCount };
     if (hasAlarm && !_pendingAlarmRef.current) {
-      _pendingAlarmRef.current = setInterval(() => { if (_alarmOnRef.current) _playBeep("pending", 4); }, 60000);
+      // 울리기 직전 서버 재검증 (v3.8.45 유령 알람 2차 방어) — 클라이언트 stale 데이터가 확정대기를 가짜로 들고 있어도
+      // 서버에 실제 pending/request가 없으면 무음 + 알람 강제 해제. 알람 활성 중에만 1분당 1건짜리 가벼운 조회.
+      _pendingAlarmRef.current = setInterval(async () => {
+        if (!_alarmOnRef.current) return;
+        const ctx = _alarmCtxRef.current || {};
+        try {
+          if (_activeBizId && (ctx.userBranches||[]).length && !(ctx.aiActiveCount > 0)) {
+            const bidIn = (ctx.userBranches||[]).map(encodeURIComponent).join(',');
+            const vr = await fetch(`${SB_URL}/rest/v1/reservations?business_id=eq.${_activeBizId}&status=in.(pending,request)&is_beta=eq.false&bid=in.(${bidIn})&or=(memo.is.null,memo.not.like.*${encodeURIComponent('확정완료')}*)&select=id&limit=1`,
+              { headers: { apikey: SB_KEY, Authorization: "Bearer "+SB_KEY, "Cache-Control": "no-cache" }, cache: "no-store" });
+            if (vr.ok) {
+              const rows = await vr.json();
+              if (!(Array.isArray(rows) && rows.length > 0)) { _alarmOnRef.current = false; return; } // 서버에 없음 = 유령 → 무음
+            }
+          }
+        } catch {} // 검증 실패(네트워크 등) 시엔 기존 동작 유지 (실제 확정대기 놓치는 것보다 안전)
+        if (_alarmOnRef.current) _playBeep("pending", 4);
+      }, 60000);
     } else if (!hasAlarm && _pendingAlarmRef.current) {
       clearInterval(_pendingAlarmRef.current);
       _pendingAlarmRef.current = null;
