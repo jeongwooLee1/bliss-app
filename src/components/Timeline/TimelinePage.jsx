@@ -4126,8 +4126,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         {/* TopAnnounceBubble 제거 — AnnouncesMarquee로 통합 (AppShell 상단) */}
       </div>
 
-        {/* Timeline Grid */}
-        <div style={{display:"flex",minWidth:"fit-content",position:"relative"}} onClick={handleTlClick}>
+        {/* Timeline Grid — tl-grid-card: 데스크탑에서 그림자+라운드 카드 (index.html) */}
+        <div className="tl-grid-card" style={{display:"flex",minWidth:"fit-content",position:"relative"}} onClick={handleTlClick}>
           {/* Time Labels */}
           <div className="tl-time-col" style={{width:timeLabelsW,flexShrink:0,position:"sticky",left:0,zIndex:20,background:T.bgCard,borderRight:"1px solid #eee"}}>
             <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:25,background:T.bgCard}}/>
