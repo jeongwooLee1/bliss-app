@@ -1994,9 +1994,11 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   // (예: 선결제 33,000 + 바프권 30만 구매 + 다리 11만 → 바프권 26.7만 결제 + 바프권 잔액에서 다리 11만 차감)
   const externalToNewPrepaid = Math.min(externalDeduct, Math.max(0, newPrepaidActiveTotal - eventDiscountPrepaid));
   const externalToSvc = externalDeduct - externalToNewPrepaid;
-  // 할인·보유권 차감 후 순수 시술·제품 잔액 (= 다담권 즉시차감 가능 상한)
-  const svcAfterAllDiscounts = Math.max(0, pureSvcTotal + prodTotal - discount - promoDiscountTotal - couponDiscountTotal - evtCouponDiscountOnSvc - evtCouponDiscountOnProd - eventDiscountSvc - naverDeduct - externalToSvc - pkgDeduct);
-  // 새 다담권 즉시차감: 할인 후 시술잔액과 (선결제 적용 후) 다담권 잔액 중 작은 값
+  // 신규 다담권 즉시차감 상한 = '받은 시술' 잔액까지만 (제품 제외). 제품은 별도 결제수단으로.
+  //   충전한 다담권이 같은 건의 제품을 자동결제하면 안 됨 — 박재은: 다담권 충전(입금) + 제품(카드) 따로 (id_wtwke6n19d).
+  //   기존 보유 다담권으로 제품 결제하는 spill은 pkgDeduct 경로라 영향 없음(유지).
+  const svcAfterAllDiscounts = Math.max(0, pureSvcTotal - discount - promoDiscountTotal - couponDiscountOnSvc - evtCouponDiscountOnSvc - eventDiscountSvc - naverDeduct - externalToSvc - pkgDeduct);
+  // 새 다담권 즉시차감: 할인 후 '시술'잔액과 (선결제 적용 후) 다담권 잔액 중 작은 값 (제품 제외)
   newPkgInstantDeduct = newPrepaidActiveTotal > 0 ? Math.min(svcAfterAllDiscounts, Math.max(0, newPrepaidActiveTotal - eventDiscountPrepaid)) : 0;
   const grandTotal = Math.max(0, svcTotal + prodTotal - discount - promoDiscountTotal - couponDiscountTotal - evtCouponDiscountTotal - eventDiscountTotal - naverDeduct - externalDeduct - pkgDeduct - newPkgInstantDeduct - pointDeduct - svcCompedTotal - prodCompedTotal - svcSubFreeTotal);
   // 실제 결제할 금액 (예약금·할인·이벤트·쿠폰·보유권·신규다담권즉시차감·체험단제공 차감)
