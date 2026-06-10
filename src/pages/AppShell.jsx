@@ -27,7 +27,7 @@ import BlissRequests from '../components/BlissRequests/BlissRequests'
 import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 
 const uid = genId;
-const BLISS_V = "3.8.26"
+const BLISS_V = "3.8.27"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1911,40 +1911,49 @@ function App() {
   }, [unreadMsgCount, data?.reservations, userBranches, isMaster, _playBeep]);
   // 🤖 AI 상담중 — 직원이 답 안 해서 AI가 답변 시작한 대화 (최근 10분 내 마지막 발신이 AI). 30초 폴링
   // 직원이 [확인]으로 dismiss하면 그 시점까지 확인 처리 → 새 AI 활동(더 최근 AI 발신) 생길 때만 다시 뜸.
-  const _aiActiveRawRef = React.useRef({}); // {sessionKey: 최신 AI 발신 created_at}
-  const _aiAckKey = `bliss_ai_ack_${currentBizId||''}`;
+  const _aiActiveRawRef = React.useRef({}); // {sessionKey: {ts, channel, user_id, account_id}}
+  const [aiActiveSample, setAiActiveSample] = useState(null); // 첫 AI 상담중 세션 → 배너 클릭 시 그 대화로 이동
+  // 확인(dismiss)을 서버(ai_active_ack)에 기록 → 어느 PC에서 확인해도 모든 PC에서 종료 (localStorage 브라우저별 → 서버 공유)
   const dismissAiActive = React.useCallback(() => {
-    try {
-      const ack = JSON.parse(localStorage.getItem(_aiAckKey) || '{}');
-      for (const [k, ts] of Object.entries(_aiActiveRawRef.current||{})) ack[k] = ts;
-      localStorage.setItem(_aiAckKey, JSON.stringify(ack));
-    } catch {}
-    setAiActiveCount(0);
-  }, [_aiAckKey]);
+    setAiActiveCount(0); // 이 PC 즉시 클리어
+    const biz = currentBizId;
+    const acks = Object.entries(_aiActiveRawRef.current||{}).map(([k,v]) => ({ business_id: biz, session_key: k, acked_ts: (v&&v.ts)||v }));
+    if (!biz || !acks.length) return;
+    fetch(`${SB_URL}/rest/v1/ai_active_ack?on_conflict=business_id,session_key`, {
+      method:'POST', headers:{...sbHeaders, 'Content-Type':'application/json', 'Prefer':'resolution=merge-duplicates,return=minimal'},
+      body: JSON.stringify(acks)
+    }).catch(()=>{});
+  }, [currentBizId]);
   useEffect(() => {
-    if (!currentBizId) { setAiActiveCount(0); return; }
+    if (!currentBizId) { setAiActiveCount(0); setAiActiveSample(null); return; }
     let alive = true;
     const load = async () => {
       try {
         const since = new Date(Date.now() - 10*60*1000).toISOString().replace('+','%2B');
-        const r = await fetch(`${SB_URL}/rest/v1/messages?business_id=eq.${currentBizId}&direction=eq.out&created_at=gte.${since}&select=channel,user_id,is_ai,created_at&order=created_at.desc&limit=300`,
-          { headers: {...sbHeaders, 'Cache-Control':'no-cache'}, cache:'no-store' });
-        if (!alive || !r.ok) return;
-        const rows = await r.json();
+        const [mr, ar] = await Promise.all([
+          fetch(`${SB_URL}/rest/v1/messages?business_id=eq.${currentBizId}&direction=eq.out&created_at=gte.${since}&select=channel,user_id,account_id,is_ai,created_at&order=created_at.desc&limit=300`,
+            { headers: {...sbHeaders, 'Cache-Control':'no-cache'}, cache:'no-store' }),
+          fetch(`${SB_URL}/rest/v1/ai_active_ack?business_id=eq.${currentBizId}&select=session_key,acked_ts`,
+            { headers: {...sbHeaders, 'Cache-Control':'no-cache'}, cache:'no-store' }),
+        ]);
+        if (!alive || !mr.ok) return;
+        const rows = await mr.json();
+        const ackRows = ar.ok ? await ar.json() : [];
+        const ack = {}; for (const a of (ackRows||[])) ack[a.session_key] = a.acked_ts;
         const latest = {};
         for (const m of (rows||[])) { const k=(m.channel||'')+'_'+m.user_id; if(!latest[k]) latest[k]=m; } // desc → 첫 게 최신
-        let ack = {};
-        try { ack = JSON.parse(localStorage.getItem(_aiAckKey) || '{}'); } catch {}
-        // 마지막 발신이 AI + 직원이 확인(dismiss)한 적 없거나 그 후 새 AI 발신이 있는 세션만
+        // 마지막 발신이 AI + (서버에) 확인 기록 없거나 그 후 새 AI 발신이 있는 세션만
         const live = Object.entries(latest).filter(([k,m]) => m.is_ai && !(ack[k] && ack[k] >= m.created_at));
-        _aiActiveRawRef.current = Object.fromEntries(live.map(([k,m]) => [k, m.created_at]));
+        _aiActiveRawRef.current = Object.fromEntries(live.map(([k,m]) => [k, {ts:m.created_at, channel:m.channel, user_id:m.user_id, account_id:m.account_id}]));
         setAiActiveCount(live.length);
+        const first = live[0]?.[1];
+        setAiActiveSample(first ? {channel:first.channel, user_id:first.user_id, account_id:first.account_id} : null);
       } catch {}
     };
     load();
     const t = setInterval(load, 30000);
     return () => { alive=false; clearInterval(t); };
-  }, [currentBizId, _aiAckKey]);
+  }, [currentBizId]);
   // 🔔 확정대기/AI상담중 반복 알람 — 처음 1번 울린 뒤, 남아있는 동안 1분마다 4번씩 (직원이 확인할 때까지)
   useEffect(() => {
     const hasPending = (data?.reservations||[]).some(r =>
@@ -2726,7 +2735,7 @@ function App() {
         <div className="page-pad" style={{flex:1,padding:(page==="timeline"||page==="messages"||page==="schedule")?"0":"16px 20px 16px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
           <Routes>
             <Route path="/announce-test" element={<AnnounceDesignGallery/>}/>
-            <Route path="/timeline" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust} unreadMsgCount={unreadMsgCount} unreadDelayedCount={unreadDelayedCount} unreadSample={unreadSample} messagesPanelOpen={messagesPanelOpen} aiActiveCount={aiActiveCount} dismissAiActive={dismissAiActive}/></div>}/>
+            <Route path="/timeline" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust} unreadMsgCount={unreadMsgCount} unreadDelayedCount={unreadDelayedCount} unreadSample={unreadSample} messagesPanelOpen={messagesPanelOpen} aiActiveCount={aiActiveCount} aiActiveSample={aiActiveSample} dismissAiActive={dismissAiActive}/></div>}/>
             <Route path="/timeline-preview" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><Timeline data={data} setData={setData} userBranches={userBranches} viewBranches={viewBranches} isMaster={isMaster} currentUser={currentUser} setPage={setPage} bizId={currentBizId} onMenuClick={()=>setSideOpen(true)} bizName={bizName} pendingOpenRes={pendingOpenRes} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} scraperStatus={scraperStatus} setPendingChat={setPendingChat} setPendingOpenCust={setPendingOpenCust} unreadMsgCount={unreadMsgCount} unreadSample={unreadSample} previewBlockStyle={true}/></div>}/>
             <Route path="/reservations" element={<ScrollArea storageKey="page_reservations"><ReservationList data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} setPendingOpenRes={setPendingOpenRes} naverColShow={naverColShow} setNaverColShow={setNaverColShow}/></ScrollArea>}/>
             <Route path="/sales" element={<ScrollArea storageKey="page_sales"><SalesPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} setPage={setPage} role={role} setPendingOpenCust={setPendingOpenCust}/></ScrollArea>}/>
