@@ -1338,11 +1338,29 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     if (Object.keys(_pkgItemsRestore).length > 0) {
       setPkgItems(prev => ({ ...prev, ..._pkgItemsRestore }));
     }
+    // 2회차감(쉐어 여→남) 복원 — '쉐어 보정금' detail 없이 여자쉐어 보유권 qty>=2면 2회차감으로 간주
+    const _hadSurcharge = existingDetails.some(d => /쉐어 보정금/.test(d.service_name||"") || (d.item_kind||"") === 'share_surcharge');
+    if (!_hadSurcharge) {
+      const _dblIds = Object.entries(_pkgItemsRestore).filter(([k,v]) => {
+        const id = k.replace(/^pkg__/, ''); const p = (custPkgs||[]).find(x => x.id === id);
+        return (v?.qty||0) >= 2 && p && p._shared_from && p._owner_gender === 'F';
+      }).map(([k]) => k.replace(/^pkg__/, ''));
+      if (_dblIds.length) setShareDoublePkgs(prev => { const n = new Set(prev); _dblIds.forEach(id => n.add(id)); return n; });
+    }
   }, [editMode, reservation, SVC_LIST.length, PROD_LIST.length, custPkgs.length]);
 
   // 다회권 → 시술 목록 최상단에 증감 버튼으로 표시
   // pkgItems: { "pkg__{pkgId}": { qty: 0~N } }
   const [pkgItems, setPkgItems] = useState({});
+  // 쉐어 여→남: 보정금(33,000) 대신 "2회 차감" 선택한 pkgId 집합 (id_axxvfv9arp 수정요청)
+  const [shareDoublePkgs, setShareDoublePkgs] = useState(() => new Set());
+  const _groupPkgIds = (g) => (g?.pkgs || []).map(p => p.id);
+  const _isGroupDouble = (g) => _groupPkgIds(g).some(id => shareDoublePkgs.has(id));
+  const toggleShareDouble = (g, groupKey) => {
+    const ids = _groupPkgIds(g); const dbl = _isGroupDouble(g);
+    setShareDoublePkgs(prev => { const n = new Set(prev); ids.forEach(id => dbl ? n.delete(id) : n.add(id)); return n; });
+    setPkgQty(groupKey, dbl ? 1 : 2);   // 보정금 ↔ 2회차감 = qty 1 ↔ 2
+  };
   // 예약에서 넘어온 pkg__ 항목 또는 다회권 자동 선택
   const pkgAutoSelected = useRef(false);
   useEffect(() => {
@@ -1410,6 +1428,11 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     });
     setPkgItems(newPkgItems);
     setPkgUse(newPkgUse);
+    // 사용 해제(0) 시 그 그룹의 2회차감 선택도 해제
+    if (newQty === 0) {
+      const ids = pkgs.map(p => p.id);
+      setShareDoublePkgs(prev => { const n = new Set(prev); ids.forEach(id => n.delete(id)); return n; });
+    }
   };
 
   const hasPkgChecked = () => Object.values(pkgItems).some(v => (v?.qty||0) > 0);
@@ -1525,13 +1548,14 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       const qty = v?.qty || 0;
       if (qty <= 0) return;
       const pkgId = key.replace(/^pkg__/, '');
+      if (shareDoublePkgs.has(pkgId)) return;   // 2회차감 선택 → 보정금 면제
       const pkg = custPkgs.find(p => p.id === pkgId);
       if (pkg && pkg._shared_from && pkg._owner_gender === 'F') {
         surcharge += qty * SHARE_MF_SURCHARGE;
       }
     });
     return surcharge;
-  }, [gender, pkgItems, custPkgs]);
+  }, [gender, pkgItems, custPkgs, shareDoublePkgs]);
 
   // Totals
   const svcTotal = SVC_LIST.reduce((sum, svc) => sum + (items[svc.id]?.checked ? items[svc.id].amount : 0), 0)
@@ -3843,11 +3867,13 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
                             ? <span style={{marginLeft:6,fontSize:9,padding:"1px 6px",borderRadius:8,background:"#F5F3FF",color:"#5B21B6",border:"1px solid #C4B5FD",fontWeight:700}}>🤝 쉐어 · {g.sharedFrom}{g.ownerGender ? (g.ownerGender === 'F' ? ' (여)' : ' (남)') : ''}</span>
                             : <span style={{marginLeft:6,fontSize:9,padding:"1px 6px",borderRadius:8,background:"#E0E7FF",color:"#3730A3",border:"1px solid #C7D2FE",fontWeight:700}}>본인</span>)
                       }
-                      {surchargeHint && <span title="여자 패키지를 남자가 사용 → +33,000원 보정" style={{marginLeft:4,fontSize:9,padding:"1px 5px",borderRadius:6,background:"#FEF3C7",color:"#92400E",fontWeight:700}}>+33,000원</span>}
+                      {surchargeHint && (useQty>0
+                        ? <span onClick={(e)=>{e.stopPropagation(); toggleShareDouble(g, groupKey);}} title="클릭하면 '보정금 +33,000' ↔ '2회 차감' 전환" style={{marginLeft:4,fontSize:9,padding:"1px 6px",borderRadius:6,cursor:"pointer",fontWeight:700,background:_isGroupDouble(g)?"#EDE9FE":"#FEF3C7",color:_isGroupDouble(g)?"#5B21B6":"#92400E",border:"1px solid "+(_isGroupDouble(g)?"#C4B5FD":"#FCD34D")}}>{_isGroupDouble(g)?"2회 차감":"+33,000원"} ⇄</span>
+                        : <span title="여자 패키지를 남자가 사용 → +33,000원 보정 (사용 체크하면 '2회 차감'으로 전환 가능)" style={{marginLeft:4,fontSize:9,padding:"1px 5px",borderRadius:6,background:"#FEF3C7",color:"#92400E",fontWeight:700}}>+33,000원</span>)}
                     </span>
                     <span style={{flexShrink:0,fontSize:11,color:g.isInactive?T.gray500:T.gray700,fontWeight:700}}>잔여 {g.totalRemain}회</span>
                     <span style={{flexShrink:0,width:95,textAlign:"right",padding:"0 6px",fontSize:13,fontWeight:isActive?700:400,color:g.isInactive?T.gray400:(isActive?T.danger:T.gray400)}}>
-                      {g.isInactive ? "사용불가" : (isActive ? "1회 사용" : "0원")}
+                      {g.isInactive ? "사용불가" : (useQty>0 ? useQty+"회 사용" : "0원")}
                     </span>
                   </div>;
                 });
