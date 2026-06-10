@@ -827,7 +827,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       //   (예: 마곡 18:20~, 19:00~)일 때만 그 앞(근무시작~첫이동)을 원소속 근무로 채운다.
       const explicitFroms = segments.filter(s => s.branchId !== baseBid && s.from && s.from !== '').map(s => s.from);
       const earliest = explicitFroms.length ? explicitFroms.sort()[0] : null;
-      const coversFront = segments.some(s => s.branchId === baseBid && (s.from == null || s.from === '' || s.from <= homeStart));
+      // 앞 구간이 '어느 지점이든' 근무시작(또는 그 이전)부터 시작하는 세그먼트로 덮여 있으면 채우지 않는다.
+      // (예: 마곡 from:null~15:00 = 종일이동→15시 강남. 마곡이 앞을 덮으므로 홈 왕십리를 끼워넣으면 안 됨)
+      const coversFront = segments.some(s => (s.from == null || s.from === '' || s.from <= homeStart));
       if (earliest && earliest > homeStart && !coversFront) {
         _segs = [{ branchId: baseBid, from: homeStart, until: earliest }, ...segments];
       }
