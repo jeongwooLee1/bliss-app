@@ -104,7 +104,7 @@ export default function CalendarViews({ view, selDate, onDayView, bizId, branche
   if (view === "month") {
     const ttl = `${anchor.getFullYear()}.${anchor.getMonth() + 1}`
     return (
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto", background: T.bgCard }}>
+      <div className="tl-calview" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto", background: T.bgCard }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "10px 12px", position: "relative" }}>
           {viewSelect}
           <button style={navBtn} onClick={() => stepMonth(-1)}><I name="chevL" size={16} /></button>
@@ -138,7 +138,7 @@ export default function CalendarViews({ view, selDate, onDayView, bizId, branche
     const s = range.days[0], e = range.days[6]
     const ttl = `${s.getMonth() + 1}/${s.getDate()} ~ ${e.getMonth() + 1}/${e.getDate()}`
     return (
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", background: T.bgCard }}>
+      <div className="tl-calview" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", background: T.bgCard }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "10px 12px", position: "relative" }}>
           {viewSelect}
           <button style={navBtn} onClick={() => stepWeek(-1)}><I name="chevL" size={16} /></button>
@@ -170,7 +170,7 @@ export default function CalendarViews({ view, selDate, onDayView, bizId, branche
   const ttl = `${anchor.getFullYear()}.${anchor.getMonth() + 1}`
   const dates = Object.keys(byDate).filter(d => d >= (range.monthStart || range.start) && d <= (range.monthEnd || range.end)).sort()
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto", background: T.bgCard }}>
+    <div className="tl-calview" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto", background: T.bgCard }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "10px 12px", position: "relative", flexShrink: 0 }}>
         {viewSelect}
         <button style={navBtn} onClick={() => stepMonth(-1)}><I name="chevL" size={16} /></button>

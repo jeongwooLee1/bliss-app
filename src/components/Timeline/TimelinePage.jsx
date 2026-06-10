@@ -1350,7 +1350,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   const pendingRTQueueRef = useRef([]);
   const [rtPendingCount, setRtPendingCount] = React.useState(0);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
-  const [topbarH, setTopbarH] = useState(80);
+  const [topbarH, setTopbarH] = useState(0); // 툴바가 카드(스크롤 영역) 밖으로 빠져 sticky 오프셋 0 고정 (공비서식)
 
   // Branch view: 편집가능(userBranches) + 열람가능(viewBranches)
   const allBranchList = useMemo(() => [...(data.branchSettings || data.branches || [])].filter(b => b.useYn !== false).sort((a,b)=>(a.sort||0)-(b.sort||0)), [data.branchSettings, data.branches]);
@@ -1749,7 +1749,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       if (!sr) return null;
       const rect = sr.getBoundingClientRect();
       const scrollTop = sr.scrollTop;
-      const tbH = ctx.topbarH || 80;
+      const tbH = ctx.topbarH ?? 80;
       const hdH = ctx.headerH || 40;
       const rH = ctx.rowH || 18;
       const tr = ctx.totalRows || 156;
@@ -3779,15 +3779,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     return () => { document.body.style.position = ''; document.body.style.inset = ''; document.body.style.overflow = ''; };
   }, []);
 
-  // Measure topbar height for sticky offset
-  useEffect(() => {
-    if (!topbarRef.current) return;
-    const measure = () => { if(topbarRef.current) setTopbarH(topbarRef.current.offsetHeight); };
-    measure();
-    const ro = new ResizeObserver(() => measure());
-    ro.observe(topbarRef.current);
-    return () => ro.disconnect();
-  }, []);
+  // (v3.8.37) 툴바가 카드(스크롤 영역) 밖으로 빠져 측정 불필요 — topbarH는 0 고정.
+  // 헤더 sticky top·스크롤 센터링·드래그 좌표가 전부 "스크롤 컨테이너 안 툴바 높이"를 가정하던 값이라 0이 정답.
+  void setTopbarH;
 
   // Current time line (updates every minute)
   const [nowTick, setNowTick] = useState(Date.now());
@@ -3857,7 +3851,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       })()}
       {/* AI 상담중 Alert — 직원이 답 안 해서 AI가 답변 시작한 대화. 패널 열려있으면 hide. 클릭 시 메시지함 */}
       {aiActiveCount > 0 && !messagesPanelOpen && (
-        <div style={{background:"#EDE9FE",borderBottom:"1px solid #C4B5FD",padding:"6px 12px",display:"flex",alignItems:"center",gap:T.sp.sm,flexShrink:0,cursor:"pointer",animation:"pendingBlink 2s infinite",width:"100%",boxSizing:"border-box"}}
+        <div className="tl-alert-banner" style={{background:"#EDE9FE",borderBottom:"1px solid #C4B5FD",padding:"6px 12px",display:"flex",alignItems:"center",gap:T.sp.sm,flexShrink:0,cursor:"pointer",animation:"pendingBlink 2s infinite",width:"100%",boxSizing:"border-box"}}
           onClick={()=>{ if(aiActiveSample&&setPendingChat) setPendingChat(aiActiveSample); setPage&&setPage("messages"); }}>
           <I name="bot" size={18} style={{color:"#6D28D9"}}/>
           <div style={{flex:1,minWidth:0}}>
@@ -3896,7 +3890,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           const brPart = br ? ` ${br} · ` : " ";
           return `[${CH_NAME[m.channel]||m.channel||"?"}]${brPart}${who}: ${txt}`;
         }).join(" / ");
-        return <div style={{background:"#E0F2FE",borderBottom:"1px solid #7DD3FC",padding:"6px 12px",display:"flex",alignItems:"center",gap:T.sp.sm,flexShrink:0,cursor:"pointer",width:"100%",boxSizing:"border-box"}}
+        return <div className="tl-alert-banner" style={{background:"#E0F2FE",borderBottom:"1px solid #7DD3FC",padding:"6px 12px",display:"flex",alignItems:"center",gap:T.sp.sm,flexShrink:0,cursor:"pointer",width:"100%",boxSizing:"border-box"}}
           onClick={()=>{
             const first = (unreadSample||[])[0];
             if (first && first.user_id && setPendingChat) {
@@ -3916,7 +3910,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       {(() => {
         const pendingList = (data?.reservations||[]).filter(r => (r.status === "pending" || r.status === "request") && (isMaster ? branchesToShow : allBranchList.filter(b => userBranches.includes(b.id))).some(b => b.id === r.bid) && !(r.memo && r.memo.includes("확정완료")));
         if (pendingList.length === 0) return null;
-        return <div style={{background:T.orangeLt,borderBottom:"1px solid #FFB74D",padding:"6px 12px",display:"flex",alignItems:"center",gap:T.sp.sm,flexShrink:0,cursor:"pointer",animation:"pendingBlink 2s infinite",width:"100%",boxSizing:"border-box"}}
+        return <div className="tl-alert-banner" style={{background:T.orangeLt,borderBottom:"1px solid #FFB74D",padding:"6px 12px",display:"flex",alignItems:"center",gap:T.sp.sm,flexShrink:0,cursor:"pointer",animation:"pendingBlink 2s infinite",width:"100%",boxSizing:"border-box"}}
           onClick={()=>{
             if (pendingList.length === 0) return;
             const idx = pendingClickIdx.current % pendingList.length;
@@ -3980,7 +3974,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           allowedBranches.some(b => b.id === r.bid)
         );
         if (newCustList.length === 0) return null;
-        return <div style={{background:"#F3E8FF",borderBottom:"1px solid #C4B5FD",padding:"6px 12px",display:"flex",alignItems:"center",gap:T.sp.sm,flexShrink:0,cursor:"pointer",width:"100%",boxSizing:"border-box"}}
+        return <div className="tl-alert-banner" style={{background:"#F3E8FF",borderBottom:"1px solid #C4B5FD",padding:"6px 12px",display:"flex",alignItems:"center",gap:T.sp.sm,flexShrink:0,cursor:"pointer",width:"100%",boxSizing:"border-box"}}
           onClick={()=>{
             const target = newCustList[0];
             if (!target) return;
@@ -4032,10 +4026,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       })()}
       {/* Single scroll container */}
       {calView!=="day" && <CalendarViews view={calView} calView={calView} setCalView={setCalView} selDate={selDate} onDayView={(d)=>{setSelDate(d);setCalView("day");}} bizId={bizId} branches={allBranchList} userBranches={userBranches} isMaster={isMaster} />}
-      <div ref={scrollRef} className="timeline-scroll" style={{flex:1,overflow:"auto",minHeight:0,overscrollBehavior:"none",paddingBottom:200,display:calView==="day"?undefined:"none"}}>
 
-        {/* Top Bar - sticky */}
-        <div ref={topbarRef} className="tl-topbar" style={{position:"sticky",top:0,left:0,zIndex:30,borderBottom:"none",boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",background:T.bgCard,padding:"6px 12px",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",minWidth:"100%",boxSizing:"border-box",overflow:"visible"}}>
+        {/* Top Bar — 카드(스크롤 영역) 밖, 페이지 배경 위 (공비서식 v3.8.37). 데스크탑 배경·그림자는 index.html에서 투명 처리 */}
+        <div ref={topbarRef} className="tl-topbar" style={{position:"relative",zIndex:30,borderBottom:"none",boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",background:T.bgCard,padding:"6px 12px",display:calView==="day"?"flex":"none",alignItems:"center",gap:6,flexWrap:"wrap",boxSizing:"border-box",overflow:"visible",flexShrink:0}}>
         {/* Row 1: Date nav + settings + branch */}
         <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0,flexWrap:"wrap",maxWidth:"100%"}}>
           <button onClick={()=>changeDate(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:T.fs.sm,color:T.gray600,padding:"2px 4px",flexShrink:0}}><I name="chevL" size={14}/></button>
@@ -4125,7 +4118,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         {/* TopAnnounceBubble 제거 — AnnouncesMarquee로 통합 (AppShell 상단) */}
       </div>
 
-
+      <div ref={scrollRef} className="timeline-scroll" style={{flex:1,overflow:"auto",minHeight:0,overscrollBehavior:"none",paddingBottom:200,display:calView==="day"?undefined:"none"}}>
 
         {/* Timeline Grid */}
         <div style={{display:"flex",minWidth:"fit-content",position:"relative"}} onClick={handleTlClick}>

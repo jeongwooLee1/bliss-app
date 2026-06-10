@@ -319,10 +319,13 @@
       .sale-modal-wrap .dep-match-box span:not(.badge),.ov>div:not(.modal-res) .dep-match-box span:not(.badge),.modal-res .dep-match-box span:not(.badge),
       .sale-modal-wrap .dep-match-box div,.ov>div:not(.modal-res) .dep-match-box div,.modal-res .dep-match-box div{font-size:9px!important}
 
-      /* ══ 타임라인 카드 레이아웃 (데스크탑) — 공비서식: 연회색 페이지 위에 둥근 흰 카드, 사이드바와 간격 ══ */
+      /* ══ 타임라인 카드 레이아웃 (데스크탑) — 공비서식: 연회색 페이지 위에 배너·툴바, 그 아래 둥근 흰 카드(타임라인 표만) ══ */
       @media(min-width:769px){
-        .tl-card-wrap{padding:12px 14px;background:#f3f4f6}
-        .tl-card-inner{border-radius:16px;overflow:hidden;box-shadow:0 2px 14px rgba(0,0,0,.07);background:#fff}
+        .tl-card-wrap{padding:10px 14px 14px;background:#f3f4f6}
+        .tl-card-wrap .tl-topbar{background:transparent!important;box-shadow:none!important;padding-left:2px!important;padding-right:2px!important;margin-bottom:4px}
+        .tl-card-wrap .timeline-scroll,.tl-card-wrap .tl-calview{border-radius:16px;box-shadow:0 2px 14px rgba(0,0,0,.07);background:#fff;overflow:hidden}
+        .tl-card-wrap .timeline-scroll{overflow:auto}
+        .tl-card-wrap .tl-alert-banner{border-radius:10px;margin-bottom:8px;border-bottom:none!important}
       }
 
       /* ══ 모바일 ══ */
