@@ -27,7 +27,7 @@ import BlissRequests from '../components/BlissRequests/BlissRequests'
 import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 
 const uid = genId;
-const BLISS_V = "3.8.31"
+const BLISS_V = "3.8.32"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1927,6 +1927,8 @@ function App() {
   useEffect(() => {
     if (!currentBizId) { setAiActiveCount(0); setAiActiveSample(null); return; }
     let alive = true;
+    let failCnt = 0; // 폴링 연속 실패 시 마지막 카운트(>0)가 고착돼 유령 알람 → 3회(90초) 실패하면 0으로 decay
+    const _fail = () => { failCnt += 1; if (failCnt >= 3 && alive) { setAiActiveCount(0); setAiActiveSample(null); } };
     const load = async () => {
       try {
         const since = new Date(Date.now() - 10*60*1000).toISOString().replace('+','%2B');
@@ -1941,7 +1943,9 @@ function App() {
           fetch(`${SB_URL}/rest/v1/ai_active_ack?business_id=eq.${currentBizId}&select=session_key,acked_ts`,
             { headers: {...sbHeaders, 'Cache-Control':'no-cache'}, cache:'no-store' }),
         ]);
-        if (!alive || !mr.ok) return;
+        if (!alive) return;
+        if (!mr.ok) { _fail(); return; }
+        failCnt = 0;
         const rows = await mr.json();
         const inRows = ir.ok ? await ir.json() : [];
         const ackRows = ar.ok ? await ar.json() : [];
@@ -1957,13 +1961,15 @@ function App() {
         setAiActiveCount(live.length);
         const first = live[0]?.[1];
         setAiActiveSample(first ? {channel:first.channel, user_id:first.user_id, account_id:first.account_id} : null);
-      } catch {}
+      } catch { _fail(); }
     };
     load();
     const t = setInterval(load, 30000);
     return () => { alive=false; clearInterval(t); };
   }, [currentBizId]);
   // 🔔 확정대기/AI상담중 반복 알람 — 처음 1번 울린 뒤, 남아있는 동안 1분마다 4번씩 (직원이 확인할 때까지)
+  // 울리기 직전 ref로 최신 조건 재확인 — effect 재실행이 늦어도(절전·백그라운드 탭) 조건 꺼지면 즉시 무음 (유령 알람 방지)
+  const _alarmOnRef = React.useRef(false);
   useEffect(() => {
     const hasPending = (data?.reservations||[]).some(r =>
       (r.status === "pending" || r.status === "request") &&
@@ -1971,8 +1977,9 @@ function App() {
       (userBranches||[]).includes(r.bid)   // 본인 접근 지점만 (소이 요청 2026-06-06)
     );
     const hasAlarm = hasPending || aiActiveCount > 0;
+    _alarmOnRef.current = hasAlarm;
     if (hasAlarm && !_pendingAlarmRef.current) {
-      _pendingAlarmRef.current = setInterval(() => _playBeep("pending", 4), 60000);
+      _pendingAlarmRef.current = setInterval(() => { if (_alarmOnRef.current) _playBeep("pending", 4); }, 60000);
     } else if (!hasAlarm && _pendingAlarmRef.current) {
       clearInterval(_pendingAlarmRef.current);
       _pendingAlarmRef.current = null;
