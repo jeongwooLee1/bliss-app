@@ -4128,6 +4128,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
 
         {/* Timeline Grid — tl-grid-card: 데스크탑에서 그림자+라운드 카드 (index.html) */}
         <div className="tl-grid-card" style={{display:"flex",minWidth:"fit-content",position:"relative"}} onClick={handleTlClick}>
+          {/* 왼쪽 고정 여백 스트립 (v3.8.47, 데스크탑 전용) — 가로 스크롤해도 사이드바와 14px 흰 갭 유지.
+              시간축은 CSS로 left:14 고정, 이 스트립이 0~14px 영역을 덮어 컬럼이 비치는 것 차단 */}
+          <div className="tl-left-gap" style={{position:"sticky",left:0,width:14,flexShrink:0,zIndex:19,background:"#fff",pointerEvents:"none"}}/>
           {/* Time Labels */}
           <div className="tl-time-col" style={{width:timeLabelsW,flexShrink:0,position:"sticky",left:0,zIndex:20,background:T.bgCard,borderRight:"1px solid #eee"}}>
             {/* 백플레이트 — 스크롤 시 시간 라벨이 라운드 모서리 틈으로 보이는 것 차단 (v3.8.46) */}
