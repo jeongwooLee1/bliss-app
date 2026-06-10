@@ -4133,7 +4133,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           <div className="tl-time-col" style={{width:timeLabelsW,flexShrink:0,position:"sticky",left:0,zIndex:20,background:T.bgCard,borderRight:"1px solid #eee"}}>
             <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:25,background:T.bgCard}}/>
             <div style={{position:"relative",height:totalRows*rowH,boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",...gridBg}}>
-              {!dragBlock && hoverCell && hoverCell.rowIdx>=0 && <div style={{position:"absolute",top:hoverCell.rowIdx*rowH,left:0,right:0,height:rowH,background:"rgba(124,124,200,0.08)",zIndex:1,pointerEvents:"none"}}/>}
+              {/* (구) 시간축 가로행 하이라이트 제거 — 시간은 hover 셀 안에 직접 표시 (정우님 2026-06-10) */}
               {timeLabels.map(({i, isHour, m, text}) => {
                 const isHighlighted = hoverCell && hoverCell.rowIdx === i;
                 const slotMin = startHour*60 + i*5;
@@ -5336,10 +5336,14 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                       // 입체 슬롯이 진해지는 hover (빨간 박스 X)
                       return <div style={{position:"absolute",top:snappedTop,left:1,right:1,height:slotH,borderRadius:6,background:"linear-gradient(180deg, rgba(0,0,0,.04) 0%, rgba(0,0,0,.14) 100%)",boxShadow:"inset 0 1px 2px rgba(255,255,255,.5), inset 0 -3px 6px rgba(0,0,0,.18), 0 1px 3px rgba(0,0,0,.08)",zIndex:3,pointerEvents:"none",transition:"top 0.05s ease"}}/>;
                     }
-                    return <div style={{position:"absolute",top:hoverCell.rowIdx*rowH,left:0,right:0,height:rowH,background:"rgba(124,124,200,0.12)",borderTop:"1px solid rgba(124,124,200,0.3)",borderBottom:"1px solid rgba(124,124,200,0.3)",zIndex:1,pointerEvents:"none",transition:"top 0.05s ease"}}/>;
+                    // 해당 셀만 하이라이트 + 셀 왼쪽에 그 시각 표시 (정우님 2026-06-10)
+                    const _hm = startHour * 60 + hoverCell.rowIdx * timeUnit;
+                    const _tLbl = `${Math.floor(_hm / 60)}:${String(_hm % 60).padStart(2, "0")}`;
+                    return <div style={{position:"absolute",top:hoverCell.rowIdx*rowH,left:0,right:0,height:rowH,background:"rgba(124,124,200,0.12)",borderTop:"1px solid rgba(124,124,200,0.3)",borderBottom:"1px solid rgba(124,124,200,0.3)",zIndex:1,pointerEvents:"none",transition:"top 0.05s ease",display:"flex",alignItems:"center"}}>
+                      <span style={{fontSize:10,fontWeight:800,color:"#5b5bb8",paddingLeft:4,lineHeight:1,whiteSpace:"nowrap",textShadow:"0 0 3px #fff, 0 0 3px #fff"}}>{_tLbl}</span>
+                    </div>;
                   })()}
-                  {/* Row crosshair highlight (other columns) — 드래그 중 숨김 */}
-                  {!dragBlock && hoverCell && hoverCell.roomId!==room.id && hoverCell.rowIdx>=0 && <div style={{position:"absolute",top:hoverCell.rowIdx*rowH,left:0,right:0,height:rowH,background:"rgba(124,124,200,0.04)",zIndex:1,pointerEvents:"none"}}/>}
+                  {/* (구) 가로행 크로스헤어 하이라이트 제거 — 해당 셀만 선택 + 셀 안에 시간 표시 (정우님 2026-06-10) */}
                   {/* Current time */}
                   {nowY > 0 && <div style={{position:"absolute",top:nowY,left:0,right:0,borderTop:"2px solid #e57373",zIndex:5}}>
                     <div style={{position:"absolute",top:-4,left:-1,width:8,height:8,borderRadius:T.radius.sm,background:T.danger}}/>
