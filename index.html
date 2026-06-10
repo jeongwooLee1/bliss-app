@@ -146,6 +146,7 @@
       @media(pointer:coarse){.resize-handle{opacity:0.6 !important}}
       .tl-block{transition:box-shadow .2s ease,transform .15s ease !important}
       .tl-time-col{position:-webkit-sticky;position:sticky}
+      .tl-left-gap{display:none} /* 모바일 기본 숨김 — 데스크탑(tl-card-wrap 미디어쿼리)에서만 표시 */
       .tl-hdr-cell{position:-webkit-sticky;position:sticky}
       .tl-block:hover{box-shadow:0 4px 14px rgba(0,0,0,.18) !important;transform:translateY(-1px)}
       .tl-block:active{box-shadow:0 2px 6px rgba(0,0,0,.12) !important;transform:translateY(0)}
@@ -326,8 +327,10 @@
         .tl-card-wrap{background:#fff}
         .tl-card-wrap .tl-alert-banner{width:auto!important;margin:6px 12px;border-radius:10px;border-bottom:none!important}
         .tl-card-wrap .tl-topbar{box-shadow:none!important;padding-bottom:10px!important}
-        .tl-card-wrap .tl-grid-card{margin-left:14px;margin-right:14px}
-        .tl-card-wrap .tl-time-col{box-shadow:-10px 0 20px -8px rgba(0,0,0,.12);border-top-left-radius:16px}
+        /* 왼쪽 여백 = margin 대신 sticky 스트립(tl-left-gap) — 가로 스크롤해도 사이드바와 14px 갭 유지 (v3.8.47) */
+        .tl-card-wrap .tl-grid-card{margin-right:14px}
+        .tl-card-wrap .tl-left-gap{display:block}
+        .tl-card-wrap .tl-time-col{left:14px!important;box-shadow:-10px 0 20px -8px rgba(0,0,0,.12);border-top-left-radius:16px}
         .tl-card-wrap .tl-time-col>div:last-child{border-bottom-left-radius:16px}
         .tl-card-wrap .tl-calview{margin:0 14px;border:1px solid #e6e8ee;border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,.08)}
       }
@@ -399,7 +402,7 @@
         .sidebar-m{display:none!important}
       }
     </style>
-    <script type="module" crossorigin src="/assets/index-4EecbpFS.js"></script>
+    <script type="module" crossorigin src="/assets/index-B0HVnC6_.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-DoaQoIwC.js">
     <link rel="modulepreload" crossorigin href="/assets/supabase-DywSbxor.js">
   </head>
