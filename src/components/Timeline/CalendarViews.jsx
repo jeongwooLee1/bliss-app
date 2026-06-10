@@ -12,7 +12,16 @@ const pad2 = (n) => String(n).padStart(2, "0")
 const iso = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
 const parseISO = (s) => { const [y, m, d] = (s || "").split("-").map(Number); return new Date(y, (m || 1) - 1, d || 1) }
 
-export default function CalendarViews({ view, selDate, onDayView, bizId, branches, userBranches, isMaster }) {
+export default function CalendarViews({ view, selDate, onDayView, bizId, branches, userBranches, isMaster, calView, setCalView }) {
+  // 어느 뷰에서나 보기 전환 — 캘린더 헤더 좌측에도 동일 드롭다운 (일 뷰는 타임라인 헤더에 있음)
+  const viewSelect = setCalView ? (
+    <select value={calView || view} onChange={(e) => setCalView(e.target.value)} title="보기 전환 (일/주/월)"
+      style={{ position: "absolute", left: 12, height: 30, border: "1px solid #d0d0d0", borderRadius: 8, background: T.bgCard, color: T.text, fontSize: 13, fontWeight: 800, padding: "0 6px", cursor: "pointer" }}>
+      <option value="day">일</option>
+      <option value="week">주</option>
+      <option value="month">월</option>
+    </select>
+  ) : null
   const accBids = useMemo(
     () => (isMaster ? (branches || []) : (branches || []).filter(b => (userBranches || []).includes(b.id))).map(b => b.id),
     [branches, userBranches, isMaster]
@@ -97,6 +106,7 @@ export default function CalendarViews({ view, selDate, onDayView, bizId, branche
     return (
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto", background: T.bgCard }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "10px 12px", position: "relative" }}>
+          {viewSelect}
           <button style={navBtn} onClick={() => stepMonth(-1)}><I name="chevL" size={16} /></button>
           <span style={{ fontSize: 16, fontWeight: 800, minWidth: 88, textAlign: "center" }}>{ttl}</span>
           <button style={navBtn} onClick={() => stepMonth(1)}><I name="chevR" size={16} /></button>
@@ -130,6 +140,7 @@ export default function CalendarViews({ view, selDate, onDayView, bizId, branche
     return (
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", background: T.bgCard }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "10px 12px", position: "relative" }}>
+          {viewSelect}
           <button style={navBtn} onClick={() => stepWeek(-1)}><I name="chevL" size={16} /></button>
           <span style={{ fontSize: 15, fontWeight: 800 }}>{ttl}</span>
           <button style={navBtn} onClick={() => stepWeek(1)}><I name="chevR" size={16} /></button>
@@ -161,6 +172,7 @@ export default function CalendarViews({ view, selDate, onDayView, bizId, branche
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto", background: T.bgCard }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "10px 12px", position: "relative", flexShrink: 0 }}>
+        {viewSelect}
         <button style={navBtn} onClick={() => stepMonth(-1)}><I name="chevL" size={16} /></button>
         <span style={{ fontSize: 16, fontWeight: 800, minWidth: 88, textAlign: "center" }}>{ttl}</span>
         <button style={navBtn} onClick={() => stepMonth(1)}><I name="chevR" size={16} /></button>

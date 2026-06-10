@@ -275,7 +275,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   const PROD_LIST = (data?.products || []);
   // 새로고침·재진입 시 항상 오늘 날짜로 복귀 (유저 요청: 타임라인 refresh → today)
   const [selDate, setSelDate] = useState(todayStr());
-  const [calView, _setCalView] = useState(() => { try { return localStorage.getItem("tl_calview") || "day"; } catch { return "day"; } });
+  const [calView, _setCalView] = useState(() => { try { const v = localStorage.getItem("tl_calview") || "day"; return v === "list" ? "day" : v; } catch { return "day"; } });
   const setCalView = (v) => { _setCalView(v); try { localStorage.setItem("tl_calview", v); } catch {} };
   const [schHistory, setSchHistory] = useState(null);
   // ── ⚡ Viewport-based 자동 fetch ──
@@ -4029,13 +4029,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         </div>;
       })()}
       {/* Single scroll container */}
-      {/* 캘린더 뷰 토글 (일/주/월/리스트) — 일=기존 타임라인, 월/주/리스트=가벼운 읽기전용 캘린더 */}
-      <div style={{display:"flex",gap:4,padding:"6px 12px",background:T.bgCard,borderBottom:"1px solid #eee",flexShrink:0,alignItems:"center"}}>
-        {[["day","일"],["week","주"],["month","월"],["list","리스트"]].map(([v,lbl])=>(
-          <button key={v} onClick={()=>setCalView(v)} style={{padding:"4px 14px",borderRadius:8,border:"none",cursor:"pointer",fontSize:13,fontWeight:calView===v?800:500,background:calView===v?T.primary:"#f1f1f4",color:calView===v?"#fff":T.gray600}}>{lbl}</button>
-        ))}
-      </div>
-      {calView!=="day" && <CalendarViews view={calView} selDate={selDate} onDayView={(d)=>{setSelDate(d);setCalView("day");}} bizId={bizId} branches={allBranchList} userBranches={userBranches} isMaster={isMaster} />}
+      {calView!=="day" && <CalendarViews view={calView} calView={calView} setCalView={setCalView} selDate={selDate} onDayView={(d)=>{setSelDate(d);setCalView("day");}} bizId={bizId} branches={allBranchList} userBranches={userBranches} isMaster={isMaster} />}
       <div ref={scrollRef} className="timeline-scroll" style={{flex:1,overflow:"auto",minHeight:0,overscrollBehavior:"none",paddingBottom:200,display:calView==="day"?undefined:"none"}}>
 
         {/* Top Bar - sticky */}
@@ -4081,6 +4075,13 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           </div>
           
         </div>
+        {/* 보기 전환 드롭다운 (일/주/월) — "오늘" 날짜탭 왼쪽 */}
+        <select value={calView==="day"?"day":calView} onChange={(e)=>setCalView(e.target.value)} title="보기 전환 (일/주/월)"
+          style={{height:32,border:"1px solid #d0d0d0",borderRadius:T.radius.md,background:T.bgCard,color:T.text,fontSize:T.fs.sm,fontWeight:T.fw.bolder,padding:"0 6px",cursor:"pointer",flexShrink:0,marginRight:6}}>
+          <option value="day">일</option>
+          <option value="week">주</option>
+          <option value="month">월</option>
+        </select>
         {/* Row 2 (mobile) / inline (desktop): 14-day buttons + 모바일 스와이프 */}
         <div className="tl-days"
           onTouchStart={(e)=>{ const t=e.touches[0]; e.currentTarget._tStart={x:t.clientX,y:t.clientY,t:Date.now()}; }}
