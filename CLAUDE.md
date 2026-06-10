@@ -3647,6 +3647,14 @@ v3.7.984 진단에서 미룬 데모 공지&요청 배지 "2" 건 수정.
 **버그2 — 이름 변경**(정우님): 변경 모드에서 검색 없이 이름만 바꾸면 기존 custId 유지한 채 예약 이름만 바뀌어 불일치(조용한 rename). **fix**(정우님 선택 "검색 강제 + 저장 시 확인"): 검색 없이 이름만 바꾸고 저장 → 그 이름 자동 검색 후 **커스텀 확인 다이얼로그**(`nameResolve`) — 같은 이름 기존 고객 있으면 [연결] / 없으면 [신규 등록] vs [같은 분 이름만 수정(오타)] vs [다른 고객 직접 검색] vs [취소]. native confirm 미사용. + 변경모드 "저장" 시 rename이 _persistCustEdits 누락으로 안 되던 기존 버그도 정리(snapshot/editingCust 선클리어 제거 → 메인 저장이 처리).
 **유의**: 데모 사업장 렌더·콘솔 무에러 확인. 데모 현재 날짜 예약 없어 저장 클릭 플로우는 라이브 확인 권장(커플 동반자 이동 시 안 늘어나는지 / 이름 변경 시 다이얼로그).
 
+### v3.8.24 — 캘린더 뷰 드롭다운 전환 + 단체 마케팅 문자 발송 Phase 1 (2026-06-10)
+배포세션이 캘린더 UI 정리 + 워크트리(feat/marketing-broadcast) Phase 1을 main에 통합 후 한 번에 배포.
+- **캘린더 뷰 = 드롭다운**: v3.8.23의 전체폭 [일][주][월][리스트] 토글바 제거 → "오늘" 날짜탭 **왼쪽에 컴팩트 드롭다운**(일/주/월). **리스트 제거**(불필요). 일 뷰는 타임라인 헤더 드롭다운, 월/주 뷰는 `CalendarViews` 헤더 좌상단에 동일 드롭다운 → 어느 뷰에서나 전환 가능(`calView`/`setCalView` prop 전달). 저장된 'list'는 'day'로 보정.
+- **단체 마케팅 문자 발송 Phase 1** (워크트리 통합): `src/components/Marketing/MarketingBroadcast.jsx`(신규, 사이드바 "마케팅" `/marketing`, 고객관리 그룹) — 고객 세그먼트(전체/신규/재방문/단골/이탈/노쇼주의/보유권 + 가입일범위) 선택 → 발신지점 → 메시지(변수 #고객명/#매장명/#지점명/#대표전화번호) → 즉시/예약 발송. **법규 강제**: ①`sms_consent!==false`만 ②광고성 시 "(광고)" + 무료수신거부 080 필수 ③야간 21:00~08:00 차단 ④커스텀 확인모달(native 금지)·자동발송 없음. `src/lib/smsSend.js`(send-sms 배치 발송). DB `marketing_campaigns`/`marketing_sends`(RLS+anon_all, migration `marketing_broadcast_phase1`).
+- **미완(Phase 2~4, 워크트리 문서 `docs/MARKETING_PHASE1_HANDOFF.md`)**: ② 친구톡+이미지(MMS) ③ 발송 성과(예약·매출 전환) 추적 ④ 발신번호 셀프 본인인증. **예약 발송**은 서버 스케줄러(`docs/marketing_scheduler_snippet.py`를 bliss_naver.py에 적용) 후 동작 — 현재 UI는 "서버 스케줄러 적용 후 동작" 안내, **즉시 발송만 라이브 동작**.
+- **검증**: 로컬 dev(데모) — 캘린더 일/월 드롭다운 전환·칼럼 렌더, 마케팅 페이지 렌더(세그먼트·발신·변수·광고토글·byte·즉시/예약, 수신동의 40명)·발송 게이팅(자동발송 없음)·빌드 통과·콘솔 에러 0. merge-base v3.8.22라 충돌 거의 없음(AppShell 자동병합). 라이브 v3.8.24 배포(version.txt 검증, CF 퍼지 success).
+- **유의**: 마케팅 발송은 **실고객 SMS** — 즉시 발송 전 커스텀 확인모달 + 수신동의/광고/야간 가드. 신규 매장도 멀티테넌트(발신번호=branches.sms_callback, 범위=business_id·userBranches). feat/marketing-broadcast 워크트리 머지 완료(삭제). naver-review-rollout 커밋은 main에 이미 반영(중복)이라 미머지.
+
 ### v3.8.23 — 타임라인 캘린더 월/주/리스트 뷰 + 모바일 푸터 숨김 (2026-06-10)
 공비서(경쟁사) 캘린더 월/주/일/리스트 토글 벤치마크 대응. 기존 타임라인은 일간 직원-칼럼 자원뷰만 있었음.
 - **신규 `src/components/Timeline/CalendarViews.jsx`** — 가벼운 읽기전용 캘린더(월/주/리스트). 핵심 타임라인(드래그/배정) 로직과 **완전 분리**. 자체 fetch(`sb.getAll`+`fromDb`, 가시 범위·권한 지점·`is_schedule=false`·취소/변경 제외)라 data.reservations 미완전성 무관. 내부 `anchor` state로 월/주 네비게이션(selDate effect churn 방지), 날짜/예약 클릭 시에만 selDate 변경.
