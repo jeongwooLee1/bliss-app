@@ -1350,7 +1350,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   const pendingRTQueueRef = useRef([]);
   const [rtPendingCount, setRtPendingCount] = React.useState(0);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
-  const [topbarH, setTopbarH] = useState(0); // 툴바가 카드(스크롤 영역) 밖으로 빠져 sticky 오프셋 0 고정 (공비서식)
+  const [topbarH, setTopbarH] = useState(80);
 
   // Branch view: 편집가능(userBranches) + 열람가능(viewBranches)
   const allBranchList = useMemo(() => [...(data.branchSettings || data.branches || [])].filter(b => b.useYn !== false).sort((a,b)=>(a.sort||0)-(b.sort||0)), [data.branchSettings, data.branches]);
@@ -3779,9 +3779,15 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     return () => { document.body.style.position = ''; document.body.style.inset = ''; document.body.style.overflow = ''; };
   }, []);
 
-  // (v3.8.37) 툴바가 카드(스크롤 영역) 밖으로 빠져 측정 불필요 — topbarH는 0 고정.
-  // 헤더 sticky top·스크롤 센터링·드래그 좌표가 전부 "스크롤 컨테이너 안 툴바 높이"를 가정하던 값이라 0이 정답.
-  void setTopbarH;
+  // Measure topbar height for sticky offset (v3.8.39: 툴바가 스크롤 영역 안 sticky로 복귀해 재측정)
+  useEffect(() => {
+    if (!topbarRef.current) return;
+    const measure = () => { if(topbarRef.current) setTopbarH(topbarRef.current.offsetHeight); };
+    measure();
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(topbarRef.current);
+    return () => ro.disconnect();
+  }, []);
 
   // Current time line (updates every minute)
   const [nowTick, setNowTick] = useState(Date.now());
@@ -4027,8 +4033,10 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       {/* Single scroll container */}
       {calView!=="day" && <CalendarViews view={calView} calView={calView} setCalView={setCalView} selDate={selDate} onDayView={(d)=>{setSelDate(d);setCalView("day");}} bizId={bizId} branches={allBranchList} userBranches={userBranches} isMaster={isMaster} />}
 
-        {/* Top Bar — 카드(스크롤 영역) 밖, 페이지 배경 위 (공비서식 v3.8.37). 데스크탑 배경·그림자는 index.html에서 투명 처리 */}
-        <div ref={topbarRef} className="tl-topbar" style={{position:"relative",zIndex:30,borderBottom:"none",boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",background:T.bgCard,padding:"6px 12px",display:calView==="day"?"flex":"none",alignItems:"center",gap:6,flexWrap:"wrap",boxSizing:"border-box",overflow:"visible",flexShrink:0}}>
+      <div ref={scrollRef} className="timeline-scroll" style={{flex:1,overflow:"auto",minHeight:0,overscrollBehavior:"none",paddingBottom:200,display:calView==="day"?undefined:"none"}}>
+
+        {/* Top Bar - sticky (v3.8.39: 스크롤 영역 안으로 복귀 — 우측 스크롤바가 툴바 높이까지 올라가도록) */}
+        <div ref={topbarRef} className="tl-topbar" style={{position:"sticky",top:0,left:0,zIndex:30,borderBottom:"none",boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",background:T.bgCard,padding:"6px 12px",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",minWidth:"100%",boxSizing:"border-box",overflow:"visible"}}>
         {/* Row 1: Date nav + settings + branch */}
         <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0,flexWrap:"wrap",maxWidth:"100%"}}>
           <button onClick={()=>changeDate(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:T.fs.sm,color:T.gray600,padding:"2px 4px",flexShrink:0}}><I name="chevL" size={14}/></button>
@@ -4117,8 +4125,6 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         {/* 📣 팀채팅 공지 말풍선 — 7-day 버튼 오른쪽 빈 공간에 배치 */}
         {/* TopAnnounceBubble 제거 — AnnouncesMarquee로 통합 (AppShell 상단) */}
       </div>
-
-      <div ref={scrollRef} className="timeline-scroll" style={{flex:1,overflow:"auto",minHeight:0,overscrollBehavior:"none",paddingBottom:200,display:calView==="day"?undefined:"none"}}>
 
         {/* Timeline Grid */}
         <div style={{display:"flex",minWidth:"fit-content",position:"relative"}} onClick={handleTlClick}>
