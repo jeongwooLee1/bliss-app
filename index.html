@@ -319,9 +319,15 @@
       .sale-modal-wrap .dep-match-box span:not(.badge),.ov>div:not(.modal-res) .dep-match-box span:not(.badge),.modal-res .dep-match-box span:not(.badge),
       .sale-modal-wrap .dep-match-box div,.ov>div:not(.modal-res) .dep-match-box div,.modal-res .dep-match-box div{font-size:9px!important}
 
-      /* ══ 타임라인 데스크탑 배경 (v3.8.39) — 바탕 흰색 + 풀블리드. 카드(v3.8.36~38) 정리: 툴바는 스크롤 영역 안 sticky로 복귀 → 우측 스크롤바가 화면 끝까지 ══ */
+      /* ══ 타임라인 데스크탑 (v3.8.40) — 공비서식: 바탕 흰색 + 배너·툴바는 배경 위 + 타임라인 표만 그림자 카드.
+         툴바는 스크롤 영역 안 sticky(스크롤바가 위까지 닿도록) — 카드 스타일은 표(tl-grid-card)에만 입혀 시각 분리 ══ */
       @media(min-width:769px){
         .tl-card-wrap{background:#fff}
+        .tl-card-wrap .tl-alert-banner{width:auto!important;margin:6px 12px;border-radius:10px;border-bottom:none!important}
+        .tl-card-wrap .tl-topbar{box-shadow:none!important;border-bottom:1px solid #f0f0f2!important}
+        .tl-card-wrap .tl-grid-card{box-shadow:0 2px 16px rgba(0,0,0,.10);border-radius:16px 0 0 0}
+        .tl-card-wrap .tl-grid-card .tl-time-col,.tl-card-wrap .tl-grid-card .tl-time-col>div:first-child{border-top-left-radius:16px}
+        .tl-card-wrap .tl-calview{box-shadow:0 2px 16px rgba(0,0,0,.10)}
       }
 
       /* ══ 모바일 ══ */
@@ -391,7 +397,7 @@
         .sidebar-m{display:none!important}
       }
     </style>
-    <script type="module" crossorigin src="/assets/index-BkPiRbC3.js"></script>
+    <script type="module" crossorigin src="/assets/index-BkCXV5gS.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-DoaQoIwC.js">
     <link rel="modulepreload" crossorigin href="/assets/supabase-DywSbxor.js">
   </head>
