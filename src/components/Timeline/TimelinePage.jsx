@@ -4256,8 +4256,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                   borderBottom: "none",
                   background:colBg,
                   marginLeft: isFirstOfBranch && ci>0 ? 14 : 0,
-                  // 지점 박스 마지막 칼럼 우측에 그림자 — 지점 구분 입체감
-                  boxShadow: isLastOfBranch ? "4px 0 8px -2px rgba(0,0,0,0.18)" : "none",
+                  // 지점 사이 그림자(세로선) 제거 — marginLeft 14px 갭만으로 구분 (v3.8.42 정우님)
+                  boxShadow: "none",
                   position:"relative"
                 };
               })()}>
