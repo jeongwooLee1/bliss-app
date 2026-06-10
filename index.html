@@ -323,8 +323,9 @@
       @media(min-width:769px){
         .tl-card-wrap{padding:10px 14px 14px;background:#f3f4f6}
         .tl-card-wrap .tl-topbar{background:transparent!important;box-shadow:none!important;padding-left:2px!important;padding-right:2px!important;margin-bottom:4px}
-        .tl-card-wrap .timeline-scroll,.tl-card-wrap .tl-calview{border-radius:16px;box-shadow:0 2px 14px rgba(0,0,0,.07);background:#fff;overflow:hidden}
-        .tl-card-wrap .timeline-scroll{overflow:auto}
+        .tl-card-wrap .tl-calview{border-radius:16px;box-shadow:0 2px 14px rgba(0,0,0,.07);background:#fff;overflow:hidden}
+        /* 카드 오른쪽·아래를 화면 끝까지 확장(블리드) → 스크롤바가 카드 안이 아니라 화면 가장자리에 붙음 (공비서식) */
+        .tl-card-wrap .timeline-scroll{border-radius:16px 16px 0 0;box-shadow:0 2px 14px rgba(0,0,0,.07);background:#fff;margin-right:-14px;margin-bottom:-14px}
         .tl-card-wrap .tl-alert-banner{border-radius:10px;margin-bottom:8px;border-bottom:none!important}
       }
 
@@ -395,7 +396,7 @@
         .sidebar-m{display:none!important}
       }
     </style>
-    <script type="module" crossorigin src="/assets/index-DOfMLAPX.js"></script>
+    <script type="module" crossorigin src="/assets/index-DsWeQMGd.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-DoaQoIwC.js">
     <link rel="modulepreload" crossorigin href="/assets/supabase-DywSbxor.js">
   </head>
