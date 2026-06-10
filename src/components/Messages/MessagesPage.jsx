@@ -1945,10 +1945,12 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             <div onClick={()=>setChatAction(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:100000,display:"flex",alignItems:"center",justifyContent:"center"}}>
               <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,padding:"20px 22px",width:"min(340px,90vw)",boxShadow:"0 12px 40px rgba(0,0,0,.25)"}}>
                 <div style={{fontSize:15,fontWeight:800,marginBottom:8}}>
-                  {chatAction.type==="delete"?"대화를 삭제할까요?":chatAction.type==="block"?"이 대화를 차단할까요?":"차단을 해제할까요?"}
+                  {chatAction.type==="delete2"?"정말 삭제할까요? (최종 확인)":chatAction.type==="delete"?"대화를 삭제할까요?":chatAction.type==="block"?"이 대화를 차단할까요?":"차단을 해제할까요?"}
                 </div>
-                <div style={{fontSize:12.5,color:T.gray600,lineHeight:1.55,marginBottom:16}}>
-                  {chatAction.type==="delete"
+                <div style={{fontSize:12.5,color:chatAction.type==="delete2"?"#DC2626":T.gray600,lineHeight:1.55,marginBottom:16,fontWeight:chatAction.type==="delete2"?700:400}}>
+                  {chatAction.type==="delete2"
+                    ? "마지막 확인이에요. 이 대화의 메시지가 전부 영구 삭제되고 절대 되돌릴 수 없습니다."
+                    : chatAction.type==="delete"
                     ? "이 대화의 메시지가 모두 지워지고 되돌릴 수 없어요. (차단은 별도 — 새 메시지를 막으려면 차단도 켜주세요)"
                     : chatAction.type==="block"
                     ? "이 번호의 새 메시지를 받지 않고, 번역·AI 자동응답도 모두 중단돼요. 언제든 해제할 수 있어요."
@@ -1956,9 +1958,9 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                 </div>
                 <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
                   <button onClick={()=>setChatAction(null)} style={{padding:"8px 14px",borderRadius:8,border:"1px solid "+T.border,background:"#fff",color:T.gray600,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>취소</button>
-                  <button onClick={chatAction.type==="delete"?doDeleteChat:doBlockToggle}
-                    style={{padding:"8px 14px",borderRadius:8,border:"none",background:chatAction.type==="delete"?"#DC2626":T.primary,color:"#fff",fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
-                    {chatAction.type==="delete"?"삭제":chatAction.type==="block"?"차단":"해제"}
+                  <button onClick={chatAction.type==="delete2"?doDeleteChat:chatAction.type==="delete"?()=>setChatAction({type:"delete2"}):doBlockToggle}
+                    style={{padding:"8px 14px",borderRadius:8,border:"none",background:(chatAction.type==="delete"||chatAction.type==="delete2")?"#DC2626":T.primary,color:"#fff",fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                    {chatAction.type==="delete2"?"영구 삭제":chatAction.type==="delete"?"삭제":chatAction.type==="block"?"차단":"해제"}
                   </button>
                 </div>
               </div>
