@@ -5454,11 +5454,12 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                         onMouseEnter={e=>{
                           // 모바일에선 mouseenter가 터치 후 발생 → 모달 뒤에 남는 문제. 팝업 자체 비활성
                           if (window.innerWidth <= 768 || ('ontouchstart' in window)) return;
+                          if (dragBlock) return; // 드래그 중엔 미리보기 금지
                           const memo = (block.memo||"").split("\n").filter(l => { const t=l.trim(); return !(/^\[등록:|^\[수정:/.test(t)) && !(/^\d+\.\d+\s+\d+:\d+\s*(예약)?(접수|변경|확정|취소|신청|확정완료)/.test(t)); }).join("\n").trim();
-                          // 메모가 블록 높이(rowH*3 = 전체 보임) 안에 다 들어가면 팝업 불필요
-                          if (!memo || memo.length < 30) return;
+                          // 호버 미리보기 — 예약 요약(고객·상태·시간·시술·담당·메모)을 항상 표시 (모담 id_sz1nitfli1)
+                          const svcNames = (block.selectedServices||[]).map(id=>(data?.services||[]).find(s=>s.id===id)?.name).filter(Boolean);
                           const r = e.currentTarget.getBoundingClientRect();
-                          setMemoPopup({ id: block.id, memo, x: r.left, y: r.top - 6 });
+                          setMemoPopup({ id: block.id, memo, x: r.left, y: r.top - 6, block, svcNames });
                         }}
                         onMouseLeave={()=>setMemoPopup(p => p?.id === block.id ? null : p)}
                         onClick={e=>{
@@ -5675,14 +5676,25 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
 
       {/* 메모 호버 팝업 — 긴 블록메모만 전체 표시 (블록 위로, 반투명) */}
       {memoPopup && (() => {
-        const px = Math.max(8, Math.min(memoPopup.x, window.innerWidth - 240));
+        // 호버 미리보기 카드 — 예약 요약 (구버전: 긴 메모만 노랑 박스 → 전체 요약으로 업그레이드, 모담 id_sz1nitfli1)
+        const b = memoPopup.block || {};
+        const px = Math.max(8, Math.min(memoPopup.x, window.innerWidth - 290));
         const py = Math.max(40, memoPopup.y);
+        const ST = {reserved:"예약중",confirmed:"진행중",completed:"완료",pending:"확정대기",request:"AI신청",no_show:"노쇼",cancelled:"취소",naver_cancelled:"네이버취소"};
+        const stClr = (typeof statusClr!=="undefined" && statusClr?.[b.status]) || "#888";
+        const end = b.time && b.dur ? addMinutes(b.time, b.dur) : "";
         return <div style={{position:"fixed",left:px,top:py,zIndex:9998,pointerEvents:"none",
-          background:"rgba(255,248,225,.92)",border:"1px solid rgba(245,158,11,.7)",borderRadius:8,padding:"7px 10px",
-          boxShadow:"0 4px 16px rgba(0,0,0,.18)",fontSize:11,color:"#4B3200",backdropFilter:"blur(2px)",
-          maxWidth:230,whiteSpace:"pre-wrap",wordBreak:"break-word",lineHeight:1.45,
-          transform:"translateY(-100%)"}}>
-          {memoPopup.memo}
+          background:"#fff",border:"1px solid #e5e7eb",borderRadius:10,padding:"10px 12px",
+          boxShadow:"0 8px 28px rgba(0,0,0,.18)",fontSize:12,color:"#222",maxWidth:280,minWidth:170,
+          lineHeight:1.5,transform:"translateY(-100%)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+            <span style={{fontWeight:800,fontSize:13}}>{b.custName||(b.isSchedule?"내부일정":"예약")}{b.custGender==="M"?" (남)":b.custGender==="F"?" (여)":""}</span>
+            {b.custNum && <span style={{fontSize:11,color:"#666",fontWeight:700}}>#{b.custNum}</span>}
+            {!b.isSchedule && b.status && <span style={{marginLeft:"auto",fontSize:10,fontWeight:800,color:stClr,background:stClr+"18",borderRadius:5,padding:"1px 6px",flexShrink:0}}>{ST[b.status]||b.status}</span>}
+          </div>
+          <div style={{fontSize:11.5,color:"#555"}}>{b.time}{end?`~${end}`:""}{b.dur?` · ${b.dur}분`:""}{b.staffId?` · ${b.staffId}`:""}</div>
+          {memoPopup.svcNames?.length>0 && <div style={{fontSize:11.5,color:"#333",marginTop:3}}>{memoPopup.svcNames.join(", ")}</div>}
+          {memoPopup.memo && <div style={{marginTop:5,paddingTop:5,borderTop:"1px solid #f0f0f0",fontSize:11,color:"#4B3200",whiteSpace:"pre-wrap",wordBreak:"break-word",maxHeight:120,overflow:"hidden"}}>{memoPopup.memo}</div>}
         </div>;
       })()}
       {/* 구글 캘린더식 Floating Drag Preview — 커서 따라 이동, scale 1.03, 강한 그림자 */}

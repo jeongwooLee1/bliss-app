@@ -27,7 +27,7 @@ import BlissRequests from '../components/BlissRequests/BlissRequests'
 import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 
 const uid = genId;
-const BLISS_V = "3.8.29"
+const BLISS_V = "3.8.30"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1930,20 +1930,29 @@ function App() {
     const load = async () => {
       try {
         const since = new Date(Date.now() - 10*60*1000).toISOString().replace('+','%2B');
-        const [mr, ar] = await Promise.all([
+        // 인바운드는 더 넓게(70분) — "AI 상담중" = 고객 메시지에 AI가 '응답'한 대화만.
+        // 리마인더·포인트알림 등 시스템 선발송(is_ai=true지만 고객 메시지 없음)은 제외 (id_a5r0bbcvyn 오알람 fix)
+        const sinceIn = new Date(Date.now() - 70*60*1000).toISOString().replace('+','%2B');
+        const [mr, ir, ar] = await Promise.all([
           fetch(`${SB_URL}/rest/v1/messages?business_id=eq.${currentBizId}&direction=eq.out&created_at=gte.${since}&select=channel,user_id,account_id,is_ai,created_at&order=created_at.desc&limit=300`,
+            { headers: {...sbHeaders, 'Cache-Control':'no-cache'}, cache:'no-store' }),
+          fetch(`${SB_URL}/rest/v1/messages?business_id=eq.${currentBizId}&direction=eq.in&created_at=gte.${sinceIn}&select=channel,user_id,created_at&order=created_at.desc&limit=400`,
             { headers: {...sbHeaders, 'Cache-Control':'no-cache'}, cache:'no-store' }),
           fetch(`${SB_URL}/rest/v1/ai_active_ack?business_id=eq.${currentBizId}&select=session_key,acked_ts`,
             { headers: {...sbHeaders, 'Cache-Control':'no-cache'}, cache:'no-store' }),
         ]);
         if (!alive || !mr.ok) return;
         const rows = await mr.json();
+        const inRows = ir.ok ? await ir.json() : [];
         const ackRows = ar.ok ? await ar.json() : [];
         const ack = {}; for (const a of (ackRows||[])) ack[a.session_key] = a.acked_ts;
+        const inFirst = {}; // 세션별 가장 이른(=가장 오래된) 인바운드 시각 — desc 순회라 마지막 할당이 earliest
+        for (const m of (inRows||[])) { inFirst[(m.channel||'')+'_'+m.user_id] = m.created_at; }
         const latest = {};
         for (const m of (rows||[])) { const k=(m.channel||'')+'_'+m.user_id; if(!latest[k]) latest[k]=m; } // desc → 첫 게 최신
-        // 마지막 발신이 AI + (서버에) 확인 기록 없거나 그 후 새 AI 발신이 있는 세션만
-        const live = Object.entries(latest).filter(([k,m]) => m.is_ai && !(ack[k] && ack[k] >= m.created_at));
+        // 마지막 발신이 AI + 그 발신 전에 고객 인바운드가 있던 대화만(=응답) + 확인(ack) 안 된 것
+        const live = Object.entries(latest).filter(([k,m]) =>
+          m.is_ai && inFirst[k] && inFirst[k] <= m.created_at && !(ack[k] && ack[k] >= m.created_at));
         _aiActiveRawRef.current = Object.fromEntries(live.map(([k,m]) => [k, {ts:m.created_at, channel:m.channel, user_id:m.user_id, account_id:m.account_id}]));
         setAiActiveCount(live.length);
         const first = live[0]?.[1];

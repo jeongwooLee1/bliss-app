@@ -1355,6 +1355,42 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     finally{ setAiErrBusy(false); }
   };
 
+  // 🚫 대화 차단/삭제 (스팸 대응 — id_lqxe16rw71). 차단=서버가 인입 저장·번역·AI 전부 skip.
+  const [blockedKeys, setBlockedKeys] = useState(()=>new Set());
+  useEffect(()=>{ (async()=>{ try{
+    const r=await fetch(`${SB_URL}/rest/v1/blocked_chats?business_id=eq.${_activeBizId}&select=channel,user_id&limit=2000`,{headers:sbHeaders});
+    const rows=await r.json(); setBlockedKeys(new Set((rows||[]).map(b=>(b.channel||"")+"_"+b.user_id)));
+  }catch{} })(); },[]);
+  const [chatAction, setChatAction] = useState(null); // {type:'block'|'unblock'|'delete'} 커스텀 확인 모달
+  const _selKey = sel ? (sel.channel||"naver")+"_"+sel.user_id : "";
+  const selBlocked = !!_selKey && blockedKeys.has(_selKey);
+  const doBlockToggle = async()=>{
+    if(!sel) return;
+    const ch=sel.channel||"naver", uid=sel.user_id, key=ch+"_"+uid;
+    try{
+      if(selBlocked){
+        await fetch(`${SB_URL}/rest/v1/blocked_chats?business_id=eq.${_activeBizId}&channel=eq.${encodeURIComponent(ch)}&user_id=eq.${encodeURIComponent(uid)}`,{method:"DELETE",headers:sbHeaders});
+        setBlockedKeys(prev=>{const n=new Set(prev);n.delete(key);return n;});
+      }else{
+        await fetch(`${SB_URL}/rest/v1/blocked_chats?on_conflict=business_id,channel,user_id`,{method:"POST",headers:{...sbHeaders,Prefer:"resolution=merge-duplicates,return=minimal"},
+          body:JSON.stringify({business_id:_activeBizId,channel:ch,user_id:uid,created_by:currentUser?.name||""})});
+        setBlockedKeys(prev=>new Set(prev).add(key));
+        try{ markRead(uid, ch); }catch{}
+      }
+    }catch(e){ console.warn("[block]",e); }
+    setChatAction(null);
+  };
+  const doDeleteChat = async()=>{
+    if(!sel) return;
+    const ch=sel.channel||"naver", uid=sel.user_id;
+    try{
+      await fetch(`${SB_URL}/rest/v1/messages?business_id=eq.${_activeBizId}&channel=eq.${encodeURIComponent(ch)}&user_id=eq.${encodeURIComponent(uid)}`,{method:"DELETE",headers:sbHeaders});
+      setMsgs(prev=>prev.filter(m=>!(m.user_id===uid&&(m.channel||"naver")===ch)));
+      setSel(null);
+    }catch(e){ console.warn("[deleteChat]",e); }
+    setChatAction(null);
+  };
+
   // 📋 자주 쓰는 답변(클립보드) — 매장 공유 로드/저장/삽입
   const loadQuickReplies = useCallback(async()=>{
     try{
@@ -1894,12 +1930,39 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             style={{padding:forceCompact?"5px 10px":"6px 12px",background:aiBookLoading?T.gray400:T.primary,color:"#fff",border:"1px solid "+(aiBookLoading?T.gray400:T.primaryDk),borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:aiBookLoading?"wait":"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
             <I name={aiBookLoading?"loader":"calendar"} size={13} color="#fff"/> {aiBookLoading?"분석 중…":"AI 예약등록"}
           </button>
-          {/* 🚨 오류신고 — AI 고객응대오류 원클릭 접수 (자동 화면캡처) */}
-          <button onClick={reportAiError} disabled={aiErrBusy}
-            title="AI 자동응대 오류 신고 — 현재 화면을 캡처해서 'AI 고객응대오류'로 접수해요"
-            style={{padding:forceCompact?"5px 10px":"6px 12px",background:aiErrBusy?T.gray400:"#FEF2F2",color:aiErrBusy?"#fff":"#DC2626",border:"1px solid "+(aiErrBusy?T.gray400:"#FCA5A5"),borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:aiErrBusy?"wait":"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
-            <I name={aiErrBusy?"loader":"alert"} size={13}/> {aiErrBusy?"접수 중…":"오류신고"}
+          {/* 🚫 차단/삭제 — 스팸 대응 (오류신고 버튼 대체, id_lqxe16rw71). 차단=인입 저장·번역·AI 전부 중단 */}
+          <button onClick={()=>setChatAction({type:selBlocked?"unblock":"block"})}
+            title={selBlocked?"차단 해제 — 이 번호의 메시지를 다시 받습니다":"차단 — 이 대화의 새 메시지를 받지 않아요 (번역·AI 응답도 중단)"}
+            style={{padding:forceCompact?"5px 10px":"6px 12px",background:selBlocked?"#FEF2F2":"#fff",color:selBlocked?"#DC2626":T.gray600,border:"1px solid "+(selBlocked?"#FCA5A5":T.border),borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
+            <I name="alert" size={13}/> {selBlocked?"차단됨":"차단"}
           </button>
+          <button onClick={()=>setChatAction({type:"delete"})}
+            title="대화 삭제 — 이 대화의 메시지를 모두 지웁니다 (되돌릴 수 없음)"
+            style={{padding:forceCompact?"5px 10px":"6px 12px",background:"#fff",color:T.gray600,border:"1px solid "+T.border,borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
+            <I name="trash" size={13}/> 삭제
+          </button>
+          {chatAction && createPortal(
+            <div onClick={()=>setChatAction(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:100000,display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,padding:"20px 22px",width:"min(340px,90vw)",boxShadow:"0 12px 40px rgba(0,0,0,.25)"}}>
+                <div style={{fontSize:15,fontWeight:800,marginBottom:8}}>
+                  {chatAction.type==="delete"?"대화를 삭제할까요?":chatAction.type==="block"?"이 대화를 차단할까요?":"차단을 해제할까요?"}
+                </div>
+                <div style={{fontSize:12.5,color:T.gray600,lineHeight:1.55,marginBottom:16}}>
+                  {chatAction.type==="delete"
+                    ? "이 대화의 메시지가 모두 지워지고 되돌릴 수 없어요. (차단은 별도 — 새 메시지를 막으려면 차단도 켜주세요)"
+                    : chatAction.type==="block"
+                    ? "이 번호의 새 메시지를 받지 않고, 번역·AI 자동응답도 모두 중단돼요. 언제든 해제할 수 있어요."
+                    : "이 번호의 메시지를 다시 받습니다."}
+                </div>
+                <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+                  <button onClick={()=>setChatAction(null)} style={{padding:"8px 14px",borderRadius:8,border:"1px solid "+T.border,background:"#fff",color:T.gray600,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>취소</button>
+                  <button onClick={chatAction.type==="delete"?doDeleteChat:doBlockToggle}
+                    style={{padding:"8px 14px",borderRadius:8,border:"none",background:chatAction.type==="delete"?"#DC2626":T.primary,color:"#fff",fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                    {chatAction.type==="delete"?"삭제":chatAction.type==="block"?"차단":"해제"}
+                  </button>
+                </div>
+              </div>
+            </div>, document.body)}
           {renderQrButton()}
           {/* 상담완료 — 네이버 톡톡 파트너센터 [상담완료] 자동 호출 (네이버 채널만) */}
           {(sel.channel||"naver") === "naver" && <button onClick={endCounsel} disabled={endCounselLoading}
