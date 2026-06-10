@@ -319,16 +319,17 @@
       .sale-modal-wrap .dep-match-box span:not(.badge),.ov>div:not(.modal-res) .dep-match-box span:not(.badge),.modal-res .dep-match-box span:not(.badge),
       .sale-modal-wrap .dep-match-box div,.ov>div:not(.modal-res) .dep-match-box div,.modal-res .dep-match-box div{font-size:9px!important}
 
-      /* ══ 타임라인 데스크탑 (v3.8.41) — 공비서식: 흰 바탕 + 타임라인 표 = 테두리·라운드·여백 있는 명확한 카드.
-         스크롤바는 화면 오른쪽·아래 그대로(스크롤 컨테이너 풀블리드 유지). 카드 위 간격은 margin 대신 툴바 padding-bottom으로
-         (topbarH 측정에 포함돼 드래그·알람 좌표 계산이 안 어긋남 — tl-grid-card에 margin-top 주면 안 됨) ══ */
+      /* ══ 타임라인 데스크탑 (v3.8.44) — 공비서식: 흰 바탕 + 지점 그룹별 카드(양끝 라운드+부드러운 그림자, TimelinePage 인라인).
+         외곽 단일 카드 보더 제거 — 헤더 윗선과 이중선·모서리 어긋남(라운드 허술함) 원인이었음.
+         스크롤바는 화면 오른쪽·아래 그대로. 카드 위 간격은 툴바 padding-bottom(topbarH 측정 포함 → 드래그 좌표 안전) ══ */
       @media(min-width:769px){
         .tl-card-wrap{background:#fff}
         .tl-card-wrap .tl-alert-banner{width:auto!important;margin:6px 12px;border-radius:10px;border-bottom:none!important}
         .tl-card-wrap .tl-topbar{box-shadow:none!important;padding-bottom:10px!important}
-        .tl-card-wrap .tl-grid-card{margin-left:14px;margin-right:14px;border:1px solid #e6e8ee;border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,.08)}
-        .tl-card-wrap .tl-grid-card .tl-time-col,.tl-card-wrap .tl-grid-card .tl-time-col>div:first-child{border-top-left-radius:16px}
-        .tl-card-wrap .tl-grid-card .tl-time-col>div:nth-child(2){border-bottom-left-radius:16px}
+        .tl-card-wrap .tl-grid-card{margin-left:14px;margin-right:14px}
+        .tl-card-wrap .tl-time-col{box-shadow:-10px 0 20px -8px rgba(0,0,0,.12)}
+        .tl-card-wrap .tl-time-col,.tl-card-wrap .tl-time-col>div:first-child{border-top-left-radius:16px}
+        .tl-card-wrap .tl-time-col>div:nth-child(2){border-bottom-left-radius:16px}
         .tl-card-wrap .tl-calview{margin:0 14px;border:1px solid #e6e8ee;border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,.08)}
       }
 

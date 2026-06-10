@@ -4241,30 +4241,35 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
               ? 'linear-gradient(to right, rgba(0,0,0,.06) 0%, rgba(0,0,0,.035) 55%, rgba(0,0,0,0) 100%), #ffffff'
               : SOFT_BG;
             const _colWidth = room.isBlockCol ? 18 : colW;
+            // 지점 카드 모서리 (v3.8.44): 지점 그룹의 양 끝 칼럼에 라운드 + 부드러운 그림자.
+            // 첫 지점의 좌측 끝은 시간축(tl-time-col)이 담당 — _isCardLeft는 두 번째 지점부터.
+            const isLastOfBranch = ci === allRooms.length-1 || allRooms[ci+1]?.branch_id !== room.branch_id;
+            const _isCardLeft = isFirstOfBranch && ci > 0;
+            const _edgeShadows = [
+              isLastOfBranch ? "10px 0 20px -8px rgba(0,0,0,.22)" : null,
+              _isCardLeft ? "-10px 0 20px -8px rgba(0,0,0,.14)" : null,
+            ].filter(Boolean).join(", ") || "none";
             return (
-              <div key={room.id} className="tl-room-col" data-branch-id={room.branch_id} style={(()=>{
-                const isLastOfBranch = ci === allRooms.length-1 || allRooms[ci+1]?.branch_id !== room.branch_id;
-                // 지점 박스: 좌·상은 굵은 보더 (지점 시작 컬럼만 좌측 테두리). 같은 지점 내부는 얇은 회색 보더로 컬럼 구분
-                return {
+              <div key={room.id} className="tl-room-col" data-branch-id={room.branch_id} style={{
                   width:_colWidth,flexShrink:0,
-                  // 지점 사이 세로선 제거 — 그림자(우측) + marginLeft(좌측) 갭으로만 구분
                   // 막기 컬럼은 좌측 세로선 제거 — 미배정과 자연스럽게 이어지도록
                   borderLeft: (isFirstOfBranch || room.isBlockCol) ? "none" : "1px solid #f0f0f0",
                   borderRight: "none",
-                  // 컬럼 자체 borderTop 제거 — sticky 헤더의 1.5px 라인만 사용 (스크롤·상단 동일 굵기)
+                  // 컬럼 자체 borderTop 제거 — sticky 헤더의 라인만 사용 (스크롤·상단 동일 굵기)
                   borderTop: "none",
-                  borderBottom: "none",
+                  borderBottom: "1px solid #ececf1",
                   background:colBg,
-                  marginLeft: isFirstOfBranch && ci>0 ? 14 : 0,
-                  // 지점 사이 그림자(세로선) 제거 — marginLeft 14px 갭만으로 구분 (v3.8.42 정우님)
-                  boxShadow: "none",
+                  marginLeft: _isCardLeft ? 14 : 0,
+                  // 지점 카드 양 끝 부드러운 그림자 (v3.8.44 — v3.8.42의 '없음'은 너무 약하다는 피드백)
+                  boxShadow: _edgeShadows,
+                  borderTopLeftRadius: _isCardLeft ? 16 : 0,
+                  borderTopRightRadius: isLastOfBranch ? 16 : 0,
                   position:"relative"
-                };
-              })()}>
+                }}>
                 {/* 이동/지원 직원: 휴무 스타일 오버레이 (배경만, 블록 클릭은 허용) */}
                 {room.isMovedOut && <div style={{position:"absolute",top:headerH,left:0,right:0,bottom:0,background:"rgba(0,0,0,.06)",borderTop:"2px dashed rgba(0,0,0,.12)",zIndex:1,pointerEvents:"none"}}/>}
                 {/* Room Header - sticky. 지점명은 첫 컬럼에만 앵커로 (D안) */}
-                <div style={{height:headerH,borderTop:"1px solid "+T.border,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:10,background:colBg,boxShadow:"0 4px 8px -2px rgba(0,0,0,0.10)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",paddingBottom:4,lineHeight:1.2}}>
+                <div style={{height:headerH,borderTop:"1px solid "+T.border,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:10,background:colBg,boxShadow:"0 4px 8px -2px rgba(0,0,0,0.10)",borderTopLeftRadius:_isCardLeft?16:0,borderTopRightRadius:isLastOfBranch?16:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",paddingBottom:4,lineHeight:1.2}}>
                   {isFirstOfBranch && (
                     <span style={{position:"absolute",top:2,left:0,right:0,textAlign:"center",fontSize:14,fontWeight:800,color:T.text,letterSpacing:0,pointerEvents:"none",zIndex:2}}>
                       {room.branchName}
