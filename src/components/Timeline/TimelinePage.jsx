@@ -4130,7 +4130,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         <div className="tl-grid-card" style={{display:"flex",minWidth:"fit-content",position:"relative"}} onClick={handleTlClick}>
           {/* Time Labels */}
           <div className="tl-time-col" style={{width:timeLabelsW,flexShrink:0,position:"sticky",left:0,zIndex:20,background:T.bgCard,borderRight:"1px solid #eee"}}>
-            <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:25,background:T.bgCard}}/>
+            <div style={{height:headerH,borderTop:"1px solid "+T.border,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:25,background:T.bgCard,boxShadow:"0 4px 8px -2px rgba(0,0,0,0.10)"}}/>
             <div style={{position:"relative",height:totalRows*rowH,boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",...gridBg}}>
               {/* (구) 시간축 가로행 하이라이트 제거 — 시간은 hover 셀 안에 직접 표시 (정우님 2026-06-10) */}
               {timeLabels.map(({i, isHour, m, text}) => {
@@ -4264,7 +4264,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                 {/* 이동/지원 직원: 휴무 스타일 오버레이 (배경만, 블록 클릭은 허용) */}
                 {room.isMovedOut && <div style={{position:"absolute",top:headerH,left:0,right:0,bottom:0,background:"rgba(0,0,0,.06)",borderTop:"2px dashed rgba(0,0,0,.12)",zIndex:1,pointerEvents:"none"}}/>}
                 {/* Room Header - sticky. 지점명은 첫 컬럼에만 앵커로 (D안) */}
-                <div style={{height:headerH,borderTop:"1px solid "+T.border,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:10,background:colBg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",paddingBottom:4,lineHeight:1.2}}>
+                <div style={{height:headerH,borderTop:"1px solid "+T.border,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:10,background:colBg,boxShadow:"0 4px 8px -2px rgba(0,0,0,0.10)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",paddingBottom:4,lineHeight:1.2}}>
                   {isFirstOfBranch && (
                     <span style={{position:"absolute",top:2,left:0,right:0,textAlign:"center",fontSize:14,fontWeight:800,color:T.text,letterSpacing:0,pointerEvents:"none",zIndex:2}}>
                       {room.branchName}
