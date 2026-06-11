@@ -4135,7 +4135,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           <div className="tl-time-col" style={{width:timeLabelsW,flexShrink:0,position:"sticky",left:0,zIndex:20,background:T.bgCard,borderRight:"1px solid #eee"}}>
             {/* 백플레이트 — 스크롤 시 시간 라벨이 라운드 모서리 틈으로 보이는 것 차단 (v3.8.46) */}
             <div style={{position:"sticky",top:topbarH,height:headerH,marginBottom:-headerH,zIndex:24,background:"#fff",pointerEvents:"none"}}/>
-            <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:25,background:T.bgCard,boxShadow:"0 -1px 6px -2px rgba(0,0,0,.08), 0 4px 8px -2px rgba(0,0,0,0.12)"}}/>
+            <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:25,background:T.bgCard,boxShadow:"0 -1px 6px -2px rgba(0,0,0,.08), 0 4px 8px -2px rgba(0,0,0,0.12), -10px 0 14px -4px rgba(0,0,0,.11)"}}/>
             <div style={{position:"relative",height:totalRows*rowH,boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",...gridBg}}>
               {/* (구) 시간축 가로행 하이라이트 제거 — 시간은 hover 셀 안에 직접 표시 (정우님 2026-06-10) */}
               {timeLabels.map(({i, isHour, m, text}) => {
@@ -4276,7 +4276,12 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                 {/* Room Header - sticky. 지점명은 첫 컬럼에만 앵커로 (D안) */}
                 {/* 백플레이트 — 스크롤 시 블록이 라운드 모서리 틈(노치)으로 침범해 보이는 것 차단 (v3.8.46) */}
                 <div style={{position:"sticky",top:topbarH,height:headerH,marginBottom:-headerH,zIndex:9,background:"#fff",pointerEvents:"none"}}/>
-                <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:10,background:colBg,boxShadow:"0 -1px 6px -2px rgba(0,0,0,.08), 0 4px 8px -2px rgba(0,0,0,0.12)",borderTopLeftRadius:_isCardLeft?16:0,borderTopRightRadius:isLastOfBranch?16:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",paddingBottom:4,lineHeight:1.2}}>
+                <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:10,background:colBg,
+                  // 헤더에도 지점 양끝 측면 그림자 — 칼럼 그림자(blur 20·spread -8)는 박스 맨 위에서 페이드라 헤더 높이에선 빠져 보임 (v3.8.48)
+                  boxShadow:"0 -1px 6px -2px rgba(0,0,0,.08), 0 4px 8px -2px rgba(0,0,0,0.12)"
+                    + (isLastOfBranch ? ", 10px 0 14px -4px rgba(0,0,0,.20)" : "")
+                    + (_isCardLeft ? ", -10px 0 14px -4px rgba(0,0,0,.13)" : ""),
+                  borderTopLeftRadius:_isCardLeft?16:0,borderTopRightRadius:isLastOfBranch?16:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",paddingBottom:4,lineHeight:1.2}}>
                   {isFirstOfBranch && (
                     <span style={{position:"absolute",top:2,left:0,right:0,textAlign:"center",fontSize:14,fontWeight:800,color:T.text,letterSpacing:0,pointerEvents:"none",zIndex:2}}>
                       {room.branchName}
