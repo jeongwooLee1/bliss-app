@@ -1688,7 +1688,8 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     });
     list.sort((a,b) => (a.priority||100) - (b.priority||100));
     return list;
-  }, [custPkgs, data?.services, items]);
+    // v3.8.61: _extraSvcAddTotal/_extraProdAddTotal 의존성 누락 — 추가행(제품/시술)으로만 금액 입력 시 쿠폰 재평가가 안 돼 할인 0 (마곡 id_uxqr2ra91j)
+  }, [custPkgs, data?.services, data?.categories, items, _extraSvcAddTotal, _extraProdAddTotal]);
   // 같은 종류 쿠폰(같은 service_name) 1매출에 1장만 적용 — 중복 보유해도 할인 1회
   const activeCoupons = (() => {
     const seen = new Set();
