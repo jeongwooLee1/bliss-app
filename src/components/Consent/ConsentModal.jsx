@@ -127,13 +127,19 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
         if (!ok) alert('문자 발송 실패: ' + JSON.stringify(body).slice(0, 200) + '\n(QR/링크로 대신 전달해주세요)')
       } else if (via === 'alimtalk') {
         // 카카오 알림톡 — 링크 차단 없음. alimtalk_queue 적재 → 서버가 아리고로 발송.
+        // v3.8.62: 차트만 보내면 chart_doc(차트 안내 문구, UI_3916~), 동의서 포함이면 consent_doc(구매 동의서 문구) — 희서 id_6f3bsl54sx
+        const _chartFolderIds = new Set(folders.filter(f => /차트|체크리스트/.test(f.name || '')).map(f => f.id))
+        const _isChartTpl = (t) => !!t && (_chartFolderIds.has(t.folder_id) || /chart|condition|consent_full/i.test(t.id || ''))
+        const _isChartSend = selectedIds.length > 0 && selectedIds.every(id => _isChartTpl(tpls.find(t => t.id === id)))
         const targetBid = cust?.bid || (data?.branches || [])[0]?.id || ''
         const brName = (data?.branches || []).find(b => b.id === targetBid)?.short || ''
         await sb.insert('alimtalk_queue', {
           branch_id: targetBid,
-          noti_key: 'consent_doc',
+          noti_key: _isChartSend ? 'chart_doc' : 'consent_doc',
           phone: smsPhone,
-          params: { '#{사용자명}': brName, '#{고객명}': cust?.name || '', '#{동의서링크}': url },
+          params: _isChartSend
+            ? { '#{사용자명}': brName, '#{고객명}': cust?.name || '', '#{차트링크}': url }
+            : { '#{사용자명}': brName, '#{고객명}': cust?.name || '', '#{동의서링크}': url },
           status: 'pending',
           channel: 'alimtalk',
         })

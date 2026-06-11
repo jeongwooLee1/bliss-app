@@ -3647,6 +3647,25 @@ v3.7.984 진단에서 미룬 데모 공지&요청 배지 "2" 건 수정.
 **버그2 — 이름 변경**(정우님): 변경 모드에서 검색 없이 이름만 바꾸면 기존 custId 유지한 채 예약 이름만 바뀌어 불일치(조용한 rename). **fix**(정우님 선택 "검색 강제 + 저장 시 확인"): 검색 없이 이름만 바꾸고 저장 → 그 이름 자동 검색 후 **커스텀 확인 다이얼로그**(`nameResolve`) — 같은 이름 기존 고객 있으면 [연결] / 없으면 [신규 등록] vs [같은 분 이름만 수정(오타)] vs [다른 고객 직접 검색] vs [취소]. native confirm 미사용. + 변경모드 "저장" 시 rename이 _persistCustEdits 누락으로 안 되던 기존 버그도 정리(snapshot/editingCust 선클리어 제거 → 메인 저장이 처리).
 **유의**: 데모 사업장 렌더·콘솔 무에러 확인. 데모 현재 날짜 예약 없어 저장 클릭 플로우는 라이브 확인 권장(커플 동반자 이동 시 안 늘어나는지 / 이름 변경 시 다이얼로그).
 
+### v3.8.62 + 서버/DB — 알림톡 검수 승인 wiring: chart_doc + 영어 3종 / 입금문자앱 v1.9 통화중 팝업 (2026-06-11)
+
+#### 알림톡 32종 검수 승인 확인 (알리고 inspStatus=APR)
+차트작성안내(chart_doc) UI_3916~3923 (8지점) + 영어 rsv_confirm UI_4318~4325 / rsv_1day UI_4326~4333 / rsv_today UI_4334~4341 (24종, today는 본문링크 `https://sign.blissme.ai/?t=#{차트토큰}` 방식).
+
+#### wiring (DB + 서버 + 클라)
+- **DB**: 8지점 `noti_config`에 ① `chart_doc` = {on:true, tplCode:지점별, msgTpl:차트 안내 본문(#{사용자명}/#{고객명}/#{차트링크})} ② `rsv_confirm`/`rsv_1day`/`rsv_today`에 `tplCodeEn` + `msgTplEn`(등록 영어 본문) 추가. 8지점 전부 204.
+- **서버 bliss_naver.py** (백업 `bak_enwire_*`): ① `process_item` — `_use_en`이면 buttons 미부착(영어 템플릿은 버튼 없이 등록 — 한국어 버튼 붙이면 템플릿 불일치 거절) ② `_process_window` 차트토큰 발급 조건에 `msgTplEn에 #{차트토큰} 포함` 추가(영어 본문링크 방식 대응) ③ `_send_chat_reminders` — 한국폰(010/8210) 손님이 영어 알림톡 커버 지점(해당 리마인더 키에 tplCodeEn)이면 채팅(WA/IG/LINE) 리마인더 스킵 = **알림톡 우선 중복 방지**(noti_config REST 조회 + 함수내 캐시). 외국폰 손님은 채팅 리마인더 그대로.
+- **클라 ConsentModal**(v3.8.62): 알림톡 발송 시 선택 템플릿이 **전부 차트 트랙**(폴더명 차트/체크리스트 또는 id chart/condition/consent_full)이면 `noti_key='chart_doc'` + `#{차트링크}`, 동의서 포함이면 기존 `consent_doc` + `#{동의서링크}`. → 희서 id_6f3bsl54sx("구매하신 상품" 문구 오해) 해소.
+- **효과**: 외국인(영어 대화/영문이름) 고객 알림톡이 예약확정·전날·당일 모두 영어로 발송(`_recipient_prefers_en` 판정, v2026-06-05 Phase 1 코드가 tplCodeEn 자동 사용). 당일 영어판도 차트링크 포함.
+- **유의**: 영어 알림톡 첫 실발송(외국인 예약 확정/리마인더) 모니터링 권장 — `alimtalk_queue` result로 확인. 차트 보내기 알림톡은 이제 chart_doc 문구.
+
+#### 입금문자앱(bliss-deposit-app) v1.9 — 전화 받는 순간 고객정보 카드+배너 (정우님 id_or34v0pzwv)
+**증상**: 전화 수신 시 고객정보 팝업이 통화 중엔 안 뜨고 끊어야만 뜸(가로 배너도 안 뜸).
+**원인**: ① 벨 울리는 동안은 안드로이드 풀스크린 수신화면이 모든 앱의 오버레이·헤드업 배너를 시스템 차원에서 억제(플랫폼 제약 — 회피 불가) ② 앱이 RINGING(조회)/IDLE(종료 후 재표시)만 처리 — **통화 시작(OFFHOOK) 시점 재표시 없음** → 받은 후에도 안 뜨고 끊어야만 postcall로 뜸.
+**fix (v1.9, versionCode 10)**: `CallReceiver`에 OFFHOOK 핸들러 추가 → `CallerPopupService` action `offhook` — 받는 순간 ① 알림 1004 취소 후 재게시(벨 동안 조용히 쌓인 알림은 재팝 안 되므로) ② 오버레이 카드 재부착(0.7s 지연 — 화면전환 직후 addView 무시 기기 대응). 벨 중 조회 미완(빨리 받음)이면 `lastRingPhone`으로 통화 시작 시 재조회. 기존 RINGING·postcall·keep-on-top 로직 무변경.
+**빌드·배포 체계 확립**: 이 맥에서 gradle CLI 빌드 가능 — `JAVA_HOME=/opt/homebrew/opt/openjdk@17 ./gradlew assembleDebug` (sdk=/opt/homebrew/share/android-commandlinetools, 서명=debug.keystore — 라이브 APK와 동일 키 확인됨). 배포 = `/var/www/html/app/`(⚠️ bliss-app 밑 아님)에 APK+bliss-version.json 업로드 + CF 퍼지 → 매장폰 앱에서 [앱 업데이트 확인]로 자가 업데이트.
+**유의**: 벨 울리는 동안엔 여전히 안 뜸(시스템 제약) — 받는 순간/끊은 직후에 뜨는 게 최선. 매장폰들 업데이트 전파 필요(팀채팅 안내).
+
 ### v3.8.61 — 추가행(제품/시술) 입력 시 쿠폰 미적용 fix (마곡 id_uxqr2ra91j) (2026-06-11)
 **증상**(마곡, 강도희): 매출입력에서 제품전용 8만원쿠폰 보유인데 제품 금액에 차감이 안 됨.
 **원인**: 쿠폰 자동적용 엔진(`couponResults` useMemo, SaleForm:1691)의 deps가 `[custPkgs, data?.services, items]` — **`_extraSvcAddTotal`/`_extraProdAddTotal`(추가행 금액) 누락**. 정식 제품/시술 체크(items)는 재평가되지만, **추가행으로만 금액을 입력**하면 memo가 갱신 안 돼 baseAmt=0 시점 결과(쿠폰 0건)에 고착 → 할인 0. (이벤트 쿠폰 memo 1944는 deps에 이미 포함 — couponResults만 누락)
