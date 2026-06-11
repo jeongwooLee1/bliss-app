@@ -4133,11 +4133,11 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           <div className="tl-left-gap" style={{position:"sticky",left:0,width:14,flexShrink:0,zIndex:19,background:"#fff",pointerEvents:"none"}}/>
           {/* 시간축 위쪽 그림자 캐스터 (v3.8.56) — tl-time-col은 sticky+zIndex라 스태킹 컨텍스트 → 내부 z31이 툴바(z30)를 못 이김.
               형제로 빼서 시간축 헤더 위치에 핀(세로 top + 가로 left 동시 sticky), marginRight 음수로 레이아웃 무영향 */}
-          <div className="tl-time-caster" style={{position:"sticky",left:0,top:topbarH,zIndex:31,width:timeLabelsW,marginRight:-timeLabelsW,height:headerH,alignSelf:"flex-start",pointerEvents:"none",boxShadow:"0 -3px 8px -1px rgba(0,0,0,.12), -6px 0 12px -3px rgba(0,0,0,.07)"}}/>
+          <div className="tl-time-caster" style={{position:"sticky",left:0,top:topbarH,zIndex:31,width:timeLabelsW,marginRight:-timeLabelsW,height:headerH,alignSelf:"flex-start",pointerEvents:"none",boxShadow:"0 -3px 8px -1px rgba(0,0,0,.12)",clipPath:"inset(-20px 0 0 0)"}}/>
           {/* Time Labels */}
           <div className="tl-time-col" style={{width:timeLabelsW,flexShrink:0,position:"sticky",left:0,zIndex:20,background:T.bgCard,borderRight:"1px solid #eee"}}>
-            {/* 헤더 아래 그림자 제거(내부엔 그림자 X — v3.8.56 정우님), 좌측만 본체와 동일 지오메트리·톤 */}
-            <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:25,background:T.bgCard,boxShadow:"-6px 0 12px -3px rgba(0,0,0,.07)"}}/>
+            {/* 헤더 자체 그림자 전부 제거 (v3.8.58) — 좌측 그림자는 칼럼 본체(CSS .11) 단일 소스, 헤더에 또 주면 누적돼 진해짐 */}
+            <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:25,background:T.bgCard}}/>
             <div style={{position:"relative",height:totalRows*rowH,boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",...gridBg}}>
               {/* (구) 시간축 가로행 하이라이트 제거 — 시간은 hover 셀 안에 직접 표시 (정우님 2026-06-10) */}
               {timeLabels.map(({i, isHour, m, text}) => {
@@ -4273,14 +4273,14 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                 }}>
                 {/* 카드 위쪽 그림자 캐스터 (v3.8.55) — 헤더의 up-shadow는 툴바(z30 불투명)에 가려져 무효.
                     z31 투명 박스가 헤더 위치에 핀 고정돼 위로 그림자만 캐스팅 → 지점 카드별 위쪽 그림자(갭에서 끊김) */}
-                <div style={{position:"sticky",top:topbarH,height:headerH,marginBottom:-headerH,zIndex:31,pointerEvents:"none",boxShadow:"0 -3px 8px -1px rgba(0,0,0,.12)"}}/>
+                <div style={{position:"sticky",top:topbarH,height:headerH,marginBottom:-headerH,zIndex:31,pointerEvents:"none",boxShadow:"0 -3px 8px -1px rgba(0,0,0,.12)",clipPath:"inset(-20px 0 0 0)"}}/>
                 {/* 이동/지원 직원: 휴무 스타일 오버레이 (배경만, 블록 클릭은 허용) */}
                 {room.isMovedOut && <div style={{position:"absolute",top:headerH,left:0,right:0,bottom:0,background:"rgba(0,0,0,.06)",borderTop:"2px dashed rgba(0,0,0,.12)",zIndex:1,pointerEvents:"none"}}/>}
                 {/* Room Header - sticky. 지점명은 첫 컬럼에만 앵커로 (D안) */}
                 <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:10,background:colBg,
-                  // 아래 그림자 제거(타임라인 내부엔 그림자 X — 헤더 밑·칼럼 구분선에 그림자 들어가던 것, v3.8.56 정우님)
-                  // 측면은 본체 칼럼과 동일 지오메트리 + 본체(.26) 상단 페이드를 메우는 보충 톤(.15) — 위아래 균일
-                  boxShadow: isLastOfBranch ? "6px 0 12px -3px rgba(0,0,0,.10)" : "none",
+                  // 헤더 자체 그림자 전부 제거 (v3.8.58 정우님 "헤더 좌우가 더 진해") — 측면 그림자는 칼럼 본체(.17) 단일 소스,
+                  // 위쪽은 z31 캐스터가 담당. 헤더에 별도 그림자를 주면 스크롤 시 본체 그림자와 누적돼 헤더 구간만 진해짐.
+                  boxShadow: "none",
                   display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",paddingBottom:4,lineHeight:1.2}}>
                   {isFirstOfBranch && (
                     <span style={{position:"absolute",top:2,left:0,right:0,textAlign:"center",fontSize:14,fontWeight:800,color:T.text,letterSpacing:0,pointerEvents:"none",zIndex:2}}>
