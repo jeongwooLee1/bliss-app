@@ -4133,7 +4133,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           <div className="tl-left-gap" style={{position:"sticky",left:0,width:14,flexShrink:0,zIndex:19,background:"#fff",pointerEvents:"none"}}/>
           {/* Time Labels */}
           <div className="tl-time-col" style={{width:timeLabelsW,flexShrink:0,position:"sticky",left:0,zIndex:20,background:T.bgCard,borderRight:"1px solid #eee"}}>
-            <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:25,background:T.bgCard,boxShadow:"0 -2px 7px -1px rgba(0,0,0,.16), 0 4px 8px -2px rgba(0,0,0,0.12), -6px 0 10px -2px rgba(0,0,0,.16)"}}/>
+            <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:25,background:T.bgCard,boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12), -6px 0 10px -2px rgba(0,0,0,.16)"}}/>
             <div style={{position:"relative",height:totalRows*rowH,boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",...gridBg}}>
               {/* (구) 시간축 가로행 하이라이트 제거 — 시간은 hover 셀 안에 직접 표시 (정우님 2026-06-10) */}
               {timeLabels.map(({i, isHour, m, text}) => {
@@ -4271,9 +4271,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                 {room.isMovedOut && <div style={{position:"absolute",top:headerH,left:0,right:0,bottom:0,background:"rgba(0,0,0,.06)",borderTop:"2px dashed rgba(0,0,0,.12)",zIndex:1,pointerEvents:"none"}}/>}
                 {/* Room Header - sticky. 지점명은 첫 컬럼에만 앵커로 (D안) */}
                 <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:10,background:colBg,
-                  // 헤더 측면 그림자(.26)는 라이브 실화면 주입 테스트로 확정 (v3.8.52)
-                  // 라운드·백플레이트 제거 — 직각 모서리, 그림자 삐져나옴 해소 (v3.8.53 정우님)
-                  boxShadow:"0 -2px 7px -1px rgba(0,0,0,.16), 0 4px 8px -2px rgba(0,0,0,0.12)"
+                  // 헤더 측면 그림자(.26)는 라이브 실화면 주입 테스트로 확정 (v3.8.52). 라운드·백플레이트 제거 (v3.8.53)
+                  // 헤더 '위쪽' 그림자는 툴바(z30 불투명)에 가려져 무효 → 제거, 대신 툴바 아래 그림자(index.html)로 표현 (v3.8.54)
+                  boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)"
                     + (isLastOfBranch ? ", 6px 0 10px -2px rgba(0,0,0,.26)" : ""),
                   display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",paddingBottom:4,lineHeight:1.2}}>
                   {isFirstOfBranch && (
