@@ -4135,7 +4135,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           <div className="tl-time-col" style={{width:timeLabelsW,flexShrink:0,position:"sticky",left:0,zIndex:20,background:T.bgCard,borderRight:"1px solid #eee"}}>
             {/* 백플레이트 — 스크롤 시 시간 라벨이 라운드 모서리 틈으로 보이는 것 차단 (v3.8.46) */}
             <div style={{position:"sticky",top:topbarH,height:headerH,marginBottom:-headerH,zIndex:24,background:"#fff",pointerEvents:"none"}}/>
-            <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:25,background:T.bgCard,boxShadow:"0 -3px 10px -3px rgba(0,0,0,.14), 0 4px 8px -2px rgba(0,0,0,0.12), -8px 0 12px -5px rgba(0,0,0,.10)"}}/>
+            <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:25,background:T.bgCard,boxShadow:"0 -2px 7px -1px rgba(0,0,0,.16), 0 4px 8px -2px rgba(0,0,0,0.12), -8px 0 10px -3px rgba(0,0,0,.12)"}}/>
             <div style={{position:"relative",height:totalRows*rowH,boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",...gridBg}}>
               {/* (구) 시간축 가로행 하이라이트 제거 — 시간은 hover 셀 안에 직접 표시 (정우님 2026-06-10) */}
               {timeLabels.map(({i, isHour, m, text}) => {
@@ -4278,8 +4278,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                 <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:10,background:colBg,
                   // 헤더에도 지점 우측 끝 측면 그림자 — 칼럼 그림자는 박스 맨 위에서 페이드라 헤더 높이에선 빠져 보임 (v3.8.48)
                   // 좌측 그림자는 제거 — 갭에서 양쪽 겹치면 과함 (v3.8.49). 카드 상단(위) 그림자 강화 (v3.8.50)
-                  boxShadow:"0 -3px 10px -3px rgba(0,0,0,.14), 0 4px 8px -2px rgba(0,0,0,0.12)"
-                    + (isLastOfBranch ? ", 10px 0 14px -5px rgba(0,0,0,.16)" : ""),
+                  // 위 그림자는 blur 작게·또렷하게 — 퍼지면(blur 10+) 직선 구간이 안 보이고 모서리만 진해 보임 (v3.8.51)
+                  boxShadow:"0 -2px 7px -1px rgba(0,0,0,.16), 0 4px 8px -2px rgba(0,0,0,0.12)"
+                    + (isLastOfBranch ? ", 8px 0 10px -3px rgba(0,0,0,.18)" : ""),
                   borderTopLeftRadius:_isCardLeft?16:0,borderTopRightRadius:isLastOfBranch?16:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",paddingBottom:4,lineHeight:1.2}}>
                   {isFirstOfBranch && (
                     <span style={{position:"absolute",top:2,left:0,right:0,textAlign:"center",fontSize:14,fontWeight:800,color:T.text,letterSpacing:0,pointerEvents:"none",zIndex:2}}>
