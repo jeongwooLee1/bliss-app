@@ -326,8 +326,8 @@
       @media(min-width:769px){
         .tl-card-wrap{background:#fff}
         .tl-card-wrap .tl-alert-banner{width:auto!important;margin:6px 12px;border-radius:10px;border-bottom:none!important}
-        /* 헤더(직원이름 줄) 위쪽 그림자 = 툴바의 아래 그림자 — 헤더 자체 up-shadow는 툴바(z30 불투명)에 가려져 안 보임 (v3.8.54 정우님) */
-        .tl-card-wrap .tl-topbar{box-shadow:0 4px 10px -2px rgba(0,0,0,.16)!important;padding-bottom:10px!important}
+        /* 툴바 그림자 없음 — 카드(헤더) 위쪽 그림자는 칼럼 안 z31 투명 캐스터가 그림 (v3.8.55 정우님, v3.8.54 툴바 전폭 그림자는 "엉망" 피드백으로 롤백) */
+        .tl-card-wrap .tl-topbar{box-shadow:none!important;padding-bottom:10px!important}
         /* 왼쪽 여백 = margin 대신 sticky 스트립(tl-left-gap) — 가로 스크롤해도 사이드바와 14px 갭 유지 (v3.8.47) */
         .tl-card-wrap .tl-grid-card{margin-right:14px}
         .tl-card-wrap .tl-left-gap{display:block}
@@ -403,7 +403,7 @@
         .sidebar-m{display:none!important}
       }
     </style>
-    <script type="module" crossorigin src="/assets/index-Do6Q-Rbr.js"></script>
+    <script type="module" crossorigin src="/assets/index-u-2-GPqO.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-DoaQoIwC.js">
     <link rel="modulepreload" crossorigin href="/assets/supabase-DywSbxor.js">
   </head>
