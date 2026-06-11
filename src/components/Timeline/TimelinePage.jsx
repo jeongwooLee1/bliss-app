@@ -4133,8 +4133,6 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           <div className="tl-left-gap" style={{position:"sticky",left:0,width:14,flexShrink:0,zIndex:19,background:"#fff",pointerEvents:"none"}}/>
           {/* Time Labels */}
           <div className="tl-time-col" style={{width:timeLabelsW,flexShrink:0,position:"sticky",left:0,zIndex:20,background:T.bgCard,borderRight:"1px solid #eee"}}>
-            {/* 백플레이트 — 스크롤 시 시간 라벨이 라운드 모서리 틈으로 보이는 것 차단 (v3.8.46) */}
-            <div style={{position:"sticky",top:topbarH,height:headerH,marginBottom:-headerH,zIndex:24,background:"#fff",pointerEvents:"none"}}/>
             <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:25,background:T.bgCard,boxShadow:"0 -2px 7px -1px rgba(0,0,0,.16), 0 4px 8px -2px rgba(0,0,0,0.12), -6px 0 10px -2px rgba(0,0,0,.16)"}}/>
             <div style={{position:"relative",height:totalRows*rowH,boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",...gridBg}}>
               {/* (구) 시간축 가로행 하이라이트 제거 — 시간은 hover 셀 안에 직접 표시 (정우님 2026-06-10) */}
@@ -4266,23 +4264,18 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                   marginLeft: _isCardLeft ? 14 : 0,
                   // 지점 카드 양 끝 부드러운 그림자 (v3.8.44 — v3.8.42의 '없음'은 너무 약하다는 피드백)
                   boxShadow: _edgeShadows,
-                  borderTopLeftRadius: _isCardLeft ? 16 : 0,
-                  borderTopRightRadius: isLastOfBranch ? 16 : 0,
+                  // 라운드 전부 제거 (v3.8.53 정우님 — 모서리에서 그림자 삐져나오는 문제, 직각으로)
                   position:"relative"
                 }}>
                 {/* 이동/지원 직원: 휴무 스타일 오버레이 (배경만, 블록 클릭은 허용) */}
                 {room.isMovedOut && <div style={{position:"absolute",top:headerH,left:0,right:0,bottom:0,background:"rgba(0,0,0,.06)",borderTop:"2px dashed rgba(0,0,0,.12)",zIndex:1,pointerEvents:"none"}}/>}
                 {/* Room Header - sticky. 지점명은 첫 컬럼에만 앵커로 (D안) */}
-                {/* 백플레이트 — 스크롤 시 블록이 라운드 모서리 틈(노치)으로 침범해 보이는 것 차단 (v3.8.46) */}
-                <div style={{position:"sticky",top:topbarH,height:headerH,marginBottom:-headerH,zIndex:9,background:"#fff",pointerEvents:"none"}}/>
                 <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:10,background:colBg,
-                  // 헤더에도 지점 우측 끝 측면 그림자 — 칼럼 그림자는 박스 맨 위에서 페이드라 헤더 높이에선 빠져 보임 (v3.8.48)
-                  // 좌측 그림자는 제거 — 갭에서 양쪽 겹치면 과함 (v3.8.49). 카드 상단(위) 그림자 강화 (v3.8.50)
-                  // 위 그림자는 blur 작게·또렷하게 — 퍼지면(blur 10+) 직선 구간이 안 보이고 모서리만 진해 보임 (v3.8.51)
-                  // 측면은 라이브 실화면 주입 테스트로 .26 확정 (v3.8.52)
+                  // 헤더 측면 그림자(.26)는 라이브 실화면 주입 테스트로 확정 (v3.8.52)
+                  // 라운드·백플레이트 제거 — 직각 모서리, 그림자 삐져나옴 해소 (v3.8.53 정우님)
                   boxShadow:"0 -2px 7px -1px rgba(0,0,0,.16), 0 4px 8px -2px rgba(0,0,0,0.12)"
                     + (isLastOfBranch ? ", 6px 0 10px -2px rgba(0,0,0,.26)" : ""),
-                  borderTopLeftRadius:_isCardLeft?16:0,borderTopRightRadius:isLastOfBranch?16:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",paddingBottom:4,lineHeight:1.2}}>
+                  display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",paddingBottom:4,lineHeight:1.2}}>
                   {isFirstOfBranch && (
                     <span style={{position:"absolute",top:2,left:0,right:0,textAlign:"center",fontSize:14,fontWeight:800,color:T.text,letterSpacing:0,pointerEvents:"none",zIndex:2}}>
                       {room.branchName}

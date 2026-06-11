@@ -330,8 +330,8 @@
         /* 왼쪽 여백 = margin 대신 sticky 스트립(tl-left-gap) — 가로 스크롤해도 사이드바와 14px 갭 유지 (v3.8.47) */
         .tl-card-wrap .tl-grid-card{margin-right:14px}
         .tl-card-wrap .tl-left-gap{display:block}
-        .tl-card-wrap .tl-time-col{left:14px!important;box-shadow:-6px 0 12px -3px rgba(0,0,0,.16);border-top-left-radius:16px}
-        .tl-card-wrap .tl-time-col>div:last-child{border-bottom-left-radius:16px}
+        /* 라운드 전부 제거 (v3.8.53 정우님 — 모서리 그림자 삐져나옴, 직각으로) */
+        .tl-card-wrap .tl-time-col{left:14px!important;box-shadow:-6px 0 12px -3px rgba(0,0,0,.16)}
         .tl-card-wrap .tl-calview{margin:0 14px;border:1px solid #e6e8ee;border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,.08)}
       }
 
