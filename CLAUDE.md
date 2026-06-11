@@ -3647,6 +3647,17 @@ v3.7.984 진단에서 미룬 데모 공지&요청 배지 "2" 건 수정.
 **버그2 — 이름 변경**(정우님): 변경 모드에서 검색 없이 이름만 바꾸면 기존 custId 유지한 채 예약 이름만 바뀌어 불일치(조용한 rename). **fix**(정우님 선택 "검색 강제 + 저장 시 확인"): 검색 없이 이름만 바꾸고 저장 → 그 이름 자동 검색 후 **커스텀 확인 다이얼로그**(`nameResolve`) — 같은 이름 기존 고객 있으면 [연결] / 없으면 [신규 등록] vs [같은 분 이름만 수정(오타)] vs [다른 고객 직접 검색] vs [취소]. native confirm 미사용. + 변경모드 "저장" 시 rename이 _persistCustEdits 누락으로 안 되던 기존 버그도 정리(snapshot/editingCust 선클리어 제거 → 메인 저장이 처리).
 **유의**: 데모 사업장 렌더·콘솔 무에러 확인. 데모 현재 날짜 예약 없어 저장 클릭 플로우는 라이브 확인 권장(커플 동반자 이동 시 안 늘어나는지 / 이름 변경 시 다이얼로그).
 
+### 앱 v1.12 + 서버 — 고객문자 미인입 근본 진단: RCS(채팅+) + MMS 수신 지원 (2026-06-11, 정우님)
+**진단 확정 과정**: 강남폰(노트20, 01080086547=강남·왕십리 겸용 메인폰)이 v1.11 APK를 받아(nginx 로그로 확인) 재전송 실행 → 입금 4건 전송·**고객 SMS 0건** = 24h SMS함 전체에 고객문자 없음. 정우 테스트 문자는 폰 메시지 앱엔 보임 → **SMS 저장소에 없다 = 채팅+(RCS) 수신** (RCS는 SMS/MMS provider 밖 비공개 DB라 어떤 서드파티 앱도 못 읽음. 은행문자만 순수 SMS라 잡혔던 것. 6/8까지 정상이다 6/9부터 끊긴 것도 채팅+ 활성 시점과 일치 추정). **해결 = 매장폰 메시지 앱 설정에서 채팅+ 끄기**(상대 발신이 SMS/MMS로 다운그레이드 → 자동 인입).
+**v1.12 (code13)** — MMS도 커버(아이폰 발신·장문은 MMS) + 리뷰 워크플로우(11 agents) must-fix 2건 반영:
+- 주 경로: SmsSyncService(상주 FGS)에 `content://mms` ContentObserver — 본문 다운로드(retrieve-conf insert) 순간 감지, 디바운스 3s.
+- 보조: MmsReceiver(WAP_PUSH)는 **sleep 금지·즉시 리턴 + 12s/60s 스캔 예약만** — 브로드캐스트 ~10s 예산 초과 시 ANR로 상주서비스 동반 kill 위험(must-fix ①), 고정 8s 대기는 다운로드 지연 시 영구 누락(must-fix ②).
+- dedup: `Prefs.sentMmsIds`(전송완료 id 집합, 500) + 24h 윈도우 — 워터마크 방식의 역순 다운로드 건너뜀 제거, 재전송 중복 0.
+- route() 개선: **은행마커(잔액/[KB]/하나/수협/우리) 있는 입금만 dep** — 모바일 고객 "입금했어요" 문의가 입금 엔드포인트로 빠져 조용히 유실되던 것 fix(실시간 SmsReceiver에도 적용).
+- 재전송 진단로그: "SMS n건(입금·고객·기타)/MMS n건" + 고객 0건이면 채팅+ 끄기 안내 자동 표시.
+- **서버**: customer-sms dedup 보강 — raw_payload.sms_ts(원본 문자시각) 정확 일치 dedup(백업 `bak_smsdedup_*`). 재전송 버튼을 며칠 후 또 눌러도 같은 문자 중복 인입 없음(기존 10분 동일본문 dedup은 폴백 유지).
+**유의**: MmsReceiver 실시간은 앱을 한 번 열어 RECEIVE_MMS/WAP_PUSH 권한 자동승인(onCreate ensureMmsPerms, SMS그룹 기허용이라 무팝업) 후 동작 — 업데이트 흐름상 자동 충족. 매장폰 구조(메모리 기록): 강남·왕십리=01080086547 1폰 / 마곡·용산 1폰 / 위례·잠실 1폰(나머지 번호는 유선). customer-sms는 토큰 bid 단일 귀속 — 1폰 2지점이라 고객문자가 한 지점 메시지함에 귀속(향후 과제).
+
 ### 서버 — 입금 "무시 → 자동 거르기" + 고객문의 skip 진단 로그 (2026-06-11, 정우님)
 - **무시 자동 거르기 (정우님 제안)**: `bank-deposit-sms` INSERT 직전 — `_is_card` 아니면, 같은 `business_id`+`transferer_name`이 **전에 `status='ignored'`로 무시된 적 있으면 새 입금도 자동 `ignored`**. → 직원이 입금탭에서 "무시" 한 번 누른 입금자명(반복 카드정산·자동이체 등)은 다음부터 자동으로 입금탭에서 빠짐(`ignored`/`card` 둘 다 '전체' 필터서 제외). 빈 입금자명은 매칭 제외. 클라 변경 0(BankDeposits `ignoreDeposit`이 이미 `status='ignored'` 기록).
 - **고객문의 skip 진단 로그**: `customer-sms`가 inbox 인입만 로그하고 skip(non_mobile/deposit/otp/ad/blocked/not_inquiry)은 로그 안 해 "고객문의 안 들어옴" 원인 추적 불가였음 → 각 skip return에 `[customer-sms] skip=<사유> bid=.. from=..뒷4자 [body앞30]` 로그 추가(개인정보 최소화). 정우님 테스트 문자/실고객 문의 시 정확한 단계 확인 가능.
