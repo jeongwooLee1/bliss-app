@@ -162,6 +162,13 @@
   </div>
 
   <div class="card">
+    <h2>말로 수정하기</h2>
+    <textarea id="nl-input" rows="2" placeholder='예: "AI 자동 상담·예약"을 "인공지능이 상담 예약을 해요~"로 바꿔줘 / 헤드라인을 더 친근하게'></textarea>
+    <button class="btn btn-primary" id="btn-nl" style="margin-top:10px">적용하기</button>
+    <div class="hint" id="nl-note" style="margin-top:8px"></div>
+  </div>
+
+  <div class="card">
     <h2>문구 수정</h2>
     <div class="hint" style="margin:0 0 4px">페이지에서 수정 가능한 문구를 자동으로 찾아 보여줍니다</div>
     <div id="form-fields"><div class="req-meta">불러오는 중…</div></div>
@@ -392,6 +399,39 @@ async function publish() {
   }
 }
 
+/* ── 말로 수정하기 ── */
+async function nlEdit() {
+  const txt = $("nl-input").value.trim();
+  if (!txt) { toast("수정할 내용을 입력해 주세요"); return; }
+  const btn = $("btn-nl"); btn.disabled = true; btn.textContent = "AI가 수정 중… (10초 정도)";
+  $("nl-note").textContent = "";
+  try {
+    const payload = fields.map((f) => ({ path: f.path, label: LABELS[f.path] || "", value: getVal(f.path) ?? f.original }));
+    const { data, error } = await sb.functions.invoke("edit-copy", { body: { instruction: txt, fields: payload } });
+    if (error) throw new Error(error.message || "요청 실패");
+    if (data?.error) throw new Error(data.error);
+    const changes = data.changes || [];
+    if (!changes.length) {
+      $("nl-note").textContent = data.note || "해당하는 문구를 찾지 못했어요 — 좀 더 구체적으로 말해 주세요.";
+      return;
+    }
+    for (const c of changes) if (c.path && typeof c.value === "string") setVal(c.path, c.value);
+    fillForm(); renderPreview(); refreshState();
+    // 바뀐 입력란 하이라이트
+    for (const c of changes) {
+      const el = document.querySelector('#form-fields [data-field="' + CSS.escape(c.path) + '"]');
+      if (el) { el.style.borderColor = "var(--accent)"; setTimeout(() => { el.style.borderColor = ""; }, 2500); }
+    }
+    $("nl-input").value = "";
+    $("nl-note").textContent = (data.note ? data.note + " · " : "") + changes.length + "개 문구가 바뀌었어요 — 미리보기 확인 후 발행하세요";
+    toast(changes.length + "개 문구 수정됨");
+  } catch (e) {
+    toast("수정 실패: " + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "적용하기";
+  }
+}
+
 let aiSuggestions = [];
 async function aiSuggest() {
   const btn = $("btn-ai"); btn.disabled = true; btn.textContent = "제안 생성 중… (20초 정도)";
@@ -513,6 +553,7 @@ $("tab-btn-copy").addEventListener("click", () => switchTab("copy"));
 $("tab-btn-design").addEventListener("click", () => switchTab("design"));
 $("btn-req").addEventListener("click", sendRequest);
 $("btn-ai").addEventListener("click", aiSuggest);
+$("btn-nl").addEventListener("click", nlEdit);
 $("pv-mobile").addEventListener("click", () => setPvWidth("mobile"));
 $("pv-desktop").addEventListener("click", () => setPvWidth("desktop"));
 
