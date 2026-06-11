@@ -163,13 +163,22 @@ def _stated_dt(mm, dd, hh, mn):
         return None
 
 
-# 카드사 정산 입금 판별 — 입금자명에 숫자 포함 또는 '카드' 키워드.
-# 실제 고객 이체는 입금자명이 사람 이름이라 숫자가 없음. 카드정산은 status='card'로
-# 저장해 입금문자 목록·미매칭 배너·배지에서 제외 (앱은 '카드정산' 필터로만 노출).
+# 카드사 정산 입금 판별 — '한글 이름 2자 이상'이 있으면 고객 이체(메모에 숫자 섞여도 고객).
+# 카드정산은 status='card'로 저장해 입금문자 목록·미매칭 배너·배지에서 제외 (앱은 '카드정산' 필터로만 노출).
+# 김금희월(2시)예 같은 입금메모 숫자 오분류 방지 (정우님 2026-06-11 위례 김금희 33000 숨김 사고).
 def is_card_settlement(name):
-    if not name:
+    n = (str(name) if name else "").strip()
+    if not n:
         return False
-    return any(c.isdigit() for c in name) or ('카드' in name)
+    if n.startswith('잔액'):
+        return True  # 파싱 오류 쓰레기(입금자명에 잔액줄) — 화면서 숨김
+    if ('카드' in n) or ('정산' in n):
+        return True
+    if re.match(r'^(신한|삼성|현대|롯데|국민|농협|비씨|씨티)\s*\d', n):
+        return True  # 카드사명 + 숫자 (신한13028239)
+    if re.search(r'[가-힣]{2,}', n):
+        return False  # 한글 이름(2자+ 연속) 있으면 고객 입금
+    return True  # 한글 이름 없음(영문코드/숫자/한글1자 약자) = 카드정산
 
 
 def parse_kb(text):
