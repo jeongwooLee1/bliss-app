@@ -584,7 +584,9 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         // SMS account_id = 지점 bid → 접근 가능 지점만 노출
         if(activeBids.length>0 && m.account_id && !activeBids.includes(String(m.account_id))) return;
       } else if(!isWhatsApp && !isLine && !isAitest && allowedIds.length>0 && m.account_id && m.account_id!=="unknown" && !allowedIds.includes(String(m.account_id))) return;
-      const key=(m.channel||"naver")+"_"+m.user_id;
+      // SMS는 지점(account_id=bid)별로 대화 분리 — 한 번호가 여러 지점 폰에 문자하면 지점마다 대화 유지
+      // (같은 키로 묶으면 마지막 지점이 이전 지점 대화 카드를 덮어 "사라진 것처럼" 보임 — 정우님 2026-06-11)
+      const key=(m.channel||"naver")+"_"+m.user_id+(isSms?("_"+(m.account_id||"")):"");
       if(!map[key]||new Date(m.created_at)>new Date(map[key].created_at)) map[key]=m;
     });
     let list = Object.values(map).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
@@ -616,9 +618,10 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
 
   const convo = useMemo(()=>{
     if(!sel) return [];
-    return msgs.filter(m=>m.user_id===sel.user_id&&(m.channel||"naver")===sel.channel)
+    return msgs.filter(m=>m.user_id===sel.user_id&&(m.channel||"naver")===sel.channel
+      &&(sel.channel!=="sms"||String(m.account_id||"")===String(sel.account_id||"")))  // SMS는 지점별 대화 분리
       .sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
-  },[msgs, sel?.user_id, sel?.channel]);
+  },[msgs, sel?.user_id, sel?.channel, sel?.account_id]);
 
   // IN 메시지 자동 번역 ON-AIR — 새로 도착한 in 메시지가 translated_text 비어있고 8초 이내면 "번역 중…" 표시
   useEffect(() => {
@@ -663,6 +666,20 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   // 🔗 채널별 "원본 플랫폼 바로가기" URL 계산
   //   네이버톡톡은 특정 대화 딥링크가 공개되지 않아 파트너센터 홈으로
   //   인스타는 비즈니스 DM 인박스, 왓츠앱은 메타 비즈니스 관리페이지
+  // 카카오 대화 딥링크 — raw_payload.chat_url (없으면 pf_id + chatId(=user_id)로 구성).
+  // 카카오는 외부에서 전송 불가(상담원 슬롯 독점)라, 답장은 이 URL로 카카오 채팅을 열어 직접 응대한다.
+  const getKakaoChatUrl = (selObj, convoMsgs) => {
+    if (!selObj || selObj.channel !== "kakao") return "";
+    const rows = (convoMsgs || []).filter(m => (m.channel || "") === "kakao" && m.user_id === selObj.user_id && m.raw_payload);
+    for (let i = rows.length - 1; i >= 0; i--) {
+      let rp = rows[i].raw_payload;
+      if (typeof rp === "string") { try { rp = JSON.parse(rp); } catch (e) { rp = null; } }
+      if (!rp) continue;
+      if (rp.chat_url) return rp.chat_url;
+      if (rp.pf_id) return `https://business.kakao.com/${rp.pf_id}/chats/${rows[i].user_id || selObj.user_id}`;
+    }
+    return "";
+  };
   const getChannelExternalLink = (selObj, convoMsgs) => {
     if (!selObj) return null;
     const ch = selObj.channel;
@@ -690,11 +707,29 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       return { url: "https://business.facebook.com/wa/manage/", label: "왓츠앱 비즈니스", short: "왓츠앱", color: "#25D366" };
     }
     if (ch === "kakao") {
-      return { url: "https://center-pf.kakao.com/", label: "카톡채널 관리", short: "카톡", color: "#FAE100" };
+      const chatUrl = getKakaoChatUrl(selObj, convoMsgs);
+      return { url: chatUrl || "https://center-pf.kakao.com/", label: chatUrl ? "카카오 채팅 열기" : "카톡채널 관리", short: "카톡", color: "#FAE100" };
     }
     return null;
   };
   const _extLink = getChannelExternalLink(sel, convo);
+  // 카카오 전용 — 답장 입력창 대신 "카카오에서 답장" 버튼(딥링크). 블리스 내부 전송 불가라 사고 방지.
+  const _kakaoChatUrl = getKakaoChatUrl(sel, convo);
+  const renderKakaoReply = (compact) => (
+    <div style={{display:"flex",flexDirection:"column",gap:8,alignItems:"stretch"}}>
+      <button onClick={()=>{ if(_kakaoChatUrl) window.open(_kakaoChatUrl, "_blank", "noopener,noreferrer"); }}
+        disabled={!_kakaoChatUrl}
+        title="카카오 채널 채팅으로 이동해서 답장합니다 (블리스에서는 직접 전송 불가)"
+        style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:7,padding:compact?"11px 14px":"13px 16px",background:_kakaoChatUrl?"#FAE100":T.gray100,color:_kakaoChatUrl?"#3C1E1E":T.gray400,border:"none",borderRadius:12,fontSize:compact?14:15,fontWeight:800,cursor:_kakaoChatUrl?"pointer":"default",fontFamily:"inherit"}}>
+        <I name="msgSq" size={compact?15:17} color={_kakaoChatUrl?"#3C1E1E":T.gray400}/>
+        카카오에서 답장
+        <I name="arrowR" size={compact?15:17} color={_kakaoChatUrl?"#3C1E1E":T.gray400}/>
+      </button>
+      <div style={{fontSize:compact?11:12,color:T.textSub,lineHeight:1.5,textAlign:"center"}}>
+        카카오는 블리스에서 직접 전송이 안 됩니다. 버튼을 눌러 카카오에서 답장하세요.
+      </div>
+    </div>
+  );
 
   const getDisplayName = (m) => {
     if(!m) return "고객";
@@ -1989,6 +2024,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             style={{marginLeft:"auto",padding:"3px 10px",fontSize:forceCompact?10:11,fontWeight:800,background:"#10B981",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>타임라인에서 보기 →</button>
         </div>}
         {renderQrPanel()}
+        {(sel.channel||"naver")==="kakao" ? renderKakaoReply(forceCompact) : (
         <div style={{position:"relative"}}>
           <textarea id="bliss-reply-ta" value={reply} onChange={e=>{ setReply(e.target.value); setAiKoDraft(""); setReplyIsAi(false); }}
             onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}}
@@ -2000,6 +2036,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             {sending?<span style={{fontSize:11}}>⏳</span>:<svg width={forceCompact?13:16} height={forceCompact?13:16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>}
           </button>}
         </div>
+        )}
       </div>
     </div>
   );
@@ -2204,6 +2241,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                 style={{marginLeft:"auto",padding:"3px 9px",fontSize:10,fontWeight:800,background:"#10B981",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>타임라인에서 보기 →</button>
             </div>}
             {renderQrPanel()}
+            {(sel.channel||"naver")==="kakao" ? renderKakaoReply(false) : (
             <div style={{display:"flex",gap:8}}>
               <textarea id="bliss-reply-ta" value={reply} onChange={e=>{ setReply(e.target.value); setReplyIsAi(false); }}
                 onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}}
@@ -2215,6 +2253,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                 {sending?<span>⏳</span>:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>}
               </button>
             </div>
+            )}
           </div>
         </>}
         {!sel&&<div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:T.textMuted}}>
