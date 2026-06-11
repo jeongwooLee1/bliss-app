@@ -4142,7 +4142,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           <div className="tl-time-col" style={{width:timeLabelsW,flexShrink:0,position:"sticky",left:0,zIndex:20,background:T.bgCard,borderRight:"1px solid #eee"}}>
             {/* 헤더 자체 그림자 전부 제거 (v3.8.58) — 좌측 그림자는 칼럼 본체(CSS .11) 단일 소스, 헤더에 또 주면 누적돼 진해짐 */}
             <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:25,background:T.bgCard}}/>
-            <div style={{position:"relative",height:totalRows*rowH,boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",...gridBg}}>
+            {/* 시간축엔 정시 가로선 제거 (v3.8.60 정우님 — 사이드바↔타임라인 사이 라벨 왼쪽까지 줄이 그려져 지저분) */}
+            <div style={{position:"relative",height:totalRows*rowH,boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)"}}>
               {/* (구) 시간축 가로행 하이라이트 제거 — 시간은 hover 셀 안에 직접 표시 (정우님 2026-06-10) */}
               {timeLabels.map(({i, isHour, m, text}) => {
                 const isHighlighted = hoverCell && hoverCell.rowIdx === i;
