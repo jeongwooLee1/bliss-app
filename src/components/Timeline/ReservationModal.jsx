@@ -3246,6 +3246,14 @@ ${naverText}
                       await sb.update('customers', f.custId, { no_show_count: _cur + 1 }).catch(()=>{});
                     } catch {}
                   }
+                  // 노쇼 해제 — 노쇼였던 예약을 다른 상태로 바꾸면 고객 노쇼 횟수 자동 원복 (정우님 id_uctkf0sin5 — 늦게 왔지만 결국 방문)
+                  else if (item?.status === "no_show" && f.status !== "no_show") {
+                    _logEntries.push({ ..._logBase, type: 'no_show_undo', meta: _meta });
+                    try {
+                      const _cur = (data?.customers||[]).find(c => c.id === f.custId)?.noShowCount || 0;
+                      await sb.update('customers', f.custId, { no_show_count: Math.max(0, _cur - 1) }).catch(()=>{});
+                    } catch {}
+                  }
                   // 시간/지점 변경 (날짜 또는 시간 변경 감지)
                   else if (item?.id && (item.date !== f.date || item.time !== f.time || item.bid !== f.bid)) {
                     _logEntries.push({ ..._logBase, type: 'change', meta: { ..._meta, prev_date: item.date, prev_time: item.time, prev_bid: item.bid } });

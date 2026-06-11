@@ -1537,6 +1537,8 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   }, 0) + _extraSvcAddTotal;
   // 새 다담권 즉시 차감액 — "할인·보유권 차감 후 시술잔액" 한도로 아래에서 재계산됨 (placeholder)
   let newPkgInstantDeduct = newPrepaidActiveTotal > 0 ? Math.min(todayUseSvcTotal, newPrepaidActiveTotal) : 0;
+  // 다담권(신규) 차감 수동 입력값 — null=자동(시술까지). 직원이 올려 적으면 제품까지 차감 가능 (수연 id_vganqs7n12)
+  const [newPkgDeductManual, setNewPkgDeductManual] = useState(null);
 
   // 쉐어 패키지 남녀 요금차 보정금 — 여자 소유 패키지를 남자가 사용하면 +33,000원/회 (id_nfv71exl14 수정요청)
   const SHARE_MF_SURCHARGE = 33000;
@@ -1680,7 +1682,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       if (discount <= 0 && earn <= 0) return;
       list.push({
         pkgId: pkg.id, svcId: svc.id, name: svc.name,
-        discount, earn, priority: pc.priority ?? 100,
+        discount, earn, baseAmt, priority: pc.priority ?? 100,
         consumeOnUse: pc.consumeOnUse !== false,
         applyTo: pc.couponTarget || 'all', // products|services|all|category|specific_service
         badgeText: svc.badgeText, badgeColor: svc.badgeColor, badgeBg: svc.badgeBg,
@@ -1690,16 +1692,30 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     return list;
     // v3.8.61: _extraSvcAddTotal/_extraProdAddTotal 의존성 누락 — 추가행(제품/시술)으로만 금액 입력 시 쿠폰 재평가가 안 돼 할인 0 (마곡 id_uxqr2ra91j)
   }, [custPkgs, data?.services, data?.categories, items, _extraSvcAddTotal, _extraProdAddTotal]);
-  // 같은 종류 쿠폰(같은 service_name) 1매출에 1장만 적용 — 중복 보유해도 할인 1회
+  // 할인형 쿠폰: 같은 종류 여러 장도 대상 금액이 남는 만큼 적용 (마곡 id_azxhrofdyq — 8만쿠폰 2장 + 제품 15.2만 → 2장 차감).
+  // 각 장의 할인은 잔여 대상 금액으로 캡 — 합산이 대상 금액을 절대 못 넘고, 잔여 0이면 그 장은 미적용(불필요 소진 방지).
+  // 적립형(earn)은 기존대로 같은 종류 1장만 (중복 보유로 2배 적립 방지).
   const activeCoupons = (() => {
-    const seen = new Set();
-    return couponResults.filter(c => {
-      if (couponOff[c.pkgId]) return false;
-      const key = c.name || c.svcId;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    const remainByTarget = {}; // 대상그룹별 잔여 금액 (category/specific은 쿠폰 상품별 분리)
+    const earnSeen = new Set();
+    const out = [];
+    for (const c of couponResults) {
+      if (couponOff[c.pkgId]) continue;
+      if ((c.discount || 0) <= 0 && (c.earn || 0) > 0) {
+        const ek = c.name || c.svcId;
+        if (earnSeen.has(ek)) continue;
+        earnSeen.add(ek);
+        out.push(c);
+        continue;
+      }
+      const key = (c.applyTo === 'category' || c.applyTo === 'specific_service') ? `${c.applyTo}:${c.svcId}` : (c.applyTo || 'all');
+      if (!(key in remainByTarget)) remainByTarget[key] = Math.max(0, c.baseAmt ?? c.discount ?? 0);
+      const d = Math.min(c.discount || 0, remainByTarget[key]);
+      if (d <= 0) continue;
+      remainByTarget[key] -= d;
+      out.push({ ...c, discount: d });
+    }
+    return out;
   })();
   // 쿠폰 할인을 대상별로 분리 (제품/시술 결제수단 각각 차감용)
   // viewOnly/editMode + snapshot 없는 이전 매출은 쿠폰 재평가 차단 (실제 매출과 표시 일치)
@@ -1995,12 +2011,22 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   // (예: 선결제 33,000 + 바프권 30만 구매 + 다리 11만 → 바프권 26.7만 결제 + 바프권 잔액에서 다리 11만 차감)
   const externalToNewPrepaid = Math.min(externalDeduct, Math.max(0, newPrepaidActiveTotal - eventDiscountPrepaid));
   const externalToSvc = externalDeduct - externalToNewPrepaid;
-  // 신규 다담권 즉시차감 상한 = '받은 시술' 잔액까지만 (제품 제외). 제품은 별도 결제수단으로.
+  // 신규 다담권 즉시차감 — 자동 기본값 = '받은 시술' 잔액까지만 (제품 제외). 제품은 별도 결제수단으로.
   //   충전한 다담권이 같은 건의 제품을 자동결제하면 안 됨 — 박재은: 다담권 충전(입금) + 제품(카드) 따로 (id_wtwke6n19d).
+  //   단 직원이 금액을 직접 올리면 제품 잔액까지 차감 허용 — 수연: 다담 구매 + 제품을 다담에서 차감 (id_vganqs7n12).
   //   기존 보유 다담권으로 제품 결제하는 spill은 pkgDeduct 경로라 영향 없음(유지).
   const svcAfterAllDiscounts = Math.max(0, pureSvcTotal - discount - promoDiscountTotal - couponDiscountOnSvc - evtCouponDiscountOnSvc - eventDiscountSvc - naverDeduct - externalToSvc - pkgDeduct);
-  // 새 다담권 즉시차감: 할인 후 '시술'잔액과 (선결제 적용 후) 다담권 잔액 중 작은 값 (제품 제외)
-  newPkgInstantDeduct = newPrepaidActiveTotal > 0 ? Math.min(svcAfterAllDiscounts, Math.max(0, newPrepaidActiveTotal - eventDiscountPrepaid)) : 0;
+  // 수동 상한 = 시술 잔액 + 제품 잔액(제품측 쿠폰·체험단 차감 후), 그리고 충전액(이벤트 차감 후) 이내
+  const _prodRemainForNewPkg = Math.max(0, prodTotal - couponDiscountOnProd - evtCouponDiscountOnProd - prodCompedTotal);
+  const _newPkgDeductMax = newPrepaidActiveTotal > 0
+    ? Math.min(Math.max(0, newPrepaidActiveTotal - eventDiscountPrepaid), svcAfterAllDiscounts + _prodRemainForNewPkg)
+    : 0;
+  // 새 다담권 즉시차감: 수동 입력값(상한 클램프) 우선, 없으면 자동(할인 후 '시술'잔액 vs 충전 잔액 중 작은 값)
+  newPkgInstantDeduct = newPrepaidActiveTotal > 0
+    ? (newPkgDeductManual != null
+        ? Math.min(Math.max(0, newPkgDeductManual), _newPkgDeductMax)
+        : Math.min(svcAfterAllDiscounts, Math.max(0, newPrepaidActiveTotal - eventDiscountPrepaid)))
+    : 0;
   const grandTotal = Math.max(0, svcTotal + prodTotal - discount - promoDiscountTotal - couponDiscountTotal - evtCouponDiscountTotal - eventDiscountTotal - naverDeduct - externalDeduct - pkgDeduct - newPkgInstantDeduct - pointDeduct - svcCompedTotal - prodCompedTotal - svcSubFreeTotal);
   // 실제 결제할 금액 (예약금·할인·이벤트·쿠폰·보유권·신규다담권즉시차감·체험단제공 차감)
   // 시술쪽 모든 차감(일반할인·보유권·외부선결제·포인트·이벤트 등)을 합산해서 svcTotal을 초과하면 잉여분이 제품으로 spill됨.
@@ -4424,17 +4450,29 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
                   </div>;
                 })()}
                 {/* 다담권(신규) — 오늘 구매한 다담권에서 자동 차감 (2단계 계산: 시술액 ▶ 새 다담권) */}
-                {newPkgInstantDeduct > 0 && (()=>{
+                {(newPkgInstantDeduct > 0 || _newPkgDeductMax > 0) && (()=>{
                   const clr = "#E65100", bg = "#FFF3E0";
                   return <div style={{display:"flex",flexDirection:"column",gap:4,padding:"6px 8px",borderRadius:T.radius.md,
                     border:`2px solid ${clr}`, background:bg}}>
                     <div style={{fontSize:T.fs.xxs,fontWeight:T.fw.bolder,color:clr,textAlign:"left"}}>
                       ☑ 다담권(신규)
                     </div>
-                    <div style={{padding:"3px 6px",fontSize:T.fs.sm,textAlign:"right",color:clr,fontWeight:T.fw.bolder,
+                    <div style={{display:"flex",alignItems:"center",gap:2,padding:"3px 6px",fontSize:T.fs.sm,color:clr,fontWeight:T.fw.bolder,
                       borderRadius:4,background:T.bgCard,border:`1px solid ${clr}`}}>
-                      -{fmt(newPkgInstantDeduct)}
+                      <span>-</span>
+                      <input type="text" inputMode="numeric" value={fmt(newPkgInstantDeduct)}
+                        onChange={e=>{
+                          const n = Number(String(e.target.value).replace(/[^0-9]/g, "")) || 0;
+                          setNewPkgDeductManual(n);
+                        }}
+                        style={{flex:1,minWidth:0,border:"none",outline:"none",background:"transparent",textAlign:"right",
+                          fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:clr,padding:0}}/>
                     </div>
+                    {_newPkgDeductMax > newPkgInstantDeduct && (
+                      <div style={{fontSize:9,color:"#9A5B00",textAlign:"right",lineHeight:1.3}}>
+                        제품까지 차감하려면 금액 수정 (최대 {fmt(_newPkgDeductMax)})
+                      </div>
+                    )}
                   </div>;
                 })()}
                 {/* 선불잔액 — 다담권/선불권 (카드형, 금액 입력 가능). 신규 다담권 구매 중에도 표시 — 기존 우선 차감 정책 */}
