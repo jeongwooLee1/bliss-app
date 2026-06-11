@@ -536,7 +536,8 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     const noShow = Number(cust.noShowCount || 0);
     const resCnt = custResCount[key];
     const lastV = cust.lastVisit ? String(cust.lastVisit).slice(5, 10) : "";
-    const isExisting = visits > 0 || (resCnt != null && resCnt > 0);
+    // 기존/신규 = 실제 방문(매출) 기준 — 예약만 1회(첫 방문 전)면 신규 (정우님 id_iociwubs2j, 시스템 신규 판정과 일치)
+    const isExisting = visits > 0;
     const chip = (txt, clr, bg) => (
       <span style={{ fontSize: forceCompact ? 9 : 10.5, fontWeight: 700, color: clr, background: bg, borderRadius: 5, padding: "1px 6px", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 3 }}>{txt}</span>
     );
