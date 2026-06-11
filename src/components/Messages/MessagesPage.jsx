@@ -717,7 +717,9 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   const _kakaoChatUrl = getKakaoChatUrl(sel, convo);
   const renderKakaoReply = (compact) => (
     <div style={{display:"flex",flexDirection:"column",gap:8,alignItems:"stretch"}}>
-      <button onClick={()=>{ if(_kakaoChatUrl) window.open(_kakaoChatUrl, "_blank", "noopener,noreferrer"); }}
+      {/* noopener,noreferrer 제거 — 카카오 비즈니스 SPA는 referrer 없이 chat 딥링크로 새 창 열면 대화방을 못 잡고 빈 상담목록으로 폴백.
+          referrer 전달 + opener 유지해야 이전 대화 전부 포함된 그 대화방이 열림 (정우님 2026-06-11) */}
+      <button onClick={()=>{ if(_kakaoChatUrl) window.open(_kakaoChatUrl, "_blank"); }}
         disabled={!_kakaoChatUrl}
         title="카카오 채널 채팅으로 이동해서 답장합니다 (블리스에서는 직접 전송 불가)"
         style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:7,padding:compact?"11px 14px":"13px 16px",background:_kakaoChatUrl?"#FAE100":T.gray100,color:_kakaoChatUrl?"#3C1E1E":T.gray400,border:"none",borderRadius:12,fontSize:compact?14:15,fontWeight:800,cursor:_kakaoChatUrl?"pointer":"default",fontFamily:"inherit"}}>
@@ -1903,7 +1905,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           )}
         </div>
         {(()=>{const res=chatLatestRes[sel.channel+"_"+sel.user_id];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"대기":res.status==="completed"?"완료":res.status==="reserved"?"예약":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":res.status==="completed"?"#9E9E9E":res.status==="no_show"?"#EF5350":T.primary;return<button onClick={()=>{if(setPendingOpenRes&&setPage){setPendingOpenRes({...res, _highlightOnly:true});setPage("timeline");}}} title={`${st} ${res.date?.slice(5)} ${res.time} — 타임라인 바로가기 (예약 강조)`} style={{fontSize:forceCompact?10:11,fontWeight:700,color:clr,background:clr+"15",border:"1px solid "+clr+"40",borderRadius:6,padding:forceCompact?"3px 6px":"4px 8px",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}><I name="calendar" size={11}/>{forceCompact?"":st}</button>;})()}
-        {_extLink && <a href={_extLink.url} target="_blank" rel="noopener noreferrer" title={"↗ " + _extLink.short + " 앱에서 이 고객 대화 열기 (원래 메신저로 이동)"} style={{fontSize:forceCompact?10:11,fontWeight:700,color:_extLink.color,background:_extLink.color+"18",border:"1px solid "+_extLink.color+"44",borderRadius:6,padding:forceCompact?"3px 6px":"4px 8px",textDecoration:"none",flexShrink:0,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}>{forceCompact?"↗":_extLink.short+" ↗"}</a>}
+        {_extLink && <a href={_extLink.url} target="_blank" rel="noopener" title={"↗ " + _extLink.short + " 앱에서 이 고객 대화 열기 (원래 메신저로 이동)"} style={{fontSize:forceCompact?10:11,fontWeight:700,color:_extLink.color,background:_extLink.color+"18",border:"1px solid "+_extLink.color+"44",borderRadius:6,padding:forceCompact?"3px 6px":"4px 8px",textDecoration:"none",flexShrink:0,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}>{forceCompact?"↗":_extLink.short+" ↗"}</a>}
       </div>
       {/* 메시지 */}
       <div style={{flex:1,overflowY:"auto",padding:forceCompact?"10px 10px 4px":"16px 16px 4px",display:"flex",flexDirection:"column",gap:forceCompact?6:10,WebkitOverflowScrolling:"touch",background:"#f5f5f7"}}>
@@ -2166,7 +2168,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
               )}
             </div>
             {(()=>{const res=chatLatestRes[sel.channel+"_"+sel.user_id];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"확정대기":res.status==="completed"?"완료":res.status==="reserved"?"예약":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":res.status==="completed"?"#9E9E9E":res.status==="no_show"?"#EF5350":T.primary;return<button onClick={()=>{if(setPendingOpenRes&&setPage){setPendingOpenRes({...res, _highlightOnly:true});setPage("timeline");}}} title="예약 바로가기" style={{display:"flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:clr,background:clr+"15",border:"1px solid "+clr+"40",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit"}}>📅 {st} {res.date?.slice(5)} {res.time} →</button>;})()}
-            {_extLink && <a href={_extLink.url} target="_blank" rel="noopener noreferrer" title={"↗ " + _extLink.short + " 앱에서 이 고객 대화 열기 (원래 메신저로 이동)"} style={{fontSize:11,fontWeight:700,color:_extLink.color,background:_extLink.color+"18",border:"1px solid "+_extLink.color+"44",borderRadius:6,padding:"4px 10px",textDecoration:"none",whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:4,flexShrink:0}}>{_extLink.label} ↗</a>}
+            {_extLink && <a href={_extLink.url} target="_blank" rel="noopener" title={"↗ " + _extLink.short + " 앱에서 이 고객 대화 열기 (원래 메신저로 이동)"} style={{fontSize:11,fontWeight:700,color:_extLink.color,background:_extLink.color+"18",border:"1px solid "+_extLink.color+"44",borderRadius:6,padding:"4px 10px",textDecoration:"none",whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:4,flexShrink:0}}>{_extLink.label} ↗</a>}
           </div>
           <div style={{flex:1,overflowY:"auto",padding:"16px 20px",display:"flex",flexDirection:"column",gap:10}}>
             {convo.map((m,i)=>{

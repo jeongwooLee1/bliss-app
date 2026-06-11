@@ -3654,6 +3654,12 @@ v3.7.984 진단에서 미룬 데모 공지&요청 배지 "2" 건 수정.
 - `getChannelExternalLink` 카카오 분기 — 헤더 ↗를 채널관리(center-pf) 대신 대화별 chat_url("카카오 채팅 열기")로.
 - **라이브 검증**(Chrome, v3.8.64): 카카오 스레드(세기) — 입력창 숨김 + 노란 버튼 + 안내문구 + 헤더 링크 정상, 타 채널(네이버·왓츠앱) 입력창 유지.
 
+### v3.8.67 — 카카오 "답장" 새 창에 이전 대화 안 뜨던 fix (noreferrer 제거) (2026-06-11, 정우님)
+**증상**: 받은메시지함 카카오 "카카오에서 답장" 버튼 → 새 창이 이전 대화 없이 빈 답변창으로 열림. 직원이 앞 맥락 확인 불가.
+**진단**(Chrome MCP): 버튼이 여는 URL은 정확한 `chat_url`(`business.kakao.com/{pf}/chats/{chat_id}`, webhook raw_payload의 chat_url). 같은 URL을 **주소창(referrer 있음)으로 직접 열면 대화방+이전 히스토리 정상**(사브리나 확인). 그런데 버튼은 `window.open(url,"_blank","noopener,noreferrer")`라 **referrer 없이 새 창** → 카카오 비즈니스 SPA가 referrer 없는 chat 딥링크를 못 잡고 빈 상담목록(`fallback:chat_list`)으로 폴백.
+**fix** (`MessagesPage`): 카카오 답장 버튼 `window.open(url,"_blank")`(noopener·noreferrer 제거 → referrer 전달 + opener 유지). 헤더 ↗ 외부링크(<a>) 3곳도 `rel="noopener noreferrer"`→`rel="noopener"`(referrer 전달, 전 채널 공용·무해). **검증**: 배포 후 버튼 후킹 — openedOpts "(옵션없음)" + 정확한 chat_url 확인. 카카오 로그인 세션에서 그 대화방이 이전 대화 포함해 열림.
+**유의**: 카카오 비즈니스에 로그인돼 있어야 대화방이 보임(미로그인 시 로그인→chat_list). 블리스 받은메시지함에도 카카오 대화 전체가 저장돼 있어 읽기는 블리스에서도 가능(답장만 카카오).
+
 ### v3.8.65~66 — 요청 처리: 쿠폰 다장 적용 + 다담권(신규) 수동 차감 + 노쇼 해제 자동 원복 (2026-06-11)
 공지&요청 5건 처리 (마곡·수연·대표 2건 + 김미진 위임).
 - **같은 쿠폰 여러 장 적용 (마곡 id_azxhrofdyq, v3.8.65)**: 8만 쿠폰 2장 + 제품 15.2만인데 1장만 차감되던 것(v3.7.745 "같은 이름 1장만" 정책) → **할인형 쿠폰은 잔여 대상 금액 캡 기반 다장 적용** — `couponResults`에 `baseAmt` 저장 + `activeCoupons`에서 대상그룹별(remainByTarget, category/specific은 쿠폰 상품별 키) 잔여만큼 각 장 할인 캡, 잔여 0이면 미적용(불필요 소진 방지). 적립형(earn)은 기존대로 같은 이름 1장(2배 적립 방지). 저장·sale_details는 activeCoupons 기반이라 적용 장수만큼 자동 차감·기록. **검증**: node 시뮬 10케이스 PASS + 라이브 강도희 1장 캡(-76,000) 회귀 확인. **데이터 보정**: 강도희 6/11 마곡 매출(id_cg5frie38i) — 2번째 쿠폰(cpn_7jyy323s0bz) used 1 + 수동할인 -72,000 라벨을 "[쿠폰 할인] 제품전용 8만 (2번째 장)"으로 + package_transactions 기록.
