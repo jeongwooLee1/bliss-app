@@ -150,43 +150,28 @@
   </div>
 
   <div class="card">
-    <h2>미리보기 — 입력하면 바로 반영됩니다</h2>
-    <div class="pv">
-      <div class="pv-badge" id="pv-badge"></div>
-      <div class="pv-headline" id="pv-headline"></div>
-      <div class="pv-subcopy" id="pv-subcopy"></div>
-      <div class="pv-highlight" id="pv-highlight"></div>
-      <div class="pv-ctas">
-        <span class="pv-cta1" id="pv-cta1"></span>
-        <span class="pv-cta2" id="pv-cta2"></span>
-      </div>
-      <div class="pv-trust" id="pv-trust"></div>
-      <div class="pv-points" id="pv-points"></div>
+    <h2>실제 화면 미리보기 — 입력하면 바로 반영됩니다</h2>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button class="tab active" id="pv-mobile" style="flex:0 0 auto;padding:6px 14px;font-size:13px">모바일</button>
+      <button class="tab" id="pv-desktop" style="flex:0 0 auto;padding:6px 14px;font-size:13px">PC</button>
     </div>
+    <div id="pv-wrap" style="display:flex;justify-content:center;background:#eceae6;border-radius:12px;padding:10px;overflow:hidden">
+      <iframe id="pv-frame" sandbox="" style="width:375px;max-width:100%;height:520px;border:none;border-radius:8px;background:#fff"></iframe>
+    </div>
+    <div class="hint" id="pv-note">실제 랜딩페이지에 수정 중인 문구를 입혀서 보여줍니다 (움직이는 데모 등 일부 요소는 정지 상태)</div>
   </div>
 
   <div class="card">
     <h2>문구 수정</h2>
-    <label>상단 뱃지</label>
-    <input data-field="badge">
-    <label>메인 헤드라인</label>
-    <textarea data-field="headline" rows="2"></textarea>
-    <div class="hint">줄바꿈은 그대로 적용됩니다 · **글자**로 감싸면 굵게 표시</div>
-    <label>본문</label>
-    <textarea data-field="subcopy" rows="3"></textarea>
-    <label>강조 문구 (보라색 한 줄)</label>
-    <input data-field="highlight">
-    <label>버튼 1 (메인)</label>
-    <input data-field="cta_primary">
-    <label>버튼 2 (보조)</label>
-    <input data-field="cta_secondary">
-    <label>버튼 아래 신뢰 문구</label>
-    <input data-field="trust_line">
-    <label>신뢰바 항목 4개</label>
-    <input data-field="points.0" style="margin-bottom:8px">
-    <input data-field="points.1" style="margin-bottom:8px">
-    <input data-field="points.2" style="margin-bottom:8px">
-    <input data-field="points.3">
+    <div class="hint" style="margin:0 0 4px">페이지에서 수정 가능한 문구를 자동으로 찾아 보여줍니다</div>
+    <div id="form-fields"><div class="req-meta">불러오는 중…</div></div>
+  </div>
+
+  <div class="card">
+    <h2>AI 카피 제안</h2>
+    <div class="hint" style="margin:0 0 12px">학습된 마케팅 지식을 바탕으로 헤드라인·문구 개선안을 제안받습니다. 마음에 드는 안을 적용한 뒤 수정·발행하세요.</div>
+    <button class="btn btn-outline" id="btn-ai">제안 받기</button>
+    <div id="ai-list" style="margin-top:12px"></div>
   </div>
   </div><!-- /tab-copy -->
 
@@ -227,13 +212,21 @@
 <script>
 const SB_URL = "https://dpftlrsuqxqqeouwbfjd.supabase.co";
 const SB_KEY = "sb_publishable_3H-KTP0MoV_KuY74ocbefw_3Ze5xBJj";
-const SECTION = "hero";
-const FIELDS = ["badge","headline","subcopy","highlight","cta_primary","cta_secondary","trust_line"];
 const sb = supabase.createClient(SB_URL, SB_KEY);
 
-let draft = {};          // 화면의 현재 값
-let savedDraft = {};     // 마지막으로 DB에 저장된 draft
-let publishedSnapshot = ""; // 발행본 JSON (비교용)
+const LABELS = {
+  "hero.badge": "상단 뱃지", "hero.headline": "메인 헤드라인", "hero.subcopy": "본문",
+  "hero.highlight": "강조 문구 (보라색 한 줄)", "hero.cta_primary": "버튼 1 (메인)",
+  "hero.cta_secondary": "버튼 2 (보조)", "hero.trust_line": "버튼 아래 신뢰 문구",
+  "hero.points.0": "신뢰바 1", "hero.points.1": "신뢰바 2", "hero.points.2": "신뢰바 3", "hero.points.3": "신뢰바 4",
+};
+const SECTION_NAMES = { hero: "첫 화면 (히어로)", pain: "공감 섹션", features: "기능 소개", pricing: "요금제", faq: "자주 묻는 질문", story: "스토리", promo: "오픈 혜택", cta: "마지막 행동 유도" };
+
+let template = "";
+let fields = [];
+let drafts = {};
+let savedSnapshot = "";
+let publishedSnapshot = {};
 let publishedAt = null;
 
 const $ = (id) => document.getElementById(id);
@@ -245,91 +238,153 @@ function toast(msg) {
   clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2600);
 }
 
-/* ── 상태 표시 ── */
+function getVal(path) {
+  const [sec, ...keys] = path.split(".");
+  let cur = drafts[sec];
+  for (const k of keys) { if (cur == null) return undefined; cur = cur[/^\d+$/.test(k) ? Number(k) : k]; }
+  return typeof cur === "string" ? cur : undefined;
+}
+function setVal(path, value) {
+  const [sec, ...keys] = path.split(".");
+  if (!drafts[sec]) drafts[sec] = {};
+  let cur = drafts[sec];
+  for (let i = 0; i < keys.length - 1; i++) {
+    const k = /^\d+$/.test(keys[i]) ? Number(keys[i]) : keys[i];
+    const nextIsIdx = /^\d+$/.test(keys[i + 1]);
+    if (cur[k] == null || typeof cur[k] !== "object") cur[k] = nextIsIdx ? [] : {};
+    cur = cur[k];
+  }
+  const last = keys[keys.length - 1];
+  cur[/^\d+$/.test(last) ? Number(last) : last] = value;
+}
+
 function refreshState() {
   const chip = $("state-chip"), detail = $("state-detail");
-  const dirty = JSON.stringify(draft) !== JSON.stringify(savedDraft);
-  const unpublished = JSON.stringify(savedDraft) !== publishedSnapshot;
+  const dirty = JSON.stringify(drafts) !== savedSnapshot;
+  const unpublished = Object.keys(drafts).some((s) => JSON.stringify(drafts[s]) !== (publishedSnapshot[s] ?? "{}"));
   if (dirty) { chip.className = "chip chip-edit"; chip.textContent = "수정 중 · 저장 안 됨"; }
   else if (unpublished) { chip.className = "chip chip-warn"; chip.textContent = "저장됨 · 발행 대기"; }
   else { chip.className = "chip chip-ok"; chip.textContent = "사이트와 동일"; }
   detail.textContent = publishedAt ? "마지막 발행 " + new Date(publishedAt).toLocaleString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
 }
 
-/* ── 미리보기 ── */
+let pvTimer = null;
 function renderPreview() {
-  $("pv-badge").innerHTML = rich(draft.badge);
-  $("pv-headline").innerHTML = rich(draft.headline);
-  $("pv-subcopy").innerHTML = rich(draft.subcopy);
-  $("pv-highlight").innerHTML = rich(draft.highlight);
-  $("pv-cta1").innerHTML = rich(draft.cta_primary);
-  $("pv-cta2").innerHTML = rich(draft.cta_secondary);
-  $("pv-trust").innerHTML = rich(draft.trust_line);
-  $("pv-points").innerHTML = (draft.points || []).map(p => '<span class="pv-point">' + rich(p) + "</span>").join("");
+  clearTimeout(pvTimer);
+  pvTimer = setTimeout(() => {
+    if (!template) return;
+    const injected = template.replace(
+      /(<([a-zA-Z][\w-]*)\b[^>]*\bdata-cms="([^"]+)"[^>]*>)([\s\S]*?)(<\/\2>)/g,
+      (m, open, tag, path, _inner, close) => {
+        const v = getVal(path);
+        return v === undefined ? m : open + rich(v) + close;
+      }
+    );
+    $("pv-frame").srcdoc = injected;
+  }, 250);
+}
+function setPvWidth(mode) {
+  $("pv-frame").style.width = mode === "mobile" ? "375px" : "100%";
+  $("pv-frame").style.height = mode === "mobile" ? "520px" : "620px";
+  $("pv-mobile").classList.toggle("active", mode === "mobile");
+  $("pv-desktop").classList.toggle("active", mode !== "mobile");
 }
 
-/* ── 폼 ↔ 데이터 ── */
-function fillForm() {
-  document.querySelectorAll("[data-field]").forEach(el => {
-    const f = el.dataset.field;
-    el.value = f.startsWith("points.") ? (draft.points?.[Number(f.split(".")[1])] ?? "") : (draft[f] ?? "");
-  });
-}
-function bindForm() {
-  document.querySelectorAll("[data-field]").forEach(el => {
-    el.addEventListener("input", () => {
-      const f = el.dataset.field;
-      if (f.startsWith("points.")) {
-        draft.points = draft.points || ["","","",""];
-        draft.points[Number(f.split(".")[1])] = el.value;
-      } else draft[f] = el.value;
-      renderPreview(); refreshState();
+async function loadAll() {
+  try {
+    const r = await fetch("/landing.html", { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    template = await r.text();
+  } catch (_) {
+    template = "";
+    $("pv-note").textContent = "⚠ 미리보기를 불러오지 못했습니다 — blissme.ai/admin.html 에서 접속해야 실제 화면 미리보기가 동작합니다.";
+  }
+
+  fields = [];
+  if (template) {
+    const doc = new DOMParser().parseFromString(template, "text/html");
+    doc.querySelectorAll("[data-cms]").forEach((el) => {
+      const path = el.getAttribute("data-cms");
+      if (!path || fields.some((f) => f.path === path)) return;
+      fields.push({ path, section: path.split(".")[0], original: (el.textContent || "").trim().replace(/\s+/g, " ") });
     });
+  }
+
+  const { data, error } = await sb.from("landing_sections").select("id, draft, published, published_at");
+  if (error) { toast("불러오기 실패: " + error.message); return; }
+  drafts = {}; publishedSnapshot = {}; publishedAt = null;
+  for (const row of data || []) {
+    drafts[row.id] = row.draft || {};
+    publishedSnapshot[row.id] = JSON.stringify(row.published || {});
+    if (row.published_at && (!publishedAt || row.published_at > publishedAt)) publishedAt = row.published_at;
+  }
+  savedSnapshot = JSON.stringify(drafts);
+  buildForm(); renderPreview(); refreshState();
+}
+
+function buildForm() {
+  const wrap = $("form-fields");
+  if (!fields.length) {
+    wrap.innerHTML = '<div class="req-meta">수정 가능한 문구를 찾지 못했습니다 (blissme.ai/admin.html 에서 접속했는지 확인해 주세요)</div>';
+    return;
+  }
+  let html = "", lastSection = "";
+  for (const f of fields) {
+    if (f.section !== lastSection) {
+      lastSection = f.section;
+      html += '<div style="font-size:13px;font-weight:700;color:var(--accent);margin:18px 0 2px">' + esc(SECTION_NAMES[f.section] || f.section) + "</div>";
+    }
+    const label = LABELS[f.path] || '"' + esc(f.original.slice(0, 26)) + (f.original.length > 26 ? "…" : "") + '"';
+    if (getVal(f.path) === undefined) setVal(f.path, f.original);
+    const val = getVal(f.path);
+    const long = val.length > 38 || val.includes("\n");
+    html += "<label>" + label + "</label>" +
+      (long
+        ? '<textarea data-field="' + esc(f.path) + '" rows="' + Math.min(4, val.split("\n").length + 1) + '">' + esc(val) + "</textarea>"
+        : '<input data-field="' + esc(f.path) + '" value="' + esc(val).replace(/"/g, "&quot;") + '">');
+  }
+  wrap.innerHTML = html;
+  savedSnapshot = JSON.stringify(drafts);
+  wrap.querySelectorAll("[data-field]").forEach((el) => {
+    el.addEventListener("input", () => { setVal(el.dataset.field, el.value); renderPreview(); refreshState(); });
+  });
+}
+function fillForm() {
+  document.querySelectorAll("#form-fields [data-field]").forEach((el) => {
+    const v = getVal(el.dataset.field);
+    if (v !== undefined) el.value = v;
   });
 }
 
-/* ── 데이터 로드 ── */
-async function loadContent() {
-  const { data, error } = await sb.from("landing_sections")
-    .select("draft, published, published_at").eq("id", SECTION).single();
-  if (error) { toast("불러오기 실패: " + error.message); return; }
-  draft = structuredClone(data.draft || {});
-  draft.points = Array.isArray(draft.points) ? draft.points.slice(0,4) : ["","","",""];
-  while (draft.points.length < 4) draft.points.push("");
-  savedDraft = structuredClone(draft);
-  publishedSnapshot = JSON.stringify(data.published || {});
-  publishedAt = data.published_at;
-  fillForm(); renderPreview(); refreshState();
-}
-
-/* ── 저장 ── */
 async function saveDraft() {
   const btn = $("btn-save"); btn.disabled = true; btn.textContent = "저장 중…";
   const { data: { user } } = await sb.auth.getUser();
-  const { error } = await sb.from("landing_sections")
-    .update({ draft, updated_by: user?.email ?? "staff", updated_at: new Date().toISOString() })
-    .eq("id", SECTION);
+  const rows = Object.keys(drafts).map((id) => ({
+    id, draft: drafts[id], updated_by: user?.email ?? "staff", updated_at: new Date().toISOString(),
+  }));
+  const { error } = await sb.from("landing_sections").upsert(rows);
   btn.disabled = false; btn.textContent = "임시저장";
   if (error) { toast("저장 실패: " + error.message); return false; }
-  savedDraft = structuredClone(draft);
+  savedSnapshot = JSON.stringify(drafts);
   refreshState(); return true;
 }
 
-/* ── 발행 ── */
 async function publish() {
   $("modal-bg").classList.add("hidden");
   const btn = $("btn-publish"); btn.disabled = true; btn.textContent = "발행 중…";
   try {
     if (!(await saveDraft())) return;
-    const { data, error } = await sb.functions.invoke("publish-landing", { body: { section: SECTION } });
-    if (error) throw new Error(error.message || "발행 요청 실패");
-    if (data?.error) throw new Error(data.error);
-    publishedSnapshot = JSON.stringify(savedDraft);
+    const changed = Object.keys(drafts).filter((s) => JSON.stringify(drafts[s]) !== (publishedSnapshot[s] ?? "{}"));
+    const targets = changed.length ? changed : Object.keys(drafts);
+    for (const section of targets) {
+      const { data, error } = await sb.functions.invoke("publish-landing", { body: { section } });
+      if (error) throw new Error(error.message || "발행 요청 실패");
+      if (data?.error) throw new Error(data.error);
+      publishedSnapshot[section] = JSON.stringify(drafts[section]);
+    }
     publishedAt = new Date().toISOString();
     refreshState();
-    toast(data?.deploy === "triggered"
-      ? "발행됐어요 — 1~2분 후 사이트에 반영됩니다"
-      : "발행됐어요 (재빌드 연결 전 — 관리자에게 문의)");
+    toast("발행됐어요 — 잠시 후(최대 1~2분) 사이트에 반영됩니다");
   } catch (e) {
     toast("발행 실패: " + e.message);
   } finally {
@@ -337,23 +392,39 @@ async function publish() {
   }
 }
 
-/* ── 인증 ── */
-async function login() {
-  const btn = $("btn-login"); btn.disabled = true; $("login-err").textContent = "";
-  const { error } = await sb.auth.signInWithPassword({
-    email: $("email").value.trim(), password: $("password").value,
-  });
-  btn.disabled = false;
-  if (error) { $("login-err").textContent = "로그인 실패 — 이메일과 비밀번호를 확인하세요"; return; }
-  enterEditor();
+let aiSuggestions = [];
+async function aiSuggest() {
+  const btn = $("btn-ai"); btn.disabled = true; btn.textContent = "제안 생성 중… (20초 정도)";
+  $("ai-list").innerHTML = "";
+  try {
+    const { data, error } = await sb.functions.invoke("suggest-copy", { body: { section: "hero" } });
+    if (error) throw new Error(error.message || "요청 실패");
+    if (data?.error) throw new Error(data.error);
+    aiSuggestions = data.suggestions || [];
+    if (!aiSuggestions.length) throw new Error("제안이 비어 있어요 — 다시 시도해 주세요");
+    $("ai-list").innerHTML = aiSuggestions.map((s, i) =>
+      '<div class="req">' +
+      '<span class="chip chip-edit">' + esc(s.label || "제안 " + (i + 1)) + "</span>" +
+      '<div class="req-text"><strong>' + rich(s.headline || "") + "</strong><br>" +
+      rich(s.subcopy || "") + '<br><span style="color:var(--accent);font-weight:700">' + rich(s.highlight || "") + "</span></div>" +
+      (s.rationale ? '<div class="req-meta">' + esc(s.rationale) + "</div>" : "") +
+      '<div class="req-actions"><button class="btn btn-primary" onclick="applySuggestion(' + i + ')">이 안 적용</button></div>' +
+      "</div>").join("");
+  } catch (e) {
+    toast("AI 제안 실패: " + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "제안 받기";
+  }
 }
-async function enterEditor() {
-  $("login-view").classList.add("hidden");
-  $("editor-view").classList.remove("hidden");
-  await loadContent();
+function applySuggestion(i) {
+  const s = aiSuggestions[i]; if (!s) return;
+  for (const f of ["badge", "headline", "subcopy", "highlight"]) if (s[f]) setVal("hero." + f, s[f]);
+  fillForm(); renderPreview(); refreshState();
+  toast("적용됐어요 — 미리보기 확인 후 발행하세요");
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
+window.applySuggestion = applySuggestion;
 
-/* ── 탭 전환 ── */
 let pollTimer = null;
 function switchTab(name) {
   const copy = name === "copy";
@@ -366,7 +437,6 @@ function switchTab(name) {
   if (!copy) { loadRequests(); pollTimer = setInterval(loadRequests, 15000); }
 }
 
-/* ── 디자인 요청 ── */
 const STATUS_LABEL = {
   pending:       ["chip-warn", "대기 중"],
   in_progress:   ["chip-edit", "AI 작업 중…"],
@@ -377,27 +447,23 @@ const STATUS_LABEL = {
   failed:        ["chip-warn", "실패 — 다시 요청해 주세요"],
   rejected:      ["chip-warn", "거절됨"],
 };
-
 async function sendRequest() {
   const txt = $("req-input").value.trim();
   if (!txt) { toast("요청 내용을 입력해 주세요"); return; }
   const btn = $("btn-req"); btn.disabled = true;
   const { data: { user } } = await sb.auth.getUser();
-  const { error } = await sb.from("design_requests")
-    .insert({ request: txt, requested_by: user?.email ?? "staff" });
+  const { error } = await sb.from("design_requests").insert({ request: txt, requested_by: user?.email ?? "staff" });
   btn.disabled = false;
   if (error) { toast("요청 실패: " + error.message); return; }
   $("req-input").value = "";
   toast("요청을 보냈어요 — AI가 작업을 시작합니다");
   loadRequests();
 }
-
 async function loadRequests() {
-  const { data, error } = await sb.from("design_requests")
-    .select("*").order("created_at", { ascending: false }).limit(20);
+  const { data, error } = await sb.from("design_requests").select("*").order("created_at", { ascending: false }).limit(20);
   if (error) { $("req-list").innerHTML = '<div class="req-meta">불러오기 실패</div>'; return; }
   if (!data.length) { $("req-list").innerHTML = '<div class="req-meta">아직 요청이 없습니다</div>'; return; }
-  $("req-list").innerHTML = data.map(r => {
+  $("req-list").innerHTML = data.map((r) => {
     const [cls, label] = STATUS_LABEL[r.status] || ["chip-warn", r.status];
     const when = new Date(r.created_at).toLocaleString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
     let extra = "";
@@ -408,26 +474,36 @@ async function loadRequests() {
         '<button class="btn btn-danger" onclick="actRequest(\'' + r.id + '\',\'rejected\')">거절</button>' +
         '<button class="btn btn-primary" onclick="actRequest(\'' + r.id + '\',\'approved\')">사이트에 반영</button></div>';
     if (r.status === "failed" && r.error)
-      extra += '<div class="req-err">' + esc(r.error).slice(0, 300) + '</div>';
-    return '<div class="req"><span class="chip ' + cls + '">' + label + '</span>' +
-      '<div class="req-text">' + esc(r.request) + '</div>' +
-      '<div class="req-meta">' + esc(r.requested_by ?? "") + ' · ' + when + '</div>' + extra + '</div>';
+      extra += '<div class="req-err">' + esc(r.error).slice(0, 300) + "</div>";
+    return '<div class="req"><span class="chip ' + cls + '">' + label + "</span>" +
+      '<div class="req-text">' + esc(r.request) + "</div>" +
+      '<div class="req-meta">' + esc(r.requested_by ?? "") + " · " + when + "</div>" + extra + "</div>";
   }).join("");
 }
-
 async function actRequest(id, status) {
   if (status === "approved" && !confirm("미리보기를 확인하셨나요? 실제 사이트(blissme.ai)에 반영됩니다.")) return;
-  const { error } = await sb.from("design_requests")
-    .update({ status, updated_at: new Date().toISOString() }).eq("id", id);
+  const { error } = await sb.from("design_requests").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
   if (error) { toast("처리 실패: " + error.message); return; }
   toast(status === "approved" ? "반영을 시작합니다 — 1~2분 걸려요" : "요청을 거절했어요");
   loadRequests();
 }
 window.actRequest = actRequest;
 
-/* ── 초기화 ── */
+async function login() {
+  const btn = $("btn-login"); btn.disabled = true; $("login-err").textContent = "";
+  const { error } = await sb.auth.signInWithPassword({ email: $("email").value.trim(), password: $("password").value });
+  btn.disabled = false;
+  if (error) { $("login-err").textContent = "로그인 실패 — 이메일과 비밀번호를 확인하세요"; return; }
+  enterEditor();
+}
+async function enterEditor() {
+  $("login-view").classList.add("hidden");
+  $("editor-view").classList.remove("hidden");
+  await loadAll();
+}
+
 $("btn-login").addEventListener("click", login);
-$("password").addEventListener("keydown", e => { if (e.key === "Enter") login(); });
+$("password").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
 $("btn-logout").addEventListener("click", async () => { await sb.auth.signOut(); location.reload(); });
 $("btn-save").addEventListener("click", saveDraft);
 $("btn-publish").addEventListener("click", () => $("modal-bg").classList.remove("hidden"));
@@ -436,7 +512,9 @@ $("btn-confirm").addEventListener("click", publish);
 $("tab-btn-copy").addEventListener("click", () => switchTab("copy"));
 $("tab-btn-design").addEventListener("click", () => switchTab("design"));
 $("btn-req").addEventListener("click", sendRequest);
-bindForm();
+$("btn-ai").addEventListener("click", aiSuggest);
+$("pv-mobile").addEventListener("click", () => setPvWidth("mobile"));
+$("pv-desktop").addEventListener("click", () => setPvWidth("desktop"));
 
 sb.auth.getSession().then(({ data: { session } }) => { if (session) enterEditor(); });
 </script>
