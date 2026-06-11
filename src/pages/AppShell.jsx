@@ -27,7 +27,7 @@ import BlissRequests from '../components/BlissRequests/BlissRequests'
 import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 
 const uid = genId;
-const BLISS_V = "3.8.67"
+const BLISS_V = "3.8.68"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1677,6 +1677,13 @@ function App() {
         allMappedAccIds.add(String(igId));
         if ((userBranches||[]).includes(bid)) allowedAccIds.add(String(igId));
       });
+      // settings.kakao_branch_override — 카카오 채널 pfId → 지점 매핑 (ig 패턴 동일)
+      const _kkOverride = _parsed?.kakao_branch_override || {};
+      Object.entries(_kkOverride).forEach(([pfId, bid]) => {
+        if (!pfId || !bid) return;
+        allMappedAccIds.add(String(pfId));
+        if ((userBranches||[]).includes(bid)) allowedAccIds.add(String(pfId));
+      });
     } catch {}
     const load = () => {
       // userBranches 아직 안 로드됐으면 스킵 (isMaster는 전체 허용)
@@ -1977,7 +1984,9 @@ function App() {
       !(r.memo && r.memo.includes("확정완료")) &&
       (userBranches||[]).includes(r.bid)   // 본인 접근 지점만 (소이 요청 2026-06-06)
     );
-    const hasAlarm = hasPending || aiActiveCount > 0;
+    // 반복 알람(1분 4번)은 확정대기만 — AI 상담중은 배너로만 알림(소리 X). AI가 응대 중이라 급하지 않고,
+    // 처리할 게(확정대기·미읽) 없는데 AI 상담중만으로 계속 울려 거슬린다는 피드백 (정우님 2026-06-11 유령 알람)
+    const hasAlarm = hasPending;
     _alarmOnRef.current = hasAlarm;
     _alarmCtxRef.current = { userBranches: userBranches||[], aiActiveCount };
     if (hasAlarm && !_pendingAlarmRef.current) {
@@ -2005,12 +2014,8 @@ function App() {
     }
   }, [data?.reservations, userBranches, isMaster, aiActiveCount, _playBeep]);
   useEffect(() => () => { if (_pendingAlarmRef.current) clearInterval(_pendingAlarmRef.current); }, []);
-  // AI 상담중 0→증가 시 즉시 1번 (확정대기 증가감지 effect와 별개)
-  const _prevAiActiveRef = React.useRef(0);
-  useEffect(() => {
-    if (aiActiveCount > _prevAiActiveRef.current) _playBeep("pending", 1);
-    _prevAiActiveRef.current = aiActiveCount;
-  }, [aiActiveCount, _playBeep]);
+  // AI 상담중은 소리 없이 배너로만 알림 (정우님 2026-06-11 — 처리할 게 없는데 AI 상담중만으로 소리 나서 거슬림).
+  // 시작 1회 비프도 제거 — 배너(타임라인 상단)와 ack로 충분.
   // server_logs에서 서버 버전 + 스크래퍼 상태 1분마다 폴링
   React.useEffect(()=>{
     const fetchServerV = async ()=>{
