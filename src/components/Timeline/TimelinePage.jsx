@@ -4131,11 +4131,13 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           {/* 왼쪽 고정 여백 스트립 (v3.8.47, 데스크탑 전용) — 가로 스크롤해도 사이드바와 14px 흰 갭 유지.
               시간축은 CSS로 left:14 고정, 이 스트립이 0~14px 영역을 덮어 컬럼이 비치는 것 차단 */}
           <div className="tl-left-gap" style={{position:"sticky",left:0,width:14,flexShrink:0,zIndex:19,background:"#fff",pointerEvents:"none"}}/>
+          {/* 시간축 위쪽 그림자 캐스터 (v3.8.56) — tl-time-col은 sticky+zIndex라 스태킹 컨텍스트 → 내부 z31이 툴바(z30)를 못 이김.
+              형제로 빼서 시간축 헤더 위치에 핀(세로 top + 가로 left 동시 sticky), marginRight 음수로 레이아웃 무영향 */}
+          <div className="tl-time-caster" style={{position:"sticky",left:0,top:topbarH,zIndex:31,width:timeLabelsW,marginRight:-timeLabelsW,height:headerH,alignSelf:"flex-start",pointerEvents:"none",boxShadow:"0 -3px 8px -1px rgba(0,0,0,.18), -6px 0 12px -3px rgba(0,0,0,.10)"}}/>
           {/* Time Labels */}
           <div className="tl-time-col" style={{width:timeLabelsW,flexShrink:0,position:"sticky",left:0,zIndex:20,background:T.bgCard,borderRight:"1px solid #eee"}}>
-            {/* 카드 위쪽 그림자 캐스터 — 시간축도 동일 (v3.8.55) */}
-            <div style={{position:"sticky",top:topbarH,height:headerH,marginBottom:-headerH,zIndex:31,pointerEvents:"none",boxShadow:"0 -3px 8px -1px rgba(0,0,0,.18)"}}/>
-            <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:25,background:T.bgCard,boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12), -6px 0 10px -2px rgba(0,0,0,.16)"}}/>
+            {/* 헤더 아래 그림자 제거(내부엔 그림자 X — v3.8.56 정우님), 좌측만 본체와 동일 지오메트리·톤 */}
+            <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:25,background:T.bgCard,boxShadow:"-6px 0 12px -3px rgba(0,0,0,.10)"}}/>
             <div style={{position:"relative",height:totalRows*rowH,boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",...gridBg}}>
               {/* (구) 시간축 가로행 하이라이트 제거 — 시간은 hover 셀 안에 직접 표시 (정우님 2026-06-10) */}
               {timeLabels.map(({i, isHour, m, text}) => {
@@ -4276,10 +4278,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                 {room.isMovedOut && <div style={{position:"absolute",top:headerH,left:0,right:0,bottom:0,background:"rgba(0,0,0,.06)",borderTop:"2px dashed rgba(0,0,0,.12)",zIndex:1,pointerEvents:"none"}}/>}
                 {/* Room Header - sticky. 지점명은 첫 컬럼에만 앵커로 (D안) */}
                 <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:10,background:colBg,
-                  // 헤더 측면 그림자(.26)는 라이브 실화면 주입 테스트로 확정 (v3.8.52). 라운드·백플레이트 제거 (v3.8.53)
-                  // 헤더 '위쪽' 그림자는 툴바(z30 불투명)에 가려져 무효 → 제거, 대신 툴바 아래 그림자(index.html)로 표현 (v3.8.54)
-                  boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)"
-                    + (isLastOfBranch ? ", 6px 0 10px -2px rgba(0,0,0,.26)" : ""),
+                  // 아래 그림자 제거(타임라인 내부엔 그림자 X — 헤더 밑·칼럼 구분선에 그림자 들어가던 것, v3.8.56 정우님)
+                  // 측면은 본체 칼럼과 동일 지오메트리 + 본체(.26) 상단 페이드를 메우는 보충 톤(.15) — 위아래 균일
+                  boxShadow: isLastOfBranch ? "6px 0 12px -3px rgba(0,0,0,.15)" : "none",
                   display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",paddingBottom:4,lineHeight:1.2}}>
                   {isFirstOfBranch && (
                     <span style={{position:"absolute",top:2,left:0,right:0,textAlign:"center",fontSize:14,fontWeight:800,color:T.text,letterSpacing:0,pointerEvents:"none",zIndex:2}}>
