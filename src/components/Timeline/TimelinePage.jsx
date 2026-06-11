@@ -2937,7 +2937,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       const rect = sr.getBoundingClientRect();
       const x = pt.clientX - rect.left + sr.scrollLeft;
       const y = pt.clientY - rect.top + sr.scrollTop;
-      const colX = x - timeLabelsW;
+      // v3.8.59: 데스크탑 좌측 14px 갭 스트립(tl-left-gap, v3.8.47)이 in-flow라 칼럼 시작이 timeLabelsW+14 — 보정 없으면 고스트·칼럼 판정이 14px 틀어짐
+      const _lgW = sr.querySelector(".tl-left-gap")?.offsetWidth || 0;
+      const colX = x - _lgW - timeLabelsW;
       // 가변 칼럼 폭 + 지점 간 14px 갭 누적
       const _colWidthOf = (rm) => rm?.isBlockCol ? 18 : colW;
       const _gapBefore = (idx) => (idx > 0 && allRooms[idx-1]?.branch_id !== allRooms[idx]?.branch_id) ? 14 : 0;
@@ -2959,7 +2961,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       const snappedTime = yToTime(Math.max(0, gridY));
       // 일반 블록 드래그와 동일 공식: 미리보기 viewport 좌표 = 스냅된 그리드 위치
       const blockTopV = (rect.top || 0) + topbarH + headerH + timeToY(snappedTime) - sr.scrollTop;
-      const colLeftInScroll = timeLabelsW + _cumLeft;
+      const colLeftInScroll = _lgW + timeLabelsW + _cumLeft;
       const newLeftV = rect.left + colLeftInScroll - sr.scrollLeft + 3;
       setDragPos({
         x: colLeftInScroll - sr.scrollLeft, y: blockTopV - rect.top,
@@ -3255,7 +3257,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       if (!sr) return;
       const rect = sr.getBoundingClientRect();
       const x = pt.clientX - rect.left + sr.scrollLeft;
-      const colX = x - timeLabelsW;
+      // v3.8.59: 데스크탑 좌측 14px 갭 스트립(tl-left-gap) 보정 — 누락 시 고스트가 14px 왼쪽에 그려지고 칼럼 우측 14px에서 옆 칼럼으로 드롭됨
+      const _lgW = sr.querySelector(".tl-left-gap")?.offsetWidth || 0;
+      const colX = x - _lgW - timeLabelsW;
       // 칼럼별 실제 너비 + 지점 간 14px 갭 반영해 누적 left 계산
       const _colWidthOf = (rm) => rm?.isBlockCol ? 18 : colW;
       const _gapBefore = (idx) => (idx > 0 && allRooms[idx-1]?.branch_id !== allRooms[idx]?.branch_id) ? 14 : 0;
@@ -3297,8 +3301,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       // 미리보기 viewport top: blockTopV(드래그 시작) + 스냅Δy - 현재 스크롤 델타
       // (페이지가 스크롤된 만큼 viewport top도 같이 올라감)
       const newTopV = (cor.blockTopV ?? 0) + snappedDy - scrollDeltaY;
-      // 누적 left (가변 칼럼 폭 반영)
-      const colLeftInScroll = timeLabelsW + _cumLeft;
+      // 누적 left (가변 칼럼 폭 반영 + 좌측 갭 스트립)
+      const colLeftInScroll = _lgW + timeLabelsW + _cumLeft;
       const newLeftV = rect.left + colLeftInScroll - sr.scrollLeft + 3;
       setDragPos({
         x: colLeftInScroll - sr.scrollLeft, y: newTopV - rect.top,
