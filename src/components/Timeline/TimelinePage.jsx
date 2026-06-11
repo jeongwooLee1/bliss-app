@@ -4133,6 +4133,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           <div className="tl-left-gap" style={{position:"sticky",left:0,width:14,flexShrink:0,zIndex:19,background:"#fff",pointerEvents:"none"}}/>
           {/* Time Labels */}
           <div className="tl-time-col" style={{width:timeLabelsW,flexShrink:0,position:"sticky",left:0,zIndex:20,background:T.bgCard,borderRight:"1px solid #eee"}}>
+            {/* 카드 위쪽 그림자 캐스터 — 시간축도 동일 (v3.8.55) */}
+            <div style={{position:"sticky",top:topbarH,height:headerH,marginBottom:-headerH,zIndex:31,pointerEvents:"none",boxShadow:"0 -3px 8px -1px rgba(0,0,0,.18)"}}/>
             <div style={{height:headerH,borderBottom:"1px solid #eee",position:"sticky",top:topbarH,zIndex:25,background:T.bgCard,boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12), -6px 0 10px -2px rgba(0,0,0,.16)"}}/>
             <div style={{position:"relative",height:totalRows*rowH,boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",...gridBg}}>
               {/* (구) 시간축 가로행 하이라이트 제거 — 시간은 hover 셀 안에 직접 표시 (정우님 2026-06-10) */}
@@ -4267,6 +4269,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                   // 라운드 전부 제거 (v3.8.53 정우님 — 모서리에서 그림자 삐져나오는 문제, 직각으로)
                   position:"relative"
                 }}>
+                {/* 카드 위쪽 그림자 캐스터 (v3.8.55) — 헤더의 up-shadow는 툴바(z30 불투명)에 가려져 무효.
+                    z31 투명 박스가 헤더 위치에 핀 고정돼 위로 그림자만 캐스팅 → 지점 카드별 위쪽 그림자(갭에서 끊김) */}
+                <div style={{position:"sticky",top:topbarH,height:headerH,marginBottom:-headerH,zIndex:31,pointerEvents:"none",boxShadow:"0 -3px 8px -1px rgba(0,0,0,.18)"}}/>
                 {/* 이동/지원 직원: 휴무 스타일 오버레이 (배경만, 블록 클릭은 허용) */}
                 {room.isMovedOut && <div style={{position:"absolute",top:headerH,left:0,right:0,bottom:0,background:"rgba(0,0,0,.06)",borderTop:"2px dashed rgba(0,0,0,.12)",zIndex:1,pointerEvents:"none"}}/>}
                 {/* Room Header - sticky. 지점명은 첫 컬럼에만 앵커로 (D안) */}
