@@ -10,6 +10,7 @@ import I from '../common/I'
 import { SmartDatePicker } from '../Reservations/ReservationsPage'
 import { DetailedSaleForm } from '../Timeline/ReservationModal'
 import SalesGridPage from './SalesGridPage'
+import ChartLauncher from '../Consent/ChartLauncher'
 
 /* ── 포인트 총매출 제외 정책일 ── */
 // 이 날짜부터(>=) 발생한 매출은 포인트(svc_point/prod_point)를 총매출에서 제외(현금 미수취).
@@ -328,6 +329,7 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
   const [expandedId, setExpandedId] = useSessionState("sales_expandedId", null, { ttlMs: TTL.TAB });
   const [detailMap, setDetailMap] = useState({});  // saleId → [detail rows]
   const [consentRowMap, setConsentRowMap] = useState({});  // saleId → {state:'done'|'sent'|'need', url?} (리스트 행 표시용)
+  const [chartTarget, setChartTarget] = useState(null);  // 차트·동의서 런처 대상(아이콘 클릭)
 
   // sales 행의 svc_x/prod_x NET 결제값 직접 사용
   // v3.7.240 SaleForm에서 매출 저장 시 결제수단을 시술/제품으로 정확히 분리해 DB에 저장하므로
@@ -433,20 +435,16 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
       if (cancelled) return;
       const map = {};
       visible.forEach(s => {
-        const needed = needTplBySale[s.id];
-        if (!needed || needed.size === 0) return; // 구매 동의서 불필요 → 아이콘 없음
         const r = s.reservationId;
+        if (!r) return;
         const signedM = signedTplByRes[r] || new Map();
         const sentS = sentTplByRes[r] || new Set();
-        let anySigned = false, anySent = false, url = null;
-        // 필요 템플릿 중 작성된 게 있나? 발송된 게 있나? (컨디션체크리스트는 needed에 없으므로 매칭 안 됨)
-        for (const tpl of needed) {
-          if (signedM.has(tpl)) { anySigned = true; if (url === null) url = signedM.get(tpl); }
-          if (sentS.has(tpl)) anySent = true;
-        }
-        if (anySigned) map[s.id] = { state: 'done', url };
-        else if (anySent) map[s.id] = { state: 'sent' };
-        else map[s.id] = { state: 'need' };
+        // 차트·동의서 종합(시술 차트 포함, needed 무관): 작성 있으면 done(+문서url) / 발송만 sent.
+        //   매출관리는 작성·발송된 것만 아이콘(미발송 클러터 방지 — 미발송은 예약목록/타임라인 점에서 관리).
+        if (signedM.size === 0 && sentS.size === 0) return;
+        let url = null;
+        if (signedM.size > 0) { for (const v of signedM.values()) { if (v) { url = v; break; } } }
+        map[s.id] = { state: signedM.size > 0 ? 'done' : 'sent', url };
       });
       setConsentRowMap(map);
     })();
@@ -998,12 +996,12 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
                         const cs = consentRowMap[s.id];
                         if (!cs) return null;
                         // 노트 아이콘 1개로 3상태: 미발송=회색+금지 / 발송됨=무색(기본) / 작성완료=푸른색
-                        const cfg = cs.state==='done' ? {c:"#2563eb", t:"동의서 작성 완료 (클릭하여 보기)", ban:false}
-                          : cs.state==='sent' ? {c:T.text, t:"동의서 발송됨 · 미작성", ban:false}
-                          : {c:"#c7ccd1", t:"동의서 미발송 (링크 안 보냄)", ban:true};
+                        const cfg = cs.state==='done' ? {c:"#2563eb", t:"차트·동의서 작성 완료 — 클릭해서 보기", ban:false}
+                          : cs.state==='sent' ? {c:T.text, t:"차트·동의서 발송됨 · 서명 대기 — 클릭해서 보기/추가발송", ban:false}
+                          : {c:"#c7ccd1", t:"차트·동의서 미발송 — 클릭해서 보내기", ban:true};
                         return <span title={cfg.t}
-                          onClick={cs.url ? (e)=>{e.stopPropagation(); window.open(cs.url,"_blank","noopener");} : undefined}
-                          style={{position:"relative",display:"inline-flex",alignItems:"center",marginLeft:6,verticalAlign:"middle",cursor:cs.url?"pointer":"default"}}>
+                          onClick={s.reservationId ? (e)=>{e.stopPropagation(); setChartTarget({reservation:{id:s.reservationId,custId:s.custId,custName:s.custName,custPhone:s.custPhone,bid:s.bid,businessId:s.businessId}});} : undefined}
+                          style={{position:"relative",display:"inline-flex",alignItems:"center",marginLeft:6,verticalAlign:"middle",cursor:s.reservationId?"pointer":"default"}}>
                           <I name="fileText" size={14} color={cfg.c}/>
                           {cfg.ban && <svg width="11" height="11" viewBox="0 0 24 24" style={{position:"absolute",right:-4,bottom:-3}}>
                             <circle cx="12" cy="12" r="9" fill="#fff" stroke="#c0392b" strokeWidth="2.6"/>
@@ -1194,6 +1192,8 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
       onApply={(s,e,p)=>{ setStartDate(s); setEndDate(e); setPeriodKey(p); setShowSheet(false); }}/>
     {custPopupId && <CustDetailPopup custId={custPopupId} data={data} onClose={()=>setCustPopupId(null)} onOpenFull={openFullCustomer}/>}
     {showSettlement && <SettlementModal data={data} userBranches={userBranches} onClose={()=>setShowSettlement(false)} initBranch={vb} initDate={startDate}/>}
+    {/* 📋 차트·동의서 런처 — 매출 행 아이콘 클릭 시 상태별 보내기/보기 */}
+    {chartTarget && <ChartLauncher target={chartTarget} data={data} onClose={()=>setChartTarget(null)}/>}
   </div>;
 }
 
