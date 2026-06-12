@@ -2086,6 +2086,37 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
 
   // 2만행 전체 reservations에서 선택일 필터는 비싸므로 메모이즈 (의존성: reservations·selDate만 — 명확). 드래그·알람틱 등 잦은 리렌더에서 재스캔 방지.
   const todayReservations = useMemo(() => (data?.reservations||[]).filter(r => r.date === selDate), [data?.reservations, selDate]);
+
+  // 📋 차트·동의서 발송 상태 배치 로드 — 선택일 예약 → reservation_id별 'none'|'sent'|'signed'.
+  //   ReservationModal의 개별조회(consent_tokens+customer_consents)를 타임라인 전체로 전역화(N+1 방지).
+  //   미발송(none) 가시화용. 차트/동의서 트랙 통합 — 토큰 있으면 sent, 작성결과 있으면 signed 우선.
+  const [chartStatusByRid, setChartStatusByRid] = useState({});
+  useEffect(() => {
+    const rids = todayReservations
+      .filter(r => r.custId && !r.isSchedule && !String(r.custId).startsWith("new_"))
+      .map(r => r.id);
+    if (!rids.length) { setChartStatusByRid({}); return; }
+    let alive = true;
+    (async () => {
+      const sentSet = new Set(), signedSet = new Set();
+      for (let i = 0; i < rids.length; i += 80) {          // URL 길이 보호: 80개씩 청크
+        const inList = `(${rids.slice(i, i + 80).join(",")})`;
+        const [tokens, consents] = await Promise.all([
+          sb.get("consent_tokens", `&prefill_data->>reservation_id=in.${inList}&select=prefill_data`).catch(() => []),
+          sb.get("customer_consents", `&form_data->>reservation_id=in.${inList}&select=form_data`).catch(() => []),
+        ]);
+        if (!alive) return;
+        (tokens || []).forEach(t => { const id = t?.prefill_data?.reservation_id; if (id) sentSet.add(id); });
+        (consents || []).forEach(c => { const id = c?.form_data?.reservation_id; if (id) signedSet.add(id); });
+      }
+      if (!alive) return;
+      const map = {};
+      rids.forEach(id => { map[id] = signedSet.has(id) ? "signed" : sentSet.has(id) ? "sent" : "none"; });
+      setChartStatusByRid(map);
+    })();
+    return () => { alive = false; };
+  }, [todayReservations]);
+
   const blocks = todayReservations.filter(r => {
     if (!branchesToShow.some(b=>b.id===r.bid)) return false;
     // 변경으로 인한 구예약(naver_changed)은 항상 숨김 (메일로 정상 변경된 케이스 포함)
@@ -5555,6 +5586,17 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                           opacity:isDrag?0.35:1,userSelect:"none",WebkitUserSelect:"none",MozUserSelect:"none",msUserSelect:"none",WebkitTouchCallout:"none",touchAction:"pan-x pan-y"};
                         })()}
                         className="tl-block">
+                        {/* 📋 차트·동의서 발송 상태 점 — 회색=미발송 / 노랑깜박=발송·서명대기 / 녹색=완료. 차트 대상 예약만(맵에 있을 때) */}
+                        {(() => {
+                          if (block.isSchedule) return null;
+                          const st = chartStatusByRid[block.id];
+                          if (!st) return null;
+                          const cfg = st === "signed" ? { c: "#059669", t: "차트·동의서 작성완료" }
+                            : st === "sent" ? { c: "#F59E0B", t: "차트·동의서 발송됨 · 서명 대기" }
+                            : { c: "#9CA3AF", t: "차트·동의서 미발송 — 클릭해서 보내기" };
+                          return <span title={cfg.t} className={st === "sent" ? "doc-pending-blink" : ""}
+                            style={{position:"absolute",top:3,right:3,width:7,height:7,borderRadius:"50%",background:cfg.c,boxShadow:"0 0 0 1.5px #fff",zIndex:5,pointerEvents:"none"}} />;
+                        })()}
                         {/* 동반자 묶음 마크 — 같은 reservation_group_id 멤버 2명 이상이면 왼쪽 위에 색 마크. 내부일정은 제외 */}
                         {(() => {
                           if (block.isSchedule) return null;
