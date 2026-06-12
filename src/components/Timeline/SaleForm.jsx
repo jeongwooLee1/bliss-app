@@ -2594,7 +2594,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
         const r = await fetch(`${SB_URL}/rest/v1/rpc/next_cust_num`, {
           method: "POST",
           headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json" },
-          body: "{}"
+          body: JSON.stringify({ p_biz: _activeBizId || null })  // 멀티테넌트 + 오버로드 모호성 회피
         });
         if (r.ok) {
           const n = await r.json();

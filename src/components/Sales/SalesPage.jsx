@@ -1109,6 +1109,17 @@ function SalesPage({ data, setData, userBranches, isMaster, setPage, role, setPe
                                 </td>
                               </tr>;
                             });
+                            // 외부선결제 항목 표시 — 어떤 플랫폼 선결제인지 상세 표에 명시 (강남 id_2ugcvdooje)
+                            if ((s.externalPrepaid||0) > 0) {
+                              rows.push(
+                                <tr key="_extprepaid" style={{borderTop:"1px solid "+T.border, background:"#FCF5FF"}}>
+                                  <td style={{padding:"4px 8px", color:(s.externalPlatform==="네이버")?"#03C75A":"#8E24AA", fontWeight:T.fw.bold}}>[외부선결제] {s.externalPlatform||"미지정"}</td>
+                                  <td style={{padding:"4px 8px",textAlign:"right",fontWeight:T.fw.bold,color:(s.externalPlatform==="네이버")?"#03C75A":"#8E24AA"}}>{fmt(s.externalPrepaid)}</td>
+                                  <td style={{padding:"4px 8px",textAlign:"right",color:T.textSub}}>1</td>
+                                  <td/>
+                                </tr>
+                              );
+                            }
                             // 시술 합계 · 제품 합계 (매출 행과 동일 기준)
                             rows.push(
                               <tr key="_sumSvc" style={{borderTop:"2px solid "+T.border,background:T.gray100}}>

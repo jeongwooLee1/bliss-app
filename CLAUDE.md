@@ -4006,3 +4006,30 @@ HANDOFF 남은 수정요청 묶음 처리. 서버 2건(라이브 적용) + React
 
 - **적용**: 서버 2건 직접 패치+`systemctl restart bliss-naver`(active). v3.8.76 라이브 배포(version.txt 3.8.76, CF 퍼지 success). 수정요청 4건 done+답글.
 - **유의**: 동의서 재발송 알림톡은 카톡 미연결 고객엔 미도달(failover N) — 실고객 대부분 알림톡으로 원본 수신했으므로 도달. SMS 힌트·번호 자동매칭은 SMS 실데이터 필요 → 라이브 스팟체크 권장(데모엔 SMS 스레드 없음). consent_doc_resend 첫 실행 = 다음 13:00 KST.
+
+### v3.8.77 + 서버 — 수정요청 5건: 매출 외부선결제표시·카카오 지점배지·고객번호버그·AI전신왁싱·차트저장조사 (2026-06-12)
+HANDOFF 후속 수정요청 묶음 2차.
+
+#### #4 (강남 id_2ugcvdooje) 매출상세 외부선결제 항목 표시 — React
+- `SalesPage` 매출 펼침 상세 시술표에 `(s.externalPrepaid>0)`이면 `[외부선결제] {플랫폼명}` 행 추가(네이버=초록/그외=보라). 결제요약(PaySummary)에만 있던 걸 항목 표에도 명시.
+
+#### #5 (정우 id_qk6kigzvs5) 카카오 미읽 배지·배너·알림 지점별 — React
+- 원인: 카카오 메시지 `account_id="unknown"`(브릿지) → AppShell 미읽 배지 필터 1712줄 `accId==="unknown"→전부 통과` = 전 지점 카카오 다 카운트. 배너·반복알람도 같은 `filtered`에서 파생돼 동일.
+- fix: 미읽 fetch select에 `raw_payload` 추가 + 필터에서 카카오는 `raw_payload.pf_id`로 정규화 후 `allowedAccIds`(kakao_branch_override 매핑+userBranches) 체크 → 패널 규칙과 동일. pf 없으면 노출(안전). 배지·배너·알람 한 번에 지점별.
+
+#### #3 (홍대 id_dsuact8js1) 매출등록 고객번호 "없음" — DB RPC + React
+- 원인: `next_cust_num` RPC가 **무인자()와 (p_biz) 2개 오버로드** 공존 → SaleForm이 `{}`(무인자)로 호출 시 PostgREST **모호(ambiguous) 거부** → 빈 번호 → 앱 등록 신규고객 cust_num 미부여(전 매장 영향). 네이버/AI 자동생성 고객(cust_num 없이 INSERT)이 매출 시 번호 못 받음.
+- fix: ① migration `next_cust_num_drop_noarg_overload`로 무인자 오버로드 제거(단일화, p_biz null=biz_khvurgshb seq 동일동작) ② `SaleForm.fetchNextCustNum` body `{}` → `{p_biz:_activeBizId}`(멀티테넌트+모호성 회피) ③ 누락 3건(구본일·오진선·Jude #70768~70770) 고객+매출 backfill.
+
+#### #2 (대표 id_oldsnafs2x) AI 답변추천 엉뚱 + 모델 확인 — 서버
+- **모델 확인**: 메인 = `gemini-3.5-flash`(GEMINI_URL+_ai_ask_msgs) 맞음. env CLAUDE_MODEL=sonnet은 사장코드(Claude 전경로 제거 2026-06-03).
+- **재현**: gemini-3.5-flash에 "전신왁싱=풀바디" 매핑+패키지 가격표 주면 "전신왁싱+브라질리언"·"풀바디+브라질리언" 둘 다 정확히 "브라질리언+풀바디 패키지 40만/55만" 답함(A·B PASS) → 모델 문제 아님.
+- 원인: 라이브 프롬프트에 "전신왁싱→풀바디" 매핑 없어 AI가 전신을 다리(풀레그)로 오해 → 다리전체+브라질리언 합산 안내.
+- fix(`ai_booking.py`, 백업 `bak_jeonsin_*`): 키워드맵에 `전신/전신왁싱→풀바디` + 프롬프트 풀바디 규칙에 "전신/전신왁싱=풀바디(다리·풀레그 아님)" + "전신(왁싱)+브라질리언→브라질리언+풀바디 패키지" 추가. restart.
+
+#### #1 (용산 id_hn4u7ntim0) 신규차트 서명했는데 안 뜸 — 조사+위임(reviewing)
+- 원인: 신규차트 토큰 used_at 찍혔으나 customer_consents 0건(예: 하예라 cust_naver_s66g3r3zbj) = **마지막 서명 제출 저장이 안 됨**(작성 중 이탈/저장실패). 저장된 작성본 없어 복구 불가 → 재발송 후 끝까지 제출 안내.
+- 동의서앱(bliss-consent, 별개 레포) 저장 안정성·부분복구는 consent 세션에 위임(spawn_task).
+
+- **적용**: v3.8.77 라이브 배포(version.txt 3.8.77, CF 퍼지 success). 서버 ai_booking.py 직접 패치+restart. RPC migration·3건 backfill DB 적용. 수정요청 #2~5 done+답글, #1 reviewing(위임).
+- **유의**: 카카오 지점필터는 kakao_branch_override 매핑된 pf만 지점귀속, 미매핑/pf없음은 전체노출(패널과 동일). next_cust_num은 이제 단일 오버로드(p_biz) — 무인자 호출 코드 있으면 p_biz로 변경 필요. #6(민정 카카오 자동번역)은 카카오 수신경로 추적 필요한 별도 큰 작업으로 reviewing 유지.

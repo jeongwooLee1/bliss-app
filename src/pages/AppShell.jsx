@@ -27,7 +27,7 @@ import BlissRequests from '../components/BlissRequests/BlissRequests'
 import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 
 const uid = genId;
-const BLISS_V = "3.8.76"
+const BLISS_V = "3.8.77"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1690,7 +1690,7 @@ function App() {
       if(allowedAccIds.size===0 && !isMaster && userBranches !== null) { setUnreadMsgCount(0); setUnreadDelayedCount(0); return; }
       if (!_activeBizId) { setUnreadMsgCount(0); setUnreadDelayedCount(0); return; }
       // 모든 미읽 IN 메시지 fetch — 사이드바 뱃지(즉시) + 배너(1분 이상 미응답) 두 가지로 분리 계산
-      fetch(SB_URL+`/rest/v1/messages?business_id=eq.${_activeBizId}&is_read=eq.false&direction=eq.in&select=id,account_id,channel,user_id,user_name,message_text,created_at&order=created_at.desc&limit=999`,
+      fetch(SB_URL+`/rest/v1/messages?business_id=eq.${_activeBizId}&is_read=eq.false&direction=eq.in&select=id,account_id,channel,user_id,user_name,message_text,created_at,raw_payload&order=created_at.desc&limit=999`,
         {headers:{apikey:SB_KEY, Authorization:"Bearer "+SB_KEY,"Cache-Control":"no-cache"},cache:"no-store"})
         .then(r=>r.json())
         .then(arr=>{
@@ -1704,7 +1704,11 @@ function App() {
             const ch = String(m.channel || "");
             if (ch === "ai_test") return false;                  // 패널 미노출 채널
             if (ch === "whatsapp" || ch === "line") return true; // 전지점 공통
-            const accId = String(m.account_id || "");
+            let accId = String(m.account_id || "");
+            if (ch === "kakao") {                                // 카카오 account_id=unknown → raw_payload.pf_id로 정규화 (패널과 동일 지점필터)
+              let rp = m.raw_payload; if (typeof rp === "string") { try { rp = JSON.parse(rp); } catch { rp = null; } }
+              accId = (rp && rp.pf_id) ? String(rp.pf_id) : "";
+            }
             if (ch === "sms") {                                  // SMS account_id = 지점 bid
               if (userBranches === null) return true;
               return (userBranches||[]).includes(accId);
