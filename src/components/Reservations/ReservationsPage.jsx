@@ -467,12 +467,45 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
   const resNextSet = new Set((data?.reservations||[]).filter(r=>r.prevReservationId).map(r=>r.prevReservationId));
   const resFinal = res.filter(r => !(r.status==="naver_changed" && resNextSet.has(r.reservationId)));
 
+  // 📋 차트·동의서 발송 상태 — 필터된 예약 전체를 배치 로드(consent_tokens=발송 / customer_consents=작성).
+  //   타임라인과 동일 로직. 'none'(미발송) 가시화 + 미발송 필터용. custId 없는 예약 제외.
+  const [chartStatusByRid, setChartStatusByRid] = useState({});
+  const [unsentOnly, setUnsentOnly] = useState(false);
+  const _chartRidsKey = React.useMemo(() =>
+    [...new Set(resFinal.filter(r => r.custId && !r.isSchedule && !String(r.custId).startsWith("new_")).map(r => r.id))].join(","),
+    [resFinal]);
+  React.useEffect(() => {
+    const rids = _chartRidsKey ? _chartRidsKey.split(",").filter(Boolean) : [];
+    if (!rids.length) { setChartStatusByRid({}); return; }
+    let alive = true;
+    (async () => {
+      const sentSet = new Set(), signedSet = new Set();
+      for (let i = 0; i < rids.length; i += 80) {
+        const inList = `(${rids.slice(i, i + 80).join(",")})`;
+        const [tokens, consents] = await Promise.all([
+          sb.get("consent_tokens", `&prefill_data->>reservation_id=in.${inList}&select=prefill_data`).catch(() => []),
+          sb.get("customer_consents", `&form_data->>reservation_id=in.${inList}&select=form_data`).catch(() => []),
+        ]);
+        if (!alive) return;
+        (tokens || []).forEach(t => { const id = t?.prefill_data?.reservation_id; if (id) sentSet.add(id); });
+        (consents || []).forEach(c => { const id = c?.form_data?.reservation_id; if (id) signedSet.add(id); });
+      }
+      if (!alive) return;
+      const map = {};
+      rids.forEach(id => { map[id] = signedSet.has(id) ? "signed" : sentSet.has(id) ? "sent" : "none"; });
+      setChartStatusByRid(map);
+    })();
+    return () => { alive = false; };
+  }, [_chartRidsKey]);
+  // 미발송만 보기 — 차트상태 로드 후 'none'만. (custId 있는 예약 대상)
+  const resShown = unsentOnly ? resFinal.filter(r => chartStatusByRid[r.id] === "none") : resFinal;
+
   // 현재 페이지에 노출되는 예약의 cust_id 중 로컬에 없는 것 batch 로드 (고객번호 표시용)
   const _pageCustIdsKey = React.useMemo(() => {
-    const slice = resFinal.slice(resPage * RES_PER_PAGE, (resPage + 1) * RES_PER_PAGE);
+    const slice = resShown.slice(resPage * RES_PER_PAGE, (resPage + 1) * RES_PER_PAGE);
     const loaded = new Set((data?.customers||[]).map(c=>c.id));
     return [...new Set(slice.map(r=>r.custId).filter(id=>id && !loaded.has(id)))].sort().join(",");
-  }, [resFinal, resPage, data?.customers]);
+  }, [resShown, resPage, data?.customers]);
   React.useEffect(() => {
     if (!_pageCustIdsKey) return;
     const missing = _pageCustIdsKey.split(",").filter(Boolean);
@@ -716,13 +749,27 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
           <span style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,background:active?"rgba(255,255,255,.25)":T.gray200,color:active?T.bgCard:T.textSub,borderRadius:T.radius.full,padding:"1px 6px",lineHeight:"16px"}}>{cnt}</span>
         </button>;
       })}
+      {/* 차트·동의서 미발송만 토글 */}
+      {(() => {
+        const unsentCnt = resFinal.filter(r => chartStatusByRid[r.id] === "none").length;
+        return <button onClick={()=>{setUnsentOnly(v=>!v); setResPage(0);}} title="차트·동의서가 아직 안 나간 예약만 보기" style={{
+          height:30,padding:"0 12px",borderRadius:T.radius.full,border:"1.5px solid",marginLeft:"auto",
+          fontSize:T.fs.sm,fontWeight:unsentOnly?T.fw.bolder:T.fw.medium,cursor:"pointer",fontFamily:"inherit",
+          display:"flex",alignItems:"center",gap:5,transition:"all .15s",
+          background:unsentOnly?"#6B7280":T.bgCard, borderColor:unsentOnly?"#6B7280":T.border, color:unsentOnly?T.bgCard:T.gray700,
+        }}>
+          <span style={{display:"inline-block",width:7,height:7,borderRadius:"50%",background:unsentOnly?T.bgCard:"#9CA3AF",flexShrink:0}} />
+          <span>미발송만</span>
+          <span style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,background:unsentOnly?"rgba(255,255,255,.25)":T.gray200,color:unsentOnly?T.bgCard:T.textSub,borderRadius:T.radius.full,padding:"1px 6px",lineHeight:"16px"}}>{unsentCnt}</span>
+        </button>;
+      })()}
     </div>
 
     {/* ── 카드 그리드 ── */}
-    {resFinal.length===0 && <Empty msg="예약이 없습니다" icon="calendar"/>}
-    {resFinal.length>0 && <div style={{display:"flex",flexDirection:"column",gap:D.gap}}>
+    {resShown.length===0 && <Empty msg={unsentOnly ? "미발송 예약이 없습니다" : "예약이 없습니다"} icon="calendar"/>}
+    {resShown.length>0 && <div style={{display:"flex",flexDirection:"column",gap:D.gap}}>
       {/* 페이지 정보 */}
-      {resFinal.length > RES_PER_PAGE && <div style={{display:"flex",justifyContent:"flex-end",fontSize:T.fs.xxs,color:T.textMuted,marginBottom:4}}>{resPage*RES_PER_PAGE+1}~{Math.min((resPage+1)*RES_PER_PAGE, resFinal.length)} / {resFinal.length}건</div>}
+      {resShown.length > RES_PER_PAGE && <div style={{display:"flex",justifyContent:"flex-end",fontSize:T.fs.xxs,color:T.textMuted,marginBottom:4}}>{resPage*RES_PER_PAGE+1}~{Math.min((resPage+1)*RES_PER_PAGE, resShown.length)} / {resShown.length}건</div>}
       {/* 그리드 헤더 - 데스크톱만 */}
       {!isMobile && <div style={{display:"grid",gridTemplateColumns:resGridCols(showCols),gap:8,padding:"6px 14px",borderRadius:T.radius.md,background:T.gray200}}>
         {["날짜·시간","매장","번호","고객","시술 / 네이버정보",
@@ -733,7 +780,7 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
       </div>}
 
       {/* 카드 행 */}
-      {resFinal.slice(resPage * RES_PER_PAGE, (resPage + 1) * RES_PER_PAGE).map(r => {
+      {resShown.slice(resPage * RES_PER_PAGE, (resPage + 1) * RES_PER_PAGE).map(r => {
         const svcNames = groupSvcNames(r.selectedServices, data.services||[]);
         const svc = (data.services||[]).find(s=>s.id===r.serviceId);
         const svcDisplay = svcNames.length>0 ? svcNames.join(", ") : (svc?.name||"-");
@@ -751,6 +798,15 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
 
         const HIDDEN_STATUSES = ["naver_cancelled","cancelled","naver_changed","no_show"];
         const isHidden = HIDDEN_STATUSES.includes(r.status);
+        // 📋 차트·동의서 상태 점 (회색=미발송/노랑깜박=발송·서명대기/녹색=완료). 차트 대상 예약만(맵에 있을 때)
+        const _cs = chartStatusByRid[r.id];
+        const chartDot = _cs ? (() => {
+          const cfg = _cs === "signed" ? { c:"#059669", t:"차트·동의서 작성완료" }
+            : _cs === "sent" ? { c:"#F59E0B", t:"차트·동의서 발송됨 · 서명 대기" }
+            : { c:"#9CA3AF", t:"차트·동의서 미발송" };
+          return <span title={cfg.t} className={_cs==="sent"?"doc-pending-blink":""}
+            style={{display:"inline-block",width:7,height:7,borderRadius:"50%",background:cfg.c,flexShrink:0,verticalAlign:"middle"}} />;
+        })() : null;
         const handleClick = ()=>{
           if (isHidden) {
             setListModalData(r);
@@ -796,6 +852,7 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
           {/* Row2: 고객 + 연락처 */}
           <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
             {g && <span style={{fontSize:T.fs.nano,fontWeight:T.fw.bolder,borderRadius:T.radius.sm,padding:"1px 4px",background:g==="M"?T.maleLt:T.femaleLt,color:g==="M"?T.male:T.female,flexShrink:0}}>{g==="M"?"남":"여"}</span>}
+            {chartDot}
             <span style={{fontSize:T.fs.md,fontWeight:T.fw.bolder,color:T.text}}>{r.custName||"-"}</span>
             {isNaver && <I name="naver" size={11} color={T.naver}/>}
             {r.custPhone && <span style={{fontSize:T.fs.xs,color:T.primary,marginLeft:4}} onClick={e=>{e.stopPropagation();}}>{r.custPhone}</span>}
@@ -883,6 +940,7 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
           <div style={{display:"flex",flexDirection:"column",gap:1,minWidth:0,lineHeight:1.2}}>
             <div style={{display:"flex",alignItems:"center",gap:5,minWidth:0}}>
               {g && <span style={{fontSize:10,fontWeight:700,borderRadius:3,padding:"1px 4px",background:g==="M"?T.maleLt:T.femaleLt,color:g==="M"?T.male:T.female,flexShrink:0}}>{g==="M"?"남":"여"}</span>}
+              {chartDot}
               <span style={{fontSize:14,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.custName||"-"}</span>
               {isNaver && <I name="naver" size={11} color={T.naver} style={{flexShrink:0}}/>}
             </div>
