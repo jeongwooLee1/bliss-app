@@ -2122,7 +2122,8 @@ ${naverText}
                         })()}
                         {/* 📋 차트 & 동의서 — 한 버튼 → 한 화면(차트 자동카드 + 동의서 체크박스 + 작성완료 보기). 색=상태: 서명대기 깜박 / 작성완료 녹색 / 미발송 회색 */}
                         {(() => {
-                          const _canSend = f.custId && !String(f.custId).startsWith("new_") && !f.isNewCust;
+                          // custId(실제 레코드)만 있으면 발송 가능 — 신규고객(isNewCust)이어도 custId 있으면 허용(네이버 자동등록 등). custId=null인 미저장 신규는 f.custId로 자동 차단.
+                          const _canSend = f.custId && !String(f.custId).startsWith("new_");
                           const c = chartInfo?.chart, d = chartInfo?.doc;
                           if (!c && !d) return null;
                           const anySigned = c?.status === "signed" || d?.status === "signed";
