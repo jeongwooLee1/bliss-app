@@ -90,6 +90,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   // IG 계정이 brancheas 테이블에 등록 안 된 경우를 위한 override 매핑: {igAccountId: branchId}
   // 예: 공용 "하우스왁싱 서울" IG 계정을 강남본점에 매핑
   const [igBranchOverride, setIgBranchOverride] = useState({});
+  const [kakaoBranchOverride, setKakaoBranchOverride] = useState({});
   const [showAiSettings, setShowAiSettings] = useState(false);
   const [names, setNames] = useState({});
   const convoEndRef = useRef(null);
@@ -120,6 +121,16 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     if (!_ACC_BID[igId]) _ACC_BID[igId] = bid;
     (_IG_EXTRA_BY_BID[bid] ||= []).push(String(igId));
   });
+  // 카카오 채널 pfId → 지점 매핑 (settings.kakao_branch_override, ig 패턴 동일)
+  const _KK_EXTRA_BY_BID = {};  // bid → [kakao pfId, ...]
+  Object.entries(kakaoBranchOverride || {}).forEach(([pfId, bid]) => {
+    if (!pfId || !bid) return;
+    const br = branchList.find(b => b.id === bid);
+    const brName = br ? (br.short || br.name) : "";
+    if (!_ACC_NAME[pfId]) _ACC_NAME[pfId] = brName || _ACC_NAME[pfId] || "";
+    if (!_ACC_BID[pfId]) _ACC_BID[pfId] = bid;
+    (_KK_EXTRA_BY_BID[bid] ||= []).push(String(pfId));
+  });
 
   // userBranches + 연계된 지점들까지 확장 (id_ebgbebctt3 Phase 2)
   const linkedBranchIds = useMemo(() => {
@@ -142,7 +153,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   }, [branchFilter, linkedBranchIds, branchList]);
 
   const allowedIds = activeBids
-    .flatMap(bid => [_BR_ACC[bid], _BR_IG[bid], _BR_WA[bid], ...(_IG_EXTRA_BY_BID[bid] || [])])
+    .flatMap(bid => [_BR_ACC[bid], _BR_IG[bid], _BR_WA[bid], ...(_IG_EXTRA_BY_BID[bid] || []), ...(_KK_EXTRA_BY_BID[bid] || [])])
     .filter(Boolean)
     .map(String);
 
@@ -245,6 +256,8 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         }
         // IG account_id → branch_id 오버라이드 매핑 (branches 미등록 IG 계정용)
         setIgBranchOverride(s.ig_branch_override || {});
+        // 카카오 채널 pfId → branch_id 매핑
+        setKakaoBranchOverride(s.kakao_branch_override || {});
         // 미응답 N분 후 자동 답변
         const _dl = s.ai_auto_reply_delay || {};
         setAiDelay({enabled:!!_dl.enabled, minutes:Number(_dl.minutes)||5});

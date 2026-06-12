@@ -3658,6 +3658,9 @@ v3.7.984 진단에서 미룬 데모 공지&요청 배지 "2" 건 수정.
 **증상**: 맥 크롬에 블리스 열어두니 계속 알람 소리, 읽지 않은 것도 없음. **원인**: 반복 알람(1분 4번)이 `hasPending || aiActiveCount>0`라, 확정대기·미읽 0이어도 **AI 상담중 대화 1건**(WhatsApp 독일번호, 11:54 AI 발신)이 있으면 계속 울림. 게다가 알람 직전 서버 재검증(유령 방어 v3.8.45)이 `!(aiActiveCount>0)` 조건이라 AI 상담중일 땐 재검증도 건너뛰고 무조건 비프.
 **fix**: 반복 알람 `hasAlarm = hasPending`(확정대기만) — **AI 상담중은 소리 빼고 배너로만**(타임라인 상단 배너 + ack 유지). AI 상담중 시작 1회 비프 effect도 제거. 확정대기·미읽 알람은 그대로(서버 재검증도 이제 항상 동작 — aiActiveCount 게이트 무력화됨). v3.7.991에서 정우님이 AI 상담중 소리를 요청했으나 실사용에서 거슬려 철회.
 
+### v3.8.69 — 카카오 채널 → 지점 매핑 (`kakao_branch_override`) (2026-06-12, 정우님)
+받은메시지함 지점 필터에서 **branches 미등록 카카오 채널**(pfId)을 특정 지점에 귀속. 기존 IG 오버라이드(`ig_branch_override`) 패턴 그대로 복제 — `settings.kakao_branch_override`(pfId→branchId) 읽어 `_KK_EXTRA_BY_BID` 구성, `allowedIds` 필터에 카카오 pfId 포함. MessagesPage `AdminInbox`. 데이터 없으면 무영향(로직성 패치).
+
 ### v3.8.67 — 카카오 "답장" 새 창에 이전 대화 안 뜨던 fix (noreferrer 제거) (2026-06-11, 정우님)
 **증상**: 받은메시지함 카카오 "카카오에서 답장" 버튼 → 새 창이 이전 대화 없이 빈 답변창으로 열림. 직원이 앞 맥락 확인 불가.
 **진단**(Chrome MCP): 버튼이 여는 URL은 정확한 `chat_url`(`business.kakao.com/{pf}/chats/{chat_id}`, webhook raw_payload의 chat_url). 같은 URL을 **주소창(referrer 있음)으로 직접 열면 대화방+이전 히스토리 정상**(사브리나 확인). 그런데 버튼은 `window.open(url,"_blank","noopener,noreferrer")`라 **referrer 없이 새 창** → 카카오 비즈니스 SPA가 referrer 없는 chat 딥링크를 못 잡고 빈 상담목록(`fallback:chat_list`)으로 폴백.
