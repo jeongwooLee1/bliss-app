@@ -4033,3 +4033,9 @@ HANDOFF 후속 수정요청 묶음 2차.
 
 - **적용**: v3.8.77 라이브 배포(version.txt 3.8.77, CF 퍼지 success). 서버 ai_booking.py 직접 패치+restart. RPC migration·3건 backfill DB 적용. 수정요청 #2~5 done+답글, #1 reviewing(위임).
 - **유의**: 카카오 지점필터는 kakao_branch_override 매핑된 pf만 지점귀속, 미매핑/pf없음은 전체노출(패널과 동일). next_cust_num은 이제 단일 오버로드(p_biz) — 무인자 호출 코드 있으면 p_biz로 변경 필요. #6(민정 카카오 자동번역)은 카카오 수신경로 추적 필요한 별도 큰 작업으로 reviewing 유지.
+
+### v3.8.78 — 동의서 보내기: 채팅채널(WhatsApp·인스타·LINE) 발송 추가 (2026-06-12)
+**증상**(정우님, Jude Heneidi WhatsApp +44): 동의서/차트 보내기 모달이 010 없는 외국 고객에게 "QR/링크로 대신 받기"만 제공 — 손님이 WhatsApp으로 대화 중인데 그 채널로 못 보냄. (알림톡/SMS 발송 수정은 010 한국번호 전용이라 외국 채팅고객 미적용)
+**fix** (`ConsentModal.jsx`): 모달 열릴 때 `customers.sns_accounts`에서 연결된 채팅채널(whatsapp/instagram/line) 조회 → `send('chat', ch)` 분기 추가 — consent_token 발급 후 `send_queue`(account_id/user_id/channel + 링크 메시지) 적재 → 서버 send_queue_thread가 실제 발송. 모달에 채널색 "💬 {채널}으로 보내기" 버튼 + 안내문구("WhatsApp으로 보낼 수 있어요") + 발송완료 화면. QR은 채팅채널 있으면 보조 스타일. 010 있으면 기존 알림톡 우선(무변경).
+**유의**: 메시지는 한/영 병기 1줄+링크. WhatsApp 24h 윈도우 밖이면 free-text 실패 가능(서버 re-engage가 보류·템플릿 처리). 채팅채널 미연결 고객은 기존대로 QR. send_queue는 business_id 없이 적재(sendMsg 패턴 동일).
+**검증**: 로컬 모달 렌더·콘솔 에러 0(데모엔 whatsapp 연결 고객 없어 버튼 시각검증은 라이브 권장). v3.8.78 라이브 배포.

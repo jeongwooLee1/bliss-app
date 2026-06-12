@@ -29,6 +29,7 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
   const [kioskId, setKioskId] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null) // {token, url, qr, via:'kiosk'|'qr'}
+  const [chatChans, setChatChans] = useState([]) // 연결된 채팅 채널(WhatsApp/인스타/LINE) — 010 없는 외국 고객용 발송
 
   // 매장 등록 kiosks 목록 (businesses.settings.kiosks)
   const kiosks = useMemo(() => {
@@ -63,6 +64,29 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
     })()
   }, [bizId])
 
+  // 연결된 채팅 채널 조회 (sns_accounts) — WhatsApp/인스타/LINE으로 동의서 링크 발송 (010 없는 외국 고객)
+  useEffect(() => {
+    if (!cust?.id) { setChatChans([]); return }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const rows = await fetch(`${SB_URL}/rest/v1/customers?id=eq.${cust.id}&select=sns_accounts`, { headers: sbHeaders }).then(r => r.json())
+        let sns = rows?.[0]?.sns_accounts || []
+        if (typeof sns === 'string') { try { sns = JSON.parse(sns) } catch { sns = [] } }
+        const SENDABLE = ['whatsapp', 'instagram', 'line']
+        const byCh = {}
+        ;(Array.isArray(sns) ? sns : []).forEach(s => {
+          if (s && SENDABLE.includes(s.channel) && s.user_id && !byCh[s.channel]) byCh[s.channel] = s
+        })
+        if (!cancelled) setChatChans(Object.values(byCh))
+      } catch { if (!cancelled) setChatChans([]) }
+    })()
+    return () => { cancelled = true }
+  }, [cust?.id])
+
+  const CH_LABEL = { whatsapp: 'WhatsApp', instagram: '인스타 DM', line: 'LINE' }
+  const CH_COLOR = { whatsapp: '#25D366', instagram: '#E1306C', line: '#06C755' }
+
   const toggleTpl = id => setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
 
   const smsHasPhone = /^01[016789]\d{7,8}$/.test(String(cust?.phone || '').replace(/[^0-9]/g, ''))
@@ -73,7 +97,7 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
     onClose?.()
   }
 
-  const send = async (via) => {
+  const send = async (via, chatChan) => {
     if (selectedIds.length === 0) return alert('템플릿을 1개 이상 선택하세요.')
     if (via === 'kiosk' && !kioskId) return alert('대상 태블릿을 선택하세요.')
     const smsPhone = String(cust?.phone || '').replace(/[^0-9]/g, '')
@@ -144,6 +168,19 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
           channel: 'alimtalk',
         })
         setResult({ token, url, via: 'alimtalk', sent: true, phone: smsPhone })
+      } else if (via === 'chat' && chatChan) {
+        // 채팅 채널(WhatsApp/인스타/LINE)로 링크 발송 — send_queue 적재 → 서버가 실제 발송
+        const targetBid = cust?.bid || (data?.branches || [])[0]?.id || ''
+        const brName = (data?.branches || []).find(b => b.id === targetBid)?.short || ''
+        const chMsg = `[${brName || '안내'}] ${linkWord} 작성 요청 / Please complete here:\n${url}`
+        await sb.insert('send_queue', {
+          account_id: chatChan.account_id || chatChan.channel,
+          user_id: chatChan.user_id,
+          channel: chatChan.channel,
+          message_text: chMsg,
+          status: 'pending',
+        })
+        setResult({ token, url, via: 'chat', sent: true, channelLabel: CH_LABEL[chatChan.channel] || chatChan.channel })
       } else {
         const qr = await QRCode.toDataURL(url, { width: 256, margin: 2 })
         setResult({ token, url, qr, via: 'qr' })
@@ -192,6 +229,15 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
         </div>
 
         {/* 전송 결과 화면 */}
+        {result && result.via === 'chat' && <div style={{ padding: 30, textAlign: 'center' }}>
+          <div style={{ fontSize: 60, marginBottom: 14 }}>💬</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: '#10b981', marginBottom: 8 }}>{result.channelLabel} 발송 완료</div>
+          <div style={{ fontSize: 13, color: T.textMuted, marginBottom: 20 }}>
+            <b>{result.channelLabel}</b>(으)로 {linkWord} 링크를 보냈습니다.<br />고객님이 링크에서 작성·서명하시면 됩니다.
+          </div>
+          <button onClick={onClose} style={{ padding: '10px 24px', fontSize: 14, fontWeight: 700, background: T.primary, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>확인</button>
+        </div>}
+
         {result && result.via === 'kiosk' && <div style={{ padding: 30, textAlign: 'center' }}>
           <div style={{ fontSize: 60, marginBottom: 14 }}>📲</div>
           <div style={{ fontSize: 18, fontWeight: 800, color: '#10b981', marginBottom: 8 }}>태블릿으로 전송 완료</div>
@@ -325,21 +371,31 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
             {prefillBlock}
           </>)}
 
-          {/* 전송 방식 — 카카오 알림톡(권장) + QR/링크 폴백 */}
+          {/* 전송 방식 — 카카오 알림톡 / 채팅채널(WhatsApp·인스타·LINE) / QR·링크 폴백 */}
           {tpls.length > 0 && <div style={{ marginTop: 14, padding: 12, background: T.gray100, borderRadius: 8 }}>
             <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 8, lineHeight: 1.5 }}>
               {smsHasPhone
                 ? `고객 카카오톡으로 ${linkWord} 링크를 보냅니다. 카톡이 안 되면 QR/링크로 전달하세요.`
-                : '이 고객은 휴대폰 번호(010~)가 없어 알림톡 발송이 안 됩니다. QR/링크로 전달하세요.'}
+                : chatChans.length > 0
+                  ? `이 고객은 ${chatChans.map(c => CH_LABEL[c.channel] || c.channel).join('·')}(으)로 ${linkWord} 링크를 보낼 수 있어요. (휴대폰 010 번호 없음)`
+                  : '이 고객은 휴대폰 번호(010~)가 없어 알림톡 발송이 안 됩니다. QR/링크로 전달하세요.'}
             </div>
+            {/* 채팅 채널 발송 — 010 없는 외국 고객도 본인이 쓰는 채널로 링크 수신 */}
+            {chatChans.map(ch => (
+              <button key={ch.channel} onClick={() => send('chat', ch)} disabled={loading || selectedIds.length === 0}
+                style={{ width: '100%', padding: '12px', marginBottom: 8, fontSize: 15, fontWeight: 800, background: CH_COLOR[ch.channel] || T.primary, color: '#fff', border: 'none', borderRadius: 8, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
+                {loading ? '전송중…' : `💬 ${CH_LABEL[ch.channel] || ch.channel}으로 보내기`}
+              </button>
+            ))}
             {smsHasPhone && <button onClick={() => send('alimtalk')} disabled={loading || selectedIds.length === 0}
               style={{ width: '100%', padding: '12px', fontSize: 15, fontWeight: 800, background: '#FEE500', color: '#3C1E1E', border: 'none', borderRadius: 8, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
               {loading ? '전송중…' : `💬 알림톡으로 보내기 (${cust?.phone || ''})`}
             </button>}
+            {(() => { const _secondary = smsHasPhone || chatChans.length > 0; return (
             <button onClick={() => send('qr')} disabled={loading || selectedIds.length === 0}
-              style={{ width: '100%', padding: smsHasPhone ? '8px' : '12px', marginTop: smsHasPhone ? 6 : 0, fontSize: smsHasPhone ? 12 : 15, fontWeight: smsHasPhone ? 600 : 800, background: smsHasPhone ? 'transparent' : T.primary, color: smsHasPhone ? T.textSub : '#fff', border: smsHasPhone ? '1px dashed ' + T.border : 'none', borderRadius: 8, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
+              style={{ width: '100%', padding: _secondary ? '8px' : '12px', marginTop: _secondary ? 6 : 0, fontSize: _secondary ? 12 : 15, fontWeight: _secondary ? 600 : 800, background: _secondary ? 'transparent' : T.primary, color: _secondary ? T.textSub : '#fff', border: _secondary ? '1px dashed ' + T.border : 'none', borderRadius: 8, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
               {loading ? '생성중…' : `🔗 QR/링크로 대신 받기`}
-            </button>
+            </button>); })()}
           </div>}
         </div>}
       </div>
