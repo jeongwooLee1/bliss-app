@@ -493,31 +493,52 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   // 채팅방 열렸을 때 lazy fetch — chatCustMap에 없는 (channel,user_id)는 서버에서 sns_accounts 기준 직접 조회
   // 페이지네이션 limit=100에 안 걸린 신규 고객도 자동 연결됨
   const [lazyCustMap, setLazyCustMap] = useState({}); // {`${channel}_${user_id}`: customer}
+  const [phoneCandMap, setPhoneCandMap] = useState({}); // 번호 일치 후보 2명+ (직원이 고름) — qvz6lolnss
   useEffect(() => {
     if (!sel) return;
     const key = `${sel.channel}_${sel.user_id}`;
     if (chatCustMap[key]) return; // 이미 매칭됨
     if (lazyCustMap[key]) return; // 이미 lazy fetch 시도됨
     let cancelled = false;
+    const _bizId = data?.business?.id||_activeBizId;
+    const _addCust = (c) => {
+      setLazyCustMap(prev => ({ ...prev, [key]: c }));
+      if (typeof setData === 'function') setData(prev => {
+        if (!prev) return prev; const list = prev.customers || [];
+        if (list.find(x => x.id === c.id)) return prev;
+        return { ...prev, customers: [...list, c] };
+      });
+    };
     (async () => {
       try {
-        // sns_accounts에 channel + user_id 들어있는 고객 검색 (jsonb @> 연산자)
+        // 1) sns_accounts에 channel + user_id 직접 링크된 고객 (가장 신뢰)
         const filter = encodeURIComponent(`[{"channel":"${sel.channel}","user_id":"${sel.user_id}"}]`);
-        const rows = await sb.get('customers', `&business_id=eq.${data?.business?.id||_activeBizId}&sns_accounts=cs.${filter}&limit=1`);
+        const rows = await sb.get('customers', `&business_id=eq.${_bizId}&sns_accounts=cs.${filter}&limit=1`);
         if (cancelled) return;
         if (Array.isArray(rows) && rows.length > 0) {
           const c = fromDb('customers', rows)[0];
-          if (c) {
-            setLazyCustMap(prev => ({ ...prev, [key]: c }));
-            // data.customers에도 추가 (모달·예약 매칭에서 활용)
-            if (typeof setData === 'function') {
-              setData(prev => {
-                if (!prev) return prev;
-                const list = prev.customers || [];
-                if (list.find(x => x.id === c.id)) return prev;
-                return { ...prev, customers: [...list, c] };
-              });
-            }
+          if (c) _addCust(c);
+          return;
+        }
+        // 2) 번호 기반 자동매칭 (문자/WhatsApp — user_id가 전화번호). qvz6lolnss
+        //    이름이 1개면 무조건 자동 연결, 2개+면 후보를 직원이 고름. phone 단독매칭 금지룰 준수(이름 1개 조건)
+        if (sel.channel === 'sms' || sel.channel === 'whatsapp') {
+          let pd = String(sel.user_id || '').replace(/[^0-9]/g, '');
+          if (pd.startsWith('82') && pd.length >= 11) pd = '0' + pd.slice(2);
+          if (!(/^01[016789]\d{7,8}$/.test(pd))) return;
+          const pdh = pd.length === 11 ? `${pd.slice(0,3)}-${pd.slice(3,7)}-${pd.slice(7)}` : pd;
+          const cands = await sb.get('customers',
+            `&business_id=eq.${_bizId}&is_hidden=eq.false&or=(phone.eq.${pd},phone2.eq.${pd},phone.eq.${pdh},phone2.eq.${pdh})&limit=15`);
+          if (cancelled || !Array.isArray(cands) || cands.length === 0) return;
+          const list = fromDb('customers', cands);
+          const names = [...new Set(list.map(c => (c.name || '').trim()).filter(Boolean))];
+          if (names.length <= 1) {
+            // 이름 1개(동일인 중복 레코드 포함) → 자동 연결 (cust_num 보유 우선, 그다음 최다 방문)
+            const best = list.slice().sort((a,b)=> (b.custNum?1:0)-(a.custNum?1:0) || (b.visits||0)-(a.visits||0))[0];
+            if (best) { _addCust(best); linkCustomer(best); }
+          } else {
+            // 이름 2개+ → 직원이 후보에서 선택
+            setPhoneCandMap(prev => ({ ...prev, [key]: list }));
           }
         }
       } catch (e) { /* ignore */ }
@@ -1743,6 +1764,20 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     } finally { sendingRef.current = false; }
   };
 
+  // SMS 답장 단문/장문 안내 (of485ey6bo) — EUC-KR 90byte 초과 시 장문(LMS) 경고. SMS 채널에만.
+  const _smsBytes = (s)=>{ let b=0; for(const c of String(s||"")) b += c.charCodeAt(0)>127?2:1; return b; };
+  const renderSmsHint = ()=>{
+    if((sel?.channel||"")!=="sms" || !reply.trim()) return null;
+    const b=_smsBytes(reply); const isLong=b>90;
+    return <div style={{fontSize:forceCompact?10:11,fontWeight:700,padding:"3px 9px",marginBottom:5,borderRadius:7,
+        background:isLong?"#FFF7ED":"#F1F5F9",color:isLong?"#C2410C":T.textSub,
+        display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+      {isLong
+        ? <><I name="alert" size={12} color="#C2410C"/>장문(LMS) · {b} byte — 단문 한도(90) 초과, 요금 약 3배</>
+        : <>단문 SMS · {b}/90 byte</>}
+    </div>;
+  };
+
   const fmtTime=(ts)=>{
     const d=new Date(ts),now=new Date(),diff=now-d;
     if(diff<60000) return "방금";
@@ -1906,6 +1941,15 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:50,background:"#fff",border:"1px solid "+T.border,borderRadius:8,boxShadow:"0 4px 20px rgba(0,0,0,.15)",padding:8,width:280}}>
               <input autoFocus value={linkSearch} onChange={e=>setLinkSearch(e.target.value)} placeholder="이름·전화·이메일·번호 검색"
                 style={{width:"100%",padding:"6px 10px",fontSize:12,border:"1px solid "+T.border,borderRadius:6,fontFamily:"inherit",boxSizing:"border-box"}}/>
+              {!linkSearch.trim() && (phoneCandMap[sel.channel+"_"+sel.user_id]||[]).length>0 && <div style={{marginTop:6}}>
+                <div style={{fontSize:10,fontWeight:700,color:T.textMuted,padding:"2px 4px"}}>이 번호와 일치하는 고객 (선택)</div>
+                {(phoneCandMap[sel.channel+"_"+sel.user_id]||[]).map(c=>(
+                  <div key={c.id} onClick={()=>linkCustomer(c)} style={{padding:"6px 8px",cursor:"pointer",borderRadius:4,fontSize:12,display:"flex",justifyContent:"space-between",gap:6,background:"#F5F3FF",marginBottom:3}}>
+                    <span style={{fontWeight:700}}>{c.name}{c.name2?` (${c.name2})`:""}</span>
+                    <span style={{color:T.textMuted}}>{c.phone}{c.custNum?` · #${c.custNum}`:""}</span>
+                  </div>
+                ))}
+              </div>}
               {linkCandidates.length > 0 && <div style={{marginTop:6,maxHeight:240,overflowY:"auto"}}>
                 {linkCandidates.map(c => (
                   <div key={c.id} onClick={()=>linkCustomer(c)} style={{padding:"6px 8px",cursor:"pointer",borderRadius:4,fontSize:12,display:"flex",justifyContent:"space-between",gap:6}}
@@ -2045,6 +2089,8 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         </div>}
         {renderQrPanel()}
         {(sel.channel||"naver")==="kakao" ? renderKakaoReply(forceCompact) : (
+        <div>
+        {renderSmsHint()}
         <div style={{position:"relative"}}>
           <textarea id="bliss-reply-ta" value={reply} onChange={e=>{ setReply(e.target.value); setAiKoDraft(""); setReplyIsAi(false); }}
             onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}}
@@ -2055,6 +2101,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             style={{position:"absolute",right:6,bottom:5,width:forceCompact?26:32,height:forceCompact?26:32,background:"#7C3AED",color:"#fff",border:"none",borderRadius:"50%",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
             {sending?<span style={{fontSize:11}}>⏳</span>:<svg width={forceCompact?13:16} height={forceCompact?13:16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>}
           </button>}
+        </div>
         </div>
         )}
       </div>
@@ -2169,6 +2216,15 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                 <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:50,background:"#fff",border:"1px solid "+T.border,borderRadius:8,boxShadow:"0 4px 20px rgba(0,0,0,.15)",padding:8,width:300}}>
                   <input autoFocus value={linkSearch} onChange={e=>setLinkSearch(e.target.value)} placeholder="이름·전화·이메일·번호 검색"
                     style={{width:"100%",padding:"6px 10px",fontSize:12,border:"1px solid "+T.border,borderRadius:6,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  {!linkSearch.trim() && (phoneCandMap[sel.channel+"_"+sel.user_id]||[]).length>0 && <div style={{marginTop:6}}>
+                    <div style={{fontSize:10,fontWeight:700,color:T.textMuted,padding:"2px 4px"}}>이 번호와 일치하는 고객 (선택)</div>
+                    {(phoneCandMap[sel.channel+"_"+sel.user_id]||[]).map(c=>(
+                      <div key={c.id} onClick={()=>linkCustomer(c)} style={{padding:"6px 8px",cursor:"pointer",borderRadius:4,fontSize:12,display:"flex",justifyContent:"space-between",gap:6,background:"#F5F3FF",marginBottom:3}}>
+                        <span style={{fontWeight:700}}>{c.name}{c.name2?` (${c.name2})`:""}</span>
+                        <span style={{color:T.textMuted}}>{c.phone}{c.custNum?` · #${c.custNum}`:""}</span>
+                      </div>
+                    ))}
+                  </div>}
                   {linkCandidates.length > 0 && <div style={{marginTop:6,maxHeight:240,overflowY:"auto"}}>
                     {linkCandidates.map(c => (
                       <div key={c.id} onClick={()=>linkCustomer(c)} style={{padding:"6px 8px",cursor:"pointer",borderRadius:4,fontSize:12,display:"flex",justifyContent:"space-between",gap:6}}
@@ -2262,6 +2318,8 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             </div>}
             {renderQrPanel()}
             {(sel.channel||"naver")==="kakao" ? renderKakaoReply(false) : (
+            <div>
+            {renderSmsHint()}
             <div style={{display:"flex",gap:8}}>
               <textarea id="bliss-reply-ta" value={reply} onChange={e=>{ setReply(e.target.value); setReplyIsAi(false); }}
                 onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}}
@@ -2272,6 +2330,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                 style={{width:44,height:44,alignSelf:"flex-end",flexShrink:0,background:reply.trim()?"#7C3AED":"#e5e7eb",color:reply.trim()?"#fff":"#9ca3af",border:"none",borderRadius:"50%",cursor:reply.trim()?"pointer":"default",display:"flex",alignItems:"center",justifyContent:"center"}}>
                 {sending?<span>⏳</span>:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>}
               </button>
+            </div>
             </div>
             )}
           </div>

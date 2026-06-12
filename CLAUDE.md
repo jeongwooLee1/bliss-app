@@ -3985,3 +3985,24 @@ v3.8.34 회색에서 한 번 더 — 직원 칼럼 비활성 시간대 오버레
 - **모바일 푸터 숨김** (`index.html`): v3.7.822에서 모바일에 강제 노출한 in-app 사업자정보 푸터(`.main-footer-d`)가 **세로 컬럼+78px 하단패딩으로 ~8줄 차지해 화면을 막던** 것 → 모바일(`@media max-width:768px`)에서 `display:none`. 사업자정보는 **로그인 화면 푸터(모바일 노출)+랜딩/약관 공개페이지**에 유지 → 토스 컴플라이언스 보존. 데스크탑 앱 푸터(≥768px)는 그대로.
 - **검증**: 로컬 dev(데모 demo/demo1234) 월/주/리스트 전환·렌더·예약표시 + 모바일(375px) 푸터 `display:none`·타임라인 하단탭까지 꽉 참 + 빌드 통과·콘솔 에러 0. 라이브 v3.8.23 배포(version.txt 검증, CF 퍼지 success).
 - **유의**: 캘린더는 읽기전용(드래그 없음). 예약 클릭 → 그날 일간뷰로 이동(모달 직접 오픈은 v1 미포함). 월/주 네비는 anchor만 변경하므로 타임라인 selDate 효과 churn 없음.
+
+### v3.8.76 + 서버 — 펜딩 수정요청 4건: 동의서 자동재발송·종이등록 / 문자 고객 자동매칭 / 지점 문자 정산·단문장문 (2026-06-12)
+HANDOFF 남은 수정요청 묶음 처리. 서버 2건(라이브 적용) + React(v3.8.76 배포).
+
+#### #7 동의서 자동문자 (id_a2kmciryy3) — 서버 신규 스레드 + React 사진등록
+- **서버 `consent_doc_resend_thread`** (`bliss_naver.py`, 백업 `bak_consentresend_*`): 매일 13시 KST. **동의서 트랙**(차트/체크리스트 폴더·차트 ID 패턴 `chart|condition|consent_full|maternity|addons|eyelash` 제외, 키오스크·`created_by daily_reminder/today_catchup/consent_resend` 제외) 토큰 중 **생성 20~44h(어제치)** + `customer_consents` 미작성 → **새 토큰(48h, bc_) 발급 + alimtalk_queue(consent_doc 알림톡)** 재발송. `process_item`이 82→010·sms_consent 차단 처리. 중복방지 신규 테이블 `consent_sms_log`(src_token UNIQUE, RLS+anon_all) → **원본 토큰당 1회만**. main 등록 `t_cresend`.
+  - 정책: "발송 다음날 1회만"(20~44h 윈도우) + "새 토큰 발급"(만료 무관). 라이브 read-only 검증 — 어제치 차트 제외 실제 동의서 미작성 대상 일 0~수건(차트 137건 전부 제외, 대량발송 위험 없음).
+- **React 종이동의서 사진등록** (`ConsentPanel.jsx`): 고객관리 동의서·차트 탭에 [종이 동의서 사진 등록] 버튼 → `uploadImageToStorage('consent')` → `customer_consents` 1건(`template_id=paper_consent`, `template_name=종이 동의서`, document_url=사진) → 이력 리스트 표시. `ConsentDocsViewer`가 이미지 URL(png/jpg/gif/webp/heic)을 pdfjs 없이 inline `<img>`로 렌더(모든 호출처 이득). CustomersPage ConsentPanel에 `bizId={_activeBizId}` 전달.
+
+#### #8 문자 고객 자동매칭 (id_qvz6lolnss) — React
+- `MessagesPage` lazy-fetch effect: sns_accounts 매칭 실패 시 **SMS/WhatsApp(user_id=전화)** → 번호 정규화(82→010) → `customers` phone/phone2(하이픈·무하이픈) 조회. **이름 1개(동일인 중복 포함)면 자동 연결**(`linkCustomer`, cust_num 보유·최다 방문 우선), **이름 2개+면 `phoneCandMap`에 저장 → 대화창 [연결] picker 상단에 "이 번호와 일치하는 고객 (선택)" 후보 노출 → 직원이 선택**. phone 단독매칭 금지룰 준수(이름 1개 조건) [[feedback_bliss_no_phone_matching]].
+
+#### of485ey6bo — 지점 문자 답장 정산 + 단문/장문 경고
+- **서버**(`send_queue_thread` SMS 발송 성공 후, 백업 `bak_smsbill_*`): SMS 답장은 `deduct_billing` 호출이 **전무**했음(WhatsApp만 있었음) → 추가. `p_branch_id=account_id`(=bid, 지점 귀속), 본문 EUC-KR byte로 `p_kind` sms(≤90)/lms(>90) 구분, points 20/60. → 요금제 사용내역에 **지점별** SMS/LMS 기록(아이디 아닌 지점). (deduct balance는 비활성이라 usage 로그만 — 의도)
+- **React**(`MessagesPage` 답장 composer 2곳): SMS 채널 + 입력 있을 때 `renderSmsHint()` — `단문 SMS · NN/90 byte` / 초과 시 `장문(LMS) · NN byte — 요금 약 3배`(주황 + alert 아이콘). EUC-KR byte 계산.
+
+#### qtbeoxor0z (네이버톡톡 패널 고객 연결, reviewing→done)
+- 답변: 네이버톡톡 손님은 예약·매출 이력 있으면 이미 자동 연결(chatResMap+sns). 미연결 시 [연결] 버튼으로 후보 선택. 네이버 패널 내부정보 직접 취득은 네이버 제한 → 예약·번호 매칭으로 대체. 코드 변경 없음(기존 기능으로 커버).
+
+- **적용**: 서버 2건 직접 패치+`systemctl restart bliss-naver`(active). v3.8.76 라이브 배포(version.txt 3.8.76, CF 퍼지 success). 수정요청 4건 done+답글.
+- **유의**: 동의서 재발송 알림톡은 카톡 미연결 고객엔 미도달(failover N) — 실고객 대부분 알림톡으로 원본 수신했으므로 도달. SMS 힌트·번호 자동매칭은 SMS 실데이터 필요 → 라이브 스팟체크 권장(데모엔 SMS 스레드 없음). consent_doc_resend 첫 실행 = 다음 13:00 KST.

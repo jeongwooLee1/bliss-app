@@ -2352,7 +2352,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                         </button>
                       </div>}
                       {detailTab==="consent" && <div style={{padding:"6px 2px"}}>
-                        <ConsentPanel cust={c} onRequestNew={()=>setConsentCust(c)}/>
+                        <ConsentPanel cust={c} bizId={_activeBizId} onRequestNew={()=>setConsentCust(c)}/>
                       </div>}
                     </div>
                   </div>

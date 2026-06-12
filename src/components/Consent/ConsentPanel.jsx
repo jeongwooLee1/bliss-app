@@ -1,16 +1,19 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { T } from '../../lib/constants'
-import { SB_URL, sbHeaders } from '../../lib/sb'
+import { sb, SB_URL, sbHeaders } from '../../lib/sb'
+import { uploadImageToStorage } from '../../lib/supabase'
 import ConsentDocsViewer from './ConsentDocsViewer'
 
 /**
  * 고객 상세 '동의서' 탭 내용 — 서명 이력(신규차트·동의서) 리스트 + 신규 요청 버튼
  * 행 클릭 시 앱 안에서 바로 차트 이미지로 보기(ConsentDocsViewer). Realtime 구독으로 서명 완료 시 자동 갱신.
  */
-export default function ConsentPanel({ cust, onRequestNew }) {
+export default function ConsentPanel({ cust, onRequestNew, bizId }) {
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
   const [viewId, setViewId] = useState(null)  // 인앱 뷰어로 볼 consent id
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef(null)
 
   const load = useCallback(async () => {
     if (!cust?.id) return
@@ -60,13 +63,45 @@ export default function ConsentPanel({ cust, onRequestNew }) {
     return () => { try { ch?.unsubscribe(); window._sbClient?.removeChannel(ch) } catch {} }
   }, [cust?.id, load])
 
+  // 종이(오프라인) 동의서 사진 등록 → customer_consents에 1건 추가 → 이력에 "종이 동의서"로 표시
+  const handlePaperUpload = async (file) => {
+    if (!file || !cust?.id) return
+    setUploading(true)
+    try {
+      const url = await uploadImageToStorage(file, 'consent')
+      if (!url) { alert('사진 업로드 실패. 다시 시도해주세요.'); return }
+      const ok = await sb.insert('customer_consents', {
+        id: 'cc_paper_' + Math.random().toString(36).slice(2, 12),
+        business_id: bizId || cust?.businessId || '',
+        customer_id: cust.id,
+        template_id: 'paper_consent',
+        template_name: '종이 동의서',
+        document_url: url,
+        signer_name: cust.name || '',
+        signed_at: new Date().toISOString(),
+        form_data: { source: 'paper_upload' },
+      }).then(() => true).catch((e) => { console.error('[consent panel] paper insert', e); return false })
+      if (!ok) { alert('등록 실패. 다시 시도해주세요.'); return }
+      await load()
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
         <button onClick={onRequestNew}
           style={{ padding: '8px 14px', fontSize: 12, fontWeight: 700, borderRadius: 8, border: '1.5px dashed ' + T.primary, background: T.primaryLt, color: T.primary, cursor: 'pointer', fontFamily: 'inherit' }}>
-          ➕ 새 동의서 요청
+          새 동의서 요청
         </button>
+        <button onClick={() => fileRef.current?.click()} disabled={uploading}
+          style={{ padding: '8px 14px', fontSize: 12, fontWeight: 700, borderRadius: 8, border: '1.5px dashed ' + T.border, background: '#fff', color: T.textSub, cursor: uploading ? 'wait' : 'pointer', fontFamily: 'inherit', opacity: uploading ? 0.6 : 1 }}>
+          {uploading ? '등록 중…' : '종이 동의서 사진 등록'}
+        </button>
+        <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
+          onChange={(e) => handlePaperUpload(e.target.files?.[0])} />
         <div style={{ marginLeft: 'auto', fontSize: 11, color: T.textMuted }}>
           서명 이력 {history.length}건
         </div>

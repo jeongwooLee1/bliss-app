@@ -118,7 +118,12 @@ export default function ConsentDocsViewer({ customerId, customerName, consentIds
     setCache((p) => ({ ...p, [d.id]: 'loading' }))
     ;(async () => {
       let imgs
-      try { imgs = d.document_url ? await renderPdfToImages(d.document_url) : 'error' }
+      try {
+        if (!d.document_url) imgs = 'error'
+        // 종이 동의서 사진 등 이미지 URL → pdfjs 파싱 없이 그대로 표시
+        else if (/\.(png|jpe?g|gif|webp|heic)(\?|$)/i.test(d.document_url)) imgs = [d.document_url]
+        else imgs = await renderPdfToImages(d.document_url)
+      }
       catch { imgs = 'error' }
       if (!cancelled) setCache((p) => ({ ...p, [d.id]: imgs }))
     })()
