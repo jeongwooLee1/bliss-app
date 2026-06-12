@@ -1,5 +1,30 @@
 # HANDOFF
 
+## 📌 [세션 인계] 2026-06-11 문자/입금/카카오/알람 작업 마무리 + 대기 3건
+> 이번 세션 완료분은 **CLAUDE.md 변경이력 v3.8.58~68 + deposit-app v1.9~v1.14**에 전부 기록됨(여기 중복 안 함). 아래는 **다음 세션이 이어받을 미완·대기**만.
+
+### ✅ 이번 세션 핵심 완료 (요약 — 상세는 CLAUDE.md)
+- **IG 토큰 복구**: 강남(housewaxing_official)·강남추가(seoul)·홍대 3계정 비번변경으로 무효화 → 재발급 반영(secrets.conf + app_secrets), 9/9 정상.
+- **문자 파이프라인 완성**: 고객문자 미인입 근본원인 = 매장폰 **채팅+(RCS)** 수신(어떤 앱도 못 읽음) → 끄면 SMS/MMS로 자동 인입. deposit-app **v1.13 판단 100% 서버 이관**(`/sms-inbound` 단일, 앱은 dumb pipe) + **v1.12 MMS 수신** + **v1.14 보낸문자(직원 답장) 보충**. v3.8.64 SMS 대화 **지점별 분리**.
+- **입금**: 카드정산 오분류 fix(한글이름 2자+ = 고객) + "무시→자동 거르기".
+- **카카오**: v3.8.64 "카카오에서 답장" 딥링크 버튼(머지) + v3.8.67 **noreferrer 제거**(빈 창→대화방 이전내용 열림).
+- **v3.8.68 AI 상담중 알람 소리 제거**(배너만, 확정대기·미읽은 유지).
+- 쿠폰 2장+ 적용은 **이미 작동**(v3.8.65) — 라이브 검증 완료(이정우 8만 2장 -80k/-52k).
+
+### ⏳ 대기 1 — 매장폰 채팅+ 끄기 + 앱 v1.14 전파 (마곡+홍대 폰)
+- 강남+왕십리폰·용산폰·위례+잠실폰은 오늘 인입 확인됨. **마곡+홍대 폰은 미확인** — 채팅+ 끄기 + [앱 업데이트 확인] + [최근 문자 다시 보내기] 필요. 직원 공지 2건 게시됨(맨 위 "[새 기능]" + "[필독·1분] 채팅+ 끄기"). 매장폰 구조: 강남+왕십리 / 마곡+홍대 / 용산 단독 / 위례+잠실 (메모리 reference_bliss_deposit_app 기록).
+
+### ⏳ 대기 2 — 카카오 채널 자동번역 + 블리스 표시 누락 (민정 id_d8owmvj4ge, **reviewing**)
+- 카카오 메시지에 `translated_text` 전무 = **카카오 채널만 자동번역 미적용**(인스타/왓츠앱/라인은 됨). 추가하려면 **카카오 상담톡 수신 경로**를 찾아야 하는데 bliss_naver.py·Edge Function·nginx에 안 보임 → **외부 webhook(카카오 i오픈빌더/별도 서버) 추정, 경로 추적 필요**. raw_payload 형식: `{pf_id, kakao_chat_id, chat_url, kakao_log_id, missed_count, fallback:chat_list}`. 같은 요청에 "블리스에서 카카오 대화 일부만 보임"도 있어 그 경로 확인 시 함께.
+- ①②(카카오 창 대화표시)는 v3.8.67로 해결돼 답글 달았고, ③(자동번역+표시누락)만 남아 reviewing.
+
+### ⏳ 대기 3 — 코워크(클로드 Cowork) 랜딩 배포 세팅 (정우님 결정 대기)
+- 코워크가 watcher로 랜딩 자동배포 세팅 중. **랜딩 원본 = `bliss-app/public/landing.html`**(라이브 서빙, nginx 비로그인 `/`→landing.html, AppShell 로그인 iframe 배경). `bliss-app/index.html`은 **Vite SPA 엔트리(랜딩 아님)**. `public/`은 빌드 시 dist로 무가공 복사.
+- **코워크 작업장 = `blissme-detail-page/index.html`**(data-cms 11개 부착·카피 작업, 91KB). 라이브 landing.html(68KB, data-cms 0)과 **아직 연결 안 됨**. `public/landing-new.html`(90KB)은 제3 중간본, 미사용(정리 권장).
+- **정우님 결정 필요**: detail-page 작업장 유지(watcher에 "detail-page→public/landing.html 복사" 단계) vs 작업을 public/landing.html로 일원화(복사 단계 없음, 더 깔끔). 배포 루틴은 build→scp(`bliss-server`=ubuntu@158.179.174.30, key `~/.ssh/oracle.key`)→`/var/www/html/bliss-app/`(chown www-data)→CF퍼지. inject-content.mjs(published 주입)도 landing.html 대상.
+
+---
+
 ## 🔔 [동의서 세션 → 메인 세션] 수정요청 2건 인계 (2026-06-06)
 > 동의서(차트) 세션이 메인이 검토·위임한 reviewing 2건을 처리했습니다. 아래 ①은 **메인앱(ConsentModal) 작업**이라 인계, ②는 동의서 세션이 자체 처리.
 
