@@ -1,5 +1,31 @@
 # HANDOFF
 
+## 📌 [세션 인계] 2026-06-12 차트가시화·카카오·시술매칭 + ⚠️토큰 보안조치
+> 완료분 상세는 **CLAUDE.md 변경이력 v3.8.69~75**에 기록. 아래는 **인계·미완·주의**만.
+
+### ✅ 이번 세션 완료 (요약)
+- **입금 오분류 교정**: 김동주 700,000(다담권 구매)을 외부선결제→입금으로, 현장결제 3건(임하나·Edward·조성수) 예약금→카드로. 외부플랫폼 목록에서 **"현장결제" 제거**("입금"은 선결제 케이스라 유지).
+- **카카오 채널→지점 매핑**(v3.8.69 `kakao_branch_override`) + 온보딩 체크리스트 보강(카카오 수신연동·deposit-app APK 현행화).
+- **차트·동의서 미발송 가시화 + 어디서든 보내기/보기**(v3.8.70~74): 타임라인 블록 점 / 예약목록 점+클릭런처+"미발송만" 필터 / 매출관리 아이콘 클릭 런처 / 예약모달 신규고객 차트버튼. 공통 `lib/chartInfo.js`+`ChartLauncher`. **고객관리는 기존 ConsentPanel로 이미 완비**.
+- **카카오 지점표시 fix**(v3.8.75): 메시지 account_id를 raw_payload.pf_id로 정규화.
+- **카카오 직원답장 수집**(kakao-bridge poll.mjs): 직원(author_id===pfId, user_type 1)을 direction='out'으로 INSERT. 데몬 unload→수정→load 완료.
+- **네이버 AI 시술매칭 영어 매핑**(서버 bliss_naver.py): 프롬프트 2곳에 armpit=겨드랑이 등 추가(외국인 영어 예약).
+
+### 🔴 [최우선 인계] bliss-deploy GitHub 토큰 무효화됨 — 다음 push 시 새 토큰 필요
+- naver-sync origin이 정체불명 자동화(`run_shell:curl_final_001`, Anthropic API curl 호출 봇, 3/24~ 1970커밋)에 오염 → **`bliss-deploy` PAT(scope repo, 무기한) 노출 → 정우님이 GitHub에서 삭제(무효화 확인 401)**.
+- **결과**: bliss-app osxkeychain의 옛 토큰 무효 → **다음 `git push` 인증 실패할 것**. **새 토큰 발급**(scope repo, 만료기간 설정) 후 push 시 입력해 키체인 갱신. ⚠️ **naver-sync 자동화엔 절대 재사용 금지**(오염 원인).
+
+### ⚠️ [인계] naver-sync 자동배포 비활성화 — bliss_naver.py는 수동 배포
+- naver-sync crontab `git fetch/pull` 라인 **비활성화**(`#DISABLED_origin오염_20260612`). origin/master가 오염(curl 봇 + bliss_naver.py 8413줄 적은 옛버전)이라 자동 pull 차단. 정상본·crontab 백업함(`bliss_naver.py.GOOD_*`, `~/crontab.backup.*`).
+- **bliss_naver.py 변경은 이제 수동**: ssh로 서버 직접 수정 + `systemctl restart bliss-naver`(이번 영어매핑도 이 방식). origin push는 토큰/오염 정리 후.
+- 미정리: origin/master 노이즈 1970커밋(force push 필요, 신중). 자동화 도구 출처(외부 머신) 미파악 — 토큰 무효로 현재 무해.
+
+### ⏳ [검증 대기]
+- **카카오 직원답장**: 실 발송 1건 미검증. 직원이 카카오에서 손님에게 답장 시 블리스 대화에 매장 말풍선(out) 뜨는지 확인. 과거 답장은 watermark 지나 미수집(앞으로의 답장만).
+- **매출관리 차트 아이콘**: 데모 데이터 부족으로 라이브 시각검증 못함. 고객명 옆 아이콘 클릭→런처 확인 필요(ChartLauncher 자체는 예약목록서 검증됨).
+
+---
+
 ## 📌 [세션 인계] 2026-06-11 문자/입금/카카오/알람 작업 마무리 + 대기 3건
 > 이번 세션 완료분은 **CLAUDE.md 변경이력 v3.8.58~68 + deposit-app v1.9~v1.14**에 전부 기록됨(여기 중복 안 함). 아래는 **다음 세션이 이어받을 미완·대기**만.
 
