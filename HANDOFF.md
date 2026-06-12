@@ -11,9 +11,10 @@
 - **카카오 직원답장 수집**(kakao-bridge poll.mjs): 직원(author_id===pfId, user_type 1)을 direction='out'으로 INSERT. 데몬 unload→수정→load 완료.
 - **네이버 AI 시술매칭 영어 매핑**(서버 bliss_naver.py): 프롬프트 2곳에 armpit=겨드랑이 등 추가(외국인 영어 예약).
 
-### 🔴 [최우선 인계] bliss-deploy GitHub 토큰 무효화됨 — 다음 push 시 새 토큰 필요
+### 🔴 [보안조치 완료] bliss-deploy GitHub 토큰 무효화 — bliss-app 배포는 무영향
 - naver-sync origin이 정체불명 자동화(`run_shell:curl_final_001`, Anthropic API curl 호출 봇, 3/24~ 1970커밋)에 오염 → **`bliss-deploy` PAT(scope repo, 무기한) 노출 → 정우님이 GitHub에서 삭제(무효화 확인 401)**.
-- **결과**: bliss-app osxkeychain의 옛 토큰 무효 → **다음 `git push` 인증 실패할 것**. **새 토큰 발급**(scope repo, 만료기간 설정) 후 push 시 입력해 키체인 갱신. ⚠️ **naver-sync 자동화엔 절대 재사용 금지**(오염 원인).
+- **bliss-app 배포는 무영향**: 별도 자격증명 사용 → 2026-06-12 HANDOFF push 정상 성공. **새 토큰 불필요**. bliss-deploy는 naver-sync 자동화 전용이었음.
+- ⚠️ 향후 토큰 발급 시 **scope 최소화 + 만료기간 설정**, **naver-sync 자동화엔 재사용 금지**(오염 원인).
 
 ### ⚠️ [인계] naver-sync 자동배포 비활성화 — bliss_naver.py는 수동 배포
 - naver-sync crontab `git fetch/pull` 라인 **비활성화**(`#DISABLED_origin오염_20260612`). origin/master가 오염(curl 봇 + bliss_naver.py 8413줄 적은 옛버전)이라 자동 pull 차단. 정상본·crontab 백업함(`bliss_naver.py.GOOD_*`, `~/crontab.backup.*`).
