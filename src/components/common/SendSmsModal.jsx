@@ -43,6 +43,13 @@ export default function SendSmsModal({ open, onClose, customers = [], branches =
     if (!branchId && branchOptions[0]) setBranchId(branchOptions[0].id)
   }, [branchOptions, branchId])
 
+  // 기본 메시지 — 처음 열 때 빈 상태면 인사 템플릿 prefill. #{매장명}=상호+지점("하우스왁싱 강남점")이라
+  // 렌더 시 "○○님 하우스왁싱 강남점 입니다."로 나감 (변수 기반 → 멀티테넌트 안전, 직원이 이어서 작성)
+  useEffect(() => {
+    if (open && !message.trim()) setMessage('#{고객명}님 #{매장명} 입니다.\n')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
   // 템플릿 로드
   const loadTemplates = async () => {
     setTplLoading(true)
@@ -142,10 +149,11 @@ export default function SendSmsModal({ open, onClose, customers = [], branches =
   const branch = useMemo(() => branches.find(b => b.id === branchId) || {}, [branches, branchId])
 
   // 변수 치환 (미리보기용)
+  // #{매장명} = 전체 상호+지점 (예: "하우스왁싱 강남점") / #{지점명} = 지점만 (상호 접두사 제거, 예: "강남점")
   const buildCustomFields = (c) => ({
     고객명: c.name || '',
     매장명: branch.name || '',
-    지점명: branch.short || branch.name || '',
+    지점명: (branch.short || branch.name || '').replace(/^하우스왁싱\s*/, '').trim(),
     대표전화번호: branch.phone || '',
   })
   const renderTemplate = (tpl, fields) => {
