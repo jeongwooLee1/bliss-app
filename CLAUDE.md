@@ -3658,6 +3658,9 @@ v3.7.984 진단에서 미룬 데모 공지&요청 배지 "2" 건 수정.
 **증상**: 맥 크롬에 블리스 열어두니 계속 알람 소리, 읽지 않은 것도 없음. **원인**: 반복 알람(1분 4번)이 `hasPending || aiActiveCount>0`라, 확정대기·미읽 0이어도 **AI 상담중 대화 1건**(WhatsApp 독일번호, 11:54 AI 발신)이 있으면 계속 울림. 게다가 알람 직전 서버 재검증(유령 방어 v3.8.45)이 `!(aiActiveCount>0)` 조건이라 AI 상담중일 땐 재검증도 건너뛰고 무조건 비프.
 **fix**: 반복 알람 `hasAlarm = hasPending`(확정대기만) — **AI 상담중은 소리 빼고 배너로만**(타임라인 상단 배너 + ack 유지). AI 상담중 시작 1회 비프 effect도 제거. 확정대기·미읽 알람은 그대로(서버 재검증도 이제 항상 동작 — aiActiveCount 게이트 무력화됨). v3.7.991에서 정우님이 AI 상담중 소리를 요청했으나 실사용에서 거슬려 철회.
 
+### v3.8.75 — 카카오 채널 지점 표시 fix (account_id 정규화) (2026-06-12, 정우님)
+증상: 카카오 채널 메시지가 받은메시지함에서 지점 표시 안 됨. 원인: kakao-bridge가 `account_id="unknown"`으로 INSERT(파일럿 설정) → v3.8.69 `kakao_branch_override`(pfId→지점)가 매칭 실패. raw_payload.pf_id엔 실제 pfId(`_wPard` 등) 정확히 있음. fix: MessagesPage 모듈헬퍼 `_normKakaoMsg`/`_normKakaoArr` — 카카오 메시지의 account_id를 raw_payload.pf_id로 치환. loadMsgs(first/batch) + Realtime(INSERT push 2곳·UPDATE) 5곳 적용. **브릿지 안 건드림**(단일 세션 규칙 회피) + 기존 메시지도 즉시 지점 표시. 단 정규화 후 지점 필터 적용됨(강남 권한자/마스터만 강남 카카오 노출 — 의도된 동작).
+
 ### v3.8.74 — 예약모달 신규고객 차트버튼 표시 (custId 있으면 발송 허용) (2026-06-12, 정우님)
 ReservationModal 차트·동의서 버튼 `_canSend`에서 `!f.isNewCust` 조건 제거 → `f.custId && !startsWith("new_")`만. **custId(실제 레코드) 있으면 신규고객이어도 발송 가능**(네이버 자동등록 등 custId 있는데 isNewCust=true라 버튼 막히던 케이스 해소). custId=null인 미저장 신규는 `f.custId`로 자동 차단(변동 없음). → 차트·동의서 접근성 작업(타임라인·예약목록·매출관리·예약모달 + 고객관리 기존) 완료.
 

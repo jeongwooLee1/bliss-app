@@ -12,6 +12,11 @@ import { uploadImageToStorage } from '../../lib/supabase'
 
 // 지점 매핑은 data.branches에서 동적 생성 (하드코딩 제거)
 
+// 카카오 메시지 지점 정규화 — kakao-bridge가 account_id="unknown"으로 INSERT하므로
+//   raw_payload.pf_id(실제 채널 pfId)를 account_id로 치환해 settings.kakao_branch_override 매칭이 되게 함.
+const _kkPfId = (m) => { let rp = m?.raw_payload; if (typeof rp === 'string') { try { rp = JSON.parse(rp); } catch { return null; } } return rp?.pf_id || null; };
+const _normKakaoMsg = (m) => { if (m && m.channel === 'kakao') { const pf = _kkPfId(m); if (pf) return { ...m, account_id: pf }; } return m; };
+const _normKakaoArr = (arr) => Array.isArray(arr) ? arr.map(_normKakaoMsg) : arr;
 
 function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranches=[], isMaster=false, currentUser=null, pendingChat=null, onPendingChatDone, setPendingOpenRes, setPage, forceCompact=false, inboxResetKey=0, onClosePanel }) {
   // forceCompact: 사이드 패널 모드 — 좁은 폭에서 모바일 UI(리스트↔개별 토글) 사용
@@ -172,7 +177,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       ).then(r => r.json());
 
       // 1) 첫 페이지 즉시 반영
-      const first = await fetchPage(0);
+      const first = _normKakaoArr(await fetchPage(0));
       if (!Array.isArray(first)) return;
       setMsgs(first);
       const nm = {};
@@ -185,7 +190,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           let offset = 1000;
           for (let p = 0; p < 5; p++) {
             try {
-              const batch = await fetchPage(offset);
+              const batch = _normKakaoArr(await fetchPage(offset));
               if (!Array.isArray(batch) || batch.length === 0) break;
               setMsgs(prev => [...prev, ...batch]);
               const more = {};
@@ -220,16 +225,16 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                 && m.channel===p.new.channel
                 && (m.message_text||'').slice(0,40) === (p.new.message_text||'').slice(0,40));
               if (idx >= 0) {
-                const next = [...prev]; next[idx] = p.new; return next;
+                const next = [...prev]; next[idx] = _normKakaoMsg(p.new); return next;
               }
             }
-            return [...prev, p.new];
+            return [...prev, _normKakaoMsg(p.new)];
           });
           if(p.new.user_name) setNames(prev=>({...prev,[p.new.user_id]:p.new.user_name}));
         }}
       )
       ?.on("postgres_changes",{event:"UPDATE",schema:"public",table:"messages"},
-        p=>{ if(p?.new?.id) { lastMsgRt = Date.now(); setMsgs(prev=>prev.map(m=>m.id===p.new.id?{...m,...p.new}:m)); }}
+        p=>{ if(p?.new?.id) { lastMsgRt = Date.now(); const _nu=_normKakaoMsg(p.new); setMsgs(prev=>prev.map(m=>m.id===_nu.id?{...m,..._nu}:m)); }}
       )?.subscribe();
     const onVisible = () => { if(document.visibilityState==="visible") loadMsgs(); };
     document.addEventListener("visibilitychange", onVisible);
