@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>블리스미 콘텐츠 관리</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --accent: #4f46e5; --accent2: #7c3aed;
+    --ink: #1a1a2e; --mid: #6b7280; --soft: #f7f5f2;
+    --border: #e5e7eb; --green: #059669; --red: #dc2626; --gold: #d97706;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Noto Sans KR',sans-serif; background:var(--soft); color:var(--ink); line-height:1.6; }
+  .hidden { display:none !important; }
+
+  /* ── 로그인 ── */
+  #login-view { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .login-card { background:#fff; border-radius:16px; padding:32px 24px; width:100%; max-width:380px; box-shadow:0 4px 24px rgba(26,26,46,.08); }
+  .login-card h1 { font-size:20px; font-weight:900; color:var(--accent); margin-bottom:4px; }
+  .login-card p { font-size:14px; color:var(--mid); margin-bottom:24px; }
+  label { display:block; font-size:13px; font-weight:700; color:var(--ink); margin:14px 0 6px; }
+  input, textarea {
+    width:100%; font-family:inherit; font-size:16px; color:var(--ink);
+    border:1.5px solid var(--border); border-radius:12px; padding:12px 14px; background:#fff;
+  }
+  input:focus, textarea:focus { outline:none; border-color:var(--accent); }
+  textarea { resize:vertical; min-height:72px; }
+  .btn {
+    display:block; width:100%; font-family:inherit; font-size:16px; font-weight:700;
+    border:none; border-radius:12px; padding:14px; cursor:pointer; text-align:center;
+  }
+  .btn-primary { background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#fff; }
+  .btn-outline { background:#fff; color:var(--accent); border:1.5px solid var(--accent); }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .err { color:var(--red); font-size:13px; margin-top:12px; min-height:18px; }
+
+  /* ── 에디터 ── */
+  header {
+    position:sticky; top:0; z-index:50; background:rgba(255,255,255,.95); backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--border); padding:14px 18px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  header .title { font-size:16px; font-weight:900; color:var(--accent); }
+  header .logout { font-size:13px; color:var(--mid); background:none; border:none; cursor:pointer; font-family:inherit; }
+  #editor-view { max-width:560px; margin:0 auto; padding:16px 16px 130px; }
+
+  .status { display:flex; align-items:center; gap:8px; margin:4px 2px 14px; font-size:13px; color:var(--mid); flex-wrap:wrap; }
+  .chip { font-size:12px; font-weight:700; padding:3px 10px; border-radius:100px; }
+  .chip-ok   { background:#ecfdf5; color:var(--green); }
+  .chip-warn { background:#fffbeb; color:var(--gold); }
+  .chip-edit { background:#eef2ff; color:var(--accent); }
+
+  .card { background:#fff; border-radius:16px; padding:20px 18px; margin-bottom:16px; box-shadow:0 2px 12px rgba(26,26,46,.05); }
+  .card h2 { font-size:14px; font-weight:700; color:var(--mid); margin-bottom:12px; letter-spacing:.02em; }
+  .hint { font-size:12px; color:var(--mid); margin-top:6px; }
+
+  /* 미리보기 — 실제 히어로 축소판 */
+  .pv { text-align:center; padding:8px 4px; }
+  .pv-badge { display:inline-block; font-size:12px; font-weight:700; color:var(--accent); background:#eef2ff; border-radius:100px; padding:5px 14px; margin-bottom:12px; }
+  .pv-headline { font-size:21px; font-weight:900; line-height:1.4; margin-bottom:10px; word-break:keep-all; }
+  .pv-subcopy { font-size:14px; color:var(--mid); margin-bottom:10px; word-break:keep-all; }
+  .pv-highlight { font-size:15px; font-weight:700; color:var(--accent); margin-bottom:16px; word-break:keep-all; }
+  .pv-ctas { display:flex; gap:8px; justify-content:center; margin-bottom:12px; flex-wrap:wrap; }
+  .pv-cta1 { font-size:14px; font-weight:700; color:#fff; background:linear-gradient(135deg,var(--accent),var(--accent2)); border-radius:12px; padding:10px 18px; }
+  .pv-cta2 { font-size:14px; font-weight:700; color:var(--accent); border:1.5px solid var(--accent); border-radius:12px; padding:10px 18px; }
+  .pv-trust { font-size:12px; color:var(--mid); margin-bottom:14px; }
+  .pv-points { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; }
+  .pv-point { font-size:11px; font-weight:500; color:var(--ink); background:var(--soft); border-radius:8px; padding:5px 10px; }
+
+  /* 하단 고정 액션바 */
+  .actionbar {
+    position:fixed; left:0; right:0; bottom:0; z-index:60;
+    background:rgba(255,255,255,.97); border-top:1px solid var(--border);
+    padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+    display:flex; gap:10px; max-width:100%;
+  }
+  .actionbar .btn { flex:1; padding:13px; }
+
+  /* 탭 */
+  .tabbar { display:flex; gap:6px; margin:14px 0 4px; }
+  .tab {
+    flex:1; font-family:inherit; font-size:14px; font-weight:700; cursor:pointer;
+    padding:10px; border-radius:12px; border:1.5px solid var(--border); background:#fff; color:var(--mid);
+  }
+  .tab.active { border-color:var(--accent); color:var(--accent); background:#eef2ff; }
+
+  /* 디자인 요청 */
+  .req { border:1.5px solid var(--border); border-radius:12px; padding:14px; margin-bottom:10px; }
+  .req-text { font-size:14px; margin:8px 0 10px; white-space:pre-wrap; word-break:keep-all; }
+  .req-meta { font-size:12px; color:var(--mid); }
+  .req-actions { display:flex; gap:8px; margin-top:10px; }
+  .req-actions .btn { padding:10px; font-size:14px; }
+  .btn-danger { background:#fff; color:var(--red); border:1.5px solid var(--red); }
+  .req-err { font-size:12px; color:var(--red); margin-top:8px; word-break:break-all; }
+  a.preview-link { display:block; text-align:center; font-size:14px; font-weight:700; color:var(--accent);
+    border:1.5px solid var(--accent); border-radius:12px; padding:10px; text-decoration:none; margin-top:10px; }
+
+  /* 토스트 & 모달 */
+  #toast {
+    position:fixed; left:50%; bottom:100px; transform:translateX(-50%);
+    background:var(--ink); color:#fff; font-size:14px; font-weight:500;
+    padding:11px 20px; border-radius:100px; opacity:0; transition:opacity .25s; z-index:100;
+    max-width:90vw; text-align:center; pointer-events:none;
+  }
+  #toast.show { opacity:1; }
+  #modal-bg { position:fixed; inset:0; background:rgba(26,26,46,.5); z-index:90; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .modal { background:#fff; border-radius:16px; padding:24px 20px; width:100%; max-width:340px; }
+  .modal h3 { font-size:17px; font-weight:700; margin-bottom:8px; }
+  .modal p { font-size:14px; color:var(--mid); margin-bottom:20px; }
+  .modal .row { display:flex; gap:10px; }
+  .modal .btn { padding:12px; font-size:15px; }
+</style>
+</head>
+<body>
+
+<!-- 로그인 -->
+<div id="login-view">
+  <div class="login-card">
+    <h1>블리스미 콘텐츠 관리</h1>
+    <p>랜딩페이지 첫 화면 문구를 수정하고 발행합니다</p>
+    <label for="email">이메일</label>
+    <input id="email" type="email" autocomplete="username" inputmode="email">
+    <label for="password">비밀번호</label>
+    <input id="password" type="password" autocomplete="current-password">
+    <div class="err" id="login-err"></div>
+    <button class="btn btn-primary" id="btn-login">로그인</button>
+  </div>
+</div>
+
+<!-- 에디터 -->
+<div id="editor-view" class="hidden">
+  <header>
+    <span class="title">블리스미 콘텐츠 관리</span>
+    <button class="logout" id="btn-logout">로그아웃</button>
+  </header>
+
+  <div class="tabbar">
+    <button class="tab active" id="tab-btn-copy">문구 수정</button>
+    <button class="tab" id="tab-btn-design">디자인 요청</button>
+  </div>
+
+  <div id="tab-copy">
+  <div class="status">
+    <span class="chip" id="state-chip">불러오는 중…</span>
+    <span id="state-detail"></span>
+  </div>
+
+  <div class="card">
+    <h2>실제 화면 미리보기 — 입력하면 바로 반영됩니다</h2>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button class="tab active" id="pv-mobile" style="flex:0 0 auto;padding:6px 14px;font-size:13px">모바일</button>
+      <button class="tab" id="pv-desktop" style="flex:0 0 auto;padding:6px 14px;font-size:13px">PC</button>
+    </div>
+    <div id="pv-wrap" style="display:flex;justify-content:center;background:#eceae6;border-radius:12px;padding:10px;overflow:hidden">
+      <iframe id="pv-frame" sandbox="" style="width:375px;max-width:100%;height:520px;border:none;border-radius:8px;background:#fff"></iframe>
+    </div>
+    <div class="hint" id="pv-note">실제 랜딩페이지에 수정 중인 문구를 입혀서 보여줍니다 (움직이는 데모 등 일부 요소는 정지 상태)</div>
+  </div>
+
+  <div class="card">
+    <h2>말로 수정하기</h2>
+    <textarea id="nl-input" rows="2" placeholder='예: "AI 자동 상담·예약"을 "인공지능이 상담 예약을 해요~"로 바꿔줘 / 헤드라인을 더 친근하게'></textarea>
+    <button class="btn btn-primary" id="btn-nl" style="margin-top:10px">적용하기</button>
+    <div class="hint" id="nl-note" style="margin-top:8px"></div>
+  </div>
+
+  <div class="card">
+    <h2>문구 수정</h2>
+    <div class="hint" style="margin:0 0 4px">페이지에서 수정 가능한 문구를 자동으로 찾아 보여줍니다</div>
+    <div id="form-fields"><div class="req-meta">불러오는 중…</div></div>
+  </div>
+
+  <div class="card">
+    <h2>AI 카피 제안</h2>
+    <div class="hint" style="margin:0 0 12px">학습된 마케팅 지식을 바탕으로 헤드라인·문구 개선안을 제안받습니다. 마음에 드는 안을 적용한 뒤 수정·발행하세요.</div>
+    <button class="btn btn-outline" id="btn-ai">제안 받기</button>
+    <div id="ai-list" style="margin-top:12px"></div>
+  </div>
+  </div><!-- /tab-copy -->
+
+  <div id="tab-design" class="hidden">
+    <div class="card">
+      <h2>레이아웃·디자인 수정 요청</h2>
+      <textarea id="req-input" rows="4" placeholder="예: 요금제 섹션을 FAQ 위로 옮겨줘 / 무료 시작 버튼을 더 크고 눈에 띄게"></textarea>
+      <div class="hint">AI가 사이트 코드를 수정해 미리보기를 만들어 드립니다 (수 분 소요). 미리보기 확인 후 "사이트에 반영"을 누르면 실제 사이트에 적용됩니다.</div>
+      <button class="btn btn-primary" id="btn-req" style="margin-top:12px">요청 보내기</button>
+    </div>
+    <div class="card">
+      <h2>요청 내역</h2>
+      <div id="req-list"><div class="req-meta">불러오는 중…</div></div>
+    </div>
+  </div><!-- /tab-design -->
+
+  <div class="actionbar">
+    <button class="btn btn-outline" id="btn-save">임시저장</button>
+    <button class="btn btn-primary" id="btn-publish">발행하기</button>
+  </div>
+</div>
+
+<!-- 발행 확인 모달 -->
+<div id="modal-bg" class="hidden">
+  <div class="modal">
+    <h3>지금 발행할까요?</h3>
+    <p>수정한 문구가 저장되고, 1~2분 안에 실제 사이트(blissme.ai)에 반영됩니다.</p>
+    <div class="row">
+      <button class="btn btn-outline" id="btn-cancel">취소</button>
+      <button class="btn btn-primary" id="btn-confirm">발행</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SB_URL = "https://dpftlrsuqxqqeouwbfjd.supabase.co";
+const SB_KEY = "sb_publishable_3H-KTP0MoV_KuY74ocbefw_3Ze5xBJj";
+const sb = supabase.createClient(SB_URL, SB_KEY);
+
+const LABELS = {
+  "hero.badge": "상단 뱃지", "hero.headline": "메인 헤드라인", "hero.subcopy": "본문",
+  "hero.highlight": "강조 문구 (보라색 한 줄)", "hero.cta_primary": "버튼 1 (메인)",
+  "hero.cta_secondary": "버튼 2 (보조)", "hero.trust_line": "버튼 아래 신뢰 문구",
+  "hero.points.0": "신뢰바 1", "hero.points.1": "신뢰바 2", "hero.points.2": "신뢰바 3", "hero.points.3": "신뢰바 4",
+};
+const SECTION_NAMES = { hero: "첫 화면 (히어로)", pain: "공감 섹션", features: "기능 소개", pricing: "요금제", faq: "자주 묻는 질문", story: "스토리", promo: "오픈 혜택", cta: "마지막 행동 유도" };
+
+let template = "";
+let fields = [];
+let drafts = {};
+let savedSnapshot = "";
+let publishedSnapshot = {};
+let publishedAt = null;
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const rich = (s) => esc(s).replace(/\*\*([^*]+)\*\*/g,"<strong>$1</strong>").replace(/\n/g,"<br>");
+
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2600);
+}
+
+function getVal(path) {
+  const [sec, ...keys] = path.split(".");
+  let cur = drafts[sec];
+  for (const k of keys) { if (cur == null) return undefined; cur = cur[/^\d+$/.test(k) ? Number(k) : k]; }
+  return typeof cur === "string" ? cur : undefined;
+}
+function setVal(path, value) {
+  const [sec, ...keys] = path.split(".");
+  if (!drafts[sec]) drafts[sec] = {};
+  let cur = drafts[sec];
+  for (let i = 0; i < keys.length - 1; i++) {
+    const k = /^\d+$/.test(keys[i]) ? Number(keys[i]) : keys[i];
+    const nextIsIdx = /^\d+$/.test(keys[i + 1]);
+    if (cur[k] == null || typeof cur[k] !== "object") cur[k] = nextIsIdx ? [] : {};
+    cur = cur[k];
+  }
+  const last = keys[keys.length - 1];
+  cur[/^\d+$/.test(last) ? Number(last) : last] = value;
+}
+
+function refreshState() {
+  const chip = $("state-chip"), detail = $("state-detail");
+  const dirty = JSON.stringify(drafts) !== savedSnapshot;
+  const unpublished = Object.keys(drafts).some((s) => JSON.stringify(drafts[s]) !== (publishedSnapshot[s] ?? "{}"));
+  if (dirty) { chip.className = "chip chip-edit"; chip.textContent = "수정 중 · 저장 안 됨"; }
+  else if (unpublished) { chip.className = "chip chip-warn"; chip.textContent = "저장됨 · 발행 대기"; }
+  else { chip.className = "chip chip-ok"; chip.textContent = "사이트와 동일"; }
+  detail.textContent = publishedAt ? "마지막 발행 " + new Date(publishedAt).toLocaleString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
+}
+
+let pvTimer = null;
+function renderPreview() {
+  clearTimeout(pvTimer);
+  pvTimer = setTimeout(() => {
+    if (!template) return;
+    const injected = template.replace(
+      /(<([a-zA-Z][\w-]*)\b[^>]*\bdata-cms="([^"]+)"[^>]*>)([\s\S]*?)(<\/\2>)/g,
+      (m, open, tag, path, _inner, close) => {
+        const v = getVal(path);
+        return v === undefined ? m : open + rich(v) + close;
+      }
+    );
+    $("pv-frame").srcdoc = injected;
+  }, 250);
+}
+function setPvWidth(mode) {
+  $("pv-frame").style.width = mode === "mobile" ? "375px" : "100%";
+  $("pv-frame").style.height = mode === "mobile" ? "520px" : "620px";
+  $("pv-mobile").classList.toggle("active", mode === "mobile");
+  $("pv-desktop").classList.toggle("active", mode !== "mobile");
+}
+
+async function loadAll() {
+  try {
+    const r = await fetch("/landing.html", { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    template = await r.text();
+  } catch (_) {
+    template = "";
+    $("pv-note").textContent = "⚠ 미리보기를 불러오지 못했습니다 — blissme.ai/admin.html 에서 접속해야 실제 화면 미리보기가 동작합니다.";
+  }
+
+  fields = [];
+  if (template) {
+    const doc = new DOMParser().parseFromString(template, "text/html");
+    doc.querySelectorAll("[data-cms]").forEach((el) => {
+      const path = el.getAttribute("data-cms");
+      if (!path || fields.some((f) => f.path === path)) return;
+      fields.push({ path, section: path.split(".")[0], original: (el.textContent || "").trim().replace(/\s+/g, " ") });
+    });
+  }
+
+  const { data, error } = await sb.from("landing_sections").select("id, draft, published, published_at");
+  if (error) { toast("불러오기 실패: " + error.message); return; }
+  drafts = {}; publishedSnapshot = {}; publishedAt = null;
+  for (const row of data || []) {
+    drafts[row.id] = row.draft || {};
+    publishedSnapshot[row.id] = JSON.stringify(row.published || {});
+    if (row.published_at && (!publishedAt || row.published_at > publishedAt)) publishedAt = row.published_at;
+  }
+  savedSnapshot = JSON.stringify(drafts);
+  buildForm(); renderPreview(); refreshState();
+}
+
+function buildForm() {
+  const wrap = $("form-fields");
+  if (!fields.length) {
+    wrap.innerHTML = '<div class="req-meta">수정 가능한 문구를 찾지 못했습니다 (blissme.ai/admin.html 에서 접속했는지 확인해 주세요)</div>';
+    return;
+  }
+  let html = "", lastSection = "";
+  for (const f of fields) {
+    if (f.section !== lastSection) {
+      lastSection = f.section;
+      html += '<div style="font-size:13px;font-weight:700;color:var(--accent);margin:18px 0 2px">' + esc(SECTION_NAMES[f.section] || f.section) + "</div>";
+    }
+    const label = LABELS[f.path] || '"' + esc(f.original.slice(0, 26)) + (f.original.length > 26 ? "…" : "") + '"';
+    if (getVal(f.path) === undefined) setVal(f.path, f.original);
+    const val = getVal(f.path);
+    const long = val.length > 38 || val.includes("\n");
+    html += "<label>" + label + "</label>" +
+      (long
+        ? '<textarea data-field="' + esc(f.path) + '" rows="' + Math.min(4, val.split("\n").length + 1) + '">' + esc(val) + "</textarea>"
+        : '<input data-field="' + esc(f.path) + '" value="' + esc(val).replace(/"/g, "&quot;") + '">');
+  }
+  wrap.innerHTML = html;
+  savedSnapshot = JSON.stringify(drafts);
+  wrap.querySelectorAll("[data-field]").forEach((el) => {
+    el.addEventListener("input", () => { setVal(el.dataset.field, el.value); renderPreview(); refreshState(); });
+  });
+}
+function fillForm() {
+  document.querySelectorAll("#form-fields [data-field]").forEach((el) => {
+    const v = getVal(el.dataset.field);
+    if (v !== undefined) el.value = v;
+  });
+}
+
+async function saveDraft() {
+  const btn = $("btn-save"); btn.disabled = true; btn.textContent = "저장 중…";
+  const { data: { user } } = await sb.auth.getUser();
+  const rows = Object.keys(drafts).map((id) => ({
+    id, draft: drafts[id], updated_by: user?.email ?? "staff", updated_at: new Date().toISOString(),
+  }));
+  const { error } = await sb.from("landing_sections").upsert(rows);
+  btn.disabled = false; btn.textContent = "임시저장";
+  if (error) { toast("저장 실패: " + error.message); return false; }
+  savedSnapshot = JSON.stringify(drafts);
+  refreshState(); return true;
+}
+
+async function publish() {
+  $("modal-bg").classList.add("hidden");
+  const btn = $("btn-publish"); btn.disabled = true; btn.textContent = "발행 중…";
+  try {
+    if (!(await saveDraft())) return;
+    const changed = Object.keys(drafts).filter((s) => JSON.stringify(drafts[s]) !== (publishedSnapshot[s] ?? "{}"));
+    const targets = changed.length ? changed : Object.keys(drafts);
+    for (const section of targets) {
+      const { data, error } = await sb.functions.invoke("publish-landing", { body: { section } });
+      if (error) throw new Error(error.message || "발행 요청 실패");
+      if (data?.error) throw new Error(data.error);
+      publishedSnapshot[section] = JSON.stringify(drafts[section]);
+    }
+    publishedAt = new Date().toISOString();
+    refreshState();
+    toast("발행됐어요 — 잠시 후(최대 1~2분) 사이트에 반영됩니다");
+  } catch (e) {
+    toast("발행 실패: " + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "발행하기";
+  }
+}
+
+/* ── 말로 수정하기 ── */
+async function nlEdit() {
+  const txt = $("nl-input").value.trim();
+  if (!txt) { toast("수정할 내용을 입력해 주세요"); return; }
+  const btn = $("btn-nl"); btn.disabled = true; btn.textContent = "AI가 수정 중… (10초 정도)";
+  $("nl-note").textContent = "";
+  try {
+    const payload = fields.map((f) => ({ path: f.path, label: LABELS[f.path] || "", value: getVal(f.path) ?? f.original }));
+    const { data, error } = await sb.functions.invoke("edit-copy", { body: { instruction: txt, fields: payload } });
+    if (error) throw new Error(error.message || "요청 실패");
+    if (data?.error) throw new Error(data.error);
+    const changes = data.changes || [];
+    if (!changes.length) {
+      $("nl-note").textContent = data.note || "해당하는 문구를 찾지 못했어요 — 좀 더 구체적으로 말해 주세요.";
+      return;
+    }
+    for (const c of changes) if (c.path && typeof c.value === "string") setVal(c.path, c.value);
+    fillForm(); renderPreview(); refreshState();
+    // 바뀐 입력란 하이라이트
+    for (const c of changes) {
+      const el = document.querySelector('#form-fields [data-field="' + CSS.escape(c.path) + '"]');
+      if (el) { el.style.borderColor = "var(--accent)"; setTimeout(() => { el.style.borderColor = ""; }, 2500); }
+    }
+    $("nl-input").value = "";
+    $("nl-note").textContent = (data.note ? data.note + " · " : "") + changes.length + "개 문구가 바뀌었어요 — 미리보기 확인 후 발행하세요";
+    toast(changes.length + "개 문구 수정됨");
+  } catch (e) {
+    toast("수정 실패: " + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "적용하기";
+  }
+}
+
+let aiSuggestions = [];
+async function aiSuggest() {
+  const btn = $("btn-ai"); btn.disabled = true; btn.textContent = "제안 생성 중… (20초 정도)";
+  $("ai-list").innerHTML = "";
+  try {
+    const { data, error } = await sb.functions.invoke("suggest-copy", { body: { section: "hero" } });
+    if (error) throw new Error(error.message || "요청 실패");
+    if (data?.error) throw new Error(data.error);
+    aiSuggestions = data.suggestions || [];
+    if (!aiSuggestions.length) throw new Error("제안이 비어 있어요 — 다시 시도해 주세요");
+    $("ai-list").innerHTML = aiSuggestions.map((s, i) =>
+      '<div class="req">' +
+      '<span class="chip chip-edit">' + esc(s.label || "제안 " + (i + 1)) + "</span>" +
+      '<div class="req-text"><strong>' + rich(s.headline || "") + "</strong><br>" +
+      rich(s.subcopy || "") + '<br><span style="color:var(--accent);font-weight:700">' + rich(s.highlight || "") + "</span></div>" +
+      (s.rationale ? '<div class="req-meta">' + esc(s.rationale) + "</div>" : "") +
+      '<div class="req-actions"><button class="btn btn-primary" onclick="applySuggestion(' + i + ')">이 안 적용</button></div>' +
+      "</div>").join("");
+  } catch (e) {
+    toast("AI 제안 실패: " + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "제안 받기";
+  }
+}
+function applySuggestion(i) {
+  const s = aiSuggestions[i]; if (!s) return;
+  for (const f of ["badge", "headline", "subcopy", "highlight"]) if (s[f]) setVal("hero." + f, s[f]);
+  fillForm(); renderPreview(); refreshState();
+  toast("적용됐어요 — 미리보기 확인 후 발행하세요");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+window.applySuggestion = applySuggestion;
+
+let pollTimer = null;
+function switchTab(name) {
+  const copy = name === "copy";
+  $("tab-copy").classList.toggle("hidden", !copy);
+  $("tab-design").classList.toggle("hidden", copy);
+  document.querySelector(".actionbar").classList.toggle("hidden", !copy);
+  $("tab-btn-copy").classList.toggle("active", copy);
+  $("tab-btn-design").classList.toggle("active", !copy);
+  clearInterval(pollTimer);
+  if (!copy) { loadRequests(); pollTimer = setInterval(loadRequests, 15000); }
+}
+
+const STATUS_LABEL = {
+  pending:       ["chip-warn", "대기 중"],
+  in_progress:   ["chip-edit", "AI 작업 중…"],
+  preview_ready: ["chip-ok",   "미리보기 완료 — 확인해 주세요"],
+  approved:      ["chip-edit", "반영 준비 중…"],
+  merging:       ["chip-edit", "사이트 반영 중…"],
+  done:          ["chip-ok",   "사이트 반영됨"],
+  failed:        ["chip-warn", "실패 — 다시 요청해 주세요"],
+  rejected:      ["chip-warn", "거절됨"],
+};
+async function sendRequest() {
+  const txt = $("req-input").value.trim();
+  if (!txt) { toast("요청 내용을 입력해 주세요"); return; }
+  const btn = $("btn-req"); btn.disabled = true;
+  const { data: { user } } = await sb.auth.getUser();
+  const { error } = await sb.from("design_requests").insert({ request: txt, requested_by: user?.email ?? "staff" });
+  btn.disabled = false;
+  if (error) { toast("요청 실패: " + error.message); return; }
+  $("req-input").value = "";
+  toast("요청을 보냈어요 — AI가 작업을 시작합니다");
+  loadRequests();
+}
+async function loadRequests() {
+  const { data, error } = await sb.from("design_requests").select("*").order("created_at", { ascending: false }).limit(20);
+  if (error) { $("req-list").innerHTML = '<div class="req-meta">불러오기 실패</div>'; return; }
+  if (!data.length) { $("req-list").innerHTML = '<div class="req-meta">아직 요청이 없습니다</div>'; return; }
+  $("req-list").innerHTML = data.map((r) => {
+    const [cls, label] = STATUS_LABEL[r.status] || ["chip-warn", r.status];
+    const when = new Date(r.created_at).toLocaleString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
+    let extra = "";
+    if (r.preview_url && ["preview_ready","approved","merging","done"].includes(r.status))
+      extra += '<a class="preview-link" href="' + esc(r.preview_url) + '" target="_blank" rel="noopener">미리보기 열기 ↗</a>';
+    if (r.status === "preview_ready")
+      extra += '<div class="req-actions">' +
+        '<button class="btn btn-danger" onclick="actRequest(\'' + r.id + '\',\'rejected\')">거절</button>' +
+        '<button class="btn btn-primary" onclick="actRequest(\'' + r.id + '\',\'approved\')">사이트에 반영</button></div>';
+    if (r.status === "failed" && r.error)
+      extra += '<div class="req-err">' + esc(r.error).slice(0, 300) + "</div>";
+    return '<div class="req"><span class="chip ' + cls + '">' + label + "</span>" +
+      '<div class="req-text">' + esc(r.request) + "</div>" +
+      '<div class="req-meta">' + esc(r.requested_by ?? "") + " · " + when + "</div>" + extra + "</div>";
+  }).join("");
+}
+async function actRequest(id, status) {
+  if (status === "approved" && !confirm("미리보기를 확인하셨나요? 실제 사이트(blissme.ai)에 반영됩니다.")) return;
+  const { error } = await sb.from("design_requests").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
+  if (error) { toast("처리 실패: " + error.message); return; }
+  toast(status === "approved" ? "반영을 시작합니다 — 1~2분 걸려요" : "요청을 거절했어요");
+  loadRequests();
+}
+window.actRequest = actRequest;
+
+async function login() {
+  const btn = $("btn-login"); btn.disabled = true; $("login-err").textContent = "";
+  const { error } = await sb.auth.signInWithPassword({ email: $("email").value.trim(), password: $("password").value });
+  btn.disabled = false;
+  if (error) { $("login-err").textContent = "로그인 실패 — 이메일과 비밀번호를 확인하세요"; return; }
+  enterEditor();
+}
+async function enterEditor() {
+  $("login-view").classList.add("hidden");
+  $("editor-view").classList.remove("hidden");
+  await loadAll();
+}
+
+$("btn-login").addEventListener("click", login);
+$("password").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
+$("btn-logout").addEventListener("click", async () => { await sb.auth.signOut(); location.reload(); });
+$("btn-save").addEventListener("click", saveDraft);
+$("btn-publish").addEventListener("click", () => $("modal-bg").classList.remove("hidden"));
+$("btn-cancel").addEventListener("click", () => $("modal-bg").classList.add("hidden"));
+$("btn-confirm").addEventListener("click", publish);
+$("tab-btn-copy").addEventListener("click", () => switchTab("copy"));
+$("tab-btn-design").addEventListener("click", () => switchTab("design"));
+$("btn-req").addEventListener("click", sendRequest);
+$("btn-ai").addEventListener("click", aiSuggest);
+$("btn-nl").addEventListener("click", nlEdit);
+$("pv-mobile").addEventListener("click", () => setPvWidth("mobile"));
+$("pv-desktop").addEventListener("click", () => setPvWidth("desktop"));
+
+sb.auth.getSession().then(({ data: { session } }) => { if (session) enterEditor(); });
+</script>
+</body>
+</html>
