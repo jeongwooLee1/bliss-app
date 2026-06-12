@@ -3658,6 +3658,10 @@ v3.7.984 진단에서 미룬 데모 공지&요청 배지 "2" 건 수정.
 **증상**: 맥 크롬에 블리스 열어두니 계속 알람 소리, 읽지 않은 것도 없음. **원인**: 반복 알람(1분 4번)이 `hasPending || aiActiveCount>0`라, 확정대기·미읽 0이어도 **AI 상담중 대화 1건**(WhatsApp 독일번호, 11:54 AI 발신)이 있으면 계속 울림. 게다가 알람 직전 서버 재검증(유령 방어 v3.8.45)이 `!(aiActiveCount>0)` 조건이라 AI 상담중일 땐 재검증도 건너뛰고 무조건 비프.
 **fix**: 반복 알람 `hasAlarm = hasPending`(확정대기만) — **AI 상담중은 소리 빼고 배너로만**(타임라인 상단 배너 + ack 유지). AI 상담중 시작 1회 비프 effect도 제거. 확정대기·미읽 알람은 그대로(서버 재검증도 이제 항상 동작 — aiActiveCount 게이트 무력화됨). v3.7.991에서 정우님이 AI 상담중 소리를 요청했으나 실사용에서 거슬려 철회.
 
+### v3.8.72 — 예약목록 차트·동의서 점 클릭 → 보내기/보기 런처 (2026-06-12, 정우님)
+직원 요청: 예약목록에서도 차트를 보내고 작성내용을 볼 수 있어야. **공통화**: `lib/chartInfo.js`(`loadChartInfo(rid,bizId)` — ReservationModal 빌더 추출) + `components/Consent/ChartLauncher.jsx`(target.reservation→ConsentModal 상태별 보내기/보기, target.custId→DocsViewer). 예약목록 상태 점을 **클릭 가능**하게(9px+ring) → `setChartTarget({reservation})` → ChartLauncher. 라이브 검증: 점 클릭 시 "차트 & 동의서·{고객}" 모달 정상.
+**조사 결과(중요)**: **고객관리는 이미 ConsentPanel("동의서·차트" 탭)에서 작성차트 다 보임**(customer_id+reservation_id 매칭, DocsViewer, PDF) — 코드 불필요. **매출관리는 consentRowMap이 "구매 동의서"(선불권/패키지 charge)만** 표시, 시술 차트 누락 — 합치는 방식 미정. 예약모달은 신규고객(isNewCust) 차트버튼 미표시 이슈 잔존(다음).
+
 ### v3.8.71 — 예약목록 차트·동의서 미발송 가시화 + 미발송 필터 (1단계 완성) (2026-06-12, 정우님)
 ReservationList(예약목록)에 v3.8.70과 동일한 배치 로더(`chartStatusByRid`, `resFinal` rids 80개 청크) + **고객명 앞 상태 점**(회색/노랑깜박/녹색, 모바일·데스크탑 행 공통 `chartDot`) + 상태탭 우측 **"미발송만" 토글**(`unsentOnly`→`resShown` 필터, 미발송 건수 뱃지). 페이지네이션·고객배치로드 모두 `resShown` 기준. 이로써 1단계(가시화) 완성 — 타임라인+예약목록 점 + 예약목록 필터.
 **다음**: ②서버 당일·임박 자동발송 강화 ③왓츠앱 연결 고객 자동 차트링크. 발송은 QR 아닌 **링크 직접 전송** 원칙.

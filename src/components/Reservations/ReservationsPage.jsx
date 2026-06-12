@@ -5,6 +5,7 @@ import { fromDb } from '../../lib/db'
 import { todayStr, genId, fmtLocal, groupSvcNames, useSessionState, TTL } from '../../lib/utils'
 import I from '../common/I'
 import TimelineModal from '../Timeline/ReservationModal'
+import ChartLauncher from '../Consent/ChartLauncher'
 
 const fmt = (n) => n == null ? "0" : Number(n).toLocaleString("ko-KR");
 const _mc = (fn) => { if(fn) fn(); };
@@ -471,6 +472,7 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
   //   타임라인과 동일 로직. 'none'(미발송) 가시화 + 미발송 필터용. custId 없는 예약 제외.
   const [chartStatusByRid, setChartStatusByRid] = useState({});
   const [unsentOnly, setUnsentOnly] = useState(false);
+  const [chartTarget, setChartTarget] = useState(null); // 차트·동의서 런처 대상 예약(점 클릭)
   const _chartRidsKey = React.useMemo(() =>
     [...new Set(resFinal.filter(r => r.custId && !r.isSchedule && !String(r.custId).startsWith("new_")).map(r => r.id))].join(","),
     [resFinal]);
@@ -801,11 +803,12 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
         // 📋 차트·동의서 상태 점 (회색=미발송/노랑깜박=발송·서명대기/녹색=완료). 차트 대상 예약만(맵에 있을 때)
         const _cs = chartStatusByRid[r.id];
         const chartDot = _cs ? (() => {
-          const cfg = _cs === "signed" ? { c:"#059669", t:"차트·동의서 작성완료" }
-            : _cs === "sent" ? { c:"#F59E0B", t:"차트·동의서 발송됨 · 서명 대기" }
-            : { c:"#9CA3AF", t:"차트·동의서 미발송" };
-          return <span title={cfg.t} className={_cs==="sent"?"doc-pending-blink":""}
-            style={{display:"inline-block",width:7,height:7,borderRadius:"50%",background:cfg.c,flexShrink:0,verticalAlign:"middle"}} />;
+          const cfg = _cs === "signed" ? { c:"#059669", t:"차트·동의서 작성완료 — 클릭해서 보기" }
+            : _cs === "sent" ? { c:"#F59E0B", t:"차트·동의서 발송됨 · 서명 대기 — 클릭해서 보기/추가발송" }
+            : { c:"#9CA3AF", t:"차트·동의서 미발송 — 클릭해서 보내기" };
+          return <span onClick={(e)=>{e.stopPropagation(); setChartTarget({reservation:r});}} title={cfg.t}
+            className={_cs==="sent"?"doc-pending-blink":""}
+            style={{display:"inline-block",width:9,height:9,borderRadius:"50%",background:cfg.c,flexShrink:0,verticalAlign:"middle",cursor:"pointer",boxShadow:`0 0 0 3px ${cfg.c}22`}} />;
         })() : null;
         const handleClick = ()=>{
           if (isHidden) {
@@ -1011,6 +1014,8 @@ function ReservationList({ data, setData, userBranches, isMaster, setPage, setPe
       setData={setData}
       setPage={setPage}
     />}
+    {/* 📋 차트·동의서 런처 — 점 클릭 시 상태별로 보내기/보기 */}
+    {chartTarget && <ChartLauncher target={chartTarget} data={data} onClose={()=>setChartTarget(null)} />}
   </div>;
 }
 
