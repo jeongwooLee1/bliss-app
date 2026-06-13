@@ -3248,9 +3248,13 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       }
     }
     // viewport 기준 offset 저장 — floating preview 위치 계산용
-    // 스냅 드래그: 블록의 viewport top을 formula로 계산 (DOM 측정 비신뢰 → known sticky 영역 명시)
+    // 고스트 시작 세로위치 = 드래그한 블록의 "실측" viewport top.
+    // (formula(topbarH+headerH 가정)는 실제 sticky 높이와 상수만큼 달라 표시시간이 실제보다 항상 일정하게 어긋나던 버그 — 2026-06-13 fix)
     const _scrRect = sr ? sr.getBoundingClientRect() : { top: 0 };
-    const blockTopV = (_scrRect.top || 0) + topbarH + headerH + timeToY(block.time) - (sr?.scrollTop || 0);
+    const _measuredTopV = e.currentTarget?.getBoundingClientRect?.().top;
+    const blockTopV = (typeof _measuredTopV === "number" && !isNaN(_measuredTopV))
+      ? _measuredTopV
+      : (_scrRect.top || 0) + topbarH + headerH + timeToY(block.time) - (sr?.scrollTop || 0);
     clickOffsetRef.current = {
       x: clickOffsetX, y: clickOffsetYView, yGrid: clickOffsetY,
       startClientY: startPt.clientY,
