@@ -1792,11 +1792,23 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   };
   // 지점명: 네이버/IG는 외부 계정ID(_ACC_NAME), SMS·기타는 account_id가 bid → data.branches에서 직접 조회.
   // (여러 지점 담당자가 문자가 어느 지점 건지 알 수 있게 — id_sz... 류 요청)
+  // SMS는 한 대의 매장폰을 두 지점이 공유(강남+왕십리 / 마곡+홍대 / 위례+잠실) → 어느 지점 손님인지 번호로 구분 불가
+  // → 지점 표시를 묶음 라벨로(용산·천호는 단독이라 그대로). 정우님 요청
+  const _smsPairLabel=(label)=>{
+    const s=String(label||"").replace(/^하우스왁싱\s*/,"");
+    if(/강남|왕십리/.test(s)) return "강남왕십리";
+    if(/마곡|홍대/.test(s)) return "홍대마곡";
+    if(/위례|잠실/.test(s)) return "위례잠실";
+    return null;
+  };
   const branchName=(m)=>{
     const acc=m?.account_id; if(!acc) return "";
     if(_ACC_NAME[acc]) return _ACC_NAME[acc];
     const b=(data?.branches||[]).find(x=>String(x.id)===String(acc));
-    return b ? (b.short||b.name||"") : "";
+    if(!b) return "";
+    const label=b.short||b.name||"";
+    if(m?.channel==="sms"){ const pair=_smsPairLabel(label); if(pair) return pair; }
+    return label;
   };
 
   // 모바일 목록 렌더 (인스타 스타일)
