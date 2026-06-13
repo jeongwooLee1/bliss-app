@@ -246,11 +246,20 @@ def run_case(c, facts):
     ai_booking._last_processed_result = None
 
     t0 = time.time()
-    try:
-        reply = ai_booking.ai_booking_agent(user_msg=user_msg, account_id=account_id, user_id=user_id,
-                                             channel=channel, force=True, suggest_only=True)
-    except Exception as e:
-        reply = f"[ERROR {e}]"
+    # 빈 응답/에러는 LLM API 일시 오류(Gemini 빈 completion)일 수 있어 최대 3회 재시도 — 가짜 회귀 방지
+    reply = ""
+    for _attempt in range(3):
+        CAP["book"] = CAP["cancel"] = CAP["defer"] = False
+        _CAP_SYS["sys"] = ""
+        ai_booking._last_processed_result = None
+        try:
+            reply = ai_booking.ai_booking_agent(user_msg=user_msg, account_id=account_id, user_id=user_id,
+                                                 channel=channel, force=True, suggest_only=True)
+        except Exception as e:
+            reply = f"[ERROR {e}]"
+        if (reply or "").strip() and not reply.startswith("[ERROR"):
+            break
+        time.sleep(1.5)
     dt = round(time.time()-t0, 1)
 
     behavior = behavior_class()
