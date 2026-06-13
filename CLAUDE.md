@@ -4096,3 +4096,7 @@ HANDOFF 후속 수정요청 묶음 2차.
 - **직원 추가 팝업 지원/이동 2버튼 제거 → 단일 "근무 추가"** (`TimelinePage` doAdd): "지원(원래지점~시작, 이후 대상지점)"·"이동(종일 대상지점)" 분기 제거 → 항상 **선택 지점에 시작시간부터 종일 단독 근무**(exclusive). 시작 미지정이면 종일. 부분지원(분할 근무)은 **직원 이름 클릭 → "직원 이동·근무" 팝업**에서(기능 보존 — [[feedback_design_preserve_features]]).
 - **selected_services 객체 저장 버그([object Object]) → ID 문자열 정규화** (`ReservationModal`): 예약 저장 시 `selectedServices`에 객체(`{id,name,price}`)가 섞이면 로그·DB가 `[object Object]`로 오염 → `_normSvcIds`(객체면 `.id` 추출, 문자열 그대로)로 정규화 후 저장(`onSave`에 `selectedServices:_newSvc`). 시술 변경 감지(`_svcChanged`)도 정규화 ID 비교.
 - **AI 시술 자동분석 과매칭 방지** (`TimelinePage`, 수동예약+시술 미선택 시): ① **메모/요청사항에 시술 단서 있을 때만** 분석(이름만으론 추측 금지, `_hasSvcSignal`) ② 프롬프트에 "명시적 언급만, 추측·확장 금지, 전체 목록 나열 금지" ③ **매칭 >8개면 환각 의심 → 자동입력 생략**(직원 직접 선택) ④ 자동입력은 시술 **ID 문자열 배열**로 저장(객체 오염 방지, 위 정규화와 일관).
+
+### v3.8.87 — 예약블럭 드래그 시 표시시간≠실제시간(고스트 세로 오프셋) fix (2026-06-13, 정우님)
+작업세션(worktree-customer-merge) cherry-pick·배포(배포세션). React only.
+- 드래그 고스트(floating preview) 시작 세로위치를 formula(`_scrRect.top + topbarH + headerH + timeToY`)로 계산하던 것 → **드래그한 블록의 실측 viewport top**(`e.currentTarget.getBoundingClientRect().top`)으로 변경. formula의 topbarH+headerH 가정이 실제 sticky 높이와 상수만큼 달라 **표시시간이 실제보다 항상 일정하게 어긋나던 버그**. 실측 실패 시 formula로 폴백.
