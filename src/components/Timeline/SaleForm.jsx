@@ -2053,11 +2053,13 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   const _newPkgDeductMax = newPrepaidActiveTotal > 0
     ? Math.min(Math.max(0, newPrepaidActiveTotal - eventDiscountPrepaid), svcAfterAllDiscounts + _prodRemainForNewPkg)
     : 0;
-  // 새 다담권 즉시차감: 수동 입력값(상한 클램프) 우선, 없으면 자동(할인 후 '시술'잔액 vs 충전 잔액 중 작은 값)
+  // 새 다담권 즉시차감: 수동 입력값(상한 클램프) 우선, 없으면 자동.
+  // 기본값 = 충전액 한도 내 '시술+제품' 전부 차감(=_newPkgDeductMax). 충전하면서 그 자리에서 산 시술·제품을 충전액으로 결제(정우님 2026-06-13).
+  // 충전·제품 분리 결제를 원하면 직원이 차감 칸을 내림(박재은식). (이전엔 기본=시술까지만, 제품은 수동 — 직원이 칸 못 찾아 '충전+제품' 이중 표시로 혼선)
   newPkgInstantDeduct = newPrepaidActiveTotal > 0
     ? (newPkgDeductManual != null
         ? Math.min(Math.max(0, newPkgDeductManual), _newPkgDeductMax)
-        : Math.min(svcAfterAllDiscounts, Math.max(0, newPrepaidActiveTotal - eventDiscountPrepaid)))
+        : _newPkgDeductMax)
     : 0;
   const grandTotal = Math.max(0, svcTotal + prodTotal - discount - promoDiscountTotal - couponDiscountTotal - evtCouponDiscountTotal - eventDiscountTotal - naverDeduct - externalDeduct - pkgDeduct - newPkgInstantDeduct - pointDeduct - svcCompedTotal - prodCompedTotal - svcSubFreeTotal);
   // 실제 결제할 금액 (예약금·할인·이벤트·쿠폰·보유권·신규다담권즉시차감·체험단제공 차감)
@@ -4500,9 +4502,11 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
                         style={{flex:1,minWidth:0,border:"none",outline:"none",background:"transparent",textAlign:"right",
                           fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:clr,padding:0}}/>
                     </div>
-                    {_newPkgDeductMax > newPkgInstantDeduct && (
+                    {_prodRemainForNewPkg > 0 && (
                       <div style={{fontSize:9,color:"#9A5B00",textAlign:"right",lineHeight:1.3}}>
-                        제품까지 차감하려면 금액 수정 (최대 {fmt(_newPkgDeductMax)})
+                        {newPkgInstantDeduct > svcAfterAllDiscounts
+                          ? "제품도 충전액에서 차감 중 — 따로 결제하려면 차감액 ↓"
+                          : `제품까지 차감하려면 금액 ↑ (최대 ${fmt(_newPkgDeductMax)})`}
                       </div>
                     )}
                   </div>;
