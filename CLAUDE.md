@@ -4048,3 +4048,8 @@ HANDOFF 후속 수정요청 묶음 2차.
 
 ### v3.8.81 — 타임라인 보기전환 일/주/월 → 단일 순환 버튼 (날짜줄 인라인) (2026-06-13, 정우님)
 일/주/월 드롭다운(별도 줄)을 제거하고, **14일 날짜 버튼 줄(.tl-days) 맨 앞에 단일 버튼**으로 끼워넣음 — 탭하면 일→주→월 순환, 현재 뷰 라벨(일/주/월) 표시(보라). 모바일에서 한 줄 차지 안 함. day-body 안이라 day 뷰에서 보이고, 주/월은 CalendarViews 자체 드롭다운으로 전환(기존). v3.8.81 라이브.
+
+### v3.8.82 + 서버 — 동의서 모달 닫기 경고 제거 + AI 예약 즉시 차트링크 발송 (2026-06-13, 정우님)
+- **#2 (v3.8.82) 닫기 경고창 제거** (`ConsentModal.handleClose`): 차트&동의서 모달에서 템플릿 고르고 보내기 전 닫으면 뜨던 native confirm("아직 보내기 전입니다…") 제거 → 바로 닫힘. (native confirm 금지 원칙도 부합)
+- **#1 (서버 ai_booking.py) AI 예약 즉시 차트/동의서 링크 발송**: 기존엔 AI 예약=`status=request`라 rsv_today 리마인더(reserved/confirmed 대상)에서 빠져 확정 전엔 차트링크 안 나갔음. → `create_booking_from_ai` 예약 INSERT 성공 직후 **신규·자동(AI) 예약**(`cust_id && not existing && not manual`)이면 `_pick_chart_tpls(is_new,True)`(신규=신규차트+오늘관리/기존=오늘관리)로 consent_token 발급(만료=예약일23:59 또는 +72h, prefill reservation_id) + 손님 채널(send_queue, 같은 channel/user_id)로 한·영 차트 링크 메시지 발송. 수동([AI 예약등록] 버튼)·변경은 제외(앱에서 직원이 제어). 백업 `ai_booking.py.bak_chartlink_*`, restart active. consent_tokens 페이로드 검증(삽입→삭제). 
+  - **유의**: 확정 후 당일 rsv_today 리마인더도 차트링크 포함 가능(중복 가능성) — 예약 ack + 당일 리마인더라 허용. 카카오 채널은 send_queue 발송 불가(블리스→카카오 전송 제한)라 미도달 가능. 첫 작동은 다음 실 AI 자동예약(`[ai_booking] chart link sent` 로그).

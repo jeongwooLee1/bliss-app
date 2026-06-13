@@ -91,11 +91,8 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
 
   const smsHasPhone = /^01[016789]\d{7,8}$/.test(String(cust?.phone || '').replace(/[^0-9]/g, ''))
 
-  // 발송 완료(result) 전인데 템플릿을 골라둔 상태로 닫으려 하면 경고 — "눌렀는데 안 갔다" 방지
-  const handleClose = () => {
-    if (!result && selectedIds.length > 0 && !window.confirm('아직 보내기 전입니다.\n"보내기"를 누르지 않으면 고객에게 전송되지 않아요.\n그냥 닫을까요?')) return
-    onClose?.()
-  }
+  // 닫기 — 경고창 없이 바로 닫음 (정우님 요청)
+  const handleClose = () => { onClose?.() }
 
   const send = async (via, chatChan) => {
     if (selectedIds.length === 0) return alert('템플릿을 1개 이상 선택하세요.')
