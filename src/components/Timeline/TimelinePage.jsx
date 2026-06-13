@@ -4113,13 +4113,6 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           </div>
           
         </div>
-        {/* 보기 전환 드롭다운 (일/주/월) — "오늘" 날짜탭 왼쪽 */}
-        <select value={calView==="day"?"day":calView} onChange={(e)=>setCalView(e.target.value)} title="보기 전환 (일/주/월)"
-          style={{height:32,border:"1px solid #d0d0d0",borderRadius:T.radius.md,background:T.bgCard,color:T.text,fontSize:T.fs.sm,fontWeight:T.fw.bolder,padding:"0 6px",cursor:"pointer",flexShrink:0,marginRight:6}}>
-          <option value="day">일</option>
-          <option value="week">주</option>
-          <option value="month">월</option>
-        </select>
         {/* Row 2 (mobile) / inline (desktop): 14-day buttons + 모바일 스와이프 */}
         <div className="tl-days"
           onTouchStart={(e)=>{ const t=e.touches[0]; e.currentTarget._tStart={x:t.clientX,y:t.clientY,t:Date.now()}; }}
@@ -4133,6 +4126,11 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             e.currentTarget._tStart = null;
           }}
           style={{display:"flex",gap:2,alignItems:"center",overflowX:"auto",scrollbarWidth:"none"}}>
+          {/* 보기 전환 — 단일 버튼(탭하면 일→주→월 순환). 날짜 버튼 줄에 끼워넣음 (정우님) */}
+          <button onClick={()=>setCalView(calView==="day"?"week":calView==="week"?"month":"day")} title="보기 전환 (탭: 일→주→월)"
+            style={{minWidth:34,height:32,borderRadius:T.radius.md,border:"1px solid "+T.primary,background:T.primaryLt,color:T.primaryDk||T.primary,fontSize:T.fs.sm,fontWeight:800,cursor:"pointer",fontFamily:"inherit",flexShrink:0,marginRight:4,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            {calView==="week"?"주":calView==="month"?"월":"일"}
+          </button>
           {(()=>{ const _staff = currentUser?.role === 'staff'; const _len = _staff?7:14; const _off = _staff?-3:0;
             return Array.from({length:_len},(_,i)=>{
             const dt = new Date(); dt.setDate(dt.getDate()+i+_off);
