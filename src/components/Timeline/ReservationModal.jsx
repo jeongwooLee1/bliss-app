@@ -3109,8 +3109,10 @@ ${naverText}
                 const _dateChanged = item?.id && !isSchedule && item?.date !== f.date;
                 const _startTimeChanged = item?.id && !isSchedule && item?.time !== f.time;
                 // 시술 메뉴 변경 감지 (내부일정 제외)
-                const _prevSvc = Array.isArray(item?.selectedServices) ? item.selectedServices : [];
-                const _newSvc = Array.isArray(f.selectedServices) ? f.selectedServices : [];
+                // selected_services에 객체가 섞여도 ID로 정규화 — 레거시 오염 데이터 방어 ([object Object] 로그 버그, 2026-06-13)
+                const _normSvcIds = (arr) => (Array.isArray(arr) ? arr : []).map(s => (s && typeof s === 'object') ? s.id : s).filter(Boolean);
+                const _prevSvc = _normSvcIds(item?.selectedServices);
+                const _newSvc = _normSvcIds(f.selectedServices);
                 const _svcChanged = item?.id && !isSchedule && (
                   _prevSvc.length !== _newSvc.length ||
                   _prevSvc.some(id => !_newSvc.includes(id)) ||
@@ -3266,7 +3268,7 @@ ${naverText}
                     sb.insert('customer_behavior_log', _entry).catch(e => console.warn('[behavior_log] insert err:', e?.message));
                   }
                 }
-                onSave({...f, memo: memoToSave, scheduleLog: scheduleLogToSave, tsLog: newLog, selectedTags: autoTags, isSchedule, _isColTemplate: item?._isColTemplate, _templateId: item?._templateId, _initialServerSnap: initialServerSnap,
+                onSave({...f, selectedServices: _newSvc, memo: memoToSave, scheduleLog: scheduleLogToSave, tsLog: newLog, selectedTags: autoTags, isSchedule, _isColTemplate: item?._isColTemplate, _templateId: item?._templateId, _initialServerSnap: initialServerSnap,
                   chatChannel: f.chatChannel||item?.chatChannel||"", chatAccountId: f.chatAccountId||item?.chatAccountId||"", chatUserId: f.chatUserId||item?.chatUserId||""});
               }}>{item?.id?"저장":"등록"}</button>
               {/* AI 예약 확정 버튼 */}
