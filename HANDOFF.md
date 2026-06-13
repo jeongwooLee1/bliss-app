@@ -19,9 +19,8 @@
 ### ✅ #7 입금 자동화 완료 (DB 중심 — pg_cron + RPC, 서버 메인 미수정)
 - **deposit_amount 기록**: `ai_booking.py` 예약 생성 시 LLM이 예약금 케이스면 `booking.depositAmount` 반환 → `reservations.deposit_amount` 기록 (입금 대기 식별 기반). 룰16 + 응답스키마 + create row.
 - **자동매칭** RPC `match_deposits_auto()` + cron `deposit-auto-match`(매분, **실가동**): `bank_deposits`(pending) ↔ 확정대기(`request`)+`deposit_amount` 예약을 **금액+입금자명 일치 1건만**(보수적) 자동매칭 → `external_prepaid`·예약금완료 태그(`tag_sys_예약금완료`)·`status=reserved` + `send_queue` 입금확인 알림. 모호(0/복수/이름불일치)하면 수동(기존 `BankDeposits.jsx`).
-- **자동취소** RPC `cancel_expired_deposits(p_dry_run)` + cron `deposit-expire-cancel-dryrun`(10분, **dry_run=true 안전모드**): 미입금 만료(오전 이른예약 10:00~10:59=예약일 전날 20:00 / 일반=예약생성+2h) → `cancelled`+취소 알림.
-  - ⚠️ **실가동 전환**(LLM depositAmount 정확성 며칠 확인 후): `SELECT cron.unschedule('deposit-expire-cancel-dryrun'); SELECT cron.schedule('deposit-expire-cancel','*/10 * * * *', $$SELECT cancel_expired_deposits(false)$$);`
-  - 모니터링: `SELECT * FROM cron.job_run_details WHERE jobname LIKE 'deposit%' ORDER BY start_time DESC` / 수동 dry-run `SELECT cancel_expired_deposits(true)`
+- **자동취소** RPC `cancel_expired_deposits(p_dry_run)` + cron `deposit-expire-cancel`(10분, **실가동** `cancel_expired_deposits(false)` — 2026-06-14 dry-run 단위검증 후 정우님 승인하에 실가동): 미입금 만료(오전 이른예약 10:00~10:59=예약일 전날 20:00 / 일반=예약생성+2h) → `cancelled`+취소 알림.
+  - 끄기: `SELECT cron.unschedule('deposit-expire-cancel')`. 모니터링: `SELECT * FROM cron.job_run_details WHERE jobname LIKE 'deposit%' ORDER BY start_time DESC LIMIT 20`. 수동 점검(취소X): `SELECT cancel_expired_deposits(true)`.
 - 단위검증 완료(매칭·보수성(이름불일치 skip)·dry-run·실취소). 마이그레이션: `deposit_auto_match_v2`, `deposit_expire_cancel_v2`. 예약금완료 태그는 `selected_tags`라 기존 예약모달 UI에 자동 표시(프론트 변경 불필요).
 
 ## 📌 [세션 인계] 2026-06-12 차트가시화·카카오·시술매칭 + ⚠️토큰 보안조치
