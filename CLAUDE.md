@@ -4059,3 +4059,11 @@ HANDOFF 후속 수정요청 묶음 2차.
 **원인** `ReservationModal.isNaverItem`: ① reservation_id가 `aibook_...`(레거시 AI id)면 `ai_` 접두사 체크에 안 걸림 ② source="AI 예약"(미등록 레거시)이 외부소스 목록에 없음 → **isNaverItem=true로 오판** → 네이버 스마트플레이스 예약처럼 표시.
 **fix**: ① `_EXT_PREFIXES`에 `aibook_` 추가 ② **채팅 채널 가드** `!item.chatChannel`(인스타/왓츠앱/라인/네이버톡/카톡 채팅으로 들어온 예약은 스마트플레이스 네이버 예약 아님) ③ `_EXT_SOURCES`에 인스타/whatsapp/line/텔레그램/ai 예약 추가. 실제 네이버 스크랩 예약은 chat_channel=null·숫자 reservation_id라 무영향.
 **데이터 교정**: 레거시 source "AI 예약"(인스타 3건)→"인스타", "ai_booking"(라인 1건)→"LINE". (현재 코드는 CHANNEL_SOURCE_MAP으로 instagram→인스타 정상 — 신규는 OK였고 과거 레거시만 교정). v3.8.83 라이브.
+
+### 서버 — AI 예약 차트링크 타이밍: 즉시발송 철회 → 당일/전날 리마인더로 통일 (2026-06-13, 정우님)
+**배경**: v3.8.82에서 넣은 "AI 예약 즉시 차트링크 발송"이 **예약 시점=며칠 전**에 발송돼 너무 일렀음(천호 정훈석 월 10시 예약인데 금요일에 차트 링크 발송됨, created_by=ai_booking). 정우님: 차트는 당일 리마인더 타이밍이어야 함.
+**수정**:
+- `ai_booking.py` `create_booking_from_ai`의 즉시 차트링크 발송 블록 **제거**(예약 시점 발송 안 함).
+- `bliss_naver.py` 리마인더 대상에 **AI 예약(request) 포함**: ① `reservation_reminder_thread._process_window`(rsv_1day/rsv_today, 010·알림톡) status `in.(reserved,confirmed)` → `in.(reserved,confirmed,request)` ② `_send_chat_reminders`(채팅 채널) status `in.(reserved,confirmed,pending)` → `+request`.
+- 결과: AI 예약(확정대기)도 다른 예약과 동일하게 **방문 전날/당일** 차트 링크 받음(즉시 X). 백업 `ai_booking.py.bak_revertimm_*`/`bliss_naver.py.bak_reqreminder_*`, restart active.
+**유의**: v3.8.82 배포~철회 사이(~1h)에 생긴 AI 예약은 이미 즉시 링크를 받았을 수 있음(되돌리기 불가, 소수). 이후로는 당일/전날만. request도 리마인더 대상이라 미확정 AI 예약 손님도 당일 안내+차트 받음(정우님 승인).
