@@ -4129,3 +4129,11 @@ HANDOFF 후속 수정요청 묶음 2차.
 **증상**: v3.8.81에서 일/주/월 순환 버튼을 14일 날짜탭 줄(.tl-days) 맨 앞에 끼워넣었더니, 요일·날짜 캘린더 바로 옆에 붙어 "탭마다 일→주→월 바뀌는 단일 버튼"이 날짜탭과 혼동됨(모바일).
 **fix** (`TimelinePage.jsx`): 날짜탭 줄의 순환 버튼 제거 → **툴바(Row 1) 좌측 맨 앞에 세그먼트 컨트롤 [일|주|월]** 배치(`setCalView(v)` 직접 선택, 활성 셀 보라 강조). 날짜탭(Row 2)과 다른 줄로 완전 분리 + 3개 옵션이 다 보여 순환 추측 불필요. Row 1은 flexWrap이라 모바일 안 잘림.
 **유의**: 이 세그먼트는 day-body(스크롤영역) 안이라 **일 뷰에서만 표시**(주/월 전환용). 주/월 뷰에선 day-body가 display:none → CalendarViews 자체 스위처(드롭다운)로 일 복귀. 검증: 모바일 375px — 세그먼트 y=58(툴바)·날짜탭 y=133(분리), 일↔주 전환·콘솔 에러 0.
+
+### 서버 — AI 성급예약 방지 (예약 문의 중 멋대로 예약 등록) + 골든 게이트 강화 (2026-06-13, React 변경 0)
+**증상**(정우님): 고객과 예약 '문의' 중인데 AI가 먼저 예약을 등록해버림.
+**원인(룰 충돌)**: 프롬프트에 정반대 두 룰 공존 — 신중룰("가용/가격 묻는 단계면 예약 말 것", L2607·2667-2668) vs 공격룰("★★★필수 3개면 무조건 book★★★", "재확인 절대 금지", "예약 가능 여부 절대 스스로 판단마 무조건 book", L2758·2765·2855·11번룰) + **코드 사후보정1**(ask_info→book 강제 승격, 필수4+이름). 공격룰·사후보정1이 신중룰을 덮어써, 손님이 정보를 다 말하면(문의여도) 즉시 예약 등록. (under-booking 막으려 "무조건 book"을 강하게 박은 게 반대로 과해진 것 — 룰끼리 싸우는 구조)
+**fix** (`ai_booking.py`, 백업 `bak_inquiry_*`): ① 공격룰 4개 완화 — "무조건 book/재확인 금지/스스로 판단마" → "**예약 의사가 분명할 때만 book**, 가용·가격 문의(되나요?/가능?/얼마?)면 정보 다 있어도 답만+'이대로 잡아드릴까요?' 확인". ② **사후보정1에 예약의사(commit) 게이트** — ask_info→book 승격을 '예약 의사'(예약해/잡아주세요/book/하고싶 — **전체 대화 inbound 스캔**, 또는 AI가 "잡아드릴까요?" 물은 뒤 긍정) 있을 때만. 없으면(문의) 승격 안 함. `systemctl restart bliss-naver` 적용.
+**골든 검증**: 신규 케이스 `inquiry_availability`("강남 토요일 3시 브라질리언 되나요?" → noop, 하드게이트) 5회 전부 noop(예약 안 함) + commit 케이스(new_booking_foreign·multimsg·capacity·couple·change_time·gender_flow_2) 매번 book → under-booking 회귀 0. (commit 정규식은 마지막 메시지가 아니라 전체 inbound 스캔 — multimsg 첫 메시지 "I would like to book" 놓침 방지)
+**골든 게이트 강화(같이)** (commit 1adc2da): ① golden_run.py 빈응답/에러 **3회 재시도**(Gemini 빈 completion API 플레이크 차단 — new_booking_foreign 빈응답 1회 사례). ② **faq_not_defer·address_question·simple_greeting → known-open**: 봇(temp>0+RAG)·LLM심판 비결정성으로 콘텐츠 간헐 플레이크(~1/5), action은 항상 정확 → 하드게이트서 제외(가짜 회귀 차단), known_note로 실제 이슈 추적(faq=RAG 생리중왁싱 못끌어와 담당자떠넘김 / address=영답에 한국어주소 혼용 / greeting=심판 재질문 과엄격). **베이스라인 23/23 하드게이트 PASS, 3회 연속 결정적**.
+**유의**: 성급예약 방지는 "예약 의사 분명할 때만 등록"으로 — "예약해주세요/잡아주세요/book/하고싶어요" 또는 AI의 "잡아드릴까요?"에 "네"일 때만. 명확한 예약요청은 그대로 즉시 등록(under-booking 안 감). known-open 3건은 봇/RAG 신뢰도 개선 시 하드게이트 재승격 대상.
