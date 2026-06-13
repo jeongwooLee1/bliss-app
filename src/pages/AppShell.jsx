@@ -27,7 +27,7 @@ import BlissRequests from '../components/BlissRequests/BlissRequests'
 import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 
 const uid = genId;
-const BLISS_V = "3.8.84"
+const BLISS_V = "3.8.85"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -2159,6 +2159,21 @@ function App() {
       window.removeEventListener('scroll', onActivity, true);
     };
   }, [newVer]);
+
+  // 새 버전 대기 중 탭(라우트) 이동 시 즉시 reload — 모바일은 스크롤/탭이 잦아 "60초 무입력" 자동갱신이 거의 안 걸림.
+  // 탭 전환은 작성 중간이 아니므로 안전(입력 포커스 시엔 보류). 모바일 업데이트 누락 해결.
+  const _pathVerRef = useRef(location.pathname);
+  useEffect(() => {
+    if (newVer && location.pathname !== _pathVerRef.current) {
+      const ae = document.activeElement;
+      const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable);
+      if (!typing) {
+        try { window.location.href = location.pathname + "?v=" + newVer; } catch { window.location.reload(); }
+        return;
+      }
+    }
+    _pathVerRef.current = location.pathname;
+  }, [location.pathname, newVer]);
 
   // Phase 1: Load all users on mount + auto-login from saved session
   const initRef = useRef(false);
