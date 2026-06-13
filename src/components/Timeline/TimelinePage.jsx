@@ -4441,7 +4441,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                               const baseBr = (data?.branches||[]).find(b=>b.id===baseBid);
                               const supportFrom = addStaffPopup.supportFrom || "";
                               const hours = Array.from({length:48},(_,i)=>{const h=Math.floor(i/2),m=(i%2)*30;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;}).filter(t=>{const hh=parseInt(t);return hh>=startHour&&hh<endHour;});
-                              const doAdd = (exclusive) => {
+                              const doAdd = () => {
                                 // 휴무자 추가 시 schHistory 즉시 근무로 전환 (UI 반영)
                                 if (addStaffPopup.wasOff) {
                                   setSchHistory(prev => {
@@ -4452,31 +4452,10 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                   });
                                 }
                                 const overrideKey = empName+"_"+selDate;
-                                let ovData;
-                                // 원래 지점 근무시간 (base segment 생성 전에 0분 여부 판단용)
-                                const baseWh = baseBid ? (empWorkHours[empName+"_"+baseBid+"_"+selDate] || empWorkHours[empName+"_"+baseBid]) : null;
-                                const baseStartTime = baseWh?.start || ((data?.branches||[]).find(b=>b.id===baseBid)?.timelineSettings?.defaultWorkStart || "11:00");
-                                if(exclusive) {
-                                  // 이동: 시간 지정되면 분할 이동 (원래 지점 ~시간 활성, 대상 지점 시간~ 활성)
-                                  if(supportFrom && baseBid && supportFrom > baseStartTime) {
-                                    const segs = [
-                                      {branchId:baseBid, from:null, until:supportFrom},
-                                      {branchId:targetBid, from:supportFrom, until:null}
-                                    ];
-                                    ovData = {segments:segs};
-                                  } else {
-                                    // 시간 없거나 원래 지점 근무 시작 전 이동 = 종일 이동
-                                    ovData = {segments:[{branchId:targetBid,from:supportFrom||null,until:null}],exclusive:true};
-                                  }
-                                } else {
-                                  // 지원: 원래 지점(~시작시간) + 대상 지점(시작시간~) 둘 다 유지
-                                  const from = supportFrom || "14:00";
-                                  const segs = [];
-                                  // 원래 지점 근무 시작 >= 이동 시작이면 base 세그먼트 생략 (0분 세그먼트 방지)
-                                  if(baseBid && from > baseStartTime) segs.push({branchId:baseBid, from:null, until:from});
-                                  segs.push({branchId:targetBid, from, until:null});
-                                  ovData = {segments:segs};
-                                }
+                                // 선택한 지점에 시작시간부터 종일 근무 (홈 지점 분할 없음).
+                                // 지원/이동 구분 제거 — 직원 추가는 항상 대상 지점 단독 근무 (2026-06-13 정우님 요청).
+                                // 부분지원은 직원 이름 클릭 → "직원 이동·근무" 팝업에서.
+                                const ovData = {segments:[{branchId:targetBid, from:supportFrom||null, until:null}], exclusive:true};
                                 setEmpBranchOverride(p=>({...p,[overrideKey]:ovData}));
                                 syncOverrideToSch(empName, selDate, ovData);
                                 setAddStaffPopup(null);
@@ -4487,17 +4466,14 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                   <span style={{fontSize:10,color:T.textMuted}}>시작</span>
                                   <select value={supportFrom} onChange={e=>setAddStaffPopup(p=>({...p,supportFrom:e.target.value}))}
                                     style={{flex:1,fontSize:11,padding:"3px 4px",borderRadius:6,border:"1px solid "+T.border}}>
-                                    <option value="">시간 선택</option>
+                                    <option value="">종일 (시작 미지정)</option>
                                     {hours.filter(h=>{const hh=parseInt(h);return hh>=startHour&&hh<endHour;}).map(h=><option key={h} value={h}>{h}</option>)}
                                   </select>
                                 </div>
                                 <div style={{display:"flex",gap:6}}>
-                                  <button onClick={()=>doAdd(false)} disabled={!supportFrom}
-                                    style={{flex:1,padding:"6px 0",borderRadius:7,border:"none",background:supportFrom?"#4CAF50":T.gray300,color:"#fff",fontSize:11,fontWeight:700,cursor:supportFrom?"pointer":"not-allowed"}}
-                                    title="원래 매장은 시작시간까지, 이후 이 매장">지원</button>
-                                  <button onClick={()=>doAdd(true)}
+                                  <button onClick={()=>doAdd()}
                                     style={{flex:1,padding:"6px 0",borderRadius:7,border:"none",background:T.primary,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}
-                                    title="원래 매장에서 제거, 종일 이 매장">이동</button>
+                                    title="선택한 지점에 시작시간부터 종일 근무로 추가 (비우면 종일)">근무 추가</button>
                                   <button onClick={()=>setAddStaffPopup(p=>({...p,selectedEmp:null}))}
                                     style={{padding:"6px 8px",borderRadius:7,border:"1px solid "+T.border,background:T.bgCard,fontSize:11,cursor:"pointer"}}>취소</button>
                                 </div>
