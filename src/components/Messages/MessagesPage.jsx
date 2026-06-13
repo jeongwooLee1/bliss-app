@@ -1832,8 +1832,8 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       <div style={{marginTop:4,paddingTop:4,borderTop:"1px dashed "+T.border}}>
         {cust ? (<>
           <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-            <span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:compact?11:12.5,fontWeight:700,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary+"40",borderRadius:6,padding:"1px 6px",whiteSpace:"nowrap"}} title={cust.phone||""}>
-              <I name="user" size={10}/> {cust.name}{cust.custNum?` #${cust.custNum}`:""}{cust.phone?` · ${cust.phone}`:""}
+            <span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:compact?11:12.5,fontWeight:700,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary+"40",borderRadius:6,padding:"1px 6px",whiteSpace:"nowrap"}} title={cust.phone && !String(cust.phone).startsWith("no_phone")?cust.phone:""}>
+              <I name="user" size={10}/> {cust.name}{cust.custNum?` #${cust.custNum}`:""}{cust.phone && !String(cust.phone).startsWith("no_phone")?` · ${cust.phone}`:""}
               <button onClick={unlinkCustomer} title="고객 연결 해제" style={{marginLeft:2,background:"none",border:"none",padding:"0 2px",fontSize:12,fontWeight:900,color:T.textMuted,cursor:"pointer",lineHeight:1,fontFamily:"inherit"}}>×</button>
             </span>
           </div>

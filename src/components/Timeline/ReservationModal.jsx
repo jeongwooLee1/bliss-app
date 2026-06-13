@@ -2966,7 +2966,9 @@ ${naverText}
           {/* ═══ 수동 예약 등록정보 + 일정변경 로그 (변경 내역) — 직원 메모 바로 위 ═══
              네이버 예약도 schedule_log는 표시 (등록 시각만 네이버 예약정보 박스와 중복되니 비-네이버에서만) */}
           {item?.id && !isSchedule && (()=>{
-            const c = (!isNaverItem && item?.createdAt) ? new Date(item.createdAt) : null;
+            // 등록시각 표시: 진짜 네이버 예약(숫자 예약번호 또는 naver_reg_dt)만 제외 — 네이버는 위 예약정보 박스에 등록시각이 이미 있어 중복. AI(ai_*)·수동(manual_*)·카톡(kakao_*)·외부 예약은 표시 (정우님 #5 2026-06-13: isNaverItem=!!reservationId라 모든 내부 예약도 숨겨지던 버그)
+            const _isNaverResv = !!(item?.naverRegDt) || !!(item?.reservationId && /^\d+$/.test(String(item.reservationId)));
+            const c = (!_isNaverResv && item?.createdAt) ? new Date(item.createdAt) : null;
             const regFmt = c && !isNaN(c)
               ? `${String(c.getMonth()+1).padStart(2,"0")}-${String(c.getDate()).padStart(2,"0")} ${String(c.getHours()).padStart(2,"0")}:${String(c.getMinutes()).padStart(2,"0")}`
               : "";

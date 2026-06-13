@@ -3854,7 +3854,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   // Date helpers
   const DAYS_KR = ["일","월","화","수","목","금","토"];
   const sd = new Date(selDate);
-  const dateLabel = `${String(sd.getMonth()+1).padStart(2,"0")}월 ${String(sd.getDate()).padStart(2,"0")}일 (${DAYS_KR[sd.getDay()]})`;
+  const dateLabel = window.innerWidth<=768
+    ? `${sd.getMonth()+1}/${sd.getDate()}(${DAYS_KR[sd.getDay()]})`
+    : `${String(sd.getMonth()+1).padStart(2,"0")}월 ${String(sd.getDate()).padStart(2,"0")}일 (${DAYS_KR[sd.getDay()]})`;
 
   return (
     <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0}}>
@@ -4083,18 +4085,18 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         {/* Top Bar - sticky (v3.8.39: 스크롤 영역 안으로 복귀 — 우측 스크롤바가 툴바 높이까지 올라가도록) */}
         <div ref={topbarRef} className="tl-topbar" style={{position:"sticky",top:0,left:0,zIndex:30,borderBottom:"none",boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",background:T.bgCard,padding:"6px 12px",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",minWidth:"100%",boxSizing:"border-box",overflow:"visible"}}>
         {/* Row 1: Date nav + settings + branch */}
-        <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0,flexWrap:"wrap",maxWidth:"100%"}}>
+        <div style={{display:"flex",alignItems:"center",gap:window.innerWidth<=768?3:6,flexShrink:0,flexWrap:"wrap",maxWidth:"100%"}}>
           {/* 보기 전환 세그먼트 [일|주|월] — 날짜 탭(아래 줄)과 분리해 툴바 좌측에 배치, 혼동 방지 (정우님 2026-06-13) */}
           <div style={{display:"flex",flexShrink:0,border:"1px solid #d0d0d0",borderRadius:T.radius.md,overflow:"hidden"}}>
             {[["day","일"],["week","주"],["month","월"]].map(([v,lbl],i)=>(
               <button key={v} onClick={()=>setCalView(v)} title={lbl+" 보기"}
-                style={{height:32,padding:"0 11px",border:"none",borderLeft:i?"1px solid #e0e0e0":"none",
+                style={{height:window.innerWidth<=768?28:32,padding:window.innerWidth<=768?"0 8px":"0 11px",border:"none",borderLeft:i?"1px solid #e0e0e0":"none",
                   background:calView===v?T.primary:T.bgCard,color:calView===v?T.bgCard:T.gray600,
-                  fontSize:T.fs.sm,fontWeight:calView===v?800:500,cursor:"pointer",fontFamily:"inherit",lineHeight:1}}>{lbl}</button>
+                  fontSize:window.innerWidth<=768?T.fs.xs:T.fs.sm,fontWeight:calView===v?800:500,cursor:"pointer",fontFamily:"inherit",lineHeight:1}}>{lbl}</button>
             ))}
           </div>
           <button onClick={()=>changeDate(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:T.fs.sm,color:T.gray600,padding:"2px 4px",flexShrink:0}}><I name="chevL" size={14}/></button>
-          <span className="tl-date-label" onClick={()=>setShowCal(!showCal)} style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.text,flexShrink:0,whiteSpace:"nowrap",cursor:"pointer"}}>{dateLabel}</span>
+          <span className="tl-date-label" onClick={()=>setShowCal(!showCal)} style={{fontSize:window.innerWidth<=768?T.fs.xs:T.fs.sm,fontWeight:T.fw.bolder,color:T.text,flexShrink:0,whiteSpace:"nowrap",cursor:"pointer"}}>{dateLabel}</span>
           <div style={{position:"relative",flexShrink:0}}>
             
             {showCal && <MiniCal selDate={selDate} onSelect={d=>{setSelDate(d);setShowCal(false);}} onClose={()=>setShowCal(false)}/>}
@@ -4122,7 +4124,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
               <text x="12" y="15.5" textAnchor="middle" fontSize="9.5" fontWeight="900" fill="#03C75A" fontFamily="-apple-system,BlinkMacSystemFont,sans-serif">N</text>
             </svg>
           </button>
-          <button onClick={()=>setShowQuickBook(true)} title="AI 빠른 예약 등록 (대화/메모 붙여넣으면 AI가 예약 자동 작성)" style={{padding:"0 12px",height:32,fontSize:T.fs.sm,border:"none",borderRadius:T.radius.xl,background:"linear-gradient(135deg,#4285f4,#9b72cb,#d96570)",color:T.bgCard,cursor:"pointer",fontFamily:"inherit",flexShrink:0,display:"flex",alignItems:"center",gap:5,fontWeight:T.fw.bolder,boxShadow:"0 2px 8px rgba(66,133,244,.25)"}}>
+          <button onClick={()=>setShowQuickBook(true)} title="AI 빠른 예약 등록 (대화/메모 붙여넣으면 AI가 예약 자동 작성)" style={{padding:window.innerWidth<=768?"0 8px":"0 12px",height:window.innerWidth<=768?28:32,fontSize:window.innerWidth<=768?T.fs.xs:T.fs.sm,border:"none",borderRadius:T.radius.xl,background:"linear-gradient(135deg,#4285f4,#9b72cb,#d96570)",color:T.bgCard,cursor:"pointer",fontFamily:"inherit",flexShrink:0,display:"flex",alignItems:"center",gap:window.innerWidth<=768?3:5,fontWeight:T.fw.bolder,boxShadow:"0 2px 8px rgba(66,133,244,.25)"}}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill={T.bgCard} style={{flexShrink:0}}><path d="M12 2L13.09 8.26L18 6L14.74 10.91L21 12L14.74 13.09L18 18L13.09 15.74L12 22L10.91 15.74L6 18L9.26 13.09L3 12L9.26 10.91L6 6L10.91 8.26L12 2Z"/></svg> AI Book
           </button>
 <div style={{marginLeft:"auto",position:"relative",flexShrink:0}} ref={el => { if(el) el._settingsBtn = el; }}>
