@@ -2858,9 +2858,11 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     // AI 시술 분석 (수동예약 + 시술 미선택 시)
     if (isNewItem && !item.isSchedule && (!item.selectedServices || item.selectedServices.length === 0)) {
       const apiKey = window.__geminiKey || window.__systemGeminiKey;
-      if (apiKey && item.custName) {
+      // 메모/요청사항에 시술 단서가 있을 때만 자동분석 — 이름만으론 추측 금지 (시술 과매칭 방지, 2026-06-13)
+      const _hasSvcSignal = ((item.memo||"").trim() + (item.requestMsg||"").trim()).length > 0;
+      if (apiKey && item.custName && _hasSvcSignal) {
         const svcList = (data?.services||[]).map(s => s.name).join(", ");
-        const prompt = `고객: ${item.custName}\n메모: ${item.memo||""}\n요청사항: ${item.requestMsg||""}\n\n시술 목록: ${svcList}\n\n위 정보로 고객이 받을 시술을 JSON 배열로 반환하세요. 형식: ["시술명1","시술명2"]\n매칭 안 되면 빈 배열 []`;
+        const prompt = `고객: ${item.custName}\n메모: ${item.memo||""}\n요청사항: ${item.requestMsg||""}\n\n시술 목록: ${svcList}\n\n메모·요청사항에 "명시적으로 언급된" 시술만 골라 JSON 배열로 반환하세요. 형식: ["시술명1","시술명2"]\n규칙: 추측·확장 금지. 언급 없으면 빈 배열 []. 전체 목록을 그대로 나열하지 말 것. 보통 1~3개.`;
         fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
           method: "POST", headers: {"Content-Type":"application/json"},
           body: JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.1}})
@@ -2872,7 +2874,10 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
               const names = JSON.parse(match[0]);
               if(names.length > 0) {
                 const matched = names.map(n => (data?.services||[]).find(s => s.name === n)).filter(Boolean);
-                if(matched.length > 0) {
+                if(matched.length > 8) {
+                  // 과매칭(메뉴 통째 나열) = 환각 의심 → 자동입력 생략, 직원이 직접 선택
+                  console.warn(`[AI 분석] 시술 과매칭 ${matched.length}개 — 자동입력 생략`);
+                } else if(matched.length > 0) {
                   // ID 문자열 배열로 저장 — 객체로 저장하면 selected_services 오염 → 예약 로그에 [object Object] (2026-06-13 fix)
                   const selSvcs = matched.map(s => s.id);
                   sb.update("reservations", item.id, {selected_services: JSON.stringify(selSvcs)}).catch(console.error);
