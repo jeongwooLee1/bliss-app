@@ -4084,6 +4084,15 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         <div ref={topbarRef} className="tl-topbar" style={{position:"sticky",top:0,left:0,zIndex:30,borderBottom:"none",boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",background:T.bgCard,padding:"6px 12px",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",minWidth:"100%",boxSizing:"border-box",overflow:"visible"}}>
         {/* Row 1: Date nav + settings + branch */}
         <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0,flexWrap:"wrap",maxWidth:"100%"}}>
+          {/* 보기 전환 세그먼트 [일|주|월] — 날짜 탭(아래 줄)과 분리해 툴바 좌측에 배치, 혼동 방지 (정우님 2026-06-13) */}
+          <div style={{display:"flex",flexShrink:0,border:"1px solid #d0d0d0",borderRadius:T.radius.md,overflow:"hidden"}}>
+            {[["day","일"],["week","주"],["month","월"]].map(([v,lbl],i)=>(
+              <button key={v} onClick={()=>setCalView(v)} title={lbl+" 보기"}
+                style={{height:32,padding:"0 11px",border:"none",borderLeft:i?"1px solid #e0e0e0":"none",
+                  background:calView===v?T.primary:T.bgCard,color:calView===v?T.bgCard:T.gray600,
+                  fontSize:T.fs.sm,fontWeight:calView===v?800:500,cursor:"pointer",fontFamily:"inherit",lineHeight:1}}>{lbl}</button>
+            ))}
+          </div>
           <button onClick={()=>changeDate(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:T.fs.sm,color:T.gray600,padding:"2px 4px",flexShrink:0}}><I name="chevL" size={14}/></button>
           <span className="tl-date-label" onClick={()=>setShowCal(!showCal)} style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.text,flexShrink:0,whiteSpace:"nowrap",cursor:"pointer"}}>{dateLabel}</span>
           <div style={{position:"relative",flexShrink:0}}>
@@ -4136,11 +4145,6 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             e.currentTarget._tStart = null;
           }}
           style={{display:"flex",gap:2,alignItems:"center",overflowX:"auto",scrollbarWidth:"none"}}>
-          {/* 보기 전환 — 단일 버튼(탭하면 일→주→월 순환). 날짜 버튼 줄에 끼워넣음 (정우님) */}
-          <button onClick={()=>setCalView(calView==="day"?"week":calView==="week"?"month":"day")} title="보기 전환 (탭: 일→주→월)"
-            style={{minWidth:34,height:32,borderRadius:T.radius.md,border:"1px solid "+T.primary,background:T.primaryLt,color:T.primaryDk||T.primary,fontSize:T.fs.sm,fontWeight:800,cursor:"pointer",fontFamily:"inherit",flexShrink:0,marginRight:4,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            {calView==="week"?"주":calView==="month"?"월":"일"}
-          </button>
           {(()=>{ const _staff = currentUser?.role === 'staff'; const _len = _staff?7:14; const _off = _staff?-3:0;
             return Array.from({length:_len},(_,i)=>{
             const dt = new Date(); dt.setDate(dt.getDate()+i+_off);
