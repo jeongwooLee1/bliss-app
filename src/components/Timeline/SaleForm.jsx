@@ -27,7 +27,7 @@ const GridLayout = ({ cols=2, gap=12, children, style={} }) => {
   return <div style={{display:"grid",gridTemplateColumns:tpl,gap,...style}}>{children}</div>;
 };
 
-const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amount, defPrice, regularPrice, toggle, setAmt, badgeText, badgeColor, badgeBg, comped, toggleComped, needsGender, onAlert, hasCoupon, subFree }) {
+const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amount, defPrice, regularPrice, toggle, setAmt, badgeText, badgeColor, badgeBg, comped, toggleComped, needsGender, onAlert, hasCoupon, subFree, discountBadge }) {
   const disabled = defPrice === 0;
   const isMember = regularPrice > 0 && regularPrice > defPrice;
   const handleClick = () => {
@@ -57,6 +57,7 @@ const SaleSvcRow = React.memo(function SaleSvcRow({ id, name, dur, checked, amou
         {hasCoupon && <span title="고객 보유 쿠폰 적용 가능" style={{fontSize:9,color:"#b45309",background:"#fff8e1",border:"1px solid #f59e0b",padding:"1px 5px",borderRadius:8,fontWeight:700,flexShrink:0}}>🎫 쿠폰</span>}
         {badgeText && <span style={{fontSize:9,color:badgeColor||"#fff",background:badgeBg||T.primary,padding:"1px 5px",borderRadius:8,fontWeight:700,flexShrink:0}}>{badgeText}</span>}
         {subFree && <span style={{fontSize:9,color:"#0369a1",background:"#dbeafe",border:"1px solid #0369a1",padding:"1px 5px",borderRadius:8,fontWeight:700,flexShrink:0}}>구독권 무료</span>}
+        {checked && discountBadge && <span title="이벤트·할인이 적용된 시술입니다 (총액에 반영됨)" style={{fontSize:9,color:"#fff",background:"#dc2626",padding:"1px 6px",borderRadius:8,fontWeight:700,flexShrink:0}}>{discountBadge}</span>}
       </div>
       {/* 🎁 셀 — 분 컬럼 왼쪽 고정 위치 (체험단 모드일 때만) */}
       {toggleComped && (
@@ -1905,6 +1906,37 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       return applyEvents(events, ctx);
     } catch (e) { console.warn('[eventEngine]', e); return { pointEarn:0, pointExpiresAt:null, discountFlat:0, discountFlatPkg:0, discountFlatPrepaid:0, discountFlatAnnual:0, discountPct:0, prepaidBonus:0, issueCoupons:[], virtualCoupons:[], appliedEvents:[], pointEarnByEvent:[] }; }
   }, [data?.businesses, cust.id, custHasSale, custPkgs, custSvcUsageMap, newPrepaidPurchases, newPkgPurchases, newAnnualPurchases, svcTotal, prodTotal, items, extraRows, payMethod.svcCash, payMethod.svcCard, payMethod.prodCash, payMethod.prodCard, gender]);
+
+  // ─── 시술 라인별 할인 배지 (정우님 2026-06-13: 이벤트 할인이 총액엔 반영되나 시술 라인 옆에 표시가 없어 직원이 적용 안 된 줄 헷갈림) ───
+  //   소스: ① promoConfig 자동할인(svcId별) ② 이벤트 fixed_price/free_service(targetServiceIds 귀속). 라인에 귀속 가능한 것만.
+  //   할인 금액 자체는 기존대로 총액(discountFlat 등)에 반영됨 — 이 배지는 "이 시술에 이벤트/할인 적용됨"을 보여줘 혼선 방지용.
+  const _lineDiscountBadge = React.useMemo(() => {
+    const m = {};
+    const _won = n => (n >= 10000 && n % 10000 === 0) ? `${n/10000}만원` : `${Number(n).toLocaleString()}원`;
+    // ① promoConfig 자동 할인 (per-service)
+    (promoResults || []).forEach(r => {
+      if (r.discount > 0 && !m[r.svcId]) m[r.svcId] = `할인 -${Number(r.discount).toLocaleString()}`;
+    });
+    // ② 이벤트 — 대상 시술에 귀속 가능한 보상(fixed_price / free_service)
+    const _evs = (eventResult && eventResult.appliedEvents) || [];
+    _evs.forEach(evt => {
+      (evt.rewards || []).forEach(rw => {
+        if (rw.type === 'fixed_price') {
+          const v = Number(rw.value) || 0;
+          (rw.targetServiceIds || []).forEach(sid => {
+            const it = items[sid];
+            if (it?.checked && (it.amount || 0) > v) m[sid] = `이벤트가 ${_won(v)}`;
+          });
+        } else if (rw.type === 'free_service') {
+          (rw.serviceIds || rw.couponTargetServiceIds || []).forEach(sid => {
+            const it = items[sid];
+            if (it?.checked && !m[sid]) m[sid] = `이벤트 무료`;
+          });
+        }
+      });
+    });
+    return m;
+  }, [promoResults, eventResult, items]);
 
   // ─── 이벤트 발행 쿠폰 즉시 사용 — 다담권/패키지 구매로 증정되는 쿠폰을 같은 매출에서 바로 사용 ───
   // eventResult.issueCoupons(이번 매출에서 발행될 쿠폰)를 쿠폰 상품의 promoConfig로 해석 → 같은 매출에서 할인 적용.
@@ -4187,7 +4219,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
                   }
                   const rp = gender ? (gender==="M" ? svc.priceM : svc.priceF) : 0;
                   const _needsG = !gender && (svc.priceF||0) !== (svc.priceM||0) && ((svc.priceF||0) > 0 || (svc.priceM||0) > 0);
-                  return <SaleSvcRow key={svc.id} id={svc.id} name={svc.name} dur={svc.dur} checked={!!it.checked} amount={it.amount||0} defPrice={dp} regularPrice={rp} toggle={toggle} setAmt={setAmt} badgeText={svc.badgeText} badgeColor={svc.badgeColor} badgeBg={svc.badgeBg} comped={!!it.comped} toggleComped={hasCompedTag ? toggleComped : undefined} needsGender={_needsG} onAlert={showAlert} hasCoupon={couponEligibleSvcIds.has(svc.id)} subFree={!!it.subFree} />;
+                  return <SaleSvcRow key={svc.id} id={svc.id} name={svc.name} dur={svc.dur} checked={!!it.checked} amount={it.amount||0} defPrice={dp} regularPrice={rp} toggle={toggle} setAmt={setAmt} badgeText={svc.badgeText} badgeColor={svc.badgeColor} badgeBg={svc.badgeBg} comped={!!it.comped} toggleComped={hasCompedTag ? toggleComped : undefined} needsGender={_needsG} onAlert={showAlert} hasCoupon={couponEligibleSvcIds.has(svc.id)} subFree={!!it.subFree} discountBadge={_lineDiscountBadge[svc.id]} />;
                   });
                 })()}</div>}
               </div>
@@ -4195,7 +4227,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
             })}
             {uncatSvcs.length>0 && <div style={{marginBottom:8}}>
               <div style={{fontSize:T.fs.nano,fontWeight:T.fw.bolder,color:T.textMuted,background:T.bg,borderRadius:T.radius.sm,padding:"2px 6px",marginBottom:2,display:"inline-block"}}>기타</div>
-              {uncatSvcs.map(svc => { const it=items[svc.id]||{}; const dp=_defPrice(svc,gender); const rp=gender?(gender==="M"?svc.priceM:svc.priceF):0; const _needsG = !gender && (svc.priceF||0) !== (svc.priceM||0) && ((svc.priceF||0) > 0 || (svc.priceM||0) > 0); return <SaleSvcRow key={svc.id} id={svc.id} name={svc.name} dur={svc.dur} checked={!!it.checked} amount={it.amount||0} defPrice={dp} regularPrice={rp} toggle={toggle} setAmt={setAmt} badgeText={svc.badgeText} badgeColor={svc.badgeColor} badgeBg={svc.badgeBg} comped={!!it.comped} toggleComped={hasCompedTag ? toggleComped : undefined} needsGender={_needsG} onAlert={showAlert} hasCoupon={couponEligibleSvcIds.has(svc.id)} subFree={!!it.subFree} />; })}
+              {uncatSvcs.map(svc => { const it=items[svc.id]||{}; const dp=_defPrice(svc,gender); const rp=gender?(gender==="M"?svc.priceM:svc.priceF):0; const _needsG = !gender && (svc.priceF||0) !== (svc.priceM||0) && ((svc.priceF||0) > 0 || (svc.priceM||0) > 0); return <SaleSvcRow key={svc.id} id={svc.id} name={svc.name} dur={svc.dur} checked={!!it.checked} amount={it.amount||0} defPrice={dp} regularPrice={rp} toggle={toggle} setAmt={setAmt} badgeText={svc.badgeText} badgeColor={svc.badgeColor} badgeBg={svc.badgeBg} comped={!!it.comped} toggleComped={hasCompedTag ? toggleComped : undefined} needsGender={_needsG} onAlert={showAlert} hasCoupon={couponEligibleSvcIds.has(svc.id)} subFree={!!it.subFree} discountBadge={_lineDiscountBadge[svc.id]} />; })}
             </div>}
             {/* (추가·할인은 제품 영역 아래로 이동 — 시술/제품 토글 포함) */}
           </div>

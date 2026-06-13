@@ -4100,3 +4100,10 @@ HANDOFF 후속 수정요청 묶음 2차.
 ### v3.8.87 — 예약블럭 드래그 시 표시시간≠실제시간(고스트 세로 오프셋) fix (2026-06-13, 정우님)
 작업세션(worktree-customer-merge) cherry-pick·배포(배포세션). React only.
 - 드래그 고스트(floating preview) 시작 세로위치를 formula(`_scrRect.top + topbarH + headerH + timeToY`)로 계산하던 것 → **드래그한 블록의 실측 viewport top**(`e.currentTarget.getBoundingClientRect().top`)으로 변경. formula의 topbarH+headerH 가정이 실제 sticky 높이와 상수만큼 달라 **표시시간이 실제보다 항상 일정하게 어긋나던 버그**. 실측 실패 시 formula로 폴백.
+
+### v3.8.88 — 매출등록: 시술 라인에 이벤트·할인 배지 표시 (정우님) (2026-06-13)
+**증상**: "재생관리 첫체험 1만원" 이벤트(evt_custom_ajtperhc, `fixed_price` value 10000, targetServiceIds=재생관리)가 적용돼 총액엔 반영되는데, **시술 라인은 정상가(4만)로만 표시**되고 할인 표시가 없어 직원이 "1만원 적용 안 됨"으로 착각(강남 윤성재 매출등록).
+**원인**: 이벤트 `fixed_price`는 `(현재가-1만원)`을 cart `discountFlat`에 합산(eventEngine.js:417) → 총액엔 빠지지만 라인 amount는 정상가 유지. `SaleSvcRow`는 정적 `svc.badgeText`만 받고 계산된 이벤트/할인은 라인에 안 띄움.
+**fix** (`SaleForm.jsx`): `_lineDiscountBadge` useMemo 추가 — ① promoConfig 자동할인(svcId별 `promoResults.discount`) ② 이벤트 `fixed_price`/`free_service`(`targetServiceIds` 귀속). `eventResult.appliedEvents[].rewards[]`에서 라인 귀속 가능한 보상만 매핑(eventEngine과 동일 조건: checked + amount>value). `SaleSvcRow`에 `discountBadge` prop 추가 → 체크된 라인에 빨강 배지(`이벤트가 1만원`/`이벤트 무료`/`할인 -N`). 할인 금액 자체는 기존대로 총액(discountFlat)에 반영 — 배지는 "이 시술에 적용됨"을 보여 혼선만 해소(중복차감 X). 호출부 2곳(catGroups/uncatSvcs) prop 전달.
+**검증**: node 테스트(eventEngine.applyEvents) — discountFlat 30000 + appliedEvents에 fixed_price/targetServiceIds 유지 + 배지맵 `{재생관리:"이벤트가 1만원"}` PASS. 빌드·프리뷰 콘솔 에러 0.
+**유의**: 라인 귀속 가능한 보상만 배지(per-service promo + 이벤트 fixed_price/free_service). cart-level discount_flat/pct(첫방문 할인 5만 등, baseServiceIds 비례배분)는 라인 단일귀속이 모호해 배지 안 함 — 그건 기존 "적용된 이벤트" 박스가 총액으로 표시.
