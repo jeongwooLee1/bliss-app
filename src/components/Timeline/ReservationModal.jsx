@@ -499,9 +499,11 @@ function TimelineModal({ item, onSave, onAddCompanion, onDelete, onDeleteRequest
   // 네이버 예약 판정: reservationId 있음 + ai_/manual_/외부플랫폼 접두사 아님 + source != 외부플랫폼
   const _resIdStr = String(item?.reservationId || "");
   const _srcStr = String(item?.source || "").toLowerCase();
-  const _EXT_PREFIXES = ["ai_","manual_","trazy_","creatrip_","seoulbeauty_","cusmetic_","kakao_"];
-  const _EXT_SOURCES = ["trazy","creatrip","seoulbeauty","cusmetic","서울뷰티","크리에이트립","kakao","카톡","카카오"];
+  const _chatCh = String(item?.chatChannel || item?.chat_channel || "");  // 채팅 채널 예약(인스타/왓츠앱/라인/네이버톡/카톡)
+  const _EXT_PREFIXES = ["ai_","aibook_","manual_","trazy_","creatrip_","seoulbeauty_","cusmetic_","kakao_"];
+  const _EXT_SOURCES = ["trazy","creatrip","seoulbeauty","cusmetic","서울뷰티","크리에이트립","kakao","카톡","카카오","인스타","whatsapp","왓츠앱","line","라인","텔레그램","ai 예약"];
   const isNaverItem = !!(item?.reservationId)
+    && !_chatCh   // 채팅 채널로 들어온 예약은 스마트플레이스 네이버 예약 아님
     && !_EXT_PREFIXES.some(p => _resIdStr.startsWith(p))
     && !_EXT_SOURCES.some(p => _srcStr.includes(p));
   const itemDur = item?.dur || (isNaverItem ? 60 : BASE_DUR);

@@ -4053,3 +4053,9 @@ HANDOFF 후속 수정요청 묶음 2차.
 - **#2 (v3.8.82) 닫기 경고창 제거** (`ConsentModal.handleClose`): 차트&동의서 모달에서 템플릿 고르고 보내기 전 닫으면 뜨던 native confirm("아직 보내기 전입니다…") 제거 → 바로 닫힘. (native confirm 금지 원칙도 부합)
 - **#1 (서버 ai_booking.py) AI 예약 즉시 차트/동의서 링크 발송**: 기존엔 AI 예약=`status=request`라 rsv_today 리마인더(reserved/confirmed 대상)에서 빠져 확정 전엔 차트링크 안 나갔음. → `create_booking_from_ai` 예약 INSERT 성공 직후 **신규·자동(AI) 예약**(`cust_id && not existing && not manual`)이면 `_pick_chart_tpls(is_new,True)`(신규=신규차트+오늘관리/기존=오늘관리)로 consent_token 발급(만료=예약일23:59 또는 +72h, prefill reservation_id) + 손님 채널(send_queue, 같은 channel/user_id)로 한·영 차트 링크 메시지 발송. 수동([AI 예약등록] 버튼)·변경은 제외(앱에서 직원이 제어). 백업 `ai_booking.py.bak_chartlink_*`, restart active. consent_tokens 페이로드 검증(삽입→삭제). 
   - **유의**: 확정 후 당일 rsv_today 리마인더도 차트링크 포함 가능(중복 가능성) — 예약 ack + 당일 리마인더라 허용. 카카오 채널은 send_queue 발송 불가(블리스→카카오 전송 제한)라 미도달 가능. 첫 작동은 다음 실 AI 자동예약(`[ai_booking] chart link sent` 로그).
+
+### v3.8.83 — 인스타(채팅) 예약이 네이버 예약으로 오판되던 버그 fix (2026-06-13, 정우님)
+**증상**(강남 Rachna Chawla 인스타 예약): 예약모달에 네이버 예약정보 박스가 뜨고 예약경로(인스타)가 안 보임.
+**원인** `ReservationModal.isNaverItem`: ① reservation_id가 `aibook_...`(레거시 AI id)면 `ai_` 접두사 체크에 안 걸림 ② source="AI 예약"(미등록 레거시)이 외부소스 목록에 없음 → **isNaverItem=true로 오판** → 네이버 스마트플레이스 예약처럼 표시.
+**fix**: ① `_EXT_PREFIXES`에 `aibook_` 추가 ② **채팅 채널 가드** `!item.chatChannel`(인스타/왓츠앱/라인/네이버톡/카톡 채팅으로 들어온 예약은 스마트플레이스 네이버 예약 아님) ③ `_EXT_SOURCES`에 인스타/whatsapp/line/텔레그램/ai 예약 추가. 실제 네이버 스크랩 예약은 chat_channel=null·숫자 reservation_id라 무영향.
+**데이터 교정**: 레거시 source "AI 예약"(인스타 3건)→"인스타", "ai_booking"(라인 1건)→"LINE". (현재 코드는 CHANNEL_SOURCE_MAP으로 instagram→인스타 정상 — 신규는 OK였고 과거 레거시만 교정). v3.8.83 라이브.
