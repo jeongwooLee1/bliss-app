@@ -4107,3 +4107,13 @@ HANDOFF 후속 수정요청 묶음 2차.
 **fix** (`SaleForm.jsx`): `_lineDiscountBadge` useMemo 추가 — ① promoConfig 자동할인(svcId별 `promoResults.discount`) ② 이벤트 `fixed_price`/`free_service`(`targetServiceIds` 귀속). `eventResult.appliedEvents[].rewards[]`에서 라인 귀속 가능한 보상만 매핑(eventEngine과 동일 조건: checked + amount>value). `SaleSvcRow`에 `discountBadge` prop 추가 → 체크된 라인에 빨강 배지(`이벤트가 1만원`/`이벤트 무료`/`할인 -N`). 할인 금액 자체는 기존대로 총액(discountFlat)에 반영 — 배지는 "이 시술에 적용됨"을 보여 혼선만 해소(중복차감 X). 호출부 2곳(catGroups/uncatSvcs) prop 전달.
 **검증**: node 테스트(eventEngine.applyEvents) — discountFlat 30000 + appliedEvents에 fixed_price/targetServiceIds 유지 + 배지맵 `{재생관리:"이벤트가 1만원"}` PASS. 빌드·프리뷰 콘솔 에러 0.
 **유의**: 라인 귀속 가능한 보상만 배지(per-service promo + 이벤트 fixed_price/free_service). cart-level discount_flat/pct(첫방문 할인 5만 등, baseServiceIds 비례배분)는 라인 단일귀속이 모호해 배지 안 함 — 그건 기존 "적용된 이벤트" 박스가 총액으로 표시.
+
+### 서버 — AI 성별 게이트 (under-booking 방지 vs 성별질문 룰 충돌 해소) + 골든 25/25 (2026-06-13, React 변경 0)
+골든 회귀 게이트(scripts/ai_golden)로 잡아낸 첫 구조적 룰충돌을 **회귀 0 확인 후** 수정한 케이스. AI 프롬프트가 아니라 코드 게이트로 결정적 처리.
+**충돌**: named-profile 채널(kakao/insta/whatsapp)은 custName이 프로필명으로 자동 채워짐 → 사후보정1(필수4+이름 → ask_info→book 승격)이 '성별 1회 질문' 룰을 덮어써, 성별가격차 시술(브라질리언 F154k/M176k 등)을 **성별 안 묻고 빈 성별로 즉시 book**. (골든 gender_flow가 이걸 잡음)
+**fix (`ai_booking.py` 사후보정3 = 성별 게이트, dispatch 직전·state-force 이후)**: `action==book` + 신규예약(기존예약 없음) + booking.gender 비어있음 + **성별가격차 시술**(services price_f≠price_m) + **아직 성별 안 물음**(history out에 성별질문 없음) + **대화에 성별 단서 없음**(`female/male/woman/man/lady` 정규식 또는 여성/남성/여자/남자) → `action=chat`으로 성별 1회 질문. 그 외엔 그대로 book(강요·반복 금지). 
+  - ⚠️ 과발동 fix: 대화 단서 체크(`_has_gender_signal`)가 핵심 — "female brazilian"인데 모델이 booking.gender 추출만 못 한 경우(run 변동) 게이트가 재질문하며 예약을 막던 부작용을 골든(new_booking_foreign)이 잡아 추가. 단서 있으면 발동 안 함.
+  - 백업 `ai_booking.py.bak_gendergate_*` / `bak_gendergate2_*`. `systemctl restart bliss-naver` 2회 적용(게이트 → 과발동fix). 
+**정책** [[feedback_bliss_ai_ask_gender]]: 성별가격차 시술은 예약 확정 전 1회 질문, 안 주면 빈값 진행(강요X). SMS 등 프로필명 없는 채널은 원래 정상 작동.
+**골든 하니스 동반 업데이트** (commit faf87a5): gender_flow known-open→하드게이트 승격 / 심판 '기본PASS·명백한 하드위반만 FAIL·톤형식길이로 FAIL금지'로 재설계(simple_greeting 7항목템플릿·faq_not_defer 콘텐츠 플레이크 제거) / simple_greeting kakao+must_pass 완화. **25/25 게이트 PASS, 5회 연속 결정적**.
+**유의**: gender_flow 충돌의 근본(사후보정1 자체)은 그대로 두고 게이트(사후보정3)로 상쇄 — 프롬프트/사후보정 단순화(룰 dedup)는 후속. 골든이 회귀 0 보장하므로 안전하게 진행 가능.
