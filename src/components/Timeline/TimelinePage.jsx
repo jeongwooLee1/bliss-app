@@ -2873,7 +2873,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
               if(names.length > 0) {
                 const matched = names.map(n => (data?.services||[]).find(s => s.name === n)).filter(Boolean);
                 if(matched.length > 0) {
-                  const selSvcs = matched.map(s => ({id:s.id, name:s.name, price:s.price_f||s.price_m||0}));
+                  // ID 문자열 배열로 저장 — 객체로 저장하면 selected_services 오염 → 예약 로그에 [object Object] (2026-06-13 fix)
+                  const selSvcs = matched.map(s => s.id);
                   sb.update("reservations", item.id, {selected_services: JSON.stringify(selSvcs)}).catch(console.error);
                   setData(prev=>({...prev,reservations:(prev?.reservations||[]).map(r=>r.id===item.id?{...r,selectedServices:selSvcs}:r)}));
                 }
