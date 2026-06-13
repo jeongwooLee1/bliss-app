@@ -4079,3 +4079,14 @@ HANDOFF 후속 수정요청 묶음 2차.
 **#2 AI 취소 미처리 + 시간 재안내 (Yalguun 왓츠앱)**: 손님이 "Please cancel the appointment"(취소요청, 여러 메시지로 분할) 했는데 AI가 취소 안 하고 "anything else?"로 흘림 → 예약 reserved 유지 → 이후 작별("I'll let you know")에 AI가 "See you at 1:35 PM"(살아있는 13:35 예약 시각 읽음). 
 - 데이터: 해당 예약(ai_3eb42q4ha3kw) status=cancelled 수동 처리(손님 취소요청 정상화).
 - `ai_booking.py` 취소 룰(10) 강화: ① "취소/cancel/please cancel/안 갈게요/일이 생겼어요" 등 취소·불참 신호는 사과·인사와 섞여 와도 [기존예약] 있으면 **반드시 action=cancel**(chat으로 얼버무리기 금지) ② 취소했거나 마무리·보류("다음에 올게요/I'll let you know/next time")면 **"X시에 뵐게요" 시간 확정/재안내 절대 금지**, 따뜻한 작별 한 문장만. 백업 `ai_booking.py.bak_cancelrule_*`, restart active.
+
+### 받은메시지함 AI 응대 골든셋 회귀 하니스 (scripts/ai_golden) (2026-06-13)
+구조 진단(워크플로 9에이전트): ai_booking.py 프롬프트가 사고마다 "이 버그 막아라" 하드코딩 룰을 146개+ 평탄하게 쌓아 **룰끼리 충돌**(성별 묻지마↔물어라 / 예약금 16번룰↔cross_day / FAQ↔무조건담당자)·8중 중복·코드vs프롬프트 이중강제(다른 임계치) → 새 룰이 다른 답을 깨는 악순환. 정우님이 "골든셋 하니스부터 구축" 선택 → **회귀 게이트 인프라** 구축(AI 프롬프트 변경은 안 함).
+- **위치**: `bliss-app/scripts/ai_golden/`(golden_run.py + golden_set.json + README, git 추적·커밋 99a634e). 실행본은 서버 `/home/ubuntu/naver-sync/`에도 동일 파일 — `cd /home/ubuntu/naver-sync && python3 golden_run.py`(매장 캐시·운영코드 import 필요). exit 0=게이트 통과.
+- **하니스**: production-replica(`ai_booking_agent(force=True, suggest_only=True)`, 손님이 받는 답과 동일 경로). **부작용 0**(create/cancel/state/availability(→가용)/change-request/telegram/billing 전부 mock), **비용 0**(Gemini 무료 심판).
+- **채점**: ① action_behavior(결정적, book/cancel/noop) ② LLM 심판 **2-of-3 다수결**(temp>0 노이즈 방어, `ideal`은 톤 참고용·`must_pass`만 본다). PASS=action 일치 AND 심판 pass. 게이트 케이스 하나라도 FAIL→exit 1.
+- **book 캡처 주의(2026-06-13 운영변경)**: suggest_only는 이제 예약 생성 skip(초안만, "booking 생성 skip" 로깅 + reply="예약 도와드릴까요?/Would you like me to book?"). 하니스가 그 skip 로그를 가로채 book 결정 캡처 + 심판에 "draft 모드라 확인요청 reply여도 under-booking 판정 말 것" 명시.
+- **결정성 원칙**: must_pass는 '동작+하드금지선(환각·언어이탈·시간재안내·잘못된 취소/예약)'만 검증. 특정 문구·지점·길이·이모지 강요 금지(예: 공통채널 주소문의는 "어느 지점?" 되묻기와 주소 안내 둘 다 정답). 베이스라인 calibration 때 over-strict 케이스(address_question 등) 다수 발견·교정.
+- **known-open(xfail)**: 케이스에 `"known_fail":true` → 게이트 제외·추적만(FAIL=XFAIL, PASS=XPASS). **gender_flow** = named-profile 채널에서 사후보정1(필수4+이름→book 승격)이 성별 1회 질문 룰을 덮어써 비결정적(under-booking 방지 vs 성별질문 충돌) → 수정 결정 대기.
+- **베이스라인**: **25 케이스 = 24 게이트 PASS + 1 known-open(gender_flow)**, 3회 연속 동일(결정적, 2026-06-13 현행 프롬프트).
+- **원칙(메모리 `feedback_bliss_ai_golden_gate`)**: 새 사고 = 룰 본문 늘리지 말고 golden_set.json에 케이스 1줄 추가 → golden_run.py 회귀 0 확인 후 `systemctl restart bliss-naver`.
