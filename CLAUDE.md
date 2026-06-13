@@ -4067,3 +4067,9 @@ HANDOFF 후속 수정요청 묶음 2차.
 - `bliss_naver.py` 리마인더 대상에 **AI 예약(request) 포함**: ① `reservation_reminder_thread._process_window`(rsv_1day/rsv_today, 010·알림톡) status `in.(reserved,confirmed)` → `in.(reserved,confirmed,request)` ② `_send_chat_reminders`(채팅 채널) status `in.(reserved,confirmed,pending)` → `+request`.
 - 결과: AI 예약(확정대기)도 다른 예약과 동일하게 **방문 전날/당일** 차트 링크 받음(즉시 X). 백업 `ai_booking.py.bak_revertimm_*`/`bliss_naver.py.bak_reqreminder_*`, restart active.
 **유의**: v3.8.82 배포~철회 사이(~1h)에 생긴 AI 예약은 이미 즉시 링크를 받았을 수 있음(되돌리기 불가, 소수). 이후로는 당일/전날만. request도 리마인더 대상이라 미확정 AI 예약 손님도 당일 안내+차트 받음(정우님 승인).
+
+### v3.8.84 — 받은메시지함 대화 헤더 고객정보 2단 분리 (2026-06-13, 정우님)
+헤더에 채널 고객정보 + 블리스 고객정보가 한 줄에 몰려 복잡 → **2단 분리**. 공통 헬퍼 `renderHeaderInfo(compact)` 신설(데스크탑·모바일 공용):
+- **① 채널 고객정보(상단)**: 채널 표시이름(getDisplayName) + 채널명 + 지점 + 채널 전화/핸들.
+- **② 블리스 고객정보(하단, 점선 구분선)**: 연결된 고객 칩(이름 #번호 · 전화 + 연결해제 ×) + `renderCustSummary` 칩(기존/신규·방문·예약·노쇼·최근). 미연결이면 "블리스 고객 미연결 + [고객 연결]" 버튼.
+- 채널 "열기 ↗"(외부링크)·로고·뒤로가기는 기존 헤더 우측/좌측 유지. 데스크탑/모바일 헤더 둘 다 기존 인라인 블록 제거하고 헬퍼 호출로 교체. v3.8.84 라이브.

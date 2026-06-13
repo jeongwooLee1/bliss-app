@@ -1811,6 +1811,43 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     return label;
   };
 
+  // 대화 헤더 고객정보 2단 — ① 채널(메신저) 고객정보 ② 블리스 고객정보 (정우님: 한 곳에 몰려 복잡 → 분리)
+  const renderHeaderInfo = (compact) => {
+    if (!sel) return null;
+    const key = sel.channel + "_" + sel.user_id;
+    const cust = chatCustMapFull[key];
+    const dispName = getDisplayName(convo[0] || { user_id: sel.user_id });
+    const _bn = sel.channel !== "whatsapp" ? branchName(sel) : "";
+    const chPhone = convo.find(m=>m.cust_phone)?.cust_phone || sel.cust_phone
+      || (sel.channel==="sms" ? sel.user_id : "")
+      || (sel.channel==="whatsapp" && sel.user_id ? (sel.user_id.startsWith("82") ? "0"+sel.user_id.slice(2) : sel.user_id) : "");
+    const fs1 = compact?12:15, fs2 = compact?10:12;
+    return (<>
+      {/* ① 채널 고객정보 */}
+      <div style={{display:"flex",alignItems:"baseline",gap:6,flexWrap:"wrap",minWidth:0}}>
+        <span style={{fontWeight:800,fontSize:fs1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{dispName||"고객"}</span>
+        <span style={{fontSize:fs2,color:T.textSub,fontWeight:600,whiteSpace:"nowrap"}}>{CH_NAME[sel.channel]||sel.channel}{_bn?" · "+_bn:""}{chPhone?" · "+chPhone:""}</span>
+      </div>
+      {/* ② 블리스 고객정보 */}
+      <div style={{marginTop:4,paddingTop:4,borderTop:"1px dashed "+T.border}}>
+        {cust ? (<>
+          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+            <span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:compact?11:12.5,fontWeight:700,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary+"40",borderRadius:6,padding:"1px 6px",whiteSpace:"nowrap"}} title={cust.phone||""}>
+              <I name="user" size={10}/> {cust.name}{cust.custNum?` #${cust.custNum}`:""}{cust.phone?` · ${cust.phone}`:""}
+              <button onClick={unlinkCustomer} title="고객 연결 해제" style={{marginLeft:2,background:"none",border:"none",padding:"0 2px",fontSize:12,fontWeight:900,color:T.textMuted,cursor:"pointer",lineHeight:1,fontFamily:"inherit"}}>×</button>
+            </span>
+          </div>
+          {renderCustSummary(cust, key)}
+        </>) : (
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:fs2,color:T.textMuted}}>블리스 고객 미연결</span>
+            <button onClick={()=>setLinkPickerOpen(v=>!v)} style={{fontSize:compact?9:10,fontWeight:800,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary,borderRadius:6,padding:"2px 8px",cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:3}}><I name="globe" size={10}/>고객 연결</button>
+          </div>
+        )}
+      </div>
+    </>);
+  };
+
   // 모바일 목록 렌더 (인스타 스타일)
   // 번역 진행 중 ON-AIR 깜빡 애니메이션 (한 번만 inject)
   React.useEffect(() => {
@@ -1943,12 +1980,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         <button onClick={()=>{ setSel(null); if(onChatOpen) onChatOpen(false); }} style={{background:"none",border:"none",cursor:"pointer",color:T.primary,padding:"4px 6px 4px 0",flexShrink:0}}><I name="arrowL" size={forceCompact?16:20}/></button>
         <div style={{width:forceCompact?22:28,height:forceCompact?22:28,borderRadius:14,background:CH_COLOR[sel.channel]||T.primary,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} title={CH_NAME[sel.channel]||sel.channel}><ChannelLogo channel={sel.channel} size={forceCompact?13:16}/></div>
         <div style={{flex:1,minWidth:0,position:"relative"}}>
-          <div style={{fontWeight:T.fw.bolder,fontSize:forceCompact?12:16,display:"flex",alignItems:"center",gap:4,flexWrap:"nowrap",overflow:"hidden"}}>
-            <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{(sel?.channel!=="whatsapp"&&branchName(convo[0]))?branchName(convo[0])+" · ":""}{getDisplayName(convo[0]||{user_id:sel.user_id})}</span>
-            {(()=>{ const cust = chatCustMapFull[sel.channel+"_"+sel.user_id]; if(cust) return <span style={{display:"inline-flex",alignItems:"center",gap:2,fontSize:forceCompact?9:11,fontWeight:700,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary+"40",borderRadius:6,padding:"1px 5px",whiteSpace:"nowrap",flexShrink:0}}><I name="user" size={10}/> {cust.name}{cust.custNum?` #${cust.custNum}`:""}<button onClick={unlinkCustomer} title="고객 연결 해제" style={{marginLeft:2,background:"none",border:"none",padding:"0 2px",fontSize:11,fontWeight:900,color:T.textMuted,cursor:"pointer",lineHeight:1,fontFamily:"inherit"}}>×</button></span>; return <button onClick={()=>setLinkPickerOpen(v=>!v)} style={{fontSize:forceCompact?9:10,fontWeight:800,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary,borderRadius:6,padding:"2px 7px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0,display:"inline-flex",alignItems:"center",gap:3}}><I name="globe" size={10}/>연결</button>; })()}
-          </div>
-          <div style={{fontSize:forceCompact?10:12,color:T.textSub,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{CH_NAME[sel.channel]||sel.channel}{(()=>{const _bn=sel.channel!=="whatsapp"?branchName(sel):"";return _bn?" · "+_bn:"";})()}{(()=>{ const ph=convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone||(sel.channel==="sms"?sel.user_id:"")||(sel.channel==="whatsapp"&&sel.user_id?(sel.user_id.startsWith("82")?"0"+sel.user_id.slice(2):sel.user_id):""); return ph?" · "+ph:""; })()}{(()=>{ const cust = chatCustMapFull[sel.channel+"_"+sel.user_id]; if(!cust?.phone) return null; return " · "+cust.phone; })()}</div>
-          {renderCustSummary(chatCustMapFull[sel.channel+"_"+sel.user_id], sel.channel+"_"+sel.user_id)}
+          {renderHeaderInfo(forceCompact)}
           {linkPickerOpen && !chatCustMapFull[sel.channel+"_"+sel.user_id] && (
             <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:50,background:"#fff",border:"1px solid "+T.border,borderRadius:8,boxShadow:"0 4px 20px rgba(0,0,0,.15)",padding:8,width:280}}>
               <input autoFocus value={linkSearch} onChange={e=>setLinkSearch(e.target.value)} placeholder="이름·전화·이메일·번호 검색"
@@ -2218,12 +2250,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           <div style={{padding:"12px 16px",borderBottom:"1px solid "+T.border,background:T.bgCard,display:"flex",alignItems:"center",gap:10}}>
             <div style={{width:28,height:28,borderRadius:14,background:CH_COLOR[sel.channel]||T.primary,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} title={CH_NAME[sel.channel]||sel.channel}><ChannelLogo channel={sel.channel} size={16}/></div>
             <div style={{flex:1,minWidth:0,position:"relative"}}>
-              <div style={{fontWeight:T.fw.bolder,fontSize:T.fs.sm,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                <span>{(sel?.channel!=="whatsapp"&&branchName(convo[0]))?branchName(convo[0])+" · ":""}{getDisplayName(convo[0]||{user_id:sel.user_id})}</span>
-                {(()=>{ const cust = chatCustMapFull[sel.channel+"_"+sel.user_id]; if(cust) return <span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:11,fontWeight:700,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary+"40",borderRadius:6,padding:"2px 6px",whiteSpace:"nowrap"}} title={cust.phone||""}><I name="user" size={10}/> {cust.name}{cust.custNum?` #${cust.custNum}`:""}<button onClick={unlinkCustomer} title="고객 연결 해제" style={{marginLeft:2,background:"none",border:"none",padding:"0 2px",fontSize:12,fontWeight:900,color:T.textMuted,cursor:"pointer",lineHeight:1,fontFamily:"inherit"}}>×</button></span>; return <button onClick={()=>setLinkPickerOpen(v=>!v)} style={{fontSize:10,fontWeight:700,color:T.textMuted,background:"#fff",border:"1px dashed "+T.gray400,borderRadius:6,padding:"2px 6px",cursor:"pointer",fontFamily:"inherit"}}>🔗 고객 연결</button>; })()}
-              </div>
-              <div style={{fontSize:T.fs.xs,color:T.textMuted}}>{CH_NAME[sel.channel]||sel.channel}{(()=>{const _bn=sel.channel!=="whatsapp"?branchName(sel):"";return _bn?" · "+_bn:"";})()}{(()=>{ const ph=convo.find(m=>m.cust_phone)?.cust_phone||sel.cust_phone||(sel.channel==="sms"?sel.user_id:"")||(sel.channel==="whatsapp"&&sel.user_id?(sel.user_id.startsWith("82")?"0"+sel.user_id.slice(2):sel.user_id):""); return ph?" · "+ph:""; })()}{(()=>{ const cust = chatCustMapFull[sel.channel+"_"+sel.user_id]; if(!cust?.phone) return null; return " · "+cust.phone; })()}</div>
-              {renderCustSummary(chatCustMapFull[sel.channel+"_"+sel.user_id], sel.channel+"_"+sel.user_id)}
+              {renderHeaderInfo(false)}
               {linkPickerOpen && !chatCustMapFull[sel.channel+"_"+sel.user_id] && (
                 <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:50,background:"#fff",border:"1px solid "+T.border,borderRadius:8,boxShadow:"0 4px 20px rgba(0,0,0,.15)",padding:8,width:300}}>
                   <input autoFocus value={linkSearch} onChange={e=>setLinkSearch(e.target.value)} placeholder="이름·전화·이메일·번호 검색"
