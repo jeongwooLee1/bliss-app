@@ -70,16 +70,14 @@
     const rid = decodeURIComponent(location.search.slice(1) || location.hash.slice(1));
     if (!rid) { el.innerHTML = '<div class="error">예약 정보가 없습니다.</div>'; return; }
 
-    let r = await fetch(`${SB}/rest/v1/reservations?reservation_id=eq.${rid}&select=cust_name,date,time,dur,bid,status,service_id,staff_id,selected_services&limit=1`,
-      {headers:{"apikey":K,"Authorization":"Bearer "+K}});
-    let rows = await r.json();
-    if (!rows.length) {
-      r = await fetch(`${SB}/rest/v1/reservations?id=eq.${rid}&select=cust_name,date,time,dur,bid,status,service_id,staff_id,selected_services&limit=1`,
-        {headers:{"apikey":K,"Authorization":"Bearer "+K}});
-      rows = await r.json();
-    }
-    if (!rows.length) { el.innerHTML = '<div class="error">예약을 찾을 수 없습니다.</div>'; return; }
-    const res = rows[0];
+    // reservations 테이블은 토큰 차단됨 → 손님용 최소필드 DEFINER RPC로 조회
+    const rpcR = await fetch(`${SB}/rest/v1/rpc/get_reservation_public`, {
+      method: "POST",
+      headers: {"apikey":K, "Authorization":"Bearer "+K, "Content-Type":"application/json"},
+      body: JSON.stringify({ p_rid: rid })
+    });
+    const res = rpcR.ok ? await rpcR.json() : null;
+    if (!res || !res.cust_name) { el.innerHTML = '<div class="error">예약을 찾을 수 없습니다.</div>'; return; }
 
     // 지점 정보 (안내문구, 대체연락처 포함)
     let br = {};
