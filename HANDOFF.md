@@ -32,7 +32,19 @@
 - branches·businesses·services·rooms: anon SELECT 유지(공개 카탈로그·손님페이지 필요), 쓰기 토큰화.
 - contact_inquiries: anon INSERT-only(랜딩 문의폼), SELECT 불가(=덤프 불가). landing_sections·design_requests: editor-scoped, anon 읽기 불가.
 
+### 🌙 오늘 밤(영업외) 실행 대기 — 정밀 체크리스트 (2026-06-15 합의, 정우님 신호 시 실행. 자동실행 금지)
+> 낮(영업시간)엔 끊김 위험으로 보류한 묶음. 상세 근거는 [SECURITY_INCIDENT_REPORT.md] 6.단기/장기. **각 단계 적용 직후 즉시 동작 확인, 실패 시 롤백.**
+1. **오리진 80/443 = Cloudflare IP만 허용** (CF 우회 직접타격 차단): Oracle Cloud Security List + 호스트 iptables를 `cloudflare.com/ips-v4`·`ips-v6` 대역만 ACCEPT로. ⚠️SSH(22)는 별도 유지(끊기면 복구 불가) — 가능하면 오너 고정IP만. **적용 즉시 blissme.ai 접속+로그인 확인, 안 되면 즉시 롤백.** CF IP 갱신 cron.
+2. **fail2ban 설치 + rpcbind(111) 비활성 + bliss_naver 5055 → 127.0.0.1 바인딩**(nginx 프록시만). bliss_naver 재시작 동반(영업외). `systemctl disable --now rpcbind`.
+3. **전 직원 비밀번호 강제 리셋**(assume-breach): `accounts` 22계정 — `update accounts set password_hash=crypt(새임시,gen_salt('bf'))` 또는 `admin_reset_password`. **직원에게 새 비번 공지 채널 필요(조율 선행)**. + `accounts.password`(평문) 죽은 컬럼 DROP + auth_login(v1) 평문폴백 제거.
+4. **bliss-uploads 버킷 비공개**: `public=false` + `storage.objects` 토큰게이트 SELECT 정책. 뷰어(QuickRequest·BlissRequests·ConsentPanel 종이동의서)를 `createSignedUrl`로 전환(React 배포·버전업). 인터셉터는 이미 `/storage/` 커버(v3.8.102).
+5. (후속·프로젝트) **Gemini 키 서버 이관**(클라 AI 직접호출 제거 → settings에서 키 삭제), **탐지·경보**(pg_cron: sms_send_log 급증·민감테이블 대량읽기·비정상 로그인 → BlissUBot 텔레그램), **send-consent**(동의서 세션), **PIPA 신고 판단**(전문가).
+
+### ✅ 6/15 닫은 것 (이번 세션, 라이브 검증)
+- housebook anon 권한 회수 / Edge 발송 4종(send-sms v20·alimtalk v17·telegram v12·notify-request v15) 세션토큰 게이트 + 클라 인터셉터 /functions/(v3.8.103) / env.conf 600 / landing 로그인 루프 fix / housewaxing 비번 재설정 / Gemini 노출키 로테이션 / consents 버킷 private+서명URL(메인앱).
+
 ### ⚠️ 주의/교훈
+- **Edge 발송함수 deploy 시 verify_jwt:false 필수** (MCP deploy_edge_function 기본 true → 명시 안 하면 전 호출 401 사고). send-sms/alimtalk/telegram/notify-request는 자체 세션토큰 검증.
 - **차단 사고**: 영업중 차단→**자동로그인 직원(토큰없음)** 매출등록 실패→즉시롤백→v3.8.101+직원퇴근후 재차단으로 해결. **차단은 ①소비자 전부 토큰 ②영업외 시간**에만.
 - **내일 아침 직원 1회 재로그인 필요**(v3.8.101+, 토큰 발급). 라이브 v3.8.102.
 - 추가 백엔드 차단 시 새 service 토큰은 `app_sessions` 직접 INSERT(부트스트랩RPC는 1회소진·잠김).
