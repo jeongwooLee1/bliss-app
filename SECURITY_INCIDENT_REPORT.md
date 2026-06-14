@@ -80,6 +80,12 @@
 | I | fail2ban 없음·SSH root 키로그인 허용·rpcbind 실행 | LOW~MED | 표준 서버 하드닝 미흡 |
 | J | Edge 무단호출·비정상 로그인·대량읽기 **탐지/알림 없음** | MEDIUM | abuse 발생해도 경보 0(기록만) |
 
+### ✅ 조치 진행 (2026-06-15, 라이브 검증)
+- **C housebook** → anon 권한 회수(`revoke_anon_housebook_schema`). REST 재테스트 `permission denied` 401. **닫힘.**
+- **A Edge 발송 함수 4종** → 세션토큰 게이트(공개키 단독 거부): `send-sms` v20·`send-alimtalk` v17·`send-telegram` v12·**B `notify-request`** v15(+하드코딩 TG토큰 폴백 제거). 클라 인터셉터 `/functions/` 확장(v3.8.103). 검증: 무인증/잘못된토큰→401, 서버 `_SVCTOK`·로그인 직원→통과. 자동 SMS 무중단(서버 토큰 보유). **닫힘.** (⚠️ 옛 앱 직원 수동발송은 새로고침 1회 필요)
+- **G env.conf** 644→600(시크릿 파일 root-only). **닫힘.**
+- **남음**: D Gemini 키(AI 서버이관 프로젝트)·E 직원 비번 강제리셋(영업외)·F bliss-uploads 버킷(뷰어 서명URL 선행)·H 오리진 CF-IP 제한(영업외, 우회 차단)·I fail2ban/rpcbind/5055재바인딩(영업외)·J 탐지·경보(pg_cron+텔레그램 구축)·send-consent(동의서 세션)·PIPA 신고(전문가).
+
 ---
 
 ## 5. "인증된 IP만 DB 접근" — 왜 이게 핵심 답이 아닌가
