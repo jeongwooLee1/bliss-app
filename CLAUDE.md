@@ -4148,3 +4148,9 @@ HANDOFF 후속 수정요청 묶음 2차.
 작업세션(worktree-naver-newcust-banner-fix) cherry-pick·배포(배포세션). React only.
 - **증상**: 모바일 받은메시지함 대화 헤더가 너무 길어지고(채널 전화 + 블리스 고객 전화 중복 등) 우측 예약/외부링크 버튼이 잘림.
 - **fix** (`MessagesPage` renderHeaderInfo, compact 모드): ① 채널정보줄(①)과 블리스고객칩(②)에 전화가 **중복**될 때 compact에선 ①의 채널 전화 생략 ② ①을 nowrap+ellipsis 한 줄(이름 maxWidth 58%), ② 고객칩도 ellipsis+minWidth:0으로 넘침 방지, × 버튼 flexShrink:0 ③ renderCustSummary에 compact 인자(폰트·gap 축소). 모바일 채팅 헤더가 한 줄에 깔끔히 맞고 버튼 안 잘림. (데스크탑 무영향 — compact=forceCompact일 때만)
+
+### v3.8.94 — 타임라인 블록 드래그 경계 클램프 정합 (고스트=저장시간 일치) (정우님 id_up6g9pvunn) (2026-06-14)
+작업세션(worktree-naver-newcust-banner-fix) cherry-pick·배포(배포세션). React only. v3.8.87(고스트 세로위치 실측) 후속.
+- **증상**: 블록을 맨 위/아래 경계로 드래그 시 고스트 미리보기 위치와 실제 저장되는 시간이 어긋남.
+- **원인**(`TimelinePage` onDragMove): 시간은 `newTimeMin`을 startHour로만 클램프해 계산하고, 고스트 top은 클램프 안 한 `snappedDy`로 계산 → 경계에서 둘이 불일치.
+- **fix**: 시작·끝 양쪽 클램프(`_maxStartMin = (effectiveEndHour*60)-timeUnit`)로 `clamped` 시간 산출 + 고스트 top도 **같은 clamped 값에서 `_clampedDy` 파생** → 경계 포함 고스트=저장시간 항상 일치.
