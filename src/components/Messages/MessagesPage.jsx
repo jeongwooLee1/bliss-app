@@ -92,6 +92,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   const [aiBadgeMap, setAiBadgeMap] = useState({}); // key=ch+'_'+user_id → {status:'pending'|'sent', schedAt, processedAt}
   const [followupMap, setFollowupMap] = useState({}); // key=ch+'_'+user_id → {reason, question, cust_name} (AI가 미룬 문의 → 직원 확인 필요)
   const [followupOnly, setFollowupOnly] = useState(false); // "확인 필요" 대화만 필터
+  const [resolvedMap, setResolvedMap] = useState({}); // key=ch+'_'+user_id → {resolved_at, resolved_by} (상담 완료 — q9ps7dd9nv)
   // IG 계정이 brancheas 테이블에 등록 안 된 경우를 위한 override 매핑: {igAccountId: branchId}
   // 예: 공용 "하우스왁싱 서울" IG 계정을 강남본점에 매핑
   const [igBranchOverride, setIgBranchOverride] = useState({});
@@ -362,6 +363,41 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     return () => { alive=false; clearInterval(t); };
   }, []);
 
+  // 상담 완료(chat_resolved) — 완료 표시·흐림·AI 자동응답 중단 (q9ps7dd9nv)
+  useEffect(() => {
+    if (!_activeBizId) return;
+    let alive = true;
+    const fetchResolved = async () => {
+      try {
+        const url = `${SB_URL}/rest/v1/chat_resolved?business_id=eq.${_activeBizId}&select=channel,account_id,user_id,resolved_at,resolved_by`;
+        const r = await fetch(url, { headers: {...sbHeaders, 'Cache-Control':'no-cache'}, cache:'no-store' });
+        if (!alive || !r.ok) return;
+        const rows = await r.json();
+        const map = {};
+        for (const row of (rows||[])) { const k=(row.channel||'')+'_'+(row.user_id||''); map[k]={resolved_at:row.resolved_at, resolved_by:row.resolved_by, account_id:row.account_id}; }
+        setResolvedMap(map);
+      } catch {}
+    };
+    fetchResolved();
+    const t = setInterval(fetchResolved, 120000);
+    return () => { alive=false; clearInterval(t); };
+  }, [_activeBizId]);
+
+  // 상담 완료/해제 토글
+  const resolveChat = async () => {
+    if (!sel) return;
+    const ch = sel.channel||"naver"; const key = ch+"_"+sel.user_id;
+    const body = { business_id:_activeBizId, channel:ch, account_id:sel.account_id||"", user_id:sel.user_id, resolved_at:new Date().toISOString(), resolved_by:(currentUser?.name||"") };
+    setResolvedMap(p=>({...p,[key]:body}));
+    try { await fetch(`${SB_URL}/rest/v1/chat_resolved?on_conflict=business_id,channel,account_id,user_id`, { method:"POST", headers:{...sbHeaders,"Content-Type":"application/json","Prefer":"resolution=merge-duplicates,return=minimal"}, body:JSON.stringify(body) }); } catch(e){ console.warn("[resolveChat]",e); }
+  };
+  const unresolveChat = async () => {
+    if (!sel) return;
+    const ch = sel.channel||"naver"; const key = ch+"_"+sel.user_id;
+    setResolvedMap(p=>{const n={...p};delete n[key];return n;});
+    try { await fetch(`${SB_URL}/rest/v1/chat_resolved?business_id=eq.${_activeBizId}&channel=eq.${encodeURIComponent(ch)}&account_id=eq.${encodeURIComponent(sel.account_id||"")}&user_id=eq.${encodeURIComponent(sel.user_id)}`, { method:"DELETE", headers:sbHeaders }); } catch(e){ console.warn("[unresolveChat]",e); }
+  };
+
   // 확인 필요(inbox_followup) — AI가 영업시간 종료 등으로 미룬 문의 → 직원이 다음날 확인
   useEffect(() => {
     if (!_activeBizId) return;
@@ -412,6 +448,10 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   const _renderFollowupBadge = (key) => {
     if (!followupMap[key]) return null;
     return <span title={followupMap[key].question||"고객 문의 — 직원 확인 필요"} style={{fontSize:10,fontWeight:700,color:'#3730A3',background:'#E0E7FF',padding:'2px 6px',borderRadius:8,whiteSpace:'nowrap',marginLeft:6,flexShrink:0,display:'inline-flex',alignItems:'center',gap:3}}><I name="bell" size={11} color="#3730A3"/>확인 필요</span>;
+  };
+  const _renderResolvedBadge = (rk) => {
+    if (!resolvedMap[rk]) return null;
+    return <span title={"상담 완료"+(resolvedMap[rk].resolved_by?` · ${resolvedMap[rk].resolved_by}`:"")} style={{fontSize:10,fontWeight:700,color:'#059669',background:'#D1FAE5',padding:'2px 6px',borderRadius:8,whiteSpace:'nowrap',marginLeft:6,flexShrink:0,display:'inline-flex',alignItems:'center',gap:3}}><I name="check" size={11} color="#059669"/>완료</span>;
   };
 
   // 매 초 카운트다운 트리거 (pending) + 30초 sent 만료 체크
@@ -494,6 +534,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   // 페이지네이션 limit=100에 안 걸린 신규 고객도 자동 연결됨
   const [lazyCustMap, setLazyCustMap] = useState({}); // {`${channel}_${user_id}`: customer}
   const [phoneCandMap, setPhoneCandMap] = useState({}); // 번호 일치 후보 2명+ (직원이 고름) — qvz6lolnss
+  const [lazyResMap, setLazyResMap] = useState({}); // {`${channel}_${user_id}`: reservation|null} — 연결고객 최근 예약 on-demand (메모리 밖 과거 예약 대응)
   useEffect(() => {
     if (!sel) return;
     const key = `${sel.channel}_${sel.user_id}`;
@@ -606,8 +647,36 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         .sort((a,b) => ((b.date||"")+(b.time||"")).localeCompare((a.date||"")+(a.time||"")));
       if (list[0]) m[k] = list[0];
     });
+    // 3순위: on-demand로 가져온 연결고객 최근 예약 (메모리에 없는 과거 예약 대응)
+    Object.entries(lazyResMap).forEach(([k, r])=>{ if (r && !m[k]) m[k] = r; });
     return m;
-  },[chatResMap, chatCustMapFull, data?.reservations]);
+  },[chatResMap, chatCustMapFull, data?.reservations, lazyResMap]);
+
+  // 대화 열 때: 연결된 고객인데 메모리(최근 30일+미래)에 예약이 없으면 → 서버에서 최근 예약 1건 on-demand 조회
+  // (과거 완료 예약 등으로 예약 바로가기 버튼이 안 뜨던 문제 — 6xq0oqzyh3)
+  useEffect(() => {
+    if (!sel) return;
+    const key = sel.channel + "_" + sel.user_id;
+    if (chatResMap[key]) return;          // 채팅에 직접 박힌 예약 이미 있음
+    if (key in lazyResMap) return;        // 이미 조회 시도함
+    const cust = chatCustMapFull[key];
+    if (!cust || !cust.id) return;        // 아직 미연결 (연결되면 chatCustMapFull 변경 → 재실행)
+    const SKIP = ["cancelled","naver_cancelled","naver_changed"];
+    const inMem = (data?.reservations||[]).some(r => r.custId === cust.id && !SKIP.includes(r.status));
+    if (inMem) return;                    // 메모리에 활성 예약 있음 → 2순위가 이미 처리
+    let cancelled = false;
+    const _bizId = data?.business?.id || _activeBizId;
+    (async () => {
+      try {
+        const rows = await sb.get('reservations',
+          `&business_id=eq.${_bizId}&cust_id=eq.${cust.id}&is_schedule=eq.false&status=not.in.(cancelled,naver_cancelled,naver_changed)&order=date.desc,time.desc&limit=1`);
+        if (cancelled) return;
+        const r = (Array.isArray(rows) && rows.length) ? fromDb('reservations', rows)[0] : null;
+        setLazyResMap(prev => ({ ...prev, [key]: r || null }));
+      } catch (e) { if (!cancelled) setLazyResMap(prev => ({ ...prev, [key]: null })); }
+    })();
+    return () => { cancelled = true; };
+  }, [sel?.channel, sel?.user_id, chatCustMapFull]);
 
   const threads = useMemo(()=>{
     const map = {};
@@ -1941,7 +2010,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           const isOut=m.direction==="out";
           const sendActive=sendWindowActive(m.user_id,ch);
           return <div key={key} onClick={()=>selectThread(m)}
-            style={{padding:forceCompact?"8px 12px":"12px 16px",display:"flex",alignItems:"center",gap:forceCompact?10:14,borderBottom:"1px solid #f0f0f0",background:"#fff",cursor:"pointer"}}>
+            style={{padding:forceCompact?"8px 12px":"12px 16px",display:"flex",alignItems:"center",gap:forceCompact?10:14,borderBottom:"1px solid #f0f0f0",background:resolvedMap[resKey]?"#fafafa":"#fff",cursor:"pointer",opacity:resolvedMap[resKey]?0.6:1}}>
             {/* 아바타 — 브랜드 색상 배경 + 공식 로고 */}
             <div style={{position:"relative",flexShrink:0}}>
               <div style={{width:forceCompact?36:48,height:forceCompact?36:48,borderRadius:"50%",
@@ -1969,7 +2038,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                 <span style={{fontSize:forceCompact?11:14,color:uc>0?"#111":"#555",fontWeight:uc>0?500:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>
                   {isOut?"나: ":""}{m.message_text}
                 </span>
-                {_renderFollowupBadge(key)}{_renderAiBadge(key)}
+                {_renderResolvedBadge(resKey)}{_renderFollowupBadge(key)}{_renderAiBadge(key)}
                 {uc>0&&<div style={{width:forceCompact?16:20,height:forceCompact?16:20,borderRadius:"50%",background:T.primary,color:"#fff",fontSize:forceCompact?9:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:4}}>{uc}</div>}
               </div>
               {(()=>{const res=chatLatestRes[resKey]||chatResMap[resKey];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"확정대기":res.status==="reserved"?"예약":res.status==="completed"?"완료":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":res.status==="reserved"?T.primary:res.status==="no_show"?"#EF5350":"#9E9E9E";return<div style={{display:"flex",alignItems:"center",gap:4,marginTop:3}}><span style={{fontSize:10,fontWeight:700,color:clr,background:clr+"18",borderRadius:3,padding:"1px 6px",display:"inline-flex",alignItems:"center",gap:3}}><I name="calendar" size={10}/>{st} {res.date?.slice(5)} {res.time}</span></div>;})()}
@@ -2093,6 +2162,13 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             style={{padding:forceCompact?"5px 10px":"6px 12px",background:"#fff",color:T.gray600,border:"1px solid "+T.border,borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
             <I name="trash" size={13}/> 삭제
           </button>
+          {/* ✓ 상담 완료 — 완료 시 목록에서 흐리게+배지, AI 자동응답 중단 (새 문의 오면 자동 재활성화) — q9ps7dd9nv */}
+          {(()=>{const _rv=resolvedMap[(sel.channel||"naver")+"_"+sel.user_id];return(
+          <button onClick={_rv?unresolveChat:resolveChat}
+            title={_rv?"완료 해제 — 이 대화를 다시 활성화합니다":"상담 완료 — 목록에서 흐리게 표시되고 AI 자동응답이 멈춰요 (새 문의가 오면 자동으로 다시 활성화)"}
+            style={{padding:forceCompact?"5px 10px":"6px 12px",background:_rv?"#ECFDF5":"#fff",color:_rv?"#059669":T.gray600,border:"1px solid "+(_rv?"#6EE7B7":T.border),borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
+            <I name="check" size={13}/> {_rv?"완료됨":"완료"}
+          </button>);})()}
           {chatAction && createPortal(
             <div onClick={()=>setChatAction(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:100000,display:"flex",alignItems:"center",justifyContent:"center"}}>
               <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,padding:"20px 22px",width:"min(340px,90vw)",boxShadow:"0 12px 40px rgba(0,0,0,.25)"}}>
@@ -2219,8 +2295,8 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             const initials=name.slice(0,1);
             const sendActive=sendWindowActive(m.user_id,ch);
             return <div key={key} onClick={()=>selectThread(m)}
-              style={{padding:"12px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:12,
-                background:isS?"rgba(124,58,237,0.06)":"transparent",
+              style={{padding:"12px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:12,opacity:resolvedMap[resKey]?0.6:1,
+                background:isS?"rgba(124,58,237,0.06)":(resolvedMap[resKey]?"#fafafa":"transparent"),
                 borderBottom:"1px solid "+T.border}}>
               {/* 아바타 — 브랜드 색상 배경 + 공식 로고 */}
               <div style={{position:"relative",flexShrink:0}}>
@@ -2244,7 +2320,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                   <span style={{fontSize:13,color:uc>0?T.text:T.textMuted,fontWeight:uc>0?500:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:190}}>
                     {m.direction==="out"?"나: ":""}{m.message_text}
                   </span>
-                  {_renderFollowupBadge(key)}{_renderAiBadge(key)}
+                  {_renderResolvedBadge(resKey)}{_renderFollowupBadge(key)}{_renderAiBadge(key)}
                   {uc>0&&<div style={{width:20,height:20,borderRadius:"50%",background:T.primary,color:"#fff",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:4}}>{uc>9?"9+":uc}</div>}
                 </div>
                 {(()=>{const res=chatLatestRes[resKey]||chatResMap[resKey];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="reserved"?"예약":res.status==="request"?"확정대기":res.status==="completed"?"완료":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="reserved"?T.primary:res.status==="request"?"#FF9800":res.status==="no_show"?"#EF5350":"#9E9E9E";return<div style={{marginTop:3}}><span style={{fontSize:10,fontWeight:700,color:clr,background:clr+"18",borderRadius:3,padding:"1px 6px",display:"inline-flex",alignItems:"center",gap:3}}><I name="calendar" size={10}/>{st} {res.date?.slice(5)} {res.time}</span></div>;})()}
