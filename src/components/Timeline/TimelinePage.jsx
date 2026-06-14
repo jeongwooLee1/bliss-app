@@ -4023,7 +4023,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           (r.status === "reserved" || r.status === "confirmed") &&
           r.isNewCust === true &&
           r.date >= todayStr() &&
-          !dismissedNewCust.has(r.id) &&
+          !dismissedNewCust.has(r.reservationId || r.id) &&
           allowedBranches.some(b => b.id === r.bid)
         );
         if (newCustList.length === 0) return null;
@@ -4035,9 +4035,10 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             const _rid = target.reservationId || target.id;
             if (_rid) setHighlightedBlockId(_rid);
             // 클릭 = 1건 확인 처리. 모두 dismiss되면 배너 자동 사라짐.
+            // dismiss 키는 안정적인 네이버 예약번호(reservationId) 우선 — 내부 r.id는 재스크래핑 시 바뀌어 dismiss가 무효화되던 버그 (정우님 2026-06-14: 확인해도 배너 재등장)
             setDismissedNewCust(prev => {
               const ns = new Set(prev);
-              ns.add(target.id);
+              ns.add(target.reservationId || target.id);
               try { localStorage.setItem('bliss_dismissed_newcust', JSON.stringify([...ns])); } catch {}
               return ns;
             });
