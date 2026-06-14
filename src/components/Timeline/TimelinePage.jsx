@@ -1492,6 +1492,14 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
 
   const branchesToShow = useMemo(() => allBranchList.filter(b => viewBids.includes(b.id) && (isMaster || accessibleBids.includes(b.id))), [allBranchList, viewBids, isMaster, accessibleBids]);
 
+  // 지점 빠른 선택 (전체/단일) — 일·주·월 공통 viewBids 제어 (정우 id_ftwxudksnt)
+  const branchOpts = useMemo(() => allBranchList.filter(b => isMaster || accessibleBids.includes(b.id)).map(b => ({ id: b.id, short: b.short || b.name || "" })), [allBranchList, isMaster, accessibleBids]);
+  const accessibleBranchIds = useMemo(() => branchOpts.map(o => o.id), [branchOpts]);
+  const onBranchFocus = (val) => { if (val === "__all") setViewBids(accessibleBranchIds); else if (val !== "__custom") setViewBids([val]); };
+  const branchFocusVal = (!viewBids || !viewBids.length) ? "__all"
+    : (accessibleBranchIds.length && accessibleBranchIds.every(id => viewBids.includes(id)) ? "__all"
+      : (viewBids.length === 1 ? viewBids[0] : "__custom"));
+
   // ── Alarm system ──
   const ALARM_TAG_ID = (data?.serviceTags||[]).find(t=>t.name&&t.name.includes("알람"))?.id;
   const [alarmPopup, setAlarmPopup] = useState(null);
@@ -4080,7 +4088,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         </div>;
       })()}
       {/* Single scroll container */}
-      {calView!=="day" && <CalendarViews view={calView} calView={calView} setCalView={setCalView} selDate={selDate} onDayView={(d)=>{setSelDate(d);setCalView("day");}} bizId={bizId} branches={allBranchList} userBranches={userBranches} isMaster={isMaster} />}
+      {calView!=="day" && <CalendarViews view={calView} calView={calView} setCalView={setCalView} selDate={selDate} onDayView={(d)=>{setSelDate(d);setCalView("day");}} bizId={bizId} branches={allBranchList} userBranches={userBranches} isMaster={isMaster} viewBids={viewBids} branchOpts={branchOpts} onBranchFocus={onBranchFocus} branchFocusVal={branchFocusVal} />}
 
       <div ref={scrollRef} className="timeline-scroll" style={{flex:1,overflow:"auto",minHeight:0,overscrollBehavior:"none",paddingBottom:200,display:calView==="day"?undefined:"none"}}>
 
@@ -4097,6 +4105,14 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                   fontSize:window.innerWidth<=768?T.fs.xs:T.fs.sm,fontWeight:calView===v?800:500,cursor:"pointer",fontFamily:"inherit",lineHeight:1}}>{lbl}</button>
             ))}
           </div>
+          {branchOpts.length > 1 && (
+            <select value={branchFocusVal} onChange={e=>onBranchFocus(e.target.value)} title="지점 선택 (일·주·월 공통)"
+              style={{height:window.innerWidth<=768?28:32,border:"1px solid #d0d0d0",borderRadius:T.radius.md,background:T.bgCard,color:T.text,fontSize:window.innerWidth<=768?T.fs.xs:T.fs.sm,fontWeight:700,padding:"0 6px",cursor:"pointer",flexShrink:0,maxWidth:132}}>
+              <option value="__all">전체 지점</option>
+              {branchOpts.map(o=><option key={o.id} value={o.id}>{o.short}</option>)}
+              {branchFocusVal==="__custom" && <option value="__custom">지점 {viewBids.length}곳</option>}
+            </select>
+          )}
           <button onClick={()=>changeDate(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:T.fs.sm,color:T.gray600,padding:"2px 4px",flexShrink:0}}><I name="chevL" size={14}/></button>
           <span className="tl-date-label" onClick={()=>setShowCal(!showCal)} style={{fontSize:window.innerWidth<=768?T.fs.xs:T.fs.sm,fontWeight:T.fw.bolder,color:T.text,flexShrink:0,whiteSpace:"nowrap",cursor:"pointer"}}>{dateLabel}</span>
           <div style={{position:"relative",flexShrink:0}}>

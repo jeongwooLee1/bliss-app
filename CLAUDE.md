@@ -4174,3 +4174,15 @@ HANDOFF 후속 수정요청 묶음 2차.
 - **검증**(로컬 dev 5192, 실데이터): 근무외 오버레이 43개 전부 도트 패턴 적용 + 구 단색(rgba(0,0,0,.06)) 0개 + 스크린샷으로 서현·경아 칼럼 근무외 점선 영역 확인. 콘솔 에러 0.
 - **유의**: 미배정 칼럼 그라데이션(line 4300)·이동 직원(isMovedOut) 오버레이(line 4330)는 별개 요소라 기존 단색 유지(요청 범위 = 직원 근무외 셀만). 공지&요청 id_wm4qm6t55x done 처리.
 - 적용: v3.8.97 라이브 배포(version.txt 검증, CF 퍼지 success).
+
+### v3.8.98 + 서버 — 수정요청 4건: 캘린더 지점필터 / 외국고객 한국어 발송방지 / 연결버튼 가림 / 대화 완료 (2026-06-14)
+공지&요청 검토중 4건(전부 대표) 일괄 처리. ①②③ React(v3.8.98), ④ React+서버(ai_booking.py).
+- **① 캘린더(월/주/리스트) 지점 필터 (id_ftwxudksnt)**: 일 뷰는 `viewBids`(설정 지점 토글)를 따르는데 **CalendarViews가 viewBids를 안 받아 전 지점을 합쳐 표시**(대표=8지점 → +45건 등 뒤섞임). fix: `CalendarViews`에 `viewBids` 전달 + `accBids`를 viewBids로 필터(일 뷰와 동일). 추가로 **툴바(일 뷰) + 캘린더 헤더에 지점 빠른선택 드롭다운**(`branchOpts`/`onBranchFocus`, 전체+8지점) — 선택 시 `setViewBids([bid])`로 일/주/월 공통 필터. `branchFocusVal`(전체/단일/커스텀N곳). 멀티지점 계정만 노출. **검증**(로컬 dev): 월 뷰 강남점 선택 → +45건→+7건, 상단 배너도 강남만. viewBids 공유라 일 뷰 자동 동기.
+- **② 외국 고객에게 한국어 원문 발송 방지 (id_iwbzfl8vy4)**: 번역 토글이 "off"(또는 자동 판정 누락)일 때 직원 한국어가 영어 고객에게 그대로 발송되던 사고(ela dag 08:26: translateMode off → 한국어 발송, 08:28부터는 정상 번역). 3단 토글(자동→영어→off)이라 실수로 off에 머무는 함정. fix: `doSend`에서 **최근 인바운드가 명백한 외국어(en≥10, en>ko) + 직원 초안이 한국어(ko≥2, ko>en)면 모드 무관 강제 번역**(`sendTranslated(true)`, `forceTranslate` 파라미터). off 실수·heuristic 누락 둘 다 차단. 한국 고객/영어 초안은 무영향.
+- **③ 받은메시지함 "고객 연결" 버튼 가림 (id_6xq0oqzyh3)**: 미연결 대화 헤더 2단(v3.8.84)에서, 좁은 폭(데스크탑 사이드패널 ~340px/모바일)일 때 tier-2 "블리스 고객 미연결 [고객 연결]"이 우측 예약·외부링크 버튼에 밀려 오버플로→가려짐. fix: tier-2 컨테이너 `flexWrap:wrap`+`minWidth:0`, 라벨 compact에서 "미연결"로 단축, 버튼 `flexShrink:0`+`whiteSpace:nowrap` → 폭 무관 항상 노출(좁으면 줄바꿈).
+- **④ 대화 "완료" 버튼 (id_q9ps7dd9nv)**: 전 채널 공통 완료 처리 — 완료 시 ⓐ 목록에서 흐림(opacity .55)+"완료" 배지(외부에서 안 들어가도 확인) ⓑ AI 자동응답 중단 ⓒ 완료 후 고객 인사·감사(스몰토크) 무시 ⓓ **새 문의 들어오면 자동 재활성화**.
+  - DB: 신규 `chat_completed`(business_id/channel/account_id/user_id/done_by/done_at, UNIQUE(biz,ch,acc,user), RLS+anon_all). migration `chat_completed_init`.
+  - React(`MessagesPage`): `doneMap` 30초 폴링 + 액션행 "완료/완료됨" 토글 버튼(`toggleDone` upsert/delete + markRead) + 목록 행 흐림·배지(`_renderDoneBadge`) + 직원이 답장하면 자동 완료 해제(재활성화).
+  - 서버(`ai_booking.py`, 백업 `bak_completed_*`): `ai_booking_agent`에 완료 게이트 — `_chat_is_completed`면 마지막 메시지 분류(`_COMPLETED_INQUIRY`(?·예약·시간·가격·취소·주소 등)/`_COMPLETED_SMALLTALK`(감사·인사·see you 등)). 스몰토크면 `return ""`(무시), 새 문의(또는 25자+ 비스몰토크)면 `_clear_chat_completed`(재활성화) 후 응답. **manual(✨/ai-book)·suggest_only(답변추천/골든)는 우회**. 골든 24/24 PASS(회귀 0).
+- 적용: v3.8.98 라이브 배포(version.txt 검증, CF 퍼지 success) + 서버 ai_booking.py 재시작.
+- **유의**: 완료 대화 재활성화 = "새 문의(질문/예약/취소 키워드 또는 긴 메시지)" 또는 직원이 답장 시. "감사합니다/see you" 등 짧은 인사는 무시(완료 유지). chat_completed 키는 channel+user_id(SMS account_id는 저장만). 지점 필터는 멀티지점 계정만 — 단일지점은 무영향.

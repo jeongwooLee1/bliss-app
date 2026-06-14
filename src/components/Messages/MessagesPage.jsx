@@ -92,6 +92,8 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   const [aiBadgeMap, setAiBadgeMap] = useState({}); // key=ch+'_'+user_id → {status:'pending'|'sent', schedAt, processedAt}
   const [followupMap, setFollowupMap] = useState({}); // key=ch+'_'+user_id → {reason, question, cust_name} (AI가 미룬 문의 → 직원 확인 필요)
   const [followupOnly, setFollowupOnly] = useState(false); // "확인 필요" 대화만 필터
+  const [doneMap, setDoneMap] = useState({}); // key=ch+'_'+user_id → {done_at} (완료 처리된 대화 — 목록 흐림 + AI 응답 중단, 정우 id_q9ps7dd9nv)
+  const [doneBusy, setDoneBusy] = useState(false);
   // IG 계정이 brancheas 테이블에 등록 안 된 경우를 위한 override 매핑: {igAccountId: branchId}
   // 예: 공용 "하우스왁싱 서울" IG 계정을 강남본점에 매핑
   const [igBranchOverride, setIgBranchOverride] = useState({});
@@ -384,6 +386,55 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     const t = setInterval(fetchFollowups, 30000);
     return () => { alive=false; clearInterval(t); };
   }, []);
+
+  // 완료(chat_completed) — 완료 처리된 대화. 목록 흐림 + AI 응답 중단. 신규 문의 인입 시 서버가 자동 해제(재활성화)
+  useEffect(() => {
+    if (!_activeBizId) return;
+    let alive = true;
+    const fetchDone = async () => {
+      try {
+        const url = `${SB_URL}/rest/v1/chat_completed?business_id=eq.${_activeBizId}&select=channel,user_id,done_at`;
+        const r = await fetch(url, { headers: {...sbHeaders, 'Cache-Control':'no-cache'}, cache:'no-store' });
+        if (!alive || !r.ok) return;
+        const rows = await r.json();
+        const map = {};
+        for (const row of (rows||[])) { map[(row.channel||'')+'_'+(row.user_id||'')] = { done_at: row.done_at }; }
+        setDoneMap(map);
+      } catch {}
+    };
+    fetchDone();
+    const t = setInterval(fetchDone, 30000);
+    return () => { alive=false; clearInterval(t); };
+  }, []);
+
+  // 완료 토글 — 완료 처리(chat_completed upsert) / 완료 해제(delete). 완료 시 모두 읽음 처리.
+  const toggleDone = async () => {
+    if (!sel || doneBusy) return;
+    const key = (sel.channel||'naver') + '_' + sel.user_id;
+    const isDone = !!doneMap[key];
+    setDoneBusy(true);
+    try {
+      const base = `${SB_URL}/rest/v1/chat_completed?business_id=eq.${_activeBizId}&channel=eq.${encodeURIComponent(sel.channel||'naver')}&user_id=eq.${encodeURIComponent(sel.user_id)}`;
+      if (isDone) {
+        await fetch(base, { method:'DELETE', headers:{...sbHeaders, Prefer:'return=minimal'} });
+        setDoneMap(prev=>{ const n={...prev}; delete n[key]; return n; });
+      } else {
+        // 중복 방지: 먼저 delete 후 insert
+        await fetch(base, { method:'DELETE', headers:{...sbHeaders, Prefer:'return=minimal'} });
+        await fetch(`${SB_URL}/rest/v1/chat_completed`, { method:'POST', headers:{...sbHeaders, Prefer:'return=minimal'},
+          body: JSON.stringify({ business_id:_activeBizId, channel: sel.channel||'naver', account_id: sel.account_id||'', user_id: sel.user_id, done_by: (localStorage.getItem('bliss_user_name')||'') }) });
+        setDoneMap(prev=>({ ...prev, [key]: { done_at: new Date().toISOString() } }));
+        try{ markRead(sel.user_id, sel.channel||'naver'); }catch(e){}
+      }
+    } catch(e) { alert('완료 처리 실패: '+(e?.message||e)); }
+    finally { setDoneBusy(false); }
+  };
+
+  // 완료 배지 렌더 helper (목록)
+  const _renderDoneBadge = (key) => {
+    if (!doneMap[key]) return null;
+    return <span style={{fontSize:10,fontWeight:700,color:'#6B7280',background:'#F3F4F6',padding:'2px 6px',borderRadius:8,whiteSpace:'nowrap',marginLeft:6,flexShrink:0,display:'inline-flex',alignItems:'center',gap:3,border:'1px solid #E5E7EB'}}><I name="check" size={11} color="#6B7280"/>완료</span>;
+  };
 
   // AI 자동응대 배지 렌더 helper
   const _renderAiBadge = (key) => {
@@ -1024,6 +1075,12 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           fetch(`${SB_URL}/rest/v1/inbox_followup?business_id=eq.${_activeBizId}&channel=eq.${encodeURIComponent(sel.channel||"naver")}&user_id=eq.${encodeURIComponent(sel.user_id)}&resolved_at=is.null`,
             {method:"PATCH",headers:{...sbHeaders,Prefer:"return=minimal"},body:JSON.stringify({resolved_at:new Date().toISOString()})})
             .then(()=>setFollowupMap(prev=>{const n={...prev};delete n[_fk];return n;})).catch(()=>{});
+        }
+        // 완료(chat_completed) 상태면 직원이 답장했으니 재활성화(해제) — 정우 id_q9ps7dd9nv
+        if (doneMap[_fk]) {
+          fetch(`${SB_URL}/rest/v1/chat_completed?business_id=eq.${_activeBizId}&channel=eq.${encodeURIComponent(sel.channel||"naver")}&user_id=eq.${encodeURIComponent(sel.user_id)}`,
+            {method:"DELETE",headers:{...sbHeaders,Prefer:"return=minimal"}})
+            .then(()=>setDoneMap(prev=>{const n={...prev};delete n[_fk];return n;})).catch(()=>{});
         }
       }
     }finally{setSending(false);}
@@ -1696,7 +1753,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     }
   };
 
-  const sendTranslated = async()=>{
+  const sendTranslated = async(forceTranslate=false)=>{
     if(!reply.trim()||!sel) return;
     setSending(true);
     try{
@@ -1714,7 +1771,8 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         //   강제영어 토글이 대화 간 전역 유지되는 함정 → 한국 고객에게 영어가 나가는 사고 방지.
         const _pureKoreanCust = _ko >= 5 && _en === 0;
         // 번역 결정: force_en=강제영어 / auto=영어 우선 케이스 / off=안함. 단 명백한 한국 고객은 제외.
-        const _shouldTranslate = !_pureKoreanCust && (translateMode === "force_en" || (translateMode === "auto" && _enPriority));
+        // forceTranslate: 외국어 고객 + 한국어 초안이면 모드 무관 번역 (off 실수·auto 판정 누락 차단, 정우 id_iwbzfl8vy4)
+        const _shouldTranslate = forceTranslate || (!_pureKoreanCust && (translateMode === "force_en" || (translateMode === "auto" && _enPriority)));
         const lang = "en";
         if(_shouldTranslate){
           // 최근 6건의 대화 맥락 (시각·발화자 구분) — 번역 품질 + stale fact 방지용
@@ -1761,7 +1819,15 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     if(sendingRef.current) return;
     sendingRef.current = true;
     try{
-      if(translateMode!=="off") await sendTranslated();
+      // 외국어 고객한테 한국어 원문이 그대로 나가는 사고 방지 (정우 id_iwbzfl8vy4):
+      // 최근 인바운드가 명백히 외국어(en≥10, en>ko)이고 직원 초안이 한국어면 — off 모드/판정 누락과 무관하게 무조건 번역해서 발송.
+      const _inTxt = (convo||[]).filter(m=>m.direction==="in").slice(-8).map(m=>String(m.message_text||"")).join(" ");
+      const _inKo = (_inTxt.match(/[가-힣]/g)||[]).length, _inEn = (_inTxt.match(/[a-zA-Z]/g)||[]).length;
+      const _foreignCust = _inEn >= 10 && _inEn > _inKo;
+      const _rKo = (reply.match(/[가-힣]/g)||[]).length, _rEn = (reply.match(/[a-zA-Z]/g)||[]).length;
+      const _draftKorean = _rKo >= 2 && _rKo > _rEn;
+      if(_foreignCust && _draftKorean) await sendTranslated(true);
+      else if(translateMode!=="off") await sendTranslated();
       else await sendMsg(reply.trim(), aiKoDraft);
     } finally { sendingRef.current = false; }
   };
@@ -1846,9 +1912,9 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           </div>
           {renderCustSummary(cust, key, compact)}
         </>) : (
-          <div style={{display:"flex",alignItems:"center",gap:6}}>
-            <span style={{fontSize:fs2,color:T.textMuted}}>블리스 고객 미연결</span>
-            <button onClick={()=>setLinkPickerOpen(v=>!v)} style={{fontSize:compact?9:10,fontWeight:800,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary,borderRadius:6,padding:"2px 8px",cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:3}}><I name="globe" size={10}/>고객 연결</button>
+          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",minWidth:0}}>
+            <span style={{fontSize:fs2,color:T.textMuted,whiteSpace:"nowrap"}}>{compact?"미연결":"블리스 고객 미연결"}</span>
+            <button onClick={()=>setLinkPickerOpen(v=>!v)} style={{flexShrink:0,fontSize:compact?9:10,fontWeight:800,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary,borderRadius:6,padding:"2px 8px",cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:3,whiteSpace:"nowrap"}}><I name="globe" size={10}/>고객 연결</button>
           </div>
         )}
       </div>
@@ -1941,7 +2007,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           const isOut=m.direction==="out";
           const sendActive=sendWindowActive(m.user_id,ch);
           return <div key={key} onClick={()=>selectThread(m)}
-            style={{padding:forceCompact?"8px 12px":"12px 16px",display:"flex",alignItems:"center",gap:forceCompact?10:14,borderBottom:"1px solid #f0f0f0",background:"#fff",cursor:"pointer"}}>
+            style={{padding:forceCompact?"8px 12px":"12px 16px",display:"flex",alignItems:"center",gap:forceCompact?10:14,borderBottom:"1px solid #f0f0f0",background:"#fff",cursor:"pointer",opacity:doneMap[resKey]?0.55:1}}>
             {/* 아바타 — 브랜드 색상 배경 + 공식 로고 */}
             <div style={{position:"relative",flexShrink:0}}>
               <div style={{width:forceCompact?36:48,height:forceCompact?36:48,borderRadius:"50%",
@@ -1969,7 +2035,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                 <span style={{fontSize:forceCompact?11:14,color:uc>0?"#111":"#555",fontWeight:uc>0?500:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>
                   {isOut?"나: ":""}{m.message_text}
                 </span>
-                {_renderFollowupBadge(key)}{_renderAiBadge(key)}
+                {_renderDoneBadge(resKey)}{_renderFollowupBadge(key)}{_renderAiBadge(key)}
                 {uc>0&&<div style={{width:forceCompact?16:20,height:forceCompact?16:20,borderRadius:"50%",background:T.primary,color:"#fff",fontSize:forceCompact?9:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:4}}>{uc}</div>}
               </div>
               {(()=>{const res=chatLatestRes[resKey]||chatResMap[resKey];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"확정대기":res.status==="reserved"?"예약":res.status==="completed"?"완료":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":res.status==="reserved"?T.primary:res.status==="no_show"?"#EF5350":"#9E9E9E";return<div style={{display:"flex",alignItems:"center",gap:4,marginTop:3}}><span style={{fontSize:10,fontWeight:700,color:clr,background:clr+"18",borderRadius:3,padding:"1px 6px",display:"inline-flex",alignItems:"center",gap:3}}><I name="calendar" size={10}/>{st} {res.date?.slice(5)} {res.time}</span></div>;})()}
@@ -2124,6 +2190,14 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             style={{padding:forceCompact?"5px 10px":"6px 12px",background:endCounselLoading?T.gray400:"#10B981",color:"#fff",border:"1px solid "+(endCounselLoading?T.gray400:"#059669"),borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:endCounselLoading?"wait":"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
             <I name={endCounselLoading?"loader":"check"} size={13} color="#fff"/> {endCounselLoading?"처리 중…":"상담완료"}
           </button>}
+          {/* 완료 — 전 채널 공통. 완료 시 목록 흐림 + AI 자동응답 중단. 신규 문의 인입 시 서버가 자동 재활성화 (정우 id_q9ps7dd9nv) */}
+          {(()=>{ const _dn=!!doneMap[(sel.channel||'naver')+'_'+sel.user_id]; return (
+            <button onClick={toggleDone} disabled={doneBusy}
+              title={_dn?"완료 해제 — 이 대화를 다시 진행 상태로 되돌립니다":"완료 — 목록에 완료 표시 + AI 자동응답 중단 (새 문의 오면 자동 재활성화, 감사·인사는 무시)"}
+              style={{padding:forceCompact?"5px 10px":"6px 12px",background:_dn?"#6B7280":"#fff",color:_dn?"#fff":T.gray600,border:"1px solid "+(_dn?"#6B7280":T.border),borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:doneBusy?"wait":"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
+              <I name={doneBusy?"loader":"check"} size={13} color={_dn?"#fff":undefined}/> {doneBusy?"처리 중…":(_dn?"완료됨":"완료")}
+            </button>
+          );})()}
           {/* 발신 직원 선택 — 디폴트: 지점명, 수동 선택 시 localStorage 저장 */}
           <select value={selStaff} onChange={e=>updateSelStaff(e.target.value)}
             title="답장 발신자 — 메시지 머리에 표시됩니다 (디폴트: 지점명, 변경 시 자동 저장)"
@@ -2221,7 +2295,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             return <div key={key} onClick={()=>selectThread(m)}
               style={{padding:"12px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:12,
                 background:isS?"rgba(124,58,237,0.06)":"transparent",
-                borderBottom:"1px solid "+T.border}}>
+                borderBottom:"1px solid "+T.border,opacity:doneMap[resKey]?0.55:1}}>
               {/* 아바타 — 브랜드 색상 배경 + 공식 로고 */}
               <div style={{position:"relative",flexShrink:0}}>
                 <div style={{width:40,height:40,borderRadius:"50%",background:CH_COLOR[ch]||"#888",
@@ -2244,7 +2318,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                   <span style={{fontSize:13,color:uc>0?T.text:T.textMuted,fontWeight:uc>0?500:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:190}}>
                     {m.direction==="out"?"나: ":""}{m.message_text}
                   </span>
-                  {_renderFollowupBadge(key)}{_renderAiBadge(key)}
+                  {_renderDoneBadge(resKey)}{_renderFollowupBadge(key)}{_renderAiBadge(key)}
                   {uc>0&&<div style={{width:20,height:20,borderRadius:"50%",background:T.primary,color:"#fff",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:4}}>{uc>9?"9+":uc}</div>}
                 </div>
                 {(()=>{const res=chatLatestRes[resKey]||chatResMap[resKey];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="reserved"?"예약":res.status==="request"?"확정대기":res.status==="completed"?"완료":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="reserved"?T.primary:res.status==="request"?"#FF9800":res.status==="no_show"?"#EF5350":"#9E9E9E";return<div style={{marginTop:3}}><span style={{fontSize:10,fontWeight:700,color:clr,background:clr+"18",borderRadius:3,padding:"1px 6px",display:"inline-flex",alignItems:"center",gap:3}}><I name="calendar" size={10}/>{st} {res.date?.slice(5)} {res.time}</span></div>;})()}

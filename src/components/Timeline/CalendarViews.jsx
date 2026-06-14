@@ -12,7 +12,7 @@ const pad2 = (n) => String(n).padStart(2, "0")
 const iso = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
 const parseISO = (s) => { const [y, m, d] = (s || "").split("-").map(Number); return new Date(y, (m || 1) - 1, d || 1) }
 
-export default function CalendarViews({ view, selDate, onDayView, bizId, branches, userBranches, isMaster, calView, setCalView }) {
+export default function CalendarViews({ view, selDate, onDayView, bizId, branches, userBranches, isMaster, calView, setCalView, viewBids, branchOpts, onBranchFocus, branchFocusVal }) {
   // 어느 뷰에서나 보기 전환 — 캘린더 헤더 좌측에도 동일 드롭다운 (일 뷰는 타임라인 헤더에 있음)
   const viewSelect = setCalView ? (
     <select value={calView || view} onChange={(e) => setCalView(e.target.value)} title="보기 전환 (일/주/월)"
@@ -22,13 +22,29 @@ export default function CalendarViews({ view, selDate, onDayView, bizId, branche
       <option value="month">월</option>
     </select>
   ) : null
+  // viewBids(설정 지점 토글 / 툴바 지점 선택)를 일 뷰와 동일하게 따름 — 미지정 시 전 지점 (정우 id_ftwxudksnt)
   const accBids = useMemo(
-    () => (isMaster ? (branches || []) : (branches || []).filter(b => (userBranches || []).includes(b.id))).map(b => b.id),
-    [branches, userBranches, isMaster]
+    () => (isMaster ? (branches || []) : (branches || []).filter(b => (userBranches || []).includes(b.id)))
+      .map(b => b.id)
+      .filter(id => !viewBids || !viewBids.length || viewBids.includes(id)),
+    [branches, userBranches, isMaster, viewBids]
   )
   const branchShort = useMemo(() => {
     const m = {}; (branches || []).forEach(b => { m[b.id] = b.short || b.name || "" }); return m
   }, [branches])
+
+  // 지점 빠른 선택 바 — 멀티지점 계정만 (일 뷰 툴바와 동일 control, viewBids 공유)
+  const branchBar = (branchOpts && branchOpts.length > 1) ? (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px 0" }}>
+      <I name="building" size={14} />
+      <select value={branchFocusVal || "__all"} onChange={e => onBranchFocus && onBranchFocus(e.target.value)} title="지점 선택"
+        style={{ height: 30, border: "1px solid #d0d0d0", borderRadius: 8, background: T.bgCard, color: T.text, fontSize: 13, fontWeight: 700, padding: "0 8px", cursor: "pointer", maxWidth: 200 }}>
+        <option value="__all">전체 지점</option>
+        {branchOpts.map(o => <option key={o.id} value={o.id}>{o.short}</option>)}
+        {branchFocusVal === "__custom" && <option value="__custom">지점 {(viewBids || []).length}곳</option>}
+      </select>
+    </div>
+  ) : null
 
   // 상태 라벨·색 (reserved 등 타임라인 기본 상태 포함)
   const STATUS_KO = { reserved: "예약", confirmed: "진행", completed: "완료", pending: "확정대기", request: "AI신청", no_show: "노쇼", cancelled: "취소", naver_cancelled: "네이버취소", naver_changed: "변경됨" }
@@ -105,6 +121,7 @@ export default function CalendarViews({ view, selDate, onDayView, bizId, branche
     const ttl = `${anchor.getFullYear()}.${anchor.getMonth() + 1}`
     return (
       <div className="tl-calview" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto", background: T.bgCard }}>
+        {branchBar}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "10px 12px", position: "relative" }}>
           {viewSelect}
           <button style={navBtn} onClick={() => stepMonth(-1)}><I name="chevL" size={16} /></button>
@@ -139,6 +156,7 @@ export default function CalendarViews({ view, selDate, onDayView, bizId, branche
     const ttl = `${s.getMonth() + 1}/${s.getDate()} ~ ${e.getMonth() + 1}/${e.getDate()}`
     return (
       <div className="tl-calview" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", background: T.bgCard }}>
+        {branchBar}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "10px 12px", position: "relative" }}>
           {viewSelect}
           <button style={navBtn} onClick={() => stepWeek(-1)}><I name="chevL" size={16} /></button>
@@ -171,6 +189,7 @@ export default function CalendarViews({ view, selDate, onDayView, bizId, branche
   const dates = Object.keys(byDate).filter(d => d >= (range.monthStart || range.start) && d <= (range.monthEnd || range.end)).sort()
   return (
     <div className="tl-calview" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto", background: T.bgCard }}>
+      {branchBar}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "10px 12px", position: "relative", flexShrink: 0 }}>
         {viewSelect}
         <button style={navBtn} onClick={() => stepMonth(-1)}><I name="chevL" size={16} /></button>
