@@ -29,6 +29,15 @@ export default function CalendarViews({ view, selDate, onDayView, bizId, branche
   const branchShort = useMemo(() => {
     const m = {}; (branches || []).forEach(b => { m[b.id] = b.short || b.name || "" }); return m
   }, [branches])
+  // 지점 필터 — 여러 지점 접근 권한일 때만 노출 (기본 전체, 선택 시 해당 지점 예약만) — ftwxudksnt
+  const [branchFilter, setBranchFilter] = useState("all")
+  const branchSelect = (accBids.length > 1) ? (
+    <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)} title="지점 필터"
+      style={{ position: "absolute", left: setCalView ? 58 : 12, height: 30, border: "1px solid #d0d0d0", borderRadius: 8, background: branchFilter === "all" ? T.bgCard : "#EEF2FF", color: branchFilter === "all" ? T.text : T.primary, fontSize: 13, fontWeight: 700, padding: "0 6px", cursor: "pointer", maxWidth: 124 }}>
+      <option value="all">전체 지점</option>
+      {accBids.map(bid => <option key={bid} value={bid}>{branchShort[bid] || bid}</option>)}
+    </select>
+  ) : null
 
   // 상태 라벨·색 (reserved 등 타임라인 기본 상태 포함)
   const STATUS_KO = { reserved: "예약", confirmed: "진행", completed: "완료", pending: "확정대기", request: "AI신청", no_show: "노쇼", cancelled: "취소", naver_cancelled: "네이버취소", naver_changed: "변경됨" }
@@ -79,10 +88,11 @@ export default function CalendarViews({ view, selDate, onDayView, bizId, branche
 
   const byDate = useMemo(() => {
     const m = {}
-    for (const r of resv) { (m[r.date] = m[r.date] || []).push(r) }
+    const _src = branchFilter === "all" ? resv : resv.filter(r => r.bid === branchFilter)
+    for (const r of _src) { (m[r.date] = m[r.date] || []).push(r) }
     Object.values(m).forEach(arr => arr.sort((a, b) => (a.time || "").localeCompare(b.time || "")))
     return m
-  }, [resv])
+  }, [resv, branchFilter])
 
   const today = todayStr()
   const stepMonth = (d) => setAnchor(a => new Date(a.getFullYear(), a.getMonth() + d, 1))
@@ -107,6 +117,7 @@ export default function CalendarViews({ view, selDate, onDayView, bizId, branche
       <div className="tl-calview" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto", background: T.bgCard }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "10px 12px", position: "relative" }}>
           {viewSelect}
+          {branchSelect}
           <button style={navBtn} onClick={() => stepMonth(-1)}><I name="chevL" size={16} /></button>
           <span style={{ fontSize: 16, fontWeight: 800, minWidth: 88, textAlign: "center" }}>{ttl}</span>
           <button style={navBtn} onClick={() => stepMonth(1)}><I name="chevR" size={16} /></button>
@@ -141,6 +152,7 @@ export default function CalendarViews({ view, selDate, onDayView, bizId, branche
       <div className="tl-calview" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", background: T.bgCard }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "10px 12px", position: "relative" }}>
           {viewSelect}
+          {branchSelect}
           <button style={navBtn} onClick={() => stepWeek(-1)}><I name="chevL" size={16} /></button>
           <span style={{ fontSize: 15, fontWeight: 800 }}>{ttl}</span>
           <button style={navBtn} onClick={() => stepWeek(1)}><I name="chevR" size={16} /></button>
