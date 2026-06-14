@@ -4186,3 +4186,7 @@ HANDOFF 후속 수정요청 묶음 2차.
   - 서버(`ai_booking.py`, 백업 `bak_completed_*`): `ai_booking_agent`에 완료 게이트 — `_chat_is_completed`면 마지막 메시지 분류(`_COMPLETED_INQUIRY`(?·예약·시간·가격·취소·주소 등)/`_COMPLETED_SMALLTALK`(감사·인사·see you 등)). 스몰토크면 `return ""`(무시), 새 문의(또는 25자+ 비스몰토크)면 `_clear_chat_completed`(재활성화) 후 응답. **manual(✨/ai-book)·suggest_only(답변추천/골든)는 우회**. 골든 24/24 PASS(회귀 0).
 - 적용: v3.8.98 라이브 배포(version.txt 검증, CF 퍼지 success) + 서버 ai_booking.py 재시작.
 - **유의**: 완료 대화 재활성화 = "새 문의(질문/예약/취소 키워드 또는 긴 메시지)" 또는 직원이 답장 시. "감사합니다/see you" 등 짧은 인사는 무시(완료 유지). chat_completed 키는 channel+user_id(SMS account_id는 저장만). 지점 필터는 멀티지점 계정만 — 단일지점은 무영향.
+
+### v3.8.99 — 근무외 도트 50% 더 연하게 (정우 id_1ps6ey0kla) (2026-06-14)
+v3.8.97 도트 텍스처가 진하다는 피드백 → 50% 더 연하게. `TimelinePage` 근무외 오버레이 도트색 `rgba(75,75,110,.30)→.15`, 배경 `rgba(0,0,0,.035)→.018`. 적용: v3.8.99 라이브 배포.
+- (별건) 정우님 "맥에서 알람 삐삑 계속" — 검증용으로 띄워둔 프리뷰 브라우저(localhost, 실계정 로그인+확정대기 → v3.8.90 반복알람 1분4회)가 원인. 프리뷰 2개(5192·5196) 모두 정지로 해소. 라이브 앱 알람 코드는 정상(설계대로) — 변경 없음.
