@@ -3331,17 +3331,18 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       const scrollDeltaY = sr.scrollTop - (cor.startScrollTop ?? sr.scrollTop);
       const dy = (pt.clientY - (cor.startClientY ?? pt.clientY)) + scrollDeltaY;
       const slotsMoved = Math.round(dy / rowH);
-      const snappedDy = slotsMoved * rowH;
       // 시간: origTimeMin + 슬롯×timeUnit
       const newTimeMin = (cor.origTimeMin ?? 0) + slotsMoved * timeUnit;
-      const clamped = Math.max(startHour * 60, newTimeMin);
+      // 시작·끝 경계 클램프 (위로 끌면 startHour, 아래로 끌면 마지막 슬롯) — 시간·고스트를 같은 값에서 파생해 경계에서도 일치
+      const _maxStartMin = Math.max(startHour * 60, (effectiveEndHour * 60) - timeUnit);
+      const clamped = Math.min(Math.max(startHour * 60, newTimeMin), _maxStartMin);
       const sh = Math.floor(clamped / 60), sm = Math.max(0, clamped % 60);
       const snappedTime = `${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}`;
       setDragSnap({ roomId: targetRoom?.id, bid: targetRoom?.branch_id, time: snappedTime });
       dragSnapRef.current = { roomId: targetRoom?.id, bid: targetRoom?.branch_id, time: snappedTime };
-      // 미리보기 viewport top: blockTopV(드래그 시작) + 스냅Δy - 현재 스크롤 델타
-      // (페이지가 스크롤된 만큼 viewport top도 같이 올라감)
-      const newTopV = (cor.blockTopV ?? 0) + snappedDy - scrollDeltaY;
+      // 미리보기 viewport top: 클램프된 시간 기준 Δy → 고스트가 저장될 시간과 항상 일치(경계 포함). 스크롤 델타 보정.
+      const _clampedDy = ((clamped - (cor.origTimeMin ?? 0)) / timeUnit) * rowH;
+      const newTopV = (cor.blockTopV ?? 0) + _clampedDy - scrollDeltaY;
       // 누적 left (가변 칼럼 폭 반영 + 좌측 갭 스트립)
       const colLeftInScroll = _lgW + timeLabelsW + _cumLeft;
       const newLeftV = rect.left + colLeftInScroll - sr.scrollLeft + 3;
