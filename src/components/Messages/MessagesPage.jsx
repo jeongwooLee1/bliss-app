@@ -569,7 +569,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   }, [sel?.channel, sel?.user_id, chatCustMapFull]);
 
   // 대화 헤더용 고객 요약 배지 (방문·예약·노쇼 + 기존/신규) — 직원이 즉시 판단
-  const renderCustSummary = (cust, key) => {
+  const renderCustSummary = (cust, key, compact = forceCompact) => {
     if (!cust) return null;
     const visits = Number(cust.visits || 0);
     const noShow = Number(cust.noShowCount || 0);
@@ -578,10 +578,10 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     // 기존/신규 = 실제 방문(매출) 기준 — 예약만 1회(첫 방문 전)면 신규 (정우님 id_iociwubs2j, 시스템 신규 판정과 일치)
     const isExisting = visits > 0;
     const chip = (txt, clr, bg) => (
-      <span style={{ fontSize: forceCompact ? 9 : 10.5, fontWeight: 700, color: clr, background: bg, borderRadius: 5, padding: "1px 6px", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 3 }}>{txt}</span>
+      <span style={{ fontSize: compact ? 9 : 10.5, fontWeight: 700, color: clr, background: bg, borderRadius: 5, padding: "1px 6px", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 3 }}>{txt}</span>
     );
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", marginTop: 3 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: compact ? 4 : 5, flexWrap: "wrap", marginTop: compact ? 2 : 3 }}>
         {isExisting
           ? chip("기존 고객", "#059669", "#ECFDF5")
           : chip("신규 고객", "#D97706", "#FFF7ED")}
@@ -1822,22 +1822,27 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       || (sel.channel==="sms" ? sel.user_id : "")
       || (sel.channel==="whatsapp" && sel.user_id ? (sel.user_id.startsWith("82") ? "0"+sel.user_id.slice(2) : sel.user_id) : "");
     const fs1 = compact?12:15, fs2 = compact?10:12;
+    const _custPhone = cust && cust.phone && !String(cust.phone).startsWith("no_phone") ? cust.phone : "";
+    // compact: 전화가 ②(블리스 고객)에 있으면 ①(채널 정보)에선 생략 — 중복 제거·세로 길이 단축
+    const showChPhone = chPhone && !(compact && _custPhone);
+    const chMeta = (CH_NAME[sel.channel]||sel.channel) + (_bn?" · "+_bn:"") + (showChPhone?" · "+chPhone:"");
     return (<>
-      {/* ① 채널 고객정보 */}
-      <div style={{display:"flex",alignItems:"baseline",gap:6,flexWrap:"wrap",minWidth:0}}>
-        <span style={{fontWeight:800,fontSize:fs1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{dispName||"고객"}</span>
-        <span style={{fontSize:fs2,color:T.textSub,fontWeight:600,whiteSpace:"nowrap"}}>{CH_NAME[sel.channel]||sel.channel}{_bn?" · "+_bn:""}{chPhone?" · "+chPhone:""}</span>
+      {/* ① 채널 고객정보 — compact는 한 줄(전화 생략) */}
+      <div style={{display:"flex",alignItems:"baseline",gap:6,flexWrap:compact?"nowrap":"wrap",minWidth:0,overflow:"hidden"}}>
+        <span style={{fontWeight:800,fontSize:fs1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flexShrink:0,maxWidth:compact?"58%":"100%"}}>{dispName||"고객"}</span>
+        <span style={{fontSize:fs2,color:T.textSub,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0}}>{chMeta}</span>
       </div>
       {/* ② 블리스 고객정보 */}
-      <div style={{marginTop:4,paddingTop:4,borderTop:"1px dashed "+T.border}}>
+      <div style={{marginTop:compact?3:4,paddingTop:compact?3:4,borderTop:"1px dashed "+T.border,minWidth:0}}>
         {cust ? (<>
-          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-            <span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:compact?11:12.5,fontWeight:700,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary+"40",borderRadius:6,padding:"1px 6px",whiteSpace:"nowrap"}} title={cust.phone && !String(cust.phone).startsWith("no_phone")?cust.phone:""}>
-              <I name="user" size={10}/> {cust.name}{cust.custNum?` #${cust.custNum}`:""}{cust.phone && !String(cust.phone).startsWith("no_phone")?` · ${cust.phone}`:""}
-              <button onClick={unlinkCustomer} title="고객 연결 해제" style={{marginLeft:2,background:"none",border:"none",padding:"0 2px",fontSize:12,fontWeight:900,color:T.textMuted,cursor:"pointer",lineHeight:1,fontFamily:"inherit"}}>×</button>
+          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",minWidth:0}}>
+            <span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:compact?11:12.5,fontWeight:700,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary+"40",borderRadius:6,padding:"1px 6px",maxWidth:"100%",minWidth:0}} title={_custPhone}>
+              <I name="user" size={10}/>
+              <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{cust.name}{cust.custNum?` #${cust.custNum}`:""}{_custPhone?` · ${_custPhone}`:""}</span>
+              <button onClick={unlinkCustomer} title="고객 연결 해제" style={{flexShrink:0,marginLeft:2,background:"none",border:"none",padding:"0 2px",fontSize:12,fontWeight:900,color:T.textMuted,cursor:"pointer",lineHeight:1,fontFamily:"inherit"}}>×</button>
             </span>
           </div>
-          {renderCustSummary(cust, key)}
+          {renderCustSummary(cust, key, compact)}
         </>) : (
           <div style={{display:"flex",alignItems:"center",gap:6}}>
             <span style={{fontSize:fs2,color:T.textMuted}}>블리스 고객 미연결</span>
@@ -1980,7 +1985,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         <button onClick={()=>{ setSel(null); if(onChatOpen) onChatOpen(false); }} style={{background:"none",border:"none",cursor:"pointer",color:T.primary,padding:"4px 6px 4px 0",flexShrink:0}}><I name="arrowL" size={forceCompact?16:20}/></button>
         <div style={{width:forceCompact?22:28,height:forceCompact?22:28,borderRadius:14,background:CH_COLOR[sel.channel]||T.primary,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} title={CH_NAME[sel.channel]||sel.channel}><ChannelLogo channel={sel.channel} size={forceCompact?13:16}/></div>
         <div style={{flex:1,minWidth:0,position:"relative"}}>
-          {renderHeaderInfo(forceCompact)}
+          {renderHeaderInfo(true)}
           {linkPickerOpen && !chatCustMapFull[sel.channel+"_"+sel.user_id] && (
             <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:50,background:"#fff",border:"1px solid "+T.border,borderRadius:8,boxShadow:"0 4px 20px rgba(0,0,0,.15)",padding:8,width:280}}>
               <input autoFocus value={linkSearch} onChange={e=>setLinkSearch(e.target.value)} placeholder="이름·전화·이메일·번호 검색"
