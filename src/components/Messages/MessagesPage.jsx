@@ -1929,7 +1929,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         {loading?<div style={{padding:40,textAlign:"center",color:T.textMuted}}>로딩 중...</div>
         :threads.length===0?<div style={{padding:40,textAlign:"center",color:T.textMuted}}>{msgSearch?"검색 결과 없음":"메시지 없음"}</div>
         :threads.map(m=>{
-          const ch=m.channel||"naver"; const key=ch+"_"+m.user_id;
+          const ch=m.channel||"naver"; const key=ch+"_"+m.user_id+(ch==="sms"?"_"+(m.account_id||""):"");
           const uc=unread(m.user_id,ch);
           const name=getDisplayName(m);
           // 왓츠앱은 전지점 공통이라 지점명 숨김
@@ -2206,8 +2206,8 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           {loading?<div style={{padding:20,textAlign:"center",color:T.textMuted}}>로딩 중...</div>
           :threads.length===0?<div style={{padding:20,textAlign:"center",color:T.textMuted}}>{msgSearch?"검색 결과 없음":"메시지 없음"}</div>
           :threads.map(m=>{
-            const ch=m.channel||"naver"; const key=ch+"_"+m.user_id;
-            const isS=sel?.user_id===m.user_id&&sel?.channel===ch;
+            const ch=m.channel||"naver"; const key=ch+"_"+m.user_id+(ch==="sms"?"_"+(m.account_id||""):"");
+            const isS=sel?.user_id===m.user_id&&sel?.channel===ch&&(ch!=="sms"||String(sel?.account_id||"")===String(m.account_id||""));
             const uc=unread(m.user_id,ch);
             const name=getDisplayName(m);
             // 왓츠앱은 전지점 공통이라 지점명 숨김
