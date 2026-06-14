@@ -19,6 +19,28 @@ import ChatPreview from './pages/ChatPreview'
 import PaymentApp from './pages/PaymentApp'
 import { AuthProvider } from './lib/AuthContext'
 
+// 보안: Supabase REST 요청에 로그인 세션 토큰(x-bliss-session) 자동 부착 (2026-06-14 보안사고 대응).
+// 공개 키 단독으로는 민감 테이블 못 읽게 — 서버 RLS가 이 헤더를 검증(차단 적용 후). 적용 전엔 무해(무시됨).
+(function(){
+  if (typeof window === 'undefined' || !window.fetch || window.__blissFetchPatched) return;
+  window.__blissFetchPatched = true;
+  const _f = window.fetch.bind(window);
+  window.fetch = function(input, init){
+    try {
+      const url = typeof input === 'string' ? input : (input && input.url) || '';
+      if (url.indexOf('dpftlrsuqxqqeouwbfjd.supabase.co/rest/') !== -1) {
+        const tok = localStorage.getItem('bliss_session_token') || '';
+        if (tok) {
+          const h = new Headers((init && init.headers) || (typeof input !== 'string' && input && input.headers) || {});
+          if (!h.has('x-bliss-session')) h.set('x-bliss-session', tok);
+          init = Object.assign({}, init, { headers: h });
+        }
+      }
+    } catch(e){}
+    return _f(input, init);
+  };
+})();
+
 // ?chat=1 → 사내 메신저 독립 프리뷰만 렌더 (라이브 앱 완전 우회)
 const isChatPreview = typeof window !== 'undefined' &&
   new URLSearchParams(window.location.search).get('chat') === '1'

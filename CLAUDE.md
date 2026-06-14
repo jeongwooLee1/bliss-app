@@ -4190,3 +4190,17 @@ HANDOFF 후속 수정요청 묶음 2차.
 ### v3.8.99 — 근무외 도트 50% 더 연하게 (정우 id_1ps6ey0kla) (2026-06-14)
 v3.8.97 도트 텍스처가 진하다는 피드백 → 50% 더 연하게. `TimelinePage` 근무외 오버레이 도트색 `rgba(75,75,110,.30)→.15`, 배경 `rgba(0,0,0,.035)→.018`. 적용: v3.8.99 라이브 배포.
 - (별건) 정우님 "맥에서 알람 삐삑 계속" — 검증용으로 띄워둔 프리뷰 브라우저(localhost, 실계정 로그인+확정대기 → v3.8.90 반복알람 1분4회)가 원인. 프리뷰 2개(5192·5196) 모두 정지로 해소. 라이브 앱 알람 코드는 정상(설계대로) — 변경 없음.
+
+### 🚨 보안 사고 대응 — 공개키 데이터 노출 차단 (세션 토큰 인증) — 진행 중 (2026-06-14)
+**사고**: 외부에서 앱 URL로 들어가 고객 DB 추출. 확인 결과 — 앱이 쓰는 **공개 publishable 키가 JS 번들에 박혀 있고**(누구나 추출) **전 테이블 RLS가 `USING(true)`(anon 전체 허용)** → URL만 알면 누구든 customers(40,892·이름/전화/이메일/메모)·sales(179k)·sale_details(355k)·messages·reservations·customer_packages·point_transactions·bank_deposits·businesses(settings의 gemini/deepl 키)를 페이지 단위로 덤프 가능. **안전(차단됨)**: `accounts`(비번 해시)·`app_secrets`(토큰)는 RLS 잠금(정책 없음)으로 0건. service_role 키는 번들에 없음 → 계정탈취·문자도용 위험 없음.
+**근본 원인**: application-level 인증 + 단일 공개키 + 개방 RLS([[reference_supabase_rls]] 패턴). 앱뿐 아니라 **서버(bliss_naver.py)·맥 데몬·카카오 브릿지**도 같은 공개키 사용 → 무작정 차단 시 스크래핑·AI·문자·카카오수신 전부 중단(운영마비). 그래서 **무중단 단계 이행 후 마지막에 차단**.
+**해결 설계 — 세션 토큰 헤더 + RLS 함수 게이트** (전권 키 불요):
+- DB: `app_sessions`(token/kind/account_id/expires, RLS잠금) + `bliss_session_ok()`(요청헤더 `x-bliss-session` 검증, SECURITY DEFINER STABLE) + `_bliss_register_service_token`(일회성 부트스트랩, 이미 있으면 거부) + `_bliss_new_session`(로그인 시 발급, anon 직접호출 REVOKE).
+- 로그인 RPC(`auth_login_v2`/`auth_oauth`)가 성공 시 `session_token` 발급·반환(추가 필드, 기존 무손상).
+- **검증완료**: 유효토큰→true / 무토큰(공격자)→false / 위조→false.
+**진행 상태**:
+- ✅ 1단계(백엔드): 서버 bliss_naver.py·ai_booking.py HEADERS에 `x-bliss-session`(env `BLISS_SESSION_TOKEN`=service 토큰, systemd session.conf root600) 추가. 재시작 정상(무중단). 서비스 토큰 1건 등록(부트스트랩 잠김).
+- ✅ 2단계(앱, v3.8.100): 로그인 시 토큰 localStorage 저장 + **main.jsx 전역 fetch 인터셉터**가 모든 Supabase REST 요청에 `x-bliss-session` 자동 부착(sb.js·직접fetch·supabase-js 전부 커버). 데모 로그인 end-to-end 검증(토큰발급→헤더전송→session_ok true). 로그아웃 시 토큰 제거. flip 전이라 무해(헤더 무시됨).
+- ⏳ 3단계(맥 데몬·카카오 브릿지): 데몬(kb_sms_poll 등)에 헤더 추가 + **카카오 브릿지는 담당 세션이 전권/토큰 전환**(off-limits, 정우님 별도 요청).
+- ⏳ 4단계(차단=flip): 민감 테이블 RLS `USING(true)`→`USING((SELECT bliss_session_ok()))`. **선결**: ① 모든 클라가 v3.8.100+ 로드(인터셉터) ② 서버 전 header-construction 사이트가 HEADERS 상속하는지 감사(hand-built dict 누락분 점검) ③ 데몬·브릿지 준비. **주의**: flip 시 **Realtime(실시간 구독)은 헤더 인증과 안 맞아 작동 중단→폴링 폴백**(앱 동작하나 갱신 5~120초 폴링). edge function은 service_role이라 RLS 면제.
+- 적용: v3.8.100 라이브 배포(2단계). 4단계(실제 차단)는 위 선결 완료 후 신중 적용.

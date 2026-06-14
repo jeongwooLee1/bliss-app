@@ -27,7 +27,7 @@ import BlissRequests from '../components/BlissRequests/BlissRequests'
 import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 
 const uid = genId;
-const BLISS_V = "3.8.99"
+const BLISS_V = "3.8.100"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -342,6 +342,7 @@ function Login({ users, onAccountLogin, onSignup }) {
       const data = await res.json();
       if (!data || !data.account) { setErr("아이디 또는 비밀번호가 일치하지 않습니다."); return; }
       try{if(saveId)localStorage.setItem("savedLoginId",loginId);else localStorage.removeItem("savedLoginId");}catch(e){}
+      try{if(data.session_token)localStorage.setItem("bliss_session_token",data.session_token);}catch(e){}
       onAccountLogin(data.account, data.memberships || []);
     } catch (e) {
       console.error('[login] error', e);
@@ -2233,7 +2234,7 @@ function App() {
               });
               if (r.ok) {
                 const d = await r.json();
-                if (d?.account) { handleAccountLogin(d.account, d.memberships || [], true); return; }
+                if (d?.account) { try{if(d.session_token)localStorage.setItem("bliss_session_token",d.session_token);}catch(e){} handleAccountLogin(d.account, d.memberships || [], true); return; }
               }
             } catch(e) { console.warn('[oauth] err', e); }
           }
@@ -2450,6 +2451,7 @@ function App() {
 
   const handleLogout = () => {
     try{localStorage.removeItem("bliss_session");}catch(e){}
+    try{localStorage.removeItem("bliss_session_token");}catch(e){}
     navigate("/timeline", {replace:true});
     setCurrentUser(null); setCurrentBizId(null); setCurrentBiz(null);
     setPendingAccount(null);
