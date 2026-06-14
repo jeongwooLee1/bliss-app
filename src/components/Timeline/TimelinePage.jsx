@@ -5365,7 +5365,10 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                         const height = (iv.until - iv.from) / 5 * rowH;
                         return <div key={idx} style={{
                           position:"absolute", top, left:0, right:0, height,
-                          background:"rgba(0,0,0,.06)", zIndex:2, pointerEvents:"none",
+                          backgroundColor:"rgba(0,0,0,.035)",
+                          backgroundImage:"radial-gradient(rgba(75,75,110,.30) 1px, transparent 1.5px)",
+                          backgroundSize:"7px 7px",
+                          zIndex:2, pointerEvents:"none",
                         }}/>;
                       })}
                     </>;

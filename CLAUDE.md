@@ -4166,3 +4166,11 @@ HANDOFF 후속 수정요청 묶음 2차.
 - **자주답변 디폴트 지점**: 받은메시지함 자주답변 패널의 지점 드롭다운 기본값을 첫 지점 → **로그인 지점(userBranches[0]) 우선**(자주답변 있을 때). 직원이 자기 지점 답변을 바로 봄.
 - **SMS 예약 badge 키 분리(v3.8.95 후속 버그)**: v3.8.95에서 스레드 React key에 account_id를 넣었는데(`sms_user_id_account_id`), 예약 badge 조회는 `chatResMap`/`chatLatestRes`(account_id 없는 `채널_user_id` 키)라 SMS 스레드 예약 badge가 안 떴음 → badge 조회용 `resKey=채널_user_id`(account_id 제외) 별도 사용. React key(key)는 그대로 account_id 포함. 목록 2곳(default+compact).
 - **정리**: stale 브랜치 `feat/dup-phone-badge`(2주 전·v3.8.89에 이미 중복구현·현재 코드와 충돌) 삭제.
+
+### v3.8.97 — 타임라인 근무외 시간 셀 도트 텍스처 (정우님 id_wm4qm6t55x) (2026-06-14)
+**요청**: "직원근무가 안되는 시간에 셀 안에 뭔가 디자인을 넣어서 더 잘 구분되게 하고 싶어. 여러가지 디자인을 니가 서치해서 나한테 제안해." (공지&요청 pending, /timeline)
+- 시안 4종(A 대각선 빗금 / B 도트 / C 진한+경계선 / D 빗금+라벨)을 실제 타임라인 칼럼 맥락에 입혀 비교 제시 → **정우님이 B 도트 텍스처 선택**.
+- **fix** (`TimelinePage.jsx` 직원 칼럼 비활성 시간대 오버레이, line 5366): 단색 `background:rgba(0,0,0,.06)` → **도트 텍스처** `backgroundColor:rgba(0,0,0,.035)` + `backgroundImage:radial-gradient(rgba(75,75,110,.30) 1px, transparent 1.5px)` + `backgroundSize:7px 7px`. 근무 시간(흰색)과 근무외 시간(은은한 점 패턴)이 명확히 구분되면서, 예약 블록을 가리지 않을 만큼 옅게.
+- **검증**(로컬 dev 5192, 실데이터): 근무외 오버레이 43개 전부 도트 패턴 적용 + 구 단색(rgba(0,0,0,.06)) 0개 + 스크린샷으로 서현·경아 칼럼 근무외 점선 영역 확인. 콘솔 에러 0.
+- **유의**: 미배정 칼럼 그라데이션(line 4300)·이동 직원(isMovedOut) 오버레이(line 4330)는 별개 요소라 기존 단색 유지(요청 범위 = 직원 근무외 셀만). 공지&요청 id_wm4qm6t55x done 처리.
+- 적용: v3.8.97 라이브 배포(version.txt 검증, CF 퍼지 success).
