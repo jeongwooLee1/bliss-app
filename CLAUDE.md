@@ -4160,3 +4160,9 @@ HANDOFF 후속 수정요청 묶음 2차.
 - **증상**: 받은메시지함 SMS 대화 목록이 새 메시지/폴링 재정렬 시 순서가 튐(깜빡·뒤바뀜).
 - **원인**(`AdminInbox` threads.map): React key가 `채널_user_id` — SMS는 같은 번호가 여러 지점 매장폰(account_id 상이)에 분리 저장(v3.8.64)되므로 동일 key 중복 → React 리스트 재조정 깨짐.
 - **fix**: SMS key에 `account_id` 포함(`sms_user_id_account_id`, 2곳) + 선택 판정(`isS`)도 SMS는 account_id 일치까지 비교. 지점별 SMS 스레드가 고유 key로 안정 정렬.
+
+### v3.8.96 — 자주답변 디폴트=로그인 지점 + SMS 예약 badge 키 분리 (정우님 id_7pwz9g5k0r·id_b6yq5te6w9) (2026-06-14)
+작업세션(worktree-naver-newcust-banner-fix) cherry-pick·배포(배포세션). React only. v3.8.95(SMS key account_id 포함) 후속.
+- **자주답변 디폴트 지점**: 받은메시지함 자주답변 패널의 지점 드롭다운 기본값을 첫 지점 → **로그인 지점(userBranches[0]) 우선**(자주답변 있을 때). 직원이 자기 지점 답변을 바로 봄.
+- **SMS 예약 badge 키 분리(v3.8.95 후속 버그)**: v3.8.95에서 스레드 React key에 account_id를 넣었는데(`sms_user_id_account_id`), 예약 badge 조회는 `chatResMap`/`chatLatestRes`(account_id 없는 `채널_user_id` 키)라 SMS 스레드 예약 badge가 안 떴음 → badge 조회용 `resKey=채널_user_id`(account_id 제외) 별도 사용. React key(key)는 그대로 account_id 포함. 목록 2곳(default+compact).
+- **정리**: stale 브랜치 `feat/dup-phone-badge`(2주 전·v3.8.89에 이미 중복구현·현재 코드와 충돌) 삭제.
