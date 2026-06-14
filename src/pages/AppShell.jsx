@@ -27,7 +27,7 @@ import BlissRequests from '../components/BlissRequests/BlissRequests'
 import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 
 const uid = genId;
-const BLISS_V = "3.8.100"
+const BLISS_V = "3.8.101"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -2201,12 +2201,15 @@ function App() {
           try {
             const saved = JSON.parse(localStorage.getItem("bliss_session")||"null");
             console.log("Session restore:", saved);
-            if (saved?.userId) {
+            // 보안: 세션 토큰 없으면 자동로그인 안 함 → 로그인 화면으로(1회 재로그인해 토큰 확보). RLS 차단 통과에 필수 (2026-06-14)
+            if (saved?.userId && localStorage.getItem("bliss_session_token")) {
               const u = users.find(u => u.id === saved.userId);
               if (u) {
                 console.log("Auto-login:", u.role, "bizId:", saved.bizId);
                 handleLogin(u, true); return;
               }
+            } else if (saved?.userId) {
+              console.log("[security] 세션 토큰 없음 → 재로그인 필요");
             }
           } catch(e){}
           // OAuth 리다이렉트 체크 (Google/Kakao 로그인 후 돌아온 경우) — 5초 타임아웃

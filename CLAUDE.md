@@ -4222,3 +4222,7 @@ v3.8.97 도트 텍스처가 진하다는 피드백 → 50% 더 연하게. `Timel
 2. **전 직원 토큰 확보**: 앱에 "토큰 없으면 1회 재로그인 요구" 배포(auto-login에서 `!localStorage.bliss_session_token`이면 로그인 화면). **마감 후 배포 권장**(영업중 배포해도 차단 아니라 매출등록은 정상, 단 재로그인 1회 튕김).
 3. **새벽 차단(flip)**: 1·2 완료 + 한산한 시간 → 민감 테이블 RLS `USING((SELECT bliss_session_ok())) WITH CHECK(...)`. 대상: sales·sale_details·messages·bank_deposits(동의서 무관, 준비됨) + customers·reservations·point_transactions·customer_packages(동의서 완료 후). **businesses/branches/services/consent_*/schedule_data/bliss_todos/server_logs/send_queue/app_users 등은 손님앱·로그인전·백엔드가 anon으로 쓰므로 1차 제외**(별도 검토). edge function은 service_role이라 면제. Realtime은 차단 시 폴링 폴백.
 4. 차단 후: 노출 검증(토큰없음=0 / 토큰=정상), gemini/deepl 키(businesses.settings 노출분) 로테이션 별도.
+
+### v3.8.101 + RLS 차단 실행 — 보안 차단 완료 (2026-06-14 밤, 전 직원 퇴근 후)
+- **v3.8.101**: 자동로그인이 `bliss_session_token` 없으면 안 함 → 로그인 화면(1회 재로그인해 토큰 확보). 내일 출근 직원은 비번 1회 재입력 → 토큰 발급(이후 45일 자동). 동의서 세션 마이그레이션 완료 검증(consent 앱 customers/reservations/point_transactions/customer_packages 직접읽기 0건, phase1 RPC+phase2-3 키오스크 세션토큰 커밋 c05d727).
+- **RLS 차단(flip)**: 8개 민감 테이블 `USING((SELECT bliss_session_ok())) WITH CHECK(...)` — customers·sales·sale_details·reservations·messages·customer_packages·point_transactions·bank_deposits. 공개키 단독(토큰 없음) → 0건, 토큰(앱 로그인·서버·맥데몬·카카오·동의서RPC) → 정상.
