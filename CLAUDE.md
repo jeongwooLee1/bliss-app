@@ -4137,3 +4137,9 @@ HANDOFF 후속 수정요청 묶음 2차.
 **골든 검증**: 신규 케이스 `inquiry_availability`("강남 토요일 3시 브라질리언 되나요?" → noop, 하드게이트) 5회 전부 noop(예약 안 함) + commit 케이스(new_booking_foreign·multimsg·capacity·couple·change_time·gender_flow_2) 매번 book → under-booking 회귀 0. (commit 정규식은 마지막 메시지가 아니라 전체 inbound 스캔 — multimsg 첫 메시지 "I would like to book" 놓침 방지)
 **골든 게이트 강화(같이)** (commit 1adc2da): ① golden_run.py 빈응답/에러 **3회 재시도**(Gemini 빈 completion API 플레이크 차단 — new_booking_foreign 빈응답 1회 사례). ② **faq_not_defer·address_question·simple_greeting → known-open**: 봇(temp>0+RAG)·LLM심판 비결정성으로 콘텐츠 간헐 플레이크(~1/5), action은 항상 정확 → 하드게이트서 제외(가짜 회귀 차단), known_note로 실제 이슈 추적(faq=RAG 생리중왁싱 못끌어와 담당자떠넘김 / address=영답에 한국어주소 혼용 / greeting=심판 재질문 과엄격). **베이스라인 23/23 하드게이트 PASS, 3회 연속 결정적**.
 **유의**: 성급예약 방지는 "예약 의사 분명할 때만 등록"으로 — "예약해주세요/잡아주세요/book/하고싶어요" 또는 AI의 "잡아드릴까요?"에 "네"일 때만. 명확한 예약요청은 그대로 즉시 등록(under-booking 안 감). known-open 3건은 봇/RAG 신뢰도 개선 시 하드게이트 재승격 대상.
+
+### v3.8.92 — 네이버 신규고객 배너 dismiss 키 reservationId로 (확인해도 재등장 fix) (정우님) (2026-06-14)
+작업세션(worktree-naver-newcust-banner-fix) FF 머지·배포(배포세션). React only.
+- **증상**: 타임라인 상단 "신규고객 N건" 배너를 확인(클릭)해도 다시 뜸.
+- **원인**(`TimelinePage`): dismiss 기록 키가 `r.id`(내부 예약 id)인데, 네이버 재스크래핑 시 이 id가 바뀌어 `dismissedNewCust` Set의 키와 안 맞아 dismiss가 무효화 → 같은 예약이 새 id로 다시 신규고객으로 잡혀 배너 재등장.
+- **fix**: dismiss 키를 **안정적인 `reservationId`(네이버 예약번호) 우선**(`r.reservationId || r.id`)으로 — 필터 판정·클릭 dismiss·localStorage 저장 3곳. 재스크래핑돼도 dismiss 유지.
