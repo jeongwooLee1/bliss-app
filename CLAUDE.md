@@ -4154,3 +4154,9 @@ HANDOFF 후속 수정요청 묶음 2차.
 - **증상**: 블록을 맨 위/아래 경계로 드래그 시 고스트 미리보기 위치와 실제 저장되는 시간이 어긋남.
 - **원인**(`TimelinePage` onDragMove): 시간은 `newTimeMin`을 startHour로만 클램프해 계산하고, 고스트 top은 클램프 안 한 `snappedDy`로 계산 → 경계에서 둘이 불일치.
 - **fix**: 시작·끝 양쪽 클램프(`_maxStartMin = (effectiveEndHour*60)-timeUnit`)로 `clamped` 시간 산출 + 고스트 top도 **같은 clamped 값에서 `_clampedDy` 파생** → 경계 포함 고스트=저장시간 항상 일치.
+
+### v3.8.95 — 받은메시지함 SMS 스레드 React key 중복 fix (재정렬 시 순서 튐) (정우님 id_8z5jjddz05) (2026-06-14)
+작업세션(worktree-naver-newcust-banner-fix) cherry-pick·배포(배포세션). React only. v3.8.64/v3.8.80 SMS 지점분리 후속.
+- **증상**: 받은메시지함 SMS 대화 목록이 새 메시지/폴링 재정렬 시 순서가 튐(깜빡·뒤바뀜).
+- **원인**(`AdminInbox` threads.map): React key가 `채널_user_id` — SMS는 같은 번호가 여러 지점 매장폰(account_id 상이)에 분리 저장(v3.8.64)되므로 동일 key 중복 → React 리스트 재조정 깨짐.
+- **fix**: SMS key에 `account_id` 포함(`sms_user_id_account_id`, 2곳) + 선택 판정(`isS`)도 SMS는 account_id 일치까지 비교. 지점별 SMS 스레드가 고유 key로 안정 정렬.
