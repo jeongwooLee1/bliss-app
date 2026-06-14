@@ -4226,3 +4226,11 @@ v3.8.97 도트 텍스처가 진하다는 피드백 → 50% 더 연하게. `Timel
 ### v3.8.101 + RLS 차단 실행 — 보안 차단 완료 (2026-06-14 밤, 전 직원 퇴근 후)
 - **v3.8.101**: 자동로그인이 `bliss_session_token` 없으면 안 함 → 로그인 화면(1회 재로그인해 토큰 확보). 내일 출근 직원은 비번 1회 재입력 → 토큰 발급(이후 45일 자동). 동의서 세션 마이그레이션 완료 검증(consent 앱 customers/reservations/point_transactions/customer_packages 직접읽기 0건, phase1 RPC+phase2-3 키오스크 세션토큰 커밋 c05d727).
 - **RLS 차단(flip)**: 8개 민감 테이블 `USING((SELECT bliss_session_ok())) WITH CHECK(...)` — customers·sales·sale_details·reservations·messages·customer_packages·point_transactions·bank_deposits. 공개키 단독(토큰 없음) → 0건, 토큰(앱 로그인·서버·맥데몬·카카오·동의서RPC) → 정상.
+
+### RLS 차단 2차 — 결제/금융 11개 테이블 (2026-06-14 일요일 23시, 영업외, 서버/앱 변경 0)
+HANDOFF 보안 우선순위 1번 배치. migration `rls_lockdown_payment_finance_batch`.
+- **대상 11개**: billings(빌링키)·billing_payment_methods·billing_payments·billing_charges·billing_balances·billing_subscriptions·billing_transactions·billing_usage_logs·reservation_payments(정책5개 DROP)·package_transactions(정책3개 DROP)·bank_account_map. 각 기존 허용정책 전부 DROP + `bliss_session_<t>` (`USING((SELECT bliss_session_ok())) WITH CHECK(...)`) 단일정책.
+- **소비자 감사(차단 전, 읽기전용)**: ① 앱 = CustomersPage·SalesPage·AdminPlan·ReservationModal·SaleForm·AppShell 전부 로그인 화면 → main.jsx 토큰 인터셉터(v3.8.100+) 커버 ② **PaymentApp(손님 무로그인 /pay)** = Edge Function(payment-info/confirm/billing-issue)만, 직접 테이블 REST 0건 → 차단 무영향 ③ 서버 bliss_naver.py = `bank_account_map` 1곳만 직접 REST(`x-bliss-session: _SVCTOK` 부착), 나머지 billing은 `deduct_billing`(SECURITY DEFINER, RLS면제) RPC ④ Edge Function 결제 7종 = service_role(면제) ⑤ cron `match_deposits_auto`/`cancel_expired_deposits`(INVOKER지만 postgres 역할 실행 → RLS 우회, 게다가 이미 차단된 bank_deposits/reservations 다루며 정상가동 = 경험적 증명) ⑥ `get_billing_usage_summary`(INVOKER) = AdminPlan이 토큰 달고 호출 → bliss_session_ok 통과.
+- **검증**: 정책상태 — 11개 전부 정책 1개(`bliss_session_<t>`)·잔여 USING(true) 0. `set role anon`(=publishable 키, 토큰없음) → 7개 샘플 전부 0건. 유효 토큰 주입(request.headers x-bliss-session) → `token_ok=true` + billing_balances 14·reservation_payments 10·package_transactions 1981 조회 정상.
+- **롤백**: 문제 시 각 테이블 `drop policy bliss_session_<t>` + `create policy anon_all_<t> ... using(true) with check(true)`.
+- 서버·앱·Edge Function 코드 변경 0 (DB migration만) → 버전업·CF퍼지·재시작 불필요. **남은 차단**: 고객 PII/연락처(customer_consents는 동의서앱 조율 필요)·문자내부상태·설정(businesses settings 키분리 선행)·스토리지버킷·car-watcher (HANDOFF 우선순위 1~5).

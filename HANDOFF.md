@@ -12,16 +12,16 @@
 
 ### ✅ 차단 완료 (검증: 공개키단독=0건 / 토큰=정상)
 - 핵심 8개: customers·sales·sale_details·reservations·messages·customer_packages·point_transactions·bank_deposits (`bliss_session_<t>` 정책)
+- **결제/금융 11개 (2026-06-14 일요일 23시 차단, 공개키단독=0/토큰=정상 검증)**: billings(빌링키)·billing_payment_methods·billing_payments·billing_charges·billing_balances·billing_subscriptions·billing_transactions·billing_usage_logs·reservation_payments(정책5개 제거)·package_transactions(정책3개 제거)·bank_account_map. 소비자 감사 완료 — 앱(토큰 인터셉터 v3.8.100+)·서버 bank_account_map(`x-bliss-session: _SVCTOK`)·Edge Function(service_role)·`deduct_billing`(DEFINER)·cron(`match_deposits_auto`/`cancel_expired_deposits` INVOKER지만 postgres 역할로 RLS 우회). **PaymentApp(손님 무로그인)은 Edge Function만 → 무영향.** `get_billing_usage_summary`(INVOKER)는 AdminPlan이 토큰 달고 호출 → 통과.
 - **oracle_* 10개 완전잠금**(정책제거): oracle_member(고객42,831 — 이름·전화·주소·생일·password컬럼!)·oracle_orders(17.6만)·oracle_bankaccount(1.5만)·orderdetail·point·giftcert·message·booking·smsresult·service. **Oracle서버 종료+oracle_sync죽음→앱·서버 안읽음 확인, 무위험.** ← customers 막아도 이 사본 열려있어 무의미했던 핵심 누락분.
 - 원래 잠김(정책없음): accounts(비번)·app_secrets·app_sessions·bank_sms_tokens·kiosk_sessions 등
 
 ### 🟠 아직 열림 — 남은 차단 작업 (우선순위)
-1. **결제/금융**: billing_payments·billing_payment_methods·billings(빌링키!)·billing_charges·billing_balances·billing_subscriptions·billing_transactions·billing_usage_logs·reservation_payments·package_transactions·bank_account_map (앱+서버 소비 → 토큰 차단 가능)
-2. **고객 PII/연락처**: customer_consents(⚠️동의서앱 직접읽음-조율)·customer_behavior_log·customer_shares·naver_reviews·marketing_campaigns·marketing_sends·contact_inquiries·onboarding_submissions·user_requests
-3. **문자/내부상태**: send_queue·sms_send_log·care_sms_log·consent_sms_log·point_expiry_sms_log·reminder_sent_log·reservation_remind_log·schedule_data·team_chat_messages·account_login_log·fcm_tokens·fcm_push_log·documents·document_chunks·chat_booking_state·pending_ai_replies·inbox_followup·blocked_chats·chat_completed·chat_resolved·notification_logs·gemini_usage_log·payment_webhook_log·sales_insight_cache·cust_num_counters·reservation_groups·reservation_sources·pkg_audit
-4. **설정(손님페이지가 읽음 — 별도설계)**: businesses(⚠️settings에 gemini/deepl 키 노출 → 키분리+로테이션)·branches·services·service_categories·service_tags·rooms·products·branch_groups·business_groups·business_group_members
-5. **스토리지 버킷 PUBLIC** ⚠️: `consents`(서명 동의서 PDF) + `bliss-uploads`(요청 화면캡처) → private 전환+서명URL(동의서앱·ConsentDocsViewer가 공개URL fetch라 조율). marketing-scans=private OK.
-6. **car-watcher am_***: 윈도우 car-watcher 읽음 → 죽었으면 잠금/살았으면 토큰. (sq_*는 이미 잠김)
+1. **고객 PII/연락처**: customer_consents(⚠️동의서앱 직접읽음-조율)·customer_behavior_log·customer_shares·naver_reviews·marketing_campaigns·marketing_sends·contact_inquiries·onboarding_submissions·user_requests
+2. **문자/내부상태**: send_queue·sms_send_log·care_sms_log·consent_sms_log·point_expiry_sms_log·reminder_sent_log·reservation_remind_log·schedule_data·team_chat_messages·account_login_log·fcm_tokens·fcm_push_log·documents·document_chunks·chat_booking_state·pending_ai_replies·inbox_followup·blocked_chats·chat_completed·chat_resolved·notification_logs·gemini_usage_log·payment_webhook_log·sales_insight_cache·cust_num_counters·reservation_groups·reservation_sources·pkg_audit
+3. **설정(손님페이지가 읽음 — 별도설계)**: businesses(⚠️settings에 gemini/deepl 키 노출 → 키분리+로테이션)·branches·services·service_categories·service_tags·rooms·products·branch_groups·business_groups·business_group_members
+4. **스토리지 버킷 PUBLIC** ⚠️: `consents`(서명 동의서 PDF) + `bliss-uploads`(요청 화면캡처) → private 전환+서명URL(동의서앱·ConsentDocsViewer가 공개URL fetch라 조율). marketing-scans=private OK.
+5. **car-watcher am_***: 윈도우 car-watcher 읽음 → 죽었으면 잠금/살았으면 토큰. (sq_*는 이미 잠김)
 
 ### ⚠️ 주의/교훈
 - **차단 사고**: 영업중 차단→**자동로그인 직원(토큰없음)** 매출등록 실패→즉시롤백→v3.8.101+직원퇴근후 재차단으로 해결. **차단은 ①소비자 전부 토큰 ②영업외 시간**에만.
