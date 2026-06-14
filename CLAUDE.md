@@ -4143,3 +4143,8 @@ HANDOFF 후속 수정요청 묶음 2차.
 - **증상**: 타임라인 상단 "신규고객 N건" 배너를 확인(클릭)해도 다시 뜸.
 - **원인**(`TimelinePage`): dismiss 기록 키가 `r.id`(내부 예약 id)인데, 네이버 재스크래핑 시 이 id가 바뀌어 `dismissedNewCust` Set의 키와 안 맞아 dismiss가 무효화 → 같은 예약이 새 id로 다시 신규고객으로 잡혀 배너 재등장.
 - **fix**: dismiss 키를 **안정적인 `reservationId`(네이버 예약번호) 우선**(`r.reservationId || r.id`)으로 — 필터 판정·클릭 dismiss·localStorage 저장 3곳. 재스크래핑돼도 dismiss 유지.
+
+### v3.8.93 — 받은메시지함 모바일 채팅 헤더 레이아웃 fix (예약버튼 잘림·과길이) (정우님 id_udw7z4ekr7 C-1) (2026-06-14)
+작업세션(worktree-naver-newcust-banner-fix) cherry-pick·배포(배포세션). React only.
+- **증상**: 모바일 받은메시지함 대화 헤더가 너무 길어지고(채널 전화 + 블리스 고객 전화 중복 등) 우측 예약/외부링크 버튼이 잘림.
+- **fix** (`MessagesPage` renderHeaderInfo, compact 모드): ① 채널정보줄(①)과 블리스고객칩(②)에 전화가 **중복**될 때 compact에선 ①의 채널 전화 생략 ② ①을 nowrap+ellipsis 한 줄(이름 maxWidth 58%), ② 고객칩도 ellipsis+minWidth:0으로 넘침 방지, × 버튼 flexShrink:0 ③ renderCustSummary에 compact 인자(폰트·gap 축소). 모바일 채팅 헤더가 한 줄에 깔끔히 맞고 버튼 안 잘림. (데스크탑 무영향 — compact=forceCompact일 때만)
