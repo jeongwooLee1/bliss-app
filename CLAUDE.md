@@ -4203,4 +4203,22 @@ v3.8.97 도트 텍스처가 진하다는 피드백 → 50% 더 연하게. `Timel
 - ✅ 2단계(앱, v3.8.100): 로그인 시 토큰 localStorage 저장 + **main.jsx 전역 fetch 인터셉터**가 모든 Supabase REST 요청에 `x-bliss-session` 자동 부착(sb.js·직접fetch·supabase-js 전부 커버). 데모 로그인 end-to-end 검증(토큰발급→헤더전송→session_ok true). 로그아웃 시 토큰 제거. flip 전이라 무해(헤더 무시됨).
 - ⏳ 3단계(맥 데몬·카카오 브릿지): 데몬(kb_sms_poll 등)에 헤더 추가 + **카카오 브릿지는 담당 세션이 전권/토큰 전환**(off-limits, 정우님 별도 요청).
 - ⏳ 4단계(차단=flip): 민감 테이블 RLS `USING(true)`→`USING((SELECT bliss_session_ok()))`. **선결**: ① 모든 클라가 v3.8.100+ 로드(인터셉터) ② 서버 전 header-construction 사이트가 HEADERS 상속하는지 감사(hand-built dict 누락분 점검) ③ 데몬·브릿지 준비. **주의**: flip 시 **Realtime(실시간 구독)은 헤더 인증과 안 맞아 작동 중단→폴링 폴백**(앱 동작하나 갱신 5~120초 폴링). edge function은 service_role이라 RLS 면제.
-- 적용: v3.8.100 라이브 배포(2단계). 4단계(실제 차단)는 위 선결 완료 후 신중 적용.
+- 적용: v3.8.100 라이브 배포(2단계).
+
+#### ⚠️ 1차 차단 시도 → 롤백 (2026-06-14 오후, 영업중 사고)
+- sales·sale_details·messages·bank_deposits RLS를 `USING(true)`→`USING((SELECT bliss_session_ok()))`로 차단 → **즉시 매출등록 실패 보고** → **롤백**(전 4개 `anon_all_* USING(true)` 복구, 검증완료 영업정상).
+- **근본 원인**: 세션 토큰은 **비번 로그인(auth_login_v2) 시에만 발급**. 대부분 직원은 **자동로그인**(저장된 `bliss_session`, 비번 X)이라 토큰 없음 → 차단 시 토큰 없는 자동로그인 직원이 전부 막힘. **차단은 전 직원이 토큰을 받은 뒤에만 가능.**
+- **교훈**: 차단 전 반드시 ① 전 직원 토큰 확보(1회 재로그인) ② 손님앱(동의서 등) 정리. 영업시간 차단 절대 금지(새벽만).
+
+#### 발급된 서비스 토큰 (app_sessions, kind=service)
+- 메인서버(bliss_naver/ai_booking): systemd `bliss-naver.service.d/session.conf`의 `BLISS_SESSION_TOKEN`(svc_… label=backend)
+- 카카오 브릿지: `svc_bridge_…`(label=kakao-bridge) — 브릿지 세션이 적용 완료
+- 맥 데몬(입금): `mac-daemon/.env`의 `BLISS_SESSION_TOKEN`(svc_macd_… label=mac-daemon)
+- 오라클(윈도우): `svc_oracle_…`(label=oracle-sync-windows) — **단 Oracle 서버 종료됨 → oracle_sync 죽음(무관). 윈도우 스케줄러 비활성 권장.**
+- (전권 service_role 키는 미사용 — 토큰 헤더 방식)
+
+#### 차단(flip) 재개 절차 (PENDING — 트리거 대기)
+1. **동의서 앱(bliss-consent/sign.blissme.ai)** 정리: anon으로 `customers`(13)·`reservations`·`point_transactions`·`customer_packages` 직접 읽음 → 토큰 헤더(로그인부) 또는 SECURITY DEFINER RPC(손님 무로그인부)로 전환. **← 0528동의서 세션 작업 중(2026-06-14)**
+2. **전 직원 토큰 확보**: 앱에 "토큰 없으면 1회 재로그인 요구" 배포(auto-login에서 `!localStorage.bliss_session_token`이면 로그인 화면). **마감 후 배포 권장**(영업중 배포해도 차단 아니라 매출등록은 정상, 단 재로그인 1회 튕김).
+3. **새벽 차단(flip)**: 1·2 완료 + 한산한 시간 → 민감 테이블 RLS `USING((SELECT bliss_session_ok())) WITH CHECK(...)`. 대상: sales·sale_details·messages·bank_deposits(동의서 무관, 준비됨) + customers·reservations·point_transactions·customer_packages(동의서 완료 후). **businesses/branches/services/consent_*/schedule_data/bliss_todos/server_logs/send_queue/app_users 등은 손님앱·로그인전·백엔드가 anon으로 쓰므로 1차 제외**(별도 검토). edge function은 service_role이라 면제. Realtime은 차단 시 폴링 폴백.
+4. 차단 후: 노출 검증(토큰없음=0 / 토큰=정상), gemini/deepl 키(businesses.settings 노출분) 로테이션 별도.
