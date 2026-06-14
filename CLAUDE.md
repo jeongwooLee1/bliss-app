@@ -4244,3 +4244,10 @@ HANDOFF 보안 우선순위 1번 배치. migration `rls_lockdown_payment_finance
 - **최종 검증(`set role anon` 전수스캔)**: anon 읽기 가능 = branches·businesses·rooms·services(읽기전용 의도) + consent_templates·consent_tokens·customer_consents·template_folders(동의서앱)뿐. **그 외 전 테이블 anon=0.** 토큰 주입 시 정상.
 - **잔여 3건(별도 세션/ops/아키텍처 — HANDOFF 보안섹션 참고)**: ① 동의서앱 4테이블(customer_consents=PII 최우선, consent_tokens/templates, template_folders) — consent 앱 토큰화 필요, spawn_task 위임 ② businesses.settings gemini 키 — client AI 직접호출 다수라 AI 서버이관+키로테이션 필요(즉시완화=키 재발급) ③ 스토리지 버킷 consents/bliss-uploads PUBLIC — 서명URL 전환(동의서앱 cross-repo).
 - 전부 DB migration/RPC + r.html(정적) — React 앱 빌드·버전업 무관. r.html만 CF퍼지.
+
+### Gemini 키 로테이션 — 노출 키 무효화 (2026-06-15, 서버/DB만)
+RLS 차단 후 잔여였던 businesses.settings gemini 키 노출의 즉시 완화 — 노출 크레덴셜 교체·삭제.
+- 노출 키 `...j0LY`(서버 env `BLISS_GEMINI_KEY` + DB settings `gemini_key`/`__systemGeminiKey`(biz_khvurgshb)/`system_gemini_key`(biz_system) **전부 동일 키**)였음(끝4자리 대조 확인).
+- Google AI Studio서 같은 유료 프로젝트에 새 키 `...2Ngw` 발급 → **2.5/3.5-flash 둘 다 HTTP 200·serviceTier standard(유료) 검증** → 서버 env(`env.conf` line5, daemon-reload+restart)·DB settings 3곳 jsonb_set 교체 → 옛 키 콘솔 삭제(무효화).
+- 무중단 검증: 새 키 먼저 넣고(옛 키 살아있는 동안) 교체 → 옛 키 삭제 후 서버 로그 키에러 0·active·새 키 호출 200. 앱·서버 하드코딩 j0LY 흔적 0(grep, 앱·정적·동의서앱·서버).
+- **근본 과제 잔존**: client가 Gemini 직접 호출(NaverReviews·BlissAI·FAQ·영수증·이름변환 `window.__systemGeminiKey`)하는 구조라 키가 settings에 있어야 함 → businesses 읽기전용-public서 anon 노출 지속. 완전 해결 = AI 클라 호출 전부 서버 이관(별도 프로젝트). 그 전엔 주기적 로테이션.
