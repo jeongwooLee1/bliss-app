@@ -28,6 +28,28 @@ const withTimeout = (promise, ms, task) => Promise.race([
   promise,
   new Promise((_, rej) => setTimeout(() => { try { task?.cancel() } catch {} rej(new Error('render timeout')) }, ms)),
 ])
+// consents 버킷(비공개 전환 대상) 공개URL → 서명URL. 실패 시 원본(공개URL) 폴백 →
+// 버킷이 공개든 비공개든 안 깨짐. bliss-uploads 등 다른 버킷 URL은 그대로(공개 유지).
+async function resolveUrl(publicUrl) {
+  if (!publicUrl) return publicUrl
+  const pub = '/storage/v1/object/public/'
+  const i = publicUrl.indexOf(pub + 'consents/')
+  if (i === -1) return publicUrl // consents 공개URL 아님 → 변환 안 함
+  const path = publicUrl.slice(i + pub.length) // consents/<...>
+  try {
+    const r = await fetch(`${SB_URL}/storage/v1/object/sign/${path}`, {
+      method: 'POST',
+      headers: { ...sbHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expiresIn: 3600 }),
+    })
+    if (!r.ok) return publicUrl
+    const j = await r.json()
+    const s = j.signedURL || j.signedUrl
+    if (!s) return publicUrl
+    return s.startsWith('http') ? s : `${SB_URL}/storage/v1${s}`
+  } catch { return publicUrl }
+}
+
 async function renderPdfToImages(url) {
   const pdfjsLib = await loadPdfjs()
   const buf = await (await fetch(url)).arrayBuffer()
@@ -78,6 +100,7 @@ export default function ConsentDocsViewer({ customerId, customerName, consentIds
   const [docs, setDocs] = useState(null)
   const [active, setActive] = useState(0)
   const [cache, setCache] = useState({}) // docId -> images[] | 'loading' | 'error'
+  const [urlMap, setUrlMap] = useState({}) // docId -> 서명/공개 URL (링크용)
   const [err, setErr] = useState(null)
 
   // consentIds가 주어지면 그 id들로 직접 조회(차트 customer_id가 삭제된/다른 레코드여도 표시).
@@ -120,9 +143,13 @@ export default function ConsentDocsViewer({ customerId, customerName, consentIds
       let imgs
       try {
         if (!d.document_url) imgs = 'error'
-        // 종이 동의서 사진 등 이미지 URL → pdfjs 파싱 없이 그대로 표시
-        else if (/\.(png|jpe?g|gif|webp|heic)(\?|$)/i.test(d.document_url)) imgs = [d.document_url]
-        else imgs = await renderPdfToImages(d.document_url)
+        else {
+          const resolved = await resolveUrl(d.document_url)
+          if (!cancelled) setUrlMap((p) => ({ ...p, [d.id]: resolved }))
+          // 종이 동의서 사진 등 이미지 URL → pdfjs 파싱 없이 그대로 표시
+          if (/\.(png|jpe?g|gif|webp|heic)(\?|$)/i.test(d.document_url)) imgs = [resolved]
+          else imgs = await renderPdfToImages(resolved)
+        }
       }
       catch { imgs = 'error' }
       if (!cancelled) setCache((p) => ({ ...p, [d.id]: imgs }))
@@ -192,7 +219,7 @@ export default function ConsentDocsViewer({ customerId, customerName, consentIds
               )}
               {curImgs === 'error' && (
                 cur.document_url
-                  ? <a href={cur.document_url} target="_blank" rel="noreferrer" style={{
+                  ? <a href={urlMap[cur.id] || cur.document_url} target="_blank" rel="noreferrer" style={{
                       display: 'block', textAlign: 'center', padding: 16, background: '#fff', borderRadius: 12,
                       border: '1px solid ' + T.border, color: T.primary, fontWeight: 700, textDecoration: 'none',
                     }}>📄 PDF 새 창에서 열기</a>

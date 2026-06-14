@@ -28,7 +28,9 @@ import { AuthProvider } from './lib/AuthContext'
   window.fetch = function(input, init){
     try {
       const url = typeof input === 'string' ? input : (input && input.url) || '';
-      if (url.indexOf('dpftlrsuqxqqeouwbfjd.supabase.co/rest/') !== -1) {
+      // /rest/ (DB) + /storage/ (서명URL 생성 등) 둘 다 토큰 부착 — 버킷 비공개 전환 대비
+      if (url.indexOf('dpftlrsuqxqqeouwbfjd.supabase.co/rest/') !== -1 ||
+          url.indexOf('dpftlrsuqxqqeouwbfjd.supabase.co/storage/') !== -1) {
         const tok = localStorage.getItem('bliss_session_token') || '';
         if (tok) {
           const h = new Headers((init && init.headers) || (typeof input !== 'string' && input && input.headers) || {});
