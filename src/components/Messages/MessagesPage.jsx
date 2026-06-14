@@ -1574,7 +1574,9 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     );
     const grid = (items)=>(<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>{items.map(renderCard)}</div>);
     const branchOpts = Object.keys(branchGroups);
-    const curBranch = (qrBranchFilter && branchGroups[qrBranchFilter]) ? qrBranchFilter : (branchOpts[0]||"");
+    // 디폴트 = 로그인 지점(userBranches[0]) 우선, 자주답변 있을 때만. 없으면 첫 지점 (정우 id_7pwz9g5k0r)
+    const _myQrBid = (userBranches||[]).find(b=>branchGroups[b]) || "";
+    const curBranch = (qrBranchFilter && branchGroups[qrBranchFilter]) ? qrBranchFilter : (_myQrBid || branchOpts[0] || "");
     const addBtn = (scopeBranchId)=>(<button onClick={()=>setQrDraft({label:"",text:"",branchId:scopeBranchId||undefined})} title="새 답변 추가" style={{padding:"1px 9px",fontSize:16,fontWeight:800,lineHeight:1.25,borderRadius:7,border:"1px solid #C7D2FE",background:"#EEF2FF",color:"#4338CA",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>+</button>);
     // 받은메시지함(.msg-panel) 오른쪽 끝에 붙이기 — 공간 부족(모바일 등)하면 우측 플로팅 폴백
     let pos = { right:8, top:88, maxHeight:"calc(100vh - 116px)", width:380, maxWidth:"94vw" };
@@ -1930,6 +1932,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         :threads.length===0?<div style={{padding:40,textAlign:"center",color:T.textMuted}}>{msgSearch?"검색 결과 없음":"메시지 없음"}</div>
         :threads.map(m=>{
           const ch=m.channel||"naver"; const key=ch+"_"+m.user_id+(ch==="sms"?"_"+(m.account_id||""):"");
+          const resKey=ch+"_"+m.user_id; // 예약 badge 조회용 — chatResMap은 account_id 없는 키
           const uc=unread(m.user_id,ch);
           const name=getDisplayName(m);
           // 왓츠앱은 전지점 공통이라 지점명 숨김
@@ -1969,7 +1972,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                 {_renderFollowupBadge(key)}{_renderAiBadge(key)}
                 {uc>0&&<div style={{width:forceCompact?16:20,height:forceCompact?16:20,borderRadius:"50%",background:T.primary,color:"#fff",fontSize:forceCompact?9:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:4}}>{uc}</div>}
               </div>
-              {(()=>{const res=chatLatestRes[key]||chatResMap[key];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"확정대기":res.status==="reserved"?"예약":res.status==="completed"?"완료":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":res.status==="reserved"?T.primary:res.status==="no_show"?"#EF5350":"#9E9E9E";return<div style={{display:"flex",alignItems:"center",gap:4,marginTop:3}}><span style={{fontSize:10,fontWeight:700,color:clr,background:clr+"18",borderRadius:3,padding:"1px 6px",display:"inline-flex",alignItems:"center",gap:3}}><I name="calendar" size={10}/>{st} {res.date?.slice(5)} {res.time}</span></div>;})()}
+              {(()=>{const res=chatLatestRes[resKey]||chatResMap[resKey];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"확정대기":res.status==="reserved"?"예약":res.status==="completed"?"완료":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":res.status==="reserved"?T.primary:res.status==="no_show"?"#EF5350":"#9E9E9E";return<div style={{display:"flex",alignItems:"center",gap:4,marginTop:3}}><span style={{fontSize:10,fontWeight:700,color:clr,background:clr+"18",borderRadius:3,padding:"1px 6px",display:"inline-flex",alignItems:"center",gap:3}}><I name="calendar" size={10}/>{st} {res.date?.slice(5)} {res.time}</span></div>;})()}
             </div>
           </div>;
         })}
@@ -2207,6 +2210,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           :threads.length===0?<div style={{padding:20,textAlign:"center",color:T.textMuted}}>{msgSearch?"검색 결과 없음":"메시지 없음"}</div>
           :threads.map(m=>{
             const ch=m.channel||"naver"; const key=ch+"_"+m.user_id+(ch==="sms"?"_"+(m.account_id||""):"");
+            const resKey=ch+"_"+m.user_id; // 예약 badge 조회용 — chatResMap은 account_id 없는 키
             const isS=sel?.user_id===m.user_id&&sel?.channel===ch&&(ch!=="sms"||String(sel?.account_id||"")===String(m.account_id||""));
             const uc=unread(m.user_id,ch);
             const name=getDisplayName(m);
@@ -2243,7 +2247,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                   {_renderFollowupBadge(key)}{_renderAiBadge(key)}
                   {uc>0&&<div style={{width:20,height:20,borderRadius:"50%",background:T.primary,color:"#fff",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:4}}>{uc>9?"9+":uc}</div>}
                 </div>
-                {(()=>{const res=chatLatestRes[key]||chatResMap[key];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="reserved"?"예약":res.status==="request"?"확정대기":res.status==="completed"?"완료":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="reserved"?T.primary:res.status==="request"?"#FF9800":res.status==="no_show"?"#EF5350":"#9E9E9E";return<div style={{marginTop:3}}><span style={{fontSize:10,fontWeight:700,color:clr,background:clr+"18",borderRadius:3,padding:"1px 6px",display:"inline-flex",alignItems:"center",gap:3}}><I name="calendar" size={10}/>{st} {res.date?.slice(5)} {res.time}</span></div>;})()}
+                {(()=>{const res=chatLatestRes[resKey]||chatResMap[resKey];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="reserved"?"예약":res.status==="request"?"확정대기":res.status==="completed"?"완료":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="reserved"?T.primary:res.status==="request"?"#FF9800":res.status==="no_show"?"#EF5350":"#9E9E9E";return<div style={{marginTop:3}}><span style={{fontSize:10,fontWeight:700,color:clr,background:clr+"18",borderRadius:3,padding:"1px 6px",display:"inline-flex",alignItems:"center",gap:3}}><I name="calendar" size={10}/>{st} {res.date?.slice(5)} {res.time}</span></div>;})()}
               </div>
             </div>;
           })}
