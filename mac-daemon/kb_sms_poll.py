@@ -56,6 +56,7 @@ def load_env():
 ENV = load_env()
 SB_URL = ENV.get('SB_URL', 'https://dpftlrsuqxqqeouwbfjd.supabase.co')
 SB_KEY = ENV.get('SB_KEY', '')
+SESSION_TOKEN = ENV.get('BLISS_SESSION_TOKEN', '')  # 보안 차단(flip) 후 RLS 통과용 (2026-06-14)
 TG_TOKEN = ENV.get('TG_TOKEN', '')
 TG_CHAT = ENV.get('TG_CHAT', '')
 ACCOUNTS_JSON = ENV.get('BLISS_KB_ACCOUNTS', '{}')
@@ -293,6 +294,7 @@ def insert_deposit(rec):
         'Authorization': f'Bearer {SB_KEY}',
         'Content-Type': 'application/json',
         'Prefer': 'resolution=ignore-duplicates,return=minimal',
+        'x-bliss-session': SESSION_TOKEN,
     }
     data = json.dumps([rec]).encode()
     req = urllib.request.Request(url, data=data, headers=headers, method='POST')
