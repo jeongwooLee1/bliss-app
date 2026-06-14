@@ -21,13 +21,12 @@
 - **oracle_* 10개 완전잠금**(정책제거): oracle_member(고객42,831 — 이름·전화·주소·생일·password컬럼!)·oracle_orders(17.6만)·oracle_bankaccount(1.5만)·orderdetail·point·giftcert·message·booking·smsresult·service. **Oracle서버 종료+oracle_sync죽음→앱·서버 안읽음 확인, 무위험.** ← customers 막아도 이 사본 열려있어 무의미했던 핵심 누락분.
 - 원래 잠김(정책없음): accounts(비번)·app_secrets·app_sessions·bank_sms_tokens·kiosk_sessions 등
 
-### 🟠 남은 잔여 (테이블 차단은 사실상 완료 — anon-읽기 전수스캔 결과 아래 3건만)
-> 2026-06-14 밤 전수 차단 후 `set role anon` 전수스캔: 읽히는 건 **branches·businesses·rooms·services(읽기전용 의도)** + **consent_templates·consent_tokens·customer_consents·template_folders(동의서앱)** 뿐. 나머지 전 테이블 anon=0.
-1. **⚠️ 동의서앱(sign.blissme.ai, bliss-consent 별도 레포) 테이블 — 동의서 세션 위임**: `customer_consents`(서명 동의서 505건=이름·서명·문진(임신/신체) **PII, 최우선**)·`consent_tokens`(1256)·`consent_templates`(36)·`template_folders`(2). 동의서앱이 **토큰 없이** 직접 read/write(키오스크·손님 무로그인). 차단하려면 consent 앱을 키오스크 세션토큰/DEFINER RPC로 마이그레이션 필요 → [[reference_bliss_consent]] 규칙상 이 세션에서 안 건드림. **spawn_task로 위임함.**
+### 🟢 거의 완료 — 남은 잔여 (2026-06-15 최종 `set role anon` 전수스캔)
+> anon이 읽는 건 **branches·businesses·rooms·services(읽기전용 공개=카탈로그/브랜딩, 의도)** + **consent_templates·template_folders(폼 구조, 비PII, sign앱 렌더용)** 뿐. **민감정보(고객·매출·서명동의서 customer_consents·결제·문자·내부상태) 전부 anon=0.** consents 스토리지 버킷 private 완료. 남은 건 아래 1·3의 비차단 잔존(아키텍처·저민감)뿐.
+1. **✅ 동의서앱 테이블 — 완료(동의서 세션, 2026-06-15)**: `customer_consents`(서명 동의서 505건 PII)·`consent_tokens` **차단 완료**(anon=0 검증). `consent_templates`(36)·`template_folders`(2)는 anon-read 유지 = **폼 구조 정의(비PII), sign앱이 무토큰으로 폼 렌더에 읽음 → 의도된 공개**. 동의서앱은 키오스크 세션토큰/RPC로 마이그레이션됨 + 관리자 PIN 추가.
 2. **businesses.settings gemini 키 — ✅ 로테이션 완료(2026-06-15), 아키텍처 과제만 잔존**: 노출됐던 키 `...j0LY`(서버 env + DB settings 3곳 공용)를 **새 키 `...2Ngw`(유료 tier)로 교체 + 옛 키 Google 콘솔서 삭제(무효화)** → 노출 크레덴셜 사망. (서버 env `BLISS_GEMINI_KEY` + settings `gemini_key`·`__systemGeminiKey`(biz_khvurgshb)·`system_gemini_key`(biz_system) 전부 교체, 서버 재시작·로그 에러 0 검증.) **남은 아키텍처 과제**: businesses 읽기전용-public이라 새 키도 settings에 있으면 anon 노출됨 — **client가 Gemini 직접 호출**(NaverReviews·BlissAI·FAQ·영수증·이름변환 `window.__systemGeminiKey`)하는 구조라, 근본 해결은 **AI 클라 호출 전부 서버 이관**(별도 프로젝트). 그때까지 키는 주기적 로테이션. deepl_key는 이미 없음.
-3. **스토리지 버킷 PUBLIC**: `consents`(서명 동의서 PDF=PII)·`bliss-uploads`(요청 화면캡처). marketing-scans=private OK.
-   - **✅ 메인앱(bliss-app) 측 완료 (v3.8.102, 2026-06-15)**: `ConsentDocsViewer`가 consents 공개URL → `createSignedUrl`(POST /storage/v1/object/sign, 실패 시 공개URL 폴백)로 전환. main.jsx fetch 인터셉터 `/storage/`까지 확장(x-bliss-session 부착). **검증: storage가 x-bliss-session을 RLS에 전달함 → `bliss_session_ok()` 게이트 storage 정책으로 staff앱 서명 작동 확인**(임시정책으로 테스트 후 제거). 현재는 폴백으로 공개URL 사용(무중단).
-   - **⏳ 동의서 세션 남은 일**: ① consents `storage.objects` **SELECT 정책 추가** — staff앱(`bliss_session_ok()`) **OR** sign앱 게이트(키오스크 토큰 등) 둘 다 커버(현재 consents엔 anon insert 정책만, SELECT 없음). ② sign앱도 서명URL화(완료라고 함). ③ `update storage.buckets set public=false where id='consents'`. **순서: SELECT 정책 먼저 → 버킷 플립**(반대면 공개URL·서명 둘 다 죽어 뷰어 깨짐). `bliss-uploads`(요청캡처)는 별도(요청 이미지 뷰어들 서명URL화 선행 필요).
+3. **✅ `consents` 버킷 private 완료 (2026-06-15)**: 버킷 `public=false` + `storage.objects` SELECT 정책 `consents_session_read`(`bliss_session_ok()`, 동의서 세션 추가) + sign앱/메일은 service_role(send-consent v10·consent-docs v2). **메인앱(v3.8.102)**: ConsentDocsViewer가 `createSignedUrl`(인터셉터 `/storage/` 토큰)로 표시. **end-to-end 검증(ConsentDocsViewer 호출 그대로 replicate)**: 공개URL=HTTP400(차단) / 토큰서명=200 signedURL / 서명URL→PDF=200 application/pdf 278KB / 무토큰서명=400(거부). ⚠️ 문제 시 즉시 복구 = `update storage.buckets set public=true where id='consents'`.
+   - **⏳ 잔존 = `bliss-uploads`(요청 화면캡처)만 PUBLIC**. private 전환하려면 요청 이미지 뷰어들(QuickRequest·BlissRequests·ConsentPanel 종이동의서)도 서명URL화 선행 필요. 민감도 낮음(요청 스샷). marketing-scans=private OK.
 
 ### ✅ 읽기전용/insert-only로 안전화된 것 (참고)
 - branches·businesses·services·rooms: anon SELECT 유지(공개 카탈로그·손님페이지 필요), 쓰기 토큰화.
@@ -35,7 +34,7 @@
 
 ### ⚠️ 주의/교훈
 - **차단 사고**: 영업중 차단→**자동로그인 직원(토큰없음)** 매출등록 실패→즉시롤백→v3.8.101+직원퇴근후 재차단으로 해결. **차단은 ①소비자 전부 토큰 ②영업외 시간**에만.
-- **내일 아침 직원 1회 재로그인 필요**(v3.8.101). 라이브 v3.8.101.
+- **내일 아침 직원 1회 재로그인 필요**(v3.8.101+, 토큰 발급). 라이브 v3.8.102.
 - 추가 백엔드 차단 시 새 service 토큰은 `app_sessions` 직접 INSERT(부트스트랩RPC는 1회소진·잠김).
 
 ---
