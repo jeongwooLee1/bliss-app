@@ -2177,7 +2177,8 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       </div>
       {/* 입력창 */}
       <div style={{background:"transparent",padding:"8px 12px 12px",flexShrink:0}}>
-        <div style={{display:"flex",gap:6,marginBottom:6,alignItems:"center",flexWrap:"wrap"}}>
+        <div className="msg-action-row" style={{display:"flex",gap:6,marginBottom:6,alignItems:"center",flexWrap:"nowrap",overflowX:"auto"}}>
+          {/* 모바일서 버튼 줄바꿈 깨짐(정우 id_7pt51ndrbi) → 한 줄 가로스크롤. 버튼은 .msg-action-row>button{flex-shrink:0}로 안 쭈그러듦 */}
           {/* AI 답변추천·번역 — 카톡은 블리스에서 직접 전송 불가(답장은 '카카오에서 답장' 딥링크)라 숨김 (정우 id_vnuqbqugzf) */}
           {(sel.channel||"naver")!=="kakao" && (<>
           {/* AI 답변 추천 */}

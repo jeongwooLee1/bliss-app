@@ -2343,7 +2343,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     }).then(r=>r.json()).then(rows=>{
       if (!Array.isArray(rows)) return;
       const saleToRes = new Map(todaysSales.map(s => [s.id, s.reservationId]));
-      const svcByName = new Map((data?.services||[]).map(s => [s.name, s]));
+      const _normN = (x)=>String(x||'').replace(/\s+/g,'').toLowerCase(); // 띄어쓰기·대소문자 무시 매칭
+      const svcByName = new Map((data?.services||[]).map(s => [_normN(s.name), s]));
       const m = new Map();
       rows.forEach(r => {
         const sn = r.service_name || '';
@@ -2351,7 +2352,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         if (/^\[/.test(sn)) return;
         const rid = saleToRes.get(r.sale_id);
         if (!rid) return;
-        const svc = svcByName.get(sn);
+        const svc = svcByName.get(_normN(sn));
         if (!svc) return;
         if (!m.has(rid)) m.set(rid, new Set());
         m.get(rid).add(svc.id);

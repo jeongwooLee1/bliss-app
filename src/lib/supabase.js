@@ -34,16 +34,19 @@ export async function uploadImageToStorage(dataOrFile, folder = 'misc') {
       return null
     }
     const fname = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2,10)}.${ext}`
-    const { error } = await supabase.storage.from('bliss-uploads').upload(fname, blob, {
-      contentType: blob.type || ('image/' + (ext === 'jpg' ? 'jpeg' : ext)),
-      upsert: false,
+    const ct = blob.type || ('image/' + (ext === 'jpg' ? 'jpeg' : ext))
+    // supabase-js storage 클라이언트 대신 raw fetch — 신형 publishable 키를 일관되게 사용
+    // (supabase-js storage가 sb_publishable_ 키를 못 다뤄 업로드 실패하던 문제 회피. REST와 동일 방식)
+    const up = await fetch(`${SB_URL}/storage/v1/object/bliss-uploads/${fname}`, {
+      method: 'POST',
+      headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': ct, 'x-upsert': 'false' },
+      body: blob,
     })
-    if (error) {
-      console.warn('[uploadImageToStorage]', error)
+    if (!up.ok) {
+      console.warn('[uploadImageToStorage]', up.status, await up.text().catch(()=>''))
       return null
     }
-    const { data: pub } = supabase.storage.from('bliss-uploads').getPublicUrl(fname)
-    return pub?.publicUrl || null
+    return `${SB_URL}/storage/v1/object/public/bliss-uploads/${fname}`
   } catch (e) {
     console.warn('[uploadImageToStorage] err', e)
     return null
