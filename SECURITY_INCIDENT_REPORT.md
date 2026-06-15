@@ -64,6 +64,7 @@
 ### ✅ 닫힌 것 (실측 검증됨)
 - 민감 테이블 전부 `bliss_session_ok()` 세션토큰 게이트 → `SET ROLE anon`(공개키 단독)으로 customers·sales·sale_details·customer_consents·messages·결제/금융·accounts·app_secrets·oracle_* 전부 **0행** 확인.
 - consents 스토리지 버킷 private 전환. Gemini 노출키 1차 로테이션. 클라 번들에 service_role/결제/깃허브 시크릿 노출 0(전수 grep). 오리진 앱서버 포트(5055)는 방화벽으로 인터넷 차단 확인.
+- **(2026-06-15) 인계문서 노출 키 3종 로테이션 완료**: ① Supabase secret `bliss_watcher`(`sb_secret_TINhW4…`) — 대시보드 폐기, 그 키로 customers 조회 시 HTTP 401 "Unregistered API key" 실측 확인(RLS 우회 구멍 차단). ② Cloudflare 토큰 `bliss-watcher`(`cfut_PJyy…`, 권한 Pages+Zone.Zone) — 대시보드 삭제, verify 시 "Invalid API Token"·zone read 403 실측 확인(퍼지 토큰 `cfut_Eyka…`는 별개·정상). ③ Anthropic `sk-ant-api03-4TvBPM1…`(옛 키, 서버 현행 키 `MVtdK4…`와 별개·Claude 런타임 미사용) — 콘솔 폐기. 죽은 키 평문도 `.env`(CLOUDFLARE_API_TOKEN 줄 삭제)·`Downloads`의 인계문서 2건에서 마스킹. **businesses.settings 전수 점검 결과 anthropic/claude/openai/wa/tg/line/deepl 키 전부 없음(env 이전 완료), gemini_key만 잔존하나 이미 로테이션된 새 키(`…2Ngw`)**. 무중단(서비스·문자·예약·퍼지 정상).
 
 ### 🔴 아직 열린 구멍 (조사 중 새로 발견 — 6/14 차단이 못 막은 것들)
 
