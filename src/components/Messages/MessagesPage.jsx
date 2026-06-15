@@ -2036,7 +2036,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             <div style={{flex:1,minWidth:0}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
                 <span style={{fontWeight:uc>0?700:600,fontSize:forceCompact?12:16,color:"#111",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:forceCompact?180:200}}>
-                  {name}{branch?" · "+branch:""}
+                  {branch?<span style={{color:T.primary,fontWeight:700}}>{branch}</span>:null}{branch?" · ":""}{name}
                 </span>
                 <span style={{fontSize:forceCompact?10:12,color:uc>0?T.primary:"#999",fontWeight:uc>0?600:400,flexShrink:0,marginLeft:6}}>{fmtTime(m.created_at)}</span>
               </div>
@@ -2136,6 +2136,8 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       {/* 입력창 */}
       <div style={{background:"transparent",padding:"8px 12px 12px",flexShrink:0}}>
         <div style={{display:"flex",gap:6,marginBottom:6,alignItems:"center",flexWrap:"wrap"}}>
+          {/* AI 답변추천·번역 — 카톡은 블리스에서 직접 전송 불가(답장은 '카카오에서 답장' 딥링크)라 숨김 (정우 id_vnuqbqugzf) */}
+          {(sel.channel||"naver")!=="kakao" && (<>
           {/* AI 답변 추천 */}
           <button onClick={genAI} disabled={aiLoading}
             title="AI가 대화 맥락 보고 답변 추천 (직원 검토 후 발송)"
@@ -2154,6 +2156,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             <I name="languages" size={13}/>
             {(translating||inTranslating) ? "번역 중…" : (translateMode==="auto"?"번역 자동":translateMode==="force_en"?"번역 영어":"번역 OFF")}
           </button>
+          </>)}
           {/* AI 예약 등록 */}
           <button onClick={aiBook} disabled={aiBookLoading}
             title="AI가 대화 분석해서 예약 자동 등록 (담당자 확인 후 확정)"
@@ -2191,7 +2194,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                 </div>
               </div>
             </div>, document.body)}
-          {renderQrButton()}
+          {(sel.channel||"naver")!=="kakao" && renderQrButton()}
           {/* 완료 — chat_completed + 확인필요 해소 + (네이버) 톡톡 상담완료 통합 (정우 통합 요청). 네이버는 녹색 "상담완료" */}
           {(()=>{ const _dn=!!doneMap[(sel.channel||'naver')+'_'+sel.user_id]; const _nv=(sel.channel||"naver")==="naver"; const _busy=doneBusy||endCounselLoading; return (
             <button onClick={toggleDone} disabled={_busy}
@@ -2398,6 +2401,8 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           </div>
           <div style={{padding:"12px 16px",borderTop:"1px solid "+T.border,background:T.bgCard}}>
             <div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center",flexWrap:"wrap"}}>
+              {/* AI 답변추천·번역 — 카톡은 블리스 직접 전송 불가라 숨김 (정우 id_vnuqbqugzf) */}
+              {(sel.channel||"naver")!=="kakao" && (<>
               <button onClick={genAI} disabled={aiLoading}
                 title="AI가 대화 맥락 보고 답변 추천 (직원 검토 후 발송)"
                 style={{padding:"6px 12px",background:T.primaryLt,color:T.primaryDk,border:"1px solid "+T.primary+"55",borderRadius:T.radius.md,fontSize:12,cursor:"pointer",fontWeight:T.fw.bold,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
@@ -2414,6 +2419,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                 <I name="languages" size={13}/>
                 {(translating||inTranslating) ? "번역 중…" : (translateMode==="auto"?"번역 자동":translateMode==="force_en"?"번역 영어":"번역 OFF")}
               </button>
+              </>)}
               <button onClick={aiBook} disabled={aiBookLoading}
                 title="AI가 대화 분석해서 예약 자동 등록 (담당자 확인 후 확정)"
                 style={{padding:"6px 12px",background:aiBookLoading?T.gray400:T.primary,color:"#fff",border:"1px solid "+(aiBookLoading?T.gray400:T.primaryDk),borderRadius:T.radius.md,fontSize:12,cursor:aiBookLoading?"wait":"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
@@ -2425,7 +2431,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                 style={{padding:"6px 12px",background:aiErrBusy?T.gray400:"#FEF2F2",color:aiErrBusy?"#fff":"#DC2626",border:"1px solid "+(aiErrBusy?T.gray400:"#FCA5A5"),borderRadius:T.radius.md,fontSize:12,cursor:aiErrBusy?"wait":"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
                 <I name={aiErrBusy?"loader":"alert"} size={13}/> {aiErrBusy?"접수 중…":"오류신고"}
               </button>
-              {renderQrButton()}
+              {(sel.channel||"naver")!=="kakao" && renderQrButton()}
               <select value={selStaff} onChange={e=>updateSelStaff(e.target.value)}
                 title="답장 발신자 — 메시지 머리에 표시 (디폴트: 지점명, 변경 시 자동 저장)"
                 style={{padding:"6px 10px",background:"#fff",color:T.text,border:"1px solid "+T.border,borderRadius:T.radius.md,fontSize:12,fontWeight:T.fw.bold,fontFamily:"inherit",cursor:"pointer"}}>
