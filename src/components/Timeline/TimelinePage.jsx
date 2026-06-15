@@ -5392,8 +5392,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                         return <div key={idx} style={{
                           position:"absolute", top, left:0, right:0, height,
                           backgroundColor:"rgba(0,0,0,.018)",
-                          backgroundImage:"radial-gradient(rgba(75,75,110,.15) 1px, transparent 1.5px)",
-                          backgroundSize:"7px 7px",
+                          backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14'%3E%3Crect width='4' height='4' fill='%234b4b6e' fill-opacity='0.15'/%3E%3C/svg%3E")`,
+                          backgroundSize:"14px 14px",
                           zIndex:2, pointerEvents:"none",
                         }}/>;
                       })}
