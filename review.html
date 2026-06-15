@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>블리스미 — 직원 후기 남기기</title>
+<link rel="icon" href="/favicon.svg">
+<style>
+  :root{ --pp:#6b21b6; --pp2:#a78bfa; --bg:#f6f4fb; --tx:#241a33; --sub:#7a7090; --line:#ece7f5; --gold:#f5b301; }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; padding:0; background:var(--bg); color:var(--tx);
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Malgun Gothic",sans-serif; }
+  .wrap{ max-width:480px; margin:0 auto; min-height:100vh; }
+  .band{ background:linear-gradient(135deg,#5b21b6,#7c3aed 55%,#a78bfa); color:#fff;
+    padding:30px 22px 26px; }
+  .band h1{ font-size:21px; font-weight:800; margin:0 0 7px; letter-spacing:-.3px; }
+  .band p{ font-size:13.5px; line-height:1.55; margin:0; opacity:.92; }
+  .card{ background:#fff; margin:16px 14px; border-radius:18px; padding:20px 18px;
+    box-shadow:0 4px 22px rgba(91,33,182,.08); }
+  label{ display:block; font-size:13px; font-weight:700; color:var(--tx); margin:0 0 8px; }
+  .req{ color:#e0457b; font-weight:800; }
+  input[type=text], textarea{ width:100%; border:1.5px solid var(--line); border-radius:12px;
+    padding:13px 14px; font-size:16px; color:var(--tx); background:#fff; outline:none;
+    font-family:inherit; transition:border-color .15s; }
+  input[type=text]:focus, textarea:focus{ border-color:var(--pp2); }
+  textarea{ min-height:130px; resize:vertical; line-height:1.5; }
+  .field{ margin-bottom:20px; }
+  /* 별점 */
+  .stars{ display:flex; gap:6px; }
+  .star{ font-size:38px; line-height:1; cursor:pointer; color:#dcd5ea; user-select:none;
+    transition:transform .08s; }
+  .star.on{ color:var(--gold); }
+  .star:active{ transform:scale(1.18); }
+  .star-help{ font-size:12px; color:var(--sub); margin-top:7px; }
+  /* 동의 */
+  .consent{ display:flex; gap:10px; align-items:flex-start; background:#faf7ff;
+    border-radius:12px; padding:13px 13px; cursor:pointer; }
+  .consent input{ width:20px; height:20px; margin:1px 0 0; accent-color:var(--pp); flex:0 0 auto; }
+  .consent span{ font-size:12.5px; line-height:1.55; color:var(--sub); }
+  .consent b{ color:var(--pp); }
+  .btn{ width:100%; border:none; border-radius:13px; padding:16px; font-size:16.5px; font-weight:800;
+    color:#fff; background:linear-gradient(135deg,#6d28d9,#a855f7); cursor:pointer; margin-top:6px;
+    box-shadow:0 6px 16px rgba(124,58,237,.28); }
+  .btn:disabled{ opacity:.5; box-shadow:none; cursor:default; }
+  .err{ color:#e0457b; font-size:12.5px; margin-top:8px; display:none; }
+  .foot{ text-align:center; font-size:11.5px; color:#b3a9c8; padding:18px 0 30px; }
+  /* 완료 */
+  #done{ display:none; text-align:center; padding:46px 24px; }
+  #done .chk{ width:74px; height:74px; border-radius:50%; background:linear-gradient(135deg,#7c3aed,#a78bfa);
+    margin:0 auto 20px; display:flex; align-items:center; justify-content:center; }
+  #done h2{ font-size:22px; font-weight:800; margin:0 0 10px; }
+  #done p{ font-size:14px; color:var(--sub); line-height:1.6; margin:0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="band">
+    <h1>블리스미 직원 후기</h1>
+    <p>블리스미를 직접 써보신 솔직한 후기를 남겨주세요.<br>여러분의 한마디가 큰 힘이 됩니다 🙏</p>
+  </div>
+
+  <form id="form" class="card" autocomplete="off">
+    <div class="field">
+      <label>별점 <span class="req">*</span></label>
+      <div class="stars" id="stars">
+        <span class="star" data-v="1">★</span><span class="star" data-v="2">★</span><span class="star" data-v="3">★</span><span class="star" data-v="4">★</span><span class="star" data-v="5">★</span>
+      </div>
+      <div class="star-help" id="starHelp">별을 눌러 평가해주세요</div>
+    </div>
+
+    <div class="field">
+      <label for="name">이름 <span class="req">*</span></label>
+      <input type="text" id="name" maxlength="40" placeholder="실명을 입력해주세요">
+    </div>
+
+    <div class="field">
+      <label for="content">후기 내용 <span class="req">*</span></label>
+      <textarea id="content" maxlength="2000" placeholder="블리스미를 쓰면서 좋았던 점, 편해진 점 등을 자유롭게 적어주세요."></textarea>
+    </div>
+
+    <div class="field" style="margin-bottom:14px">
+      <label class="consent">
+        <input type="checkbox" id="consent">
+        <span>후기를 블리스미 <b>홍보·소개에 사용</b>하는 데 동의합니다. 공개 시 <b>이름은 「이○우」처럼 마스킹</b>되며 소속·지점은 표시되지 않습니다.</span>
+      </label>
+    </div>
+
+    <button type="submit" class="btn" id="submit">후기 남기기</button>
+    <div class="err" id="err"></div>
+  </form>
+
+  <div id="done" class="card">
+    <div class="chk"><svg width="38" height="38" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <h2>감사합니다!</h2>
+    <p>소중한 후기가 잘 전달됐어요.<br>여러분 덕분에 블리스미가 자랍니다 💜</p>
+  </div>
+
+  <div class="foot">blissme · 뷰티샵 올인원 관리</div>
+</div>
+
+<script>
+  var SB="https://dpftlrsuqxqqeouwbfjd.supabase.co";
+  var KEY="sb_publishable_3H-KTP0MoV_KuY74ocbefw_3Ze5xBJj";
+  var rating=0;
+  var RT=["","별로예요","그저 그래요","괜찮아요","좋아요","최고예요!"];
+
+  var stars=document.querySelectorAll('.star');
+  var starHelp=document.getElementById('starHelp');
+  function paint(){ stars.forEach(function(s){ s.classList.toggle('on', +s.dataset.v<=rating); });
+    starHelp.textContent = rating? ("★ "+rating+" — "+RT[rating]) : "별을 눌러 평가해주세요"; }
+  stars.forEach(function(s){ s.addEventListener('click', function(){ rating=+s.dataset.v; paint(); }); });
+
+  var form=document.getElementById('form'), errEl=document.getElementById('err'), btn=document.getElementById('submit');
+  function showErr(m){ errEl.textContent=m; errEl.style.display='block'; }
+
+  form.addEventListener('submit', function(e){
+    e.preventDefault(); errEl.style.display='none';
+    var name=document.getElementById('name').value.trim();
+    var content=document.getElementById('content').value.trim();
+    var consent=document.getElementById('consent').checked;
+    if(!rating) return showErr('별점을 선택해주세요.');
+    if(!name) return showErr('이름을 입력해주세요.');
+    if(content.length<5) return showErr('후기를 조금만 더 자세히 적어주세요.');
+    if(!consent) return showErr('공개 사용 동의에 체크해주세요.');
+
+    btn.disabled=true; btn.textContent='보내는 중…';
+    fetch(SB+"/rest/v1/staff_testimonials", {
+      method:'POST',
+      headers:{ 'apikey':KEY, 'Authorization':'Bearer '+KEY, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
+      body: JSON.stringify({ name:name, rating:rating, content:content, consent_public:consent })
+    }).then(function(r){
+      if(r.ok){ form.style.display='none'; document.getElementById('done').style.display='block';
+        window.scrollTo(0,0); }
+      else { return r.text().then(function(t){ throw new Error(t||r.status); }); }
+    }).catch(function(){ btn.disabled=false; btn.textContent='후기 남기기';
+      showErr('전송에 실패했어요. 잠시 후 다시 시도해주세요.'); });
+  });
+</script>
+</body>
+</html>
