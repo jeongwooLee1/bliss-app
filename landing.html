@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script>/* 로그인된 직원은 앱으로 바로 보냄 (신규 방문자만 홍보 페이지). 세션토큰까지 있을 때만 = SPA 자동로그인 조건과 일치(토큰 없으면 리다이렉트 안 함 → 로그인 무한루프 방지) */try{if(!/preview_no_redirect/.test(location.search)&&localStorage.getItem('bliss_session')&&localStorage.getItem('bliss_session_token'))location.replace('/timeline');}catch(e){}</script>
 <title>블리스미(blissme) — 뷰티샵 예약·매출·AI 상담 올인원 관리 프로그램</title>
-<meta name="description" content="왁싱샵·미용실·네일샵·속눈썹샵을 위한 올인원 예약관리 프로그램. 타임라인 예약, AI 자동 상담·예약 접수, 알림톡·문자 자동발송, 매출·고객·보유권 관리, 멀티지점까지 블리스미 하나로. 무료 체험 14일.">
-<meta name="keywords" content="뷰티샵 예약관리 프로그램, 왁싱샵 예약 프로그램, 미용실 예약 시스템, 네일샵 예약관리, 속눈썹샵 관리, 살롱 예약 프로그램, 알림톡 자동발송, AI 예약 접수, 매출관리 프로그램, 고객관리 CRM, 예약 노쇼 방지, 멀티지점 관리, 뷰티 예약 솔루션, 블리스미, blissme">
+<meta name="description" content="왁싱샵·미용실·네일샵·속눈썹샵을 위한 올인원 예약관리 프로그램. 타임라인 예약, AI 자동 상담·예약 접수, 알림톡·문자 자동발송, 노쇼 방지, 매출·고객·보유권 관리까지 — 1인샵부터 멀티지점까지 블리스미 하나로. 무료 체험 14일.">
+<meta name="keywords" content="뷰티샵 예약관리 프로그램, 왁싱샵 예약 프로그램, 1인샵 예약 프로그램, 미용실 예약 시스템, 네일샵 예약관리, 속눈썹샵 관리, 살롱 예약 프로그램, 알림톡 자동발송, AI 예약 접수, 매출관리 프로그램, 고객관리 CRM, 예약 노쇼 방지, 멀티지점 관리, 뷰티 예약 솔루션, 블리스미, blissme">
 <meta name="robots" content="index,follow">
 <link rel="canonical" href="https://blissme.ai/">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -46,10 +46,22 @@
   "@context":"https://schema.org","@type":"FAQPage",
   "mainEntity":[
     {"@type":"Question","name":"어떤 업종에서 쓸 수 있나요?","acceptedAnswer":{"@type":"Answer","text":"왁싱샵, 미용실, 네일샵, 속눈썹샵, 피부·관리샵 등 예약 기반 뷰티샵이면 모두 사용 가능합니다."}},
+    {"@type":"Question","name":"1인샵인데도 쓸 만한가요?","acceptedAnswer":{"@type":"Answer","text":"오히려 1인샵일수록 효과가 큽니다. 시술 중 응대가 불가능한 시간에 온 문의를 AI가 받아 예약까지 잡아둡니다. 직원이 늘면 근무표·정산 기능까지 그대로 확장됩니다."}},
+    {"@type":"Question","name":"왁싱샵에 특화돼 있나요?","acceptedAnswer":{"@type":"Answer","text":"20년 넘게 운영된 실제 왁싱샵 현장에서 검증하며 다듬어 왁싱샵 예약 관리에 특히 강하고, 미용실·네일샵·속눈썹샵 등 예약 기반 뷰티샵 공통 기능을 모두 갖췄습니다."}},
     {"@type":"Question","name":"무료로 써볼 수 있나요?","acceptedAnswer":{"@type":"Answer","text":"네, 14일 무료 체험을 제공합니다. 예약·매출·고객 관리처럼 별도 연동이 필요 없는 기능을 신용카드 없이 사용해볼 수 있습니다. 네이버·인스타·라인 연동과 AI 자동응대·알림톡 발송은 계정 연동·세팅이 필요해 유료 전환 후 매장에 맞춰 세팅해 드립니다."}},
     {"@type":"Question","name":"네이버 예약과 연동되나요?","acceptedAnswer":{"@type":"Answer","text":"네이버 예약·톡톡을 자동으로 가져와 타임라인에 표시하고, 확정·변경·취소까지 관리할 수 있습니다."}},
     {"@type":"Question","name":"알림톡·문자가 자동으로 가나요?","acceptedAnswer":{"@type":"Answer","text":"예약확정·전날 안내·당일 리마인드·시술 후 케어 문자 등을 조건에 맞춰 자동 발송합니다."}}
   ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org","@type":"Organization",
+  "name":"테라포트",
+  "alternateName":"블리스미 blissme",
+  "url":"https://blissme.ai/",
+  "logo":"https://blissme.ai/logo.png",
+  "contactPoint":{"@type":"ContactPoint","telephone":"+82-70-8983-6838","contactType":"customer service","availableLanguage":["Korean"]}
 }
 </script>
 <style>
@@ -108,8 +120,9 @@ nav .wrap{display:flex;align-items:center;justify-content:space-between;height:6
 @media(max-width:760px){.hero h1{font-size:30px}.hero p.sub{font-size:16px}.hero .hero-em{font-size:18px}}
 .trust{padding:26px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fdf3f9,#f7f1ff)}
 .trust .wrap{display:flex;flex-wrap:wrap;justify-content:center;gap:14px 40px;text-align:center}
-.trust .it{font-size:15px;color:var(--sub);font-weight:600}
-.trust .it b,.trust .it strong{color:var(--p);font-size:20px;font-weight:900;display:block}
+.trust .it{font-size:15px;color:var(--sub);font-weight:600;line-height:1.5;flex:0 1 auto}
+.trust .it b,.trust .it strong{color:var(--p);font-weight:900;font-size:17px}
+@media(max-width:760px){.trust .wrap{gap:12px 22px}.trust .it{flex:1 1 44%;font-size:14px}}
 section.s{padding:78px 0}
 .s-head{text-align:center;margin-bottom:48px}
 .s-head .k{color:var(--p);font-weight:800;font-size:14px;letter-spacing:1px;text-transform:uppercase}
@@ -290,12 +303,17 @@ footer .co a{color:#b8b0d0}
 .af-actions .afa svg{width:14px;height:14px;flex:0 0 auto}
 .af-actions .afa.afa-primary{background:linear-gradient(135deg,#7c3aed,#a78bfa);color:#fff;border:none;box-shadow:0 4px 12px rgba(124,58,237,.28)}
 .af-actions .afa.flash{animation:afaflash .55s ease 2}
+.af-actions .afa.flash-loop{animation:afaflash .9s ease infinite}
 @keyframes afaflash{0%,100%{transform:none}50%{transform:scale(1.07);box-shadow:0 7px 20px rgba(124,58,237,.55)}}
 /* ── 데모: 네이버 예약막기 컬럼 ── */
 .blk-h{display:flex!important;align-items:center;justify-content:center;gap:4px;font-size:11px!important}
 .blk-h .nv-ic{width:15px;height:15px;border-radius:4px;background:#03C75A;color:#fff;font-size:10px;font-weight:900;display:flex;align-items:center;justify-content:center}
 .blk-col{position:relative;border-left:1px solid var(--line);background:#fafbfc}
 .blk-slot{position:absolute;left:2px;right:2px;border-radius:4px;background:#eceff3;color:#aab1bd;font-size:9.5px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 0 1px #e0e4ea}
+/* 미배정 컬럼(0번) 옅은 강조 */
+#afcol_0{background:#fffdf4}
+.af-hdr .af-hcell{font-size:11px}
+@media(max-width:760px){.af-blk .tl-nm{font-size:10.5px}.af-blk small{font-size:9px}.af-blk .tl-tag{font-size:8.5px}.af-hdr .af-hcell{font-size:10px}.af-tcell{font-size:9px}}
 </style>
 </head>
 <body>
@@ -311,38 +329,22 @@ footer .co a{color:#b8b0d0}
 
 <header class="hero"><div class="wrap">
   <span class="badge"><span class="dot"></span> <span data-cms="hero.badge">24시간 잠들지 않는 블리스미 AI 예약 직원</span></span>
-  <h1 data-cms="hero.headline">시술하랴, 응대하랴,<br>마케팅에 직원 관리까지<br><span class="g">몸이 열 개라도</span> 남아나지 않아요</h1>
-  <p class="sub" data-cms="hero.subcopy">카톡 · 네이버 · 인스타 · 톡톡 · 왓츠앱…<br>예약 경로가 여기저기 흩어져 있는데, 컴퓨터 앞에만 앉아 있을 순 없잖아요.</p>
-  <p class="hero-em" data-cms="hero.highlight">예약 놓치지 않고 쉽게 받을 수 있는 방법, 정말 없을까요?</p>
+  <h1 data-cms="hero.headline">시술하랴, 응대하랴,<br>마케팅에 직원 관리까지<br><strong>몸이 열 개라도</strong> 남아나지 않아요</h1>
+  <p class="sub" data-cms="hero.subcopy">카톡 · 네이버 · 인스타 · 톡톡 · 왓츠앱…<br>예약은 사방에서 오는데,<br>시술 중엔 휴대폰 보기 눈치보이잖아요.</p>
+  <p class="hero-em" data-cms="hero.highlight">그런데 — 예약을 한 건도 안 놓치는<br>원장님들이 이미 있습니다.<br>차이는 능력이 아니라, 도구 하나였습니다.</p>
   <div class="cta">
     <a href="/timeline" class="btn btn-p"><span data-cms="hero.cta_primary">14일 무료로 시작하기</span>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
     <a href="#demo" class="btn btn-o" data-cms="hero.cta_secondary">AI 상담 직접 체험</a>
   </div>
   <div class="note" data-cms="hero.trust_line">신용카드 불필요 · 설치 없는 웹 프로그램 · 14일 무료 체험</div>
-  <div class="logos">
-    <div class="logo-row">
-      <span class="logo-cap">연동 채널</span>
-      <span class="lg"><svg viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#03C75A"/><path d="M8 17V7h2.7l2.9 4.6V7H16v10h-2.7l-2.9-4.6V17z" fill="#fff"/></svg>네이버 톡톡</span>
-      <span class="lg"><svg viewBox="0 0 24 24"><defs><radialGradient id="iglg" cx="0.3" cy="1" r="1.1"><stop offset="0" stop-color="#FEDA77"/><stop offset=".45" stop-color="#DD2A7B"/><stop offset="1" stop-color="#8134AF"/></radialGradient></defs><rect width="24" height="24" rx="7" fill="url(#iglg)"/><rect x="6" y="6" width="12" height="12" rx="4" fill="none" stroke="#fff" stroke-width="1.6"/><circle cx="12" cy="12" r="3" fill="none" stroke="#fff" stroke-width="1.6"/><circle cx="16.3" cy="7.7" r="1.1" fill="#fff"/></svg>인스타그램</span>
-      <span class="lg"><svg viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#06C755"/><path d="M12 5.6c-3.9 0-7 2.5-7 5.5 0 2.7 2.4 5 5.7 5.4.5.1.4.4.3.8 0 0-.1.6-.2.8-.1.4-.3 1 .9.5 1.2-.5 6.3-3.7 6.3-6.6 0-3-3.1-5.4-7-5.4z" fill="#fff"/></svg>라인</span>
-      <span class="lg"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#25D366"/><path d="M12 6.2a5.7 5.7 0 0 0-4.9 8.6L6.2 18l3.4-.9A5.7 5.7 0 1 0 12 6.2zm0 1.5a4.2 4.2 0 0 1 3.6 6.3l-.2.3.5 1.7-1.8-.5-.3.2A4.2 4.2 0 1 1 12 7.7z" fill="#fff"/><path d="M10.2 9.4c-.1-.3-.3-.3-.4-.3h-.4c-.1 0-.4.1-.5.3-.2.2-.6.6-.6 1.4s.6 1.6.7 1.7c.1.1 1.2 1.9 3 2.6 1.5.6 1.8.4 2.1.4.3 0 .9-.4 1-.7.1-.4.1-.7.1-.8l-.3-.1-1-.5c-.1-.1-.3-.1-.4.1l-.4.5c-.1.1-.2.1-.3.1-.2-.1-.7-.3-1.3-.8-.5-.4-.8-1-.9-1.2 0-.1 0-.2.1-.3l.3-.3.1-.2v-.3l-.5-1.2z" fill="#fff"/></svg>왓츠앱</span>
-      <span class="lg"><svg viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#FEE500"/><path d="M12 6.3c-3.4 0-6.1 2.1-6.1 4.7 0 1.7 1.1 3.2 2.8 4-.1.5-.5 1.7-.5 1.9-.1.3.1.3.2.2.2-.1 2-1.4 2.4-1.6.4.1.8.1 1.2.1 3.4 0 6.1-2.1 6.1-4.6 0-2.6-2.7-4.7-6.1-4.7z" fill="#3C1E1E"/></svg>카카오(알림톡)</span>
-    </div>
-    <div class="logo-row">
-      <span class="logo-cap">AI 엔진</span>
-      <span class="lg"><svg viewBox="0 0 24 24"><g stroke="#D97757" stroke-width="2" stroke-linecap="round"><line x1="12" y1="3.5" x2="12" y2="8.5"/><line x1="12" y1="15.5" x2="12" y2="20.5"/><line x1="3.5" y1="12" x2="8.5" y2="12"/><line x1="15.5" y1="12" x2="20.5" y2="12"/><line x1="6.2" y1="6.2" x2="9.6" y2="9.6"/><line x1="14.4" y1="14.4" x2="17.8" y2="17.8"/><line x1="17.8" y1="6.2" x2="14.4" y2="9.6"/><line x1="9.6" y1="14.4" x2="6.2" y2="17.8"/></g></svg>Claude</span>
-      <span class="lg"><svg viewBox="0 0 24 24"><path d="M12 3a4.1 4.1 0 0 0-3.9 2.8A4.1 4.1 0 0 0 5.4 12a4.1 4.1 0 0 0 .5 4.9A4.1 4.1 0 0 0 12 21a4.1 4.1 0 0 0 3.9-2.8 4.1 4.1 0 0 0 2.7-6.2 4.1 4.1 0 0 0-.5-4.9A4.1 4.1 0 0 0 12 3zm0 2.1c.9 0 1.7.4 2.3 1l-3.7 2.2a.6.6 0 0 0-.3.5v4.4l-1.5-.9V8.6c0-1.9 1.4-3.5 3.2-3.5zm3.6 1.9 1.3.8-3.8 2.2-3.8-2.2 3.8-2.2zm1.9 2.5c.5 1.5-.1 3.2-1.5 4l-3.7-2.2v4.3l-3.8-2.2v-2.4l3.8 2.2 3.7-2.2v-2.1z" fill="#000"/></svg>GPT</span>
-      <span class="lg"><svg viewBox="0 0 24 24"><defs><linearGradient id="gmlg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4285F4"/><stop offset=".5" stop-color="#9B72CB"/><stop offset="1" stop-color="#D96570"/></linearGradient></defs><path d="M12 2c.5 5.3 4.7 9.5 10 10-5.3.5-9.5 4.7-10 10-.5-5.3-4.7-9.5-10-10C7.3 11.5 11.5 7.3 12 2z" fill="url(#gmlg)"/></svg>Gemini</span>
-    </div>
-  </div>
 </div></header>
 
 <div class="trust"><div class="wrap">
-  <div class="it" data-cms="hero.points.0"><b>대형 왁싱샵</b> 등 실운영 검증</div>
-  <div class="it" data-cms="hero.points.1"><b>네이버·인스타·라인·왓츠앱</b> 예약 자동 통합</div>
-  <div class="it" data-cms="hero.points.2"><b>AI</b> 자동 상담·예약</div>
-  <div class="it" data-cms="hero.points.3"><b>연중무휴</b> 클라우드</div>
+  <div class="it" data-cms="hero.points.0"><strong>20년+</strong><br>실제 뷰티샵에서 검증</div>
+  <div class="it" data-cms="hero.points.1"><strong>네이버·인스타·라인·왓츠앱</strong><br>예약 자동 통합</div>
+  <div class="it" data-cms="hero.points.2"><strong>AI</strong><br>24시간 자동 상담·예약</div>
+  <div class="it" data-cms="hero.points.3"><strong>연중무휴</strong><br>클라우드</div>
 </div></div>
 
 <!-- ▼▼ [신규] 공감·문제 섹션 (레터 8요소: 문제 / 묘사·동조) ▼▼ -->
@@ -362,7 +364,7 @@ footer .co a{color:#b8b0d0}
 @media(max-width:760px){.prob-bridge h3{font-size:20px}}
 </style>
 <section class="s prob"><div class="wrap">
-  <div class="s-head reveal"><div class="k">이런 적, 없으세요?</div><h2>원장님 잘못이 아닙니다.<br>도구가 없었을 뿐이에요.</h2><p>예약 기반 뷰티샵이라면 누구나 겪는 하루. 혹시 이 중 하나라도 해당되시나요?</p></div>
+  <div class="s-head reveal"><div class="k">이런 적, 없으세요?</div><h2>시술에 집중한 원장님 잘못이 아닙니다.<br>도구가 없었을 뿐이에요.</h2><p>예약 기반 뷰티샵이라면 누구나 겪는 하루.<br>혹시 이 중 하나라도 해당되시나요?</p></div>
   <div class="grid">
     <div class="pcard reveal"><div class="q">📒</div><h3>예약이 여기저기 흩어져 있어요</h3><p>네이버 따로, 카톡 따로, 인스타 따로. 옮겨 적다 시간 겹치거나 한 건씩 빠뜨리죠.</p><div class="fix"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>타임라인 하나로 통합</div></div>
     <div class="pcard reveal"><div class="q">⏱️</div><h3>확정까지 한참 걸려요</h3><p>손님 한 명 확정하는 데 이것저것 확인하다 보면 시간이 훌쩍. 그새 다른 문의는 밀리고요.</p><div class="fix"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>상단 확정 바로 평균 3초</div></div>
@@ -401,7 +403,7 @@ footer .co a{color:#b8b0d0}
       <div class="af-actions">
         <button type="button" class="afa">AI 답변 추천</button>
         <button type="button" class="afa">번역</button>
-        <button type="button" class="afa afa-primary"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>AI 예약등록</button>
+        <button type="button" class="afa afa-primary" id="demoBookBtn"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>AI 예약등록</button>
       </div>
     </div>
     <div class="chips" id="chatChips">
@@ -475,39 +477,40 @@ footer .co a{color:#b8b0d0}
 .tcard .by{margin-top:16px;font-size:13.5px;color:var(--sub);font-weight:700;display:flex;align-items:center;gap:9px}
 .tcard .by .av{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#fce0ef,#e9e2ff);display:flex;align-items:center;justify-content:center;font-weight:900;color:var(--p)}
 .tcard .stars{color:#f0a020;font-size:14px;margin-bottom:10px;letter-spacing:2px}
+.tcard .dlbl{display:inline-block;background:var(--pl);color:var(--p);font-size:12px;font-weight:800;padding:5px 12px;border-radius:999px;margin-bottom:12px}
 .ph{outline:2px dashed #d9c8ee;outline-offset:3px}
 .proof-note{text-align:center;color:#a99fc0;font-size:13px;margin-top:22px}
 </style>
 <section class="s proof"><div class="wrap">
-  <div class="s-head reveal"><div class="k">REAL STORY</div><h2>현장에서, 진짜로 쓰면서 만들었습니다</h2><p>책상 위 기획이 아니라, 매일 손님 받는 매장에서 나온 프로그램이에요.</p></div>
+  <div class="s-head reveal"><div class="k">REAL STORY</div><h2>현장에서, 진짜로 쓰면서 다듬었습니다</h2><p>책상 위 기획이 아니라, 매일 손님 받는 매장의 요청으로 완성된 프로그램이에요.</p></div>
   <div class="band reveal">
     <div class="k">WHY WE BUILT IT</div>
-    <h2>"우리가 편하게 쓰려고 직접 만들었습니다"</h2>
-    <p class="story">손님이 끊이지 않는 <b>대형 왁싱샵을 직접 운영</b>하면서, 예약이 꼬이고 문의를 놓치고 매출이 새는 걸 매일 겪었습니다. 시중 프로그램을 다 써봤지만 현장이랑 안 맞더라고요. 그래서 우리 매장에 쓰려고 직접 만들었고, <b>지금도 우리 매장이 매일 블리스미로 돌아갑니다.</b> 그 현장의 노하우가 그대로 담겼어요.</p>
+    <h2>현장의 요청 10,000건이<br>블리스미를 완성했습니다</h2>
+    <p class="story"><b>20년 넘게 운영해 온 실제 뷰티샵</b>에 프로그램을 직접 돌렸습니다. 그리고 현장에서 "이건 이렇게 고쳐달라", "이게 없으면 못 쓴다"는 목소리가 올라올 때마다, 하나도 빼놓지 않고 고쳤습니다. 그렇게 <b>수정·보완한 작업이 1만 건을 넘겼습니다.</b> 책상 위 기획서가 아니라, 매일 손님을 받는 매장의 목소리가 기능 하나하나를 만든 거예요. <b>그 현장의 노하우가 블리스미에 그대로 담겼습니다.</b></p>
   </div>
   <div class="stats reveal">
-    <div class="st ph"><div class="n">[N]개+</div><div class="l">도입 매장</div></div>
-    <div class="st ph"><div class="n">[N]%↓</div><div class="l">노쇼 감소</div></div>
-    <div class="st ph"><div class="n">[N]건</div><div class="l">월 AI 자동응대</div></div>
-    <div class="st ph"><div class="n">[N]%↑</div><div class="l">재방문율</div></div>
+    <div class="st"><div class="n">10,000+</div><div class="l">현장 요청을 반영한 수정·보완</div></div>
+    <div class="st"><div class="n">24시간</div><div class="l">자는 동안에도 AI가 문의·예약 접수</div></div>
+    <div class="st"><div class="n">20년+</div><div class="l">실제 뷰티샵에서 검증한 운영 노하우</div></div>
+    <div class="st"><div class="n">0원</div><div class="l">14일 체험 · 신용카드 등록 없이</div></div>
   </div>
   <div class="grid" style="margin-top:26px">
-    <div class="tcard ph reveal"><div class="stars">★★★★★</div><div class="qt">[실제 원장님 후기가 들어갈 자리입니다. 예: "새벽에 온 문의도 AI가 다 받아줘서, 아침에 보면 예약이 잡혀 있어요."]</div><div class="by"><span class="av">○</span>[○○샵 · 원장님 성함/지역]</div></div>
-    <div class="tcard ph reveal"><div class="stars">★★★★★</div><div class="qt">[실제 후기 자리. 예: "예약·매출·고객이 한 화면에 모이니까 장부를 안 써요. 마감이 10분이면 끝나요."]</div><div class="by"><span class="av">○</span>[○○샵 · 원장님 성함/지역]</div></div>
-    <div class="tcard ph reveal"><div class="stars">★★★★★</div><div class="qt">[실제 후기 자리. 예: "알림톡 자동발송 켜고 노쇼가 눈에 띄게 줄었어요. 빈자리가 줄어든 만큼 매출이 늘었죠."]</div><div class="by"><span class="av">○</span>[○○샵 · 원장님 성함/지역]</div></div>
+    <div class="tcard reveal"><div class="dlbl">현장에서 나온 디테일 ①</div><div class="qt"><b>입금문자 자동매칭.</b> 예약금이 들어오면 입금 문자를 읽어 예약에 자동으로 붙입니다. "입금 확인했나?" 하고 통장 뒤지는 일 — 매일 겪어본 사람만 만드는 기능입니다.</div></div>
+    <div class="tcard reveal"><div class="dlbl">현장에서 나온 디테일 ②</div><div class="qt"><b>예약금 자동 차감 정산.</b> 시술 끝나고 "예약금 빼면 얼마죠?" 암산하다 실수해 본 적, 있으시죠. 결제 화면에서 자동으로 빼고 보여줍니다.</div></div>
+    <div class="tcard reveal"><div class="dlbl">현장에서 나온 디테일 ③</div><div class="qt"><b>노쇼·당일취소 자동 태그.</b> 어떤 손님이 자주 펑크 내는지, 장부엔 안 남지만 블리스미엔 남습니다. 다음 예약 받을 때 한눈에 보여요.</div></div>
   </div>
-  <p class="proof-note">※ 위 수치·후기는 <b>예시 자리(placeholder)</b>입니다. 실제 도입 매장 수·후기·개선 데이터를 주시면 그대로 교체합니다.</p>
+  <p class="proof-note">도입 매장 원장님들의 실명 후기는, 쌓이는 대로 가감 없이 이 자리에 공개하겠습니다.</p>
 </div></section>
 <!-- ▲▲ [신규] 근거·창업스토리·후기 ▲▲ -->
 
 <section class="s" id="pricing" style="background:linear-gradient(180deg,#fdf3f9,#f7f1ff)"><div class="wrap">
-  <div class="s-head reveal"><div class="k">PRICING</div><h2>부담 없는 요금제</h2><p>10분 인건비도 안 되는 하루 1~2,000원으로, 24시간 잠들지 않는 똑똑한 직원을 고용해보세요.<br>14일 무료 체험으로 먼저 써보고 결정하세요.</p></div>
+  <div class="s-head reveal"><div class="k">PRICING</div><h2>부담 없는 요금제</h2><p>10분 인건비도 안 되는 하루 2,000원으로, 24시간 잠들지 않는 똑똑한 직원을 고용해보세요.<br>14일 무료 체험으로 먼저 써보고 결정하세요.</p></div>
   <div class="prices">
     <div class="price reveal"><h3>Trial</h3><div class="amt">0원<small> / 14일</small></div><p style="color:var(--sub);font-size:14px">세팅 없이 바로 쓰는 기본 기능</p><ul><li>예약 타임라인·근무표</li><li>매출·고객·보유권 관리</li><li>다지점 관리 + 리포트·통계</li><li>신용카드 불필요</li></ul><a href="/timeline" class="btn btn-o">무료 체험</a></div>
     <div class="price feat reveal"><div class="tag">인기</div><h3>Starter</h3><div class="amt">33,000원<small> / 월·매장</small></div><p style="color:var(--sub);font-size:14px">메시지·멤버십·마케팅까지</p><ul><li>Trial 전부 포함 +</li><li>알림톡·SMS·LMS 자동발송</li><li>다회권·연간회원권·보유권 쉐어</li><li>이벤트 엔진·쿠폰·포인트</li><li>회원가 자동 적용</li></ul><a href="/timeline" class="btn btn-p">시작하기</a></div>
     <div class="price reveal"><h3>Pro</h3><div class="amt">77,000원<small> / 월·매장</small></div><p style="color:var(--sub);font-size:14px">메시지함 + AI + 운영 고급</p><ul><li>Starter 전부 포함 +</li><li>통합 메시지함 (네이버톡톡·IG·LINE·WhatsApp)</li><li>네이버 예약 자동연동·블록</li><li>AI 자동응대·예약 접수 + 블리스미 AI</li><li>전자 동의서·직원 자동배정</li><li>외부 플랫폼 선결제·우선 지원</li></ul><a href="/timeline" class="btn btn-o">시작하기</a></div>
   </div>
-  <div class="value-strip reveal">알바 10분 인건비도 안 되는 <b>하루 1~2,000원</b>으로, 잠들지 않는 예약 직원 한 명을 두는 셈이에요.</div>
+  <div class="value-strip reveal">알바 10분 인건비도 안 되는 <b>하루 2,000원</b>으로, 잠들지 않는 예약 직원 한 명을 두는 셈이에요.</div>
   <div class="credit-box reveal">
     <div class="cb-h">발송·AI는 쓴 만큼만 — 크레딧(P) 충전제 <span>1P = 1원</span></div>
     <div class="cb-grid">
@@ -562,7 +565,7 @@ footer .co a{color:#b8b0d0}
       <div class="oc">
         <div class="ico">🎁</div>
         <h3>선착순 100개 매장 · 무료 세팅 지원</h3>
-        <p>네이버 예약 연동, 알림톡 발신 등록, 메시지 채널 연결까지 1:1로 직접 잡아드려요. (직접 하면 가장 번거로운 부분)</p>
+        <p>네이버 예약 연동, 알림톡 발신 등록, 메시지 채널 연결 — 직접 하면 가장 번거로운 이 작업, <b>원래는 유료로 제공해야 할 대행</b>이지만 지금 시작하는 100개 매장엔 1:1로 무료로 잡아드려요.</p>
         <div class="bar"><i></i></div>
         <div class="barlbl">남은 자리 [ 36 ] / 100</div>
       </div>
@@ -586,7 +589,7 @@ footer .co a{color:#b8b0d0}
 <!-- ▲▲ [신규] 한정·긴급성 ▲▲ -->
 
 <section class="s"><div class="wrap">
-  <div class="s-head reveal"><div class="k">WHY BLISSME</div><h2>현장에서 만들어진 프로그램</h2><p>대형 왁싱샵 등 실제 매장에서 매일 쓰면서 다듬은, 진짜 현장용 시스템입니다.</p></div>
+  <div class="s-head reveal"><div class="k">WHY BLISSME</div><h2>현장에서 만들어진 프로그램</h2><p>20년 운영된 실제 뷰티샵에서 매일 쓰면서 다듬은, 진짜 현장용 시스템입니다.</p></div>
   <div class="grid">
     <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div><h3>설치 없이 바로</h3><p>웹 기반이라 PC·태블릿·모바일 어디서나 접속. 별도 설치·업데이트가 필요 없습니다.</p></div>
     <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1.5-1.5"/></svg></div><h3>예약 채널 통합</h3><p>네이버 예약·톡톡, 인스타 DM, 라인, 왓츠앱을 한 받은편지함에서.</p></div>
@@ -598,6 +601,8 @@ footer .co a{color:#b8b0d0}
   <div class="s-head reveal"><div class="k">FAQ</div><h2>자주 묻는 질문</h2></div>
   <div class="faq reveal">
     <details open><summary>어떤 업종에서 쓸 수 있나요?</summary><p>왁싱샵, 미용실, 네일샵, 속눈썹샵, 피부·관리샵 등 예약 기반 뷰티샵이면 모두 사용 가능합니다.</p></details>
+    <details><summary>1인샵인데도 쓸 만한가요?</summary><p>오히려 1인샵일수록 효과가 큽니다. 시술 중엔 응대가 불가능한데, 그 시간에 온 문의를 AI가 받아 예약까지 잡아둡니다. 1인샵 예약 프로그램으로 시작해 직원이 늘면 근무표·정산 기능까지 그대로 확장됩니다.</p></details>
+    <details><summary>왁싱샵에 특화돼 있나요?</summary><p>20년 넘게 운영된 실제 왁싱샵 현장에서 검증하며 다듬어, 왁싱샵 예약 관리(시술 시간 블록, 남자 관리사 지정, 예약금 관리 등)에 특히 강합니다. 동시에 미용실·네일샵·속눈썹샵 등 예약 기반 뷰티샵 공통 기능을 모두 갖췄습니다.</p></details>
     <details><summary>무료로 써볼 수 있나요?</summary><p>네, 14일 무료 체험을 제공합니다. 예약·매출·고객 관리처럼 별도 연동 없이 바로 쓰는 기능을 신용카드 없이 사용해볼 수 있어요. 네이버·인스타·라인 연동과 AI 자동응대·알림톡 발송은 계정 연동·세팅이 필요해 유료 전환 후 매장에 맞춰 세팅해 드립니다.</p></details>
     <details><summary>네이버 예약과 연동되나요?</summary><p>네이버 예약·톡톡을 자동으로 가져와 타임라인에 표시하고, 확정·변경·취소까지 한 화면에서 관리합니다.</p></details>
     <details><summary>알림톡·문자가 자동으로 가나요?</summary><p>예약확정·전날 안내·당일 리마인드·시술 후 케어 문자 등을 조건에 맞춰 자동 발송합니다.</p></details>
@@ -637,12 +642,12 @@ footer .co a{color:#b8b0d0}
   </div>
   <div class="co">
     (주)테라포트 · 대표 권신영 · 사업자등록번호 632-81-02070<br>
-    문의 <a href="tel:07089836838">070-8983-6838</a> · <a href="mailto:contact@blissme.ai">contact@blissme.ai</a><br>
+    문의 <a href="tel:07089836838">070-8983-6838</a> · <a href="/cdn-cgi/l/email-protection#c7a4a8a9b3a6a4b387a5abaeb4b4aaa2e9a6ae"><span class="__cf_email__" data-cfemail="3b5854554f5a584f7b5957524848565e155a52">[email&#160;protected]</span></a><br>
     © 2026 blissme. All rights reserved.
   </div>
 </div></footer>
 
-<script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 (function(){
   var els=[].slice.call(document.querySelectorAll('.reveal'));
   if(!('IntersectionObserver' in window)){els.forEach(function(e){e.classList.add('in')});return;}
@@ -655,30 +660,56 @@ footer .co a{color:#b8b0d0}
 (function(){
   var QA=[
     {q:"브라질리언 얼마예요?",a:"브라질리언 왁싱은 여성 50,000원, 남성 55,000원이에요. 예약 도와드릴까요?"},
-    {q:"내일 오후 3시 예약돼요?",a:"네, 내일 오후 3시 가능해요. 성함과 연락처만 주시면 바로 잡아드릴게요!",book:"예약 접수 완료 · 내일 오후 3:00 · 브라질리언"},
+    {q:"내일 오후 3시 예약돼요?",seq:true},
     {q:"주차 되나요?",a:"매장 앞 공영주차장을 이용하실 수 있어요. 방문하시면 위치를 안내해드릴게요."},
     {q:"남자도 받나요?",a:"네, 남성 고객님도 환영이에요. 남자 관리사 요청도 가능하니 편하게 말씀해주세요."}
   ];
   var body=document.getElementById('chatBody'), chips=document.getElementById('chatChips');
+  var bookBtn=document.getElementById('demoBookBtn');
   if(!body||!chips)return;
-  function add(cls,txt){var d=document.createElement('div');d.className='msg '+cls;d.textContent=txt;body.appendChild(d);body.scrollTop=body.scrollHeight;}
-  var busy=false;
+  function add(cls,txt){var d=document.createElement('div');d.className='msg '+cls;d.textContent=txt;body.appendChild(d);body.scrollTop=body.scrollHeight;return d;}
+  function typing(cb,ms){var t=document.createElement('div');t.className='msg typing';t.innerHTML='<i></i><i></i><i></i>';body.appendChild(t);body.scrollTop=body.scrollHeight;setTimeout(function(){t.remove();cb();},ms||1100);}
+  function hint(txt){var d=document.createElement('div');d.className='msg sys';d.textContent=txt;body.appendChild(d);body.scrollTop=body.scrollHeight;return d;}
+  function bookcardEl(txt){var c=document.createElement('div');c.className='bookcard';c.innerHTML='<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><span></span>';c.querySelector('span').textContent=txt;body.appendChild(c);body.scrollTop=body.scrollHeight;return c;}
+  var busy=false, awaitingBook=false, hintEl=null;
+
+  // 예약 시나리오 (멀티스텝)
+  function runBookingSeq(){
+    add('in','내일 오후 3시 예약돼요?');
+    typing(function(){
+      add('ai','네, 내일 오후 3시 예약 가능해요. 성함과 연락처 주시겠어요?');
+      setTimeout(function(){
+        add('in','홍길동 010-0000-0000');
+        typing(function(){
+          add('ai','네 홍길동님, 내일 오후 3시로 예약 잡아드리겠습니다.');
+          // AI 예약등록 버튼 깜빡 + 누르도록 유도
+          if(bookBtn) bookBtn.classList.add('flash-loop');
+          hintEl=hint('👆 [AI 예약등록] 버튼을 눌러 타임라인에 등록하세요');
+          awaitingBook=true; busy=false;
+        },1100);
+      },900);
+    });
+  }
+
+  // AI 예약등록 버튼 클릭 → 타임라인 등록 완료
+  if(bookBtn){
+    bookBtn.addEventListener('click',function(){
+      if(!awaitingBook)return;
+      awaitingBook=false;
+      bookBtn.classList.remove('flash-loop');
+      if(hintEl){hintEl.remove();hintEl=null;}
+      bookcardEl('타임라인 등록 완료 · 내일 오후 3:00 · 홍길동 · 브라질리언');
+      // 데모 타임라인(아래 #afGrid)에 블록이 추가되는 자동응대 데모와 시각적으로 연결
+    });
+  }
+
   chips.addEventListener('click',function(e){
     var b=e.target.closest('button'); if(!b||busy||b.disabled)return;
     var qa=QA[+b.getAttribute('data-q')]; if(!qa)return;
     busy=true; b.disabled=true;
+    if(qa.seq){ runBookingSeq(); return; }
     add('in',qa.q);
-    var t=document.createElement('div');t.className='msg typing';t.innerHTML='<i></i><i></i><i></i>';
-    body.appendChild(t);body.scrollTop=body.scrollHeight;
-    setTimeout(function(){
-      t.remove(); add('ai',qa.a);
-      if(qa.book){setTimeout(function(){
-        var c=document.createElement('div');c.className='bookcard';
-        c.innerHTML='<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><span></span>';
-        c.querySelector('span').textContent=qa.book;
-        body.appendChild(c);body.scrollTop=body.scrollHeight;busy=false;
-      },750);}else{busy=false;}
-    },1100);
+    typing(function(){ add('ai',qa.a); busy=false; });
   });
 })();
 /* ── 타임라인 예약등록 체험 데모 (라이브 디자인·30분 단위·시술시간 블록) ── */
@@ -761,32 +792,40 @@ footer .co a{color:#b8b0d0}
     if(b.memo)return '<span class="tl-nm">메모</span><small>'+esc(b.memo)+'</small>';
     return tags(b.tags)+nameHtml(b)+'<small>'+esc(b.s)+'</small>';
   }
-  var times=["13:00","13:30","14:00","14:30","15:00","15:30","16:00","16:30"], cols=["관리사 1","관리사 2","관리사 3"];
+  var times=["13:00","13:30","14:00","14:30","15:00","15:30","16:00","16:30"];
+  // 컬럼 순서: 0=미배정, 1=N막기, 2=관리사1, 3=관리사2, 4=관리사3
+  var cols=["미배정","N막기","관리사 1","관리사 2","관리사 3"];
+  var BLKCOL=1; // 네이버 막기 컬럼 인덱스
   function baseBlocks(){return {
-    "0_0":{tags:["선예약"],g:"여",n:"윤지아",s:"브라질리언",dur:30},
-    "0_1":{tags:["신규","예약금완료"],g:"여",n:"백서윤",s:"브라질리언 + 케어",dur:60},
-    "1_2":{tags:["남자선생님"],g:"남",n:"오태경",s:"브라질리언",dur:45},
-
-    "4_0":{tags:["★기존상담"],g:"여",n:"Mila",s:"겨드랑이 + 눈썹",dur:30},
-    "6_1":{brk:1,dur:30},
-    "7_2":{tags:["선예약"],g:"여",n:"정다은",s:"눈썹 + 인중",dur:30}
+    "0_2":{tags:["선예약"],g:"여",n:"윤지아",s:"브라질리언",dur:30},
+    "0_3":{tags:["신규","예약금완료"],g:"여",n:"백서윤",s:"브라질리언 + 케어",dur:60},
+    "1_4":{tags:["남자선생님"],g:"남",n:"오태경",s:"브라질리언",dur:45},
+    "4_2":{tags:["★기존상담"],g:"여",n:"Mila",s:"겨드랑이 + 눈썹",dur:30},
+    "6_3":{brk:1,dur:30},
+    "7_4":{tags:["선예약"],g:"여",n:"정다은",s:"눈썹 + 인중",dur:30}
   };}
-  var CELL=58, ROWS=times.length;
+  var CELL=58, ROWS=times.length, NCOL=cols.length;
   function blkH(b){return ((b&&b.dur||30)/30)*CELL-3;}
   function blkCls(b){return (b.memo?' memo':'')+(b.brk?' brk':'');}
-  var GT='grid-template-columns:40px repeat(3,1fr) 38px';
-  var blkRows=[2,3,5]; // 네이버에서 막아둔 30분 슬롯
+  var GT='grid-template-columns:40px repeat('+NCOL+',1fr)';
+  var blkRows=[2,3,5]; // 네이버에서 막아둔 30분 슬롯 (N막기 컬럼에 표시)
   function renderGrid(){
     var bb=baseBlocks();
-    var hdr='<div class="af-hdr" style="'+GT+'"><div class="af-hcell tl"></div>'+cols.map(function(c){return '<div class="af-hcell">'+c+'</div>';}).join('')+'<div class="af-hcell blk-h"><span class="nv-ic">N</span>막기</div></div>';
+    var hdr='<div class="af-hdr" style="'+GT+'"><div class="af-hcell tl"></div>'+cols.map(function(c,ci){
+      if(ci===BLKCOL) return '<div class="af-hcell blk-h"><span class="nv-ic">N</span>막기</div>';
+      return '<div class="af-hcell">'+c+'</div>';
+    }).join('')+'</div>';
     var tcol='<div class="af-times">'+times.map(function(t){return '<div class="af-tcell">'+t+'</div>';}).join('')+'</div>';
     var colsHtml=cols.map(function(_,ci){
+      if(ci===BLKCOL){
+        var slots=blkRows.map(function(r){return '<div class="blk-slot" style="top:'+(r*CELL+1)+'px;height:'+(CELL-2)+'px">막힘</div>';}).join('');
+        return '<div class="af-col blk-col" id="afcol_'+ci+'">'+slots+'</div>';
+      }
       var inner='';
       for(var r=0;r<ROWS;r++){var b=bb[r+'_'+ci]; if(b) inner+='<div class="af-blk'+blkCls(b)+'" data-r="'+r+'" style="top:'+(r*CELL+1)+'px;height:'+blkH(b)+'px">'+blkInner(b)+'</div>';}
       return '<div class="af-col" id="afcol_'+ci+'">'+inner+'</div>';
     }).join('');
-    var blkCol='<div class="blk-col">'+blkRows.map(function(r){return '<div class="blk-slot" style="top:'+(r*CELL+1)+'px;height:'+(CELL-2)+'px">막힘</div>';}).join('')+'</div>';
-    grid.innerHTML=hdr+'<div class="af-cols" style="'+GT+'">'+tcol+colsHtml+blkCol+'</div>';
+    grid.innerHTML=hdr+'<div class="af-cols" style="'+GT+'">'+tcol+colsHtml+'</div>';
   }
   function dropBlock(r,c,b){
     var col=document.getElementById('afcol_'+c); if(!col)return;
@@ -809,8 +848,18 @@ footer .co a{color:#b8b0d0}
 
   var NAVER="linear-gradient(135deg,#03C75A,#02a94d)";
   var CASES=[
+    { ch:{ava:"N",name:"네이버 예약",label:"네이버 예약 · 톡톡 자동 수집",badge:"네이버",grad:NAVER},
+      cap:"네이버 예약이 들어오면 → 미배정에 자동 등록 → 원장님이 관리사 칸으로 이동",
+      steps:[
+        {t:600, note:"네이버에서 새 예약이 접수됐어요"},
+        {t:1900, nvcard:["여 서하린 · 브라질리언 + 케어","내일 오후 2:30 · 강남본점 · 예약금 완료"]},
+        {t:3300, drop:[3,0,{tags:["예약금완료"],g:"여",n:"서하린",s:"브라질리언 + 케어",dur:60}], note:"AI가 시술·시간을 분석해 '미배정'에 자동 등록"},
+        {t:5200, note:"원장님이 관리사 1에게 배정 — 칸으로 드래그"},
+        {t:5600, move:[3,0,3,2,{tags:["예약금완료"],g:"여",n:"서하린",s:"브라질리언 + 케어",dur:60}]},
+        {t:7000, card:["✅ 관리사 1 배정 완료 · 확정 알림톡 자동 발송","내일 오후 2:30 · 브라질리언 + 케어"]}
+      ], end:9000 },
     { ch:{ava:"N",name:"한소율",label:"네이버 톡톡",badge:"네이버 톡톡",grad:NAVER},
-      cap:"네이버 톡톡 예약 문의 → AI 응답 → 타임라인 자동 등록 → 확정 알림톡 자동 발송",
+      cap:"네이버 톡톡 문의 → AI 응답 → 미배정에 등록 → 관리사 배정 → 확정 알림톡",
       steps:[
         {t:600, in:"내일 오후 2시에 브라질리언 예약 돼요?"},
         {t:1700, typ:1},
@@ -818,44 +867,39 @@ footer .co a{color:#b8b0d0}
         {t:4100, in:"한소율요!"},
         {t:5100, typ:1},
         {t:6300, ai:"한소율님 예약 완료됐습니다! 변동사항 생기면 다시 연락드릴게요 🙏", drop:[2,0,{tags:["신규"],g:"여",n:"한소율",s:"브라질리언 45분",dur:45}]},
-        {t:7500, card:["✅ 예약 확정 알림톡 자동 발송","내일 오후 2:00 · 브라질리언 · 강남본점"]}
-      ], end:9000 },
+        {t:7700, note:"관리사 2에게 배정", move:[2,0,2,3,{tags:["신규"],g:"여",n:"한소율",s:"브라질리언 45분",dur:45}]},
+        {t:9100, card:["✅ 관리사 2 배정 · 확정 알림톡 자동 발송","내일 오후 2:00 · 브라질리언 · 강남본점"]}
+      ], end:11000 },
     { ch:{ava:"W",name:"Anna Lee",label:"WhatsApp",badge:"WhatsApp · 영어",grad:"linear-gradient(135deg,#25d366,#128c7e)"},
-      cap:"영어 메시지 자동 번역 → AI 영어 응답 → 예약 등록 → 영어 확정 메시지 자동 발송",
+      cap:"영어 메시지 자동 번역 → AI 영어 응답 → 미배정 등록 → 관리사 배정",
       steps:[
         {t:600, in:"Hi! Can I book a Brazilian wax tomorrow at 3pm?", tr:"번역 ▸ 내일 오후 3시에 브라질리언 왁싱 예약 돼요?"},
         {t:1800, typ:1},
-        {t:3000, ai:"Hi Anna! 😊 Yes, 3pm tomorrow works. I'll book a Brazilian wax for you!", tr:"번역 ▸ 엠마님 안녕하세요! 네, 내일 오후 3시 좋아요. 브라질리언 예약 잡아드릴게요!"},
+        {t:3000, ai:"Hi Anna! 😊 Yes, 3pm tomorrow works. I'll book a Brazilian wax for you!", tr:"번역 ▸ Anna님 안녕하세요! 네, 내일 오후 3시 좋아요. 브라질리언 예약 잡아드릴게요!"},
         {t:4300, in:"Perfect, thank you!", tr:"번역 ▸ 좋아요, 감사합니다!"},
         {t:5300, typ:1},
-        {t:6500, ai:"Your booking is confirmed! If anything changes, our staff will reach out 💜", tr:"번역 ▸ 예약 완료됐습니다! 변동 생기면 직원이 다시 연락드릴게요", drop:[4,1,{tags:["신규"],g:"여",n:"Anna",s:"브라질리언 45분",dur:45}]},
-        {t:7700, card:["✅ Confirmation message auto-sent","Tomorrow 3:00 PM · Brazilian · Gangnam"]}
-      ], end:9300 },
+        {t:6500, ai:"Your booking is confirmed! If anything changes, our staff will reach out 💜", tr:"번역 ▸ 예약 완료됐습니다! 변동 생기면 직원이 다시 연락드릴게요", drop:[4,0,{tags:["신규"],g:"여",n:"Anna",s:"브라질리언 45분",dur:45}]},
+        {t:7900, note:"관리사 3에게 배정", move:[4,0,4,4,{tags:["신규"],g:"여",n:"Anna",s:"브라질리언 45분",dur:45}]},
+        {t:9300, card:["✅ Confirmation message auto-sent","Tomorrow 3:00 PM · Brazilian · Gangnam"]}
+      ], end:11200 },
     { ch:{ava:"I",name:"mina.k",label:"Instagram DM",badge:"Instagram · 영어",grad:"linear-gradient(135deg,#f58529,#dd2a7b,#8134af)"},
-      cap:"인스타 DM 영어 문의 → 자동 번역 → 다른 시술·시간으로 예약 등록",
+      cap:"인스타 DM 영어 문의 → 자동 번역 → 미배정에 다른 시술·시간으로 등록",
       steps:[
         {t:600, in:"do you do eyebrow + lip waxing? maybe 4pm tomorrow", tr:"번역 ▸ 눈썹 + 입술 왁싱 하나요? 내일 4시쯤요"},
         {t:1900, typ:1},
         {t:3100, ai:"Yes we do! 😊 Eyebrow + lip tomorrow at 4pm — I'll get that booked for you!", tr:"번역 ▸ 네 가능해요! 눈썹 + 입술 내일 오후 4시로 예약 잡아드릴게요!"},
-        {t:4400, in:"great, name is Mina", tr:"번역 ▸ 좋아요, 이름은 소피아예요"},
+        {t:4400, in:"great, name is Mina", tr:"번역 ▸ 좋아요, 이름은 Mina예요"},
         {t:5400, typ:1},
-        {t:6600, ai:"All set, Mina! Your booking is confirmed 💜", tr:"번역 ▸ 소피아님, 예약 완료됐습니다!", drop:[6,2,{tags:["신규"],g:"여",n:"Mina",s:"눈썹 + 입술 30분",dur:30}]},
-        {t:7800, card:["✅ Confirmation message auto-sent","Tomorrow 4:00 PM · Eyebrow + Lip"]}
-      ], end:9400 },
-    { ch:{ava:"N",name:"네이버 예약",label:"네이버 예약 · 톡톡 자동 수집",badge:"네이버",grad:"linear-gradient(135deg,#03C75A,#02a94d)"},
-      cap:"네이버 예약·톡톡을 자동으로 수집해 타임라인에 등록 — 확정·변경·취소까지 한눈에",
-      steps:[
-        {t:600, note:"네이버에서 새 예약이 접수됐어요"},
-        {t:1900, nvcard:["여 서하린 · 브라질리언 + 케어","내일 오후 2:30 · 강남본점 · 예약금 완료"]},
-        {t:3300, drop:[3,1,{tags:["예약금완료"],g:"여",n:"서하린",s:"브라질리언 + 케어",dur:60}], note:"AI가 시술·시간을 분석해 타임라인에 자동 등록"},
-        {t:4600, card:["✅ 타임라인 자동 등록 완료","내일 오후 2:30 · 브라질리언 + 케어"]}
-      ], end:6400 },
+        {t:6600, ai:"All set, Mina! Your booking is confirmed 💜", tr:"번역 ▸ Mina님, 예약 완료됐습니다!", drop:[6,0,{tags:["신규"],g:"여",n:"Mina",s:"눈썹 + 입술 30분",dur:30}]},
+        {t:8000, note:"관리사 1에게 배정", move:[6,0,6,2,{tags:["신규"],g:"여",n:"Mina",s:"눈썹 + 입술 30분",dur:30}]},
+        {t:9400, card:["✅ Confirmation message auto-sent","Tomorrow 4:00 PM · Eyebrow + Lip"]}
+      ], end:11400 },
     { ch:{ava:"N",name:"윤지아",label:"네이버 톡톡",badge:"네이버 톡톡",grad:NAVER},
       cap:"예약 변경 요청 → AI가 알아듣고 타임라인 시간 자동 이동 + 변경 안내 자동 발송",
       steps:[
         {t:600, in:"내일 오후 1시 예약인데 4시 반으로 변경 가능할까요?"},
         {t:1800, typ:1},
-        {t:3000, ai:"네 윤지아님! 내일 예약을 오후 1:00 → 오후 4:30으로 변경해드렸어요 😊", move:[0,0,7,0,{tags:["선예약"],g:"여",n:"윤지아",s:"브라질리언",dur:30}]},
+        {t:3000, ai:"네 윤지아님! 내일 예약을 오후 1:00 → 오후 4:30으로 변경해드렸어요 😊", move:[0,2,7,2,{tags:["선예약"],g:"여",n:"윤지아",s:"브라질리언",dur:30}]},
         {t:4800, card:["✅ 예약 변경 안내 자동 발송","내일 오후 4:30 · 브라질리언 · 변경 완료"]}
       ], end:6600 }
   ];
