@@ -4102,7 +4102,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       <div ref={scrollRef} className="timeline-scroll" style={{flex:1,overflow:"auto",minHeight:0,overscrollBehavior:"none",paddingBottom:200,display:calView==="day"?undefined:"none"}}>
 
         {/* Top Bar - sticky (v3.8.39: 스크롤 영역 안으로 복귀 — 우측 스크롤바가 툴바 높이까지 올라가도록) */}
-        <div ref={topbarRef} className="tl-topbar" style={{position:"sticky",top:0,left:0,zIndex:30,borderBottom:"none",boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",background:T.bgCard,padding:"6px 12px",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",minWidth:"100%",boxSizing:"border-box",overflow:"visible"}}>
+        <div ref={topbarRef} className="tl-topbar" style={{position:"sticky",top:0,left:0,zIndex:30,borderBottom:"none",boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",background:T.bgCard,padding:"6px 12px",display:"flex",alignItems:"center",columnGap:6,rowGap:10,flexWrap:"wrap",minWidth:"100%",boxSizing:"border-box",overflow:"visible"}}>
         {/* Row 1: Date nav + settings + branch */}
         <div style={{display:"flex",alignItems:"center",gap:window.innerWidth<=768?3:6,flexShrink:0,flexWrap:"wrap",maxWidth:"100%"}}>
           {/* 보기 전환 세그먼트 [일|주|월] — 날짜 탭(아래 줄)과 분리해 툴바 좌측에 배치, 혼동 방지 (정우님 2026-06-13) */}
