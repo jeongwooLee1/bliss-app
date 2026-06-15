@@ -167,6 +167,8 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   // 메시지 로드 — Supabase max-rows=1000 cap 우회용 페이지네이션.
   // 첫 1000건은 즉시 표시하고 나머지는 백그라운드로 append (검색·user_name 매칭용).
   const loadingRef = useRef(false);
+  const msgsRef = useRef([]);
+  useEffect(()=>{ msgsRef.current = msgs; }, [msgs]);
   const loadMsgs = useCallback(async () => {
     if (loadingRef.current) return;
     loadingRef.current = true;
@@ -244,6 +246,45 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       document.removeEventListener("visibilitychange", onVisible);
       try{ch?.unsubscribe(); window._sbClient?.removeChannel(ch);}catch(e){}
     };
+  }, []);
+
+  // 신규 메시지 경량 증분 폴링(15초) — RLS 락다운 이후 Realtime이 messages 이벤트를 못 받아
+  // 대화 뱃지가 늦게 뜨던 버그 대응. 전체 재조회 아니라 "마지막 메시지 이후"만 가져와 머지(부하 최소).
+  useEffect(()=>{
+    const tick = async () => {
+      if (document.visibilityState !== "visible") return;
+      if (loadingRef.current) return;
+      try {
+        let newest = "";
+        for (const m of msgsRef.current) { if (m.created_at && m.created_at > newest) newest = m.created_at; }
+        const since = newest || new Date(Date.now()-3600000).toISOString();
+        const r = await fetch(
+          SB_URL+`/rest/v1/messages?business_id=eq.${_activeBizId}&created_at=gte.${encodeURIComponent(since)}&order=created_at.asc&limit=300&select=*`,
+          { headers: { ...sbHeaders, "Cache-Control": "no-cache" }, cache: "no-store" }
+        );
+        const rows = _normKakaoArr(await r.json());
+        if (!Array.isArray(rows) || !rows.length) return;
+        setMsgs(prev=>{
+          let next = prev, changed = false;
+          const nm = {};
+          for (const row of rows) {
+            if (!row?.id || prev.some(m=>m.id===row.id)) continue;
+            const nrow = _normKakaoMsg(row);
+            if (nrow.user_name && !nm[nrow.user_id]) nm[nrow.user_id] = nrow.user_name;
+            if (nrow.direction === "out") { // 옵티미스틱 echo(아이디 없음) 매칭 시 교체 — 중복 말풍선 방지
+              const idx = next.findIndex(m=>!m.id && m.direction==="out" && m.user_id===nrow.user_id && m.channel===nrow.channel && (m.message_text||"").slice(0,40)===(nrow.message_text||"").slice(0,40));
+              if (idx>=0) { if(!changed){next=[...next];changed=true;} next[idx]=nrow; continue; }
+            }
+            if(!changed){next=[...next];changed=true;}
+            next.push(nrow);
+          }
+          if (Object.keys(nm).length) setNames(p=>({...p,...nm}));
+          return changed ? next : prev;
+        });
+      } catch(e){}
+    };
+    const t = setInterval(tick, 15000);
+    return ()=>clearInterval(t);
   }, []);
 
   // AI 자동답변 채널별 ON/OFF 로드
