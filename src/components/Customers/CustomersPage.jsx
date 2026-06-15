@@ -1114,6 +1114,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
             total: rows.filter(r=>["confirmed","completed","no_show"].includes(r.status)).length,
             noshow: rows.filter(r=>r.status==="no_show").length,
             samedayCancel: rows.filter(r=>["cancelled","naver_cancelled"].includes(r.status) && r.updated_at && dateOf(r.updated_at) === r.date).length,
+            cancel: rows.filter(r=>["cancelled","naver_cancelled"].includes(r.status)).length,  // 전체 취소(당일 포함) — AI·네이버·수동 모두 (정우 id_sxc3h1dnzr)
             samedayChange: rows.filter(r=>{
               const isChange = r.status === "naver_changed" || (r.prev_reservation_id && r.prev_reservation_id !== "");
               return isChange && r.updated_at && dateOf(r.updated_at) === r.date;
@@ -2145,7 +2146,8 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                         {label:"예약",val:custResStats.total,color:T.primary},
                         {label:"노쇼",val:Number(c.noShowCount||0)||custResStats.noshow,color:(Number(c.noShowCount||0)||custResStats.noshow)>0?"#e53e3e":T.gray500},
                         {label:"페널티",val:Number(c.cancelPenaltyCount||0),color:Number(c.cancelPenaltyCount||0)>=3?"#e53e3e":Number(c.cancelPenaltyCount||0)>0?"#dd6b20":T.gray500,title:"전일 21시 이후~예약시각 사이 취소"},
-                        {label:"당취",val:custResStats.samedayCancel,color:custResStats.samedayCancel>0?"#dd6b20":T.gray500,title:"당일 취소"},
+                        {label:"취소",val:custResStats.cancel||0,color:(custResStats.cancel||0)>=3?"#e53e3e":(custResStats.cancel||0)>0?"#dd6b20":T.gray500,title:"전체 취소 횟수 (당일취소 포함)"},
+                        {label:"당취",val:custResStats.samedayCancel,color:custResStats.samedayCancel>0?"#dd6b20":T.gray500,title:"당일 취소 횟수"},
                         {label:"당변",val:custResStats.samedayChange,color:custResStats.samedayChange>0?"#d97706":T.gray500,title:"당일 변경"}
                       ].map(s=><div key={s.label} title={s.title||""} style={{display:"flex",alignItems:"baseline",gap:3}}>
                         <span style={{fontSize:T.fs.xxs,color:T.textMuted}}>{s.label}</span>
