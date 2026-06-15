@@ -27,6 +27,7 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
     { label:"고객 관리", items: nav.filter(n=>["customers","marketing"].includes(n.id)) },
     { label:"매출 관리", items: nav.filter(n=>["sales"].includes(n.id)) },
     ...(nav.find(n=>n.id==="admin") ? [{ label:"시스템", items: nav.filter(n=>["users","messages","blissai","admin","wizard","requests"].includes(n.id)) }] : []),
+    ...(nav.find(n=>n.id==="review") ? [{ label:"기타", items: nav.filter(n=>n.id==="review") }] : []),
   ];
   const planLabel = PLANS[billingState.planKey]?.label || '체험'
   const planEndStr = fmtPlanEnd(billingState.planEnd)
@@ -78,7 +79,7 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
         <div key={ci}>
           <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.gray500,padding:`12px ${T.sp.lg}px 4px`,letterSpacing:.5}}>{cat.label}</div>
           {cat.items.map(n=>(
-            <button key={n.id} onClick={()=>setPage(n.id)} style={{display:"flex",alignItems:"center",gap:10,padding:`9px ${T.sp.lg}px`,border:"none",cursor:"pointer",fontSize:T.fs.sm,fontWeight:page===n.id?T.fw.bolder:T.fw.normal,
+            <button key={n.id} onClick={()=> n.href ? window.open(n.href,'_blank','noopener') : setPage(n.id)} style={{display:"flex",alignItems:"center",gap:10,padding:`9px ${T.sp.lg}px`,border:"none",cursor:"pointer",fontSize:T.fs.sm,fontWeight:page===n.id?T.fw.bolder:T.fw.normal,
               background:page===n.id?T.primaryHover:"transparent",color:page===n.id?T.primaryDk:T.gray700,
               borderLeft:page===n.id?`3px solid ${T.primary}`:"3px solid transparent",
               fontFamily:"inherit",width:"100%",textAlign:"left",transition:"all .1s"}}>

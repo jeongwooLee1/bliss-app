@@ -27,7 +27,7 @@ import BlissRequests from '../components/BlissRequests/BlissRequests'
 import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 
 const uid = genId;
-const BLISS_V = "3.8.106"
+const BLISS_V = "3.8.107"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -2660,6 +2660,7 @@ function App() {
   const nav = role === "staff" ? [
     { id:"timeline", label:"타임라인", icon:<I name="calendar" size={16}/> },
     { id:"requests", label:"공지 & 요청", icon:"📢", badge:pendingReqCount },
+    { id:"review", label:"직원 후기", icon:<I name="star" size={16}/>, href:"/review.html" },
   ] : [
     { id:"timeline", label:"타임라인", icon:<I name="calendar" size={16}/> },
     { id:"reservations", label:"예약목록", icon:<I name="clipboard" size={16}/> },
@@ -2670,6 +2671,7 @@ function App() {
     { id:"messages", label:"받은메시지함", icon:<I name="msgSq" size={16}/>, badge: unreadMsgCount + pendingDepositCount + pendingReviewCount },
     { id:"admin", label:"관리설정", icon:<I name="settings" size={16}/> },
     { id:"requests", label:"공지 & 요청", icon:"📢", badge:pendingReqCount },
+    { id:"review", label:"직원 후기", icon:<I name="star" size={16}/>, href:"/review.html" },
   ];
 
   const branchNames = userBranches.map(bid => (data.branches||[]).find(b=>b.id===bid)?.short||bid).filter(Boolean).join(", ");
