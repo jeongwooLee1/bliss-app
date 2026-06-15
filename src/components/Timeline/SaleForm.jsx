@@ -2539,8 +2539,9 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     setTimeout(() => { _submitLock.current = false; }, 3000);
 
     const isPkgUseSubmit = hasPkgChecked();
-    // 체험단(comped, 0원)·구독권무료(subFree)도 '선택된 시술'로 인정 — 금액 0이라도 등록 허용
-    if (svcTotal + prodTotal + svcCompedTotal + prodCompedTotal + svcSubFreeTotal <= 0 && !isPkgUseSubmit) {
+    // '시술/제품 선택됨'은 금액이 아니라 체크된 행 존재로 판정 — 체험단(comped)은 amount=0이라 금액 기준이면 누락됨
+    const _anySelected = SVC_LIST.some(s => items[s.id]?.checked) || PROD_LIST.some(p => items[p.id]?.checked) || _extraSvcAddTotal > 0 || _extraProdAddTotal > 0;
+    if (!_anySelected && !isPkgUseSubmit) {
       showAlert("시술 또는 제품을 선택해주세요.");
       _submitLock.current = false;
       return;
