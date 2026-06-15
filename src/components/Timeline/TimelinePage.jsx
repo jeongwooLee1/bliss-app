@@ -5392,8 +5392,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                         return <div key={idx} style={{
                           position:"absolute", top, left:0, right:0, height,
                           backgroundColor:"rgba(0,0,0,.018)",
-                          backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14'%3E%3Crect width='4' height='4' fill='%234b4b6e' fill-opacity='0.15'/%3E%3C/svg%3E")`,
+                          backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14'%3E%3Crect x='5' y='5' width='4' height='4' fill='%234b4b6e' fill-opacity='0.15'/%3E%3C/svg%3E")`,
                           backgroundSize:"14px 14px",
+                          backgroundPosition:"center top", // 가로 중앙 기준 타일링 → 칼럼 좌우 여백 대칭, 너비 변해도 자동
                           zIndex:2, pointerEvents:"none",
                         }}/>;
                       })}
