@@ -78,16 +78,19 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
       {cats.map((cat,ci) => (
         <div key={ci}>
           <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.gray500,padding:`12px ${T.sp.lg}px 4px`,letterSpacing:.5}}>{cat.label}</div>
-          {cat.items.map(n=>(
-            <button key={n.id} onClick={()=> n.href ? window.open(n.href,'_blank','noopener') : setPage(n.id)} style={{display:"flex",alignItems:"center",gap:10,padding:`9px ${T.sp.lg}px`,border:"none",cursor:"pointer",fontSize:T.fs.sm,fontWeight:page===n.id?T.fw.bolder:T.fw.normal,
+          {cat.items.map(n=>{
+            const _st={display:"flex",alignItems:"center",gap:10,padding:`9px ${T.sp.lg}px`,border:"none",cursor:"pointer",fontSize:T.fs.sm,fontWeight:page===n.id?T.fw.bolder:T.fw.normal,
               background:page===n.id?T.primaryHover:"transparent",color:page===n.id?T.primaryDk:T.gray700,
               borderLeft:page===n.id?`3px solid ${T.primary}`:"3px solid transparent",
-              fontFamily:"inherit",width:"100%",textAlign:"left",transition:"all .1s"}}>
-              <span style={{width:20,display:"inline-flex",alignItems:"center",justifyContent:"center"}}>{n.icon}</span>
+              fontFamily:"inherit",width:"100%",textAlign:"left",transition:"all .1s",boxSizing:"border-box",textDecoration:"none"};
+            const _inner=<><span style={{width:20,display:"inline-flex",alignItems:"center",justifyContent:"center"}}>{n.icon}</span>
               <span style={{flex:1}}>{n.label}</span>
-              {n.badge>0&&<span style={{background:T.danger,color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px",minWidth:18,textAlign:"center"}}>{n.badge>99?"99+":n.badge}</span>}
-            </button>
-          ))}
+              {n.badge>0&&<span style={{background:T.danger,color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px",minWidth:18,textAlign:"center"}}>{n.badge>99?"99+":n.badge}</span>}</>;
+            // 외부 링크(예: 직원 후기)는 실제 <a>로 — 모바일·PWA에서 window.open이 막히는 문제 회피
+            return n.href
+              ? <a key={n.id} href={n.href} target="_blank" rel="noopener noreferrer" style={_st}>{_inner}</a>
+              : <button key={n.id} onClick={()=>setPage(n.id)} style={_st}>{_inner}</button>;
+          })}
         </div>
       ))}
     </div>
