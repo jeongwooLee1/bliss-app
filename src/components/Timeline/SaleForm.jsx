@@ -509,6 +509,9 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   })();
   const [externalPrepaid, setExternalPrepaid] = useState(reservation?.externalPrepaid || _naverAutoAmt || 0);
   const [externalPlatform, setExternalPlatform] = useState(reservation?.externalPlatform || (isNaver ? "네이버" : ""));
+  // 선결제를 현금/카드/입금으로 받은 경우 → 외부선결제 버킷이 아니라 결제수단으로 1회 계산 (정우 2026-06-15)
+  const _PREPAID_METHOD_FIELD = { "현금":"svcCash", "카드":"svcCard", "입금":"svcTransfer" };
+  const _prepaidMethodField = _PREPAID_METHOD_FIELD[externalPlatform] || null;
   // 고객 앞 대기 입금(awaiting_sale) — 매출 저장 시 status='matched' + matched_sale_id 채움
   const [pendingDeposits, setPendingDeposits] = useState([]);
   const _depositPrefillSeenRef = useRef(new Set());
@@ -2458,7 +2461,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
         //    - 담당자(staff_id/staff_name) 갱신
         //    - 보유권·포인트 잔액은 건드리지 않음 (기존 거래 유지)
         // 수정 사유 prefix를 memo 맨 앞에 붙임 (당일건은 _editReasonPrefix=""라 영향 없음)
-        const newMemo = _editReasonPrefix + (externalPrepaid > 0 && externalPlatform ? `[${externalPlatform} 선결제 ${externalPrepaid.toLocaleString()}원] ` : "") + (saleMemo || "");
+        const newMemo = _editReasonPrefix + (externalPrepaid > 0 && externalPlatform ? `[${externalPlatform} 선결제 ${externalPrepaid.toLocaleString()}원] ` : "") + (_prepaidMethodField && (payMethod[_prepaidMethodField]||0) > 0 ? `[${externalPlatform} 선결제 ${(payMethod[_prepaidMethodField]||0).toLocaleString()}원] ` : "") + (saleMemo || "");
         const editStaff = (data.staff||[]).find(s => s.id === manager);
         // 결제수단 svc/prod 분할 — 매출 원본 svc 결제 합계 기준 (재평가된 svcPayTotal 사용 금지)
         // 사용자가 svcCash/Card 등을 수정해도 시술/제품 비율은 매출 원본 그대로 유지
@@ -3111,7 +3114,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       reservationId: reservation?.id || null,
       externalPrepaid: externalPrepaid > 0 ? externalPrepaid : 0,
       externalPlatform: externalPrepaid > 0 ? (externalPlatform || "") : null,
-      memo: (isPkgUseSubmit ? "[패키지 사용] " : "") + (externalPrepaid > 0 && externalPlatform ? `[${externalPlatform} 선결제 ${externalPrepaid.toLocaleString()}원] ` : "") + (saleMemo || ""),
+      memo: (isPkgUseSubmit ? "[패키지 사용] " : "") + (externalPrepaid > 0 && externalPlatform ? `[${externalPlatform} 선결제 ${externalPrepaid.toLocaleString()}원] ` : "") + (_prepaidMethodField && (payMethod[_prepaidMethodField]||0) > 0 ? `[${externalPlatform} 선결제 ${(payMethod[_prepaidMethodField]||0).toLocaleString()}원] ` : "") + (saleMemo || ""),
       createdAt: new Date().toISOString(),
       // 📸 매출 등록 시점 스냅샷 — 매출확인 모달이 그 시점 잔액·보유권을 그대로 보여주기 위함
       // (customer_packages·point는 매출 후 차감되어 잔액이 변하므로 시점값 보존 필요)
@@ -4381,15 +4384,37 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
             {/* 외부 선결제 — 좁은 패널에서 자동 줄바꿈 허용 */}
             <div style={{display:"flex",alignItems:"center",gap:5,padding:"4px 0",marginTop:0}}>
               <span style={{fontSize:T.fs.xs,color:"#6A1B9A",fontWeight:700,flexShrink:0,display:"inline-flex",alignItems:"center",gap:4}}><I name="tag" size={11}/>선결제</span>
-              <select value={externalPlatform} onChange={e=>setExternalPlatform(e.target.value)}
+              <select value={externalPlatform} onChange={e=>{
+                const np=e.target.value; const nf=_PREPAID_METHOD_FIELD[np]||null; const of=_prepaidMethodField;
+                if (nf!==of) {
+                  // 결제수단형(현금/카드/입금) ↔ 플랫폼형 전환 시 금액을 옮겨 이중계상 방지
+                  const moveAmt = of ? (Number(payMethod[of])||0) : (externalPrepaid||0);
+                  if (of) setPayMethod(prev=>({...prev,[of]:0}));      // 이전 결제수단칸 비움
+                  if (nf) {                                            // 새 결제수단칸으로
+                    setPayMethod(prev=>({...prev,[nf]:moveAmt}));
+                    setOpenPay(prev=>({...prev,[nf]:true}));
+                    setPrimaryPay(prev=>prev.svc?prev:({...prev,svc:nf}));
+                    setExternalPrepaid(0);
+                  } else {                                            // 플랫폼형 → 외부선결제로 복귀
+                    setExternalPrepaid(moveAmt);
+                  }
+                }
+                setExternalPlatform(np);
+              }}
                 style={{flex:"0 1 90px",minWidth:70,padding:"3px 4px",fontSize:T.fs.xs,border:"1px solid #CE93D8",borderRadius:6,background:"#fff",color:"#6A1B9A",fontFamily:"inherit"}}>
                 <option value="">플랫폼</option>
                 {externalPlatforms.map(p=><option key={p} value={p}>{p}</option>)}
               </select>
-              <input type="text" inputMode="numeric" value={externalPrepaid ? externalPrepaid.toLocaleString() : ""} placeholder="0"
-                onChange={e=>{const v=Number(String(e.target.value).replace(/[^0-9]/g,""))||0; setExternalPrepaid(Math.max(0,v));}}
+              <input type="text" inputMode="numeric"
+                value={(()=>{ const a=_prepaidMethodField?(Number(payMethod[_prepaidMethodField])||0):externalPrepaid; return a?a.toLocaleString():""; })()} placeholder="0"
+                onChange={e=>{const v=Math.max(0,Number(String(e.target.value).replace(/[^0-9]/g,""))||0);
+                  if (_prepaidMethodField){ const f=_prepaidMethodField;
+                    setPayMethod(prev=>({...prev,[f]:v})); setOpenPay(prev=>({...prev,[f]:true}));
+                    setPrimaryPay(prev=>prev.svc?prev:({...prev,svc:f})); setExternalPrepaid(0);
+                  } else { setExternalPrepaid(v); }
+                }}
                 style={{flex:"1 1 70px",minWidth:60,padding:"3px 6px",fontSize:T.fs.xs,textAlign:"right",fontWeight:700,color:"#6A1B9A",border:"1px solid #CE93D8",borderRadius:6,background:"#fff",fontFamily:"inherit"}}/>
-              <span style={{fontSize:T.fs.xs,color:"#6A1B9A",fontWeight:700,flexShrink:0}}>원</span>
+              <span style={{fontSize:T.fs.xs,color:"#6A1B9A",fontWeight:700,flexShrink:0}}>{_prepaidMethodField?"원→결제수단":"원"}</span>
             </div>
             <div style={{borderTop:"2px solid #333",marginTop:6,paddingTop:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <span style={{fontSize:T.fs.sm,fontWeight:T.fw.black,color:T.text}}>{isNaver ? "현장 결제금액" : "총 결제금액"}</span>
