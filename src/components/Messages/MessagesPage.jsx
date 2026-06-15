@@ -1860,9 +1860,8 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   };
 
   const fmtTime=(ts)=>{
-    const d=new Date(ts),now=new Date(),diff=now-d;
-    if(diff<60000) return "방금";
-    if(diff<3600000) return Math.floor(diff/60000)+"분 전";
+    const d=new Date(ts),now=new Date();
+    // 항상 실제 시각으로 표시 (상대시간 "방금/N분 전" 미사용) — 정우님 요청
     const h=d.getHours(), ap=h<12?"오전":"오후", h12=(h%12)||12;
     const tt=ap+" "+h12+":"+String(d.getMinutes()).padStart(2,"0");
     const isToday=d.toDateString()===now.toDateString();
