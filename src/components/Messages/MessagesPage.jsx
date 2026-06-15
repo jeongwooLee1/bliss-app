@@ -1882,6 +1882,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     return null;
   };
   const branchName=(m)=>{
+    if(m?.channel==="whatsapp"||m?.channel==="line") return "공통"; // 전 지점 공통 채널 (단일 번호/계정)
     const acc=m?.account_id; if(!acc) return "";
     if(_ACC_NAME[acc]) return _ACC_NAME[acc];
     const b=(data?.branches||[]).find(x=>String(x.id)===String(acc));
@@ -1897,7 +1898,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     const key = sel.channel + "_" + sel.user_id;
     const cust = chatCustMapFull[key];
     const dispName = getDisplayName(convo[0] || { user_id: sel.user_id });
-    const _bn = sel.channel !== "whatsapp" ? branchName(sel) : "";
+    const _bn = branchName(sel);
     const chPhone = convo.find(m=>m.cust_phone)?.cust_phone || sel.cust_phone
       || (sel.channel==="sms" ? sel.user_id : "")
       || (sel.channel==="whatsapp" && sel.user_id ? (sel.user_id.startsWith("82") ? "0"+sel.user_id.slice(2) : sel.user_id) : "");
@@ -2014,7 +2015,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           const uc=unread(m.user_id,ch);
           const name=getDisplayName(m);
           // 왓츠앱은 전지점 공통이라 지점명 숨김
-          const branch=ch==="whatsapp"?"":branchName(m);
+          const branch=branchName(m);
           const initials=name.slice(0,2);
           const isOut=m.direction==="out";
           const sendActive=sendWindowActive(m.user_id,ch);
@@ -2294,7 +2295,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             const uc=unread(m.user_id,ch);
             const name=getDisplayName(m);
             // 왓츠앱은 전지점 공통이라 지점명 숨김
-            const branch=ch==="whatsapp"?"":branchName(m);
+            const branch=branchName(m);
             const initials=name.slice(0,1);
             const sendActive=sendWindowActive(m.user_id,ch);
             return <div key={key} onClick={()=>selectThread(m)}
