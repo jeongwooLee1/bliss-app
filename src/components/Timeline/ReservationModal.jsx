@@ -3022,7 +3022,7 @@ ${naverText}
                 {STATUS_LABEL[k]}</button>})}
               </div>
             </div>}
-            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <div className="rm-footer" style={{display:"flex",gap:8,alignItems:"center"}}>
             {!isReadOnly && <>
               {(() => {
                 const baseBtn = {padding:"10px 16px",borderRadius:T.radius.md,fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5,lineHeight:1,transition:"all .15s"};
@@ -3274,7 +3274,7 @@ ${naverText}
                   chatChannel: f.chatChannel||item?.chatChannel||"", chatAccountId: f.chatAccountId||item?.chatAccountId||"", chatUserId: f.chatUserId||item?.chatUserId||""});
               }}>{item?.id?"저장":"등록"}</button>
               {/* AI 예약 확정 버튼 */}
-              {f.status==="request" && <Btn style={{padding:"10px 26px",background:"#9C27B0",boxShadow:"0 4px 14px rgba(156,39,176,.35)"}}
+              {f.status==="request" && <Btn style={{padding:"10px 26px",background:"#9C27B0",boxShadow:"0 4px 14px rgba(156,39,176,.35)",whiteSpace:"nowrap"}}
                 onClick={async ()=>{
                   // data.branches에서 동적으로 계정 매핑
                   const branchAccMap={};
