@@ -1418,6 +1418,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
 
   const toggleView = (bid) => setViewBids(prev => (prev||[]).includes(bid) ? (prev||[]).filter(x=>x!==bid) : [...(prev||[]), bid]);
   const canEdit = (bid) => isMaster || userBranches.includes(bid);
+  // 내부일정(메모·직원일정)은 같은 브랜드 연계지점(accessibleBids)도 작성 허용 — 예약은 canEdit(자기 지점)만 (정우 id_2kr7dht8h7)
+  const canEditSched = (bid) => isMaster || accessibleBids.includes(bid);
 
   // ── 타임라인에 표시되는 예약의 고객 최신 정보 보강 (data.customers는 100건만 로드) ──
   const [custInfoMap, setCustInfoMap] = useState({});  // {custId: {name, phone, gender}}
@@ -2429,7 +2431,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   const lastTouchCell = useRef(0);
   const handleCellClick = (room, y) => {
     if (isDragging.current || isResizing.current) return;
-    if (!canEdit(room.branch_id)) return;
+    const _resOk = canEdit(room.branch_id);
+    if (!_resOk && !canEditSched(room.branch_id)) return;  // 같은 브랜드면 내부일정 작성 허용
     // 모바일: 터치 직후 click 무시 (롱프레스로만 등록)
     if (Date.now() - lastTouchCell.current < 500) return;
     const time = yToTime(y);
@@ -2439,6 +2442,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       bid: room.branch_id,
       time, date: selDate,
       staffId: room.isStaffCol ? room.staffId : undefined,
+      ...(_resOk ? {} : { isSchedule: true }),  // 예약권한 없는 같은 브랜드 지점 → 내부일정 모드 강제
     });
     setShowModal(true);
   };
@@ -2534,6 +2538,11 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     }
     // 베타 모드: 모든 신규/수정 예약에 isBeta=true 강제 마킹 (라이브 격리)
     if (betaGroupMode) item.isBeta = true;
+    // 타 지점 예약 차단: 예약(reservation)은 자기 지점(canEdit)만. 같은 브랜드라도 타 지점엔 내부일정(isSchedule)만 (정우 id_2kr7dht8h7)
+    if (!item.isSchedule && !item._isColTemplate && item.bid && !canEdit(item.bid)) {
+      alert("타 지점 예약은 작성할 수 없어요. 같은 브랜드라도 예약은 해당 지점에서 해주세요. (내부일정은 작성 가능)");
+      return;
+    }
     // 🔒 race-condition 방어: 네이버 서버가 비동기로 갱신하는 필드(status, naver_*_dt)는
     // 모달이 열린 동안 stale 값으로 덮어쓰기 방지.
     const _snap = item._initialServerSnap;
@@ -5239,7 +5248,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                   )}
                 </div>
                 {/* Grid Area */}
-                <div style={{position:"relative",height:totalRows*rowH,cursor:(room.isBlank&&room.isAddCol)?"pointer":room.isBlank?"default":(canEdit(room.branch_id)?"pointer":"default"),boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",...gridBg}}
+                <div style={{position:"relative",height:totalRows*rowH,cursor:(room.isBlank&&room.isAddCol)?"pointer":room.isBlank?"default":(canEditSched(room.branch_id)?"pointer":"default"),boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",...gridBg}}
                   onClick={e=>{
                     // 막기 칼럼: 시간 슬롯 클릭 → 4개 시술 토글 팝업 (30분 단위 스냅)
                     if (room.isBlockCol) {
@@ -5266,7 +5275,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                     }
                     // + 칼럼: 매일 반복 내부일정 템플릿 생성
                     if(room.isBlank && room.isAddCol) {
-                      if(!canEdit(room.branch_id)) return;
+                      if(!canEditSched(room.branch_id)) return;
                       const rect3=e.currentTarget.getBoundingClientRect();
                       const time=yToTime(e.clientY-rect3.top);
                       setModalData({bid:room.branch_id, time, date:selDate, isSchedule:true, _isColTemplate:true, dur:30});
@@ -5286,7 +5295,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                         // 근무 외 시간 → 내부일정 모드로 모달 열기
                         // ⚠️ 드래그 직후 mouseup이 onClick으로 올라오는 케이스 차단 (유저 피드백: 블록 위로 드래그 시 새 모달 뜸)
                         if (isDragging.current || isResizing.current) return;
-                        if(!canEdit(room.branch_id)) return;
+                        if(!canEditSched(room.branch_id)) return;
                         const h=Math.floor(clickMin/60), m=clickMin%60;
                         const time=`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
                         setModalData({roomId:"",staffId:room.staffId,bid:room.branch_id,time,date:selDate,isSchedule:true});
@@ -5300,7 +5309,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                   onMouseLeave={()=>setHoverCell(null)}
                   onTouchStart={e=>{
                     lastTouchCell.current=Date.now();
-                    if(room.isBlank||!canEdit(room.branch_id))return;
+                    if(room.isBlank||!canEditSched(room.branch_id))return;
                     const t=e.touches[0];const rect=e.currentTarget.getBoundingClientRect();
                     const y=t.clientY-rect.top;const ri=Math.floor(y/rowH);
                     setHoverCell({roomId:room.id,rowIdx:ri});
@@ -5347,6 +5356,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                         bid: lp.room.branch_id,
                         time, date: selDate,
                         staffId: lp.room.isStaffCol ? lp.room.staffId : undefined,
+                        ...(canEdit(lp.room.branch_id) ? {} : { isSchedule: true }),  // 같은 브랜드 타 지점 → 내부일정 모드 (예약은 차단)
                       });
                       setShowModal(true);
                     }
