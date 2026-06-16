@@ -28,7 +28,7 @@ import BlissRequests from '../components/BlissRequests/BlissRequests'
 import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 
 const uid = genId;
-const BLISS_V = "3.8.119"
+const BLISS_V = "3.8.120"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -2674,7 +2674,7 @@ function App() {
             <button onClick={()=>setMessagesPanelOpen(false)} title="닫기" style={{width:24,height:24,borderRadius:12,border:"none",background:T.gray100,color:T.textSub,cursor:"pointer",fontSize:16,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>×</button>
           </div>
           <div style={{flex:1,minHeight:0,overflow:"hidden",position:"relative"}}>
-            <AdminInbox sb={sb} branches={data?.branches} data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} currentUser={currentUser} onRead={(cnt)=>{setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)));loadUnreadRef.current&&loadUnreadRef.current();}} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage} forceCompact={true} inboxResetKey={inboxResetKey} depositPending={pendingDepositCount} reviewPending={pendingReviewCount} onClosePanel={()=>setMessagesPanelOpen(false)} setPendingOpenCust={setPendingOpenCust} onReviewReplied={()=>setPendingReviewCount(p=>Math.max(0,p-1))}/>
+            <AdminInbox sb={sb} branches={data?.branches} data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} currentUser={currentUser} onRead={(cnt)=>{if(cnt>0)setUnreadMsgCount(prev=>Math.max(0,prev-cnt));loadUnreadRef.current&&loadUnreadRef.current();}} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage} forceCompact={true} inboxResetKey={inboxResetKey} depositPending={pendingDepositCount} reviewPending={pendingReviewCount} onClosePanel={()=>setMessagesPanelOpen(false)} setPendingOpenCust={setPendingOpenCust} onReviewReplied={()=>setPendingReviewCount(p=>Math.max(0,p-1))}/>
           </div>
         </div>
       )}
@@ -2759,7 +2759,7 @@ function App() {
             <Route path="/customers" element={<ScrollArea storageKey="page_customers"><CustomersPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} pendingOpenCust={pendingOpenCust} setPendingOpenCust={setPendingOpenCust} setPage={setPage} setPendingOpenRes={setPendingOpenRes}/></ScrollArea>}/>
             <Route path="/marketing" element={<ScrollArea storageKey="page_marketing"><MarketingBroadcast data={data} userBranches={userBranches} bizId={currentBizId} currentUser={currentUser} isMaster={isMaster}/></ScrollArea>}/>
             <Route path="/users" element={<ScrollArea storageKey="page_users"><UsersPage data={data} setData={setData} bizId={currentBizId}/></ScrollArea>}/>
-            <Route path="/messages" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><AdminInbox sb={sb} branches={data?.branches} data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} currentUser={currentUser} onRead={(cnt)=>{setUnreadMsgCount(prev=>Math.max(0,prev-(cnt||1)));loadUnreadRef.current&&loadUnreadRef.current();}} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage} depositPending={pendingDepositCount} reviewPending={pendingReviewCount} setPendingOpenCust={setPendingOpenCust} onReviewReplied={()=>setPendingReviewCount(p=>Math.max(0,p-1))}/></div>}/>
+            <Route path="/messages" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><AdminInbox sb={sb} branches={data?.branches} data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} currentUser={currentUser} onRead={(cnt)=>{if(cnt>0)setUnreadMsgCount(prev=>Math.max(0,prev-cnt));loadUnreadRef.current&&loadUnreadRef.current();}} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage} depositPending={pendingDepositCount} reviewPending={pendingReviewCount} setPendingOpenCust={setPendingOpenCust} onReviewReplied={()=>setPendingReviewCount(p=>Math.max(0,p-1))}/></div>}/>
             <Route path="/schedule" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}>{isMaster && <SchedulePage/>}</div>}/>
             <Route path="/settings/*" element={<ScrollArea storageKey="page_settings"><AdminPage data={data} setData={setData} bizId={currentBizId} serverV={serverV} onLogout={handleLogout} currentUser={currentUser} userBranches={userBranches} setPage={setPage} setPendingOpenCust={setPendingOpenCust}/></ScrollArea>}/>
             <Route path="/wizard" element={<Navigate to="/blissai" replace/>}/>

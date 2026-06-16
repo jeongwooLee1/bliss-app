@@ -874,7 +874,8 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       await fetch(url, {method:"PATCH",headers:{...sbHeaders,Prefer:"return=minimal"},body:JSON.stringify({is_read:true})});
     } catch(e) { /* fail-safe — 로컬 상태는 갱신 */ }
     setMsgs(prev=>prev.map(m=>matches(m)?{...m,is_read:true}:m));
-    if(onRead && unreadCount > 0) onRead(unreadCount);
+    // 0이어도 호출 → AppShell이 DB에서 미읽음 배너 재카운트(대화 열면 즉시 사라짐). 로컬 msgs에 없던 미읽음(SMS 등)도 읽음 처리 후 정리 (id_xoii3k8w00)
+    if(onRead) onRead(unreadCount);
   };
 
   const selectThread = (m)=>{
@@ -1883,6 +1884,11 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     const ds=(sameYear?"":d.getFullYear()+". ")+(d.getMonth()+1)+"/"+d.getDate();
     return ds+" "+tt;
   };
+  // 카톡은 한 번에 수집 시 created_at(블리스 수신시각)이 동일 → 시간이 다 똑같이 보임. raw_payload.send_at(실제 카톡 시각, epoch ms) 우선 표시 (정우 id_gntzsae2be, 표시만)
+  const _dispTime=(m)=>{
+    if((m?.channel)==="kakao"){ let rp=m?.raw_payload; if(typeof rp==="string"){try{rp=JSON.parse(rp);}catch{rp=null;}} if(rp&&rp.send_at) return rp.send_at; }
+    return m?.created_at;
+  };
   // 지점명: 네이버/IG는 외부 계정ID(_ACC_NAME), SMS·기타는 account_id가 bid → data.branches에서 직접 조회.
   // (여러 지점 담당자가 문자가 어느 지점 건지 알 수 있게 — id_sz... 류 요청)
   // SMS는 한 대의 매장폰을 두 지점이 공유(강남+왕십리 / 마곡+홍대 / 위례+잠실) → 어느 지점 손님인지 번호로 구분 불가
@@ -2052,7 +2058,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                 <span style={{fontWeight:uc>0?700:600,fontSize:forceCompact?12:16,color:"#111",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:forceCompact?180:200}}>
                   {branch?<span style={{color:T.primary,fontWeight:700}}>{branch}</span>:null}{branch?" · ":""}{name}
                 </span>
-                <span style={{fontSize:forceCompact?10:12,color:uc>0?T.primary:"#999",fontWeight:uc>0?600:400,flexShrink:0,marginLeft:6}}>{fmtTime(m.created_at)}</span>
+                <span style={{fontSize:forceCompact?10:12,color:uc>0?T.primary:"#999",fontWeight:uc>0?600:400,flexShrink:0,marginLeft:6}}>{fmtTime(_dispTime(m))}</span>
               </div>
               {!forceCompact && <div style={{fontSize:12,color:"#aaa",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                 {(()=>{const ph=msgs.filter(x=>x.user_id===m.user_id&&x.cust_phone).map(x=>x.cust_phone)[0];return ph||""})()}
@@ -2140,7 +2146,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                     <I name="alert" size={forceCompact?9:10}/>발송실패
                   </span>
                 )}
-                <span>{fmtTime(m.created_at)}</span>
+                <span>{fmtTime(_dispTime(m))}</span>
               </div>
             </div>
           </div>;
@@ -2149,8 +2155,8 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       </div>
       {/* 입력창 */}
       <div style={{background:"transparent",padding:"8px 12px 12px",flexShrink:0}}>
-        <div className="msg-action-row" style={{display:"flex",gap:6,marginBottom:6,alignItems:"center",flexWrap:"nowrap",overflowX:"auto"}}>
-          {/* 모바일서 버튼 줄바꿈 깨짐(정우 id_7pt51ndrbi) → 한 줄 가로스크롤. 버튼은 .msg-action-row>button{flex-shrink:0}로 안 쭈그러듦 */}
+        <div className="msg-action-row" style={{display:"flex",gap:6,marginBottom:6,alignItems:"center",flexWrap:"wrap"}}>
+          {/* 좁은 docked 패널에서 버튼 우측 잘림(정우 id_0uho9mcop2) → flexWrap:wrap 줄바꿈(가로스크롤·잘림 X). .msg-action-row>button{flex-shrink:0}로 안 쭈그러듦 */}
           {/* AI 답변추천·번역 — 카톡은 블리스에서 직접 전송 불가(답장은 '카카오에서 답장' 딥링크)라 숨김 (정우 id_vnuqbqugzf) */}
           {(sel.channel||"naver")!=="kakao" && (<>
           {/* AI 답변 추천 */}
@@ -2332,7 +2338,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                   <span style={{fontWeight:uc>0?800:600,fontSize:14,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:160}}>
                     {branch?<span style={{color:T.primary,fontWeight:700}}>{branch}</span>:null}{branch?" · ":""}{name}
                   </span>
-                  <span style={{fontSize:11,color:uc>0?T.primary:T.textMuted,fontWeight:uc>0?600:400,flexShrink:0,marginLeft:4}}>{fmtTime(m.created_at)}</span>
+                  <span style={{fontSize:11,color:uc>0?T.primary:T.textMuted,fontWeight:uc>0?600:400,flexShrink:0,marginLeft:4}}>{fmtTime(_dispTime(m))}</span>
                 </div>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                   <span style={{fontSize:13,color:uc>0?T.text:T.textMuted,fontWeight:uc>0?500:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:190}}>
@@ -2407,7 +2413,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                         <I name="alert" size={10}/>발송실패
                       </span>
                     )}
-                    <span>{fmtTime(m.created_at)}</span>
+                    <span>{fmtTime(_dispTime(m))}</span>
                   </div>
                 </div>
               </div>;

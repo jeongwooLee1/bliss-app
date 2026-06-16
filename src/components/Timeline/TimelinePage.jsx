@@ -3975,7 +3975,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           }}>
           <I name="msgSq" size={18} style={{color:"#0369A1"}}/>
           <div style={{flex:1,minWidth:0}}>
-            <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#0369A1"}}>답변 안 한 메시지 {unreadDelayedCount}건</span>
+            <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:"#0369A1"}}>안 읽은 메시지 {unreadDelayedCount}건</span>
             <span style={{fontSize:T.fs.xxs,color:"#0369A1",marginLeft:8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{preview}{unreadDelayedCount>3?` 외 ${unreadDelayedCount-3}건`:""}</span>
           </div>
           <span style={{fontSize:T.fs.xxs,color:"#0369A1",fontWeight:T.fw.bold,flexShrink:0}}>확인 <I name="chevR" size={11} color="#0369A1"/></span>
