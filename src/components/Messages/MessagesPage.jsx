@@ -4,6 +4,7 @@ import { T } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY, sbHeaders, matchAllTokens } from '../../lib/sb'
 import { searchDocs, buildDocsContext } from '../../lib/aiDocs'
 import { fromDb, _activeBizId } from '../../lib/db'
+import { onRtPing, debounce } from '../../lib/rtPings'
 import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, useSessionState, TTL } from '../../lib/utils'
 import I from '../common/I'
 import { ChannelLogo } from './channelIcons'
@@ -211,81 +212,52 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
 
   useEffect(()=>{
     loadMsgs();
-    // Realtime 구독
-    let lastMsgRt = 0;
-    const chName = "inbox_rt_"+Date.now();
-    const ch = window._sbClient?.channel(chName)
-      ?.on("postgres_changes",{event:"INSERT",schema:"public",table:"messages"},
-        p=>{ if(p?.new) {
-          lastMsgRt = Date.now();
-          setMsgs(prev=>{
-            // 1) 같은 id 이미 있으면 skip (id로 dedup)
-            if (prev.some(m=>m.id===p.new.id)) return prev;
-            // 2) 로컬 optimistic echo (id 없음)와 매칭되면 실제 row로 교체 — 중복 말풍선 방지
-            //    (sendMsg 함수가 id 없이 direction='out' 메시지를 prev에 즉시 추가함)
-            if (p.new.direction === 'out') {
-              const idx = prev.findIndex(m => !m.id && m.direction==='out'
-                && m.user_id===p.new.user_id
-                && m.channel===p.new.channel
-                && (m.message_text||'').slice(0,40) === (p.new.message_text||'').slice(0,40));
-              if (idx >= 0) {
-                const next = [...prev]; next[idx] = _normKakaoMsg(p.new); return next;
-              }
+    // 실시간(신호 테이블 rt_pings 경유): messages 변경 신호 → 최근 3분 메시지만 가져와 merge(append/patch).
+    // 보안 잠금된 messages를 직접 구독하지 않음. 가벼운 incremental(전체 reload 아님) — 원래 INSERT/UPDATE 핸들러 로직 재현.
+    const mergeRecent = async () => {
+      try {
+        const since = new Date(Date.now() - 180000).toISOString();
+        const rows = await fetch(SB_URL+`/rest/v1/messages?business_id=eq.${_activeBizId}&created_at=gte.${encodeURIComponent(since)}&order=created_at.asc&limit=300&select=*`,
+          { headers:{...sbHeaders,"Cache-Control":"no-cache"}, cache:"no-store" }).then(r=>r.json());
+        if (!Array.isArray(rows) || !rows.length) return;
+        const fresh = _normKakaoArr(rows);
+        setMsgs(prev=>{
+          let next = prev; let dirty = false;
+          for (const nu of fresh) {
+            if (!nu.id) continue;
+            if (next.some(m=>m.id===nu.id)) {
+              next = next.map(m=>m.id===nu.id?{...m,...nu}:m); dirty = true; continue;
             }
-            return [...prev, _normKakaoMsg(p.new)];
-          });
-          if(p.new.user_name) setNames(prev=>({...prev,[p.new.user_id]:p.new.user_name}));
-        }}
-      )
-      ?.on("postgres_changes",{event:"UPDATE",schema:"public",table:"messages"},
-        p=>{ if(p?.new?.id) { lastMsgRt = Date.now(); const _nu=_normKakaoMsg(p.new); setMsgs(prev=>prev.map(m=>m.id===_nu.id?{...m,..._nu}:m)); }}
-      )?.subscribe();
+            // optimistic echo(아이디 없는 로컬 발신) 매칭 시 실제 row로 교체 — 중복 말풍선 방지
+            if (nu.direction === 'out') {
+              const idx = next.findIndex(m => !m.id && m.direction==='out'
+                && m.user_id===nu.user_id && m.channel===nu.channel
+                && (m.message_text||'').slice(0,40) === (nu.message_text||'').slice(0,40));
+              if (idx >= 0) { const arr=[...next]; arr[idx]=nu; next=arr; dirty=true; continue; }
+            }
+            next = [...next, nu]; dirty = true;
+          }
+          return dirty ? next : prev;
+        });
+        const nm = {};
+        fresh.forEach(m => { if (m.user_name && !nm[m.user_id]) nm[m.user_id] = m.user_name; });
+        if (Object.keys(nm).length > 0) setNames(prev=>({...prev,...nm}));
+      } catch(e){}
+    };
+    const debMerge = debounce(mergeRecent, 700);
+    const off = onRtPing("messages", debMerge);
+    const poll = setInterval(mergeRecent, 90000); // 신호 누락 대비 폴백
     const onVisible = () => { if(document.visibilityState==="visible") loadMsgs(); };
     document.addEventListener("visibilitychange", onVisible);
     return ()=>{
       document.removeEventListener("visibilitychange", onVisible);
-      try{ch?.unsubscribe(); window._sbClient?.removeChannel(ch);}catch(e){}
+      try{ off(); }catch(e){}
+      clearInterval(poll);
     };
   }, []);
 
-  // 신규 메시지 경량 증분 폴링(15초) — RLS 락다운 이후 Realtime이 messages 이벤트를 못 받아
-  // 대화 뱃지가 늦게 뜨던 버그 대응. 전체 재조회 아니라 "마지막 메시지 이후"만 가져와 머지(부하 최소).
-  useEffect(()=>{
-    const tick = async () => {
-      if (document.visibilityState !== "visible") return;
-      if (loadingRef.current) return;
-      try {
-        let newest = "";
-        for (const m of msgsRef.current) { if (m.created_at && m.created_at > newest) newest = m.created_at; }
-        const since = newest || new Date(Date.now()-3600000).toISOString();
-        const r = await fetch(
-          SB_URL+`/rest/v1/messages?business_id=eq.${_activeBizId}&created_at=gte.${encodeURIComponent(since)}&order=created_at.asc&limit=300&select=*`,
-          { headers: { ...sbHeaders, "Cache-Control": "no-cache" }, cache: "no-store" }
-        );
-        const rows = _normKakaoArr(await r.json());
-        if (!Array.isArray(rows) || !rows.length) return;
-        setMsgs(prev=>{
-          let next = prev, changed = false;
-          const nm = {};
-          for (const row of rows) {
-            if (!row?.id || prev.some(m=>m.id===row.id)) continue;
-            const nrow = _normKakaoMsg(row);
-            if (nrow.user_name && !nm[nrow.user_id]) nm[nrow.user_id] = nrow.user_name;
-            if (nrow.direction === "out") { // 옵티미스틱 echo(아이디 없음) 매칭 시 교체 — 중복 말풍선 방지
-              const idx = next.findIndex(m=>!m.id && m.direction==="out" && m.user_id===nrow.user_id && m.channel===nrow.channel && (m.message_text||"").slice(0,40)===(nrow.message_text||"").slice(0,40));
-              if (idx>=0) { if(!changed){next=[...next];changed=true;} next[idx]=nrow; continue; }
-            }
-            if(!changed){next=[...next];changed=true;}
-            next.push(nrow);
-          }
-          if (Object.keys(nm).length) setNames(p=>({...p,...nm}));
-          return changed ? next : prev;
-        });
-      } catch(e){}
-    };
-    const t = setInterval(tick, 15000);
-    return ()=>clearInterval(t);
-  }, []);
+  // (구 15초 증분 폴링 제거 — rt_pings 실시간 복구로 대체: onRtPing("messages")가 즉시 머지 + 90초 폴백(위 useEffect).
+  //  중복 폴링 제거로 messages 테이블 부하↓ — 잠금 전 폴링 과부하 재발 방지가 rt_pings의 목적.)
 
   // AI 자동답변 채널별 ON/OFF 로드
   const _parseSettings = (raw) => { try { return typeof raw==='string'?JSON.parse(raw):(raw||{}); } catch{ return {}; } };

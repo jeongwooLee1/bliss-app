@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { _activeBizId } from '../../lib/db'
+import { onRtPing, debounce } from '../../lib/rtPings'
 
 // 사내 메신저 데이터 훅
 // 유저: employees_v1(근무표 등록 직원) + maleRotation_v1
@@ -87,43 +88,16 @@ export function useTeamChat() {
     }
     loadMsgs()
 
-    // Realtime: INSERT 이벤트 구독 (해당 사업장만)
-    const ch = supabase
-      .channel(`team_chat_messages_rt_${bizId}`)
-      .on('postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'team_chat_messages', filter: `business_id=eq.${bizId}` },
-        (payload) => {
-          const row = payload?.new
-          if (!row) return
-          setMessages(prev => {
-            // 중복 방지 (낙관적 업데이트 + Realtime 둘 다 올 때)
-            if (prev.some(m => m.id === row.id)) return prev
-            // 내가 방금 보낸 pending 메시지 교체
-            const idx = prev.findIndex(m => m._pending && m.user_id === row.user_id && m.body === row.body)
-            if (idx >= 0) {
-              const next = [...prev]
-              next[idx] = { ...row, _pending: false }
-              return next
-            }
-            return [...prev, row]
-          })
-        })
-      .on('postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'team_chat_messages', filter: `business_id=eq.${bizId}` },
-        (payload) => {
-          const oldId = payload?.old?.id
-          if (oldId == null) return
-          setMessages(prev => prev.filter(m => m.id !== oldId))
-        })
-      .subscribe()
-
-    // 폴링 fallback (2분) — Realtime 실패 대비 (Realtime이 평소엔 즉시 받음)
+    // 실시간(신호 테이블 rt_pings 경유): team_chat_messages 변경 신호 → 재조회(저용량 내부 채팅이라 전체 reload 안전, INSERT/DELETE 모두 반영).
+    const debLoad = debounce(loadMsgs, 500)
+    const off = onRtPing('team_chat_messages', debLoad)
+    // 폴링 fallback (2분) — 신호 누락 대비
     const poll = setInterval(loadMsgs, 120_000)
 
     return () => {
       cancelled = true
       clearInterval(poll)
-      try { supabase.removeChannel(ch) } catch {}
+      try { off() } catch {}
     }
   }, [])
 

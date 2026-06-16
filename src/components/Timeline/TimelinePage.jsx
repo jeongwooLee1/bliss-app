@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { T, NAVER_COLS, getNaverVal, STATUS_LABEL, STATUS_CLR, BLOCK_COLORS, BRANCH_DEFAULT_COLORS, branchColor, STATUS_CLR_DEFAULT, STATUS_KEYS, SCH_BRANCH_MAP } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY, sbHeaders, queueAlimtalk } from '../../lib/sb'
 import { useMaleRotation, useScheduleData } from '../../lib/useData'
+import { onRtPing } from '../../lib/rtPings'
 import { DEFAULT_CELL_TAGS } from '../Schedule/scheduleConstants'
 import { fromDb, toDb, resolveSystemIds, NEW_CUST_TAG_ID_GLOBAL, PREPAID_TAG_ID, NAVER_SRC_ID, SYSTEM_TAG_IDS, _activeBizId } from '../../lib/db'
 import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, useSessionState, getCustPkgBranchInitial, naverConfirmBooking, naverPollNow, toKrMobile } from '../../lib/utils'
@@ -190,13 +191,8 @@ function TopAnnounceBubble_DEPRECATED() {
   };
   useEffect(() => {
     loadLatest();
-    const supa = window._sbClient;
-    if (!supa) return;
-    const ch = supa.channel('rt_topbar_announce_' + Date.now())
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'team_chat_messages' },
-        (payload) => { if (payload?.new?.is_announce) loadLatest(); })
-      .subscribe();
-    return () => { try { supa.removeChannel(ch); } catch {} };
+    const off = onRtPing('team_chat_messages', () => loadLatest());
+    return () => { try { off(); } catch {} };
   }, []);
   if (!announce) return null;
   const dismiss = (e) => { e?.stopPropagation?.(); addDismissed(announce.id); setAnnounce(null); };
@@ -481,15 +477,15 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   // ── schedule_data Realtime 단일 채널 (구 6개 채널 통합 — key별 dispatch, 연결풀 부하↓) ──
   const schRtRef = useRef({}); // { schedule_data key: reloadFn(payload) }
   useEffect(() => {
-    if (!window._sbClient || !_activeBizId) return;
-    const ch = window._sbClient.channel("schedule_data_all_rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "schedule_data", filter: `business_id=eq.${_activeBizId}` }, (payload) => {
-        const k = payload?.new?.key || payload?.old?.key;
-        const fn = k && schRtRef.current[k];
-        if (fn) { try { fn(payload); } catch(e){} }
-      })
-      .subscribe();
-    return () => { try { ch.unsubscribe(); } catch(e){} };
+    if (!_activeBizId) return;
+    // 보안 잠금으로 schedule_data 직접 Realtime이 막혀 신호 테이블(rt_pings, 전역 단일 채널) 경유.
+    // ping(ref=변경된 key)에 해당하는 로더 호출. 대부분 로더는 DB 재조회 → 신호만으로 동작. (schHistory onSchChange는 값 없으면 재조회 폴백)
+    const off = onRtPing("schedule_data", (row) => {
+      const k = row && row.ref;
+      const fn = k && schRtRef.current[k];
+      if (fn) { try { fn(row); } catch(e){} }
+    });
+    return () => { try { off(); } catch(e){} };
   }, [_activeBizId]);
   const [notices, setNotices] = useState([]);
   useEffect(() => {
@@ -659,11 +655,18 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     let channel = null;
     let pollTimer = null;
     let lastRtUpdate = 0;
+    const fetchSchHistoryNow = () => {
+      fetch(`${SB_URL_SCH}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.schHistory_v1&select=value`, { headers: H, cache:"no-store" })
+        .then(r=>r.json()).then(rows=>{ if (rows?.length) { lastRtUpdate = Date.now(); setSchHistory(p => mergeWithLock(parseSchHistory(rows[0].value))); } }).catch(()=>{});
+    };
     const onSchChange = (payload) => {
       if (payload?.new?.value) {
         lastRtUpdate = Date.now();
         const newSch = parseSchHistory(payload.new.value);
         setSchHistory(p => mergeWithLock(newSch));
+      } else {
+        // 신호 테이블 경유(값 없음) → DB에서 schHistory 재조회
+        fetchSchHistoryNow();
       }
     };
     schRtRef.current["schHistory_v1"] = onSchChange;

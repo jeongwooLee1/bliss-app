@@ -6,6 +6,7 @@ import { T, SCH_BRANCH_MAP } from '../../lib/constants'
 import { I } from '../common/I'
 import { useScheduleData, useEmployees } from '../../lib/useData'
 import { supabase } from '../../lib/supabase'
+import { onRtPing } from '../../lib/rtPings'
 import autoAssign from './autoAssign'
 import { validateSch, exportCSV as doExportCSV } from './scheduleUtils'
 import { BRANCHES_SCH, BRANCH_LABEL, STATUS, S_COLOR, DNAMES, isSupport, getSColor, getDim, fmtDs, getDow0Mon, DB_KEYS, DEFAULT_CELL_TAGS } from './scheduleConstants'
@@ -114,28 +115,21 @@ export default function SchedulePage({ employees: propEmps }) {
   const [dataLoaded, setDataLoaded] = useState(false)
   useEffect(() => {
     let cancelled = false
-    supabase.from('schedule_data').select('value').eq('business_id', _activeBizId).eq('key', DB_KEYS.schHistory).maybeSingle()
-      .then(({ data }) => {
-        if (cancelled) return
-        if (data?.value) {
-          const val = typeof data.value === 'string' ? JSON.parse(data.value) : data.value
-          setSchHistory(val)
-        }
-        setDataLoaded(true)
-      })
-    const ch = supabase.channel('sch_history_realtime')
-      .on('postgres_changes', {
-        event: '*', schema: 'public',
-        table: 'schedule_data', filter: `business_id=eq.${_activeBizId}`
-      }, ({ new: n }) => {
-        if (cancelled || !n?.value) return
-        if (n?.key !== DB_KEYS.schHistory) return
-        try {
-          const val = typeof n.value === 'string' ? JSON.parse(n.value) : n.value
-          setSchHistory(val)
-        } catch {}
-      }).subscribe()
-    return () => { cancelled = true; ch.unsubscribe() }
+    const loadSchHistory = () => {
+      supabase.from('schedule_data').select('value').eq('business_id', _activeBizId).eq('key', DB_KEYS.schHistory).maybeSingle()
+        .then(({ data }) => {
+          if (cancelled) return
+          if (data?.value) {
+            const val = typeof data.value === 'string' ? JSON.parse(data.value) : data.value
+            setSchHistory(val)
+          }
+          setDataLoaded(true)
+        })
+    }
+    loadSchHistory()
+    // 실시간(신호 테이블 rt_pings 경유): schHistory 변경 신호 → 재조회
+    const off = onRtPing('schedule_data', (row) => { if (row && row.ref === DB_KEYS.schHistory) loadSchHistory() })
+    return () => { cancelled = true; try { off() } catch {} }
   }, [])
 
   // 동시편집 race 방지: DB 최신값을 가져와 우리 변경분(history)을 deep-merge 후 저장
@@ -182,7 +176,7 @@ export default function SchedulePage({ employees: propEmps }) {
   // + Realtime 구독: 다른 PC에서 변경 시 자동 반영
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
+    const loadEmpSettings = async () => {
       const { data: d1 } = await supabase.from('schedule_data').select('value').eq('business_id', _activeBizId).eq('key', DB_KEYS.empSettings).maybeSingle()
       if (cancelled) return
       if (d1?.value) {
@@ -191,25 +185,11 @@ export default function SchedulePage({ employees: propEmps }) {
           setEmpSettings(prev => ({ ...prev, ...val }))
         }
       }
-    })()
-
-    const ch = supabase.channel('emp_settings_realtime')
-      .on('postgres_changes', {
-        event: '*', schema: 'public',
-        table: 'schedule_data', filter: `business_id=eq.${_activeBizId}`
-      }, ({ new: n }) => {
-        if (cancelled) return
-        if (n?.value !== undefined && n?.value !== null) {
-          try {
-            const val = typeof n.value === 'string' ? JSON.parse(n.value) : n.value
-            if (typeof val === 'object' && !Array.isArray(val)) {
-              setEmpSettings(prev => ({ ...prev, ...val }))
-            }
-          } catch {}
-        }
-      }).subscribe()
-
-    return () => { cancelled = true; ch.unsubscribe() }
+    }
+    loadEmpSettings()
+    // 실시간(신호 테이블 rt_pings 경유): empSettings 변경 신호 → 재조회
+    const off = onRtPing('schedule_data', (row) => { if (row && row.ref === DB_KEYS.empSettings) loadEmpSettings() })
+    return () => { cancelled = true; try { off() } catch {} }
   }, [])
 
   // Rule config
@@ -273,13 +253,8 @@ export default function SchedulePage({ employees: propEmps }) {
 
   // Realtime: 다른 PC에서 lockStatus 변경 시 자동 반영
   useEffect(() => {
-    const ch = supabase.channel('lock_status_realtime')
-      .on('postgres_changes', {
-        event: '*', schema: 'public',
-        table: 'schedule_data', filter: `business_id=eq.${_activeBizId}`
-      }, () => { loadLockStatus() })
-      .subscribe()
-    return () => ch.unsubscribe()
+    const off = onRtPing('schedule_data', (row) => { if (row && row.ref === DB_KEYS.lockStatus) loadLockStatus() })
+    return () => { try { off() } catch {} }
   }, [loadLockStatus])
 
   const saveLockStatus = (data) => {

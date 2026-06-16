@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { T } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY, sbHeaders } from '../../lib/sb'
 import { fromDb, _activeBizId, PREPAID_TAG_ID } from '../../lib/db'
+import { onRtPing } from '../../lib/rtPings'
 import { todayStr, fmtDate, fmtTime, genId, fmtLocal } from '../../lib/utils'
 import I from '../common/I'
 
@@ -436,17 +437,10 @@ export default function BankDeposits({ data, branches=[], userBranches=[], curre
   useEffect(() => {
     load(false);
     const interval = setInterval(() => load(true), 120000);
-
-    let ch = null;
-    if (window._sbClient) {
-      ch = window._sbClient
-        .channel('bank_deposits_rt')
-        .on('postgres_changes', { event:'*', schema:'public', table:'bank_deposits' }, () => load(true))
-        .subscribe();
-    }
+    const off = onRtPing('bank_deposits', () => load(true));
     return () => {
       clearInterval(interval);
-      if (ch && window._sbClient) window._sbClient.removeChannel(ch);
+      try { off(); } catch {}
     };
   }, [load]);
 
