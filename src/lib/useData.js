@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
 import { _activeBizId } from './db'
+import { onRtPing } from './rtPings'
 
 // 현재 활성 사업장 ID — _activeBizId(live binding)에서 읽음. AppShell에서 setActiveBiz로 세팅됨.
 // 미설정이면 null 반환 → 호출부에서 fetch 스킵
@@ -74,22 +75,18 @@ export function useSchHistory() {
   useEffect(() => {
     if (!_activeBizId) { setLoading(false); return }
     const bizId = _activeBizId
-    supabase.from('schedule_data').select('value')
-      .eq('business_id', bizId).eq('key', 'schHistory_v1').maybeSingle()
-      .then(({ data }) => {
-        if (data?.value) setSchHistory(parse(data.value))
-        setLoading(false)
-      })
-
-    const ch = supabase.channel(`sch_realtime_${bizId}`)
-      .on('postgres_changes', {
-        event: 'UPDATE', schema: 'public',
-        table: 'schedule_data', filter: `business_id=eq.${bizId}`
-      }, ({ new: n }) => {
-        if (n?.key === 'schHistory_v1' && n?.value) setSchHistory(parse(n.value))
-      }).subscribe()
-
-    return () => ch.unsubscribe()
+    const loadSch = () => {
+      supabase.from('schedule_data').select('value')
+        .eq('business_id', bizId).eq('key', 'schHistory_v1').maybeSingle()
+        .then(({ data }) => {
+          if (data?.value) setSchHistory(parse(data.value))
+          setLoading(false)
+        })
+    }
+    loadSch()
+    // 실시간(신호 테이블 rt_pings 경유): schHistory 변경 신호 → 재조회
+    const off = onRtPing('schedule_data', (row) => { if (row && row.ref === 'schHistory_v1') loadSch() })
+    return () => { try { off() } catch {} }
   }, [])
 
   const save = async (history) => {
@@ -111,27 +108,20 @@ export function useMaleRotation() {
   useEffect(() => {
     if (!_activeBizId) return
     const bizId = _activeBizId
-    supabase.from('schedule_data').select('value')
-      .eq('business_id', bizId).eq('key', 'maleRotation_v1').maybeSingle()
-      .then(({ data }) => {
-        if (data?.value) {
-          const val = typeof data.value === 'string' ? JSON.parse(data.value) : data.value
-          setMaleRotation(val)
-        }
-      })
-
-    const ch = supabase.channel(`male_rot_realtime_${bizId}`)
-      .on('postgres_changes', {
-        event: 'UPDATE', schema: 'public',
-        table: 'schedule_data', filter: `business_id=eq.${bizId}`
-      }, ({ new: n }) => {
-        if (n?.key === 'maleRotation_v1' && n?.value) {
-          const val = typeof n.value === 'string' ? JSON.parse(n.value) : n.value
-          setMaleRotation(val)
-        }
-      }).subscribe()
-
-    return () => ch.unsubscribe()
+    const loadRot = () => {
+      supabase.from('schedule_data').select('value')
+        .eq('business_id', bizId).eq('key', 'maleRotation_v1').maybeSingle()
+        .then(({ data }) => {
+          if (data?.value) {
+            const val = typeof data.value === 'string' ? JSON.parse(data.value) : data.value
+            setMaleRotation(val)
+          }
+        })
+    }
+    loadRot()
+    // 실시간(신호 테이블 rt_pings 경유): maleRotation 변경 신호 → 재조회
+    const off = onRtPing('schedule_data', (row) => { if (row && row.ref === 'maleRotation_v1') loadRot() })
+    return () => { try { off() } catch {} }
   }, [])
 
   const getRotationBranch = (empId, dateStr) => {
@@ -157,35 +147,22 @@ export function useScheduleData(key, defaultValue = null) {
     if (!_activeBizId) { setLoaded(true); return }
     const bizId = _activeBizId
     let cancelled = false
-    // 초기 로드
-    supabase.from('schedule_data').select('value')
-      .eq('business_id', bizId).eq('key', key).maybeSingle()
-      .then(({ data: row }) => {
-        if (cancelled) return
-        if (row?.value) {
-          const val = typeof row.value === 'string' ? JSON.parse(row.value) : row.value
-          setData(val)
-        }
-        setLoaded(true)
-      })
-
-    // Realtime 구독 — 같은 사업장 안에서만 (filter는 단일 조건만 지원 → key+business_id 합성 필터 사용)
-    const ch = supabase.channel(`sch_data_${bizId}_${key}`)
-      .on('postgres_changes', {
-        event: '*', schema: 'public',
-        table: 'schedule_data', filter: `business_id=eq.${bizId}`
-      }, ({ new: n }) => {
-        if (cancelled) return
-        if (n?.key !== key) return
-        if (n?.value !== undefined && n?.value !== null) {
-          try {
-            const val = typeof n.value === 'string' ? JSON.parse(n.value) : n.value
+    const loadVal = () => {
+      supabase.from('schedule_data').select('value')
+        .eq('business_id', bizId).eq('key', key).maybeSingle()
+        .then(({ data: row }) => {
+          if (cancelled) return
+          if (row?.value) {
+            const val = typeof row.value === 'string' ? JSON.parse(row.value) : row.value
             setData(val)
-          } catch {}
-        }
-      }).subscribe()
-
-    return () => { cancelled = true; ch.unsubscribe() }
+          }
+          setLoaded(true)
+        })
+    }
+    loadVal()
+    // 실시간(신호 테이블 rt_pings 경유): 이 key 변경 신호 → 재조회
+    const off = onRtPing('schedule_data', (row) => { if (row && row.ref === key) loadVal() })
+    return () => { cancelled = true; try { off() } catch {} }
   }, [key])
 
   // val이 함수면 항상 fresh state 기반 (stale closure 방지). 객체면 기존 동작 유지.

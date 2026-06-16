@@ -4,6 +4,7 @@ import { T, SYSTEM_TAG_NAME_NEW_CUST, SYSTEM_TAG_NAME_PREPAID, SYSTEM_SRC_NAME_N
 import { sb, SB_URL, SB_KEY, sbHeaders } from '../lib/sb'
 import { supabase as _supaClient } from '../lib/supabase'
 import { fromDb, resolveSystemIds, setActiveBiz, _activeBizId } from '../lib/db'
+import { initRtPings, onRtPing, debounce } from '../lib/rtPings'
 import { refreshBranchesSch } from '../components/Schedule/scheduleConstants'
 import { setFeatures, extractFeatures } from '../lib/features'
 import Timeline from '../components/Timeline/TimelinePage'
@@ -1099,13 +1100,8 @@ function AnnouncesMarquee({ overrideItems }) {
   useEffect(() => {
     if (overrideItems) { setItems(overrideItems); return; } // 테스트 모드 — fetch 스킵
     load();
-    const supa = window._sbClient;
-    if (!supa) return;
-    const ch = supa.channel('rt_announce_marquee_' + Date.now())
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'team_chat_messages' },
-        (payload) => { if (payload?.new?.is_announce) load(); })
-      .subscribe();
-    return () => { try { supa.removeChannel(ch); } catch {} };
+    const off = onRtPing('team_chat_messages', () => load());
+    return () => { try { off(); } catch {} };
   }, [overrideItems]);
   if (items.length === 0) return null;
   const closeAll = () => { items.forEach(it => addDismissed(it.id)); setItems([]); };
@@ -1196,11 +1192,9 @@ function StaffRequestsBanner({ bizId, role, branches=[] }) {
   };
   useEffect(() => { load(); const t=setInterval(load,120000); return ()=>clearInterval(t); }, [bizId, role]);
   useEffect(() => {
-    if (!window._sbClient || !bizId || !canApprove) return;
-    const ch = window._sbClient.channel('staff_req_'+Date.now())
-      .on('postgres_changes',{event:'*',schema:'public',table:'app_users',filter:`business_id=eq.${bizId}`}, load)
-      .subscribe();
-    return ()=>{ try{window._sbClient.removeChannel(ch)}catch{} };
+    if (!bizId || !canApprove) return;
+    const off = onRtPing('app_users', load);
+    return ()=>{ try{ off(); }catch{} };
   }, [bizId, role]);
   useEffect(() => {
     if (!open || !bizId) return;
@@ -1302,13 +1296,8 @@ function ChangeReqBanner({ userBranches=[], onOpen }) {
     };
     fetchPending();
     const t = setInterval(fetchPending, 120000);
-    let ch = null;
-    if (window._sbClient) {
-      ch = window._sbClient.channel('rt_changereq_banner_'+Date.now())
-        .on('postgres_changes',{event:'*',schema:'public',table:'ai_change_requests'}, fetchPending)
-        .subscribe();
-    }
-    return () => { alive=false; clearInterval(t); if (ch && window._sbClient) window._sbClient.removeChannel(ch); };
+    const off = onRtPing('ai_change_requests', fetchPending);
+    return () => { alive=false; clearInterval(t); try { off(); } catch {} };
   }, [userBranches?.join('|')]);
   if (!rows.length) return null;
   const latest = rows[0];
@@ -1738,17 +1727,13 @@ function App() {
     };
     loadUnreadRef.current = load;
     load();
-    // Realtime: INSERT 시 사이드바 뱃지는 즉시 갱신, 1분 뒤 재평가로 배너 카운트도 갱신. UPDATE(읽음 처리) 즉시 재카운트
-    const rt = window._sbClient?.channel("unread_badge")
-      ?.on("postgres_changes",{event:"INSERT",schema:"public",table:"messages"},
-        p=>{ if(p?.new?.direction==="in"&&!p?.new?.is_read){ load(); setTimeout(load, 60_000); } }
-      )
-      ?.on("postgres_changes",{event:"UPDATE",schema:"public",table:"messages"},
-        p=>{ if(p?.new?.is_read===true) load(); }
-      )?.subscribe();
-    // 30초마다 재평가 (1분 경과 자동 반영)
+    // rt_pings 신호: messages 변경 시 재카운트(600ms 디바운스로 읽음 토글 버스트 합침) + 60초 뒤 재평가(1분 미응답 배너 임계 반영)
+    const debLoad = debounce(load, 600);
+    let t60 = null;
+    const off = onRtPing("messages", () => { debLoad(); clearTimeout(t60); t60 = setTimeout(load, 60_000); });
+    // 폴링 fallback (실시간 신호 누락 대비)
     const int = setInterval(load, 120_000);
-    return ()=>{ try{rt?.unsubscribe();}catch(e){} clearInterval(int); };
+    return ()=>{ try{ off(); }catch(e){} clearInterval(int); clearTimeout(t60); };
   }, [userBranches, isMaster]);
   // 수정요청 pending 카운트 — 테넌트(currentBizId)별. 전환 시 즉시 재조회 (직전 사업장 stale 값 방지)
   useEffect(() => {
@@ -1768,12 +1753,9 @@ function App() {
       }).catch(()=>{});
     };
     load();
-    const rt = window._sbClient?.channel("requests_badge_"+currentBizId)
-      ?.on("postgres_changes",{event:"UPDATE",schema:"public",table:"schedule_data",filter:"key=eq.bliss_requests_v1"}, load)
-      ?.on("postgres_changes",{event:"INSERT",schema:"public",table:"schedule_data",filter:"key=eq.bliss_requests_v1"}, load)
-      ?.subscribe();
+    const off = onRtPing("schedule_data", (row) => { if (row && row.ref === "bliss_requests_v1") load(); });
     const poll = setInterval(load, 120_000);
-    return () => { try{rt?.unsubscribe();}catch(e){} clearInterval(poll); };
+    return () => { try{ off(); }catch(e){} clearInterval(poll); };
   }, [currentBizId]);
   // 미확인 공지 팝업 — 본인 이름이 employees_v1에 있고 acks에 없는 공지가 있으면 팝업
   useEffect(() => {
@@ -1804,12 +1786,9 @@ function App() {
       } catch (e) { /* ignore */ }
     };
     check();
-    const rt = window._sbClient?.channel("notices_popup")
-      ?.on("postgres_changes",{event:"UPDATE",schema:"public",table:"schedule_data",filter:"key=eq.bliss_notices_v1"}, check)
-      ?.on("postgres_changes",{event:"INSERT",schema:"public",table:"schedule_data",filter:"key=eq.bliss_notices_v1"}, check)
-      ?.subscribe();
+    const off = onRtPing("schedule_data", (row) => { if (row && row.ref === "bliss_notices_v1") check(); });
     const poll = setInterval(check, 120_000);
-    return () => { try{rt?.unsubscribe();}catch(e){} clearInterval(poll); };
+    return () => { try{ off(); }catch(e){} clearInterval(poll); };
   }, [currentUser?.name]);
   // 팀채팅 공지(📣) — 상단 마퀴 배너로 통합 (AnnouncesMarquee 컴포넌트). 우상단 플로팅 팝업 제거.
 
@@ -1829,13 +1808,8 @@ function App() {
     };
     fetchPending();
     const t = setInterval(fetchPending, 120000);
-    let ch = null;
-    if (window._sbClient) {
-      ch = window._sbClient.channel('rt_deposits_badge_'+Date.now())
-        .on('postgres_changes',{event:'*',schema:'public',table:'bank_deposits'}, fetchPending)
-        .subscribe();
-    }
-    return () => { alive=false; clearInterval(t); if (ch && window._sbClient) window._sbClient.removeChannel(ch); };
+    const off = onRtPing('bank_deposits', fetchPending);
+    return () => { alive=false; clearInterval(t); try { off(); } catch {} };
   }, [userBranches?.join('|')]);
 
   // 답글 안 단 네이버 리뷰 — 단일 소스(사이드바 배지 + 메시지함 탭 배지). 폴링만(리뷰는 실시간성 낮음, Realtime 미사용 — 부하 다이어트).
@@ -2487,10 +2461,10 @@ function App() {
     if (!allowed) navigate("/timeline", { replace: true });
   }, [phase, role, location.pathname]);
 
-  // ─── 예약 실시간 동기화 ───
+  // ─── 예약 실시간 동기화 (신호 테이블 rt_pings 경유) ───
   useEffect(() => {
     if (phase !== "app" || !currentBizId) return;
-    let channel = null;
+    initRtPings(window._sbClient, currentBizId);  // 전역 단일 신호 채널 (잠긴 테이블 실시간 복구)
     const supaClient = _supaClient;
 
     // iOS PWA: 백그라운드→포그라운드 복귀 시 30일 전체 동기화.
@@ -2514,54 +2488,8 @@ function App() {
     };
     document.addEventListener("visibilitychange", onVisible);
 
-    // Realtime 구독
-    if (supaClient) {
-      try {
-        channel = supaClient.channel("rt_" + Date.now())
-          .on("postgres_changes", { event: "*", schema: "public", table: "reservations", filter: "business_id=eq." + currentBizId }, (payload) => {
-            const ev = payload.eventType;
-            const row = payload.new || {};
-            const oldRow = payload.old || {};
-            // 베타 격리: 라이브 화면에는 is_beta=true 예약 전파 안 함 (베타 페이지는 자체 fetch)
-            if (row.is_beta === true || (ev === "DELETE" && oldRow.is_beta === true)) return;
-            console.log("[RT] reservation", ev, row?.id||oldRow?.id, row?.time, "bid=", row?.bid);
-            setData(prev => {
-              if (!prev) return prev;
-              try {
-                const parsed = row.id ? fromDb("reservations", [row])[0] : null;
-                if (ev === "INSERT" && parsed) {
-                  // 네이버 신규 예약 우상단 플로팅 팝업 제거(2026-05-29 정우님 요청) — 알림은 상단 막대배너(TimelinePage 확정대기/신규고객)로만 유지
-                  if ((prev?.reservations||[]).some(r => r.id === parsed.id)) return prev;
-                  return {...prev, reservations: [...(prev?.reservations||[]), parsed]};
-                }
-                if (ev === "UPDATE" && parsed) {
-                  return {...prev, reservations: (prev?.reservations||[]).map(r => r.id === parsed.id ? {...r, ...parsed} : r)};
-                }
-                if (ev === "DELETE") {
-                  const delId = oldRow.id;
-                  return delId ? {...prev, reservations: (prev?.reservations||[]).filter(r => r.id !== delId)} : prev;
-                }
-              } catch(e) { console.error("[RT] handler error:", e); }
-              return prev;
-            });
-          })
-          .subscribe((status, err) => {
-            console.log("[RT reservations]:", status, err||"");
-            if (status === "SUBSCRIBED") console.log("[RT] ✓ 실시간 동기화 시작");
-            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-              console.error("[RT] ✗ 채널 오류:", status, err);
-              // 재연결 시도
-              setTimeout(() => {
-                try { channel?.subscribe(); } catch(e) {}
-              }, 3000);
-            }
-          });
-      } catch(e) { console.error("[RT] setup error:", e); }
-    }
-
-    // 실시간 신호(rt_pings): 보안 잠금으로 reservations 직접 Realtime이 막혀, 신호 테이블 경유로 복구.
-    // ping(ref=변경된 날짜) 수신 → 그 날짜 하루만 토큰 인증 재조회 → 글로벌 merge. 디바운스로 스크랩 버스트 합침.
-    let signalCh = null;
+    // 실시간 신호(rt_pings, 전역 단일 채널): reservations 변경 신호(ref=날짜) 수신 → 그 날짜 하루만 토큰 인증 재조회.
+    // 디바운스(1.2s)로 스크랩 버스트 합침. 보안 잠금된 reservations를 직접 구독하지 않음.
     const _pingTimers = {};
     const _refetchDate = (d) => {
       if (!d) return;
@@ -2578,16 +2506,7 @@ function App() {
         } catch(e) {}
       }, 1200);
     };
-    if (supaClient) {
-      try {
-        signalCh = supaClient.channel("rt_signal_resv_" + Date.now())
-          .on("postgres_changes", { event: "INSERT", schema: "public", table: "rt_pings", filter: "business_id=eq." + currentBizId }, (payload) => {
-            const p = payload.new || {};
-            if (p.tbl === "reservations") _refetchDate(p.ref);
-          })
-          .subscribe((status) => { if (status === "SUBSCRIBED") console.log("[RT] ✓ 예약 실시간(신호) 시작"); });
-      } catch(e) {}
-    }
+    const offResv = onRtPing("reservations", (row) => _refetchDate(row && row.ref));
 
     // 연결 복귀 시 1회 재동기화 (네트워크 끊김 후 재연결용)
     const onOnline = async () => {
@@ -2633,8 +2552,7 @@ function App() {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("online", onOnline);
       clearInterval(pollInt);
-      if (channel && supaClient) { try { supaClient.removeChannel(channel); } catch(e){} }
-      if (signalCh && supaClient) { try { supaClient.removeChannel(signalCh); } catch(e){} }
+      try { offResv(); } catch(e){}
       Object.values(_pingTimers).forEach(t => clearTimeout(t));
     };
   }, [phase, currentBizId]);

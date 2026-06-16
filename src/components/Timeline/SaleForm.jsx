@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from
 import { T, SCH_BRANCH_MAP } from '../../lib/constants'
 import { sb, buildTokenSearch, SB_URL, SB_KEY, sbHeaders } from '../../lib/sb'
 import { fromDb, toDb, _activeBizId, PREPAID_TAG_ID } from '../../lib/db'
+import { onRtPing } from '../../lib/rtPings'
 import { todayStr, genId, getPkgPurchaseBranchShort, canUsePkgAtBranch, isMoneyPkg } from '../../lib/utils'
 import { applyEvents } from '../../lib/eventEngine'
 import { isNewCustomer as _isNewCustomerSSOT } from '../../lib/customerStatus'
@@ -748,17 +749,11 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       } catch(_){}
     };
     fetchAndApply();
-    // Realtime — 그 고객 앞으로 새 입금이 awaiting_sale로 들어오면 즉시 합산
-    let ch = null;
-    if (window._sbClient) {
-      ch = window._sbClient
-        .channel('bank_deposits_saleform_'+cust.id)
-        .on('postgres_changes', { event:'*', schema:'public', table:'bank_deposits', filter:`matched_cust_id=eq.${cust.id}` }, () => fetchAndApply())
-        .subscribe();
-    }
+    // 실시간(신호 테이블 rt_pings 경유) — 입금 변경 신호 시 이 고객 입금 재조회·합산 (신호엔 cust 필터 없어 전체 신호에 재조회, 입금은 저빈도라 무해)
+    const off = onRtPing('bank_deposits', () => fetchAndApply());
     return () => {
       alive = false;
-      if (ch && window._sbClient) window._sbClient.removeChannel(ch);
+      try { off(); } catch {}
     };
   }, [cust.id, editMode, viewOnly]);
 
