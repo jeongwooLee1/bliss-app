@@ -482,9 +482,13 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   const schRtRef = useRef({}); // { schedule_data key: reloadFn(payload) }
   useEffect(() => {
     if (!window._sbClient || !_activeBizId) return;
+    // 보안 잠금으로 schedule_data 직접 Realtime이 막혀 신호 테이블(rt_pings) 경유. ping(ref=변경된 key) 수신 → 해당 로더 호출.
+    // 대부분 로더는 payload 무시하고 DB 재조회 → 신호만으로 동작. (schHistory_v1 onSchChange는 값 없으면 재조회로 폴백)
     const ch = window._sbClient.channel("schedule_data_all_rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "schedule_data", filter: `business_id=eq.${_activeBizId}` }, (payload) => {
-        const k = payload?.new?.key || payload?.old?.key;
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "rt_pings", filter: `business_id=eq.${_activeBizId}` }, (payload) => {
+        const p = payload?.new || {};
+        if (p.tbl !== "schedule_data") return;
+        const k = p.ref;
         const fn = k && schRtRef.current[k];
         if (fn) { try { fn(payload); } catch(e){} }
       })
@@ -659,11 +663,18 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     let channel = null;
     let pollTimer = null;
     let lastRtUpdate = 0;
+    const fetchSchHistoryNow = () => {
+      fetch(`${SB_URL_SCH}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.schHistory_v1&select=value`, { headers: H, cache:"no-store" })
+        .then(r=>r.json()).then(rows=>{ if (rows?.length) { lastRtUpdate = Date.now(); setSchHistory(p => mergeWithLock(parseSchHistory(rows[0].value))); } }).catch(()=>{});
+    };
     const onSchChange = (payload) => {
       if (payload?.new?.value) {
         lastRtUpdate = Date.now();
         const newSch = parseSchHistory(payload.new.value);
         setSchHistory(p => mergeWithLock(newSch));
+      } else {
+        // 신호 테이블 경유(값 없음) → DB에서 schHistory 재조회
+        fetchSchHistoryNow();
       }
     };
     schRtRef.current["schHistory_v1"] = onSchChange;

@@ -2559,6 +2559,36 @@ function App() {
       } catch(e) { console.error("[RT] setup error:", e); }
     }
 
+    // 실시간 신호(rt_pings): 보안 잠금으로 reservations 직접 Realtime이 막혀, 신호 테이블 경유로 복구.
+    // ping(ref=변경된 날짜) 수신 → 그 날짜 하루만 토큰 인증 재조회 → 글로벌 merge. 디바운스로 스크랩 버스트 합침.
+    let signalCh = null;
+    const _pingTimers = {};
+    const _refetchDate = (d) => {
+      if (!d) return;
+      clearTimeout(_pingTimers[d]);
+      _pingTimers[d] = setTimeout(async () => {
+        try {
+          const rows = await sb.getAll("reservations", `&business_id=eq.${currentBizId}&is_beta=eq.false&date=eq.${d}&order=time.asc`);
+          const parsed = fromDb("reservations", rows||[]);
+          setData(prev => {
+            if (!prev) return prev;
+            const others = (prev.reservations||[]).filter(r => r.date !== d);
+            return { ...prev, reservations: [...others, ...parsed] };
+          });
+        } catch(e) {}
+      }, 1200);
+    };
+    if (supaClient) {
+      try {
+        signalCh = supaClient.channel("rt_signal_resv_" + Date.now())
+          .on("postgres_changes", { event: "INSERT", schema: "public", table: "rt_pings", filter: "business_id=eq." + currentBizId }, (payload) => {
+            const p = payload.new || {};
+            if (p.tbl === "reservations") _refetchDate(p.ref);
+          })
+          .subscribe((status) => { if (status === "SUBSCRIBED") console.log("[RT] ✓ 예약 실시간(신호) 시작"); });
+      } catch(e) {}
+    }
+
     // 연결 복귀 시 1회 재동기화 (네트워크 끊김 후 재연결용)
     const onOnline = async () => {
       if (Date.now() - lastResFull < 60000) return;
@@ -2604,6 +2634,8 @@ function App() {
       window.removeEventListener("online", onOnline);
       clearInterval(pollInt);
       if (channel && supaClient) { try { supaClient.removeChannel(channel); } catch(e){} }
+      if (signalCh && supaClient) { try { supaClient.removeChannel(signalCh); } catch(e){} }
+      Object.values(_pingTimers).forEach(t => clearTimeout(t));
     };
   }, [phase, currentBizId]);
 
