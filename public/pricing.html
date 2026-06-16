@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script>/* 방문자 카운터 (비공개·IP당 당일1회·로그인 직원 제외) */try{if(!localStorage.getItem('bliss_session_token'))fetch('/track-visit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:location.pathname,ref:(document.referrer||'')}),keepalive:true}).catch(function(){});}catch(e){}</script>
 <title>요금제 — BlissMe · 뷰티샵 예약관리 SaaS</title>
 <meta name="description" content="BlissMe SaaS 요금제. Trial 14일 무료 / Starter 월 33,000원 / Pro 월 77,000원. 알림톡·SMS·AI·WhatsApp 크레딧 단가 명시. 매장당 월 정기 결제.">
 <meta name="keywords" content="BlissMe 요금제, 뷰티샵 SaaS 가격, 예약 프로그램 비용, 살롱 관리 비용, 알림톡 크레딧, SMS 단가, AI 단가">

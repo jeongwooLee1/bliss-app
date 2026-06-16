@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script>/* 로그인된 직원은 앱으로 바로 보냄 (신규 방문자만 홍보 페이지). 세션토큰까지 있을 때만 = SPA 자동로그인 조건과 일치(토큰 없으면 리다이렉트 안 함 → 로그인 무한루프 방지) */try{if(!/preview_no_redirect/.test(location.search)&&localStorage.getItem('bliss_session')&&localStorage.getItem('bliss_session_token'))location.replace('/timeline');}catch(e){}</script>
+<script>/* 방문자 카운터 (비공개·IP당 당일1회·로그인 직원 제외) */try{if(!localStorage.getItem('bliss_session_token'))fetch('/track-visit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:location.pathname,ref:(document.referrer||'')}),keepalive:true}).catch(function(){});}catch(e){}</script>
 <title>블리스미(blissme) — 뷰티샵 예약·매출·AI 상담 올인원 관리 프로그램</title>
 <meta name="description" content="왁싱샵·미용실·네일샵·속눈썹샵을 위한 올인원 예약관리 프로그램. 타임라인 예약, AI 자동 상담·예약 접수, 알림톡·문자 자동발송, 노쇼 방지, 매출·고객·보유권 관리까지 — 1인샵부터 멀티지점까지 블리스미 하나로. 무료 체험 14일.">
 <meta name="keywords" content="뷰티샵 예약관리 프로그램, 왁싱샵 예약 프로그램, 1인샵 예약 프로그램, 미용실 예약 시스템, 네일샵 예약관리, 속눈썹샵 관리, 살롱 예약 프로그램, 알림톡 자동발송, AI 예약 접수, 매출관리 프로그램, 고객관리 CRM, 예약 노쇼 방지, 멀티지점 관리, 뷰티 예약 솔루션, 블리스미, blissme">
