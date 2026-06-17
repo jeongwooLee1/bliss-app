@@ -4302,3 +4302,11 @@ RLS 보안 잠금(2026-06-14) 이후 잠긴 7개 테이블의 직접 Realtime이
 - 프롬프트 가격룰 강화(★★★) + **프롬프트 맨 끝(JSON 직전)에 최종점검 지시**(recency): "마지막 메시지가 가격질문이면 action=chat, 여성가·남성가 둘 다 답, ❌'booking confirmed'·❌성별 되묻기 금지." → 모델이 가격 합계(여/남)를 실제로 답하게 됨.
 - **검증**: 골든 게이트(scripts/ai_golden) — 신규 케이스 `price_question_complete`(예약완료+가격질문→가격답·noop) 추가, **25/25 PASS**(gender_flow 등 기존 회귀 0 — 실제 예약엔 성별 여전히 물음·예약은 여전히 됨). 지시모드 직접 테스트("가격안내해줘") → 손님 시술 5개 여/남 가격표 정상 출력. `systemctl restart bliss-naver`(active).
 - **유의**: 골든 케이스 git(`scripts/ai_golden/golden_set.json`) 26→28 동기화(서버 드리프트 1 + 신규 1). ai_booking.py는 git 미추적(서버 전용, .bak 백업). 가격질문 = 답만(예약 안 함) — 손님이 "예약해주세요" 명시해야 book.
+
+### v3.8.123 — 예약모달 차트 뷰어 고아(orphan) customer_id 대응 (신규차트 안 보이던 버그) (2026-06-17)
+**증상**(정우, 김선남 등): 키오스크/태블릿엔 신규차트가 보이는데 **예약모달에선 오늘관리(컨디션)차트만** 보임.
+**원인**(라이브 박인제 06-17 강남 예약으로 재현): 키오스크 본인확인이 차트 제출마다 **기존 고객에 안 붙이고 새 고객 레코드를 생성** → 한 예약의 차트 2장이 서로 다른 customer_id로 저장(박인제: 신규차트 `cust_2c2aca1e9c` / 컨디션 `cust_c0541e2abf` / 실제 예약고객 `cust_naver_2n3gnh13le` — 셋 다 다름). ReservationModal `chartInfo`는 차트를 **reservation_id(`form_data->>reservation_id` = item.id)로 잘 찾지만**(2장 다 인식), 작성본을 **열 때는 `ConsentDocsViewer`에 단일 `customer_id`만 넘겨** customer_id 단일조회(`customer_id=eq.…`) → 그 한 명의 차트(컨디션)만 표시, 다른 고객에 저장된 신규차트 누락. v3.8.14/v3.8.94 ConsentPanel 고아차트 fix와 동일 부류(거긴 customer_id+reservation_id 병합조회로 해결).
+**fix** (`ReservationModal.jsx`): ① chartInfo 효과에서 그 예약의 **모든 작성본 id `allConsentIds`** 수집([:998](src/components/Timeline/ReservationModal.jsx:998)) ② `ConsentDocsViewer`에 `consentIds={chartInfo.allConsentIds}` 전달([:3750](src/components/Timeline/ReservationModal.jsx:3750)). ConsentDocsViewer는 이미 `consentIds` 직접 id 조회(`id=in.(...)`) 지원(v3.8.76) → customer_id가 제각각이어도 신규차트·컨디션·동의서 전부 탭으로 표시. consentIds 비면 기존 customer_id 폴백(무회귀).
+- **검증**: 빌드 통과. 정상(단일 고객) 예약은 동작 동일(additive). 데모엔 고아 데이터 없어 화면검증 불가 → 라이브 박인제 예약모달 "차트 & 동의서" 보기로 2장 다 뜨는지 확인 권장.
+- 적용: v3.8.123 라이브 배포(version.txt 검증, CF 퍼지 everything).
+**근본원인(별도·동의서 세션)**: 키오스크 본인확인이 차트를 예약의 기존 고객에 연결하지 않고 새 고객 생성 → 중복 고객 레코드 누적. 표시는 이 fix로 정상이나, 데이터 위생 위해 bliss-consent(동의서 앱)에서 차트 제출 시 예약 cust_id에 연결하도록 수정 필요(spawn_task 위임).

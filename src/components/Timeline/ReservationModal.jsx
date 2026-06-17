@@ -994,7 +994,9 @@ function TimelineModal({ item, onSave, onAddCompanion, onDelete, onDeleteRequest
       };
       // 원클릭 '차트 보내기' 프리셋 = 활성 차트 폴더 템플릿(신규차트+컨디션). 신규/기존 분기는 동의서 앱이 자동(기존 고객은 신규차트 스킵)
       const chartPresetIds = (tplRows || []).filter(t => t.is_active !== false && kindOf(t.id, t.name) === "chart").map(t => t.id);
-      setChartInfo({ chart: mk("chart"), doc: mk("doc"), chartPresetIds });
+      // 이 예약의 모든 작성본 id — 키오스크가 차트마다 다른(신규생성) customer_id로 저장한 고아 케이스도 뷰어에서 전부 표시 (customer_id 단일조회 시 한 차트만 보이던 버그)
+      const allConsentIds = (consents || []).map(c => c.id).filter(Boolean);
+      setChartInfo({ chart: mk("chart"), doc: mk("doc"), chartPresetIds, allConsentIds });
     })();
     return () => { alive = false; };
   }, [item?.id, chartReloadKey]);
@@ -3747,6 +3749,7 @@ ${naverText}
       {/* 📋 작성된 동의서·차트 이미지 뷰어 — 작성완료 칩 클릭 시 (클릭한 트랙 문서 포커스) */}
       {docsViewerOpen && createPortal(
         <ConsentDocsViewer
+          consentIds={(chartInfo?.allConsentIds && chartInfo.allConsentIds.length) ? chartInfo.allConsentIds : undefined}
           customerId={docViewerFocus?.customer_id || chartInfo?.chart?.consent?.customer_id || chartInfo?.doc?.consent?.customer_id || f.custId}
           customerName={f.custName}
           focusConsentId={docViewerFocus?.id || null}
