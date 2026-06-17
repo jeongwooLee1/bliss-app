@@ -4335,3 +4335,10 @@ RLS 보안 잠금(2026-06-14) 이후 잠긴 7개 테이블의 직접 Realtime이
 ### v3.8.128 — 받은메시지함 거터 흰색 통일 진짜 fix (S.root 배경) (2026-06-17)
 v3.8.127(body 배경 흰색)이 무효였음 — 거터를 칠하는 건 body가 아니라 **앱 최상위 래퍼 `S.root`(AppShell.jsx:2609, `position:fixed inset:0`)의 `background:T.gray100`(#f9fafb)**. S.root가 body를 완전히 덮어 body 룰은 안 보임. fix: `S.root.background T.gray100 → T.bgCard`(#ffffff). 거터(패널 열림 시 사이드바~패널~타임라인)가 타임라인과 같은 흰색. v3.8.127의 index.html body 룰은 되돌림(무효). root 배경은 데스크탑 패널 거터에서만 보임(평소 sidebar+main이 덮음)이라 전역 영향 없음. HMR 프리뷰로 root 배경 rgb(255,255,255) 확인.
 - 적용: v3.8.128 라이브 배포(version.txt 검증, CF 퍼지 everything).
+
+### v3.8.129 — 받은메시지함 "읽지않음" 버튼 (나중에 처리용) (2026-06-17)
+정우님: 메시지에 읽지않음 버튼. 대화 액션행(상담완료/완료 옆, 전 채널 노출)에 추가.
+- `markUnread(uid,ch)`(MessagesPage, markRead 역) — 받은 메시지 중 **최근 인바운드 1건만** `is_read=false` PATCH(by id) + 로컬 setMsgs + `onRead(0)`. onRead(0)은 AppShell이 DB에서 미읽음 배지·배너 재카운트(loadUnreadRef) → 배지/배너 증가. **최근 1건만**으로 배지 +1(전체 인바운드 미읽음 처리 시 배지 과다 inflation 방지).
+- 버튼 클릭 → markUnread + `setSel(null)`+`onChatOpen(false)`(목록 복귀) → 대화가 미읽음으로 목록에 보임(나중에 처리). 아이콘 msgSq.
+- 검증(프리뷰 데모): 액션행 노출(AI추천/번역/예약등록/차단/자주답변/상담완료/**읽지않음**), 클릭 시 목록 복귀 + 해당 대화 미읽음 배지 "1" + 콘솔 에러 0.
+- 적용: v3.8.129 라이브 배포(version.txt 검증, CF 퍼지 everything).

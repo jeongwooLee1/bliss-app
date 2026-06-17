@@ -878,6 +878,19 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     if(onRead) onRead(unreadCount);
   };
 
+  // 읽지않음 — 이 대화를 다시 '안 읽음'으로 표시 (나중에 처리용). 받은 메시지 중 최근 1건만 미읽음 → 배지 +1 (전체 인바운드를 다 미읽음 처리하면 배지 과다 inflation)
+  const markUnread = async(uid, ch)=>{
+    const inbound = msgs.filter(m => m.user_id===uid && (!ch || (m.channel||"naver")===ch) && m.direction==="in" && m.id);
+    if(!inbound.length) return false; // 받은 메시지 없으면 미읽음 처리 의미 없음
+    const last = inbound.reduce((a,b)=> (new Date(b.created_at).getTime() >= new Date(a.created_at).getTime()) ? b : a);
+    try {
+      await fetch(SB_URL+`/rest/v1/messages?id=eq.${last.id}`, {method:"PATCH",headers:{...sbHeaders,Prefer:"return=minimal"},body:JSON.stringify({is_read:false})});
+    } catch(e) { /* fail-safe — 로컬 상태는 갱신 */ }
+    setMsgs(prev=>prev.map(m=> m.id===last.id ? {...m,is_read:false} : m));
+    if(onRead) onRead(0); // 0 → AppShell이 DB에서 미읽음 배지·배너 재카운트 (읽지않음 → 배지/배너 증가 반영)
+    return true;
+  };
+
   const selectThread = (m)=>{
     const ch=m.channel||"naver";
     setSel({user_id:m.user_id,channel:ch,account_id:m.account_id});
@@ -2224,6 +2237,12 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
               <I name={_busy?"loader":"check"} size={13} color={(_dn||_nv)?"#fff":undefined}/> {_busy?"처리 중…":(_dn?"완료됨":(_nv?"상담완료":"완료"))}
             </button>
           );})()}
+          {/* 읽지않음 — 이 대화를 다시 '안 읽음'으로 표시하고 목록으로 (나중에 처리). 전 채널 노출 */}
+          <button onClick={async()=>{ await markUnread(sel.user_id, sel.channel||"naver"); setSel(null); if(onChatOpen) onChatOpen(false); }}
+            title="읽지않음 — 이 대화를 다시 안 읽음으로 표시하고 목록으로 돌아갑니다 (나중에 처리)"
+            style={{padding:forceCompact?"5px 10px":"6px 12px",background:"#fff",color:T.gray600,border:"1px solid "+T.border,borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
+            <I name="msgSq" size={13}/> 읽지않음
+          </button>
           {/* 발신 직원 선택 — 디폴트: 지점명, 수동 선택 시 localStorage 저장 */}
           <select value={selStaff} onChange={e=>updateSelStaff(e.target.value)}
             title="답장 발신자 — 메시지 머리에 표시됩니다 (디폴트: 지점명, 변경 시 자동 저장)"
