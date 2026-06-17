@@ -4331,3 +4331,7 @@ RLS 보안 잠금(2026-06-14) 이후 잠긴 7개 테이블의 직접 Realtime이
 ### v3.8.127 — 받은메시지함 플로팅 패널 거터 배경 흰색 통일 (2026-06-17)
 정우님: 패널 주변 거터 배경이 연회색이라 타임라인(흰색)과 안 맞음. 원인: 패널 열리면 메인이 564로 밀리며 사이드바~패널~타임라인 사이 거터에 `body{background:#f9fafb}`(T.bg 회색)가 드러남. fix: index.html에 `@media(min-width:768px){ body[data-msg-panel="open"]{background:#fff} }` — 패널 열린 데스크탑에서 거터를 타임라인 흰색(T.bgCard #ffffff)으로 통일. 패널 닫히면 거터 없음(무영향), 모바일은 패널 풀스크린이라 무영향.
 - 적용: v3.8.127 라이브 배포(version.txt 검증, CF 퍼지 everything).
+
+### v3.8.128 — 받은메시지함 거터 흰색 통일 진짜 fix (S.root 배경) (2026-06-17)
+v3.8.127(body 배경 흰색)이 무효였음 — 거터를 칠하는 건 body가 아니라 **앱 최상위 래퍼 `S.root`(AppShell.jsx:2609, `position:fixed inset:0`)의 `background:T.gray100`(#f9fafb)**. S.root가 body를 완전히 덮어 body 룰은 안 보임. fix: `S.root.background T.gray100 → T.bgCard`(#ffffff). 거터(패널 열림 시 사이드바~패널~타임라인)가 타임라인과 같은 흰색. v3.8.127의 index.html body 룰은 되돌림(무효). root 배경은 데스크탑 패널 거터에서만 보임(평소 sidebar+main이 덮음)이라 전역 영향 없음. HMR 프리뷰로 root 배경 rgb(255,255,255) 확인.
+- 적용: v3.8.128 라이브 배포(version.txt 검증, CF 퍼지 everything).
