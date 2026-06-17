@@ -2071,7 +2071,7 @@ ${naverText}
                     {/* 정보 */}
                     <div style={{flex:1,minWidth:0}}>
                       {/* 1줄: 이름 #번호 + 배지 (모두 클릭 복사 / 신규는 input) */}
-                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",rowGap:3}}>
                         {(f.isNewCust || editingCust) ? (
                           <input value={f.custName||""} onChange={e=>set("custName",e.target.value)}
                             placeholder="고객 이름"
@@ -2144,7 +2144,7 @@ ${naverText}
                         })()}
                       </div>
                       {/* 2줄: 전화 + 이메일 한 줄 (신규/변경 모드는 input) */}
-                      <div style={{display:"flex",alignItems:"center",gap:8,marginTop:3,flexWrap:"wrap",minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2,flexWrap:"wrap",minWidth:0}}>
                         <span style={{display:"flex",alignItems:"center",gap:6,flexShrink:f.isNewCust?1:0,flex:f.isNewCust?1:"0 0 auto",minWidth:0}}>
                           <span style={{fontSize:11,color:"#aaa"}}>📞</span>
                           {(f.isNewCust || editingCust) ? (
@@ -2216,7 +2216,7 @@ ${naverText}
                         </div>
                       )}
                       {/* PKG 칩 + 포인트 잔액 — 예약자 데이터만 (reserverPkgSummary / _reserverPoint) */}
-                      {(reserverPkgSummary.length > 0 || _reserverPoint > 0) && <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:5}}>
+                      {(reserverPkgSummary.length > 0 || _reserverPoint > 0) && <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:3}}>
                         {_reserverPoint > 0 && (
                           <span style={{display:"inline-flex",alignItems:"stretch",borderRadius:8,overflow:"hidden",fontSize:10,fontWeight:700,border:"1px solid #B2EBF2",whiteSpace:"nowrap"}}>
                             <span style={{padding:"2px 6px",background:"#fff",color:T.gray700}}>포인트</span>
@@ -2596,7 +2596,7 @@ ${naverText}
                   시술상품
                   {(f.selectedServices||[]).length > 0
                     ? <span style={{color:T.primary,fontWeight:T.fw.bolder}}>{[
-                        ...(f.selectedServices||[]).filter(id=>typeof id==="string" && id.startsWith("pkg__")).map(id=>"📦"+id.replace("pkg__","")),
+                        ...(f.selectedServices||[]).filter(id=>typeof id==="string" && id.startsWith("pkg__")).map(id=>id.replace("pkg__","")),
                         ...groupSvcNames((f.selectedServices||[]).filter(id=>typeof id==="string" && !id.startsWith("pkg__")), SVC_LIST)
                       ].join(", ")} <span style={{background:"rgba(140,80,220,.12)",borderRadius:T.radius.sm,padding:"1px 6px",fontSize:T.fs.sm}}>{svcDurTotal}분{!hasGender&&hasGenderDep?"":" / "+fmt(svcPriceTotal)+"원"}</span></span>
                     : <span style={{color:T.textMuted,fontWeight:T.fw.normal}}>선택하세요</span>}
