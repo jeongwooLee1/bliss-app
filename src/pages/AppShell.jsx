@@ -28,7 +28,7 @@ import BlissRequests from '../components/BlissRequests/BlissRequests'
 import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 
 const uid = genId;
-const BLISS_V = "3.8.124"
+const BLISS_V = "3.8.125"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -2674,7 +2674,7 @@ function App() {
       <QuickRequest currentUser={currentUser} userBranches={userBranches}/>
       {/* 받은메시지함 사이드 패널 — 좌측(사이드바 우측) 슬라이드, 다른 페이지 작업 가능 */}
       {messagesPanelOpen && (
-        <div className="msg-panel" style={{position:"fixed",top:0,left:200,bottom:0,width:340,maxWidth:"95vw",background:"#fff",boxShadow:"6px 0 18px -2px rgba(0,0,0,.13)",zIndex:400,display:"flex",flexDirection:"column",animation:"slideIn .3s cubic-bezier(.22,1,.36,1)"}}>
+        <div className="msg-panel" style={{position:"fixed",top:12,left:212,bottom:12,width:340,maxWidth:"95vw",background:"#fff",borderRadius:16,overflow:"hidden",boxShadow:"0 10px 40px rgba(0,0,0,.18)",zIndex:400,display:"flex",flexDirection:"column",animation:"slideIn .3s cubic-bezier(.22,1,.36,1)"}}>
           <div style={{padding:"8px 12px",borderBottom:"1px solid "+T.border,background:T.bgCard,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
             <div style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:T.fw.bolder}}>
               <I name="msgSq" size={14}/> 받은메시지함

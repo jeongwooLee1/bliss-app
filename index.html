@@ -121,15 +121,17 @@
       /* 받은메시지함 패널 열린 상태 — 모달 wrapper 자체를 사이드바+패널 우측(540px)부터 시작하게 강제. wrapper width = viewport - 540 */
       @media (min-width: 768px) {
         body[data-msg-panel="open"] .rsv-modal-wrap {
-          left: 540px !important;
+          left: 564px !important;
         }
       }
       /* 받은메시지함 사이드 패널 — 모바일은 풀스크린 (입금 배너 클릭 경로에서 데스크탑 폭으로 떠 잘리던 것 방지) */
       @media (max-width: 767px) {
         .msg-panel {
           left: 0 !important;
+          top: 0 !important;
           width: 100% !important;
           max-width: 100% !important;
+          border-radius: 0 !important;
         }
         /* 채팅방 미진입 시(받은메시지/팀채팅/입금문자 리스트 상태) — 하단탭 영역 비워서 함께 표시 */
         body[data-msg-chat-open="closed"] .msg-panel {

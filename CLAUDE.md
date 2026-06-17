@@ -4315,3 +4315,11 @@ RLS 보안 잠금(2026-06-14) 이후 잠긴 7개 테이블의 직접 Realtime이
 정우님 작업(naver-newcust-banner-fix worktree, 17:06 커밋 302a038)을 배포세션에서 cherry-pick(`17ef26f`, authorship 보존)해 배포. 받은메시지함 사이드 패널(`.msg-panel`, AppShell.jsx:2677)의 우측 `borderRight` 구분선 제거 → boxShadow만으로 가장자리(`6px 0 18px -2px rgba(0,0,0,.13)`). 타임라인 카드 톤과 통일. 1줄 디자인 변경.
 - worktree 브랜치는 rt_pings(v3.8.119) 등 일부가 이미 main에 다른 SHA로 반영된 혼합 상태 → 통째 머지 금지, `git cherry`로 진짜 새 커밋(302a038)만 골라 cherry-pick. customer-merge·bliss-requests-fix worktree는 새 커밋 0(이미 main 반영).
 - 적용: v3.8.124 라이브 배포(version.txt 검증, CF 퍼지 everything).
+
+### v3.8.125 — 받은메시지함 사이드 패널 플로팅 카드 (좌·상·하 띄움) (2026-06-17)
+정우님: "왼쪽패널과 살짝 띄우고 위아래도 띄워 화면에 플로팅된 것처럼". 받은메시지함 도킹 패널(`.msg-panel`, AppShell.jsx:2677)을 화면에 떠 있는 카드로.
+- 데스크탑(인라인): `top:0,left:200,bottom:0` → `top:12,left:212,bottom:12`(사이드바200+12갭) + `borderRadius:16` + `overflow:hidden`(라운드 클리핑) + 사방 그림자 `0 10px 40px rgba(0,0,0,.18)`(기존 우측 그림자만 → 전방향).
+- 모바일(index.html `@media max-width:767px`): 플로팅 누수 방지로 `.msg-panel`에 `top:0 !important; border-radius:0 !important` 추가(기존 left:0·width:100%·bottom 76px/0 유지) → 모바일은 풀스크린 그대로.
+- 패널 열렸을 때 예약모달 시작 위치 `rsv-modal-wrap left 540→564px`(플로팅 패널 우측끝 552+12갭, 겹침 방지).
+- 검증: 프리뷰가 viewport를 1px로 보고(`vw:1`)해 데스크탑 미디어쿼리 렌더 불가(환경 제약) → 모바일 분기(풀스크린 리셋) 정상 확인 + 데스크탑 값은 결정적 인라인. 라이브 데스크탑에서 확인 권장.
+- 적용: v3.8.125 라이브 배포(version.txt 검증, CF 퍼지 everything).
