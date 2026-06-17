@@ -3,6 +3,7 @@ import { T } from '../../lib/constants'
 import { sb, SB_URL, sbHeaders } from '../../lib/sb'
 import { _activeBizId } from '../../lib/db'
 import I from '../common/I'
+import { INBOX_HDR, inboxChip } from './inboxUi'
 
 // 내용에 맞춰 높이가 자동으로 늘어나는 답글 입력창
 function AutoTextarea({ value, onChange, placeholder, style }) {
@@ -184,13 +185,9 @@ ${custNote}
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, background: T.bg }}>
-      <div style={{ display: 'flex', gap: 6, padding: '10px 12px', flexShrink: 0, borderBottom: `1px solid ${T.border}`, background: T.bgCard, alignItems: 'center' }}>
+      <div style={INBOX_HDR}>
         {FILTERS.map(([k, lbl]) => (
-          <button key={k} onClick={() => setFilter(k)} style={{
-            padding: '6px 12px', borderRadius: 16, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-            fontSize: 12, fontWeight: filter === k ? 800 : 600,
-            background: filter === k ? T.primary : T.primaryLt, color: filter === k ? '#fff' : T.primaryDk
-          }}>{lbl}</button>
+          <button key={k} onClick={() => setFilter(k)} style={inboxChip(filter === k)}>{lbl}</button>
         ))}
         <button onClick={syncAndLoad} title="네이버에서 최신 답글 상태 가져오기" style={{ marginLeft: 'auto', border: 'none', background: 'transparent', cursor: 'pointer', color: T.textSub, display: 'flex', alignItems: 'center' }}><I name="loader" size={16} /></button>
       </div>

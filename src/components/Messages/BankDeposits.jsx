@@ -5,6 +5,7 @@ import { fromDb, _activeBizId, PREPAID_TAG_ID } from '../../lib/db'
 import { onRtPing } from '../../lib/rtPings'
 import { todayStr, fmtDate, fmtTime, genId, fmtLocal } from '../../lib/utils'
 import I from '../common/I'
+import { INBOX_HDR, inboxChip } from './inboxUi'
 
 // ---------- 유틸 ----------
 const fmt = n => (n==null?'':Number(n).toLocaleString());
@@ -527,24 +528,13 @@ export default function BankDeposits({ data, branches=[], userBranches=[], curre
 
   return (
     <div style={{flex:1,display:'flex',flexDirection:'column',minHeight:0,background:T.bgCard}}>
-      {/* 필터 탭 */}
-      <div style={{display:'flex',gap:6,padding:'8px 12px',borderBottom:`1px solid ${T.border}`,flexShrink:0,overflowX:'auto'}}>
+      {/* 필터 탭 (통일 헤더 — 칩 많아 가로 스크롤로 1행 유지) */}
+      <div style={{...INBOX_HDR, flexWrap:'nowrap', overflowX:'auto'}}>
         {['all','pending','awaiting_sale','matched','ignored','card'].map(k => {
           const labels = { all:'전체', pending:'미매칭', awaiting_sale:'고객 대기', matched:'매칭됨', ignored:'무시', card:'카드정산' };
           const active = filter === k;
           return (
-            <button key={k} onClick={()=>setFilter(k)} style={{
-              padding:'6px 12px',
-              border:`1px solid ${active?T.primary:T.border}`,
-              borderRadius:16,
-              background: active ? T.primaryLt : '#fff',
-              color: active ? T.primaryDk : T.textSub,
-              fontWeight: active ? 700 : 500,
-              fontSize:T.fs.xs,
-              fontFamily:'inherit',
-              cursor:'pointer',
-              whiteSpace:'nowrap',
-            }}>
+            <button key={k} onClick={()=>setFilter(k)} style={inboxChip(active)}>
               {labels[k]} {counts[k]>0 && <span style={{marginLeft:3,fontSize:T.fs.nano}}>({counts[k]})</span>}
             </button>
           );

@@ -8,6 +8,7 @@ import { onRtPing, debounce } from '../../lib/rtPings'
 import { todayStr, pad, fmtDate, fmtDt, fmtTime, addMinutes, diffMins, getDow, genId, fmtLocal, dateFromStr, isoDate, getMonthDays, timeToY, durationToH, groupSvcNames, getStatusLabel, getStatusColor, fmtPhone, useSessionState, TTL } from '../../lib/utils'
 import I from '../common/I'
 import { ChannelLogo } from './channelIcons'
+import { INBOX_HDR, inboxChip } from './inboxUi'
 import { uploadImageToStorage } from '../../lib/supabase'
 
 
@@ -1979,13 +1980,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
 
   if(isMobile && !sel) return (
     <div style={{display:"flex",flexDirection:"column",background:"#fff",minHeight:"60vh"}}>
-      <div style={{padding:"16px 16px 8px",borderBottom:"1px solid "+T.border,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontWeight:800,fontSize:18,color:T.text}}>메시지</span>
-          {totalUnread>0&&<span style={{background:T.danger,color:"#fff",borderRadius:10,fontSize:11,fontWeight:700,padding:"2px 8px"}}>{totalUnread}</span>}
-        </div>
-        <button onClick={()=>setShowAiSettings(v=>!v)} style={{background:Object.values(aiAutoChannels).some(v=>v)?"#A78BFA":"none",color:Object.values(aiAutoChannels).some(v=>v)?"#fff":T.textMuted,border:"1px solid "+(Object.values(aiAutoChannels).some(v=>v)?"#A78BFA":T.border),borderRadius:6,cursor:"pointer",padding:"3px 8px",fontSize:11,fontWeight:600,display:"inline-flex",alignItems:"center",gap:4}}><I name="bot" size={11} color={Object.values(aiAutoChannels).some(v=>v)?"#fff":T.textMuted}/>AI</button>
-      </div>
+      {/* 큰 "메시지" 제목 제거 — 탭 바가 이미 '받은메시지'를 표시(중복). 미읽음·AI는 아래 통일 헤더로 이동 */}
       {showAiSettings&&(()=>{ const stLabel=aiSchedule.enabled?(scheduleInWindow?"응대 시간":"OFF 시간"):"항상 응대"; const stColor=aiSchedule.enabled?(scheduleInWindow?"#059669":"#9ca3af"):"#7C3AED"; return <div style={{padding:"12px 14px",borderBottom:"1px solid "+T.border,background:"#faf5ff"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
           <span style={{fontSize:12,fontWeight:700,color:"#8B5CF6",display:"inline-flex",alignItems:"center",gap:5}}><I name="bot" size={13} color="#8B5CF6"/>AI 자동대답</span>
@@ -2021,22 +2016,25 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           <span style={{fontSize:11,color:T.gray500,whiteSpace:"nowrap"}}>분 후 직원 미응답 시 AI 답변</span>
         </div>
       </div>})()}
-      {/* 지점 필터 (id_ebgbebctt3 Phase 2): 내 지점(연계 포함) 디폴트 / 전체 */}
-      <div style={{padding:"6px 10px",borderBottom:"1px solid "+T.border,display:"flex",gap:6,alignItems:"center",background:"#fafafa"}}>
-        <span style={{fontSize:10,color:T.textMuted,fontWeight:700,marginRight:2}}>🏪</span>
+      {/* 통일 헤더 — 지점 필터 + 미읽음 / (우) 확인필요 + AI (다른 탭 헤더와 동일 스타일·높이) */}
+      <div style={INBOX_HDR}>
         {[{id:'mine', label:'내 지점'}, {id:'all', label:'전체'}].map(c => (
-          <button key={c.id} onClick={()=>setBranchFilter(c.id)}
-            style={{padding:"3px 12px",fontSize:11,fontWeight:branchFilter===c.id?700:500,border:"1px solid "+(branchFilter===c.id?T.primary:T.border),borderRadius:12,background:branchFilter===c.id?T.primaryLt:"#fff",color:branchFilter===c.id?T.primaryDk:T.gray600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
-            {c.label}
-          </button>
+          <button key={c.id} onClick={()=>setBranchFilter(c.id)} style={inboxChip(branchFilter===c.id)}>{c.label}</button>
         ))}
-        {Object.keys(followupMap).length>0 && <button onClick={()=>setFollowupOnly(v=>!v)}
-          style={{marginLeft:"auto",padding:"3px 12px",fontSize:11,fontWeight:followupOnly?700:600,border:"1px solid "+(followupOnly?"#6366F1":T.border),borderRadius:12,background:followupOnly?"#E0E7FF":"#fff",color:followupOnly?"#3730A3":T.gray600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}>
-          <I name="bell" size={11}/>확인 필요 {Object.keys(followupMap).length}
-        </button>}
+        {totalUnread>0 && <span style={{background:T.danger,color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 7px"}}>{totalUnread}</span>}
+        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6}}>
+          {Object.keys(followupMap).length>0 && <button onClick={()=>setFollowupOnly(v=>!v)}
+            style={{...inboxChip(followupOnly),display:"inline-flex",alignItems:"center",gap:3,...(followupOnly?{borderColor:"#6366F1",background:"#E0E7FF",color:"#3730A3"}:{})}}>
+            <I name="bell" size={11}/>확인 필요 {Object.keys(followupMap).length}
+          </button>}
+          <button onClick={()=>setShowAiSettings(v=>!v)} title="AI 자동대답 설정"
+            style={{...inboxChip(Object.values(aiAutoChannels).some(v=>v)),display:"inline-flex",alignItems:"center",gap:4,...(Object.values(aiAutoChannels).some(v=>v)?{background:"#A78BFA",borderColor:"#A78BFA",color:"#fff"}:{})}}>
+            <I name="bot" size={11} color={Object.values(aiAutoChannels).some(v=>v)?"#fff":T.gray600}/>AI
+          </button>
+        </div>
       </div>
-      <div style={{padding:"8px 12px",borderBottom:"1px solid "+T.border}}>
-        <input value={msgSearch} onChange={e=>setMsgSearch(e.target.value)} placeholder="이름, 메시지 검색..." style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid "+T.border,fontSize:13,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
+      <div style={{padding:"7px 10px",borderBottom:"1px solid "+T.border}}>
+        <input value={msgSearch} onChange={e=>setMsgSearch(e.target.value)} placeholder="이름, 메시지 검색..." style={{width:"100%",padding:"7px 11px",borderRadius:8,border:"1px solid "+T.border,fontSize:13,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
       </div>
       <div style={{overflowY:"auto"}}>
         {loading?<div style={{padding:40,textAlign:"center",color:T.textMuted}}>로딩 중...</div>

@@ -4342,3 +4342,14 @@ v3.8.127(body 배경 흰색)이 무효였음 — 거터를 칠하는 건 body가
 - 버튼 클릭 → markUnread + `setSel(null)`+`onChatOpen(false)`(목록 복귀) → 대화가 미읽음으로 목록에 보임(나중에 처리). 아이콘 msgSq.
 - 검증(프리뷰 데모): 액션행 노출(AI추천/번역/예약등록/차단/자주답변/상담완료/**읽지않음**), 클릭 시 목록 복귀 + 해당 대화 미읽음 배지 "1" + 콘솔 에러 0.
 - 적용: v3.8.129 라이브 배포(version.txt 검증, CF 퍼지 everything).
+
+### v3.8.130 — 받은메시지함 4개 탭 상단 헤더 통일(컴팩트) (2026-06-17)
+정우님: 받은메시지/팀채팅/입금/리뷰 4탭의 상단 구성·디자인이 제각각 → 콤팩트하게 통일.
+- **공유 스타일 `src/components/Messages/inboxUi.js`** 신규: `INBOX_HDR`(1행 헤더 — padding 7px 10px, minHeight 30, borderBottom, bgCard, flexWrap) + `inboxChip(active)`(통일 칩 — padding 4px 11px, radius 14, fs 11.5, active 보라연배경/inactive 흰).
+- **받은메시지(AdminInbox)**: 큰 "메시지" 제목행(fs18) **제거**(탭 바가 이미 '받은메시지' 표시=중복) → 미읽음 배지·AI 버튼을 지점필터행으로 병합. 지점필터(내지점/전체) 칩을 inboxChip로, 🏪 이모지 제거([[feedback_bliss_no_emoji_svg]]). 검색행 컴팩트(7px 10px). 결과 2행(필터+액션 / 검색).
+- **입금(BankDeposits)**: 필터칩(전체/미매칭/고객대기/매칭됨/무시/카드정산) → INBOX_HDR(칩 많아 nowrap+overflowX 가로스크롤로 1행 유지) + inboxChip.
+- **리뷰(NaverReviews)**: 필터칩(답글대기/답변완료/전체) → INBOX_HDR + inboxChip. 동기화 버튼 우측 유지.
+- **팀채팅(ChatHeader)**: 이미 컴팩트(1행) — padding 4px→7px 10px로 행 높이만 정확히 맞춤.
+- 검증(프리뷰 vw:1=모바일=4탭): 큰 제목 제거 확인 + 전 탭 칩 동일 스타일(11.5px/4px11px/radius14) + 콘솔 에러 0. (프리뷰 viewport 1px 한계로 데스크탑 스크린샷 불가 → 라이브 확인 권장)
+- 적용: v3.8.130 라이브 배포(version.txt 검증, CF 퍼지 everything).
+**유의**: 4탭 헤더 스타일 변경 시 `inboxUi.js` 한 곳만 수정하면 전 탭 반영. 받은메시지 기능(지점필터·미읽음·확인필요·AI설정·검색) 전부 보존([[feedback_design_preserve_features]]).

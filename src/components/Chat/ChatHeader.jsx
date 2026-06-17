@@ -118,7 +118,7 @@ function ChatHeader({ users = [], currentUser, onSelectUser, title = '팀 채팅
   return (
     <div style={{
       display:'flex', alignItems:'center', gap:6,
-      padding:`4px 10px`, borderBottom:`1px solid ${T.border}`,
+      padding:`7px 10px`, borderBottom:`1px solid ${T.border}`,
       background: T.bgCard, flexShrink:0, minHeight:30,
     }}>
       <span style={{fontSize:T.fs.xs, fontWeight:T.fw.bolder, color:T.primaryDk, flexShrink:0, letterSpacing:.2}}>{title}</span>
