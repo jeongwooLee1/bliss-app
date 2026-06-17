@@ -2975,7 +2975,18 @@ ${naverText}
             const _schLogRaw = item?.scheduleLog;
             const schLog = (Array.isArray(_schLogRaw) ? _schLogRaw.join("\n") : (_schLogRaw || "")).trim();
             if (!regFmt && !schLog) return null;
-            const schLines = schLog ? schLog.split("\n").filter(Boolean) : [];
+            let schLines = schLog ? schLog.split("\n").filter(Boolean) : [];
+            // '등록'은 예약 등록 현황(고객 방문 전)만 — 예약(방문) 시각 이후의 변경(시술시간 실측 조정·시술 중 부위 추가 등)은 시술 실행 기록이지 예약 변경이 아니므로 '등록'에서 숨김. 저장(schedule_log)은 그대로, 표시만 필터 (정우)
+            const _apptDt = (item?.date && item?.time) ? new Date(`${item.date}T${item.time}:00`) : null;
+            if (_apptDt && !isNaN(_apptDt)) {
+              const _yr = (new Date(item.date).getFullYear()) || _apptDt.getFullYear();
+              schLines = schLines.filter(l=>{
+                const mm = String(l).match(/\[[^\]]*?(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})\]/);
+                if (!mm) return true; // 타임스탬프 없는 줄(경고 등)은 유지
+                const _dt = new Date(_yr, +mm[1]-1, +mm[2], +mm[3], +mm[4]);
+                return isNaN(_dt) ? true : _dt < _apptDt; // 예약(방문) 시각 전 변경만 표시
+              });
+            }
             return <div style={{padding:"6px 10px",marginBottom:8,background:T.gray100,borderRadius:T.radius.md,fontSize:11,color:T.textSub}}>
               {regFmt && <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <span style={{fontWeight:600}}>등록</span>
