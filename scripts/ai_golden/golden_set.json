@@ -594,6 +594,30 @@
    "expected_action": "chat",
    "must_pass": "action은 chat(noop) — 가격 질문에 예약(book)을 만들거나 성별을 되묻지 말 것. 여성가·남성가(여러 시술이면 여성 합계/남성 합계)를 둘 다 가격으로 안내해야 한다. \"정확한 견적을 위해 성별 알려달라\"며 가격 답을 미루거나 성별만 되물으면 실패. 영어 대화이므로 영어로 답. FACTS(시술 가격표)에 없는 수치 날조 금지.",
    "ideal": "Here are the totals (female / male, in KRW): Female total ... / Male total ... 😊 Let me know your gender and I'll confirm the exact price and book it!"
+  },
+  {
+   "id": "couple_2people",
+   "kind": "2인 예약을 'for 2 people'로만 말함(커플 단어 없이) → 동반자 자동등록 위해 book",
+   "channel": "whatsapp",
+   "lang": "en",
+   "conv": [
+    [
+     "in",
+     "Hi, I'd like to book a brazilian wax for 2 people at Gangnam"
+    ],
+    [
+     "out",
+     "Hi! I'd be happy to help with your booking for 2. What date and time would you like, and may I ask the gender of each person?"
+    ],
+    [
+     "in",
+     "Tomorrow at 3pm, both female please"
+    ]
+   ],
+   "existing_booking": null,
+   "expected_action": "book",
+   "must_pass": "동작은 반드시 book(예약 생성). 손님이 'for 2 people'로 2인을 명확히 밝혔고 지점=강남, 시술=브라질리언, 날짜=내일, 시간=15:00, 성별=둘 다 여성으로 정보가 충분 → 예약을 만들어야 한다. ask_info/chat로 빠지면 under-booking 실패. 2인이므로 두 명을 함께 받는 예약으로 처리(동반자 포함 의도). 15:00은 영업시간(11:00~21:00) 내라 거절 금지. 응답 언어는 영어(reply 100% 영어, 한국어 혼용 금지). 가격 언급 시 FACTS 확정가만(여성 브라질리언 154,000) 날조 금지. 특정 문구·길이·이모지 수는 자유.",
+   "ideal": "Perfect! I'll book both of you for a brazilian wax at our Gangnam branch tomorrow at 3:00 PM. Our staff will confirm shortly 😊"
   }
  ]
 }
