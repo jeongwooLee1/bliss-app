@@ -4323,3 +4323,7 @@ RLS 보안 잠금(2026-06-14) 이후 잠긴 7개 테이블의 직접 Realtime이
 - 패널 열렸을 때 예약모달 시작 위치 `rsv-modal-wrap left 540→564px`(플로팅 패널 우측끝 552+12갭, 겹침 방지).
 - 검증: 프리뷰가 viewport를 1px로 보고(`vw:1`)해 데스크탑 미디어쿼리 렌더 불가(환경 제약) → 모바일 분기(풀스크린 리셋) 정상 확인 + 데스크탑 값은 결정적 인라인. 라이브 데스크탑에서 확인 권장.
 - 적용: v3.8.125 라이브 배포(version.txt 검증, CF 퍼지 everything).
+
+### v3.8.126 — 받은메시지함 플로팅 패널 우측 겹침 fix (콘텐츠 시작 564) (2026-06-17)
+정우님: 플로팅 패널(v3.8.125) 우측이 타임라인과 겹침. 원인: 패널을 left 200→212로 띄워 우측끝이 540→552가 됐는데, 메인 콘텐츠(`main-c`, AppShell.jsx:2732) 시작은 여전히 `200+340=540`이라 12px 겹침. fix: `marginLeft: messagesPanelOpen ? 564 : 200`(패널 우측 552 + 12갭, 좌측 갭과 대칭, rsv-modal-wrap left:564와 일치). 모바일은 `.main-c{margin-left:0!important}`(index.html) override라 무영향.
+- 적용: v3.8.126 라이브 배포(version.txt 검증, CF 퍼지 everything).
