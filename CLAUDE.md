@@ -4292,3 +4292,13 @@ RLS 보안 잠금(2026-06-14) 이후 잠긴 7개 테이블의 직접 Realtime이
 - `AccountGate`(매장합류/멤버십선택/승인대기 공통 wrap)에 **아이디 찾기·비밀번호 찾기** 링크(AuthHelpModal) + 로그아웃 버튼 라벨 "다른 아이디로 로그인 (로그아웃)"로 명확화. 게이트에 갇혀도 복구 경로 노출.
 - 검증: 데모 로그아웃 → /login 폼 + 아이디/비번찾기 노출 + 콘솔에러 0(signOut 무크래시). v3.8.122 배포(version.txt·BLISS_V·CF퍼지, landing-staging 보존).
 - **유의**: ⚠️ **admin·housewaxing 계정은 복구용 이메일·휴대폰이 둘 다 미등록** → 아이디/비번찾기(SMS/이메일 인증)가 이 계정엔 안 먹힘. 비번 분실 시 (a) 계정에 복구 이메일/휴대폰 등록 후 셀프 재설정 또는 (b) Supabase SQL `select admin_reset_password('admin','새비번');` (대디 직접 실행 — 비번은 정책상 Claude가 직접 설정 X). 로그인 비밀번호는 Claude가 DB에서 직접 변경하지 않음(자격증명 정책).
+
+### 서버 — AI 답변추천: 가격 질문에 성별 되묻기/예약확정 멈추고 가격 답 + 직원 지시모드 복구 (2026-06-17, React 변경 0)
+**증상**(정우, Bashayer WhatsApp): 손님이 시술 5개 "total cost?" 물었는데 AI 자동응답/답변추천이 **가격을 안 주고 성별을 되묻거나("pricing differs by gender, female or male?") "Your booking is confirmed"로 예약확정**해버림. 직원이 입력칸에 "가격안내해줘" 지시해도 딴소리(가격 안 줌).
+**근본원인**: ① **자동 book 강제전환**(사후보정1, `if not _missing_after and action!="cancel": action="book"`) — 예약정보(시술·날짜·시간·지점)가 다 차 있으면 **무슨 메시지든** book으로 승격 → 가격 질문도 book → 성별게이트(사후보정3) 발동 또는 모델이 "확정" 멘트. ② 모델(gemini-3.5-flash)이 완성된 예약상태에선 가격질문 무시하고 "confirmed"로 답하는 강한 편향. ③ 지시모드 응답도 자동book/게이트가 덮어씀.
+**fix** (`ai_booking.py`, 백업 `ai_booking.py.bak_pricegate_*`):
+- `_is_price_q`(얼마/가격/비용/총액/cost/price/how much) 판정 추가. **자동 book 강제전환에 `not instruction and not _is_price_q` 가드** — 가격질문·지시모드면 book 승격 금지. 가격질문에 모델이 book 줘도 `action="chat"; booking=None`로 강등(예약 안 만듦).
+- **성별 게이트(사후보정3)에 `not instruction and not _is_price_q` 가드** — 가격질문·지시모드엔 성별 안 물음.
+- 프롬프트 가격룰 강화(★★★) + **프롬프트 맨 끝(JSON 직전)에 최종점검 지시**(recency): "마지막 메시지가 가격질문이면 action=chat, 여성가·남성가 둘 다 답, ❌'booking confirmed'·❌성별 되묻기 금지." → 모델이 가격 합계(여/남)를 실제로 답하게 됨.
+- **검증**: 골든 게이트(scripts/ai_golden) — 신규 케이스 `price_question_complete`(예약완료+가격질문→가격답·noop) 추가, **25/25 PASS**(gender_flow 등 기존 회귀 0 — 실제 예약엔 성별 여전히 물음·예약은 여전히 됨). 지시모드 직접 테스트("가격안내해줘") → 손님 시술 5개 여/남 가격표 정상 출력. `systemctl restart bliss-naver`(active).
+- **유의**: 골든 케이스 git(`scripts/ai_golden/golden_set.json`) 26→28 동기화(서버 드리프트 1 + 신규 1). ai_booking.py는 git 미추적(서버 전용, .bak 백업). 가격질문 = 답만(예약 안 함) — 손님이 "예약해주세요" 명시해야 book.
