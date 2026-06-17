@@ -4283,3 +4283,12 @@ RLS 보안 잠금(2026-06-14) 이후 잠긴 7개 테이블의 직접 Realtime이
 - 정우님 선택: **방문 전 변경까지 표시**(등록 시각 + 사전 리스케줄). 등록 시각만 표시(전부 제거) 옵션은 미채택.
 - 검증: 배성수 실데이터로 필터 로직 확인 — 숨김=[16:27 부위추가, 16:23 시간조정], 표시=[15:16 사전변경, ⚠경고]. 빌드 OK. v3.8.121 배포(version.txt·CF퍼지, landing-staging.html 보존).
 - **유의**: 컷오프는 **예약 시각**. 방문 직전(예약 시각 직전) 변경은 표시됨(예: 15:16<15:20). 더 엄격히("당일 변경 전부 숨김") 원하면 컷오프만 조정. 이 건은 채팅 직접 요청(bliss_requests 아님).
+
+### v3.8.122 — 로그아웃 OAuth 세션 미종료(게이트 루프) fix + AccountGate에 아이디/비번찾기 (2026-06-17)
+**증상**(정우): 로그아웃했는데 첫페이지 '로그인' 누르면 로그인 폼이 아니라 **"매장에 합류하기"(no_membership 게이트)** 가 뜸("housewaxing님"). 거기엔 아이디/비번찾기도 없음.
+**원인**: `handleLogout`이 localStorage(`bliss_session`·`bliss_session_token`)만 지우고 **Supabase OAuth(구글/카카오) 세션은 안 지움**(`_supaClient.auth.signOut()` 누락). 그래서 로그아웃 후 새로고침/재진입 시 resume(AppShell `_supaClient.auth.getSession()`)이 살아있는 OAuth 세션을 잡아 `auth_oauth`로 자동 재로그인 → 그 계정이 활성 멤버십 0이면 `handleAccountLogin`이 no_membership 게이트로 → 게이트의 로그아웃도 OAuth를 안 지워 **무한 루프**. (housewaxing 계정 자체는 owner 멤버십 active 정상 — ID/PW 로그인은 멀쩡. 게이트로 빠지는 건 OAuth 경로.)
+**fix**:
+- `handleLogout`에 `try{_supaClient?.auth?.signOut();}catch{}` 추가 → 로그아웃 시 OAuth 세션까지 종료 → resume가 재로그인 안 함 → **로그인 폼**(아이디/비번찾기 있음)으로 정상 복귀.
+- `AccountGate`(매장합류/멤버십선택/승인대기 공통 wrap)에 **아이디 찾기·비밀번호 찾기** 링크(AuthHelpModal) + 로그아웃 버튼 라벨 "다른 아이디로 로그인 (로그아웃)"로 명확화. 게이트에 갇혀도 복구 경로 노출.
+- 검증: 데모 로그아웃 → /login 폼 + 아이디/비번찾기 노출 + 콘솔에러 0(signOut 무크래시). v3.8.122 배포(version.txt·BLISS_V·CF퍼지, landing-staging 보존).
+- **유의**: ⚠️ **admin·housewaxing 계정은 복구용 이메일·휴대폰이 둘 다 미등록** → 아이디/비번찾기(SMS/이메일 인증)가 이 계정엔 안 먹힘. 비번 분실 시 (a) 계정에 복구 이메일/휴대폰 등록 후 셀프 재설정 또는 (b) Supabase SQL `select admin_reset_password('admin','새비번');` (대디 직접 실행 — 비번은 정책상 Claude가 직접 설정 X). 로그인 비밀번호는 Claude가 DB에서 직접 변경하지 않음(자격증명 정책).

@@ -28,7 +28,7 @@ import BlissRequests from '../components/BlissRequests/BlissRequests'
 import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 
 const uid = genId;
-const BLISS_V = "3.8.121"
+const BLISS_V = "3.8.122"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -444,6 +444,7 @@ function AccountGate({ mode, pendingAccount, onPick, onLogout, onJoinSuccess, on
   const [code, setCode] = useState("");
   const [joining, setJoining] = useState(false);
   const [joinErr, setJoinErr] = useState("");
+  const [showHelp, setShowHelp] = useState(null); // 아이디/비밀번호 찾기 모달 (게이트에서도 접근, 정우)
   const doJoin = async () => {
     if (!code.trim()) { setJoinErr("매장 코드를 입력하세요"); return; }
     if (!acc?.id) { setJoinErr("계정 정보 오류"); return; }
@@ -505,7 +506,13 @@ function AccountGate({ mode, pendingAccount, onPick, onLogout, onJoinSuccess, on
           {acc?.name && <div style={{fontSize:13,color:T.textMuted,marginTop:6}}>{acc.name}님</div>}
         </div>
         {children}
-        <button onClick={onLogout} style={{width:"100%",marginTop:16,padding:10,background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:T.textSub,cursor:"pointer",fontFamily:"inherit",fontSize:13}}>로그아웃</button>
+        <button onClick={onLogout} style={{width:"100%",marginTop:16,padding:10,background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:T.textSub,cursor:"pointer",fontFamily:"inherit",fontSize:13}}>다른 아이디로 로그인 (로그아웃)</button>
+        <div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:10,marginTop:12,fontSize:12}}>
+          <button onClick={()=>setShowHelp('findId')} style={{background:"none",border:"none",color:T.textSub,cursor:"pointer",fontFamily:"inherit",fontSize:12,padding:0}}>아이디 찾기</button>
+          <span style={{color:T.textMuted}}>·</span>
+          <button onClick={()=>setShowHelp('resetPw')} style={{background:"none",border:"none",color:T.textSub,cursor:"pointer",fontFamily:"inherit",fontSize:12,padding:0}}>비밀번호 찾기</button>
+        </div>
+        {showHelp && <AuthHelpModal initialMode={showHelp} onClose={()=>setShowHelp(null)} onUseId={()=>{}}/>}
       </div>
     </div>
   );
@@ -2429,6 +2436,8 @@ function App() {
   const handleLogout = () => {
     try{localStorage.removeItem("bliss_session");}catch(e){}
     try{localStorage.removeItem("bliss_session_token");}catch(e){}
+    // OAuth(구글/카카오) 세션도 종료 — 안 하면 로그아웃해도 새로고침/재진입 시 OAuth 자동복귀로 매장없음 게이트에 갇힘(루프) (정우)
+    try{_supaClient?.auth?.signOut();}catch(e){}
     navigate("/timeline", {replace:true});
     setCurrentUser(null); setCurrentBizId(null); setCurrentBiz(null);
     setPendingAccount(null);
