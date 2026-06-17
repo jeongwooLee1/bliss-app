@@ -123,6 +123,8 @@
         body[data-msg-panel="open"] .rsv-modal-wrap {
           left: 564px !important;
         }
+        /* 받은메시지함 플로팅 패널 열렸을 때 — 메인이 564로 밀리며 드러나는 거터(사이드바~패널~타임라인)를 타임라인과 같은 흰색으로 통일 (body 기본 #f9fafb 회색 가림) */
+        body[data-msg-panel="open"] { background: #ffffff; }
       }
       /* 받은메시지함 사이드 패널 — 모바일은 풀스크린 (입금 배너 클릭 경로에서 데스크탑 폭으로 떠 잘리던 것 방지) */
       @media (max-width: 767px) {

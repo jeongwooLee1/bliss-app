@@ -4327,3 +4327,7 @@ RLS 보안 잠금(2026-06-14) 이후 잠긴 7개 테이블의 직접 Realtime이
 ### v3.8.126 — 받은메시지함 플로팅 패널 우측 겹침 fix (콘텐츠 시작 564) (2026-06-17)
 정우님: 플로팅 패널(v3.8.125) 우측이 타임라인과 겹침. 원인: 패널을 left 200→212로 띄워 우측끝이 540→552가 됐는데, 메인 콘텐츠(`main-c`, AppShell.jsx:2732) 시작은 여전히 `200+340=540`이라 12px 겹침. fix: `marginLeft: messagesPanelOpen ? 564 : 200`(패널 우측 552 + 12갭, 좌측 갭과 대칭, rsv-modal-wrap left:564와 일치). 모바일은 `.main-c{margin-left:0!important}`(index.html) override라 무영향.
 - 적용: v3.8.126 라이브 배포(version.txt 검증, CF 퍼지 everything).
+
+### v3.8.127 — 받은메시지함 플로팅 패널 거터 배경 흰색 통일 (2026-06-17)
+정우님: 패널 주변 거터 배경이 연회색이라 타임라인(흰색)과 안 맞음. 원인: 패널 열리면 메인이 564로 밀리며 사이드바~패널~타임라인 사이 거터에 `body{background:#f9fafb}`(T.bg 회색)가 드러남. fix: index.html에 `@media(min-width:768px){ body[data-msg-panel="open"]{background:#fff} }` — 패널 열린 데스크탑에서 거터를 타임라인 흰색(T.bgCard #ffffff)으로 통일. 패널 닫히면 거터 없음(무영향), 모바일은 패널 풀스크린이라 무영향.
+- 적용: v3.8.127 라이브 배포(version.txt 검증, CF 퍼지 everything).
