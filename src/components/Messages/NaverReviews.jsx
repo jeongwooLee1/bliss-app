@@ -84,6 +84,39 @@ export default function NaverReviews({ data, branches, userBranches, currentUser
 
   useEffect(() => { load(); }, [load]);
 
+  // 리뷰 AI 자동답변 설정 (businesses.settings.review_auto_reply, 기본 OFF, 마스터만) — 정우 id_gnx2s1ax9e
+  const isMaster = ['owner', 'manager', 'super'].includes(currentUser?.role);
+  const [autoCfg, setAutoCfg] = useState({ enabled: false, hours: 2 });
+  const [autoSaving, setAutoSaving] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch(`${SB_URL}/rest/v1/businesses?id=eq.${_activeBizId}&select=settings`, { headers: sbHeaders });
+        const rows = await r.json();
+        let s = {}; try { s = JSON.parse(rows[0]?.settings || "{}"); } catch { }
+        const c = s.review_auto_reply || {};
+        if (alive) setAutoCfg({ enabled: !!c.enabled, hours: Number(c.hours) || 2 });
+      } catch { }
+    })();
+    return () => { alive = false; };
+  }, []);
+  const saveAutoCfg = async (next) => {
+    setAutoCfg(next); setAutoSaving(true);
+    try {
+      // 전체 settings 읽어 병합 후 저장 (다른 키 보존 — settings 소실 사고 방지)
+      const r = await fetch(`${SB_URL}/rest/v1/businesses?id=eq.${_activeBizId}&select=settings`, { headers: sbHeaders });
+      const rows = await r.json();
+      let s = {}; try { s = JSON.parse(rows[0]?.settings || "{}"); } catch { }
+      s.review_auto_reply = { enabled: !!next.enabled, hours: Number(next.hours) || 2 };
+      await fetch(`${SB_URL}/rest/v1/businesses?id=eq.${_activeBizId}`, {
+        method: "PATCH", headers: { ...sbHeaders, Prefer: "return=minimal" },
+        body: JSON.stringify({ settings: JSON.stringify(s) }),
+      });
+    } catch { }
+    setAutoSaving(false);
+  };
+
   const openNaver = (r) => {
     const pm = placeMap[r.bid];
     const biz = pm?.biz || r.place_id;
@@ -194,6 +227,30 @@ ${custNote}
         ))}
         <button onClick={syncAndLoad} title="네이버에서 최신 답글 상태 가져오기" style={{ marginLeft: 'auto', border: 'none', background: 'transparent', cursor: 'pointer', color: T.textSub, display: 'flex', alignItems: 'center' }}><I name="loader" size={16} /></button>
       </div>
+
+      {isMaster && (
+        <div title="미응답 리뷰에 AI가 답글 초안을 만들어 네이버에 자동 게시합니다 (별점 무관)"
+          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', flexShrink: 0, borderBottom: `1px solid ${T.border}`, background: autoCfg.enabled ? '#f0fdf4' : T.bgCard, fontSize: 12 }}>
+          <span onClick={() => saveAutoCfg({ ...autoCfg, enabled: !autoCfg.enabled })}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontWeight: 700, color: autoCfg.enabled ? '#059669' : T.textSub }}>
+            <span style={{ width: 30, height: 17, borderRadius: 10, background: autoCfg.enabled ? '#059669' : '#cbd5e1', position: 'relative', flexShrink: 0 }}>
+              <span style={{ position: 'absolute', top: 2, left: autoCfg.enabled ? 15 : 2, width: 13, height: 13, borderRadius: '50%', background: '#fff' }} />
+            </span>
+            리뷰 AI 자동답변
+          </span>
+          {autoCfg.enabled && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: T.textSub }}>
+              · 미응답
+              <input type="number" min="1" max="72" value={autoCfg.hours}
+                onChange={e => setAutoCfg({ ...autoCfg, hours: e.target.value })}
+                onBlur={e => { const h = Math.min(72, Math.max(1, Math.floor(Number(e.target.value) || 2))); saveAutoCfg({ ...autoCfg, hours: h }); }}
+                style={{ width: 42, padding: '3px 5px', borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 12, textAlign: 'center', fontFamily: 'inherit' }} />
+              시간 후 자동 게시
+            </span>
+          )}
+          {autoSaving && <span style={{ color: T.textMuted, fontSize: 11 }}>저장 중…</span>}
+        </div>
+      )}
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {loading && <div style={{ textAlign: 'center', color: T.textSub, padding: 24, fontSize: 13 }}>불러오는 중…</div>}
