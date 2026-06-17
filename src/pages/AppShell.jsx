@@ -2053,6 +2053,12 @@ function App() {
     document.body.dataset.msgChatOpen = isChatOpen ? "open" : "closed";
     return () => { try { delete document.body.dataset.msgChatOpen; } catch {} };
   }, [isChatOpen]);
+  // 현재 페이지 → body[data-page] (타임라인에서만 하단 푸터를 그리드 14px 갭에 맞춰 인셋하기 위함)
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.body.dataset.page = page;
+    return () => { try { delete document.body.dataset.page; } catch {} };
+  }, [page]);
   const setPage = useCallback((p) => {
     // 받은메시지함은 라우트 이동 대신 우측 사이드 패널 (모바일은 기존 풀스크린 라우팅 유지)
     const isMob = typeof window !== "undefined" && window.innerWidth < 768;
