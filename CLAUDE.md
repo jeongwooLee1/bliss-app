@@ -4310,3 +4310,8 @@ RLS 보안 잠금(2026-06-14) 이후 잠긴 7개 테이블의 직접 Realtime이
 - **검증**: 빌드 통과. 정상(단일 고객) 예약은 동작 동일(additive). 데모엔 고아 데이터 없어 화면검증 불가 → 라이브 박인제 예약모달 "차트 & 동의서" 보기로 2장 다 뜨는지 확인 권장.
 - 적용: v3.8.123 라이브 배포(version.txt 검증, CF 퍼지 everything).
 **근본원인(별도·동의서 세션)**: 키오스크 본인확인이 차트를 예약의 기존 고객에 연결하지 않고 새 고객 생성 → 중복 고객 레코드 누적. 표시는 이 fix로 정상이나, 데이터 위생 위해 bliss-consent(동의서 앱)에서 차트 제출 시 예약 cust_id에 연결하도록 수정 필요(spawn_task 위임).
+
+### v3.8.124 — 받은메시지함 사이드 패널 우측 구분선 제거 (그림자만) (2026-06-17)
+정우님 작업(naver-newcust-banner-fix worktree, 17:06 커밋 302a038)을 배포세션에서 cherry-pick(`17ef26f`, authorship 보존)해 배포. 받은메시지함 사이드 패널(`.msg-panel`, AppShell.jsx:2677)의 우측 `borderRight` 구분선 제거 → boxShadow만으로 가장자리(`6px 0 18px -2px rgba(0,0,0,.13)`). 타임라인 카드 톤과 통일. 1줄 디자인 변경.
+- worktree 브랜치는 rt_pings(v3.8.119) 등 일부가 이미 main에 다른 SHA로 반영된 혼합 상태 → 통째 머지 금지, `git cherry`로 진짜 새 커밋(302a038)만 골라 cherry-pick. customer-merge·bliss-requests-fix worktree는 새 커밋 0(이미 main 반영).
+- 적용: v3.8.124 라이브 배포(version.txt 검증, CF 퍼지 everything).
