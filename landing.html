@@ -6,7 +6,7 @@
 <script>/* 로그인된 직원은 앱으로 바로 보냄 (신규 방문자만 홍보 페이지). 세션토큰까지 있을 때만 = SPA 자동로그인 조건과 일치(토큰 없으면 리다이렉트 안 함 → 로그인 무한루프 방지) */try{if(!/preview_no_redirect/.test(location.search)&&localStorage.getItem('bliss_session')&&localStorage.getItem('bliss_session_token'))location.replace('/timeline');}catch(e){}</script>
 <script>/* 방문자 카운터 (비공개·IP당 당일1회·로그인 직원 제외) */try{if(!localStorage.getItem('bliss_session_token'))fetch('/track-visit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:location.pathname,ref:(document.referrer||'')}),keepalive:true}).catch(function(){});}catch(e){}</script>
 <title>블리스미(blissme) — 뷰티샵 예약·매출·AI 상담 올인원 관리 프로그램</title>
-<meta name="description" content="왁싱샵·미용실·네일샵·속눈썹샵을 위한 올인원 예약관리 프로그램. 타임라인 예약, AI 자동 상담·예약 접수, 알림톡·문자 자동발송, 노쇼 방지, 매출·고객·보유권 관리까지 — 1인샵부터 멀티지점까지 블리스미 하나로. 무료 체험 14일.">
+<meta name="description" content="왁싱샵·미용실·네일샵·속눈썹샵을 위한 올인원 예약관리 프로그램. 타임라인 예약, AI 자동 상담·예약 접수, 알림톡·문자 자동발송, 노쇼 방지, 매출·고객·보유권 관리까지 — 1인샵부터 멀티지점까지 블리스미 하나로. 무료 체험 한 달.">
 <meta name="keywords" content="뷰티샵 예약관리 프로그램, 왁싱샵 예약 프로그램, 1인샵 예약 프로그램, 미용실 예약 시스템, 네일샵 예약관리, 속눈썹샵 관리, 살롱 예약 프로그램, 알림톡 자동발송, AI 예약 접수, 매출관리 프로그램, 고객관리 CRM, 예약 노쇼 방지, 멀티지점 관리, 뷰티 예약 솔루션, 블리스미, blissme">
 <meta name="robots" content="index,follow">
 <link rel="canonical" href="https://blissme.ai/">
@@ -16,13 +16,13 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="블리스미 blissme">
 <meta property="og:title" content="블리스미 — 뷰티샵 예약·매출·AI 상담 올인원 관리 프로그램">
-<meta property="og:description" content="타임라인 예약, AI 자동 상담·예약, 알림톡 자동발송, 매출·고객·보유권 관리, 멀티지점까지. 무료 체험 14일.">
+<meta property="og:description" content="타임라인 예약, AI 자동 상담·예약, 알림톡 자동발송, 매출·고객·보유권 관리, 멀티지점까지. 무료 체험 한 달.">
 <meta property="og:url" content="https://blissme.ai/">
 <meta property="og:image" content="https://blissme.ai/logo.png">
 <meta property="og:locale" content="ko_KR">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="블리스미 — 뷰티샵 올인원 예약관리 프로그램">
-<meta name="twitter:description" content="예약·매출·고객·AI 상담을 블리스미 하나로. 무료 체험 14일.">
+<meta name="twitter:description" content="예약·매출·고객·AI 상담을 블리스미 하나로. 무료 체험 한 달.">
 <meta name="twitter:image" content="https://blissme.ai/logo.png">
 <script type="application/ld+json">
 {
@@ -34,7 +34,7 @@
   "description":"왁싱샵·미용실·네일샵 등 뷰티샵을 위한 올인원 예약·매출·고객·AI 상담 관리 프로그램.",
   "url":"https://blissme.ai/",
   "offers":[
-    {"@type":"Offer","name":"Trial","price":"0","priceCurrency":"KRW","description":"14일 무료 체험"},
+    {"@type":"Offer","name":"Trial","price":"0","priceCurrency":"KRW","description":"한 달 무료 체험"},
     {"@type":"Offer","name":"Starter","price":"33000","priceCurrency":"KRW","description":"월 구독"},
     {"@type":"Offer","name":"Pro","price":"77000","priceCurrency":"KRW","description":"월 구독"}
   ],
@@ -47,9 +47,9 @@
   "@context":"https://schema.org","@type":"FAQPage",
   "mainEntity":[
     {"@type":"Question","name":"어떤 업종에서 쓸 수 있나요?","acceptedAnswer":{"@type":"Answer","text":"왁싱샵, 미용실, 네일샵, 속눈썹샵, 피부·관리샵 등 예약 기반 뷰티샵이면 모두 사용 가능합니다."}},
-    {"@type":"Question","name":"1인샵인데도 쓸 만한가요?","acceptedAnswer":{"@type":"Answer","text":"오히려 1인샵일수록 효과가 큽니다. 시술 중 응대가 불가능한 시간에 온 문의를 AI가 받아 예약까지 잡아둡니다. 직원이 늘면 근무표·정산 기능까지 그대로 확장됩니다."}},
-    {"@type":"Question","name":"왁싱샵에 특화돼 있나요?","acceptedAnswer":{"@type":"Answer","text":"20년 넘게 운영된 실제 왁싱샵 현장에서 검증하며 다듬어 왁싱샵 예약 관리에 특히 강하고, 미용실·네일샵·속눈썹샵 등 예약 기반 뷰티샵 공통 기능을 모두 갖췄습니다."}},
-    {"@type":"Question","name":"무료로 써볼 수 있나요?","acceptedAnswer":{"@type":"Answer","text":"네, 14일 무료 체험을 제공합니다. 예약·매출·고객 관리처럼 별도 연동이 필요 없는 기능을 신용카드 없이 사용해볼 수 있습니다. 네이버·인스타·라인 연동과 AI 자동응대·알림톡 발송은 계정 연동·세팅이 필요해 유료 전환 후 매장에 맞춰 세팅해 드립니다."}},
+    {"@type":"Question","name":"1인샵인데 굳이 필요할까요?","acceptedAnswer":{"@type":"Answer","text":"혼자라 다 챙기면 된다 싶지만, 손은 하나라 시술하는 동안엔 놓치는 순간이 생깁니다. 그 사이 온 문의와 깜빡한 예약 하나가 그대로 매출이 됩니다. 손님을 한 분도 놓치고 싶지 않고 더 잘 챙기고 싶을수록 1인샵에 큰 힘이 됩니다. 시술 중 온 문의는 AI가 받아 예약까지 잡아두고, 직원이 늘어도 근무표·정산까지 그대로 쓰면서 요금제는 똑같습니다."}},
+    {"@type":"Question","name":"뷰티샵에 특화돼 있나요?","acceptedAnswer":{"@type":"Answer","text":"네. 왁싱·미용실·네일·속눈썹·반영구·피부관리 등 예약 기반 뷰티샵에 맞춰 만들었습니다. 20년 넘게 운영된 실제 매장에서 검증하며 다듬어 시술 시간 블록·관리사 지정·예약금 관리·노쇼 태그 등 뷰티샵이 매일 쓰는 기능에 강합니다."}},
+    {"@type":"Question","name":"무료로 써볼 수 있나요?","acceptedAnswer":{"@type":"Answer","text":"네, 한 달 무료 체험을 제공합니다. 예약·매출·고객 관리처럼 별도 연동이 필요 없는 기능을 신용카드 없이 사용해볼 수 있습니다. 네이버·인스타·라인 연동과 AI 자동응대·알림톡 발송은 계정 연동·세팅이 필요해 유료 전환 후 매장에 맞춰 세팅해 드립니다."}},
     {"@type":"Question","name":"네이버 예약과 연동되나요?","acceptedAnswer":{"@type":"Answer","text":"네이버 예약·톡톡을 자동으로 가져와 타임라인에 표시하고, 확정·변경·취소까지 관리할 수 있습니다."}},
     {"@type":"Question","name":"알림톡·문자가 자동으로 가나요?","acceptedAnswer":{"@type":"Answer","text":"예약확정·전날 안내·당일 리마인드·시술 후 케어 문자 등을 조건에 맞춰 자동 발송합니다."}}
   ]
@@ -101,11 +101,18 @@ nav .wrap{display:flex;align-items:center;justify-content:space-between;height:6
 .hero{background:radial-gradient(820px 440px at 80% -8%,#fbdcee 0%,rgba(251,220,238,0) 58%),radial-gradient(1000px 520px at 16% -12%,#ece6ff 0%,#fff 62%);padding:70px 0 60px;text-align:center}
 .hero .badge{display:inline-flex;align-items:center;gap:7px;background:var(--pl);color:var(--p);font-weight:800;font-size:13px;padding:7px 15px;border-radius:999px;margin-bottom:22px}
 .hero .badge .dot{width:9px;height:9px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#c084fc)}
-.hero h1{font-size:46px;font-weight:900;letter-spacing:-1.5px;line-height:1.22}
+.hero h1{font-size:46px;font-weight:900;letter-spacing:-1.5px;line-height:1.22;word-break:keep-all}
+.hero h1 .h-lead{display:block;font-size:23px;font-weight:600;color:var(--sub);letter-spacing:-.5px;line-height:1.4}
+.hero h1 .h-hero{display:block;font-size:42px;font-weight:900;color:var(--ink);letter-spacing:-1.3px;line-height:1.2;margin:10px 0}
+.hero h1 .h-lead:last-child{color:var(--p);font-weight:800;margin-top:4px}
 .hero h1 .g,.hero h1 strong{font-weight:inherit;background:linear-gradient(135deg,#7c3aed,#c084fc);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-.hero p.sub{font-size:19px;color:var(--sub);margin:20px auto 32px;max-width:620px}
+.hero p.sub{font-size:19px;color:var(--sub);margin:20px auto 0;max-width:620px;word-break:keep-all}
+.hero p.sub + p.sub{margin-top:16px}
+.hero p.sub:last-of-type{margin-bottom:32px}
+.hero .hero-em{word-break:keep-all}
 .hero .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
-.hero .note{margin-top:16px;font-size:13px;color:#998fb5}
+.hero .note{margin-top:22px;font-size:13px;color:#998fb5}
+.hero .note b{color:var(--p);font-weight:800}
 .logos{margin-top:34px;display:flex;flex-direction:column;gap:13px;align-items:center}
 .logo-row{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;align-items:center}
 .logo-cap{font-size:11px;font-weight:800;color:#a99fc0;letter-spacing:.5px;margin-right:2px;text-transform:uppercase}
@@ -115,19 +122,19 @@ nav .wrap{display:flex;align-items:center;justify-content:space-between;height:6
 /* 히어로 로드 애니메이션 (순차) */
 .hero .badge,.hero h1,.hero p.sub,.hero .hero-em,.hero .cta,.hero .note,.hero .logos{opacity:0;transform:translateY(24px);animation:rise .9s cubic-bezier(.2,.7,.2,1) forwards}
 .hero h1{animation-delay:.08s}.hero p.sub{animation-delay:.18s}.hero .hero-em{animation-delay:.26s}.hero .cta{animation-delay:.34s}.hero .note{animation-delay:.42s}.hero .logos{animation-delay:.5s}
-.hero .hero-em{font-size:22px;font-weight:900;color:var(--p);letter-spacing:-.6px;margin-top:18px;line-height:1.4}
+.hero .hero-em{font-size:22px;font-weight:900;color:var(--p);letter-spacing:-.6px;margin-top:32px;margin-bottom:30px;line-height:1.5}
 @keyframes rise{to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){.hero .badge,.hero h1,.hero p.sub,.hero .hero-em,.hero .cta,.hero .note,.hero .logos{animation:none;opacity:1;transform:none}}
-@media(max-width:760px){.hero h1{font-size:30px}.hero p.sub{font-size:16px}.hero .hero-em{font-size:18px}}
+@media(max-width:760px){.hero h1 .h-lead{font-size:19px}.hero h1 .h-hero{font-size:32px}.hero p.sub{font-size:16px}.hero .hero-em{font-size:18px}}
 .trust{padding:26px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fdf3f9,#f7f1ff)}
 .trust .wrap{display:flex;flex-wrap:wrap;justify-content:center;gap:14px 40px;text-align:center}
-.trust .it{font-size:15px;color:var(--sub);font-weight:600;line-height:1.5;flex:0 1 auto}
+.trust .it{font-size:15px;color:var(--sub);font-weight:600;line-height:1.5;flex:0 1 auto;word-break:keep-all}
 .trust .it b,.trust .it strong{color:var(--p);font-weight:900;font-size:17px}
 @media(max-width:760px){.trust .wrap{gap:12px 22px}.trust .it{flex:1 1 44%;font-size:14px}}
 section.s{padding:78px 0}
 .s-head{text-align:center;margin-bottom:48px}
 .s-head .k{color:var(--p);font-weight:800;font-size:14px;letter-spacing:1px;text-transform:uppercase}
-.s-head h2{font-size:34px;font-weight:900;letter-spacing:-1px;margin-top:10px}
+.s-head h2{font-size:34px;font-weight:900;letter-spacing:-1px;margin-top:10px;word-break:keep-all}
 .s-head p{color:var(--sub);font-size:17px;margin-top:12px}
 @media(max-width:760px){.s-head h2{font-size:26px}section.s{padding:54px 0}}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
@@ -141,7 +148,7 @@ section.s{padding:78px 0}
 .card p{color:var(--sub);font-size:15px}
 .band{background:linear-gradient(135deg,#2e1065,#6d28d9);color:#fff;border-radius:26px;padding:54px 44px;text-align:center}
 .band .k{color:#d8b4fe;font-weight:800;letter-spacing:1px;text-transform:uppercase;font-size:14px}
-.band h2{font-size:32px;font-weight:900;margin:12px 0 16px;letter-spacing:-.5px}
+.band h2{font-size:32px;font-weight:900;margin:12px 0 16px;letter-spacing:-.5px;word-break:keep-all}
 .band p{color:#e9d5ff;font-size:17px;max-width:680px;margin:0 auto}
 .band .feats{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:26px}
 .band .feats span{background:rgba(255,255,255,.13);padding:9px 16px;border-radius:999px;font-weight:700;font-size:14px}
@@ -321,7 +328,6 @@ footer .co a{color:#b8b0d0}
 <nav><div class="wrap">
   <a href="/" class="logo"><span class="b">B</span> 블리스미</a>
   <div class="nav-links">
-    <a href="#features">기능</a>
     <a href="#pricing">요금제</a>
     <a href="#faq">자주 묻는 질문</a>
     <a href="/timeline" class="nav-login">로그인</a>
@@ -329,23 +335,22 @@ footer .co a{color:#b8b0d0}
 </div></nav>
 
 <header class="hero"><div class="wrap">
-  <span class="badge"><span class="dot"></span> <span data-cms="hero.badge">24시간 잠들지 않는 블리스미 AI 예약 직원</span></span>
-  <h1 data-cms="hero.headline">시술하랴, 응대하랴,<br>마케팅에 직원 관리까지<br><strong>몸이 열 개라도</strong> 남아나지 않아요</h1>
-  <p class="sub" data-cms="hero.subcopy">카톡 · 네이버 · 인스타 · 톡톡 · 왓츠앱…<br>예약은 사방에서 오는데,<br>시술 중엔 휴대폰 보기 눈치보이잖아요.</p>
-  <p class="hero-em" data-cms="hero.highlight">그런데 — 예약을 한 건도 안 놓치는<br>원장님들이 이미 있습니다.<br>차이는 능력이 아니라, 도구 하나였습니다.</p>
+  <span class="badge"><span class="dot"></span> <span data-cms="hero.badge">직원 10분 인건비 · 블리스미</span></span>
+  <h1 data-cms="hero.headline"><span class="h-lead">단순 예약 프로그램이 아닙니다.</span><span class="h-hero">24시간 일하는 똑똑한 직원<br>하루 2,000원대로 고용해보세요</span><span class="h-lead">현장 직원들이 더 좋아해요.</span></h1>
+  <p class="sub" data-cms="hero.subcopy">카톡 · 네이버 · 인스타 · 톡톡 · 왓츠앱…<br>예약은 사방에서 오는데,<br>시술 중엔 휴대폰 보기도 눈치보이잖아요.</p>
+  <p class="hero-em" data-cms="hero.highlight">예약을 한 건도 안 놓치는 원장님들,<br>차이는 능력이 아니라 <b>도구 하나</b>였습니다.</p>
   <div class="cta">
-    <a href="/timeline" class="btn btn-p"><span data-cms="hero.cta_primary">14일 무료로 시작하기</span>
+    <a href="/timeline" class="btn btn-p"><span data-cms="hero.cta_primary">한 달 무료로 시작하기</span>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
-    <a href="#demo" class="btn btn-o" data-cms="hero.cta_secondary">AI 상담 직접 체험</a>
   </div>
-  <div class="note" data-cms="hero.trust_line">신용카드 불필요 · 설치 없는 웹 프로그램 · 14일 무료 체험</div>
+  <div class="note" data-cms="hero.trust_line"><b>첫 한 달 0원</b> · 신용카드 불필요 · 설치 없는 웹 프로그램</div>
 </div></header>
 
 <div class="trust"><div class="wrap">
   <div class="it" data-cms="hero.points.0"><strong>20년+</strong><br>실제 뷰티샵에서 검증</div>
-  <div class="it" data-cms="hero.points.1"><strong>네이버·인스타·라인·왓츠앱</strong><br>예약 자동 통합</div>
+  <div class="it" data-cms="hero.points.1"><strong>메시지 통합</strong><br>카카오·네이버·인스타 등 한 곳에</div>
   <div class="it" data-cms="hero.points.2"><strong>AI</strong><br>24시간 자동 상담·예약</div>
-  <div class="it" data-cms="hero.points.3"><strong>연중무휴</strong><br>클라우드</div>
+  <div class="it" data-cms="hero.points.3"><strong>설치 0</strong><br>웹에서 바로, PC·폰 어디서나</div>
 </div></div>
 
 <!-- ▼▼ [신규] 공감·문제 섹션 (레터 8요소: 문제 / 묘사·동조) ▼▼ -->
@@ -361,27 +366,75 @@ footer .co a{color:#b8b0d0}
 .prob-bridge{text-align:center;margin-top:42px}
 .prob-bridge h3{font-size:25px;font-weight:900;letter-spacing:-.7px;line-height:1.35}
 .prob-bridge h3 .g{background:linear-gradient(135deg,#7c3aed,#c084fc);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-.prob-bridge p{color:var(--sub);font-size:16px;margin-top:12px}
-@media(max-width:760px){.prob-bridge h3{font-size:20px}}
+.prob-bridge p{color:var(--sub);font-size:16px;margin-top:12px;word-break:keep-all}
+.prob-bridge .solve-box{max-width:540px;margin:28px auto 0;background:linear-gradient(160deg,#6d28d9,#9333ea);border-radius:20px;padding:10px 22px;box-shadow:0 18px 44px rgba(109,40,217,.28)}
+.prob-bridge .solve-row{display:flex;align-items:center;gap:12px;padding:16px 0;border-bottom:1px solid rgba(255,255,255,.14)}
+.prob-bridge .solve-row:last-child{border-bottom:none}
+.prob-bridge .s-before{flex:1;text-align:right;font-size:14.5px;color:rgba(255,255,255,.6);font-weight:600;word-break:keep-all;text-decoration:line-through;text-decoration-color:rgba(255,255,255,.35)}
+.prob-bridge .s-arrow{flex:0 0 30px;height:30px;border-radius:50%;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center}
+.prob-bridge .s-arrow svg{width:16px;height:16px;stroke:#fff}
+.prob-bridge .s-after{flex:1;text-align:left;font-size:15.5px;color:#fff;font-weight:800;word-break:keep-all}
+.prob-bridge .after-note{font-size:16.5px;color:var(--ink);margin-top:24px;word-break:keep-all}
+.prob-bridge .after-note b{color:var(--p)}
+.prob-bridge .bridge-cta{display:inline-flex;align-items:center;gap:8px;margin-top:22px;font-size:17px;padding:15px 30px}
+.prob-bridge .bridge-cta svg{width:19px;height:19px}
+.prob-bridge .bridge-sub{font-size:13.5px;color:var(--sub);margin-top:12px}
+@media(max-width:760px){.prob-bridge h3{font-size:20px}.prob-bridge .s-before{font-size:13px}.prob-bridge .s-after{font-size:14px}.prob-bridge .solve-row{gap:9px;padding:14px 0}}
+/* ── [신규] 히어로 무료 강조 뱃지 ── */
+.free-hi{margin-top:18px;font-size:15px;color:var(--sub);font-weight:600;display:flex;align-items:center;justify-content:center;gap:9px;flex-wrap:wrap}
+.free-hi .fh-tag{background:linear-gradient(135deg,#7c3aed,#c084fc);color:#fff;font-weight:900;font-size:15px;padding:7px 16px;border-radius:999px;box-shadow:0 6px 18px rgba(124,58,237,.3)}
+/* ── [신규] 업종 나열 + 데이터 이전 안심 ── */
+.industries{text-align:center}
+.ind-tags{display:flex;flex-wrap:wrap;justify-content:center;gap:9px;max-width:680px;margin:0 auto}
+.ind-tags .it{background:#fff;border:1px solid #efe6f3;border-radius:999px;padding:9px 17px;font-size:14.5px;font-weight:700;color:var(--ink);box-shadow:0 3px 12px rgba(190,95,160,.05)}
+.ind-tags .it.more{background:var(--pl);color:var(--p);border-color:transparent}
+.migrate{margin-top:18px}
+.migrate-box{max-width:640px;margin:24px auto 0;background:#fff;border:1px solid #f0e7f4;border-radius:18px;padding:26px 24px;box-shadow:0 8px 30px rgba(150,80,150,.07)}
+.migrate-box .mig-row{display:flex;gap:14px;align-items:flex-start;text-align:left;padding:14px 0;border-bottom:1px solid #f5eef8}
+.migrate-box .mig-row:last-child{border-bottom:none}
+.migrate-box .mig-ic{flex:0 0 42px;height:42px;border-radius:12px;background:var(--pl);display:flex;align-items:center;justify-content:center;font-size:20px}
+.migrate-box .mig-t{font-size:16px;font-weight:800;color:var(--ink);margin-bottom:3px}
+.migrate-box .mig-d{font-size:14px;color:var(--sub);line-height:1.5}
+.migrate-tag{display:inline-block;background:#fff4ec;color:#d97706;font-size:13px;font-weight:800;padding:6px 14px;border-radius:999px;margin-top:18px}
+/* ── [신규] 고민 체크리스트 ── */
+.checklist{max-width:620px;margin:0 auto;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px}
+.checklist .chk{display:flex;align-items:flex-start;gap:15px;background:#fff;border:1.5px solid #efe9f3;border-radius:15px;padding:18px 20px;cursor:pointer;transition:border-color .2s,background .2s,transform .12s;text-align:left;word-break:keep-all}
+.checklist .chk:hover{border-color:#d8c6ec;transform:translateY(-1px)}
+.checklist .chk .box{flex:0 0 24px;height:24px;margin-top:2px;border:2px solid #cdbfe0;border-radius:7px;position:relative;transition:background .2s,border-color .2s}
+.checklist .chk .box::after{content:"";position:absolute;left:7px;top:3px;width:6px;height:11px;border:solid #fff;border-width:0 2.5px 2.5px 0;transform:rotate(45deg) scale(0);transition:transform .18s}
+.checklist .chk .ct{display:flex;flex-direction:column;gap:3px}
+.checklist .chk .ct b{font-size:16.5px;font-weight:800;color:var(--ink);letter-spacing:-.3px}
+.checklist .chk .ct span{font-size:14px;color:var(--sub);line-height:1.5}
+.checklist .chk.on{border-color:var(--p);background:linear-gradient(180deg,#faf6ff,#fff)}
+.checklist .chk.on .box{background:var(--p);border-color:var(--p)}
+.checklist .chk.on .box::after{transform:rotate(45deg) scale(1)}
+.checklist .chk.on .ct b{color:var(--p)}
+.chk-result{max-width:620px;margin:22px auto 0;text-align:center;font-size:16.5px;font-weight:700;color:var(--p);min-height:24px;opacity:0;transition:opacity .3s}
+.chk-result.show{opacity:1}
+@media(max-width:760px){.checklist .chk .ct b{font-size:15.5px}.checklist .chk{padding:16px 17px;gap:13px}}
 </style>
 <section class="s prob"><div class="wrap">
-  <div class="s-head reveal"><div class="k">이런 적, 없으세요?</div><h2>시술에 집중한 원장님 잘못이 아닙니다.<br>도구가 없었을 뿐이에요.</h2><p>예약 기반 뷰티샵이라면 누구나 겪는 하루.<br>혹시 이 중 하나라도 해당되시나요?</p></div>
+  <div class="s-head reveal"><h2>시술에 집중한<br>원장님 잘못이 아닙니다.<br>함께할 직원이 없었을 뿐이에요.</h2><p>예약 기반 뷰티샵이라면 누구나 겪는 하루.<br>혹시 이 중 하나라도 해당되시나요?</p></div>
   <div class="grid">
-    <div class="pcard reveal"><div class="q">📒</div><h3>예약이 여기저기 흩어져 있어요</h3><p>네이버 따로, 카톡 따로, 인스타 따로. 옮겨 적다 시간 겹치거나 한 건씩 빠뜨리죠.</p><div class="fix"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>타임라인 하나로 통합</div></div>
-    <div class="pcard reveal"><div class="q">⏱️</div><h3>확정까지 한참 걸려요</h3><p>손님 한 명 확정하는 데 이것저것 확인하다 보면 시간이 훌쩍. 그새 다른 문의는 밀리고요.</p><div class="fix"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>상단 확정 바로 평균 3초</div></div>
-    <div class="pcard reveal"><div class="q">🌙</div><h3>문 닫은 뒤에 온 문의는 놓쳐요</h3><p>다음 날 아침에 보면 벌써 다른 데 잡았더라고요. 영업시간 지나 온 문의가 그대로 매출 손실이 되죠.</p><div class="fix"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>잠든 사이에도 AI가 예약 접수</div></div>
-    <div class="pcard reveal"><div class="q">🌐</div><h3>외국인 손님, 번역기 돌리다 지쳐요</h3><p>DM 하나 답하려고 번역기 켜고 복붙하고. 외국 손님 늘수록 응대가 일이 되죠.</p><div class="fix"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>한글로 쓰면 영어로 자동 발송</div></div>
-    <div class="pcard reveal"><div class="q">🔀</div><h3>중복 예약으로 얼굴 붉혀요</h3><p>같은 시간에 두 명 받아놓고 죄송하다 사과하고. 한 번 겪으면 진땀나죠.</p><div class="fix"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>블리스미 안에서 바로 차단</div></div>
-    <div class="pcard reveal"><div class="q">💳</div><h3>예약금 계산하다 오해 사요</h3><p>얼마 받았는지 일일이 빼고 더하다 실수 한 번에 "왜 다르냐" 소리 듣고요.</p><div class="fix"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>예약금 자동 차감 정산</div></div>
+    <div class="pcard reveal"><h3>쉬는 날도 마음 편히 못 쉬어요</h3><p>휴일에도 예약 놓칠까 봐 휴대폰을 손에서 못 놓죠. 쉬는 게 쉬는 게 아니에요.</p><div class="fix"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>쉬는 날엔 AI가 대신 응대</div></div>
+    <div class="pcard reveal"><h3>시술 끝나고 연락하면 늦어요</h3><p>"끝나고 연락드릴게요" 하면, 그새 다른 곳으로 가버리셨더라고요.</p><div class="fix"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>오는 즉시 AI가 바로 응대</div></div>
+    <div class="pcard reveal"><h3>예약 채널이 너무 많아요</h3><p>카톡·네이버·인스타·DM… 다 확인 못 해 예약 하나를 빠뜨린 적이 있어요.</p><div class="fix"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>모든 채널을 한 곳에 통합</div></div>
+    <div class="pcard reveal"><h3>네이버 예약 확정이 느려요</h3><p>확정 한 번 누르는 데 1분이 넘어가요. 그 사이 다른 일은 멈추고요.</p><div class="fix"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>미배정에 모아두고, 클릭 한 번으로 확정</div></div>
+    <div class="pcard reveal"><h3>외국인 예약 하나에 20분</h3><p>질문 많은 손님 한 명 받느라 번역기 돌리다 시간이 다 가요.</p><div class="fix"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>한글로 쓰면 외국어로 자동 응대</div></div>
+    <div class="pcard reveal"><h3>리뷰 답변은 늘 밀려 있어요</h3><p>답글이 늦으면 플레이스 노출에도 안 좋다는데, 알면서도 정신없이 지나가다 보면 늘 밀려 있죠.</p><div class="fix"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>그날 시술 메모를 바탕으로, 진짜 관리자가 쓴 것처럼</div></div>
+  </div>
   </div>
   <div class="prob-bridge reveal">
-    <h3>이 6가지, <span class="g">블리스미 하나로</span> 전부 사라집니다.</h3>
-    <p>흩어진 예약·문의·매출·고객을 한 화면에 모으고, 못 받은 문의는 AI가 대신 받습니다.</p>
+    <h3>이 고민들, <span class="g">블리스미 하나로</span> 사라집니다.</h3>
+    <p>예약을 한 건도 안 놓치는 원장님들은,<br>이미 다르게 일하고 있어요.</p>
+    <a href="/timeline" class="btn btn-p bridge-cta">한 달 무료로 시작하기
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
+    <div class="bridge-sub">신용카드 없이 · 1분이면 시작</div>
   </div>
 </div></section>
 <!-- ▲▲ [신규] 공감·문제 섹션 ▲▲ -->
 
-<section class="s" id="features"><div class="wrap">
+<section class="s" id="features" style="display:none" data-v2hidden="features"><div class="wrap">
   <div class="s-head reveal"><div class="k">FEATURES</div><h2>매장 운영에 필요한 모든 것</h2><p>예약 관리부터 마케팅·정산까지, 흩어진 도구를 블리스미 하나로 모았습니다.</p></div>
   <div class="grid">
     <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div><h3>타임라인 예약관리</h3><p><b>예약이 겹치거나 빠질 일이 없어요.</b> 네이버 예약·톡톡이 타임라인에 자동 등록되고, 직원·룸별로 한눈에. 드래그로 옮기고, 노쇼·당일취소까지 한 화면에서요.</p></div>
@@ -393,7 +446,7 @@ footer .co a{color:#b8b0d0}
   </div>
 </div></section>
 
-<section class="s" id="demo" style="padding-top:0"><div class="wrap">
+<section class="s" id="demo" style="padding-top:0;display:none" data-v2hidden="demo"><div class="wrap">
   <div class="s-head reveal"><div class="k">LIVE DEMO</div><h2>AI 상담을 직접 체험해보세요</h2><p>아래 질문을 눌러보세요. 손님이 보낸 것처럼 AI가 답하고, 예약까지 잡아줍니다.</p></div>
   <div class="demo reveal">
     <div class="chat">
@@ -419,7 +472,7 @@ footer .co a{color:#b8b0d0}
   </div>
 </div></section>
 
-<section class="s" id="demo3" style="padding-top:0"><div class="wrap">
+<section class="s" id="demo3" style="padding-top:0" data-v2shown="demo3"><div class="wrap">
   <div class="s-head reveal"><div class="k">AI AUTO-BOOKING</div><h2>고객 메시지가 곧 예약이 됩니다</h2><p>받은 대화 아래 <b>[AI 예약등록]</b> 한 번이면, 블리스미가 대화를 분석해 시술·시간을 타임라인에 자동으로 넣어줍니다. 네이버 톡톡·인스타·라인·왓츠앱 어디서든, 한국어든 전세계 어떤 언어든.</p></div>
   <div class="autoflow reveal">
     <div class="chat af-chat">
@@ -441,7 +494,7 @@ footer .co a{color:#b8b0d0}
   <div style="text-align:center;margin-top:14px"><button class="af-replay" id="afReplay">↻ 처음부터 보기</button></div>
 </div></section>
 
-<section class="s" id="demo2" style="padding-top:0"><div class="wrap">
+<section class="s" id="demo2" style="padding-top:0;display:none" data-v2hidden="demo2"><div class="wrap">
   <div class="s-head reveal"><div class="k">LIVE DEMO</div><h2>예약 등록도 직접 해보세요</h2><p>빈 칸을 눌러 시술을 고르면, 실제 타임라인처럼 예약이 등록됩니다.</p></div>
   <div class="tldemo reveal">
     <div class="af-tlbody" id="tlGrid"></div>
@@ -450,7 +503,7 @@ footer .co a{color:#b8b0d0}
 </div></section>
 
 <!-- ▼▼ [신규] 차별화·숨은 강점 (CGVMC·근거) ▼▼ -->
-<section class="s diff" style="background:linear-gradient(180deg,#faf7ff,#fff)"><div class="wrap">
+<section class="s diff" style="background:linear-gradient(180deg,#faf7ff,#fff);display:none" data-v2hidden="diff"><div class="wrap">
   <div class="s-head reveal"><div class="k">BEYOND BASICS</div><h2>여기까지 되는 프로그램은 드뭅니다</h2><p>예약·매출은 기본이고요. 블리스미는 다른 곳엔 없는 것까지 합니다.</p></div>
   <div class="grid">
     <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15l2 2 4-4"/></svg></div><h3>전자 동의서</h3><p><b>그거, 따로 비용 내고 쓰고 계셨다고요?</b> 시술 전 동의서를 태블릿·폰으로 받아 자동 보관. 20년 검증 양식이 Pro 요금에 그대로 포함 — 소보원 분쟁까지 든든하게 대비해요.</p></div>
@@ -486,14 +539,14 @@ footer .co a{color:#b8b0d0}
   <div class="s-head reveal"><div class="k">REAL STORY</div><h2>현장에서, 진짜로 쓰면서 다듬었습니다</h2><p>책상 위 기획이 아니라, 매일 손님 받는 매장의 요청으로 완성된 프로그램이에요.</p></div>
   <div class="band reveal">
     <div class="k">WHY WE BUILT IT</div>
-    <h2>현장의 요청 10,000건이<br>블리스미를 완성했습니다</h2>
-    <p class="story"><b>20년 넘게 운영해 온 실제 뷰티샵</b>에 프로그램을 직접 돌렸습니다. 그리고 현장에서 "이건 이렇게 고쳐달라", "이게 없으면 못 쓴다"는 목소리가 올라올 때마다, 하나도 빼놓지 않고 고쳤습니다. 그렇게 <b>수정·보완한 작업이 1만 건을 넘겼습니다.</b> 책상 위 기획서가 아니라, 매일 손님을 받는 매장의 목소리가 기능 하나하나를 만든 거예요. <b>그 현장의 노하우가 블리스미에 그대로 담겼습니다.</b></p>
+    <h2>블리스미는<br>원장님들의 불편함으로<br>완성되었습니다</h2>
+    <p class="story"><b>20년 넘게 운영해 온 실제 뷰티샵</b>에서 블리스미가 쉴새없이 돌아갔습니다. 그리고 현장에서 "이건 이렇게 고쳐주세요", "이런 것도 고칠 수 있나요?"는 요청이 올라올 때마다 하나도 빼놓지 않고 고쳤습니다. 책상 위 기획서가 아니라, 매일 손님을 받는 매장들의 불편함을 호소하는 목소리가 기능 하나하나를 만든 거예요. 그 현장의 노하우가 블리스미에 그대로 담겼습니다.<br><br><b>그렇게 현장의 요청 10,000건이, 지금의 블리스미를 완성했습니다.</b></p>
   </div>
   <div class="stats reveal">
     <div class="st"><div class="n">10,000+</div><div class="l">현장 요청을 반영한 수정·보완</div></div>
     <div class="st"><div class="n">24시간</div><div class="l">자는 동안에도 AI가 문의·예약 접수</div></div>
     <div class="st"><div class="n">20년+</div><div class="l">실제 뷰티샵에서 검증한 운영 노하우</div></div>
-    <div class="st"><div class="n">0원</div><div class="l">14일 체험 · 신용카드 등록 없이</div></div>
+    <div class="st"><div class="n">0원</div><div class="l">한 달 체험 · 신용카드 없이</div></div>
   </div>
   <div class="grid" style="margin-top:26px">
     <div class="tcard reveal"><div class="dlbl">현장에서 나온 디테일 ①</div><div class="qt"><b>입금문자 자동매칭.</b> 예약금이 들어오면 입금 문자를 읽어 예약에 자동으로 붙입니다. "입금 확인했나?" 하고 통장 뒤지는 일 — 매일 겪어본 사람만 만드는 기능입니다.</div></div>
@@ -504,33 +557,38 @@ footer .co a{color:#b8b0d0}
 </div></section>
 <!-- ▲▲ [신규] 근거·창업스토리·후기 ▲▲ -->
 
+<!-- ▼▼ [신규] 업종 나열 + 데이터 이전 안심 ▼▼ -->
+<section class="s industries" style="padding-bottom:0"><div class="wrap">
+  <div class="s-head reveal"><div class="k">FOR EVERY SHOP</div><h2>이런 뷰티샵이라면, 블리스미</h2><p>예약 기반 뷰티샵이면 업종을 가리지 않아요.</p></div>
+  <div class="ind-tags reveal">
+    <span class="it">왁싱샵</span><span class="it">미용실</span><span class="it">네일샵</span><span class="it">속눈썹</span><span class="it">반영구</span><span class="it">피부·관리</span><span class="it">왁싱·제모</span><span class="it">두피·탈모</span><span class="it">마사지·스파</span><span class="it">태닝</span><span class="it">바버샵</span><span class="it more">그 외 예약 기반 샵</span>
+  </div>
+</div></section>
+
+<section class="s migrate"><div class="wrap">
+  <div class="s-head reveal"><div class="k">EASY START</div><h2>쓰던 데이터, 그대로 옮겨드려요</h2><p>"기존 고객·예약은 어떻게 하지?"<br>그 걱정 때문에 못 바꾸셨다면…</p></div>
+  <div class="migrate-box reveal">
+    <div class="mig-row"><div><div class="mig-t">수기 장부 · 엑셀</div><div class="mig-d">그동안 손으로 적어온 고객·예약, 옮길 방법을 함께 찾아드려요.</div></div></div>
+    <div class="mig-row"><div><div class="mig-t">휴대폰 주소록</div><div class="mig-d">연락처에 저장해둔 단골 고객, 한 번에 불러와 정리합니다.</div></div></div>
+    <div class="mig-row"><div><div class="mig-t">다른 예약 프로그램</div><div class="mig-d">지금 쓰는 프로그램이 있다면, 1:1 상담으로 고객·예약·매출 데이터 이전을 도와드려요.</div></div></div>
+    <div style="text-align:center"><span class="migrate-tag">데이터 이전, 혜택이 아니라 기본입니다</span></div>
+  </div>
+</div></section>
+<!-- ▲▲ [신규] 업종 + 데이터 이전 ▲▲ -->
+
 <section class="s" id="pricing" style="background:linear-gradient(180deg,#fdf3f9,#f7f1ff)"><div class="wrap">
-  <div class="s-head reveal"><div class="k">PRICING</div><h2>부담 없는 요금제</h2><p>10분 인건비도 안 되는 하루 2,000원으로, 24시간 잠들지 않는 똑똑한 직원을 고용해보세요.<br>14일 무료 체험으로 먼저 써보고 결정하세요.</p></div>
+  <div class="s-head reveal"><div class="k">PRICING</div><h2>부담 없는 요금제</h2><p>10분 인건비도 안 되는 하루 2,000원으로, 24시간 잠들지 않는 똑똑한 직원을 고용해보세요.<br>한 달 무료 체험으로 먼저 써보고 결정하세요.</p></div>
   <div class="prices">
-    <div class="price reveal"><h3>Trial</h3><div class="amt">0원<small> / 14일</small></div><p style="color:var(--sub);font-size:14px">세팅 없이 바로 쓰는 기본 기능</p><ul><li>예약 타임라인·근무표</li><li>매출·고객·보유권 관리</li><li>다지점 관리 + 리포트·통계</li><li>신용카드 불필요</li></ul><a href="/timeline" class="btn btn-o">무료 체험</a></div>
+    <div class="price reveal"><h3>Trial</h3><div class="amt">0원<small> / 한 달</small></div><p style="color:var(--sub);font-size:14px">세팅 없이 바로 쓰는 기본 기능</p><ul><li>예약 타임라인·근무표</li><li>매출·고객·보유권 관리</li><li>다지점 관리 + 리포트·통계</li><li>신용카드 불필요</li></ul><a href="/timeline" class="btn btn-o">무료 체험</a></div>
     <div class="price feat reveal"><div class="tag">인기</div><h3>Starter</h3><div class="amt">33,000원<small> / 월·매장</small></div><p style="color:var(--sub);font-size:14px">메시지·멤버십·마케팅까지</p><ul><li>Trial 전부 포함 +</li><li>알림톡·SMS·LMS 자동발송</li><li>다회권·연간회원권·보유권 쉐어</li><li>이벤트 엔진·쿠폰·포인트</li><li>회원가 자동 적용</li></ul><a href="/timeline" class="btn btn-p">시작하기</a></div>
-    <div class="price reveal"><h3>Pro</h3><div class="amt">77,000원<small> / 월·매장</small></div><p style="color:var(--sub);font-size:14px">메시지함 + AI + 운영 고급</p><ul><li>Starter 전부 포함 +</li><li>통합 메시지함 (네이버톡톡·IG·LINE·WhatsApp)</li><li>네이버 예약 자동연동·블록</li><li>AI 자동응대·예약 접수 + 블리스미 AI</li><li>전자 동의서·직원 자동배정</li><li>외부 플랫폼 선결제·우선 지원</li></ul><a href="/timeline" class="btn btn-o">시작하기</a></div>
+    <div class="price reveal"><h3>Pro</h3><div class="amt">77,000원<small> / 월·매장</small></div><p style="color:var(--sub);font-size:14px">모든 채널 통합 + AI 자동응대 + 고급 운영</p><ul><li>Starter 전부 포함 +</li><li>통합 메시지함 (네이버톡톡·IG·LINE·WhatsApp)</li><li>네이버 예약 연동 · 시술 시간 막기</li><li>AI 자동응대·예약 접수 + 블리스미 AI</li><li>전자 동의서·직원 자동배정</li><li>외부 플랫폼 선결제·우선 지원</li></ul><a href="/timeline" class="btn btn-o">시작하기</a></div>
   </div>
   <div class="value-strip reveal">알바 10분 인건비도 안 되는 <b>하루 2,000원</b>으로, 잠들지 않는 예약 직원 한 명을 두는 셈이에요.</div>
-  <div class="credit-box reveal">
-    <div class="cb-h">발송·AI는 쓴 만큼만 — 크레딧(P) 충전제 <span>1P = 1원</span></div>
-    <div class="cb-grid">
-      <span>알림톡 <b>10P</b></span><span>SMS <b>20P</b></span><span>LMS <b>60P</b></span><span>메시지함 <b>1P</b></span><span>WhatsApp <b>1P</b></span><span>AI 호출 <b>5P</b></span>
-    </div>
-    <p class="cb-note">구독료와 별개로 매장에서 1만·3만·5만원 단위로 충전해 쓰는 만큼만 차감돼요. 안 쓰면 안 나갑니다.</p>
-  </div>
   <p style="text-align:center;color:#998fb5;font-size:13px;margin-top:16px;line-height:1.7">* 표시 금액은 <b>매장(지점)당 월 구독료</b>이며 부가세(10%) 별도, 카드 정기결제(빌링키)로 자동 청구됩니다.<br>* 네이버·인스타·라인 연동, AI 자동응대, 알림톡 발송은 계정 연동·세팅이 필요해 유료 플랜에서 제공되며, 가입 시 매장에 맞춰 세팅을 도와드려요.</p>
 </div></section>
 <style>
 .value-strip{margin-top:22px;text-align:center;background:#fff;border:1.5px solid #ead8f4;border-radius:14px;padding:15px 20px;font-size:15px;color:var(--sub);max-width:640px;margin-left:auto;margin-right:auto}
 .value-strip b{color:var(--p);font-weight:900}
-.credit-box{margin-top:28px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:22px 24px;box-shadow:0 6px 22px rgba(140,90,170,.07)}
-.credit-box .cb-h{font-weight:800;font-size:15.5px;color:var(--ink);text-align:center}
-.credit-box .cb-h span{color:var(--p);font-weight:900;margin-left:6px}
-.cb-grid{display:flex;flex-wrap:wrap;gap:9px;justify-content:center;margin:16px 0 4px}
-.cb-grid span{background:var(--pl);color:var(--p);border-radius:999px;padding:8px 15px;font-size:13.5px;font-weight:700}
-.cb-grid span b{font-weight:900}
-.credit-box .cb-note{text-align:center;color:var(--sub);font-size:13.5px;margin-top:10px}
 </style>
 
 <!-- ▼▼ [신규] 한정·긴급성 (레터 8요소: 한정) ▼▼ -->
@@ -566,14 +624,14 @@ footer .co a{color:#b8b0d0}
       <div class="oc">
         <div class="ico">🎁</div>
         <h3>선착순 100개 매장 · 무료 세팅 지원</h3>
-        <p>네이버 예약 연동, 알림톡 발신 등록, 메시지 채널 연결 — 직접 하면 가장 번거로운 이 작업, <b>원래는 유료로 제공해야 할 대행</b>이지만 지금 시작하는 100개 매장엔 1:1로 무료로 잡아드려요.</p>
+        <p>네이버 예약 연동, 알림톡 발신 등록, 모든 메시지 채널 통합 연결까지 — Pro(77,000원) 요금제는 세팅에 손이 많이 가서 <b>원래는 별도 비용을 받아야 하는 작업</b>이에요. 그런데 지금 시작하는 100개 매장엔, 이 Pro 세팅 전체를 1:1로 무료로 잡아드립니다.</p>
         <div class="bar"><i></i></div>
         <div class="barlbl">남은 자리 [ 36 ] / 100</div>
       </div>
       <div class="oc">
         <div class="ico">🏷️</div>
         <h3>기간 한정 할인</h3>
-        <p><b>7월 10일까지</b> 가입하는 매장에 한해 <b>첫 3개월 50% 할인</b>을 드립니다.</p>
+        <p><b>7월까지</b> 구독을 설정하는 매장에 <b>무료 한 달을 추가</b>로 드립니다.</p>
         <div class="bar" style="margin-top:18px;background:transparent"><i style="width:100%;background:rgba(255,255,255,.0)"></i></div>
         <div class="barlbl" id="promoDday" style="color:#fbcfe8">마감까지 D-29</div>
       </div>
@@ -586,7 +644,7 @@ footer .co a{color:#b8b0d0}
     <p class="ofine">※ 남은 자리 수는 신청 추이에 따라 실시간으로 마감됩니다.</p>
   </div>
 </div></section>
-<script>(function(){var el=document.getElementById('promoDday');if(!el)return;var end=new Date('2026-07-10T23:59:59+09:00');var d=Math.ceil((end-new Date())/86400000);el.textContent=d>0?'마감까지 D-'+d:(d===0?'오늘 마감':'마감되었습니다');})();</script>
+<script>(function(){var el=document.getElementById('promoDday');if(!el)return;var end=new Date('2026-07-31T23:59:59+09:00');var d=Math.ceil((end-new Date())/86400000);el.textContent=d>0?'마감까지 D-'+d:(d===0?'오늘 마감':'마감되었습니다');})();</script>
 <!-- ▲▲ [신규] 한정·긴급성 ▲▲ -->
 
 <section class="s"><div class="wrap">
@@ -602,9 +660,9 @@ footer .co a{color:#b8b0d0}
   <div class="s-head reveal"><div class="k">FAQ</div><h2>자주 묻는 질문</h2></div>
   <div class="faq reveal">
     <details open><summary>어떤 업종에서 쓸 수 있나요?</summary><p>왁싱샵, 미용실, 네일샵, 속눈썹샵, 피부·관리샵 등 예약 기반 뷰티샵이면 모두 사용 가능합니다.</p></details>
-    <details><summary>1인샵인데도 쓸 만한가요?</summary><p>오히려 1인샵일수록 효과가 큽니다. 시술 중엔 응대가 불가능한데, 그 시간에 온 문의를 AI가 받아 예약까지 잡아둡니다. 1인샵 예약 프로그램으로 시작해 직원이 늘면 근무표·정산 기능까지 그대로 확장됩니다.</p></details>
-    <details><summary>왁싱샵에 특화돼 있나요?</summary><p>20년 넘게 운영된 실제 왁싱샵 현장에서 검증하며 다듬어, 왁싱샵 예약 관리(시술 시간 블록, 남자 관리사 지정, 예약금 관리 등)에 특히 강합니다. 동시에 미용실·네일샵·속눈썹샵 등 예약 기반 뷰티샵 공통 기능을 모두 갖췄습니다.</p></details>
-    <details><summary>무료로 써볼 수 있나요?</summary><p>네, 14일 무료 체험을 제공합니다. 예약·매출·고객 관리처럼 별도 연동 없이 바로 쓰는 기능을 신용카드 없이 사용해볼 수 있어요. 네이버·인스타·라인 연동과 AI 자동응대·알림톡 발송은 계정 연동·세팅이 필요해 유료 전환 후 매장에 맞춰 세팅해 드립니다.</p></details>
+    <details><summary>1인샵인데 굳이 필요할까요?</summary><p>혼자라 "내가 다 챙기면 되지" 싶으시죠. 그런데 손은 하나라, 시술하는 동안엔 아무리 신경 써도 놓치는 순간이 생깁니다. 그 사이 온 문의, 답이 늦어 떠난 손님, 깜빡한 예약 하나가 그대로 매출이 되거든요. <b>지금 손님을 한 분도 놓치고 싶지 않고, 더 잘 챙기고 싶을수록</b> — 1인샵에 이 프로그램이 더 큰 힘이 됩니다. 시술 중에 온 문의는 AI가 대신 받아 예약까지 잡아두고, 나중에 직원이 늘어도 근무표·정산까지 그대로 쓰면서 <b>요금제는 똑같아요.</b></p></details>
+    <details><summary>뷰티샵에 특화돼 있나요?</summary><p>네. 왁싱·미용실·네일·속눈썹·반영구·피부관리 등 <b>예약 기반 뷰티샵에 맞춰</b> 만들었습니다. 20년 넘게 운영된 실제 매장 현장에서 검증하며 다듬어, 시술 시간 블록·관리사 지정·예약금 관리·노쇼 태그처럼 뷰티샵이 매일 쓰는 기능에 특히 강합니다. 업종이 무엇이든, 예약으로 돌아가는 샵이라면 바로 맞아떨어져요.</p></details>
+    <details><summary>무료로 써볼 수 있나요?</summary><p>네, 한 달 무료 체험을 제공합니다. 예약·매출·고객 관리처럼 별도 연동 없이 바로 쓰는 기능을 신용카드 없이 사용해볼 수 있어요. 네이버·인스타·라인 연동과 AI 자동응대·알림톡 발송은 계정 연동·세팅이 필요해 유료 전환 후 매장에 맞춰 세팅해 드립니다.</p></details>
     <details><summary>네이버 예약과 연동되나요?</summary><p>네이버 예약·톡톡을 자동으로 가져와 타임라인에 표시하고, 확정·변경·취소까지 한 화면에서 관리합니다.</p></details>
     <details><summary>알림톡·문자가 자동으로 가나요?</summary><p>예약확정·전날 안내·당일 리마인드·시술 후 케어 문자 등을 조건에 맞춰 자동 발송합니다.</p></details>
     <details><summary>여러 매장도 관리되나요?</summary><p>네, 멀티지점을 하나의 계정으로 통합 관리합니다. 지점별 권한·근무표·정산을 분리해 운영할 수 있습니다.</p></details>
@@ -617,7 +675,7 @@ footer .co a{color:#b8b0d0}
 
 <section class="ctaband" id="contact"><div class="wrap reveal">
   <h2>지금 바로 시작해보세요</h2>
-  <p>14일 무료 체험 또는 1:1 도입 상담으로 우리 매장에 맞는지 확인하세요.</p>
+  <p>한 달 무료 체험 또는 1:1 도입 상담으로 우리 매장에 맞는지 확인하세요.</p>
   <div class="cta">
     <a href="/timeline" class="btn btn-p">무료로 시작하기
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
@@ -638,7 +696,6 @@ footer .co a{color:#b8b0d0}
     </div>
     <div class="links">
       <a href="#features">기능</a><a href="#pricing">요금제</a><a href="#faq">FAQ</a>
-      <a href="/pricing.html">요금제 안내</a><a href="/about.html">회사 소개</a>
       <a href="/terms.html">이용약관</a><a href="/privacy.html">개인정보처리방침</a><a href="/refund.html">환불정책</a>
     </div>
   </div>
@@ -657,6 +714,24 @@ footer .co a{color:#b8b0d0}
     ents.forEach(function(en){ if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); } });
   },{threshold:0.12, rootMargin:'0px 0px -8% 0px'});
   els.forEach(function(e){io.observe(e)});
+})();
+/* ── 고민 체크리스트 인터랙션 ── */
+(function(){
+  var list=document.getElementById('painCheck'); if(!list)return;
+  var result=document.getElementById('chkResult');
+  var items=[].slice.call(list.querySelectorAll('.chk'));
+  function update(){
+    var n=list.querySelectorAll('.chk.on').length;
+    if(n===0){ result.classList.remove('show'); result.textContent=''; return; }
+    var msg;
+    if(n<=1) msg='하나라도 해당된다면, 블리스미가 해결해 드릴게요.';
+    else if(n<=3) msg=n+'가지나 겪고 계셨네요. 이제 그 일은 블리스미에게 맡기세요.';
+    else msg=n+'가지 — 충분히 지치셨어요. 블리스미가 그 자리를 대신합니다.';
+    result.textContent=msg; result.classList.add('show');
+  }
+  items.forEach(function(it){
+    it.addEventListener('click',function(){ it.classList.toggle('on'); update(); });
+  });
 })();
 /* ── AI 상담 체험 데모 (스크립트) ── */
 (function(){
