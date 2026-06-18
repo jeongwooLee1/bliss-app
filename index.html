@@ -330,9 +330,9 @@
          스크롤바는 화면 오른쪽·아래 그대로. 카드 위 간격은 툴바 padding-bottom(topbarH 측정 포함 → 드래그 좌표 안전) ══ */
       @media(min-width:769px){
         .tl-card-wrap{background:#fff}
-        .tl-card-wrap .tl-alert-banner{width:auto!important;margin:6px 12px;border-radius:10px;border-bottom:none!important}
+        .tl-card-wrap .tl-alert-banner{width:auto!important;margin:6px 14px;border-radius:10px;border-bottom:none!important}
         /* 툴바 그림자 없음 — 카드(헤더) 위쪽 그림자는 칼럼 안 z31 투명 캐스터가 그림 (v3.8.55 정우님, v3.8.54 툴바 전폭 그림자는 "엉망" 피드백으로 롤백) */
-        .tl-card-wrap .tl-topbar{box-shadow:none!important;padding-bottom:10px!important}
+        .tl-card-wrap .tl-topbar{box-shadow:none!important;padding-bottom:10px!important;padding-left:14px!important}
         /* 왼쪽 여백 = margin 대신 sticky 스트립(tl-left-gap) — 가로 스크롤해도 사이드바와 14px 갭 유지 (v3.8.47) */
         .tl-card-wrap .tl-grid-card{margin-right:14px}
         .tl-card-wrap .tl-left-gap{display:block}
@@ -340,6 +340,8 @@
         .tl-card-wrap .tl-time-col{left:14px!important;box-shadow:-6px 0 12px -3px rgba(0,0,0,.11)}
         .tl-card-wrap .tl-time-caster{left:14px!important} /* 시간축과 같은 위치에 핀 (왼쪽 14px 갭 뒤) */
         .tl-card-wrap .tl-calview{margin:0 14px;border:1px solid #e6e8ee;border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,.08)}
+        /* 타임라인 하단 푸터도 그리드(좌우 14px)에 맞춰 인셋 — 상·하단 좌측 돌출 정리 (정우님) */
+        body[data-page="timeline"] .main-footer-d{margin-left:14px;margin-right:14px}
       }
 
       /* ══ 모바일 ══ */
@@ -413,7 +415,7 @@
       .msg-action-row::-webkit-scrollbar{display:none;}
       .msg-action-row>button{flex-shrink:0;white-space:nowrap;}
     </style>
-    <script type="module" crossorigin src="/assets/index-DdE8p9_U.js"></script>
+    <script type="module" crossorigin src="/assets/index-Mtwm-T0z.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-DoaQoIwC.js">
     <link rel="modulepreload" crossorigin href="/assets/supabase-DywSbxor.js">
   </head>
