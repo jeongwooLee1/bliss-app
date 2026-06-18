@@ -859,22 +859,9 @@ function TimelineModal({ item, onSave, onAddCompanion, onDelete, onDeleteRequest
   const [aiReveal, setAiReveal] = useState(false);     // AI 분석은 기본 가림 — 호버/탭 시에만 표시(고객 민감정보 보호)
   useEffect(() => {
     setRegenSummary("");
-    const cid = f.custId;
-    if (!cid || String(cid).startsWith("new_")) return;
-    const cur = (data?.customers || []).find(c => c.id === cid)?.serviceSummary || "";
-    if (!cur || /시술\s*[:：]/.test(cur) || /[❤🧡💛💙]/.test(cur)) return;  // 신규형식·빈값 → 패스
-    let alive = true;
-    (async () => {
-      try {
-        const r = await fetch("https://blissme.ai/regen-summary", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cust_id: cid }) });
-        const dd = await r.json().catch(() => ({}));
-        if (alive && dd && dd.ok && dd.summary) {
-          setRegenSummary(dd.summary);
-          if (setData) setData(p => p ? { ...p, customers: (p.customers || []).map(c => c.id === cid ? { ...c, serviceSummary: dd.summary } : c) } : p);
-        }
-      } catch {}
-    })();
-    return () => { alive = false; };
+    // ⛔ 비용 절감 (2026-06-18 정우님): 예약모달 열 때마다 옛 형식 고객요약을 /regen-summary(서버 Gemini)로
+    //   자동 재생성하던 self-heal 차단. 캐시 안 되는 Gemini 호출 줄이기. 기존 요약은 아래 _custSummary 폴백으로 그대로 표시,
+    //   요약 갱신은 실제 방문/매출 발생 시 서버가 1회 생성하는 경로로만. 재개하려면 아래 블록 복원(git v3.8.130 이전).
   }, [f.custId]);
   // 외국 이름 음역 fallback — 네이버/AI 예약 신규 고객은 customers.name_kor 비어있어서
   // _cust?.nameKor 조건만으론 화면에 안 뜸. 캐시 → Gemini 호출 → 결과 state + DB 백필

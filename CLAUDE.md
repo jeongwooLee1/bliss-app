@@ -4353,3 +4353,11 @@ v3.8.127(body 배경 흰색)이 무효였음 — 거터를 칠하는 건 body가
 - 검증(프리뷰 vw:1=모바일=4탭): 큰 제목 제거 확인 + 전 탭 칩 동일 스타일(11.5px/4px11px/radius14) + 콘솔 에러 0. (프리뷰 viewport 1px 한계로 데스크탑 스크린샷 불가 → 라이브 확인 권장)
 - 적용: v3.8.130 라이브 배포(version.txt 검증, CF 퍼지 everything).
 **유의**: 4탭 헤더 스타일 변경 시 `inboxUi.js` 한 곳만 수정하면 전 탭 반영. 받은메시지 기능(지점필터·미읽음·확인필요·AI설정·검색) 전부 보존([[feedback_design_preserve_features]]).
+
+### v3.8.131 — 예약모달 고객요약 자동 재생성(self-heal) 차단 (Gemini 비용 절감) (2026-06-18)
+정우님: 어제 제미나이 261회 분석 후 — 캐시 안 되는 호출 줄이려고 예약모달의 고객 AI요약 자동 재생성을 일단 차단.
+- `ReservationModal.jsx`(line ~860): 모달 열 때 고객 serviceSummary가 옛 형식(시술:/하트 없음)이면 `/regen-summary`(서버 gen_cust_summary→Gemini) 자동 호출하던 self-heal(v3.7.899) **제거**. `setRegenSummary("")` 리셋만 남김.
+- 기존 요약은 `_custSummary` 폴백(`regenSummary || serviceSummary`)으로 **그대로 표시** — display 영향 0. 요약 갱신은 실제 방문/매출 발생 시 서버가 1회 생성하는 경로로만(자동 모달-열기 트리거 제거).
+- 재개: git v3.8.130 이전 블록 복원.
+- **측정 메모**: 어제 261회 = 대화답변 131(프롬프트 24k·94% 캐시·출력 144=저렴) + 캐시 안 되는 분석/요약/추출류 130(출력 1,800~2,100=비용주범). 7일 추이 평소 90~180(6/13은 골든테스트 1,276). 이 차단의 실제 절감폭은 `gemini_usage_log` 일별 추이로 며칠 관찰 — 효과 작으면 분석/요약 출력 캡·출처 태깅(이전 제안 A/C) 추가 검토.
+- 적용: v3.8.131 라이브 배포(version.txt 검증, CF 퍼지 everything). React only(ai_booking.py 무관 → 골든 게이트 불필요).
