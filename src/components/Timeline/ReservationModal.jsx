@@ -2499,8 +2499,8 @@ ${naverText}
               </div>
             )}
             </div>
-            {/* AI 분석 — 시술/특이/성격 요약 (고객정보 바로 아래). 서버가 정제 생성 */}
-            {_custSummary && <div
+            {/* AI 분석 박스 표시 중단 (정우님 2026-06-18) — {false &&}로 가림. 복구 시 false 제거 */}
+            {false && _custSummary && <div
               onMouseEnter={()=>setAiReveal(true)} onMouseLeave={()=>setAiReveal(false)}
               onClick={()=>setAiReveal(v=>!v)}
               title={aiReveal?"":"마우스를 올리거나 탭하면 표시"}
