@@ -28,7 +28,7 @@ import BlissRequests from '../components/BlissRequests/BlissRequests'
 import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 
 const uid = genId;
-const BLISS_V = "3.8.133"
+const BLISS_V = "3.8.134"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1984,7 +1984,10 @@ function App() {
         if (!_alarmOnRef.current) return;
         const ctx = _alarmCtxRef.current || {};
         try {
-          if (_activeBizId && (ctx.userBranches||[]).length && !(ctx.aiActiveCount > 0)) {
+          // 알람은 확정대기 전용 → 서버 재검증은 AI 상담중 여부와 무관하게 '항상' 실행.
+          // (기존 !(aiActiveCount>0) 가드는 옛 'AI상담중도 알람' 시절 잔재 — AI 활성 시 재검증이 스킵돼
+          //  클라 stale 확정대기로 유령 알람이 새던 구멍. 제거해서 항상 서버 기준으로만 울림)
+          if (_activeBizId && (ctx.userBranches||[]).length) {
             const bidIn = (ctx.userBranches||[]).map(encodeURIComponent).join(',');
             const vr = await fetch(`${SB_URL}/rest/v1/reservations?business_id=eq.${_activeBizId}&status=in.(pending,request)&is_beta=eq.false&bid=in.(${bidIn})&or=(memo.is.null,memo.not.like.*${encodeURIComponent('확정완료')}*)&select=id&limit=1`,
               { headers: { apikey: SB_KEY, Authorization: "Bearer "+SB_KEY, "Cache-Control": "no-cache" }, cache: "no-store" });

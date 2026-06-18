@@ -4382,3 +4382,10 @@ v3.8.127(body 배경 흰색)이 무효였음 — 거터를 칠하는 건 body가
 - fix: 로그인 레이아웃을 **flex 컬럼**으로 — 바깥 `flexDirection:column, overflowX:hidden, overflowY:auto`(짧으면 스크롤). 카드는 `flex:1` 중앙정렬 래퍼 안. 푸터는 `position:relative, flexShrink:0`(흐름 안 컬럼 하단) + `background:rgba(255,255,255,.94)` + `blur(10px)` + 상단 경계선/그림자 → 불투명·가독성 + 폼과 안 겹침.
 - 검증(프리뷰 375×812 + 로그아웃): 푸터 bg .94 불투명·blur10·relative·flexShrink0, 데모박스(bottom 638) < 푸터(top 770) 겹침 없음, 스크롤 정상, 스크린샷 확인.
 - 적용: v3.8.133 라이브 배포(version.txt 검증, CF 퍼지 everything).
+
+### v3.8.134 — 유령 알람 재발 fix: 반복 알람 서버 재검증 항상 실행 (2026-06-18)
+정우님(맥): 알림경고 0건인데 알람소리 계속. 진단 — DB 확정대기(pending/request, biz_khvurgshb, userBranches) **0건**인데 소리 남.
+- 원인: 확정대기 반복 알람(1분 4번, `AppShell.jsx`)의 서버 재검증(v3.8.45 유령 방어)이 조건에 `!(ctx.aiActiveCount > 0)`가 있어 **AI 상담중일 때 재검증을 스킵** → 클라 `data.reservations`의 stale 확정대기로 그냥 울림. 이 가드는 옛 'AI상담중도 알람' 시절(v3.8.68 이전) 잔재. 알람은 이제 확정대기 전용이라 AI 활성 여부와 무관해야 함.
+- fix: 재검증 조건에서 `!(ctx.aiActiveCount > 0)` 제거 → **서버 재검증 항상 실행**. 서버에 실제 pending/request 없으면 `_alarmOnRef=false`로 무음(유령 차단). 알람 활성 중 1분당 1건 경량 조회라 부하 무시.
+- **추가 원인(맥 케이스)**: 탭을 오래 열어둬 **옛 버전**이 떠 있으면 v3.8.68 이전 코드(AI상담중만으로도 울림)일 수 있음 → 강제 새로고침 안내.
+- 적용: v3.8.134 라이브 배포(version.txt 검증, CF 퍼지 everything). 알람 타이밍이라 프리뷰 검증 불가 — 로직 제거 + 빌드 통과로 확인.
