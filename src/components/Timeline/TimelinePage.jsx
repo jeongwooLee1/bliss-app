@@ -5371,11 +5371,19 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                   {room.isStaffCol && room.activeSegments && (()=>{
                     const startMin2 = startHour*60;
                     const endMin2 = startMin2 + totalRows*5;
+                    const _hm2 = (t, dflt) => t ? parseInt(t.split(":")[0])*60+parseInt(t.split(":")[1]) : dflt;
+                    // 지점 영업시간(오픈~마감): 직원이 출근이어도 영업시간 밖이면 도트(비활성) — 정우님 2026-06-18
+                    const _bTs = (data?.branches||[]).find(b=>b.id===room.branch_id)?.timelineSettings;
+                    const openMin  = Math.max(startMin2, _hm2(_bTs?.openTime, startMin2));
+                    const closeMin = Math.min(endMin2,  _hm2(_bTs?.closeTime, endMin2));
+                    // 활성(흰색) = 직원 근무구간 ∩ 영업시간
                     const parsed = room.activeSegments.map(s => ({
-                      from: s.from ? parseInt(s.from.split(":")[0])*60+parseInt(s.from.split(":")[1]) : startMin2,
-                      until: s.until ? parseInt(s.until.split(":")[0])*60+parseInt(s.until.split(":")[1]) : endMin2,
-                    })).sort((a,b)=>a.from-b.from);
-                    // segments 바깥의 빈 구간들 = 비활성
+                      from: _hm2(s.from, startMin2),
+                      until: _hm2(s.until, endMin2),
+                    })).map(p => ({from: Math.max(p.from, openMin), until: Math.min(p.until, closeMin)}))
+                      .filter(p => p.until > p.from)
+                      .sort((a,b)=>a.from-b.from);
+                    // 활성 바깥 = 비활성(도트)
                     const inactive = [];
                     let cursor = startMin2;
                     for (const p of parsed) {
