@@ -20,7 +20,7 @@ const fmtPlanEnd = (iso) => {
 
 const fmtP = (n) => (n||0).toLocaleString() + 'P'
 
-function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", isSuper=false, onBackToSuper, serverV, scraperStatus=null, BLISS_V="", isMobile=false, billingState={}, bizSwitcher=null }) {
+function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", isSuper=false, onBackToSuper, serverV, scraperStatus=null, BLISS_V="", isMobile=false, billingState={}, bizSwitcher=null, onGoPlan=null }) {
   const [chatExpanded, setChatExpanded] = useState(false);
   const cats = [
     { label:"예약 관리", items: nav.filter(n=>["timeline","reservations"].includes(n.id)) },
@@ -55,21 +55,34 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
           {bizSwitcher.options.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
         </select>
       )}
-      {/* 토스 심사 대응 (2026-05-15) — 보유 P/플랜 표시 hide. 부활 시 false → true */}
-      {false && (billingState.planKey || billingState.totalBalance >= 0) && (
-        <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:T.bgCard,border:`1px solid ${T.border}`,borderRadius:8}}>
-          <span style={{
-            fontSize:10,fontWeight:T.fw.black,letterSpacing:.3,
-            color:billingState.planKey==='pro'?'#fff':billingState.planKey==='starter'?'#fff':T.gray600,
-            background:billingState.planKey==='pro'?T.primary:billingState.planKey==='starter'?T.success:T.gray300,
-            padding:"3px 8px",borderRadius:4
-          }}>{planLabel}</span>
-          {planEndStr && <span style={{fontSize:11,color:T.text,fontWeight:T.fw.bold,whiteSpace:"nowrap"}}>{planEndStr}</span>}
-          <span style={{marginLeft:"auto",fontSize:13,fontWeight:T.fw.black,color:balanceLow?T.danger:T.primary,letterSpacing:-.3}}>
-            {fmtP(billingState.totalBalance)}
-          </span>
-        </div>
-      )}
+      {/* 무료체험 카운트다운 + 구독하기 (마스터만). 보유 P(잔액) 표시는 토스 심사로 계속 숨김 — 트라이얼 안내/구독 유도만 */}
+      {(isSuper || ['owner','manager','super'].includes(role)) && (() => {
+        const isTrial = (billingState.planKey === 'trial') || (!billingState.planKey && !!billingState.planEnd);
+        const d = billingState.planEnd ? new Date(billingState.planEnd) : null;
+        const diff = (d && !isNaN(d)) ? Math.ceil((d - new Date()) / (1000*60*60*24)) : null;
+        const expired = diff !== null && diff < 0;
+        if (isTrial) {
+          return (
+            <button onClick={()=>onGoPlan && onGoPlan()} title="요금제 보기 / 구독하기"
+              style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",width:"100%",textAlign:"left",cursor:"pointer",fontFamily:"inherit",
+                background:expired?"#FEF2F2":T.bgCard, border:`1px solid ${expired?"#FCA5A5":T.primary}`, borderRadius:8}}>
+              <span style={{fontSize:10,fontWeight:T.fw.black,letterSpacing:.3,color:"#fff",background:expired?"#DC2626":T.primary,padding:"3px 8px",borderRadius:4,whiteSpace:"nowrap"}}>{expired?"체험 종료":"무료체험"}</span>
+              {!expired && diff!==null && <span style={{fontSize:11,fontWeight:T.fw.bold,color:T.text,whiteSpace:"nowrap"}}>{diff>0?`D-${diff}`:"오늘 종료"}</span>}
+              <span style={{marginLeft:"auto",fontSize:11,fontWeight:T.fw.bolder,color:expired?"#DC2626":T.primary,whiteSpace:"nowrap"}}>구독하기 →</span>
+            </button>
+          );
+        }
+        if (billingState.planKey) {
+          return (
+            <button onClick={()=>onGoPlan && onGoPlan()} title="요금제 보기"
+              style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",width:"100%",textAlign:"left",cursor:"pointer",fontFamily:"inherit",background:T.bgCard,border:`1px solid ${T.border}`,borderRadius:8}}>
+              <span style={{fontSize:10,fontWeight:T.fw.black,letterSpacing:.3,color:"#fff",background:billingState.planKey==='pro'?T.primary:T.success,padding:"3px 8px",borderRadius:4}}>{planLabel}</span>
+              {planEndStr && <span style={{fontSize:11,color:T.text,fontWeight:T.fw.bold,whiteSpace:"nowrap"}}>{planEndStr}</span>}
+            </button>
+          );
+        }
+        return null;
+      })()}
       {isSuper && <div style={{display:"flex",justifyContent:"flex-end"}}>
         <button onClick={onBackToSuper} style={{fontSize:10,padding:"2px 6px",border:`1px solid ${T.border}`,background:"transparent",color:T.textSub,borderRadius:4,cursor:"pointer",fontFamily:"inherit"}}>← 매장 선택</button>
       </div>}

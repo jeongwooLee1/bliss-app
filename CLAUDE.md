@@ -4389,3 +4389,15 @@ v3.8.127(body 배경 흰색)이 무효였음 — 거터를 칠하는 건 body가
 - fix: 재검증 조건에서 `!(ctx.aiActiveCount > 0)` 제거 → **서버 재검증 항상 실행**. 서버에 실제 pending/request 없으면 `_alarmOnRef=false`로 무음(유령 차단). 알람 활성 중 1분당 1건 경량 조회라 부하 무시.
 - **추가 원인(맥 케이스)**: 탭을 오래 열어둬 **옛 버전**이 떠 있으면 v3.8.68 이전 코드(AI상담중만으로도 울림)일 수 있음 → 강제 새로고침 안내.
 - 적용: v3.8.134 라이브 배포(version.txt 검증, CF 퍼지 everything). 알람 타이밍이라 프리뷰 검증 불가 — 로직 제거 + 빌드 통과로 확인.
+
+### v3.8.135 — 트라이얼 카운트다운 + 구독 유도 UI (결제 시스템 1차 정비) (2026-06-18)
+정우님: 결제(정기결제+충전) 허술 — 가입 후 결제버튼 위치·사용기한·무료 한 달 리밋이 안 보임/안 걸림. **결정: 소프트(배너 안내, 사용 계속) + UI·카운트다운·트라이얼 기록부터**(실제 청구·차단은 토스 빌링 계약 승인 후).
+- **진단**: ① 무료 한 달 리밋 = **전혀 안 걸림**(트라이얼 만료 cron/로직 없음, 옛 trial 계정 period_end 지났는데 status 'trialing' 그대로). ② 사용기한 표시 안 됨(신규 가입은 billing_subscriptions 행 자체가 안 생김 → billingState가 못 읽음). 단 **가입 시 `businesses.settings.planExpiry`엔 기록 중**이었음(근데 +14일 = 카피 '한 달'과 불일치). ③ 정기결제 카드등록 버튼은 BILLING_READY=false "준비 중"(토스 계약 대기).
+- **수정(클라 only)**:
+  - 가입 트라이얼 기간 `+14일 → +1개월`(AppShell handleEnterBiz, 카피 '한 달'과 일치).
+  - `billingState` 로드에 `businesses(plan,settings)` 추가 → 트라이얼 종료일을 `settings.planExpiry`(신규 가입 기록)에서 읽음. planKey=biz.plan 우선.
+  - `Sidebar` 숨겼던 플랜 카드(v3.7.722) → **마스터만 노출**: 트라이얼이면 "무료체험 D-N · 구독하기"(만료 시 "체험 종료" 빨강), 유료면 플랜 배지. **잔액(P)은 계속 숨김**(토스 심사). 클릭 → `onGoPlan` → `/settings/plan`.
+  - 만료 시 **소프트 배너**(AppShell main, role!=staff): "무료 체험 종료 · 구독하기"(navigate /settings/plan) + "나중에"(세션 dismiss). 비차단.
+- 검증: 빌드 통과 + 프리뷰 데모(pro) 사이드바 "프로" 배지 정상 렌더·재로드 클린(흰화면/에러 0). 트라이얼 카운트다운은 동일 카드 로직(데모는 pro라 D-N은 라이브 신규 trial 계정에서 확인).
+- 적용: v3.8.135 라이브 배포(version.txt 검증, CF 퍼지 everything).
+**남은 일(토스 빌링 계약 승인 후)**: ① BILLING_READY=true(정기결제 카드등록·실제 청구 켜기) ② 만료 차단 정책 적용 여부(현재 소프트 배너만) ③ AdminPlan 트라이얼 카운트다운 표시 보강. 트라이얼 만료 자동 처리(status 전환) cron은 미구현 — 현재 표시·안내만, 실제 차단/청구 없음.

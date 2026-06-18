@@ -28,7 +28,7 @@ import BlissRequests from '../components/BlissRequests/BlissRequests'
 import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 
 const uid = genId;
-const BLISS_V = "3.8.134"
+const BLISS_V = "3.8.135"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -476,7 +476,7 @@ function AccountGate({ mode, pendingAccount, onPick, onLogout, onJoinSuccess, on
     if (!acc?.id) { setJoinErr("계정 정보 오류"); return; }
     setBizSaving(true); setJoinErr("");
     try {
-      const exp = new Date(); exp.setDate(exp.getDate() + 14);
+      const exp = new Date(); exp.setMonth(exp.getMonth() + 1); // 무료 체험 한 달 (기존 14일 → 카피와 일치)
       const bizId = "biz_" + uid(), brId = "br_" + uid(), mbrId = "mbr_" + uid();
       await sb.insert("businesses", { id: bizId, name: bizName.trim(), code: acc.login_id, phone: "",
         settings: JSON.stringify({ plan: "trial", planExpiry: exp.toISOString().slice(0,10) }), use_yn: true });
@@ -1615,21 +1615,24 @@ function App() {
   const [scraperStatus, setScraperStatus] = useState(null); // {lastSeen, lastScraped, isAlive, isWarning}
   // 사업장 빌링 정보 — 사이드바에 잔액·종료일 표시
   const [billingState, setBillingState] = useState({ totalBalance: 0, planEnd: null, planLabel: '', planKey: '' });
+  const [trialBannerOff, setTrialBannerOff] = useState(()=>{ try{ return sessionStorage.getItem('bliss_trial_banner_off')==='1'; }catch{ return false; } }); // 만료 소프트 배너 dismiss(세션) — 다음 세션엔 다시 뜸
   useEffect(() => {
     if (!currentBizId) return;
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
     const load = () => Promise.all([
       fetch(`${SB_URL}/rest/v1/billing_balances?business_id=eq.${currentBizId}&select=balance`, { headers: H }).then(r=>r.json()).catch(()=>[]),
       fetch(`${SB_URL}/rest/v1/billing_subscriptions?business_id=eq.${currentBizId}&select=plan_key,current_period_end&order=current_period_end.asc&limit=1`, { headers: H }).then(r=>r.json()).catch(()=>[]),
-    ]).then(([balances, subs]) => {
+      // 트라이얼 종료일은 가입 시 businesses.settings.planExpiry에 기록됨 (신규는 billing_subscriptions 행이 없음)
+      fetch(`${SB_URL}/rest/v1/businesses?id=eq.${currentBizId}&select=plan,settings`, { headers: H }).then(r=>r.json()).catch(()=>[]),
+    ]).then(([balances, subs, bizRows]) => {
       const totalBalance = (Array.isArray(balances) ? balances : []).reduce((s,b)=>s+(b.balance||0),0);
       const sub = Array.isArray(subs) ? subs[0] : null;
-      setBillingState({
-        totalBalance,
-        planEnd: sub?.current_period_end || null,
-        planKey: sub?.plan_key || '',
-        planLabel: '',
-      });
+      const biz = Array.isArray(bizRows) ? bizRows[0] : null;
+      let st = {}; try { st = typeof biz?.settings === 'string' ? JSON.parse(biz.settings || '{}') : (biz?.settings || {}); } catch(e) {}
+      const planKey = biz?.plan || sub?.plan_key || st.plan || '';
+      // 트라이얼: settings.planExpiry 우선 / 유료: 구독 period 우선
+      const planEnd = (planKey === 'trial' ? (st.planExpiry || sub?.current_period_end) : (sub?.current_period_end || st.planExpiry)) || null;
+      setBillingState({ totalBalance, planEnd, planKey, planLabel: '' });
     });
     load();
     const t = setInterval(load, 120000); // 2분 폴링 (Realtime 백업)
@@ -2661,12 +2664,12 @@ function App() {
       <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" rel="stylesheet"/>
 
       <aside className="sidebar-d" style={S.sidebar}>
-        <Sidebar nav={nav} page={page} setPage={setPage} role={role} branchNames={branchNames} onLogout={handleLogout} bizName={bizName} isSuper={isSuper} onBackToSuper={handleBackToSuper} serverV={serverV} BLISS_V={BLISS_V} billingState={billingState} scraperStatus={scraperStatus} bizSwitcher={bizSwitcher}/>
+        <Sidebar nav={nav} page={page} setPage={setPage} role={role} branchNames={branchNames} onLogout={handleLogout} bizName={bizName} isSuper={isSuper} onBackToSuper={handleBackToSuper} serverV={serverV} BLISS_V={BLISS_V} billingState={billingState} onGoPlan={()=>navigate('/settings/plan')} scraperStatus={scraperStatus} bizSwitcher={bizSwitcher}/>
       </aside>
       {sideOpen && <div className="sidebar-m" style={{position:"fixed",inset:0,zIndex:300}}>
         <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,.5)"}} onClick={()=>setSideOpen(false)}/>
         <div style={{position:"relative",width:260,height:"100%",background:T.bgCard,display:"flex",flexDirection:"column",animation:"slideIn .5s cubic-bezier(.22,1,.36,1)"}}>
-          <Sidebar nav={nav} page={page} setPage={p=>{setPage(p);setSideOpen(false)}} role={role} branchNames={branchNames} onLogout={handleLogout} bizName={bizName} isSuper={isSuper} onBackToSuper={handleBackToSuper} serverV={serverV} BLISS_V={BLISS_V} billingState={billingState} scraperStatus={scraperStatus} bizSwitcher={bizSwitcher} isMobile/>
+          <Sidebar nav={nav} page={page} setPage={p=>{setPage(p);setSideOpen(false)}} role={role} branchNames={branchNames} onLogout={handleLogout} bizName={bizName} isSuper={isSuper} onBackToSuper={handleBackToSuper} serverV={serverV} BLISS_V={BLISS_V} billingState={billingState} onGoPlan={()=>navigate('/settings/plan')} scraperStatus={scraperStatus} bizSwitcher={bizSwitcher} isMobile/>
         </div>
       </div>}
       {newVer && <div onClick={()=>{try{window.location.href=window.location.pathname+"?v="+newVer;}catch(e){window.location.reload();}}} style={{position:"fixed",top:10,right:10,zIndex:9999,background:T.primary,color:"#fff",padding:"10px 16px",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 12px rgba(0,0,0,.25)",animation:"ovFadeIn .3s"}}>
@@ -2738,6 +2741,16 @@ function App() {
         <div className="mob-hdr" style={{display:"none"}}></div>
         <AnnouncesMarquee/>
         <StaffRequestsBanner bizId={currentBizId} role={role} branches={data?.branches} />
+        {role !== "staff" && billingState.planKey === "trial" && billingState.planEnd && new Date(billingState.planEnd) < new Date() && !trialBannerOff && (
+          <div style={{margin:"6px 12px 0",padding:"9px 14px",background:"#FEF2F2",border:"1px solid #FCA5A5",borderRadius:10,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+            <span style={{fontSize:13,fontWeight:800,color:"#DC2626"}}>무료 체험이 종료됐어요</span>
+            <span style={{fontSize:12.5,color:"#7f1d1d"}}>계속 이용하시려면 구독해 주세요. (지금은 그대로 사용 가능)</span>
+            <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+              <button onClick={()=>navigate('/settings/plan')} style={{padding:"6px 14px",borderRadius:8,border:"none",background:"#DC2626",color:"#fff",fontSize:12.5,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>구독하기</button>
+              <button onClick={()=>{ setTrialBannerOff(true); try{ sessionStorage.setItem('bliss_trial_banner_off','1'); }catch{} }} style={{padding:"6px 10px",borderRadius:8,border:"1px solid #FCA5A5",background:"#fff",color:"#DC2626",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>나중에</button>
+            </div>
+          </div>
+        )}
         {role !== "staff" && <DepositsAlertBanner
           count={pendingDepositCount} latest={depositLatest}
           onOpen={() => {
