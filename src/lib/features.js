@@ -89,7 +89,7 @@ const PRO_FEATURES = {
 export const PLANS = {
   trial: {
     label: '체험',
-    desc: '14일 무료. 핵심 기능만 (예약·매출·고객)',
+    desc: '한 달 무료. 핵심 기능만 (예약·매출·고객)',
     price: 0,
     monthly_credit: 0,  // 무료 체험은 P 미제공 (토스 정책: 결제 없이 받은 P는 환불 모호)
     features: {},  // 전부 false

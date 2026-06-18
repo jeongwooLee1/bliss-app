@@ -28,7 +28,7 @@ import BlissRequests from '../components/BlissRequests/BlissRequests'
 import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 
 const uid = genId;
-const BLISS_V = "3.8.131"
+const BLISS_V = "3.8.132"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -540,7 +540,7 @@ function AccountGate({ mode, pendingAccount, onPick, onLogout, onJoinSuccess, on
     return wrap(<>
       <div style={{fontSize:14,fontWeight:700,marginBottom:6,textAlign:"center"}}>내 사업장 만들기</div>
       <div style={{fontSize:12,color:T.textSub,marginBottom:12,textAlign:"center",lineHeight:1.6}}>
-        사업장(브랜드)명을 입력하세요. 14일 무료 체험으로 시작됩니다.
+        사업장(브랜드)명을 입력하세요. 한 달 무료 체험으로 시작됩니다.
       </div>
       <input value={bizName} onChange={e=>{setBizName(e.target.value);setJoinErr("")}} placeholder="브랜드 또는 상호명"
         onKeyDown={e=>e.key==="Enter"&&doCreateBiz()}
@@ -717,7 +717,7 @@ function SuperSystemSettings() {
           <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.textSub,marginBottom:8}}>요금제 안내</div>
           <GridLayout cols={3} gap={8}>
             {[
-              {name:"체험",id:"trial",color:T.gray500,desc:"14일 무료"},
+              {name:"체험",id:"trial",color:T.gray500,desc:"한 달 무료"},
               {name:"Basic",id:"basic",color:T.male,desc:"지점 1 · 직원 3"},
               {name:"Pro",id:"pro",color:T.primary,desc:"무제한"},
             ].map(p=>(

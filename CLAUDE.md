@@ -4369,3 +4369,9 @@ v3.8.127(body 배경 흰색)이 무효였음 — 거터를 칠하는 건 body가
 - staging은 SEO가 더 충실(keywords·robots·favicon·twitter:image + JSON-LD 2개) → 그대로 유지.
 - 배포: 정적 파일 scp(/tmp→sudo cp /var/www/html/bliss-app/) + CF 퍼지(files: / · landing.html · landing-staging.html). **React 앱(index.html·BLISS_V) 무관 → 버전업 X**(앱 사용자 불필요 새로고침 방지). 검증: 루트 응답 = 새 랜딩(byte 동일).
 - ⚠️ **콘텐츠 불일치 플래그**: 새 홈은 "무료 체험 **한 달**"(JSON-LD도 "한 달")인데 `pricing.html`·기존 정책(CLAUDE.md)은 "**14일**". 고객 대면 불일치 — 정우님 확인 필요(트라이얼을 1개월로 바꾼 건지 / staging 오타인지). 결정되면 한쪽으로 통일.
+
+### 무료 체험 기간 표기 "14일" → "한 달" 전면 통일 (2026-06-18, v3.8.132)
+정우님: 홈(landing-staging 승격)이 "무료 체험 한 달"인데 다른 페이지는 "14일"이라 불일치 → "한 달"로 통일 결정.
+- 수정: `public/pricing.html`(메타3+카드2, replace_all 5곳) · `src/lib/features.js`(trial.desc) · `src/pages/AppShell.jsx`(SignupWizard 543 가입안내 + 720 플랜라벨) · **루트 `index.html`**(JSON-LD Offer Trial — ⚠️Vite는 index.html이 프로젝트 루트라 `public/*.html` grep에서 처음 누락, dist grep으로 발견·수정).
+- **14일 만료 강제 로직 없음 확인** — 서버 "14" 매치는 전부 AI 날짜 캘린더(향후 14일)·backfill, trial 만료 아님. 타임라인 "14일 탭"·AdminAlimtalkLog "최근 14일"도 무관(미변경). 순수 카피 변경.
+- 배포: React 번들(features/AppShell) 포함이라 v3.8.132 버전업 + 전체 배포 + CF 퍼지. index.html 누락분은 같은 3.8.132로 재빌드·재배포(JS 동일). dist html trial "14일" 잔존 0건 검증.
