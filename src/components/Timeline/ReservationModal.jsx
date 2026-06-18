@@ -509,7 +509,8 @@ function TimelineModal({ item, onSave, onAddCompanion, onDelete, onDeleteRequest
   const itemDur = item?.dur || (isNaverItem ? 60 : BASE_DUR);
   const defaultEnd = () => { const t = item?.time||"10:00"; const [h,m] = t.split(":").map(Number); const em = m + itemDur; return `${String(h+Math.floor(em/60)).padStart(2,"0")}:${String(em%60).padStart(2,"0")}`; };
   const addMin = (t, mins) => { const [h,m] = t.split(":").map(Number); const em = m + mins; return `${String(h+Math.floor(em/60)).padStart(2,"0")}:${String(em%60).padStart(2,"0")}`; };
-  const initRoomId = (item?.roomId && item.roomId.startsWith("blank_")) ? "" : (item?.roomId || branchRooms[0]?.id);
+  // AI 예약등록(fallback)은 담당자를 미배정으로 — 첫 직원 자동배정 금지 (정우님 2026-06-18)
+  const initRoomId = item?._aiBookFallback ? "" : ((item?.roomId && item.roomId.startsWith("blank_")) ? "" : (item?.roomId || branchRooms[0]?.id));
   const [f, setF] = useState(isNew && !item?.id ? {
     id: uid(), bid: branchId, roomId: initRoomId,
     custId: item?._prefill?.custId || null,
@@ -524,7 +525,7 @@ function TimelineModal({ item, onSave, onAddCompanion, onDelete, onDeleteRequest
       }
       return item?._prefill?.custGender || "";
     })(),
-    staffId: item?.staffId || branchStaff[0]?.id, serviceId: (data.services||[])[0]?.id,
+    staffId: item?._aiBookFallback ? "" : (item?.staffId || branchStaff[0]?.id), serviceId: (data.services||[])[0]?.id,
     visitorName: item?.visitorName||"", visitorPhone: item?.visitorPhone||"",
     visitorCustId: item?.visitorCustId||"",
     // primarySubject: 'visitor'(디폴트, 방문자 main) | 'reserver'(예약자 main)
