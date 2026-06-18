@@ -28,7 +28,7 @@ import BlissRequests from '../components/BlissRequests/BlissRequests'
 import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 
 const uid = genId;
-const BLISS_V = "3.8.132"
+const BLISS_V = "3.8.133"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -366,12 +366,13 @@ function Login({ users, onAccountLogin, onSignup }) {
     </div>
   );
   return (
-    <div style={{minHeight:"100vh",width:"100%",display:"flex",alignItems:"center",justifyContent:"center",background:bgGrad,fontFamily:"'Pretendard',sans-serif",padding:T.sp.lg,position:"relative",overflow:"hidden"}}>
+    <div style={{minHeight:"100vh",width:"100%",display:"flex",flexDirection:"column",background:bgGrad,fontFamily:"'Pretendard',sans-serif",position:"relative",overflowX:"hidden",overflowY:"auto"}}>
       <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" rel="stylesheet"/>
       {/* 블리스미 첫페이지 흐린 배경 */}
       <iframe src="/landing.html" title="" tabIndex={-1} aria-hidden="true" scrolling="no"
         style={{position:"absolute",top:"-4%",left:"-4%",width:"108%",height:"108%",border:"none",filter:"blur(9px) saturate(1.08)",transform:"scale(1.04)",pointerEvents:"none",zIndex:0}}/>
       <div style={{position:"absolute",inset:0,background:"linear-gradient(135deg, rgba(124,93,250,.30) 0%, rgba(216,216,232,.55) 55%, rgba(255,255,255,.45) 100%)",zIndex:1,pointerEvents:"none"}}/>
+      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:T.sp.lg,position:"relative",zIndex:2,minHeight:0}}>
       <div style={{...cardStyle,padding:"32px 28px",width:"92%",maxWidth:420,position:"relative",zIndex:2}}>
         <button onClick={()=>{window.location.href='/';}} aria-label="닫기" title="홈으로"
           style={{position:"absolute",top:12,right:12,width:32,height:32,borderRadius:"50%",border:"none",background:T.gray100,color:T.textSub,fontSize:20,lineHeight:1,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
@@ -419,9 +420,10 @@ function Login({ users, onAccountLogin, onSignup }) {
           </div>
         </div>
       </div>
+      </div>
       {showHelp && <AuthHelpModal initialMode={showHelp} onClose={()=>setShowHelp(null)} onUseId={(id)=>{setLoginId(id);setErr("");}}/>}
-      {/* 사업자정보 푸터 — PG(토스) 심사용. 모바일에서도 항상 노출 */}
-      <div style={{position:"absolute",bottom:0,left:0,right:0,zIndex:2,padding:"7px 12px 9px",textAlign:"center",fontSize:10,lineHeight:1.65,color:"rgba(45,38,75,.82)",background:"rgba(255,255,255,.5)",backdropFilter:"blur(2px)"}}>
+      {/* 사업자정보 푸터 — PG(토스) 심사용. 모바일에서도 항상 노출. 흐름 안(컬럼 하단)·불투명 → 폼과 안 겹치고 가독성 확보 */}
+      <div style={{position:"relative",zIndex:2,flexShrink:0,padding:"9px 12px 11px",textAlign:"center",fontSize:10,lineHeight:1.65,color:"rgba(45,38,75,.95)",background:"rgba(255,255,255,.94)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",borderTop:"1px solid rgba(0,0,0,.07)",boxShadow:"0 -2px 10px rgba(0,0,0,.05)"}}>
         <div>(주)테라포트 · 대표 권신영 · 사업자등록번호 632-81-02070 · 통신판매업 제2022-성남수정-0100호</div>
         <div>서울특별시 강남구 논현로 641, 420호 · 070-8983-6838 · contact@blissme.ai</div>
         <div style={{marginTop:2}}>

@@ -4375,3 +4375,10 @@ v3.8.127(body 배경 흰색)이 무효였음 — 거터를 칠하는 건 body가
 - 수정: `public/pricing.html`(메타3+카드2, replace_all 5곳) · `src/lib/features.js`(trial.desc) · `src/pages/AppShell.jsx`(SignupWizard 543 가입안내 + 720 플랜라벨) · **루트 `index.html`**(JSON-LD Offer Trial — ⚠️Vite는 index.html이 프로젝트 루트라 `public/*.html` grep에서 처음 누락, dist grep으로 발견·수정).
 - **14일 만료 강제 로직 없음 확인** — 서버 "14" 매치는 전부 AI 날짜 캘린더(향후 14일)·backfill, trial 만료 아님. 타임라인 "14일 탭"·AdminAlimtalkLog "최근 14일"도 무관(미변경). 순수 카피 변경.
 - 배포: React 번들(features/AppShell) 포함이라 v3.8.132 버전업 + 전체 배포 + CF 퍼지. index.html 누락분은 같은 3.8.132로 재빌드·재배포(JS 동일). dist html trial "14일" 잔존 0건 검증.
+
+### v3.8.133 — 로그인 화면 사업자정보 푸터 모바일 가독성·겹침 fix (2026-06-18)
+정우님(모바일): 로그인 화면 하단 사업자정보 푸터가 불투명도 낮아(반투명) 흐린 랜딩 배경이 비쳐 글자 안 읽힘 + 체험데모 계정 박스와 겹침.
+- 원인(`AppShell.jsx` Login): 푸터가 `position:absolute bottom:0` + `background:rgba(255,255,255,.5)` + `blur(2px)` → ① 반투명이라 뒤 비침 ② 절대배치라 짧은 모바일 화면에서 중앙정렬 카드(데모박스)와 겹침. 바깥 컨테이너 `overflow:hidden`이라 긴 카드 잘림.
+- fix: 로그인 레이아웃을 **flex 컬럼**으로 — 바깥 `flexDirection:column, overflowX:hidden, overflowY:auto`(짧으면 스크롤). 카드는 `flex:1` 중앙정렬 래퍼 안. 푸터는 `position:relative, flexShrink:0`(흐름 안 컬럼 하단) + `background:rgba(255,255,255,.94)` + `blur(10px)` + 상단 경계선/그림자 → 불투명·가독성 + 폼과 안 겹침.
+- 검증(프리뷰 375×812 + 로그아웃): 푸터 bg .94 불투명·blur10·relative·flexShrink0, 데모박스(bottom 638) < 푸터(top 770) 겹침 없음, 스크롤 정상, 스크린샷 확인.
+- 적용: v3.8.133 라이브 배포(version.txt 검증, CF 퍼지 everything).
