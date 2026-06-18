@@ -4361,3 +4361,11 @@ v3.8.127(body 배경 흰색)이 무효였음 — 거터를 칠하는 건 body가
 - 재개: git v3.8.130 이전 블록 복원.
 - **측정 메모**: 어제 261회 = 대화답변 131(프롬프트 24k·94% 캐시·출력 144=저렴) + 캐시 안 되는 분석/요약/추출류 130(출력 1,800~2,100=비용주범). 7일 추이 평소 90~180(6/13은 골든테스트 1,276). 이 차단의 실제 절감폭은 `gemini_usage_log` 일별 추이로 며칠 관찰 — 효과 작으면 분석/요약 출력 캡·출처 태깅(이전 제안 A/C) 추가 검토.
 - 적용: v3.8.131 라이브 배포(version.txt 검증, CF 퍼지 everything). React only(ai_booking.py 무관 → 골든 게이트 불필요).
+
+### landing-staging.html → 홈페이지(루트 /) 승격 (2026-06-18, 정적·버전업 없음)
+정우님: blissme.ai 첫 페이지가 새로 만든 `landing-staging.html`이 되어야 하는데 별도 페이지로만 있던 것(과거 오해)을 홈으로 승격.
+- 루트(`/`)는 nginx `location = / { try_files /landing.html /index.html }` → **landing.html을 서빙**. 그래서 `landing-staging.html` 내용을 `landing.html`로 복사(승격). 둘 다 동일 내용으로 배포(유저 preview URL `?preview_no_redirect=1`도 계속 작동).
+- **승격 전 2가지 보정**(staging이 홈으로 부족했던 점): ① 리다이렉트 가드 `bliss_session`만 → `bliss_session && bliss_session_token` (토큰 없으면 /timeline 리다이렉트 안 함 = SPA 자동로그인 조건 일치, 로그인 무한루프 방지) ② 방문자 카운터 `/track-visit` 스크립트 추가(기존 홈에 있던 것). 둘 다 기존 landing.html에서 가져옴.
+- staging은 SEO가 더 충실(keywords·robots·favicon·twitter:image + JSON-LD 2개) → 그대로 유지.
+- 배포: 정적 파일 scp(/tmp→sudo cp /var/www/html/bliss-app/) + CF 퍼지(files: / · landing.html · landing-staging.html). **React 앱(index.html·BLISS_V) 무관 → 버전업 X**(앱 사용자 불필요 새로고침 방지). 검증: 루트 응답 = 새 랜딩(byte 동일).
+- ⚠️ **콘텐츠 불일치 플래그**: 새 홈은 "무료 체험 **한 달**"(JSON-LD도 "한 달")인데 `pricing.html`·기존 정책(CLAUDE.md)은 "**14일**". 고객 대면 불일치 — 정우님 확인 필요(트라이얼을 1개월로 바꾼 건지 / staging 오타인지). 결정되면 한쪽으로 통일.
