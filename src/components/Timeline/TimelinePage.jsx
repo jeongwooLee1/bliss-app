@@ -2587,26 +2587,11 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     if (!item.isSchedule && item.type === "reservation" && !item.custName?.trim()) {
       alert("고객 이름을 입력해 주세요."); return;
     }
-    // ── 비활성 직원 컬럼 예약 등록 차단 (내부일정은 허용) ──
-    // 예약(고객 시술): 직원이 그 시간대에 활성이 아니면 저장 차단
-    // 내부일정(청소·메모 등 isSchedule): 비활성 시간대에도 등록 허용
-    if (!item.isSchedule && item.type === "reservation" && item.staffId && item.bid && item.date && item.time) {
-      const tToMin = (t) => { if(!t) return 0; const [h,m] = String(t).split(":").map(Number); return (h||0)*60 + (m||0); };
-      const segs = getEmpActiveSegments(item.staffId, item.date, item.bid);
-      const startMin = tToMin(item.time);
-      const endMin = startMin + (Number(item.dur) || 30);
-      const inAny = Array.isArray(segs) && segs.length > 0 && segs.some(s => {
-        const sStart = s.from ? tToMin(s.from) : 0;
-        const sEnd = s.until ? tToMin(s.until) : 24*60;
-        return startMin >= sStart && endMin <= sEnd;
-      });
-      if (!inAny) {
-        const _br = (data?.branches||[]).find(b => b.id === item.bid);
-        const _brName = _br?.name || _br?.short || item.bid;
-        alert(`해당 직원이 ${_brName}에서 ${item.time} 시간대에 근무하지 않습니다.\n\n예약은 직원이 활성인 시간대에만 등록 가능합니다.\n(내부일정/청소는 비활성 시간대에도 등록 가능 — 일정 종류를 "내부일정"으로 변경해주세요)`);
-        return;
-      }
-    }
+    // ── 직원 근무시간 하드 차단 제거 (정우님 2026-06-18) ──
+    // 예약 등록은 '네이버 예약막기'로만 막고, 직원 근무시간으로는 막지 않음
+    // (근무시간은 근무표에서 조절 가능하므로). 근무 밖 시간대에 등록하면
+    // 해당 직원 컬럼의 비활성 구간에 그대로 표시되며, 필요 시 근무시간을 늘리거나
+    // 담당자를 바꾸면 됨. (이전: 직원 비활성 시간대 예약 저장 차단 가드)
     // 수동 예약에 고유 reservation_id 생성 (NULLS NOT DISTINCT unique constraint 회피)
     if (!item.reservationId) item.reservationId = "manual_" + (item.id || uid());
     // 고객 미연결 + 이름 있으면 자동 신규 등록 (직원이 "신규" 체크 잊어도 누락 방지)
