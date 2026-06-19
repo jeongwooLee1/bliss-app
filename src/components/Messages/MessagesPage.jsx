@@ -617,6 +617,21 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             setPhoneCandMap(prev => ({ ...prev, [key]: list }));
           }
         }
+        // 2-kakao) 카카오: 손님 프로필명 앞 회원번호(cust_num)로 즉시 자동연결 (id_by9zcex3gx)
+        //   cust_num은 고유키라 동명이인 문제 없음 — 전화 단독매칭 금지룰과 무관(번호+이름 둘 다 맞음)
+        if (sel.channel === 'kakao') {
+          const uname = (sel.user_name || names[sel.user_id]
+            || (msgs.find(m => m.user_id === sel.user_id && (m.channel||'') === 'kakao' && m.user_name)?.user_name)
+            || '').trim();
+          const mnum = uname.match(/^\s*(\d{4,6})\b/);
+          if (!mnum) return;
+          const num = mnum[1];
+          const cands = await sb.get('customers',
+            `&business_id=eq.${_bizId}&is_hidden=eq.false&cust_num=eq.${num}&limit=2`);
+          if (cancelled || !Array.isArray(cands) || cands.length !== 1) return;
+          const c = fromDb('customers', cands)[0];
+          if (c) { _addCust(c); linkCustomer(c, 'kakao_num'); }
+        }
       } catch (e) { /* ignore */ }
     })();
     return () => { cancelled = true; };
@@ -957,7 +972,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     const remote = (linkRemoteResults||[]).filter(c => !seen.has(c.id));
     return [...local, ...remote].slice(0, 12);
   },[linkSearch, data?.customers, linkRemoteResults]);
-  const linkCustomer = async (cust) => {
+  const linkCustomer = async (cust, via) => {
     if (!sel || !cust?.id) return;
     const ch = sel.channel || "naver";
     const accId = sel.account_id || (convo[0]?.account_id) || ch;
@@ -972,7 +987,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     } catch {}
     const exists = cur.some(s => s?.channel === ch && s?.user_id === uid);
     if (!exists) {
-      cur.push({ channel: ch, account_id: accId, user_id: uid, linked_at: new Date().toISOString() });
+      cur.push({ channel: ch, account_id: accId, user_id: uid, linked_at: new Date().toISOString(), ...(via ? { _via: via } : {}) });
       try {
         const resp = await fetch(SB_URL+"/rest/v1/customers?id=eq."+cust.id, {
           method:"PATCH",
