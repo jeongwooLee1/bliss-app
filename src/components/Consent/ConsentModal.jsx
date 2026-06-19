@@ -21,10 +21,11 @@ function genToken() {
 export default function ConsentModal({ cust, bizId, data, onClose, reservationId, initialSelectedIds, initialPrefill, sendKind, chartIds = [], chartStatus, docStatus, onViewDoc }) {
   const isChart = sendKind === 'chart'  // 차트 보내기 모드: 신규차트+오늘관리 묶음을 단일 카드로 (직원이 신규/기존 안 고름 — 동의서앱이 자동 분기)
   const isBoth = sendKind === 'both'    // 차트 & 동의서 한 화면: 차트 자동카드 + 동의서 체크박스 + 작성완료 보기
-  const linkWord = isBoth ? '차트·동의서' : isChart ? '차트' : '동의서'  // 안내·발송 문구
+  const isRefund = sendKind === 'refund' // 환불 요청서(페이백) 단독 발송 — ct_refund만, 직원이 환불 금액 입력, SMS 우선. 기존 회원 대상(신규 생성 X)
+  const linkWord = isRefund ? '환불 요청서' : isBoth ? '차트·동의서' : isChart ? '차트' : '동의서'  // 안내·발송 문구
   const [tpls, setTpls] = useState([])
   const [folders, setFolders] = useState([])
-  const [selectedIds, setSelectedIds] = useState(initialSelectedIds || [])
+  const [selectedIds, setSelectedIds] = useState(sendKind === 'refund' ? ['ct_refund'] : (initialSelectedIds || []))
   const [prefill, setPrefill] = useState(initialPrefill || {})
   const [kioskId, setKioskId] = useState('')
   const [loading, setLoading] = useState(false)
@@ -91,11 +92,16 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
 
   const smsHasPhone = /^01[016789]\d{7,8}$/.test(String(cust?.phone || '').replace(/[^0-9]/g, ''))
 
+  // 환불 금액 — 직원 입력 (숫자만). prefill_data.refund_amount로 저장 → 동의서앱 ct_refund 폼에 prefill
+  const refundAmt = Number(String(prefill.refund_amount || '').replace(/[^0-9]/g, '')) || 0
+  const _canSend = selectedIds.length > 0 && (!isRefund || refundAmt >= 1) // 환불은 금액 입력해야 발송 가능
+
   // 닫기 — 경고창 없이 바로 닫음 (정우님 요청)
   const handleClose = () => { onClose?.() }
 
   const send = async (via, chatChan) => {
     if (selectedIds.length === 0) return alert('템플릿을 1개 이상 선택하세요.')
+    if (isRefund && refundAmt < 1) return alert('환불 금액을 입력하세요.')
     if (via === 'kiosk' && !kioskId) return alert('대상 태블릿을 선택하세요.')
     const smsPhone = String(cust?.phone || '').replace(/[^0-9]/g, '')
     if ((via === 'sms' || via === 'alimtalk') && !/^01[016789]\d{7,8}$/.test(smsPhone)) return alert('이 고객은 휴대폰 번호(010~)가 없어 발송이 안 됩니다.\nQR/링크로 전달해주세요.')
@@ -105,6 +111,7 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
       const expires_at = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
       const cleanPrefill = Object.fromEntries(Object.entries(prefill).filter(([_, v]) => v && String(v).trim() !== ''))
       if (reservationId) cleanPrefill.reservation_id = reservationId  // 예약 모달에서 보낸 경우 — 예약별 차트 상태 연동
+      if (isRefund) cleanPrefill.refund_amount = refundAmt  // 환불 금액 숫자로 저장 (동의서앱 ct_refund prefill)
       // 지점명 prefill — consent 앱이 "하우스왁싱 {branch}"로 렌더 (없으면 "하우스왁싱"만)
       if (!cleanPrefill.branch) {
         // 매출/예약 발생 지점(cust.bid)만 사용 — bid 없으면 빈칸("하우스왁싱"). 첫 지점(강남) 폴백 금지.
@@ -221,7 +228,7 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9000 }} onClick={handleClose}>
       <div style={{ width: 'min(540px, 95vw)', maxHeight: '90vh', overflow: 'auto', background: '#fff', borderRadius: 12, boxShadow: '0 20px 40px rgba(0,0,0,.2)' }} onClick={e => e.stopPropagation()}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid ' + T.border, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, flex: 1 }}>{isBoth ? '차트 & 동의서' : isChart ? '차트 보내기' : '동의서 요청'} · {cust?.name || ''}</div>
+          <div style={{ fontSize: 15, fontWeight: 800, flex: 1 }}>{isRefund ? '환불 요청서 보내기' : isBoth ? '차트 & 동의서' : isChart ? '차트 보내기' : '동의서 요청'} · {cust?.name || ''}</div>
           <button onClick={handleClose} style={{ border: 'none', background: 'none', fontSize: 20, cursor: 'pointer', color: T.textMuted }}>×</button>
         </div>
 
@@ -279,12 +286,30 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
 
         {/* 작성 폼 */}
         {!result && <div style={{ padding: 16 }}>
-          {tpls.length === 0 && <div style={{ textAlign: 'center', color: T.textMuted, padding: 30, fontSize: 13 }}>
+          {tpls.length === 0 && !isRefund && <div style={{ textAlign: 'center', color: T.textMuted, padding: 30, fontSize: 13 }}>
             등록된 템플릿 없음.<br />
             <a href={`${SIGN_HOST}/?admin=1`} target="_blank" rel="noopener noreferrer" style={{ color: T.primary }}>관리자 편집기</a>에서 추가하세요.
           </div>}
-          {/* 차트&동의서 한 화면 / 차트 단일카드 / 동의서 폴더 체크박스 */}
-          {isBoth ? (<>
+          {/* 환불 요청서 단독 / 차트&동의서 한 화면 / 차트 단일카드 / 동의서 폴더 체크박스 */}
+          {isRefund ? (
+            <div style={{ marginBottom: 12, padding: 14, background: '#fff7ed', borderRadius: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#c2410c', marginBottom: 4 }}>환불 요청서 (페이백)</div>
+              <div style={{ fontSize: 11.5, color: T.textSub, lineHeight: 1.6, marginBottom: 12 }}>
+                환불 요청서만 단독으로 보냅니다 (신규차트·체크리스트 제외).<br />
+                고객님이 링크에서 환불 계좌·서명을 작성하면 매장으로 전달됩니다.
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: T.textSub, marginBottom: 6 }}>환불 금액</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input inputMode="numeric" autoFocus
+                  value={refundAmt ? refundAmt.toLocaleString() : ''}
+                  onChange={e => setPrefill(p => ({ ...p, refund_amount: e.target.value.replace(/[^0-9]/g, '') }))}
+                  placeholder="예: 100,000"
+                  style={{ flex: 1, padding: '10px 12px', fontSize: 16, fontWeight: 700, border: '1px solid ' + T.border, borderRadius: 8, textAlign: 'right' }} />
+                <span style={{ fontSize: 15, color: T.textSub, fontWeight: 700 }}>원</span>
+              </div>
+              {refundAmt < 1 && <div style={{ fontSize: 11, color: T.danger, marginTop: 6 }}>환불 금액을 입력하세요.</div>}
+            </div>
+          ) : isBoth ? (<>
             {/* ── 차트 ── 신규=신규차트+오늘관리 / 기존=오늘관리만 (동의서앱 자동 분기) */}
             <div style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: T.textSub, marginBottom: 6 }}>차트</div>
@@ -368,29 +393,41 @@ export default function ConsentModal({ cust, bizId, data, onClose, reservationId
             {prefillBlock}
           </>)}
 
-          {/* 전송 방식 — 카카오 알림톡 / 채팅채널(WhatsApp·인스타·LINE) / QR·링크 폴백 */}
-          {tpls.length > 0 && <div style={{ marginTop: 14, padding: 12, background: T.gray100, borderRadius: 8 }}>
+          {/* 전송 방식 — 환불=SMS 우선(전용 알림톡 미승인) / 그외 카카오 알림톡·채팅채널·QR */}
+          {(isRefund || tpls.length > 0) && <div style={{ marginTop: 14, padding: 12, background: T.gray100, borderRadius: 8 }}>
             <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 8, lineHeight: 1.5 }}>
-              {smsHasPhone
-                ? `고객 카카오톡으로 ${linkWord} 링크를 보냅니다. 카톡이 안 되면 QR/링크로 전달하세요.`
-                : chatChans.length > 0
-                  ? `이 고객은 ${chatChans.map(c => CH_LABEL[c.channel] || c.channel).join('·')}(으)로 ${linkWord} 링크를 보낼 수 있어요. (휴대폰 010 번호 없음)`
-                  : '이 고객은 휴대폰 번호(010~)가 없어 알림톡 발송이 안 됩니다. QR/링크로 전달하세요.'}
+              {isRefund
+                ? (smsHasPhone
+                    ? '환불 요청서 링크를 문자(SMS)로 보냅니다. 고객님이 작성·서명하시면 매장으로 계좌정보가 전달됩니다.'
+                    : chatChans.length > 0
+                      ? `이 고객은 ${chatChans.map(c => CH_LABEL[c.channel] || c.channel).join('·')}(으)로 환불 요청서 링크를 보낼 수 있어요. (휴대폰 010 번호 없음)`
+                      : '이 고객은 휴대폰 번호(010~)가 없어 문자 발송이 안 됩니다. QR/링크로 전달하세요.')
+                : (smsHasPhone
+                    ? `고객 카카오톡으로 ${linkWord} 링크를 보냅니다. 카톡이 안 되면 QR/링크로 전달하세요.`
+                    : chatChans.length > 0
+                      ? `이 고객은 ${chatChans.map(c => CH_LABEL[c.channel] || c.channel).join('·')}(으)로 ${linkWord} 링크를 보낼 수 있어요. (휴대폰 010 번호 없음)`
+                      : '이 고객은 휴대폰 번호(010~)가 없어 알림톡 발송이 안 됩니다. QR/링크로 전달하세요.')}
             </div>
+            {/* 환불 모드: SMS 우선 (전용 알림톡 템플릿 승인 후 알림톡 추가 예정) */}
+            {isRefund && smsHasPhone && <button onClick={() => send('sms')} disabled={loading || !_canSend}
+              style={{ width: '100%', padding: '12px', marginBottom: 8, fontSize: 15, fontWeight: 800, background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, cursor: (_canSend && !loading) ? 'pointer' : 'not-allowed', opacity: (_canSend && !loading) ? 1 : .5 }}>
+              {loading ? '전송중…' : `📨 문자로 보내기 (${cust?.phone || ''})`}
+            </button>}
             {/* 채팅 채널 발송 — 010 없는 외국 고객도 본인이 쓰는 채널로 링크 수신 */}
             {chatChans.map(ch => (
-              <button key={ch.channel} onClick={() => send('chat', ch)} disabled={loading || selectedIds.length === 0}
-                style={{ width: '100%', padding: '12px', marginBottom: 8, fontSize: 15, fontWeight: 800, background: CH_COLOR[ch.channel] || T.primary, color: '#fff', border: 'none', borderRadius: 8, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
+              <button key={ch.channel} onClick={() => send('chat', ch)} disabled={loading || !_canSend}
+                style={{ width: '100%', padding: '12px', marginBottom: 8, fontSize: 15, fontWeight: 800, background: CH_COLOR[ch.channel] || T.primary, color: '#fff', border: 'none', borderRadius: 8, cursor: (_canSend && !loading) ? 'pointer' : 'not-allowed', opacity: (_canSend && !loading) ? 1 : .5 }}>
                 {loading ? '전송중…' : `💬 ${CH_LABEL[ch.channel] || ch.channel}으로 보내기`}
               </button>
             ))}
-            {smsHasPhone && <button onClick={() => send('alimtalk')} disabled={loading || selectedIds.length === 0}
-              style={{ width: '100%', padding: '12px', fontSize: 15, fontWeight: 800, background: '#FEE500', color: '#3C1E1E', border: 'none', borderRadius: 8, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
+            {/* 알림톡 — 환불 모드 제외 (환불 전용 카카오 템플릿 미승인) */}
+            {!isRefund && smsHasPhone && <button onClick={() => send('alimtalk')} disabled={loading || !_canSend}
+              style={{ width: '100%', padding: '12px', fontSize: 15, fontWeight: 800, background: '#FEE500', color: '#3C1E1E', border: 'none', borderRadius: 8, cursor: (_canSend && !loading) ? 'pointer' : 'not-allowed', opacity: (_canSend && !loading) ? 1 : .5 }}>
               {loading ? '전송중…' : `💬 알림톡으로 보내기 (${cust?.phone || ''})`}
             </button>}
-            {(() => { const _secondary = smsHasPhone || chatChans.length > 0; return (
-            <button onClick={() => send('qr')} disabled={loading || selectedIds.length === 0}
-              style={{ width: '100%', padding: _secondary ? '8px' : '12px', marginTop: _secondary ? 6 : 0, fontSize: _secondary ? 12 : 15, fontWeight: _secondary ? 600 : 800, background: _secondary ? 'transparent' : T.primary, color: _secondary ? T.textSub : '#fff', border: _secondary ? '1px dashed ' + T.border : 'none', borderRadius: 8, cursor: (selectedIds.length && !loading) ? 'pointer' : 'not-allowed', opacity: (selectedIds.length && !loading) ? 1 : .5 }}>
+            {(() => { const _secondary = (isRefund && smsHasPhone) || smsHasPhone || chatChans.length > 0; return (
+            <button onClick={() => send('qr')} disabled={loading || !_canSend}
+              style={{ width: '100%', padding: _secondary ? '8px' : '12px', marginTop: _secondary ? 6 : 0, fontSize: _secondary ? 12 : 15, fontWeight: _secondary ? 600 : 800, background: _secondary ? 'transparent' : T.primary, color: _secondary ? T.textSub : '#fff', border: _secondary ? '1px dashed ' + T.border : 'none', borderRadius: 8, cursor: (_canSend && !loading) ? 'pointer' : 'not-allowed', opacity: (_canSend && !loading) ? 1 : .5 }}>
               {loading ? '생성중…' : `🔗 QR/링크로 대신 받기`}
             </button>); })()}
           </div>}

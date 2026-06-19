@@ -770,6 +770,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
   const [custPkgsServer, setCustPkgsServer] = useState([]);
   // 동의서 모달 (선택된 고객 오브젝트 있으면 열림)
   const [consentCust, setConsentCust] = useState(null);
+  const [consentKind, setConsentKind] = useState(null);  // null=동의서요청 / 'refund'=환불 요청서
   const [pkgEditId, setPkgEditId] = useState(null);
   const [custResStats, setCustResStats] = useState({total:0,noshow:0,samedayCancel:0,samedayChange:0});
   const [custPointTx, setCustPointTx] = useState([]);
@@ -2354,7 +2355,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
                         </button>
                       </div>}
                       {detailTab==="consent" && <div style={{padding:"6px 2px"}}>
-                        <ConsentPanel cust={c} bizId={_activeBizId} onRequestNew={()=>setConsentCust(c)}/>
+                        <ConsentPanel cust={c} bizId={_activeBizId} onRequestNew={()=>{setConsentKind(null);setConsentCust(c);}} onRequestRefund={()=>{setConsentKind('refund');setConsentCust(c);}}/>
                       </div>}
                     </div>
                   </div>
@@ -2456,7 +2457,8 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
       cust={consentCust}
       bizId={_activeBizId}
       data={data}
-      onClose={()=>setConsentCust(null)}/>, document.body)}
+      sendKind={consentKind}
+      onClose={()=>{setConsentCust(null);setConsentKind(null);}}/>, document.body)}
     {smsOpen && createPortal(<SendSmsModal
       open={smsOpen}
       onClose={()=>{ setSmsOpen(false); setSmsCusts([]); }}

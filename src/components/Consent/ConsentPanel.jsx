@@ -8,7 +8,7 @@ import ConsentDocsViewer from './ConsentDocsViewer'
  * 고객 상세 '동의서' 탭 내용 — 서명 이력(신규차트·동의서) 리스트 + 신규 요청 버튼
  * 행 클릭 시 앱 안에서 바로 차트 이미지로 보기(ConsentDocsViewer). Realtime 구독으로 서명 완료 시 자동 갱신.
  */
-export default function ConsentPanel({ cust, onRequestNew, bizId }) {
+export default function ConsentPanel({ cust, onRequestNew, onRequestRefund, bizId }) {
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
   const [viewId, setViewId] = useState(null)  // 인앱 뷰어로 볼 consent id
@@ -100,6 +100,10 @@ export default function ConsentPanel({ cust, onRequestNew, bizId }) {
           style={{ padding: '8px 14px', fontSize: 12, fontWeight: 700, borderRadius: 8, border: '1.5px dashed ' + T.border, background: '#fff', color: T.textSub, cursor: uploading ? 'wait' : 'pointer', fontFamily: 'inherit', opacity: uploading ? 0.6 : 1 }}>
           {uploading ? '등록 중…' : '종이 동의서 사진 등록'}
         </button>
+        {onRequestRefund && <button onClick={onRequestRefund}
+          style={{ padding: '8px 14px', fontSize: 12, fontWeight: 700, borderRadius: 8, border: '1.5px dashed #fb923c', background: '#fff7ed', color: '#c2410c', cursor: 'pointer', fontFamily: 'inherit' }}>
+          환불 요청서 보내기
+        </button>}
         <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
           onChange={(e) => handlePaperUpload(e.target.files?.[0])} />
         <div style={{ marginLeft: 'auto', fontSize: 11, color: T.textMuted }}>
