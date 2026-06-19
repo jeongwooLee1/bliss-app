@@ -28,10 +28,15 @@ import { AuthProvider } from './lib/AuthContext'
   window.fetch = function(input, init){
     try {
       const url = typeof input === 'string' ? input : (input && input.url) || '';
+      // ⚠️ 공개 결제/빌링 엣지펑션은 익명 손님도 호출 + CORS allow-headers에 x-bliss-session 없음 →
+      //   로그인 브라우저(토큰 보유)에서 헤더 붙으면 CORS preflight 실패 = "Failed to fetch"(충전/결제창 깨짐).
+      //   이 펑션들은 세션토큰을 안 씀(verify_jwt/service_role/own key) → 부착 대상에서 제외.
+      const _isPublicPayFn = /\/functions\/v1\/(payment|billing|subscription|point-refund)/.test(url);
       // /rest/(DB) + /storage/(서명URL) + /functions/(Edge — send-sms 등 세션토큰 게이트) 토큰 부착
-      if (url.indexOf('dpftlrsuqxqqeouwbfjd.supabase.co/rest/') !== -1 ||
+      if (!_isPublicPayFn && (
+          url.indexOf('dpftlrsuqxqqeouwbfjd.supabase.co/rest/') !== -1 ||
           url.indexOf('dpftlrsuqxqqeouwbfjd.supabase.co/storage/') !== -1 ||
-          url.indexOf('dpftlrsuqxqqeouwbfjd.supabase.co/functions/') !== -1) {
+          url.indexOf('dpftlrsuqxqqeouwbfjd.supabase.co/functions/') !== -1)) {
         const tok = localStorage.getItem('bliss_session_token') || '';
         if (tok) {
           const h = new Headers((init && init.headers) || (typeof input !== 'string' && input && input.headers) || {});
