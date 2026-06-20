@@ -2015,7 +2015,6 @@ ${naverText}
                       border:"none",
                       fontWeight:sel?700:500}}>
                     {tag.name}
-                    {tag.dur > 0 && <span style={{fontSize:T.fs.sm,opacity:0.75}}>({tag.dur}분)</span>}
                   </button>;
                 }) : <span style={{fontSize:T.fs.sm,color:T.gray500,padding:8}}>태그관리에서 내부일정태그를 등록하세요</span>}
               </div>
