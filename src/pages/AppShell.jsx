@@ -28,7 +28,7 @@ import BlissRequests from '../components/BlissRequests/BlissRequests'
 import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 
 const uid = genId;
-const BLISS_V = "3.8.142"
+const BLISS_V = "3.8.143"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1893,7 +1893,7 @@ function App() {
   useEffect(() => {
     const pendingCnt = (data?.reservations||[]).filter(r =>
       (r.status === "pending" || r.status === "request") &&
-      !(r.memo && r.memo.includes("확정완료")) &&
+      !(r.memo && r.memo.includes("확정완료")) && !(r.memo && r.memo.includes("알림보류")) &&
       (userBranches||[]).includes(r.bid)   // 알림음은 본인 접근 지점만 (마스터=전지점 userBranches, 원장=본인지점) — 소이 요청 2026-06-06
     ).length;
     const prev = _prevCountsRef.current;
@@ -1972,7 +1972,7 @@ function App() {
   useEffect(() => {
     const hasPending = (data?.reservations||[]).some(r =>
       (r.status === "pending" || r.status === "request") &&
-      !(r.memo && r.memo.includes("확정완료")) &&
+      !(r.memo && r.memo.includes("확정완료")) && !(r.memo && r.memo.includes("알림보류")) &&
       (userBranches||[]).includes(r.bid)   // 본인 접근 지점만 (소이 요청 2026-06-06)
     );
     // 반복 알람(1분 4번)은 확정대기만 — AI 상담중은 배너로만 알림(소리 X). AI가 응대 중이라 급하지 않고,
@@ -1992,7 +1992,7 @@ function App() {
           //  클라 stale 확정대기로 유령 알람이 새던 구멍. 제거해서 항상 서버 기준으로만 울림)
           if (_activeBizId && (ctx.userBranches||[]).length) {
             const bidIn = (ctx.userBranches||[]).map(encodeURIComponent).join(',');
-            const vr = await fetch(`${SB_URL}/rest/v1/reservations?business_id=eq.${_activeBizId}&status=in.(pending,request)&is_beta=eq.false&bid=in.(${bidIn})&or=(memo.is.null,memo.not.like.*${encodeURIComponent('확정완료')}*)&select=id&limit=1`,
+            const vr = await fetch(`${SB_URL}/rest/v1/reservations?business_id=eq.${_activeBizId}&status=in.(pending,request)&is_beta=eq.false&bid=in.(${bidIn})&or=(memo.is.null,and(memo.not.like.*${encodeURIComponent('확정완료')}*,memo.not.like.*${encodeURIComponent('알림보류')}*))&select=id&limit=1`,
               { headers: { apikey: SB_KEY, Authorization: "Bearer "+SB_KEY, "Cache-Control": "no-cache" }, cache: "no-store" });
             if (vr.ok) {
               const rows = await vr.json();

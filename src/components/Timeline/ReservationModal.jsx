@@ -633,6 +633,16 @@ function TimelineModal({ item, onSave, onAddCompanion, onDelete, onDeleteRequest
     })()};
   })());
   const set = (k,v) => setF(p=>({...p,[k]:v}));
+  // 확정대기 알림 끄기(보류) — memo에 [알림보류] 마커 토글. AppShell 반복 알람이 이 마커를 제외 (정우 id_6875gyzmao)
+  const toggleSnooze = async () => {
+    const cur = f.memo || "";
+    const on = cur.includes("[알림보류]");
+    const next = on ? cur.replace(/\n?\[알림보류\]/g, "").trim()
+                    : (cur.trim() ? cur.trim() + "\n[알림보류]" : "[알림보류]");
+    set("memo", next);
+    if (f.id) { try { await sb.update("reservations", f.id, { memo: next }); } catch {} }
+    if (setData) setData(d => ({...d, reservations:(d.reservations||[]).map(r => r.id===f.id ? {...r, memo: next} : r)}));
+  };
 
   // 외부(네이버 스크래퍼 등)가 DB status를 바꾸면 모달에도 반영
   // 사용자가 "네이버 확정" 후 네이버에서 확정 처리 → 서버가 status=confirmed로 업데이트 → 여기서 감지
@@ -1896,6 +1906,11 @@ ${naverText}
             <span style={{fontSize:T.fs.lg}}><I name="bell" size={16} color={T.orange}/></span>
             <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.orange}}>확정대기</span>
             <div style={{marginLeft:"auto",display:"flex",gap:6}}>
+              <button onClick={(e)=>{e.stopPropagation(); toggleSnooze();}}
+                title="시간변경 요청 중 등 확정 보류할 때 — 이 예약의 확정대기 알림음만 끕니다(확정대기 상태는 유지)"
+                style={{fontSize:T.fs.sm,color:T.orange,fontWeight:T.fw.bolder,background:T.bgCard,padding:"5px 10px",borderRadius:T.radius.md,border:"1px solid "+T.orange,cursor:'pointer',display:"inline-flex",alignItems:"center",gap:3,fontFamily:'inherit'}}>
+                <I name="bell" size={13} color={T.orange}/>{(f.memo||"").includes("[알림보류]") ? "알림 켜기" : "알림 끄기"}
+              </button>
               {(() => {
               const br = (data.branchSettings||data.branches||[]).find(b=>b.id===branchId);
               const bizId = br?.naverBizId;

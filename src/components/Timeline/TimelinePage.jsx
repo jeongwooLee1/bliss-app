@@ -5582,7 +5582,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                           // 모바일에선 mouseenter가 터치 후 발생 → 모달 뒤에 남는 문제. 팝업 자체 비활성
                           if (window.innerWidth <= 768 || ('ontouchstart' in window)) return;
                           if (dragBlock) return; // 드래그 중엔 미리보기 금지
-                          const memo = (block.memo||"").split("\n").filter(l => { const t=l.trim(); return !(/^\[등록:|^\[수정:/.test(t)) && !(/^\d+\.\d+\s+\d+:\d+\s*(예약)?(접수|변경|확정|취소|신청|확정완료)/.test(t)); }).join("\n").trim();
+                          const memo = (block.memo||"").split("\n").filter(l => { const t=l.trim(); return !(/^\[등록:|^\[수정:/.test(t)) && !(/^\d+\.\d+\s+\d+:\d+\s*(예약)?(접수|변경|확정|취소|신청|확정완료)/.test(t)) && t !== "[알림보류]"; }).join("\n").trim();
                           // 호버 미리보기 — 예약 요약(고객·상태·시간·시술·담당·메모)을 항상 표시 (모담 id_sz1nitfli1)
                           const svcNames = (block.selectedServices||[]).map(id=>(data?.services||[]).find(s=>s.id===id)?.name).filter(Boolean);
                           const r = e.currentTarget.getBoundingClientRect();
@@ -5792,7 +5792,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                         {block.type==="memo" && <div style={{color:T.danger,fontWeight:T.fw.black}}><I name="fileText" size={10} color={T.danger}/> 메모</div>}
                         {block.type==="clockin" && <div style={{color:T.gray600,fontWeight:T.fw.bold}}><I name="clock" size={10} color={T.gray600}/> {staff?.dn||"출근"}</div>}
                         {block.type==="cleaning" && <div style={{color:T.info,fontWeight:T.fw.bold}}><I name="sparkles" size={10} color={T.info}/> 청소</div>}
-                        {effectiveNaverColShow["블록메모"] !== false && block.memo && (() => { const clean = block.memo.split("\n").filter(l => { const t=l.trim(); return !(/^\[등록:|^\[수정:/.test(t)) && !(/^\d+\.\d+\s+\d+:\d+\s*(예약)?(접수|변경|확정|취소|신청|확정완료)/.test(t)); }).join("\n").trim(); return clean ? <div style={{color:block.isSchedule?T.text:T.gray700,fontWeight:T.fw.normal,fontSize:Math.max(6,blockFs-1),marginTop:1,whiteSpace:"pre-line",wordBreak:"break-word"}}><I name="msgSq" size={10} color={T.gray600}/> {clean}</div> : null; })()}
+                        {effectiveNaverColShow["블록메모"] !== false && block.memo && (() => { const clean = block.memo.split("\n").filter(l => { const t=l.trim(); return !(/^\[등록:|^\[수정:/.test(t)) && !(/^\d+\.\d+\s+\d+:\d+\s*(예약)?(접수|변경|확정|취소|신청|확정완료)/.test(t)) && t !== "[알림보류]"; }).join("\n").trim(); return clean ? <div style={{color:block.isSchedule?T.text:T.gray700,fontWeight:T.fw.normal,fontSize:Math.max(6,blockFs-1),marginTop:1,whiteSpace:"pre-line",wordBreak:"break-word"}}><I name="msgSq" size={10} color={T.gray600}/> {clean}</div> : null; })()}
                         {/* Resize handle — 넓은 히트 영역 */}
                         {isEditable && <div className="resize-handle" onMouseDown={e=>handleResizeStart(block,e)} onTouchStart={e=>handleResizeStart(block,e)}
                           style={{position:"absolute",bottom:-8,left:"35%",right:"35%",height:16,cursor:"ns-resize",
