@@ -4417,3 +4417,10 @@ CLAUDE.md 로깅이 v3.8.135에서 끊겨 136~141 요약 보충(상세는 git lo
 - **③ 노쇼→취소 카운트 중복집계 fix** (정우 id_3x33eq9o4i): 이력 if/else 체인이 노쇼→취소 시 취소 분기만 잡혀 노쇼 카운트 원복 누락 → 취소 분기에 "직전이 no_show면 customers.no_show_count −1 + no_show_undo 로그" 추가. ⚠️ 기존 고객 노쇼 카운트는 DB 직접 보정 완료(재보정 금지), 이 패치는 재발 방지용.
 - **적용**: 패치 3개 `git apply`(현재 main 클린 적용) → 빌드 → 배포 → CF 퍼지 everything → git commit+push(`49910f3`). landing-staging.html은 public/dist에 존재해 배포 시 보존됨(별도 백업 불필요). 라이브=git=`3.8.142` 검증.
 - **유의**: ① empDayOrder_v1은 schedule_data(RLS 잠금) 신규 키 — 클라 직접 fetch가 main.jsx 토큰 인터셉터로 x-bliss-session 자동 부착돼 쓰기 통과. allRooms order live-update는 worktree 세션 로컬 검증(esbuild+dev) 기준 — 라이브에서 "오늘 순서 옮김 → 내일 탭 안 흔들림 + 새로고침 지속" 스팟체크 권장. ② 카카오 발신자 두 번째 말머리에 👤 이모지 잔존(기존 코드, 이번 변경 아님). 요청 id_q69vwuz33g done+답글 처리, 나머지 2건 기존 done.
+
+### v3.8.143 — 확정대기 알림 끄기(보류) 버튼 (강남 id_6875gyzmao) (2026-06-20)
+정우님 "알아서 해" — 검토중 요청 중 바로 구현 가능한 '확정대기 알림 끄기' 처리. 시간변경 요청 중 등 직원이 확정 보류할 때 그 예약의 **확정대기 알림음만** 끄고 확정대기 상태(배너·목록)는 유지.
+- 메커니즘 = 기존 "확정완료" 알람 제외 패턴과 동일한 **additive memo 마커**. 예약 memo에 `[알림보류]` 토글 → AppShell 반복 알람 카운트(pendingCnt·hasPending 2곳) + 서버 재검증 쿼리(`or=(memo.is.null,and(not like 확정완료, not like 알림보류))`)에서 제외 → 그 예약은 알람에서 빠짐(상태는 pending 유지). additive 제외라 false alarm 위험 0(알람을 덜 울리게만 함).
+- `ReservationModal`: `toggleSnooze` 핸들러(memo `[알림보류]` 토글 → `sb.update("reservations", f.id, {memo})` + setData 동기화) + 확정대기 배너(`f.status==="pending"`)에 "알림 끄기/켜기" 토글 버튼(`I name="bell"`, 이모지 X). 켜져 있으면(memo에 마커) "알림 켜기" 표시.
+- `TimelinePage`: 블록 메모 표시 필터 2곳(5585·5795)에서 `[알림보류]` 줄 숨김(블록에 마커 안 보이게).
+- **유의**: 알람음만 끔 — 확정대기 배너 카운트·예약목록·블록은 그대로(직원이 여전히 인지). 마커는 ReservationModal memo textarea엔 `[알림보류]`로 보임(토글 상태 피드백). pending/request 둘 다 적용. 확정되면(status 변경) 자연히 알람 대상서 빠짐(마커 잔존 무해). 빌드 검증 후 배포(알람 타이밍이라 라이브 실예약으로 동작 확인 권장).
