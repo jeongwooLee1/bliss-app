@@ -4401,3 +4401,19 @@ v3.8.127(body 배경 흰색)이 무효였음 — 거터를 칠하는 건 body가
 - 검증: 빌드 통과 + 프리뷰 데모(pro) 사이드바 "프로" 배지 정상 렌더·재로드 클린(흰화면/에러 0). 트라이얼 카운트다운은 동일 카드 로직(데모는 pro라 D-N은 라이브 신규 trial 계정에서 확인).
 - 적용: v3.8.135 라이브 배포(version.txt 검증, CF 퍼지 everything).
 **남은 일(토스 빌링 계약 승인 후)**: ① BILLING_READY=true(정기결제 카드등록·실제 청구 켜기) ② 만료 차단 정책 적용 여부(현재 소프트 배너만) ③ AdminPlan 트라이얼 카운트다운 표시 보강. 트라이얼 만료 자동 처리(status 전환) cron은 미구현 — 현재 표시·안내만, 실제 차단/청구 없음.
+
+### v3.8.136 → v3.8.141 — 변경이력 캐치업 (2026-06-18~20)
+CLAUDE.md 로깅이 v3.8.135에서 끊겨 136~141 요약 보충(상세는 git log).
+- **v3.8.136**: 워크트리 cherry-pick 재개 — golden_set.json 충돌 해소(f1201aa couple_2people, 29케이스) + 워크트리 5커밋 적용·배포.
+- **v3.8.138**: 타임라인 예약 블록 드래그 시 고스트 시각 ≠ 시간축 줄 어긋남 fix (PC·모바일, id_orz7fu0oqz).
+- **v3.8.139**: 받은메시지함 카카오 대화 열 때 손님 프로필명 앞 회원번호로 고객 즉시 자동연결 (id_by9zcex3gx).
+- **v3.8.140**: 토스 결제 페이지(/pay) "Failed to fetch" fix — main.jsx fetch 인터셉터가 결제 Edge Function(payment/billing/subscription/point-refund)에 x-bliss-session 부착해 CORS preflight 깨지던 것 제외 처리. 로그인 직원의 충전 결제창이 막혀 토스 심사에 결제창이 안 보이던 직접 원인.
+- **v3.8.141**: 환불 요청서(페이백) 발송 기능 — ConsentModal `sendKind='refund'`(ct_refund 템플릿·환불금액 입력·SMS 우선) + ConsentPanel "환불 요청서 보내기" 버튼 + CustomersPage 배선. (ct_refund active 의존, 검증 후 배포)
+
+### v3.8.142 — 직원 칸 날짜별 순서 + 카카오 발신자 표시 + 노쇼→취소 카운트 원복 (2026-06-20)
+작업세션(worktree)이 준비한 검증 완료 패치 3건을 배포세션이 묶어 배포. 전부 React 클라이언트 변경.
+- **① 직원 컬럼 순서 날짜별 저장** (정우 id_q69vwuz33g, 설계 컨펌): 순서가 지점당 1개 리스트라 한 날 옮기면 다른 날짜 순서까지 흔들리던 문제. 신규 `schedule_data.empDayOrder_v1`(`{"YYYY-MM-DD":{branchId:[empId…]}}`) — 한 날짜에서 ◀▶ 옮기면 **그 날짜만 저장**, 미설정 날짜는 기존 지점 공통 순서(`empColOrder`) 폴백, 과거 날짜 자동 prune. rt_pings 패턴(schRtRef 등록) 일관. `moveEmpCol`이 `setEmpDayOrder(selDate,branchId,…)` 호출 + allRooms order 산출이 날짜별 우선.
+- **② 카카오 발신자 말머리 오표시 fix** (정우 id_xqm0nenjxr): 카카오 메시지엔 발신자 기록이 없어 보는 사람(로그인) 지점(강남)으로 폴백 표시되던 것 → `_kkStaff` 헬퍼(raw_payload.staff 운영자명) || "카카오 자동" 표시. MessagesPage 말머리 2곳.
+- **③ 노쇼→취소 카운트 중복집계 fix** (정우 id_3x33eq9o4i): 이력 if/else 체인이 노쇼→취소 시 취소 분기만 잡혀 노쇼 카운트 원복 누락 → 취소 분기에 "직전이 no_show면 customers.no_show_count −1 + no_show_undo 로그" 추가. ⚠️ 기존 고객 노쇼 카운트는 DB 직접 보정 완료(재보정 금지), 이 패치는 재발 방지용.
+- **적용**: 패치 3개 `git apply`(현재 main 클린 적용) → 빌드 → 배포 → CF 퍼지 everything → git commit+push(`49910f3`). landing-staging.html은 public/dist에 존재해 배포 시 보존됨(별도 백업 불필요). 라이브=git=`3.8.142` 검증.
+- **유의**: ① empDayOrder_v1은 schedule_data(RLS 잠금) 신규 키 — 클라 직접 fetch가 main.jsx 토큰 인터셉터로 x-bliss-session 자동 부착돼 쓰기 통과. allRooms order live-update는 worktree 세션 로컬 검증(esbuild+dev) 기준 — 라이브에서 "오늘 순서 옮김 → 내일 탭 안 흔들림 + 새로고침 지속" 스팟체크 권장. ② 카카오 발신자 두 번째 말머리에 👤 이모지 잔존(기존 코드, 이번 변경 아님). 요청 id_q69vwuz33g done+답글 처리, 나머지 2건 기존 done.
