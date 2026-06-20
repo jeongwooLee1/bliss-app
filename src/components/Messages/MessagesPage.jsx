@@ -18,6 +18,7 @@ import { uploadImageToStorage } from '../../lib/supabase'
 //   raw_payload.pf_id(실제 채널 pfId)를 account_id로 치환해 settings.kakao_branch_override 매칭이 되게 함.
 const _kkPfId = (m) => { let rp = m?.raw_payload; if (typeof rp === 'string') { try { rp = JSON.parse(rp); } catch { return null; } } return rp?.pf_id || null; };
 const _normKakaoMsg = (m) => { if (m && m.channel === 'kakao') { const pf = _kkPfId(m); if (pf) return { ...m, account_id: pf }; } return m; };
+const _kkStaff = (m) => { if (!m || m.channel !== 'kakao') return null; let rp = m.raw_payload; if (typeof rp === 'string') { try { rp = JSON.parse(rp); } catch { return null; } } return (rp && rp.staff) || null; };
 const _normKakaoArr = (arr) => Array.isArray(arr) ? arr.map(_normKakaoMsg) : arr;
 
 function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranches=[], isMaster=false, currentUser=null, pendingChat=null, onPendingChatDone, setPendingOpenRes, setPage, forceCompact=false, inboxResetKey=0, onClosePanel }) {
@@ -2160,7 +2161,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
               </div>}
               {/* 발신 말머리 — 발신 드롭다운에서 선택된 직원/지점(sent_by_staff_name). 기록 없으면 내 지점명(드롭다운 디폴트). 고객엔 노출 안 됨 */}
               {isOut && !m.is_ai && <div style={{display:"flex",justifyContent:isOut?"flex-end":"flex-start",marginBottom:3}}>
-                <span style={{background:"#6D28D9",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:forceCompact?9:10,fontWeight:800,letterSpacing:0.3,display:"inline-flex",alignItems:"center",gap:3}}><I name="user" size={forceCompact?9:10} color="#fff"/>{m.sent_by_staff_name || _userBranchName || "직원"}</span>
+                <span style={{background:"#6D28D9",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:forceCompact?9:10,fontWeight:800,letterSpacing:0.3,display:"inline-flex",alignItems:"center",gap:3}}><I name="user" size={forceCompact?9:10} color="#fff"/>{m.channel==='kakao' ? (_kkStaff(m) || '카카오 자동') : (m.sent_by_staff_name || _userBranchName || "직원")}</span>
               </div>}
               <div data-allow-select="true" style={{padding:forceCompact?"7px 10px":"10px 14px",borderRadius:isOut?"14px 14px 4px 14px":"14px 14px 14px 4px",background:isOut?(m.is_ai?"#A78BFA":T.primary):"#fff",color:isOut?"#fff":T.text,fontSize:forceCompact?12:16,lineHeight:1.45,boxShadow:"0 1px 2px rgba(0,0,0,.08)",border:isOut?"none":"1px solid "+T.border,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
                 {m.message_text}
@@ -2431,8 +2432,8 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
               return <div key={i} style={{display:"flex",flexDirection:isOut?"row-reverse":"row",alignItems:"flex-end",gap:8}}>
                 <div style={{maxWidth:"70%"}}>
                   {/* 직원 답장 말머리 — 고객엔 노출 안 됨, 직원만 봄 */}
-                  {isOut && !m.is_ai && m.sent_by_staff_name && <div style={{display:"flex",justifyContent:"flex-end",marginBottom:3}}>
-                    <span style={{background:"#6D28D9",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:800,letterSpacing:0.3}}>👤 {m.sent_by_staff_name}</span>
+                  {isOut && !m.is_ai && (m.sent_by_staff_name || m.channel==='kakao') && <div style={{display:"flex",justifyContent:"flex-end",marginBottom:3}}>
+                    <span style={{background:"#6D28D9",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:800,letterSpacing:0.3}}>👤 {m.channel==='kakao' ? (_kkStaff(m) || '카카오 자동') : m.sent_by_staff_name}</span>
                   </div>}
                   <div style={{padding:"10px 14px",borderRadius:isOut?"16px 16px 4px 16px":"16px 16px 16px 4px",background:isOut?T.primary:"#fff",color:isOut?"#fff":T.text,fontSize:16,lineHeight:1.5,boxShadow:"0 1px 2px rgba(0,0,0,.08)",border:isOut?"none":"1px solid "+T.border,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
                     {m.message_text}

@@ -3245,6 +3245,14 @@ ${naverText}
                     } else {
                       _logEntries.push({ ..._logBase, type: 'cancel_normal', meta: { ..._meta, grace: _penaltyType === 'grace' } });
                     }
+                    // 노쇼였던 예약을 취소로 전환 → 노쇼 카운트 원복 (no_show→cancelled 중복집계 방지, 정우 id_3x33eq9o4i)
+                    if (item?.status === "no_show") {
+                      _logEntries.push({ ..._logBase, type: 'no_show_undo', meta: _meta });
+                      try {
+                        const _ns = (data?.customers||[]).find(c => c.id === f.custId)?.noShowCount || 0;
+                        await sb.update('customers', f.custId, { no_show_count: Math.max(0, _ns - 1) }).catch(()=>{});
+                      } catch {}
+                    }
                   }
                   // 노쇼
                   else if (_isNewNoShow) {

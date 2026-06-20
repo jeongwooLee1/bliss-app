@@ -1907,6 +1907,66 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       });
     });
   }, []);
+  // ── 날짜별 직원 컬럼 순서 (DB: schedule_data.empDayOrder_v1) — { "YYYY-MM-DD": { branchId: [empId,...] } }
+  // 한 날짜에서 ◀▶로 순서를 옮기면 그 날짜만 저장 → 다른 날짜에 영향 없음. 미설정 날짜는 지점 공통 순서(empColOrder) 사용.
+  const [empDayOrder, _setEmpDayOrder] = useState({});
+  const empDayOrderLastWriteRef = React.useRef(0);
+  const pruneDayOrder = React.useCallback((obj) => {
+    const today = todayStr();
+    const out = {};
+    Object.keys(obj || {}).forEach(d => { if (d >= today) out[d] = obj[d]; });
+    return out;
+  }, []);
+  React.useEffect(() => {
+    const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
+    const loadDayOrder = () => {
+      fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.empDayOrder_v1&select=value,updated_at`, { headers: H })
+        .then(r => r.json()).then(rows => {
+          const dbAt = rows?.[0]?.updated_at ? new Date(rows[0].updated_at).getTime() : 0;
+          if (empDayOrderLastWriteRef.current > 0 && dbAt < empDayOrderLastWriteRef.current) return;
+          if (rows?.[0]?.value) {
+            const v = typeof rows[0].value === "string" ? JSON.parse(rows[0].value) : rows[0].value;
+            _setEmpDayOrder(cur => {
+              const dbv = pruneDayOrder(v || {});
+              const out = { ...dbv };
+              // 동시편집 방어: db에 없는 로컬 날짜/지점 보존 (db 우선)
+              Object.keys(pruneDayOrder(cur || {})).forEach(d => {
+                out[d] = { ...(cur[d] || {}), ...(out[d] || {}) };
+              });
+              return out;
+            });
+          }
+        }).catch(console.error);
+    };
+    loadDayOrder();
+    schRtRef.current["empDayOrder_v1"] = loadDayOrder;
+    const poll = setInterval(loadDayOrder, 300000);
+    const onVis = () => { if (document.visibilityState === 'visible') loadDayOrder(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { clearInterval(poll); document.removeEventListener('visibilitychange', onVis); };
+  }, [pruneDayOrder]);
+  const setEmpDayOrder = React.useCallback((dateKey, branchId, nextArr) => {
+    let toPost = null;
+    _setEmpDayOrder(prev => {
+      const merged = pruneDayOrder({ ...prev });
+      const day = { ...(merged[dateKey] || {}) };
+      day[branchId] = nextArr;
+      merged[dateKey] = day;
+      toPost = merged;
+      return merged;
+    });
+    Promise.resolve().then(() => {
+      if (!toPost) return;
+      const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
+      empDayOrderLastWriteRef.current = Date.now();
+      fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
+        method: "POST", headers: H,
+        body: JSON.stringify({ business_id: _activeBizId, id: "empDayOrder_v1", key: "empDayOrder_v1", value: JSON.stringify(toPost) })
+      }).then(async r => {
+        if (!r.ok) { const txt = await r.text().catch(()=>""); console.error("[empDayOrder] POST 실패:", r.status, txt); alert("직원 순서 저장 실패: " + r.status + "\n" + (txt||"네트워크 또는 권한 문제")); }
+      }).catch(err => { console.error("[empDayOrder] POST error:", err); alert("직원 순서 저장 네트워크 오류: " + (err?.message||err)); });
+    });
+  }, [pruneDayOrder]);
   // sessionStorage 기반 임시 순서 override 트리거용 (남직원 이동 시 사용)
   const [dailyOrderTick, setDailyOrderTick] = useState(0);
   const moveEmpCol = (branchId, empId, dir) => {
@@ -1918,38 +1978,26 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     if (visIdx < 0) return;
     const newIdx = visIdx + dir;
     if (newIdx < 0 || newIdx >= visibleIds.length) return;
-    try { sessionStorage.removeItem(`bliss_day_order_${selDate}_${branchId}`); } catch {}
-    setEmpColOrder(prev => {
-      // 룰: 사용자가 visible에서 두 칼럼 swap → 저장된 order에서도 그 두 ID만 위치 교환.
-      // hidden(휴무·타지점) 직원은 원래 위치 유지 → 다른 날 갔다가 돌아와도 visible 상대순서 보존.
-      const a = visibleIds[visIdx];
-      const b = visibleIds[newIdx];
-      const prevList = Array.isArray(prev[branchId]) ? prev[branchId] : [];
-      let next = [...prevList];
-      // newcomer(아직 order에 없는 visible 직원)는 visible 인접한 stored 직원 옆에 끼워넣음
-      visibleIds.forEach((vid, vi) => {
-        if (next.indexOf(vid) >= 0) return;
-        let prevStoredIdx = -1;
-        for (let i = vi - 1; i >= 0; i--) {
-          const idx = next.indexOf(visibleIds[i]);
-          if (idx >= 0) { prevStoredIdx = idx; break; }
-        }
-        let nextStoredIdx = -1;
-        for (let i = vi + 1; i < visibleIds.length; i++) {
-          const idx = next.indexOf(visibleIds[i]);
-          if (idx >= 0) { nextStoredIdx = idx; break; }
-        }
-        const insertAt = prevStoredIdx >= 0 ? prevStoredIdx + 1 : (nextStoredIdx >= 0 ? nextStoredIdx : next.length);
-        next.splice(insertAt, 0, vid);
-      });
-      // 이제 a,b 모두 next에 있음 → 위치 swap (hidden 직원은 그대로 유지)
-      const ai = next.indexOf(a);
-      const bi = next.indexOf(b);
-      if (ai >= 0 && bi >= 0) {
-        [next[ai], next[bi]] = [next[bi], next[ai]];
-      }
-      return {...prev, [branchId]: next};
+    // 날짜별 순서로 저장 — 이 날짜의 기존 순서(없으면 지점 공통 순서)를 시드로
+    const seed = (empDayOrder?.[selDate]?.[branchId]) || empColOrder[branchId] || [];
+    const a = visibleIds[visIdx];
+    const b = visibleIds[newIdx];
+    let next = [...seed];
+    // newcomer(아직 순서에 없는 visible 직원)는 visible 인접한 stored 직원 옆에 끼워넣음
+    visibleIds.forEach((vid, vi) => {
+      if (next.indexOf(vid) >= 0) return;
+      let prevStoredIdx = -1;
+      for (let i = vi - 1; i >= 0; i--) { const idx = next.indexOf(visibleIds[i]); if (idx >= 0) { prevStoredIdx = idx; break; } }
+      let nextStoredIdx = -1;
+      for (let i = vi + 1; i < visibleIds.length; i++) { const idx = next.indexOf(visibleIds[i]); if (idx >= 0) { nextStoredIdx = idx; break; } }
+      const insertAt = prevStoredIdx >= 0 ? prevStoredIdx + 1 : (nextStoredIdx >= 0 ? nextStoredIdx : next.length);
+      next.splice(insertAt, 0, vid);
     });
+    // a,b 위치 swap (hidden 직원은 그대로)
+    const ai = next.indexOf(a);
+    const bi = next.indexOf(b);
+    if (ai >= 0 && bi >= 0) { [next[ai], next[bi]] = [next[bi], next[ai]]; }
+    setEmpDayOrder(selDate, branchId, next);
   };
   const allRoomsRef = React.useRef([]);
   // render 중 setState 금지 → 미시딩 대상은 모아뒀다가 effect에서 일괄 반영
@@ -1975,7 +2023,10 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     };
     const stableSort = (arr) => arr.slice().sort((a, b) => stableKey(a) - stableKey(b));
 
-    const order = Array.isArray(empColOrder[branchId]) ? empColOrder[branchId] : [];
+    // 날짜별 저장 순서 우선, 없으면 지점 공통 순서(empColOrder)
+    const _dayOrd = empDayOrder?.[selDate]?.[branchId];
+    const order = (Array.isArray(_dayOrd) && _dayOrd.length) ? _dayOrd
+                : (Array.isArray(empColOrder[branchId]) ? empColOrder[branchId] : []);
     if (order.length === 0) {
       const nonMaleBase = stableSort(staffList.filter(e => isBase(e) && !isMaleEmp(e)));
       const guests = stableSort(staffList.filter(e => !isBase(e) && !isMaleEmp(e)));
