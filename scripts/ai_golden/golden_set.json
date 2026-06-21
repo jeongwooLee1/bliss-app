@@ -252,7 +252,6 @@
    "expected_action": "ask_info",
    "must_pass": "단순 인사 → 예약/취소를 만들지 않는다(noop=ask_info/chat). 없는 예약·지점·가격을 지어내지 않는다. 한국어. — 예약 정보를 한 번에(템플릿) 묻든 가볍게 묻든 '묻는 방식·길이·이모지'는 무관하며 그것으로 실패시키지 말 것.",
    "ideal": "안녕하세요! 하우스왁싱입니다 😊 원하시는 지점·시술·날짜시간 알려주시면 예약 도와드릴게요!",
-   "known_fail": true,
    "known_note": "콘텐츠 플레이크(~1/5): action(noop)·날조금지는 항상 정상이나 심판이 '재질문/길이' 등 must_pass 밖 기준으로 간헐 FAIL. 핵심(인사→예약·날조 안함)은 action_behavior가 결정적으로 커버."
   },
   {
@@ -306,7 +305,6 @@
    "expected_action": "chat",
    "must_pass": "예약/취소 생성 금지(noop=chat 또는 ask_info 둘 다 정답). 공통 whatsapp 채널이고 지점 미언급이므로 (a)어느 지점인지 되묻거나 (b)FACTS에 존재하는 한 지점의 주소를 안내하면 둘 다 통과. 하드 금지: FACTS에 없는 주소·도보분·지하철 출구번호·역명을 지어내면 실패. 영어로만 응답(한국어 확정문구 혼입 금지). 특정 지점/특정 문구/길이는 강요하지 않음.",
    "ideal": "We have several branches across Seoul — could you let me know which one you'd like the address for? Our main Gangnam branch is at 5F, 16 Hakdong-ro 30-gil, Gangnam-gu, Seoul. I can share the nearest station once I know your branch.",
-   "known_fail": true,
    "known_note": "콘텐츠 플레이크(~1/5): 공통채널 주소문의에 영어 답 끝에 한국어 주소를 덧붙여 언어 혼용하는 경우 있음. action·되묻기·환각금지는 정상. 언어 일관성 개선 시 재승격."
   },
   {
@@ -330,7 +328,7 @@
    ],
    "existing_booking": null,
    "expected_action": "chat",
-   "must_pass": "action은 chat 또는 ask_info(=noop)여야 한다(이 턴 book/cancel 금지). 브라질리언은 성별별 가격차(F154k/M176k)라 예약 확정 전 성별을 '한 번' 물어야 정당 — 코드 성별 게이트(사후보정3)가 신규예약+성별없음+미질문이면 강제로 성별 질문(chat). 지점·날짜·시간은 이미 주어졌으니 처음부터 다시 캐묻지 말 것. 하드 금지선: FACTS에 없는 수치 날조 금지, 한국어 대화이므로 외국어 확정문구 혼입 금지.",
+   "must_pass": "action은 chat 또는 ask_info(=noop)여야 한다(이 턴 book/cancel 금지). 브라질리언은 성별별 가격차(F154k/M176k)라 예약 확정 전 성별을 '한 번' 물어야 정당 — 코드 성별 게이트(사후보정3)가 신규예약+성별없음+미질문이면 강제로 성별 질문(chat). 지점·날짜·시간은 이미 주어졌으니 처음부터 다시 캐묻지 말 것. 하드 금지선: FACTS에 없는 가격·시술 등 '사실'을 날조 금지. ※단 '이번 주 토요일'을 구체 날짜(예: 6월 20일)로 변환하는 것은 상대날짜 자동처리(정상)이며 날조 아님 — 날짜 변환을 이유로 FAIL하지 말 것. 한국어 대화이므로 외국어 확정문구 혼입 금지.",
    "ideal": "토요일 오후 3시 강남점 브라질리언으로 도와드릴게요! 가격이 성별에 따라 달라서요, 여성/남성 중 어느 쪽이실까요?"
   },
   {
@@ -397,27 +395,27 @@
    "conv": [
     [
      "in",
-     "안녕하세요 6월 15일 강남점 브라질리언 예약했는데요"
+     "안녕하세요 7월 15일 강남점 브라질리언 예약했는데요"
     ],
     [
      "out",
-     "네, 6월 15일 14시 강남점 브라질리언 예약 확인됩니다. 무엇을 도와드릴까요?"
+     "네, 7월 15일 14시 강남점 브라질리언 예약 확인됩니다. 무엇을 도와드릴까요?"
     ],
     [
      "in",
-     "그날 일이 생겨서 6월 20일로 옮길 수 있을까요? 같은 시간대로요"
+     "그날 일이 생겨서 7월 20일로 옮길 수 있을까요? 같은 시간대로요"
     ]
    ],
    "existing_booking": {
     "id": "bk_crossday_001",
-    "date": "2026-06-15",
+    "date": "2026-07-15",
     "time": "14:00",
     "branch": "강남",
     "service": "브라질리언"
    },
    "expected_action": "chat",
-   "must_pass": "action은 noop(chat/ask_info)이어야 한다 — book(다른 날짜로 즉시 silent 재예약)이나 cancel을 해서는 안 된다. 다른 날짜(6/20)로 옮기는 cross-day 변경이므로 봇은 예약을 직접 생성/이동하지 말고, 예약금/담당자 확인이 필요하다는 취지(예약금 또는 담당자 확인 또는 변경 처리 안내 중 하나 이상)를 손님 언어(한국어)로 안내해야 한다. 응답은 한국어 100%(외국어 혼용 금지). 사실 날조 금지(FACTS에 없는 가격·정책·날짜 지어내기 금지). 특정 문구·길이·이모지 수는 보지 않는다.",
-   "ideal": "6월 20일로 날짜를 옮기는 변경은 담당자가 확인 후 처리해드려요. 기존 예약금/패키지 차감 여부도 함께 안내드리도록 담당자에게 전달해두겠습니다. 잠시만 기다려주세요!"
+   "must_pass": "action은 noop(chat/ask_info)이어야 한다 — book(다른 날짜로 즉시 silent 재예약)이나 cancel을 해서는 안 된다. 다른 날짜(7/20)로 옮기는 cross-day 변경이므로 봇은 예약을 직접 생성/이동하지 말고, 예약금/담당자 확인이 필요하다는 취지(예약금 또는 담당자 확인 또는 변경 처리 안내 중 하나 이상)를 손님 언어(한국어)로 안내해야 한다. 응답은 한국어 100%(외국어 혼용 금지). 사실 날조 금지(FACTS에 없는 가격·정책·날짜 지어내기 금지). 특정 문구·길이·이모지 수는 보지 않는다.",
+   "ideal": "7월 20일로 날짜를 옮기는 변경은 담당자가 확인 후 처리해드려요. 기존 예약금/패키지 차감 여부도 함께 안내드리도록 담당자에게 전달해두겠습니다. 잠시만 기다려주세요!"
   },
   {
    "id": "business_hours",
@@ -458,7 +456,6 @@
    "expected_action": "chat",
    "must_pass": "action=chat(=noop, book/cancel 금지). '생리 중 왁싱 가능 여부'는 매장 FAQ에 있는 질문이므로 직접 답해야 한다(가능하다는 취지 + 그 기간 피부가 예민할 수 있다는 안내 등 FAQ 근거). 답 없이 '담당자 확인 후 안내/전달드릴게요'류로만 떠넘기면 실패. FACTS/FAQ에 없는 수치·정책 날조 금지. 응답 한국어(외국어 확정문구 혼입 금지). 특정 문구·길이·이모지는 자유.",
    "ideal": "생리 중에도 왁싱 시술 가능해요! 😊 다만 그 기간엔 피부가 평소보다 조금 예민하실 수 있어요. 더 궁금한 점 있으시면 알려주세요!",
-   "known_fail": true,
    "known_note": "콘텐츠 플레이크(~1/3): 봇이 '생리 중 왁싱?'를 RAG에서 못 끌어올 때 답 대신 '담당자 확인'으로 떠넘김(무조건담당자 경향). action은 항상 noop 정상. RAG 검색 신뢰도 개선 시 하드게이트 재승격."
   },
   {
@@ -530,14 +527,14 @@
    ],
    "existing_booking": {
     "id": "bk_re_001",
-    "date": "2026-06-15",
+    "date": "2026-07-15",
     "time": "14:00",
     "branch": "강남",
     "service": "브라질리언"
    },
    "expected_action": "chat",
-   "must_pass": "action은 chat(=noop): 새 예약 생성(book) 금지, 취소(cancel) 금지. 손님 질문은 단순 '내 예약 언제?' 조회이므로 ask_info로 새 정보를 되묻지 말 것. 응답에 existing_booking의 실제 날짜(2026-06-15, '6/15'·'15일' 등 동치 표기 허용)와 시간(14:00, '오후 2시' 등 동치 표기 허용)이 둘 다 정확히 반영돼야 함. '모른다/확인 후 안내드릴게요/담당자에게 전달' 식 회피·미룸 금지(예약 정보는 이미 주어져 있으므로 바로 답해야 함). booking에 없는 다른 날짜·다른 시간 날조 금지. 응답 언어는 한국어(손님 언어)만, 외국어 혼용 금지. 작별/마무리가 아니므로 'See you at~' 류 강요는 무관하나 잘못된 시간 재안내(주어진 14:00 외 시각)는 금지.",
-   "ideal": "확인해보니 6월 15일(월) 오후 2시 강남점 브라질리언으로 예약되어 있으세요! 혹시 변경이나 다른 문의 있으시면 편하게 말씀해주세요 :)"
+   "must_pass": "action은 chat(=noop): 새 예약 생성(book) 금지, 취소(cancel) 금지. 손님 질문은 단순 '내 예약 언제?' 조회이므로 ask_info로 새 정보를 되묻지 말 것. 응답에 existing_booking의 실제 날짜(2026-07-15, '7/15'·'15일' 등 동치 표기 허용)와 시간(14:00, '오후 2시' 등 동치 표기 허용)이 둘 다 정확히 반영돼야 함. 요일(수/월…) 언급은 검증 대상 아님 — 틀리거나 생략해도 무방(날짜·시간만 정확하면 통과). '모른다/확인 후 안내드릴게요/담당자에게 전달' 식 회피·미룸 금지(예약 정보는 이미 주어져 있으므로 바로 답해야 함). booking에 없는 다른 날짜·다른 시간 날조 금지. 응답 언어는 한국어(손님 언어)만, 외국어 혼용 금지. 작별/마무리가 아니므로 'See you at~' 류 강요는 무관하나 잘못된 시간 재안내(주어진 14:00 외 시각)는 금지.",
+   "ideal": "확인해보니 7월 15일 오후 2시 강남점 브라질리언으로 예약되어 있으세요! 혹시 변경이나 다른 문의 있으시면 편하게 말씀해주세요 :)"
   },
   {
    "id": "no_service_hallucination",
@@ -618,6 +615,52 @@
    "expected_action": "book",
    "must_pass": "동작은 반드시 book(예약 생성). 손님이 'for 2 people'로 2인을 명확히 밝혔고 지점=강남, 시술=브라질리언, 날짜=내일, 시간=15:00, 성별=둘 다 여성으로 정보가 충분 → 예약을 만들어야 한다. ask_info/chat로 빠지면 under-booking 실패. 2인이므로 두 명을 함께 받는 예약으로 처리(동반자 포함 의도). 15:00은 영업시간(11:00~21:00) 내라 거절 금지. 응답 언어는 영어(reply 100% 영어, 한국어 혼용 금지). 가격 언급 시 FACTS 확정가만(여성 브라질리언 154,000) 날조 금지. 특정 문구·길이·이모지 수는 자유.",
    "ideal": "Perfect! I'll book both of you for a brazilian wax at our Gangnam branch tomorrow at 3:00 PM. Our staff will confirm shortly 😊"
+  },
+  {
+   "id": "passed_appointment_no_reref",
+   "kind": "지난시각예약",
+   "channel": "whatsapp",
+   "lang": "en",
+   "conv": [
+    [
+     "out",
+     "Austin, your booking is confirmed! Today 9:00 AM at Wangsimni."
+    ],
+    [
+     "in",
+     "So sorry, traffic was terrible and I missed it"
+    ],
+    [
+     "in",
+     "Is there any opening later today or tomorrow?"
+    ]
+   ],
+   "existing_booking": {
+    "id": "g_past1",
+    "date": "TODAY",
+    "time": "09:00",
+    "branch": "왕십리",
+    "service": "브라질리언"
+   },
+   "expected_action": "chat",
+   "must_pass": "기존 예약(오늘 09:00)의 예약 시각이 이미 지난 상태(지금은 그보다 늦음). 하드 금지선: 그 지난 시각(09:00 / today at 9 AM)을 다가오는 예약·예약 가능한 것처럼 'what service for today at 9 AM?'식으로 재안내·재확인·재예약하지 말 것. 손님이 늦어 놓쳤다 → 그 시각이 지났음을 (과거형으로) 짚고, 지금 이후 새 시각(오늘 남은 영업시간 또는 다른 날)으로 안내. 응답 영어 100%. 특정 문구·길이·이모지·정확한 action(chat/ask_info)은 강요하지 않음 — 지난 시각 재안내만 아니면 됨.",
+   "ideal": "Oh no, I'm so sorry you got stuck in traffic! That 9 AM slot has already passed, but I'd love to rebook you. We have openings later today and tomorrow — what time works best for you?"
+  },
+  {
+   "id": "bikini_scope_gate",
+   "kind": "비키니범위게이트",
+   "channel": "whatsapp",
+   "lang": "en",
+   "conv": [
+    [
+     "in",
+     "Hi! I'd like to book a bikini wax tomorrow at 3pm at Gangnam, I'm female"
+    ]
+   ],
+   "existing_booking": null,
+   "expected_action": "chat",
+   "must_pass": "손님이 'bikini'만 말함(외국 손님은 전체제거를 bikini로 칭하는 경우 많아 모호). 봇은 예약을 먼저 확정하면 안 되고, 예약 '전에' 범위(bikini=팬티라인 vs Brazilian=전체제거)를 1회 물어야 한다(action=chat). ❌'booking is confirmed'/예약 생성 후 범위 질문은 FAIL. 영어 100%.",
+   "ideal": "Happy to help! In Korea, bikini = tidy around the panty line, while Brazilian = full removal incl. the pubic area. Which would you prefer?"
   }
  ]
 }

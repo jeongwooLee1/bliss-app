@@ -4431,3 +4431,13 @@ CLAUDE.md 로깅이 v3.8.135에서 끊겨 136~141 요약 보충(상세는 git lo
 - **소요시간 데이터(`tag.dur`)는 그대로** — 항목 선택 시 블록 길이 계산·합산 소요시간(2004 라벨·2022 합산)에 동일하게 사용(표시만 제거). 합산/총 소요시간은 선택 후에만 뜨고 블록 길이 결정용이라 유지.
 - 안 건드린 다른 `(NN분)` 표시: SaleForm 매출입력 시술명(2232, 다른 화면·요청 아님) + aiBookParse/QuickBookModal AI 프롬프트 문자열(화면 표시 X, AI 매칭용 기능).
 - **검증**: dev 서버 서빙 모듈 `tag.dur}분)` 0건 + HMR 무에러 + 빌드 통과. (그리드 좌표 클릭 핸들러라 모달 자동 오픈은 불가 → 모듈/빌드 레벨 검증.) 배포 v3.8.144(version.txt·CF퍼지). 요청 2건 done+답글.
+
+### Gemini 사용량 분석 + 비용 다이어트 (source 태깅 + 분석 thinking off) (2026-06-21, 서버, React 변경 0)
+정우님 "어제 제미나이 사용량 분석" → 분석 후 "다 만들어" → 비용 구조 개선 3종.
+- **분석 결과(6/20)**: 281회 / 출력 254,555토큰. 대화답변 144회(캐시 87%·출력 7.6%)=거의 공짜 / **분석·추출류 137회가 출력의 92%(평균 1,716토큰)** = 비용 주범. 17시 한 시간에 분석 69회·출력 178k(70%) 스파이크. billing 실운영 ai_call은 54건뿐 → 나머지는 내부/테스트성. 7일 추이상 폭증 아님.
+- **#1 source 컬럼 태깅**: `gemini_usage_log.source` 컬럼 추가(migration) + `_gem_log(model,usage,source)` 양 파일 + 래퍼(ai_booking `_gemini`/`_gemini_msgs`/`_gemini_cached`)·`gemini_ask(source=)`에 파라미터. 호출지점 태그: chat·translate(ai_booking) / rsv_analyze·svc_extract·blissai·needs_reply·name_kor·sales_insight(bliss_naver), 미지정은 "gemini_ask" 기본. → 앞으로 운영 vs 분석종류 vs 테스트 정확 분리(지금까진 캐시·토큰크기로 추정만). 검증: 재시작 후 실고객 채팅이 source="chat" 적재 확인.
+- **#3 분석 출력 다이어트(핵심)**: `_ai_extract_booking_info`·`ai_analyze_reservation`의 `thinkingConfig:{thinkingLevel:"low"}` → **`{thinkingBudget:0}`**(maxOutputTokens 2048→1024). `_gem_log`가 `out = candidatesTokenCount + thoughtsTokenCount`라 thinking 토큰이 출력에 합산됨 = avg 1,716의 주범. **raw 검증: 동일 추출 프롬프트 thinkingLevel:low(출력 463=candidates 38+thoughts 425) → thinkingBudget:0(출력 38·thoughts 0), JSON 추출 결과 동일(s1·s2)** = 출력 92% 감소·정확도 무변. 채팅 경로(`_gemini_cached`/`_gemini_msgs` thinkingLevel:low)는 **미변경**(골든 게이트 보호).
+- **#2 17시 스파이크**: A/B 하니스 스크립트(전부 5월 mtime)·cron 아님. 일별 피크 시각 들쭉날쭉(21·17·19·12시…) = 자동 아니라 활동시간대 수동/도구(BlissAI 직원도구 또는 분석 버스트 추정). source 컬럼이 앞으로 정확히 가려줌.
+- **골든 게이트**: ai_booking.py(로깅 파라미터만, 채팅 동작 불변) 변경이라 회귀 확인 — 1차 26/28(실패 2건=crossday_change·returning_existing은 **케이스 날짜 하드코딩 6/15·6/20이 오늘 6/21 기준 과거가 된 노후화**, 내 변경 무관 입증). 노후 2건 날짜 7/15·7/20로 갱신 + XPASS 3건(simple_greeting·address_question·faq_not_defer) known_fail 해제 → **재실행 31/31 PASS(green)**. golden_set.json은 bliss-app git(scripts/ai_golden) + 서버 둘 다 동기화.
+- **적용**: 서버 직접(백업 `ai_booking.py.bak_gemsrc_*`·`bliss_naver.py.bak_gemsrc_*`·`golden_set.json.bak_dateroll_*`) + `systemctl restart bliss-naver`(active). DB migration(source 컬럼) 적용. React 변경 0 → 앱 버전업·CF퍼지 불필요.
+- **유의**: ① 분석 thinking off은 추출 정확도 영향 거의 없음(구조적 JSON 추출, 명시 목록 매칭)이나 라이브 매칭 스팟체크 권장. ② golden 날짜 케이스는 절대날짜 하드코딩이라 주기적 노후화 — 향후 상대날짜(today+N)로 harness 개선 검토. ③ source 미태그된 gemini_ask 부수 호출은 "gemini_ask"로 묶임(주요 버킷은 다 태그됨).
