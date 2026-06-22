@@ -4354,13 +4354,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             const isFirstOfBranch = isNewBranch;  // 지점 카드 좌측 끝(막기 칼럼 포함) — 위치 기반
             // 지점명 배지는 첫 '비-막기' 칼럼에 표시(막기는 18px라 좁음): 막기 다음 미배정/직원에
             const isBranchNameCol = !room.isBlockCol && (isNewBranch || allRooms[ci-1]?.isBlockCol);
-            // 각 지점 첫 미배정 칼럼은 연핑크/라벤더(블리스 랜딩 색) → 우측 흰색 그라데이션 (시각 fade)
-            // 막기 칼럼은 다른 일반 칼럼과 동일 배경 (좁은 36px 컬럼이라 헤더 SVG로 충분히 구분)
-            const isFirstNaverOfBranch = room.isNaver && room._naverIdx === 0;
-            // 미배정 칼럼 = 직원 비활성 시간대와 동일한 회색 톤(rgba(0,0,0,.06)) → 우측으로 fade
-            const colBg = isFirstNaverOfBranch
-              ? 'linear-gradient(to right, rgba(0,0,0,.06) 0%, rgba(0,0,0,.035) 55%, rgba(0,0,0,0) 100%), #ffffff'
-              : SOFT_BG;
+            // 전 칼럼(막기·미배정·직원) 기본 바탕 흰색 통일 (정우님 2026-06-24) — 미배정 회색 그라데이션 제거
+            const colBg = SOFT_BG;
             const _colWidth = room.isBlockCol ? 18 : colW;
             // 지점 카드 모서리 (v3.8.44): 지점 그룹의 양 끝 칼럼에 라운드 + 부드러운 그림자.
             // 첫 지점의 좌측 끝은 시간축(tl-time-col)이 담당 — _isCardLeft는 두 번째 지점부터.
