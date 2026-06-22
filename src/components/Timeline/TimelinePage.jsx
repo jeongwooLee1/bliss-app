@@ -5495,15 +5495,24 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                             background: isBlocked ? BLOCK_GRAY : NAVER_GREEN,
                           }}/>;
                         });
-                        // 전부 막힘은 비활성화 칼럼과 동일한 회색 오버레이 (isMovedOut과 동일 rgba)
-                        // 일부 막힘은 투명 — 도트만으로 시각화. 가로 구분선 제거(요청).
-                        const cellBg = fullyBlocked ? "rgba(0,0,0,.06)" : "transparent";
-                        out.push(
-                          <div key={`s${slotIdx}`} title={fullyBlocked?`전체 ${slotTotal}건 막힘`:`${blockedCount}/${slotTotal} 막힘`}
-                            style={{position:"absolute",top,left:0,right:0,height:slotPx,background:cellBg,pointerEvents:"none",zIndex:3,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3}}>
-                            {dots}
-                          </div>
-                        );
+                        // 전부 막힘: 회색 솔리드 대신 근무외와 동일한 도트 텍스처 배경 (정우님 2026-06-24)
+                        // 일부 막힘: 투명 + 초록/회색 도트 원으로 시각화 (가로 구분선 없음)
+                        if (fullyBlocked) {
+                          out.push(
+                            <div key={`s${slotIdx}`} title={`전체 ${slotTotal}건 막힘`}
+                              style={{position:"absolute",top,left:0,right:0,height:slotPx,pointerEvents:"none",zIndex:3,
+                                backgroundColor:"rgba(0,0,0,.018)",
+                                backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14'%3E%3Crect x='5' y='5' width='4' height='4' fill='%234b4b6e' fill-opacity='0.15'/%3E%3C/svg%3E")`,
+                                backgroundSize:"14px 14px", backgroundPosition:"center center"}}/>
+                          );
+                        } else {
+                          out.push(
+                            <div key={`s${slotIdx}`} title={`${blockedCount}/${slotTotal} 막힘`}
+                              style={{position:"absolute",top,left:0,right:0,height:slotPx,background:"transparent",pointerEvents:"none",zIndex:3,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3}}>
+                              {dots}
+                            </div>
+                          );
+                        }
                       }
                     }
                     // 30분 가이드 layer 제거 — 막힘 인디케이터(dots+border)로 충분
