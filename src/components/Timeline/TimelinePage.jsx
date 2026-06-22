@@ -41,6 +41,19 @@ const blockDurMin = (b) => {
 // 타임라인 컬럼 바탕색 — 전 지점 공통 단일 톤(기본 흰색), 지점 구분은 세로선으로만
 const SOFT_BG = '#ffffff';
 
+// 색을 흰색 위에 pct%로 블렌딩한 '불투명' hex 반환 (알파 대신 → 블록이 뒤 도트를 비치지 않게).
+const _solidOverWhite = (hex, pct) => {
+  try {
+    const x = String(hex).replace('#','');
+    const s = x.length === 3 ? x.split('').map(c=>c+c).join('') : x.slice(0,6);
+    const r = parseInt(s.slice(0,2),16), g = parseInt(s.slice(2,4),16), b = parseInt(s.slice(4,6),16);
+    if ([r,g,b].some(v=>Number.isNaN(v))) return hex;
+    const a = Math.max(0, Math.min(1, pct/100));
+    const m = v => Math.round(v*a + 255*(1-a)).toString(16).padStart(2,'0');
+    return `#${m(r)}${m(g)}${m(b)}`;
+  } catch { return hex; }
+};
+
 // 페이지 이동 후 돌아왔을 때 스크롤 위치 복원용 (모듈 레벨 - 컴포넌트 언마운트 후에도 유지)
 // 스크롤 위치 저장/복원 — sessionStorage 연동 (새로고침 시에도 유지)
 const _scrollLoad = () => {
@@ -5645,7 +5658,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                           const _isHL = highlightedBlockId && (highlightedBlockId === (block.reservationId||block.id) || highlightedBlockId === block.id);
                           // 상태별 색상이 정해진 예약(취소/노쇼/완료)은 미배정으로 가도 상태 색상 유지
                           const _hasStatusColor = block.status === "no_show" || block.status === "completed";
-                          const _baseBg = isNaverCancelled?T.warningLt:_hasStatusColor?`${color}${bgAlpha}`:isNaverUnassigned?T.infoLt:isNaverPending?`${color}15`:`${color}${bgAlpha}`;
+                          // 불투명 블렌딩(흰색 위) — 알파 대신 솔리드라 블록 뒤 도트(막힘·근무외)가 비치지 않음 (정우님 2026-06-24)
+                          const _solidBg = _solidOverWhite(color, isSch ? Math.min(blockOp, 80) : blockOp);
+                          const _baseBg = isNaverCancelled?T.warningLt:_hasStatusColor?_solidBg:isNaverUnassigned?T.infoLt:isNaverPending?`${color}15`:_solidBg;
                           return {position:"absolute",top:y,
                           left: block._totalCols > 1 ? 1 + (block._col * ((colW - 2) / block._totalCols)) : 1,
                           width: block._totalCols > 1 ? ((colW - 2) / block._totalCols) - 1 : undefined,
@@ -5856,7 +5871,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         const left2 = dragPos.clientX;
         return (
           <div style={{position:"fixed",top:top2,left:left2,width:w,height:h,
-            background:`${color}${bgAlpha}`,border:`1px solid ${color}`,borderLeft:`3px solid ${color}`,borderRadius:T.radius.md,
+            background:_solidOverWhite(color, dragBlock.isSchedule ? Math.min(blockOp,80) : blockOp),border:`1px solid ${color}`,borderLeft:`3px solid ${color}`,borderRadius:T.radius.md,
             padding:"4px 6px",overflow:"hidden",fontSize:blockFs,lineHeight:1.2,fontWeight:T.fw.bold,color:T.text,
             boxShadow:`0 8px 20px rgba(0,0,0,.25)`,
             pointerEvents:"none",zIndex:9999,cursor:"grabbing",opacity:.92}}>
