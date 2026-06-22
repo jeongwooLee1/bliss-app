@@ -1356,9 +1356,11 @@ function StatsPage({ data, userBranches, isMaster, role, startDate, endDate, per
     });
   }, [allTimeStats.monthly]);
 
-  // ── AI 영업·마케팅 분석 (서버 /sales-insight, 수치 바뀔 때만 재생성·캐시) ──
+  // ── AI 영업·마케팅 분석 — 정우님 지시로 OFF (2026-06-22): sales_insight가 Gemini 비용 90% 차지 → 호출 차단. 재개하려면 SALES_INSIGHT_ON=true ──
+  const SALES_INSIGHT_ON = false;
   const [aiInsight, setAiInsight] = useState({ text: "", loading: false, err: false });
   useEffect(() => {
+    if (!SALES_INSIGHT_ON) return;  // 매출통계 AI 코멘트 비활성 — /sales-insight 호출 안 함
     const _ts = periodSummary.totals;
     if (periodSummary.loading || !_ts) return;
     if (yoyTotal === undefined || prevTotal === undefined) return; // 전년/직전 비교 로딩 완료까지 대기 (불완전 분석이 그날 캐시되는 것 방지)
