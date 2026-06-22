@@ -5413,65 +5413,46 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                   }}
                 >
                   {/* Hover/touch highlight */}
-                  {/* 비활성 시간대 오버레이 (복수 세그먼트) + 출/퇴근 드래그 핸들 */}
-                  {room.isStaffCol && room.activeSegments && (()=>{
+                  {/* 비활성(근무외) + 네이버 막힌 시간대 → 한 겹 도트 오버레이로 병합 (겹침 방지 — 정우님 2026-06-24).
+                      직원 칼럼=근무외∪막힘 / 미배정 칼럼=막힘만. 막기·빈 칼럼 제외. */}
+                  {(room.isStaffCol || room.isNaver) && !room.isBlockCol && (()=>{
                     const startMin2 = startHour*60;
                     const endMin2 = startMin2 + totalRows*5;
                     const _hm2 = (t, dflt) => t ? parseInt(t.split(":")[0])*60+parseInt(t.split(":")[1]) : dflt;
-                    // 지점 영업시간(오픈~마감): 직원이 출근이어도 영업시간 밖이면 도트(비활성) — 정우님 2026-06-18
-                    const _bTs = (data?.branches||[]).find(b=>b.id===room.branch_id)?.timelineSettings;
-                    const openMin  = Math.max(startMin2, _hm2(_bTs?.openTime, startMin2));
-                    const closeMin = Math.min(endMin2,  _hm2(_bTs?.closeTime, endMin2));
-                    // 활성(흰색) = 직원 근무구간 ∩ 영업시간
-                    const parsed = room.activeSegments.map(s => ({
-                      from: _hm2(s.from, startMin2),
-                      until: _hm2(s.until, endMin2),
-                    })).map(p => ({from: Math.max(p.from, openMin), until: Math.min(p.until, closeMin)}))
-                      .filter(p => p.until > p.from)
-                      .sort((a,b)=>a.from-b.from);
-                    // 활성 바깥 = 비활성(도트)
-                    const inactive = [];
-                    let cursor = startMin2;
-                    for (const p of parsed) {
-                      if (p.from > cursor) inactive.push({from: cursor, until: p.from});
-                      cursor = Math.max(cursor, p.until);
+                    const ranges = [];
+                    // 직원 근무외(비활성) = 활성(근무구간 ∩ 영업시간) 바깥
+                    if (room.isStaffCol && room.activeSegments) {
+                      const _bTs = (data?.branches||[]).find(b=>b.id===room.branch_id)?.timelineSettings;
+                      const openMin  = Math.max(startMin2, _hm2(_bTs?.openTime, startMin2));
+                      const closeMin = Math.min(endMin2,  _hm2(_bTs?.closeTime, endMin2));
+                      const parsed = room.activeSegments.map(s => ({from:_hm2(s.from,startMin2), until:_hm2(s.until,endMin2)}))
+                        .map(p => ({from: Math.max(p.from, openMin), until: Math.min(p.until, closeMin)}))
+                        .filter(p => p.until > p.from).sort((a,b)=>a.from-b.from);
+                      let cursor = startMin2;
+                      for (const p of parsed) { if (p.from > cursor) ranges.push({from:cursor, until:p.from}); cursor = Math.max(cursor, p.until); }
+                      if (cursor < endMin2) ranges.push({from:cursor, until:endMin2});
                     }
-                    if (cursor < endMin2) inactive.push({from: cursor, until: endMin2});
-                    if (inactive.length === 0) return null;
-
-                    // 근무시간 드래그 핸들 제거 (2026-05-22): 태블릿 스크롤 중 경계 띠에 손가락이 닿아
-                    // 출/퇴근이 5분씩 멋대로 밀려 저장되는 사고 다발 → 비활성 시간 회색 표시만 유지.
-                    // 근무시간 변경은 직원 컬럼 헤더 탭 → 근무시간 편집 팝업으로만.
-                    return <>
-                      {inactive.map((iv, idx) => {
-                        const top = (iv.from - startMin2) / 5 * rowH;
-                        const height = (iv.until - iv.from) / 5 * rowH;
-                        return <div key={idx} style={{
-                          position:"absolute", top, left:0, right:0, height,
-                          backgroundColor:"rgba(0,0,0,.018)",
-                          backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14'%3E%3Crect x='5' y='5' width='4' height='4' fill='%234b4b6e' fill-opacity='0.15'/%3E%3C/svg%3E")`,
-                          backgroundSize:"14px 14px",
-                          backgroundPosition:"center center", // 가로·세로 모두 중앙 기준 타일링 → 칼럼 좌우+상하 여백 대칭 (정우 id_pjlkmlix5z)
-                          zIndex:2, pointerEvents:"none",
-                        }}/>;
-                      })}
-                    </>;
-                  })()}
-                  {/* 막힌 시간대(네이버 전체막힘) → 미배정·직원 칼럼 배경 도트 텍스처 (막기 칼럼 제외 — 정우님 2026-06-24) */}
-                  {!room.isBlockCol && !room.isBlank && blockedSlotsByBranch[room.branch_id]?.size > 0 && (()=>{
-                    const startMinB = startHour * 60;
-                    const slotPx = (30 / timeUnit) * rowH;
-                    return [...blockedSlotsByBranch[room.branch_id]].map(slot => {
-                      const off = slot * 30 - startMinB;
-                      if (off < 0 || off >= totalRows * timeUnit) return null;
-                      return <div key={`blk${slot}`} style={{
-                        position:"absolute", top:(off/timeUnit)*rowH, left:0, right:0, height:slotPx,
+                    // 네이버 전체막힘 30분 슬롯
+                    const blk = blockedSlotsByBranch[room.branch_id];
+                    if (blk) blk.forEach(slot => ranges.push({from: slot*30, until: slot*30+30}));
+                    if (!ranges.length) return null;
+                    // 클램프 + 병합(겹치거나 인접한 구간 합쳐 한 겹·타일 이음새 없음)
+                    const clamped = ranges.map(r => ({from: Math.max(startMin2, r.from), until: Math.min(endMin2, r.until)}))
+                      .filter(r => r.until > r.from).sort((a,b)=>a.from-b.from);
+                    const merged = [];
+                    for (const r of clamped) { const last = merged[merged.length-1]; if (last && r.from <= last.until) last.until = Math.max(last.until, r.until); else merged.push({...r}); }
+                    return <>{merged.map((iv, idx) => {
+                      const top = (iv.from - startMin2) / 5 * rowH;
+                      const height = (iv.until - iv.from) / 5 * rowH;
+                      return <div key={idx} style={{
+                        position:"absolute", top, left:0, right:0, height,
                         backgroundColor:"rgba(0,0,0,.018)",
                         backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14'%3E%3Crect x='5' y='5' width='4' height='4' fill='%234b4b6e' fill-opacity='0.15'/%3E%3C/svg%3E")`,
-                        backgroundSize:"14px 14px", backgroundPosition:"center center",
+                        backgroundSize:"14px 14px",
+                        backgroundPosition:"center center", // 중앙 기준 타일링 (정우 id_pjlkmlix5z)
                         zIndex:2, pointerEvents:"none",
                       }}/>;
-                    });
+                    })}</>;
                   })()}
                   {!dragBlock && hoverCell?.roomId===room.id && hoverCell.rowIdx>=0 && (()=>{
                     if (room.isBlockCol) {
