@@ -2134,6 +2134,23 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   
   const allRoomIds = new Set(allRooms.map(r => r.id));
 
+  // 막힌 시간대(전체막힘 30분 슬롯) — 지점별 Set<slotIdx> → 미배정·직원 칼럼 배경 도트 (정우님 2026-06-24)
+  const blockedSlotsByBranch = useMemo(() => {
+    const m = {};
+    (branchesToShow || []).forEach(br => {
+      if (!br.naverBizId) return;
+      const all = naverBlockState[br.naverBizId]?.[selDate] || {};
+      const ids = Object.keys(all).filter(k => all[k].is_active !== false);
+      const set = new Set();
+      for (let slot = 0; slot < 48; slot++) {
+        const visible = ids.filter(iid => { const b = all[iid].hour_bit?.[slot]; return b === '0' || b === '1'; });
+        if (visible.length && visible.every(iid => all[iid].hour_bit[slot] === '0')) set.add(slot); // 전체 막힘
+      }
+      if (set.size) m[br.id] = set;
+    });
+    return m;
+  }, [naverBlockState, branchesToShow, selDate]);
+
   // 취소 시각(naver_cancelled_dt 우선, 없으면 updated_at) → KST 날짜 YYYY-MM-DD
   const _cancelKstDate = (r) => {
     const ts = r.naverCancelledDt || r._ua || "";
@@ -5440,6 +5457,22 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                       })}
                     </>;
                   })()}
+                  {/* 막힌 시간대(네이버 전체막힘) → 미배정·직원 칼럼 배경 도트 텍스처 (막기 칼럼 제외 — 정우님 2026-06-24) */}
+                  {!room.isBlockCol && !room.isBlank && blockedSlotsByBranch[room.branch_id]?.size > 0 && (()=>{
+                    const startMinB = startHour * 60;
+                    const slotPx = (30 / timeUnit) * rowH;
+                    return [...blockedSlotsByBranch[room.branch_id]].map(slot => {
+                      const off = slot * 30 - startMinB;
+                      if (off < 0 || off >= totalRows * timeUnit) return null;
+                      return <div key={`blk${slot}`} style={{
+                        position:"absolute", top:(off/timeUnit)*rowH, left:0, right:0, height:slotPx,
+                        backgroundColor:"rgba(0,0,0,.018)",
+                        backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14'%3E%3Crect x='5' y='5' width='4' height='4' fill='%234b4b6e' fill-opacity='0.15'/%3E%3C/svg%3E")`,
+                        backgroundSize:"14px 14px", backgroundPosition:"center center",
+                        zIndex:2, pointerEvents:"none",
+                      }}/>;
+                    });
+                  })()}
                   {!dragBlock && hoverCell?.roomId===room.id && hoverCell.rowIdx>=0 && (()=>{
                     if (room.isBlockCol) {
                       // 막기 칼럼: 30분 슬롯 전체 하이라이트 (네이버 예약 단위)
@@ -5495,24 +5528,13 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                             background: isBlocked ? BLOCK_GRAY : NAVER_GREEN,
                           }}/>;
                         });
-                        // 전부 막힘: 회색 솔리드 대신 근무외와 동일한 도트 텍스처 배경 (정우님 2026-06-24)
-                        // 일부 막힘: 투명 + 초록/회색 도트 원으로 시각화 (가로 구분선 없음)
-                        if (fullyBlocked) {
-                          out.push(
-                            <div key={`s${slotIdx}`} title={`전체 ${slotTotal}건 막힘`}
-                              style={{position:"absolute",top,left:0,right:0,height:slotPx,pointerEvents:"none",zIndex:3,
-                                backgroundColor:"rgba(0,0,0,.018)",
-                                backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14'%3E%3Crect x='5' y='5' width='4' height='4' fill='%234b4b6e' fill-opacity='0.15'/%3E%3C/svg%3E")`,
-                                backgroundSize:"14px 14px", backgroundPosition:"center center"}}/>
-                          );
-                        } else {
-                          out.push(
-                            <div key={`s${slotIdx}`} title={`${blockedCount}/${slotTotal} 막힘`}
-                              style={{position:"absolute",top,left:0,right:0,height:slotPx,background:"transparent",pointerEvents:"none",zIndex:3,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3}}>
-                              {dots}
-                            </div>
-                          );
-                        }
+                        // 막기 칼럼: 막히면 도트 원(회색/초록)만, 회색 배경 제거 (정우님 2026-06-24). 안 막힌 슬롯=빈칸
+                        out.push(
+                          <div key={`s${slotIdx}`} title={fullyBlocked?`전체 ${slotTotal}건 막힘`:`${blockedCount}/${slotTotal} 막힘`}
+                            style={{position:"absolute",top,left:0,right:0,height:slotPx,pointerEvents:"none",zIndex:3,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3}}>
+                            {dots}
+                          </div>
+                        );
                       }
                     }
                     // 30분 가이드 layer 제거 — 막힘 인디케이터(dots+border)로 충분
