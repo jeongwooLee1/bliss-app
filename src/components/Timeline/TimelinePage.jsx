@@ -2122,13 +2122,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       ordered.push(staffRooms[i]);
     }
     ordered.push(...buckets[staffRooms.length]);
-    // 막기 칼럼: 첫 번째 미배정(slot 0) 직후에 삽입 — 미배정 옆에 좁게
-    if (blockCol.length) {
-      // 첫 슬롯의 마지막 미배정 칼럼 다음 위치 찾기
-      const firstNaverIdx = ordered.findIndex(r => r.isNaver && r._naverIdx === 0);
-      if (firstNaverIdx >= 0) ordered.splice(firstNaverIdx + 1, 0, ...blockCol);
-      else ordered.unshift(...blockCol);
-    }
+    // 막기 칼럼: 지점 맨 앞(미배정보다 왼쪽) — 막기 → 미배정 → 직원 순 (정우님 2026-06-24)
+    if (blockCol.length) ordered.unshift(...blockCol);
     ordered.push(addCol);
     return ordered;
   });
@@ -4356,7 +4351,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             })();
             const isNewBranch = ci === 0 || room.branch_id !== allRooms[ci-1]?.branch_id;
             // 첫 컬럼에만 지점 앵커 텍스트 (구분선은 제거 — 지점명 배지로 충분)
-            const isFirstOfBranch = room._isFirstOfBranch || (ci === 0 || allRooms[ci-1]?.branch_id !== room.branch_id);
+            const isFirstOfBranch = isNewBranch;  // 지점 카드 좌측 끝(막기 칼럼 포함) — 위치 기반
+            // 지점명 배지는 첫 '비-막기' 칼럼에 표시(막기는 18px라 좁음): 막기 다음 미배정/직원에
+            const isBranchNameCol = !room.isBlockCol && (isNewBranch || allRooms[ci-1]?.isBlockCol);
             // 각 지점 첫 미배정 칼럼은 연핑크/라벤더(블리스 랜딩 색) → 우측 흰색 그라데이션 (시각 fade)
             // 막기 칼럼은 다른 일반 칼럼과 동일 배경 (좁은 36px 컬럼이라 헤더 SVG로 충분히 구분)
             const isFirstNaverOfBranch = room.isNaver && room._naverIdx === 0;
@@ -4376,7 +4373,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
               <div key={room.id} className="tl-room-col" data-branch-id={room.branch_id} style={{
                   width:_colWidth,flexShrink:0,
                   // 막기 컬럼은 좌측 세로선 제거 — 미배정과 자연스럽게 이어지도록
-                  borderLeft: (isFirstOfBranch || room.isBlockCol) ? "none" : "1px solid #f0f0f0",
+                  borderLeft: (isFirstOfBranch || room.isBlockCol || allRooms[ci-1]?.isBlockCol) ? "none" : "1px solid #f0f0f0",
                   borderRight: "none",
                   // 컬럼 자체 borderTop 제거 — sticky 헤더의 라인만 사용 (스크롤·상단 동일 굵기)
                   borderTop: "none",
@@ -4399,7 +4396,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                   // 위쪽은 z31 캐스터가 담당. 헤더에 별도 그림자를 주면 스크롤 시 본체 그림자와 누적돼 헤더 구간만 진해짐.
                   boxShadow: "none",
                   display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",paddingBottom:4,lineHeight:1.2}}>
-                  {isFirstOfBranch && (
+                  {isBranchNameCol && (
                     <span style={{position:"absolute",top:2,left:0,right:0,textAlign:"center",fontSize:14,fontWeight:800,color:T.text,letterSpacing:0,pointerEvents:"none",zIndex:2}}>
                       {room.branchName}
                     </span>
