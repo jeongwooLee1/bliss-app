@@ -4441,3 +4441,11 @@ CLAUDE.md 로깅이 v3.8.135에서 끊겨 136~141 요약 보충(상세는 git lo
 - **골든 게이트**: ai_booking.py(로깅 파라미터만, 채팅 동작 불변) 변경이라 회귀 확인 — 1차 26/28(실패 2건=crossday_change·returning_existing은 **케이스 날짜 하드코딩 6/15·6/20이 오늘 6/21 기준 과거가 된 노후화**, 내 변경 무관 입증). 노후 2건 날짜 7/15·7/20로 갱신 + XPASS 3건(simple_greeting·address_question·faq_not_defer) known_fail 해제 → **재실행 31/31 PASS(green)**. golden_set.json은 bliss-app git(scripts/ai_golden) + 서버 둘 다 동기화.
 - **적용**: 서버 직접(백업 `ai_booking.py.bak_gemsrc_*`·`bliss_naver.py.bak_gemsrc_*`·`golden_set.json.bak_dateroll_*`) + `systemctl restart bliss-naver`(active). DB migration(source 컬럼) 적용. React 변경 0 → 앱 버전업·CF퍼지 불필요.
 - **유의**: ① 분석 thinking off은 추출 정확도 영향 거의 없음(구조적 JSON 추출, 명시 목록 매칭)이나 라이브 매칭 스팟체크 권장. ② golden 날짜 케이스는 절대날짜 하드코딩이라 주기적 노후화 — 향후 상대날짜(today+N)로 harness 개선 검토. ③ source 미태그된 gemini_ask 부수 호출은 "gemini_ask"로 묶임(주요 버킷은 다 태그됨).
+
+### AI 응대 일일 자동점검 시스템 (서버, React 변경 0) (2026-06-24)
+정우님 "고객 대화 매일 모니터링해서 AI 오답 찾아 보완 — 시키지 않아도" → 자동 점검·보고 시스템 구축(품질 우선: 탐지·보고·제안만, **자동수정 없음**).
+- **`/home/ubuntu/naver-sync/ai_daily_audit.py`** (standalone) + ubuntu cron `30 0 * * *`(매일 09:30 KST). 어제 `messages`의 AI 자동응대 대화 → 의심신호 사전필터(직원 개입/고객 정정·불만/AI 담당자 미룸, ≤50) → Gemini(3.5-flash, thinkingBudget:0) 보수적 판정 → 텔레그램 다이제스트(🔴🟠🟡+문제+보완제안) + `ai_audit_log` 기록.
+- **DB** `ai_audit_log`(migration `ai_audit_log_init`, RLS `bliss_session_ok` 게이트): flagged + `__run__` 센티넬(하루1회 dedup). bulk insert 키 통일 필수(PGRST102).
+- **키**: `.env`(ubuntu)에 `GEMINI_KEY`·`BLISS_SESSION_TOKEN` 추가(messages RLS 잠금 → x-bliss-session 필요).
+- **검증(6/23)**: AI대화 7/의심 5/플래그 2 — "직원이 4시로 변경했는데 AI가 다시 3시 확정"(high) 실오류 포착. 텔레그램·DB·cron 정상.
+- **원칙**: 룰/프롬프트 수정은 승인 후 골든 검증([[feedback_bliss_ai_golden_gate]]) 반영. FAQ 자동추가 OFF. 비용 ~$0.05~0.1/일. memory `reference_bliss_ai_audit`.
