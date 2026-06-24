@@ -164,7 +164,7 @@ export default function CalendarViews({ view, selDate, onDayView, bizId, branche
           <button style={navBtn} onClick={() => stepWeek(1)}><I name="chevR" size={16} /></button>
           <button style={{ ...todayBtn, position: "absolute", right: 12 }} onClick={() => setAnchor(parseISO(today))}>오늘</button>
         </div>
-        <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(7,1fr)", minHeight: 0, borderTop: "1px solid #eee" }}>
+        <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(7, minmax(120px, 1fr))", minHeight: 0, overflowX: "auto", overflowY: "hidden", borderTop: "1px solid #eee" }}>
           {range.days.map((d, i) => {
             const ds = iso(d), isToday = ds === today, list = byDate[ds] || []
             return (
