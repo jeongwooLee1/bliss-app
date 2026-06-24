@@ -644,15 +644,24 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
 
   useEffect(() => {
     const H = { apikey: SB_KEY_SCH, Authorization: "Bearer " + SB_KEY_SCH };
+    let _cancelled = false;
 
-    fetch(`${SB_URL_SCH}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.schHistory_v1&select=value`, { headers: H })
-      .then(r=>r.json()).then(rows=>{
-        if (!rows?.length) return;
-        const parsed = parseSchHistory(rows[0].value);
-        setSchHistory(parsed);
-        // 10시 이후 로드 시 내일 데이터 바로 고정
-        if (isTomorrowLocked()) setFrozenTomorrow(extractTomorrowData(parsed));
-      }).catch(()=>{});
+    // 첫 로그인/계정 전환 시 biz·세션토큰이 준비되기 전 1회만 fetch하면 빈 배열 → 타임라인 영구 빈칸(직원칸 안 뜸).
+    // 빈 결과/실패면 짧게 재시도(최대 6회 ~4초)해 준비되는 순간 로드. (정우/모담 등 로그인 후 빈 타임라인 fix)
+    let _initTries = 0;
+    const _loadInit = () => {
+      if (_cancelled) return;
+      fetch(`${SB_URL_SCH}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.schHistory_v1&select=value`, { headers: { ...H, "x-bliss-session": (typeof localStorage!=="undefined" && localStorage.getItem("bliss_session_token")) || "" } })
+        .then(r=>r.json()).then(rows=>{
+          if (_cancelled) return;
+          if (!rows?.length) { if (_initTries++ < 6) setTimeout(_loadInit, 650); return; }
+          const parsed = parseSchHistory(rows[0].value);
+          setSchHistory(parsed);
+          // 10시 이후 로드 시 내일 데이터 바로 고정
+          if (isTomorrowLocked()) setFrozenTomorrow(extractTomorrowData(parsed));
+        }).catch(()=>{ if (!_cancelled && _initTries++ < 6) setTimeout(_loadInit, 650); });
+    };
+    _loadInit();
 
     // 매 시간 체크 - 10시 되는 순간 frozenTomorrow 설정
     const timer = setInterval(() => {
@@ -695,6 +704,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     }, 30000);
 
     return () => {
+      _cancelled = true;
       clearInterval(timer);
       clearInterval(pollTimer);
     };
