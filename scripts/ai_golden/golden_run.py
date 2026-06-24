@@ -210,7 +210,7 @@ EXPECTED_TO_CLASS = {"book":"book", "cancel":"cancel", "chat":"noop", "ask_info"
 def fmt_convo(conv):
     out = []
     for d, t in conv:
-        who = "손님" if d == "in" else "매장"
+        who = "손님" if d == "in" else ("매장(직원)" if d == "staff" else "매장")
         out.append(f"{who}: {t}")
     return "\n".join(out)
 
@@ -222,8 +222,13 @@ def run_case(c, facts):
     account_id = "_golden"
 
     # history monkeypatch — 케이스 대화를 production 형식 스레드로
-    thread = [{"direction": d, "message_text": t, "channel": channel,
-               "user_name": "골든", "cust_phone": "", "created_at": TODAY+"T10:00:00"} for d, t in conv]
+    #   d="staff" → 사람 직원 outbound (sent_by_staff_id 세팅, 직원-양보 게이트 테스트용)
+    def _mk_msg(d, t):
+        return {"direction": ("out" if d in ("out", "staff") else d), "message_text": t,
+                "channel": channel, "user_name": "골든", "cust_phone": "",
+                "created_at": TODAY+"T10:00:00", "is_ai": (d == "out"),
+                "sent_by_staff_id": ("강남점" if d == "staff" else "")}
+    thread = [_mk_msg(d, t) for d, t in conv]
     ai_booking._load_history = (lambda th: (lambda account_id, user_id, limit=10: list(th)))(thread)
 
     # 기존 예약 monkeypatch
@@ -239,6 +244,7 @@ def run_case(c, facts):
 
     # 마지막 inbound = user_msg
     user_msg = [t for d, t in conv if d == "in"][-1]
+    _sugg = c.get("suggest_only", True)   # 케이스별 override (직원-양보 게이트는 자동응답 경로라 false로 테스트)
 
     # 상태 초기화
     CAP["book"] = CAP["cancel"] = CAP["defer"] = False
@@ -254,7 +260,7 @@ def run_case(c, facts):
         ai_booking._last_processed_result = None
         try:
             reply = ai_booking.ai_booking_agent(user_msg=user_msg, account_id=account_id, user_id=user_id,
-                                                 channel=channel, force=True, suggest_only=True)
+                                                 channel=channel, force=True, suggest_only=_sugg)
         except Exception as e:
             reply = f"[ERROR {e}]"
         if (reply or "").strip() and not reply.startswith("[ERROR"):

@@ -4450,3 +4450,11 @@ CLAUDE.md 로깅이 v3.8.135에서 끊겨 136~141 요약 보충(상세는 git lo
 - **키**: `.env`(ubuntu)에 `GEMINI_KEY`·`BLISS_SESSION_TOKEN` 추가(messages RLS 잠금 → x-bliss-session 필요).
 - **검증(6/23)**: AI대화 7/의심 5/플래그 2 — "직원이 4시로 변경했는데 AI가 다시 3시 확정"(high) 실오류 포착. 텔레그램·DB·cron 정상.
 - **원칙**: 룰/프롬프트 수정은 승인 후 골든 검증([[feedback_bliss_ai_golden_gate]]) 반영. FAQ 자동추가 OFF. 비용 ~$0.05~0.1/일. memory `reference_bliss_ai_audit`.
+
+### 서버 — AI 직원 응대중 양보 게이트 (직원이 시간 정정했는데 AI가 옛 시간 재확정 사고 fix) (2026-06-24, React 변경 0)
+AI 일일점검(ai_daily_audit)이 잡은 첫 실오류를 공지&요청 루프로 수정→done. **사고**(WhatsApp Barantseva, 6/23 강남): 손님 "내일 3시" → AI "이름·성별?" → **직원(강남점) "3시는 선예약, 4시 가능"** → 손님 이름·성별+"No problem"(4시 동의) → **AI "내일 3:00 PM 뵐게요"**(직원의 4시 정정 무시, 손님 최초 3시로 되돌려 확정).
+**원인 2겹** (`ai_booking.py`): ① `_load_history` SELECT가 `is_ai`/`sent_by_staff_id` 미포함 → 직원 메시지가 AI 메시지와 똑같이 'assistant'로 들어가 모델이 직원 정정을 자기 과거발언으로 보고 무시. ② 기존 직원개입 게이트는 30분 윈도우라 39분 간격(직원 20:38 ↔ 손님 21:17)을 놓침.
+**fix**: ① `_load_history` select에 `is_ai,sent_by_staff_id` 추가. ② **book 실행 직전 "직원 응대중 양보 게이트"** — `action==book` & not manual/suggest_only/instruction일 때, **최근 10개 메시지에 사람 직원 outbound(`sent_by_staff_id` 있음)가 있으면** → `action=chat`, booking=None, "담당자가 직접 확인해서 안내드릴게요"(한/영)로 양보. 사람 직원이 응대 중인 예약은 AI가 임의 확정 안 함(직원이 손님에게 없는 정보=3시 선예약을 알고 있을 수 있으므로). suggest_only(답변추천)·instruction(지시모드)·manual은 직원이 제어 중이라 제외.
+**골든 검증**([[feedback_bliss_ai_golden_gate]]): 하니스 확장 — conv에 `["staff", …]` 역할(sent_by_staff_id 세팅) + 케이스별 `suggest_only` override(직원-양보는 자동응답 경로라 false). 신규 케이스 `staff_override_defer`(직원 4시 정정+손님 동의 → 예약 확정 금지·담당자 양보) 추가. **31/31 게이트 PASS(회귀 0) + staff_override_defer ✅PASS**(AI 3시 재확정 안 함·영어 양보 정상). golden_run.py·golden_set.json git(scripts/ai_golden)+서버 동기화.
+**적용**: 서버 직접(백업 `ai_booking.py.bak_staffdefer_*`) + `systemctl restart bliss-naver`(active). React 변경 0 → 버전업·CF퍼지 불필요. 공지&요청 ai_audit `id_aiaudit_..._0`(high) status=done+답글. 마스카라 중복응답(low)은 pending 유지(경미, 유저 판단 대기).
+**유의**: 게이트는 자동응답 경로 전용(suggest_only=답변추천 제외 — 직원이 초안 검토 중이라 양보 무의미). 사람 직원이 최근 10개 메시지에 있어야 발동(`sent_by_staff_id`로 식별, AI·자동발송은 미해당). 골든은 suggest_only=True 기본이라 이 게이트는 케이스별 false로만 커버됨.

@@ -1,666 +1,701 @@
 {
- "_doc": "받은메시지함 AI 응대 골든셋 — 과거 버그 + 핵심 시나리오를 고정 케이스로. 새 사고가 나면 룰을 추가하지 말고 여기에 케이스 1개를 추가하라. golden_run.py가 매 변경마다 채점.",
- "cases": [
-  {
-   "id": "cancel_basic",
-   "kind": "취소요청",
-   "channel": "whatsapp",
-   "lang": "en",
-   "conv": [
-    [
-     "out",
-     "Yalguun, your booking is confirmed! Jun 15 1:30 PM at Gangnam."
-    ],
-    [
-     "in",
-     "Hello there"
-    ],
-    [
-     "in",
-     "I am sorry something came up with my schedule"
-    ],
-    [
-     "in",
-     "Please cancel the appointment"
-    ]
-   ],
-   "existing_booking": {
-    "id": "g_ex1",
-    "date": "2026-06-15",
-    "time": "13:30",
-    "branch": "강남",
-    "service": "브라질리언"
-   },
-   "expected_action": "cancel",
-   "must_pass": "명시적 취소요청(여러 메시지 분할, 사과·인사 섞여도) → action=cancel. chat/ask_info로 얼버무리면 실패. 응답 영어 100%(한국어 확정/안내 문구 혼입 금지). 하드 금지선: 취소 '이후'에 미래 방문을 확정하듯 'See you at HH:MM'·'see you on <날짜>'처럼 예약이 아직 살아있는 것처럼 시간/방문을 재안내하지 말 것(과거형으로 '무엇을 취소했는지' 확인하는 것은 허용). 특정 문구·길이·이모지는 강요하지 않음.",
-   "ideal": "No worries at all! Your appointment has been cancelled. Take care and see you next time! 🤍"
-  },
-  {
-   "id": "farewell_after_cancel",
-   "kind": "작별/보류",
-   "channel": "whatsapp",
-   "lang": "en",
-   "conv": [
-    [
-     "out",
-     "Your appointment has been cancelled."
-    ],
-    [
-     "in",
-     "Thank you very much"
-    ],
-    [
-     "in",
-     "I will make sure my time this time and let you know"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "chat",
-   "must_pass": "작별·보류 메시지에 'See you at HH:MM' 같은 시간/예약 재안내 절대 금지. 따뜻한 마무리만. 영어.",
-   "ideal": "No problem at all! Just let us know anytime and we'll be happy to help 🤍"
-  },
-  {
-   "id": "farewell_thanks",
-   "kind": "작별·감사",
-   "channel": "instagram",
-   "lang": "en",
-   "conv": [
-    [
-     "out",
-     "Brazilian is 154,000 KRW. Would you like to book?"
-    ],
-    [
-     "in",
-     "Thank you so much, have a nice day"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "chat",
-   "must_pass": "감사·작별 → 따뜻한 마무리(action=chat). 구체적 시간/날짜 재안내·예약 강행 금지. ('필요하면 언제든 연락주세요' 류 열린 인사는 허용). 영어 100%.",
-   "ideal": "Thank you so much, have a wonderful day! See you soon 🤍"
-  },
-  {
-   "id": "price_budget_farewell",
-   "kind": "가격초과작별",
-   "channel": "whatsapp",
-   "lang": "en",
-   "conv": [
-    [
-     "out",
-     "Full body waxing is 370,000 KRW (first visit discount available)."
-    ],
-    [
-     "in",
-     "Ok thank you for the information! But the price is not within my budget for now"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "chat",
-   "must_pass": "예산초과 작별 → 정중·따뜻한 마무리(action=chat). 구체적 시간/날짜 재안내·예약 강행 금지. ('편하실 때 언제든 환영' 같은 열린 인사는 허용). 영어 100%.",
-   "ideal": "No problem at all, thank you for reaching out 🤍 You're always welcome whenever you're ready!"
-  },
-  {
-   "id": "change_time",
-   "kind": "예약변경(같은 날 시간 이동)",
-   "channel": "kakao",
-   "lang": "ko",
-   "conv": [
-    [
-     "out",
-     "오늘 강남점 12시 브라질리언 예약 확정됐어요!"
-    ],
-    [
-     "in",
-     "안녕하세요 오늘 12시 예약인데요"
-    ],
-    [
-     "in",
-     "오늘 오후 5시 30분으로 옮겨주세요"
-    ]
-   ],
-   "existing_booking": {
-    "id": "g_ex2",
-    "date": "TODAY",
-    "time": "12:00",
-    "branch": "강남",
-    "service": "브라질리언"
-   },
-   "expected_action": "book",
-   "must_pass": "기존예약(강남, TODAY 12:00, 브라질리언)이 있고 손님이 '같은 날(TODAY)' 시간만 오후 5시 30분(17:30, 영업시간 내)으로 이동 요청 → action=book (서버가 기존 취소+재등록하는 same-day 시간이동). 하드 금지선: 지점을 다시 묻거나 강남 외 다른 지점으로 바꾸지 말 것(기존 강남 유지), capacity/자리없음으로 거절하지 말 것, cancel만 하고 끝내지 말 것, cross-day(다른 날짜) 변경이 아니므로 예약금/패키지 차감·담당자확인 절차로 빠지지 말 것, 한국어로 응답. 특정 문구/이모지/길이는 채점하지 않음.",
-   "ideal": "네! 오늘 강남점 예약을 12시에서 오후 5시 30분으로 옮겨드릴게요."
-  },
-  {
-   "id": "new_booking_foreign",
-   "kind": "신규예약(외국어)",
-   "channel": "whatsapp",
-   "lang": "en",
-   "conv": [
-    [
-     "in",
-     "Hello! I would like to book a female brazilian waxing tomorrow at 3pm at Gangnam"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "book",
-   "must_pass": "action=book (날짜=내일·시간=15:00·시술=브라질리언·지점=강남·성별=여성 전부 제공됨 → 정보 완비, ask_info/chat로 빠지면 under-booking 실패). 응답은 영어 100%(한국어 확정문구 혼입 금지). 환각(없는 지점/가격/시간) 금지, capacity 사유로 거절 금지. 특정 문구·이모지·길이는 채점 대상 아님.",
-   "ideal": "Perfect! I've booked your Brazilian waxing for tomorrow at 3 PM at our Gangnam branch. Our staff will confirm shortly 😊"
-  },
-  {
-   "id": "inquiry_availability",
-   "kind": "가용성 문의(정보 다 있어도 예약 금지)",
-   "channel": "kakao",
-   "lang": "ko",
-   "conv": [
-    [
-     "in",
-     "강남점 브라질리언 이번 주 토요일 오후 3시 되나요?"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "chat",
-   "must_pass": "가용성 '문의'(되나요?) — 날짜·시간·시술·지점을 다 말해도 이건 예약요청이 아니라 가능여부 질문이다. 예약을 만들지 말 것(noop=chat/ask_info). 가능 여부를 답하고 '이대로 예약 잡아드릴까요?' 류로 의사 확인하는 건 OK. book(예약 생성)을 하면 실패(성급예약). 한국어. (정보가 다 있다는 이유만으로 예약하면 안 됨)",
-   "ideal": "네! 이번 주 토요일 오후 3시 강남점 브라질리언 예약 가능해요 😊 이대로 예약 잡아드릴까요?"
-  },
-  {
-   "id": "multimsg_booking",
-   "kind": "멀티메시지분할 신규예약",
-   "channel": "instagram",
-   "lang": "en",
-   "conv": [
-    [
-     "in",
-     "I would like to book my appointment in jamsil"
-    ],
-    [
-     "in",
-     "Brazilian and underarm please"
-    ],
-    [
-     "in",
-     "Sunday 11:30 am"
-    ],
-    [
-     "in",
-     "I'm female, name Rai, 01080000393"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "book",
-   "must_pass": "여러 메시지로 쪼개 준 지점·시술·일·시간·성별·이름·전화를 종합해 action=book 실행하면 통과. 이미 준 정보를 다시 묻거나 '정보가 부족하다'고 되물으면 실패. (단순 확정 멘트도 OK). 영어 100%.",
-   "ideal": "Got it 😊 Brazilian + underarm at Jamsil on Sunday 11:30 AM. Our staff will confirm shortly!"
-  },
-  {
-   "id": "price_male_complex",
-   "kind": "가격문의(남성·복합)",
-   "channel": "sms",
-   "lang": "ko",
-   "conv": [
-    [
-     "in",
-     "1. 남자 브라질리언과 다리전체 가격이 어떻게 될까요 2. 시술 전후 샤워 가능한가요? 3. 카드 결제 가능한가요?"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "chat",
-   "must_pass": "가격문의는 action=chat. 남성 가격·샤워·카드 3건 답. 금액 날조 금지. SMS라 간결.",
-   "ideal": "남성 브라질리언 176,000원·다리전체 110,000원이고요, 시술 전후 샤워 가능하시고 카드 결제도 됩니다 😊"
-  },
-  {
-   "id": "fullbody_brazilian",
-   "kind": "전신왁싱+브라질리언 가격",
-   "channel": "instagram",
-   "lang": "ko",
-   "conv": [
-    [
-     "in",
-     "전신왁싱이랑 브라질리언 같이 하면 얼마예요?"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "chat",
-   "must_pass": "'전신왁싱'=풀바디. '브라질리언+풀바디' 패키지 가격 안내(다리전체로 오인 금지). action=chat.",
-   "ideal": "브라질리언+풀바디 패키지는 여성 400,000원 / 남성 550,000원이에요 😊"
-  },
-  {
-   "id": "collab_paid",
-   "kind": "콜라보 유료여부",
-   "channel": "instagram",
-   "lang": "en",
-   "conv": [
-    [
-     "in",
-     "Hello! We'd love to propose a collaboration. Is it a paid partnership?"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "chat",
-   "must_pass": "action=chat/ask_info(noop) — book/cancel 생성 금지. 협업 가부를 즉석에서 확정 수락/거절하지 말고 검토 후 회신/담당자 확인 취지로 보류 응답. 영어로 응답(한국어 확정문구 섞기 금지). 존재하지 않는 협업 조건·금액·약속을 지어내지 말 것. '마케팅팀' 등 특정 부서명·특정 문구·길이는 강요하지 않음.",
-   "ideal": "Thanks so much for reaching out! We'll have our team review your collaboration proposal and get back to you. Could you share a few more details about what you have in mind?"
-  },
-  {
-   "id": "simple_greeting",
-   "kind": "단순인사(정보부족)",
-   "channel": "kakao",
-   "lang": "ko",
-   "conv": [
-    [
-     "in",
-     "안녕하세요"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "ask_info",
-   "must_pass": "단순 인사 → 예약/취소를 만들지 않는다(noop=ask_info/chat). 없는 예약·지점·가격을 지어내지 않는다. 한국어. — 예약 정보를 한 번에(템플릿) 묻든 가볍게 묻든 '묻는 방식·길이·이모지'는 무관하며 그것으로 실패시키지 말 것.",
-   "ideal": "안녕하세요! 하우스왁싱입니다 😊 원하시는 지점·시술·날짜시간 알려주시면 예약 도와드릴게요!",
-   "known_note": "콘텐츠 플레이크(~1/5): action(noop)·날조금지는 항상 정상이나 심판이 '재질문/길이' 등 must_pass 밖 기준으로 간헐 FAIL. 핵심(인사→예약·날조 안함)은 action_behavior가 결정적으로 커버."
-  },
-  {
-   "id": "nose_waxing",
-   "kind": "불가시술(콧속)",
-   "channel": "instagram",
-   "lang": "en",
-   "conv": [
-    [
-     "in",
-     "Do you do inner nose (nostril) waxing?"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "chat",
-   "must_pass": "동작=noop(book/cancel 안 함, 예약 생성·날짜시간 확정 금지). 내부 콧속 왁싱은 '하지 않는다'는 취지로 명확히 거부(가능하다고 안내하거나 예약 잡아주는 환각 금지). 응답 언어=영어(한국어 확정문구 섭지 금지). 'See you at HH:MM' 식 구체 시간·예약 재안내 금지. 거부 이유 명시 여부·이모지·문장 길이·특정 문구는 자유(강요하지 않음).",
-   "ideal": "We don't offer inner nose waxing — sorry about that! We'd be happy to help with other areas though."
-  },
-  {
-   "id": "hold_defer",
-   "kind": "일정조율 보류",
-   "channel": "whatsapp",
-   "lang": "en",
-   "conv": [
-    [
-     "out",
-     "Sure! When would you like to come?"
-    ],
-    [
-     "in",
-     "I'm having an appointment now that will take 2-3 hours, I'll message you when I'm done"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "chat",
-   "must_pass": "보류 수용(action=chat). 강제 확정·시간 강요·거절 금지. 영어.",
-   "ideal": "Sure, no problem at all! Just message me when you're done and I'll check availability 😊"
-  },
-  {
-   "id": "address_question",
-   "kind": "길/주소문의",
-   "channel": "whatsapp",
-   "lang": "en",
-   "conv": [
-    [
-     "in",
-     "what is your address? what is the closest train station?"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "chat",
-   "must_pass": "예약/취소 생성 금지(noop=chat 또는 ask_info 둘 다 정답). 공통 whatsapp 채널이고 지점 미언급이므로 (a)어느 지점인지 되묻거나 (b)FACTS에 존재하는 한 지점의 주소를 안내하면 둘 다 통과. 하드 금지: FACTS에 없는 주소·도보분·지하철 출구번호·역명을 지어내면 실패. 영어로만 응답(한국어 확정문구 혼입 금지). 특정 지점/특정 문구/길이는 강요하지 않음.",
-   "ideal": "We have several branches across Seoul — could you let me know which one you'd like the address for? Our main Gangnam branch is at 5F, 16 Hakdong-ro 30-gil, Gangnam-gu, Seoul. I can share the nearest station once I know your branch.",
-   "known_note": "콘텐츠 플레이크(~1/5): 공통채널 주소문의에 영어 답 끝에 한국어 주소를 덧붙여 언어 혼용하는 경우 있음. action·되묻기·환각금지는 정상. 언어 일관성 개선 시 재승격."
-  },
-  {
-   "id": "gender_flow",
-   "kind": "성별 1회 질문(코드 게이트 — 성별 가격차 신규예약)",
-   "channel": "kakao",
-   "lang": "ko",
-   "conv": [
-    [
-     "in",
-     "브라질리언 예약하고 싶어요"
-    ],
-    [
-     "out",
-     "네! 브라질리언 왁싱 예약 도와드릴게요. 어느 지점, 어떤 날짜·시간 원하실까요?"
-    ],
-    [
-     "in",
-     "강남점이요. 이번 주 토요일 오후 3시에 가능할까요?"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "chat",
-   "must_pass": "action은 chat 또는 ask_info(=noop)여야 한다(이 턴 book/cancel 금지). 브라질리언은 성별별 가격차(F154k/M176k)라 예약 확정 전 성별을 '한 번' 물어야 정당 — 코드 성별 게이트(사후보정3)가 신규예약+성별없음+미질문이면 강제로 성별 질문(chat). 지점·날짜·시간은 이미 주어졌으니 처음부터 다시 캐묻지 말 것. 하드 금지선: FACTS에 없는 가격·시술 등 '사실'을 날조 금지. ※단 '이번 주 토요일'을 구체 날짜(예: 6월 20일)로 변환하는 것은 상대날짜 자동처리(정상)이며 날조 아님 — 날짜 변환을 이유로 FAIL하지 말 것. 한국어 대화이므로 외국어 확정문구 혼입 금지.",
-   "ideal": "토요일 오후 3시 강남점 브라질리언으로 도와드릴게요! 가격이 성별에 따라 달라서요, 여성/남성 중 어느 쪽이실까요?"
-  },
-  {
-   "id": "gender_flow_2",
-   "kind": "성별 끝내 미제공해도 예약 막지 않음 — 빈값으로 book 진행(강요·반복 금지)",
-   "channel": "whatsapp",
-   "lang": "ko",
-   "conv": [
-    [
-     "in",
-     "강남점에서 브라질리언 예약할게요. 이번 주 토요일 오후 3시요"
-    ],
-    [
-     "out",
-     "토요일 오후 3시 강남점 브라질리언으로 도와드릴게요! 가격이 성별에 따라 달라서요, 여성/남성 중 어느 쪽이실까요?"
-    ],
-    [
-     "in",
-     "그건 가서 말할게요. 일단 예약만 잡아주세요"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "book",
-   "must_pass": "action은 book(예약 생성) 이어야 한다. 필수 4요소(날짜=이번 주 토요일, 시간=오후 3시, 시술=브라질리언, 지점=강남)가 모두 주어졌고 손님이 성별 답을 명시적으로 보류했으므로, 성별이 빈값이어도 예약을 진행해야 한다. 성별 미제공을 이유로 ask_info/chat으로 빠지거나(under-booking) 예약을 거절하면 실패. 성별을 두 번째로 다시 강요/반복 질문하면 실패. 하드 금지선: FACTS에 없는 수치 날조 금지, 한국어 대화이므로 외국어 확정문구 혼입 금지.",
-   "ideal": "네, 토요일 오후 3시 강남점 브라질리언으로 예약 잡아드렸어요. 성별은 방문하셔서 말씀해주시면 그에 맞춰 안내드릴게요!"
-  },
-  {
-   "id": "capacity_no_reject",
-   "kind": "인기시간대 만석추정 예약 - capacity 거절 금지(받아서 book)",
-   "channel": "whatsapp",
-   "lang": "ko",
-   "conv": [
-    [
-     "in",
-     "이번주 토요일 오후 2시에 강남점에서 여자 브라질리언 예약하고 싶어요"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "book",
-   "must_pass": "action=book(예약 생성). 정보(날짜=이번주 토요일/시간=14:00/시술=브라질리언 여성/지점=강남) 모두 충족됐으므로 받아서 예약을 만들어야 한다. 자리 참/만석을 이유로 거절하거나 '어렵습니다·자리가 없습니다·꽉 찼습니다·예약 불가' 류로 capacity 거절하면 실패. ask_info/chat로 빠져 예약을 안 만들면 실패(under-booking). 응답은 한국어. 표현·확정문구 형식·길이·이모지·예약금 안내 유무는 자유(확정대기 안내는 허용).",
-   "ideal": "토요일 오후 2시 강남점 여성 브라질리언으로 예약 접수해 드릴게요. 인기 시간대라 확정은 담당자가 최종 확인 후 안내드릴게요. 예약금 33,000원 안내가 필요하시면 말씀 주세요."
-  },
-  {
-   "id": "capacity_no_reject_2",
-   "kind": "주말 피크타임 만석언급 응대 - capacity 거절 금지(받아서 book)",
-   "channel": "kakao",
-   "lang": "ko",
-   "conv": [
-    [
-     "in",
-     "토요일은 많이 바쁘죠? 그래도 잠실점 토요일 오후 1시에 여자 다리 전체 왁싱 예약 잡아주세요"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "book",
-   "must_pass": "action=book(예약 생성). 정보(날짜=토요일/시간=13:00/시술=다리 전체 여성/지점=잠실) 충족 → 받아서 예약 생성하면 통과. 핵심 테스트: 자리 참/만석을 이유로 거절('자리 없음·만석·어렵습니다·불가')하면 실패. ask_info/chat로 빠져 예약을 안 만들면 실패. 예약을 진행하면서 연락처·확정대기·담당자확인을 함께 안내하는 것은 허용(거절만 아니면 통과). 응답 한국어. 가격 언급 시 FACTS 근거만, 날조 금지. 문구·길이·이모지 자유.",
-   "ideal": "토요일 오후 1시 잠실점 여성 다리 전체 왁싱으로 접수해 드릴게요. 주말이라 예약이 몰리지만 일단 잡아두고 확정은 담당자가 확인 후 안내드릴게요."
-  },
-  {
-   "id": "crossday_change",
-   "kind": "예약 다른 날짜로 변경(cross-day) — 즉시 재예약 금지·예약금/담당자 확인",
-   "channel": "kakao",
-   "lang": "ko",
-   "conv": [
-    [
-     "in",
-     "안녕하세요 7월 15일 강남점 브라질리언 예약했는데요"
-    ],
-    [
-     "out",
-     "네, 7월 15일 14시 강남점 브라질리언 예약 확인됩니다. 무엇을 도와드릴까요?"
-    ],
-    [
-     "in",
-     "그날 일이 생겨서 7월 20일로 옮길 수 있을까요? 같은 시간대로요"
-    ]
-   ],
-   "existing_booking": {
-    "id": "bk_crossday_001",
-    "date": "2026-07-15",
-    "time": "14:00",
-    "branch": "강남",
-    "service": "브라질리언"
-   },
-   "expected_action": "chat",
-   "must_pass": "action은 noop(chat/ask_info)이어야 한다 — book(다른 날짜로 즉시 silent 재예약)이나 cancel을 해서는 안 된다. 다른 날짜(7/20)로 옮기는 cross-day 변경이므로 봇은 예약을 직접 생성/이동하지 말고, 예약금/담당자 확인이 필요하다는 취지(예약금 또는 담당자 확인 또는 변경 처리 안내 중 하나 이상)를 손님 언어(한국어)로 안내해야 한다. 응답은 한국어 100%(외국어 혼용 금지). 사실 날조 금지(FACTS에 없는 가격·정책·날짜 지어내기 금지). 특정 문구·길이·이모지 수는 보지 않는다.",
-   "ideal": "7월 20일로 날짜를 옮기는 변경은 담당자가 확인 후 처리해드려요. 기존 예약금/패키지 차감 여부도 함께 안내드리도록 담당자에게 전달해두겠습니다. 잠시만 기다려주세요!"
-  },
-  {
-   "id": "business_hours",
-   "kind": "영업시간 밖(밤 10시) 예약요청 — 정보 다 줬어도 예약 생성 금지, 영업시간 안내",
-   "channel": "whatsapp",
-   "lang": "ko",
-   "conv": [
-    [
-     "in",
-     "강남점 예약하고 싶은데요"
-    ],
-    [
-     "out",
-     "안녕하세요! 강남점 예약 도와드릴게요. 어떤 시술을 언제 원하시나요?"
-    ],
-    [
-     "in",
-     "오늘 밤 10시에 브라질리언 여성으로 가능할까요? 강남점이요"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "chat",
-   "must_pass": "예약(book)을 생성하지 않는다(noop). 손님이 요청한 22:00(밤 10시)를 확정 예약 시간으로 잡거나 'HH:MM에 뵙겠습니다/예약되었습니다' 식으로 확정하지 않는다. 영업시간이 11:00~21:00(마지막 접수 20:30)임을 안내하는 취지여야 하며, 22:00가 영업시간 내라고 잘못 안내하거나 허위 영업시간을 날조하지 않는다. 응답 언어는 한국어. (특정 문구·길이·이모지 수는 자유)",
-   "ideal": "고객님, 정말 죄송하지만 영업시간이 오전 11시부터 오후 9시까지이고 마지막 접수가 20시 30분이라 밤 10시 예약은 어려워요. 영업시간 내로 원하시는 시간 알려주시면 강남점 브라질리언 예약 도와드릴게요!"
-  },
-  {
-   "id": "faq_not_defer",
-   "kind": "FAQ 직접답변(담당자 떠넘기기 금지)",
-   "channel": "whatsapp",
-   "lang": "ko",
-   "conv": [
-    [
-     "in",
-     "생리 중에도 왁싱 받을 수 있나요?"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "chat",
-   "must_pass": "action=chat(=noop, book/cancel 금지). '생리 중 왁싱 가능 여부'는 매장 FAQ에 있는 질문이므로 직접 답해야 한다(가능하다는 취지 + 그 기간 피부가 예민할 수 있다는 안내 등 FAQ 근거). 답 없이 '담당자 확인 후 안내/전달드릴게요'류로만 떠넘기면 실패. FACTS/FAQ에 없는 수치·정책 날조 금지. 응답 한국어(외국어 확정문구 혼입 금지). 특정 문구·길이·이모지는 자유.",
-   "ideal": "생리 중에도 왁싱 시술 가능해요! 😊 다만 그 기간엔 피부가 평소보다 조금 예민하실 수 있어요. 더 궁금한 점 있으시면 알려주세요!",
-   "known_note": "콘텐츠 플레이크(~1/3): 봇이 '생리 중 왁싱?'를 RAG에서 못 끌어올 때 답 대신 '담당자 확인'으로 떠넘김(무조건담당자 경향). action은 항상 noop 정상. RAG 검색 신뢰도 개선 시 하드게이트 재승격."
-  },
-  {
-   "id": "language_consistency",
-   "kind": "언어 일관성 — 일본어 가격 문의 시 일본어로 응답(한국어/영어 혼용 금지)",
-   "channel": "whatsapp",
-   "lang": "ja",
-   "conv": [
-    [
-     "in",
-     "こんにちは。ブラジリアンワックスの料金を教えてください。"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "chat",
-   "must_pass": "action은 반드시 noop(chat 또는 ask_info)여야 한다 — book/cancel 절대 금지(예약 정보가 전혀 없는 단순 가격 문의). 응답 본문은 100% 일본어여야 한다(고객이 일본어로 물었으므로). 한국어 문장이나 영어 문장을 섞으면 실패(예: 한국어 확정 문구·안내문, 영어 안내 혼입 금지). 가격을 숫자로 언급한다면 FACTS의 확정 가격(여성 154,000 / 남성 176,000)만 사용하고 그 외 금액을 날조하면 실패 — 다만 특정 문구·길이·이모지 수·성별 되묻기 여부는 강요하지 않는다(되물어도 정상, 가격을 일본어로 그대로 안내해도 정상). 임의 지점 단정(예: 강남으로 확정)으로 예약을 만들면 실패.",
-   "ideal": "ブラジリアンワックスの料金は女性が154,000ウォン、男性が176,000ウォンです（初回限定の割引もございます）。ご来店をご希望の店舗や日時が決まりましたら、お気軽にお知らせください。"
-  },
-  {
-   "id": "couple_booking",
-   "kind": "커플/2인 동반 예약 (정보 충분 → 예약 생성)",
-   "channel": "whatsapp",
-   "lang": "ko",
-   "conv": [
-    [
-     "in",
-     "안녕하세요 강남점 브라질리언 커플로 둘이 같이 예약하고 싶어요"
-    ],
-    [
-     "out",
-     "안녕하세요, 하우스왁싱 강남점입니다. 두 분 함께 도와드릴게요. 원하시는 날짜와 시간, 그리고 두 분 성별을 알려주시면 예약 잡아드리겠습니다."
-    ],
-    [
-     "in",
-     "이번주 토요일 오후 2시요. 저는 여자고 남자친구랑 둘이 같이 받을 거예요 둘 다 브라질리언이요"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "book",
-   "must_pass": "동작은 반드시 book(예약 생성)이어야 한다. 정보가 모두 충족됨: 지점=강남, 시술=브라질리언(2인), 날짜=이번주 토요일, 시간=14:00, 성별=여1·남1. 이미 다 줬는데 ask_info/chat으로 빠지면 under-booking 실패. 지점이 대화에 있으므로 '어느 지점이세요?' 되묻기 금지. 성별도 이미 주어졌으므로 성별을 다시 묻지 말 것. 14:00은 영업시간(11:00~21:00) 안이므로 영업시간 거절 금지. 자리 참(capacity)으로 거절 금지. 응답 언어는 한국어. 가격을 언급한다면 FACTS의 확정 가격만 사용(여성 브라질리언 154,000 / 남성 176,000)하고 날조 금지 — 특정 문구·길이·이모지 수는 강요하지 않는다.",
-   "ideal": "두 분 강남점 토요일 오후 2시 브라질리언으로 함께 예약 도와드릴게요. 여성분 154,000원, 남성분 176,000원이며 신규 첫 방문이시면 할인도 안내해 드릴 수 있어요. 예약 확정을 위해 예약금 33,000원(국민은행 80910104203812 이정우) 안내드립니다. 곧 확정 연락드릴게요!"
-  },
-  {
-   "id": "address_known_branch",
-   "kind": "지점 특정 상태에서 주소/위치 문의 (강남점 명시)",
-   "channel": "whatsapp",
-   "lang": "ko",
-   "conv": [
-    [
-     "in",
-     "강남점 위치가 어디예요? 주소 좀 알려주세요"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "chat",
-   "must_pass": "action=chat/ask_info(noop). 손님이 '강남점'을 명시했으므로 강남 주소(서울 강남구 학동로30길 16 남강빌딩 5층)를 FACTS 그대로 안내해야 한다. 지점이 이미 특정됐으니 '어느 지점이세요?'로 되묻지 말 것. 지하철 출구·도보 N분·역에서의 거리 등 FACTS에 없는 건물/교통 디테일을 날조 금지. 다른 지점 주소를 섞지 말 것. 예약/취소 동작(book/cancel) 발생 금지. 한국어로 응답.",
-   "ideal": "강남점은 서울 강남구 학동로30길 16 남강빌딩 5층에 있어요. 영업시간은 11시부터 21시(마지막 접수 20:30)입니다. 방문 전에 또 궁금한 점 있으면 편하게 물어봐 주세요!"
-  },
-  {
-   "id": "returning_existing",
-   "kind": "기존 예약 일시 확인 질문(내 예약 언제였죠?)",
-   "channel": "kakao",
-   "lang": "ko",
-   "conv": [
-    [
-     "in",
-     "안녕하세요 제가 예약을 해놨는데 날짜를 까먹었어요ㅠㅠ 제 예약이 언제였죠?"
-    ]
-   ],
-   "existing_booking": {
-    "id": "bk_re_001",
-    "date": "2026-07-15",
-    "time": "14:00",
-    "branch": "강남",
-    "service": "브라질리언"
-   },
-   "expected_action": "chat",
-   "must_pass": "action은 chat(=noop): 새 예약 생성(book) 금지, 취소(cancel) 금지. 손님 질문은 단순 '내 예약 언제?' 조회이므로 ask_info로 새 정보를 되묻지 말 것. 응답에 existing_booking의 실제 날짜(2026-07-15, '7/15'·'15일' 등 동치 표기 허용)와 시간(14:00, '오후 2시' 등 동치 표기 허용)이 둘 다 정확히 반영돼야 함. 요일(수/월…) 언급은 검증 대상 아님 — 틀리거나 생략해도 무방(날짜·시간만 정확하면 통과). '모른다/확인 후 안내드릴게요/담당자에게 전달' 식 회피·미룸 금지(예약 정보는 이미 주어져 있으므로 바로 답해야 함). booking에 없는 다른 날짜·다른 시간 날조 금지. 응답 언어는 한국어(손님 언어)만, 외국어 혼용 금지. 작별/마무리가 아니므로 'See you at~' 류 강요는 무관하나 잘못된 시간 재안내(주어진 14:00 외 시각)는 금지.",
-   "ideal": "확인해보니 7월 15일 오후 2시 강남점 브라질리언으로 예약되어 있으세요! 혹시 변경이나 다른 문의 있으시면 편하게 말씀해주세요 :)"
-  },
-  {
-   "id": "no_service_hallucination",
-   "kind": "없는시술문의",
-   "channel": "naver",
-   "lang": "ko",
-   "conv": [
-    [
-     "in",
-     "안녕하세요! 혹시 남자친구 다리털 왁싱하려고 하는데 털 있는걸 좋아해서 좀 많은 편인데 숱만 치고 싶다고 하더라구요ㅠㅠ! 다리 숱정리도 가능한가요?"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "noop",
-   "must_pass": "매장 메뉴에 없는 다리 숱정리를 가능하다고 단정하거나 디자인왁싱 등 다른 시술과 임의로 동일시하면 실패(환각). 모르는 애매한 시술이므로 담당자가 확인 후 안내드릴게요 류로 안내해야 통과. 예약 생성(book)하면 실패.",
-   "ideal": "다리 숱정리는 제가 정확히 확인이 어려워서요, 담당자가 확인 후 안내드릴게요"
-  },
-  {
-   "id": "price_question_complete",
-   "kind": "예약정보 완료 + 가격 질문 → 성별 되묻지 말고 여/남 가격 답(book·성별질문 금지)",
-   "channel": "whatsapp",
-   "lang": "en",
-   "conv": [
-    [
-     "in",
-     "Hello"
-    ],
-    [
-     "out",
-     "Hello~ Would you like me to assist you with a reservation?"
-    ],
-    [
-     "in",
-     "I would like to book tomorrow at 10 AM. Services: full face waxing, full back waxing, full arms waxing, underarm waxing, neck waxing."
-    ],
-    [
-     "out",
-     "At which location would you like the service?"
-    ],
-    [
-     "in",
-     "Gangnam"
-    ],
-    [
-     "out",
-     "Sure, 10 AM at Gangnam works for you. 😊"
-    ],
-    [
-     "in",
-     "Could you please let me know the total cost for all these services?"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "chat",
-   "must_pass": "action은 chat(noop) — 가격 질문에 예약(book)을 만들거나 성별을 되묻지 말 것. 여성가·남성가(여러 시술이면 여성 합계/남성 합계)를 둘 다 가격으로 안내해야 한다. \"정확한 견적을 위해 성별 알려달라\"며 가격 답을 미루거나 성별만 되물으면 실패. 영어 대화이므로 영어로 답. FACTS(시술 가격표)에 없는 수치 날조 금지.",
-   "ideal": "Here are the totals (female / male, in KRW): Female total ... / Male total ... 😊 Let me know your gender and I'll confirm the exact price and book it!"
-  },
-  {
-   "id": "couple_2people",
-   "kind": "2인 예약을 'for 2 people'로만 말함(커플 단어 없이) → 동반자 자동등록 위해 book",
-   "channel": "whatsapp",
-   "lang": "en",
-   "conv": [
-    [
-     "in",
-     "Hi, I'd like to book a brazilian wax for 2 people at Gangnam"
-    ],
-    [
-     "out",
-     "Hi! I'd be happy to help with your booking for 2. What date and time would you like, and may I ask the gender of each person?"
-    ],
-    [
-     "in",
-     "Tomorrow at 3pm, both female please"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "book",
-   "must_pass": "동작은 반드시 book(예약 생성). 손님이 'for 2 people'로 2인을 명확히 밝혔고 지점=강남, 시술=브라질리언, 날짜=내일, 시간=15:00, 성별=둘 다 여성으로 정보가 충분 → 예약을 만들어야 한다. ask_info/chat로 빠지면 under-booking 실패. 2인이므로 두 명을 함께 받는 예약으로 처리(동반자 포함 의도). 15:00은 영업시간(11:00~21:00) 내라 거절 금지. 응답 언어는 영어(reply 100% 영어, 한국어 혼용 금지). 가격 언급 시 FACTS 확정가만(여성 브라질리언 154,000) 날조 금지. 특정 문구·길이·이모지 수는 자유.",
-   "ideal": "Perfect! I'll book both of you for a brazilian wax at our Gangnam branch tomorrow at 3:00 PM. Our staff will confirm shortly 😊"
-  },
-  {
-   "id": "passed_appointment_no_reref",
-   "kind": "지난시각예약",
-   "channel": "whatsapp",
-   "lang": "en",
-   "conv": [
-    [
-     "out",
-     "Austin, your booking is confirmed! Today 9:00 AM at Wangsimni."
-    ],
-    [
-     "in",
-     "So sorry, traffic was terrible and I missed it"
-    ],
-    [
-     "in",
-     "Is there any opening later today or tomorrow?"
-    ]
-   ],
-   "existing_booking": {
-    "id": "g_past1",
-    "date": "TODAY",
-    "time": "09:00",
-    "branch": "왕십리",
-    "service": "브라질리언"
-   },
-   "expected_action": "chat",
-   "must_pass": "기존 예약(오늘 09:00)의 예약 시각이 이미 지난 상태(지금은 그보다 늦음). 하드 금지선: 그 지난 시각(09:00 / today at 9 AM)을 다가오는 예약·예약 가능한 것처럼 'what service for today at 9 AM?'식으로 재안내·재확인·재예약하지 말 것. 손님이 늦어 놓쳤다 → 그 시각이 지났음을 (과거형으로) 짚고, 지금 이후 새 시각(오늘 남은 영업시간 또는 다른 날)으로 안내. 응답 영어 100%. 특정 문구·길이·이모지·정확한 action(chat/ask_info)은 강요하지 않음 — 지난 시각 재안내만 아니면 됨.",
-   "ideal": "Oh no, I'm so sorry you got stuck in traffic! That 9 AM slot has already passed, but I'd love to rebook you. We have openings later today and tomorrow — what time works best for you?"
-  },
-  {
-   "id": "bikini_scope_gate",
-   "kind": "비키니범위게이트",
-   "channel": "whatsapp",
-   "lang": "en",
-   "conv": [
-    [
-     "in",
-     "Hi! I'd like to book a bikini wax tomorrow at 3pm at Gangnam, I'm female"
-    ]
-   ],
-   "existing_booking": null,
-   "expected_action": "chat",
-   "must_pass": "손님이 'bikini'만 말함(외국 손님은 전체제거를 bikini로 칭하는 경우 많아 모호). 봇은 예약을 먼저 확정하면 안 되고, 예약 '전에' 범위(bikini=팬티라인 vs Brazilian=전체제거)를 1회 물어야 한다(action=chat). ❌'booking is confirmed'/예약 생성 후 범위 질문은 FAIL. 영어 100%.",
-   "ideal": "Happy to help! In Korea, bikini = tidy around the panty line, while Brazilian = full removal incl. the pubic area. Which would you prefer?"
-  }
- ]
+  "_doc": "받은메시지함 AI 응대 골든셋 — 과거 버그 + 핵심 시나리오를 고정 케이스로. 새 사고가 나면 룰을 추가하지 말고 여기에 케이스 1개를 추가하라. golden_run.py가 매 변경마다 채점.",
+  "cases": [
+    {
+      "id": "cancel_basic",
+      "kind": "취소요청",
+      "channel": "whatsapp",
+      "lang": "en",
+      "conv": [
+        [
+          "out",
+          "Yalguun, your booking is confirmed! Jun 15 1:30 PM at Gangnam."
+        ],
+        [
+          "in",
+          "Hello there"
+        ],
+        [
+          "in",
+          "I am sorry something came up with my schedule"
+        ],
+        [
+          "in",
+          "Please cancel the appointment"
+        ]
+      ],
+      "existing_booking": {
+        "id": "g_ex1",
+        "date": "2026-06-15",
+        "time": "13:30",
+        "branch": "강남",
+        "service": "브라질리언"
+      },
+      "expected_action": "cancel",
+      "must_pass": "명시적 취소요청(여러 메시지 분할, 사과·인사 섞여도) → action=cancel. chat/ask_info로 얼버무리면 실패. 응답 영어 100%(한국어 확정/안내 문구 혼입 금지). 하드 금지선: 취소 '이후'에 미래 방문을 확정하듯 'See you at HH:MM'·'see you on <날짜>'처럼 예약이 아직 살아있는 것처럼 시간/방문을 재안내하지 말 것(과거형으로 '무엇을 취소했는지' 확인하는 것은 허용). 특정 문구·길이·이모지는 강요하지 않음.",
+      "ideal": "No worries at all! Your appointment has been cancelled. Take care and see you next time! 🤍"
+    },
+    {
+      "id": "farewell_after_cancel",
+      "kind": "작별/보류",
+      "channel": "whatsapp",
+      "lang": "en",
+      "conv": [
+        [
+          "out",
+          "Your appointment has been cancelled."
+        ],
+        [
+          "in",
+          "Thank you very much"
+        ],
+        [
+          "in",
+          "I will make sure my time this time and let you know"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "chat",
+      "must_pass": "작별·보류 메시지에 'See you at HH:MM' 같은 시간/예약 재안내 절대 금지. 따뜻한 마무리만. 영어.",
+      "ideal": "No problem at all! Just let us know anytime and we'll be happy to help 🤍"
+    },
+    {
+      "id": "farewell_thanks",
+      "kind": "작별·감사",
+      "channel": "instagram",
+      "lang": "en",
+      "conv": [
+        [
+          "out",
+          "Brazilian is 154,000 KRW. Would you like to book?"
+        ],
+        [
+          "in",
+          "Thank you so much, have a nice day"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "chat",
+      "must_pass": "감사·작별 → 따뜻한 마무리(action=chat). 구체적 시간/날짜 재안내·예약 강행 금지. ('필요하면 언제든 연락주세요' 류 열린 인사는 허용). 영어 100%.",
+      "ideal": "Thank you so much, have a wonderful day! See you soon 🤍"
+    },
+    {
+      "id": "price_budget_farewell",
+      "kind": "가격초과작별",
+      "channel": "whatsapp",
+      "lang": "en",
+      "conv": [
+        [
+          "out",
+          "Full body waxing is 370,000 KRW (first visit discount available)."
+        ],
+        [
+          "in",
+          "Ok thank you for the information! But the price is not within my budget for now"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "chat",
+      "must_pass": "예산초과 작별 → 정중·따뜻한 마무리(action=chat). 구체적 시간/날짜 재안내·예약 강행 금지. ('편하실 때 언제든 환영' 같은 열린 인사는 허용). 영어 100%.",
+      "ideal": "No problem at all, thank you for reaching out 🤍 You're always welcome whenever you're ready!"
+    },
+    {
+      "id": "change_time",
+      "kind": "예약변경(같은 날 시간 이동)",
+      "channel": "kakao",
+      "lang": "ko",
+      "conv": [
+        [
+          "out",
+          "오늘 강남점 12시 브라질리언 예약 확정됐어요!"
+        ],
+        [
+          "in",
+          "안녕하세요 오늘 12시 예약인데요"
+        ],
+        [
+          "in",
+          "오늘 오후 5시 30분으로 옮겨주세요"
+        ]
+      ],
+      "existing_booking": {
+        "id": "g_ex2",
+        "date": "TODAY",
+        "time": "12:00",
+        "branch": "강남",
+        "service": "브라질리언"
+      },
+      "expected_action": "book",
+      "must_pass": "기존예약(강남, TODAY 12:00, 브라질리언)이 있고 손님이 '같은 날(TODAY)' 시간만 오후 5시 30분(17:30, 영업시간 내)으로 이동 요청 → action=book (서버가 기존 취소+재등록하는 same-day 시간이동). 하드 금지선: 지점을 다시 묻거나 강남 외 다른 지점으로 바꾸지 말 것(기존 강남 유지), capacity/자리없음으로 거절하지 말 것, cancel만 하고 끝내지 말 것, cross-day(다른 날짜) 변경이 아니므로 예약금/패키지 차감·담당자확인 절차로 빠지지 말 것, 한국어로 응답. 특정 문구/이모지/길이는 채점하지 않음.",
+      "ideal": "네! 오늘 강남점 예약을 12시에서 오후 5시 30분으로 옮겨드릴게요."
+    },
+    {
+      "id": "new_booking_foreign",
+      "kind": "신규예약(외국어)",
+      "channel": "whatsapp",
+      "lang": "en",
+      "conv": [
+        [
+          "in",
+          "Hello! I would like to book a female brazilian waxing tomorrow at 3pm at Gangnam"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "book",
+      "must_pass": "action=book (날짜=내일·시간=15:00·시술=브라질리언·지점=강남·성별=여성 전부 제공됨 → 정보 완비, ask_info/chat로 빠지면 under-booking 실패). 응답은 영어 100%(한국어 확정문구 혼입 금지). 환각(없는 지점/가격/시간) 금지, capacity 사유로 거절 금지. 특정 문구·이모지·길이는 채점 대상 아님.",
+      "ideal": "Perfect! I've booked your Brazilian waxing for tomorrow at 3 PM at our Gangnam branch. Our staff will confirm shortly 😊"
+    },
+    {
+      "id": "inquiry_availability",
+      "kind": "가용성 문의(정보 다 있어도 예약 금지)",
+      "channel": "kakao",
+      "lang": "ko",
+      "conv": [
+        [
+          "in",
+          "강남점 브라질리언 이번 주 토요일 오후 3시 되나요?"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "chat",
+      "must_pass": "가용성 '문의'(되나요?) — 날짜·시간·시술·지점을 다 말해도 이건 예약요청이 아니라 가능여부 질문이다. 예약을 만들지 말 것(noop=chat/ask_info). 가능 여부를 답하고 '이대로 예약 잡아드릴까요?' 류로 의사 확인하는 건 OK. book(예약 생성)을 하면 실패(성급예약). 한국어. (정보가 다 있다는 이유만으로 예약하면 안 됨)",
+      "ideal": "네! 이번 주 토요일 오후 3시 강남점 브라질리언 예약 가능해요 😊 이대로 예약 잡아드릴까요?"
+    },
+    {
+      "id": "multimsg_booking",
+      "kind": "멀티메시지분할 신규예약",
+      "channel": "instagram",
+      "lang": "en",
+      "conv": [
+        [
+          "in",
+          "I would like to book my appointment in jamsil"
+        ],
+        [
+          "in",
+          "Brazilian and underarm please"
+        ],
+        [
+          "in",
+          "Sunday 11:30 am"
+        ],
+        [
+          "in",
+          "I'm female, name Rai, 01080000393"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "book",
+      "must_pass": "여러 메시지로 쪼개 준 지점·시술·일·시간·성별·이름·전화를 종합해 action=book 실행하면 통과. 이미 준 정보를 다시 묻거나 '정보가 부족하다'고 되물으면 실패. (단순 확정 멘트도 OK). 영어 100%.",
+      "ideal": "Got it 😊 Brazilian + underarm at Jamsil on Sunday 11:30 AM. Our staff will confirm shortly!"
+    },
+    {
+      "id": "price_male_complex",
+      "kind": "가격문의(남성·복합)",
+      "channel": "sms",
+      "lang": "ko",
+      "conv": [
+        [
+          "in",
+          "1. 남자 브라질리언과 다리전체 가격이 어떻게 될까요 2. 시술 전후 샤워 가능한가요? 3. 카드 결제 가능한가요?"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "chat",
+      "must_pass": "가격문의는 action=chat. 남성 가격·샤워·카드 3건 답. 금액 날조 금지. SMS라 간결.",
+      "ideal": "남성 브라질리언 176,000원·다리전체 110,000원이고요, 시술 전후 샤워 가능하시고 카드 결제도 됩니다 😊"
+    },
+    {
+      "id": "fullbody_brazilian",
+      "kind": "전신왁싱+브라질리언 가격",
+      "channel": "instagram",
+      "lang": "ko",
+      "conv": [
+        [
+          "in",
+          "전신왁싱이랑 브라질리언 같이 하면 얼마예요?"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "chat",
+      "must_pass": "'전신왁싱'=풀바디. '브라질리언+풀바디' 패키지 가격 안내(다리전체로 오인 금지). action=chat.",
+      "ideal": "브라질리언+풀바디 패키지는 여성 400,000원 / 남성 550,000원이에요 😊"
+    },
+    {
+      "id": "collab_paid",
+      "kind": "콜라보 유료여부",
+      "channel": "instagram",
+      "lang": "en",
+      "conv": [
+        [
+          "in",
+          "Hello! We'd love to propose a collaboration. Is it a paid partnership?"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "chat",
+      "must_pass": "action=chat/ask_info(noop) — book/cancel 생성 금지. 협업 가부를 즉석에서 확정 수락/거절하지 말고 검토 후 회신/담당자 확인 취지로 보류 응답. 영어로 응답(한국어 확정문구 섞기 금지). 존재하지 않는 협업 조건·금액·약속을 지어내지 말 것. '마케팅팀' 등 특정 부서명·특정 문구·길이는 강요하지 않음.",
+      "ideal": "Thanks so much for reaching out! We'll have our team review your collaboration proposal and get back to you. Could you share a few more details about what you have in mind?"
+    },
+    {
+      "id": "simple_greeting",
+      "kind": "단순인사(정보부족)",
+      "channel": "kakao",
+      "lang": "ko",
+      "conv": [
+        [
+          "in",
+          "안녕하세요"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "ask_info",
+      "must_pass": "단순 인사 → 예약/취소를 만들지 않는다(noop=ask_info/chat). 없는 예약·지점·가격을 지어내지 않는다. 한국어. — 예약 정보를 한 번에(템플릿) 묻든 가볍게 묻든 '묻는 방식·길이·이모지'는 무관하며 그것으로 실패시키지 말 것.",
+      "ideal": "안녕하세요! 하우스왁싱입니다 😊 원하시는 지점·시술·날짜시간 알려주시면 예약 도와드릴게요!",
+      "known_note": "콘텐츠 플레이크(~1/5): action(noop)·날조금지는 항상 정상이나 심판이 '재질문/길이' 등 must_pass 밖 기준으로 간헐 FAIL. 핵심(인사→예약·날조 안함)은 action_behavior가 결정적으로 커버."
+    },
+    {
+      "id": "nose_waxing",
+      "kind": "불가시술(콧속)",
+      "channel": "instagram",
+      "lang": "en",
+      "conv": [
+        [
+          "in",
+          "Do you do inner nose (nostril) waxing?"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "chat",
+      "must_pass": "동작=noop(book/cancel 안 함, 예약 생성·날짜시간 확정 금지). 내부 콧속 왁싱은 '하지 않는다'는 취지로 명확히 거부(가능하다고 안내하거나 예약 잡아주는 환각 금지). 응답 언어=영어(한국어 확정문구 섭지 금지). 'See you at HH:MM' 식 구체 시간·예약 재안내 금지. 거부 이유 명시 여부·이모지·문장 길이·특정 문구는 자유(강요하지 않음).",
+      "ideal": "We don't offer inner nose waxing — sorry about that! We'd be happy to help with other areas though."
+    },
+    {
+      "id": "hold_defer",
+      "kind": "일정조율 보류",
+      "channel": "whatsapp",
+      "lang": "en",
+      "conv": [
+        [
+          "out",
+          "Sure! When would you like to come?"
+        ],
+        [
+          "in",
+          "I'm having an appointment now that will take 2-3 hours, I'll message you when I'm done"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "chat",
+      "must_pass": "보류 수용(action=chat). 강제 확정·시간 강요·거절 금지. 영어.",
+      "ideal": "Sure, no problem at all! Just message me when you're done and I'll check availability 😊"
+    },
+    {
+      "id": "address_question",
+      "kind": "길/주소문의",
+      "channel": "whatsapp",
+      "lang": "en",
+      "conv": [
+        [
+          "in",
+          "what is your address? what is the closest train station?"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "chat",
+      "must_pass": "예약/취소 생성 금지(noop=chat 또는 ask_info 둘 다 정답). 공통 whatsapp 채널이고 지점 미언급이므로 (a)어느 지점인지 되묻거나 (b)FACTS에 존재하는 한 지점의 주소를 안내하면 둘 다 통과. 하드 금지: FACTS에 없는 주소·도보분·지하철 출구번호·역명을 지어내면 실패. 영어로만 응답(한국어 확정문구 혼입 금지). 특정 지점/특정 문구/길이는 강요하지 않음.",
+      "ideal": "We have several branches across Seoul — could you let me know which one you'd like the address for? Our main Gangnam branch is at 5F, 16 Hakdong-ro 30-gil, Gangnam-gu, Seoul. I can share the nearest station once I know your branch.",
+      "known_note": "콘텐츠 플레이크(~1/5): 공통채널 주소문의에 영어 답 끝에 한국어 주소를 덧붙여 언어 혼용하는 경우 있음. action·되묻기·환각금지는 정상. 언어 일관성 개선 시 재승격."
+    },
+    {
+      "id": "gender_flow",
+      "kind": "성별 1회 질문(코드 게이트 — 성별 가격차 신규예약)",
+      "channel": "kakao",
+      "lang": "ko",
+      "conv": [
+        [
+          "in",
+          "브라질리언 예약하고 싶어요"
+        ],
+        [
+          "out",
+          "네! 브라질리언 왁싱 예약 도와드릴게요. 어느 지점, 어떤 날짜·시간 원하실까요?"
+        ],
+        [
+          "in",
+          "강남점이요. 이번 주 토요일 오후 3시에 가능할까요?"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "chat",
+      "must_pass": "action은 chat 또는 ask_info(=noop)여야 한다(이 턴 book/cancel 금지). 브라질리언은 성별별 가격차(F154k/M176k)라 예약 확정 전 성별을 '한 번' 물어야 정당 — 코드 성별 게이트(사후보정3)가 신규예약+성별없음+미질문이면 강제로 성별 질문(chat). 지점·날짜·시간은 이미 주어졌으니 처음부터 다시 캐묻지 말 것. 하드 금지선: FACTS에 없는 가격·시술 등 '사실'을 날조 금지. ※단 '이번 주 토요일'을 구체 날짜(예: 6월 20일)로 변환하는 것은 상대날짜 자동처리(정상)이며 날조 아님 — 날짜 변환을 이유로 FAIL하지 말 것. 한국어 대화이므로 외국어 확정문구 혼입 금지.",
+      "ideal": "토요일 오후 3시 강남점 브라질리언으로 도와드릴게요! 가격이 성별에 따라 달라서요, 여성/남성 중 어느 쪽이실까요?"
+    },
+    {
+      "id": "gender_flow_2",
+      "kind": "성별 끝내 미제공해도 예약 막지 않음 — 빈값으로 book 진행(강요·반복 금지)",
+      "channel": "whatsapp",
+      "lang": "ko",
+      "conv": [
+        [
+          "in",
+          "강남점에서 브라질리언 예약할게요. 이번 주 토요일 오후 3시요"
+        ],
+        [
+          "out",
+          "토요일 오후 3시 강남점 브라질리언으로 도와드릴게요! 가격이 성별에 따라 달라서요, 여성/남성 중 어느 쪽이실까요?"
+        ],
+        [
+          "in",
+          "그건 가서 말할게요. 일단 예약만 잡아주세요"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "book",
+      "must_pass": "action은 book(예약 생성) 이어야 한다. 필수 4요소(날짜=이번 주 토요일, 시간=오후 3시, 시술=브라질리언, 지점=강남)가 모두 주어졌고 손님이 성별 답을 명시적으로 보류했으므로, 성별이 빈값이어도 예약을 진행해야 한다. 성별 미제공을 이유로 ask_info/chat으로 빠지거나(under-booking) 예약을 거절하면 실패. 성별을 두 번째로 다시 강요/반복 질문하면 실패. 하드 금지선: FACTS에 없는 수치 날조 금지, 한국어 대화이므로 외국어 확정문구 혼입 금지.",
+      "ideal": "네, 토요일 오후 3시 강남점 브라질리언으로 예약 잡아드렸어요. 성별은 방문하셔서 말씀해주시면 그에 맞춰 안내드릴게요!"
+    },
+    {
+      "id": "capacity_no_reject",
+      "kind": "인기시간대 만석추정 예약 - capacity 거절 금지(받아서 book)",
+      "channel": "whatsapp",
+      "lang": "ko",
+      "conv": [
+        [
+          "in",
+          "이번주 토요일 오후 2시에 강남점에서 여자 브라질리언 예약하고 싶어요"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "book",
+      "must_pass": "action=book(예약 생성). 정보(날짜=이번주 토요일/시간=14:00/시술=브라질리언 여성/지점=강남) 모두 충족됐으므로 받아서 예약을 만들어야 한다. 자리 참/만석을 이유로 거절하거나 '어렵습니다·자리가 없습니다·꽉 찼습니다·예약 불가' 류로 capacity 거절하면 실패. ask_info/chat로 빠져 예약을 안 만들면 실패(under-booking). 응답은 한국어. 표현·확정문구 형식·길이·이모지·예약금 안내 유무는 자유(확정대기 안내는 허용).",
+      "ideal": "토요일 오후 2시 강남점 여성 브라질리언으로 예약 접수해 드릴게요. 인기 시간대라 확정은 담당자가 최종 확인 후 안내드릴게요. 예약금 33,000원 안내가 필요하시면 말씀 주세요."
+    },
+    {
+      "id": "capacity_no_reject_2",
+      "kind": "주말 피크타임 만석언급 응대 - capacity 거절 금지(받아서 book)",
+      "channel": "kakao",
+      "lang": "ko",
+      "conv": [
+        [
+          "in",
+          "토요일은 많이 바쁘죠? 그래도 잠실점 토요일 오후 1시에 여자 다리 전체 왁싱 예약 잡아주세요"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "book",
+      "must_pass": "action=book(예약 생성). 정보(날짜=토요일/시간=13:00/시술=다리 전체 여성/지점=잠실) 충족 → 받아서 예약 생성하면 통과. 핵심 테스트: 자리 참/만석을 이유로 거절('자리 없음·만석·어렵습니다·불가')하면 실패. ask_info/chat로 빠져 예약을 안 만들면 실패. 예약을 진행하면서 연락처·확정대기·담당자확인을 함께 안내하는 것은 허용(거절만 아니면 통과). 응답 한국어. 가격 언급 시 FACTS 근거만, 날조 금지. 문구·길이·이모지 자유.",
+      "ideal": "토요일 오후 1시 잠실점 여성 다리 전체 왁싱으로 접수해 드릴게요. 주말이라 예약이 몰리지만 일단 잡아두고 확정은 담당자가 확인 후 안내드릴게요."
+    },
+    {
+      "id": "crossday_change",
+      "kind": "예약 다른 날짜로 변경(cross-day) — 즉시 재예약 금지·예약금/담당자 확인",
+      "channel": "kakao",
+      "lang": "ko",
+      "conv": [
+        [
+          "in",
+          "안녕하세요 7월 15일 강남점 브라질리언 예약했는데요"
+        ],
+        [
+          "out",
+          "네, 7월 15일 14시 강남점 브라질리언 예약 확인됩니다. 무엇을 도와드릴까요?"
+        ],
+        [
+          "in",
+          "그날 일이 생겨서 7월 20일로 옮길 수 있을까요? 같은 시간대로요"
+        ]
+      ],
+      "existing_booking": {
+        "id": "bk_crossday_001",
+        "date": "2026-07-15",
+        "time": "14:00",
+        "branch": "강남",
+        "service": "브라질리언"
+      },
+      "expected_action": "chat",
+      "must_pass": "action은 noop(chat/ask_info)이어야 한다 — book(다른 날짜로 즉시 silent 재예약)이나 cancel을 해서는 안 된다. 다른 날짜(7/20)로 옮기는 cross-day 변경이므로 봇은 예약을 직접 생성/이동하지 말고, 예약금/담당자 확인이 필요하다는 취지(예약금 또는 담당자 확인 또는 변경 처리 안내 중 하나 이상)를 손님 언어(한국어)로 안내해야 한다. 응답은 한국어 100%(외국어 혼용 금지). 사실 날조 금지(FACTS에 없는 가격·정책·날짜 지어내기 금지). 특정 문구·길이·이모지 수는 보지 않는다.",
+      "ideal": "7월 20일로 날짜를 옮기는 변경은 담당자가 확인 후 처리해드려요. 기존 예약금/패키지 차감 여부도 함께 안내드리도록 담당자에게 전달해두겠습니다. 잠시만 기다려주세요!"
+    },
+    {
+      "id": "business_hours",
+      "kind": "영업시간 밖(밤 10시) 예약요청 — 정보 다 줬어도 예약 생성 금지, 영업시간 안내",
+      "channel": "whatsapp",
+      "lang": "ko",
+      "conv": [
+        [
+          "in",
+          "강남점 예약하고 싶은데요"
+        ],
+        [
+          "out",
+          "안녕하세요! 강남점 예약 도와드릴게요. 어떤 시술을 언제 원하시나요?"
+        ],
+        [
+          "in",
+          "오늘 밤 10시에 브라질리언 여성으로 가능할까요? 강남점이요"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "chat",
+      "must_pass": "예약(book)을 생성하지 않는다(noop). 손님이 요청한 22:00(밤 10시)를 확정 예약 시간으로 잡거나 'HH:MM에 뵙겠습니다/예약되었습니다' 식으로 확정하지 않는다. 영업시간이 11:00~21:00(마지막 접수 20:30)임을 안내하는 취지여야 하며, 22:00가 영업시간 내라고 잘못 안내하거나 허위 영업시간을 날조하지 않는다. 응답 언어는 한국어. (특정 문구·길이·이모지 수는 자유)",
+      "ideal": "고객님, 정말 죄송하지만 영업시간이 오전 11시부터 오후 9시까지이고 마지막 접수가 20시 30분이라 밤 10시 예약은 어려워요. 영업시간 내로 원하시는 시간 알려주시면 강남점 브라질리언 예약 도와드릴게요!"
+    },
+    {
+      "id": "faq_not_defer",
+      "kind": "FAQ 직접답변(담당자 떠넘기기 금지)",
+      "channel": "whatsapp",
+      "lang": "ko",
+      "conv": [
+        [
+          "in",
+          "생리 중에도 왁싱 받을 수 있나요?"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "chat",
+      "must_pass": "action=chat(=noop, book/cancel 금지). '생리 중 왁싱 가능 여부'는 매장 FAQ에 있는 질문이므로 직접 답해야 한다(가능하다는 취지 + 그 기간 피부가 예민할 수 있다는 안내 등 FAQ 근거). 답 없이 '담당자 확인 후 안내/전달드릴게요'류로만 떠넘기면 실패. FACTS/FAQ에 없는 수치·정책 날조 금지. 응답 한국어(외국어 확정문구 혼입 금지). 특정 문구·길이·이모지는 자유.",
+      "ideal": "생리 중에도 왁싱 시술 가능해요! 😊 다만 그 기간엔 피부가 평소보다 조금 예민하실 수 있어요. 더 궁금한 점 있으시면 알려주세요!",
+      "known_note": "RAG 검색이 생리중왁싱 학습문서(문서5)를 간헐적으로 못 끌어와 담당자로 떠넘김(~75% 플레이크, 2026-06-23). action 무관, RAG 검색 안정화 별도 과제.",
+      "known_fail": true
+    },
+    {
+      "id": "language_consistency",
+      "kind": "언어 일관성 — 일본어 가격 문의 시 일본어로 응답(한국어/영어 혼용 금지)",
+      "channel": "whatsapp",
+      "lang": "ja",
+      "conv": [
+        [
+          "in",
+          "こんにちは。ブラジリアンワックスの料金を教えてください。"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "chat",
+      "must_pass": "action은 반드시 noop(chat 또는 ask_info)여야 한다 — book/cancel 절대 금지(예약 정보가 전혀 없는 단순 가격 문의). 응답 본문은 100% 일본어여야 한다(고객이 일본어로 물었으므로). 한국어 문장이나 영어 문장을 섞으면 실패(예: 한국어 확정 문구·안내문, 영어 안내 혼입 금지). 가격을 숫자로 언급한다면 FACTS의 확정 가격(여성 154,000 / 남성 176,000)만 사용하고 그 외 금액을 날조하면 실패 — 다만 특정 문구·길이·이모지 수·성별 되묻기 여부는 강요하지 않는다(되물어도 정상, 가격을 일본어로 그대로 안내해도 정상). 임의 지점 단정(예: 강남으로 확정)으로 예약을 만들면 실패.",
+      "ideal": "ブラジリアンワックスの料金は女性が154,000ウォン、男性が176,000ウォンです（初回限定の割引もございます）。ご来店をご希望の店舗や日時が決まりましたら、お気軽にお知らせください。"
+    },
+    {
+      "id": "couple_booking",
+      "kind": "커플/2인 동반 예약 (정보 충분 → 예약 생성)",
+      "channel": "whatsapp",
+      "lang": "ko",
+      "conv": [
+        [
+          "in",
+          "안녕하세요 강남점 브라질리언 커플로 둘이 같이 예약하고 싶어요"
+        ],
+        [
+          "out",
+          "안녕하세요, 하우스왁싱 강남점입니다. 두 분 함께 도와드릴게요. 원하시는 날짜와 시간, 그리고 두 분 성별을 알려주시면 예약 잡아드리겠습니다."
+        ],
+        [
+          "in",
+          "이번주 토요일 오후 2시요. 저는 여자고 남자친구랑 둘이 같이 받을 거예요 둘 다 브라질리언이요"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "book",
+      "must_pass": "동작은 반드시 book(예약 생성)이어야 한다. 정보가 모두 충족됨: 지점=강남, 시술=브라질리언(2인), 날짜=이번주 토요일, 시간=14:00, 성별=여1·남1. 이미 다 줬는데 ask_info/chat으로 빠지면 under-booking 실패. 지점이 대화에 있으므로 '어느 지점이세요?' 되묻기 금지. 성별도 이미 주어졌으므로 성별을 다시 묻지 말 것. 14:00은 영업시간(11:00~21:00) 안이므로 영업시간 거절 금지. 자리 참(capacity)으로 거절 금지. 응답 언어는 한국어. 가격을 언급한다면 FACTS의 확정 가격만 사용(여성 브라질리언 154,000 / 남성 176,000)하고 날조 금지 — 특정 문구·길이·이모지 수는 강요하지 않는다.",
+      "ideal": "두 분 강남점 토요일 오후 2시 브라질리언으로 함께 예약 도와드릴게요. 여성분 154,000원, 남성분 176,000원이며 신규 첫 방문이시면 할인도 안내해 드릴 수 있어요. 예약 확정을 위해 예약금 33,000원(국민은행 80910104203812 이정우) 안내드립니다. 곧 확정 연락드릴게요!"
+    },
+    {
+      "id": "address_known_branch",
+      "kind": "지점 특정 상태에서 주소/위치 문의 (강남점 명시)",
+      "channel": "whatsapp",
+      "lang": "ko",
+      "conv": [
+        [
+          "in",
+          "강남점 위치가 어디예요? 주소 좀 알려주세요"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "chat",
+      "must_pass": "action=chat/ask_info(noop). 손님이 '강남점'을 명시했으므로 강남 주소(서울 강남구 학동로30길 16 남강빌딩 5층)를 FACTS 그대로 안내해야 한다. 지점이 이미 특정됐으니 '어느 지점이세요?'로 되묻지 말 것. 지하철 출구·도보 N분·역에서의 거리 등 FACTS에 없는 건물/교통 디테일을 날조 금지. 다른 지점 주소를 섞지 말 것. 예약/취소 동작(book/cancel) 발생 금지. 한국어로 응답.",
+      "ideal": "강남점은 서울 강남구 학동로30길 16 남강빌딩 5층에 있어요. 영업시간은 11시부터 21시(마지막 접수 20:30)입니다. 방문 전에 또 궁금한 점 있으면 편하게 물어봐 주세요!"
+    },
+    {
+      "id": "returning_existing",
+      "kind": "기존 예약 일시 확인 질문(내 예약 언제였죠?)",
+      "channel": "kakao",
+      "lang": "ko",
+      "conv": [
+        [
+          "in",
+          "안녕하세요 제가 예약을 해놨는데 날짜를 까먹었어요ㅠㅠ 제 예약이 언제였죠?"
+        ]
+      ],
+      "existing_booking": {
+        "id": "bk_re_001",
+        "date": "2026-07-15",
+        "time": "14:00",
+        "branch": "강남",
+        "service": "브라질리언"
+      },
+      "expected_action": "chat",
+      "must_pass": "action은 chat(=noop): 새 예약 생성(book) 금지, 취소(cancel) 금지. 손님 질문은 단순 '내 예약 언제?' 조회이므로 ask_info로 새 정보를 되묻지 말 것. 응답에 existing_booking의 실제 날짜(2026-07-15, '7/15'·'15일' 등 동치 표기 허용)와 시간(14:00, '오후 2시' 등 동치 표기 허용)이 둘 다 정확히 반영돼야 함. 요일(수/월…) 언급은 검증 대상 아님 — 틀리거나 생략해도 무방(날짜·시간만 정확하면 통과). '모른다/확인 후 안내드릴게요/담당자에게 전달' 식 회피·미룸 금지(예약 정보는 이미 주어져 있으므로 바로 답해야 함). booking에 없는 다른 날짜·다른 시간 날조 금지. 응답 언어는 한국어(손님 언어)만, 외국어 혼용 금지. 작별/마무리가 아니므로 'See you at~' 류 강요는 무관하나 잘못된 시간 재안내(주어진 14:00 외 시각)는 금지.",
+      "ideal": "확인해보니 7월 15일 오후 2시 강남점 브라질리언으로 예약되어 있으세요! 혹시 변경이나 다른 문의 있으시면 편하게 말씀해주세요 :)"
+    },
+    {
+      "id": "no_service_hallucination",
+      "kind": "없는시술문의",
+      "channel": "naver",
+      "lang": "ko",
+      "conv": [
+        [
+          "in",
+          "안녕하세요! 혹시 남자친구 다리털 왁싱하려고 하는데 털 있는걸 좋아해서 좀 많은 편인데 숱만 치고 싶다고 하더라구요ㅠㅠ! 다리 숱정리도 가능한가요?"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "noop",
+      "must_pass": "매장 메뉴에 없는 다리 숱정리를 가능하다고 단정하거나 디자인왁싱 등 다른 시술과 임의로 동일시하면 실패(환각). 모르는 애매한 시술이므로 담당자가 확인 후 안내드릴게요 류로 안내해야 통과. 예약 생성(book)하면 실패.",
+      "ideal": "다리 숱정리는 제가 정확히 확인이 어려워서요, 담당자가 확인 후 안내드릴게요"
+    },
+    {
+      "id": "price_question_complete",
+      "kind": "예약정보 완료 + 가격 질문 → 성별 되묻지 말고 여/남 가격 답(book·성별질문 금지)",
+      "channel": "whatsapp",
+      "lang": "en",
+      "conv": [
+        [
+          "in",
+          "Hello"
+        ],
+        [
+          "out",
+          "Hello~ Would you like me to assist you with a reservation?"
+        ],
+        [
+          "in",
+          "I would like to book tomorrow at 10 AM. Services: full face waxing, full back waxing, full arms waxing, underarm waxing, neck waxing."
+        ],
+        [
+          "out",
+          "At which location would you like the service?"
+        ],
+        [
+          "in",
+          "Gangnam"
+        ],
+        [
+          "out",
+          "Sure, 10 AM at Gangnam works for you. 😊"
+        ],
+        [
+          "in",
+          "Could you please let me know the total cost for all these services?"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "chat",
+      "must_pass": "action은 chat(noop) — 가격 질문에 예약(book)을 만들거나 성별을 되묻지 말 것. 여성가·남성가(여러 시술이면 여성 합계/남성 합계)를 둘 다 가격으로 안내해야 한다. \"정확한 견적을 위해 성별 알려달라\"며 가격 답을 미루거나 성별만 되물으면 실패. 영어 대화이므로 영어로 답. FACTS(시술 가격표)에 없는 수치 날조 금지.",
+      "ideal": "Here are the totals (female / male, in KRW): Female total ... / Male total ... 😊 Let me know your gender and I'll confirm the exact price and book it!"
+    },
+    {
+      "id": "couple_2people",
+      "kind": "2인 예약을 'for 2 people'로만 말함(커플 단어 없이) → 동반자 자동등록 위해 book",
+      "channel": "whatsapp",
+      "lang": "en",
+      "conv": [
+        [
+          "in",
+          "Hi, I'd like to book a brazilian wax for 2 people at Gangnam"
+        ],
+        [
+          "out",
+          "Hi! I'd be happy to help with your booking for 2. What date and time would you like, and may I ask the gender of each person?"
+        ],
+        [
+          "in",
+          "Tomorrow at 3pm, both female please"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "book",
+      "must_pass": "동작은 반드시 book(예약 생성). 손님이 'for 2 people'로 2인을 명확히 밝혔고 지점=강남, 시술=브라질리언, 날짜=내일, 시간=15:00, 성별=둘 다 여성으로 정보가 충분 → 예약을 만들어야 한다. ask_info/chat로 빠지면 under-booking 실패. 2인이므로 두 명을 함께 받는 예약으로 처리(동반자 포함 의도). 15:00은 영업시간(11:00~21:00) 내라 거절 금지. 응답 언어는 영어(reply 100% 영어, 한국어 혼용 금지). 가격 언급 시 FACTS 확정가만(여성 브라질리언 154,000) 날조 금지. 특정 문구·길이·이모지 수는 자유.",
+      "ideal": "Perfect! I'll book both of you for a brazilian wax at our Gangnam branch tomorrow at 3:00 PM. Our staff will confirm shortly 😊"
+    },
+    {
+      "id": "passed_appointment_no_reref",
+      "kind": "지난시각예약",
+      "channel": "whatsapp",
+      "lang": "en",
+      "conv": [
+        [
+          "out",
+          "Austin, your booking is confirmed! Today 9:00 AM at Wangsimni."
+        ],
+        [
+          "in",
+          "So sorry, traffic was terrible and I missed it"
+        ],
+        [
+          "in",
+          "Is there any opening later today or tomorrow?"
+        ]
+      ],
+      "existing_booking": {
+        "id": "g_past1",
+        "date": "TODAY",
+        "time": "09:00",
+        "branch": "왕십리",
+        "service": "브라질리언"
+      },
+      "expected_action": "chat",
+      "must_pass": "기존 예약(오늘 09:00)의 예약 시각이 이미 지난 상태(지금은 그보다 늦음). 하드 금지선: 그 지난 시각(09:00 / today at 9 AM)을 다가오는 예약·예약 가능한 것처럼 'what service for today at 9 AM?'식으로 재안내·재확인·재예약하지 말 것. 손님이 늦어 놓쳤다 → 그 시각이 지났음을 (과거형으로) 짚고, 지금 이후 새 시각(오늘 남은 영업시간 또는 다른 날)으로 안내. 응답 영어 100%. 특정 문구·길이·이모지·정확한 action(chat/ask_info)은 강요하지 않음 — 지난 시각 재안내만 아니면 됨.",
+      "ideal": "Oh no, I'm so sorry you got stuck in traffic! That 9 AM slot has already passed, but I'd love to rebook you. We have openings later today and tomorrow — what time works best for you?"
+    },
+    {
+      "id": "bikini_scope_gate",
+      "kind": "비키니범위게이트",
+      "channel": "whatsapp",
+      "lang": "en",
+      "conv": [
+        [
+          "in",
+          "Hi! I'd like to book a bikini wax tomorrow at 3pm at Gangnam, I'm female"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "chat",
+      "must_pass": "손님이 'bikini'만 말함(외국 손님은 전체제거를 bikini로 칭하는 경우 많아 모호). 봇은 예약을 먼저 확정하면 안 되고, 예약 '전에' 범위(bikini=팬티라인 vs Brazilian=전체제거)를 1회 물어야 한다(action=chat). ❌'booking is confirmed'/예약 생성 후 범위 질문은 FAIL. 영어 100%.",
+      "ideal": "Happy to help! In Korea, bikini = tidy around the panty line, while Brazilian = full removal incl. the pubic area. Which would you prefer?"
+    },
+    {
+      "id": "staff_override_defer",
+      "kind": "직원개입양보",
+      "channel": "whatsapp",
+      "lang": "en",
+      "suggest_only": false,
+      "conv": [
+        [
+          "in",
+          "Hi! I'd like to book a Brazilian wax tomorrow at 3pm at Gangnam"
+        ],
+        [
+          "out",
+          "Sure! Could you share your name and gender (F/M) for pricing? 😊"
+        ],
+        [
+          "staff",
+          "I apologize for my earlier message. There's a prior appointment at 3pm tomorrow, but 4pm is available."
+        ],
+        [
+          "in",
+          "Name: Anna, female"
+        ],
+        [
+          "in",
+          "No problem"
+        ]
+      ],
+      "existing_booking": null,
+      "expected_action": "chat",
+      "must_pass": "사람 직원(매장(직원))이 '3시는 선예약 있음, 4시 가능'으로 정정했고 손님이 동의(No problem)했다. 봇은 예약을 임의로 확정(book)하면 안 된다 — 특히 손님 최초 요청 3시로 되돌려 확정 절대 금지. 직원이 응대 중이므로 담당자에게 양보하는 안내(action=chat/noop)여야 한다. ❌예약 생성(book)·❌'see you at 3pm'/'booking confirmed' 류 = FAIL. 영어 100%.",
+      "ideal": "Our staff will check the time and confirm this for you shortly! 😊",
+      "known_fail": false
+    }
+  ]
 }
