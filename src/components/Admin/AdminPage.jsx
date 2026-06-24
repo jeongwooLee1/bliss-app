@@ -25,6 +25,7 @@ import AdminKiosks from './AdminKiosks'
 import AdminAlimtalkLog from './AdminAlimtalkLog'
 import AdminSmsLog from './AdminSmsLog'
 import AdminLongValidityReview from './AdminLongValidityReview'
+import AdminStampProgram from './AdminStampProgram'
 import AdminCouplePkgMigrate from './AdminCouplePkgMigrate'
 import AdminLoginLog from './AdminLoginLog'
 import AdminPlan from './AdminPlan'
@@ -365,7 +366,7 @@ function AdminJoinBrand({ currentUser, onBack }) {
 function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userBranches=[], setPage, setPendingOpenCust }) {
   const navTo = useNavigate();
   const loc = useLocation();
-  const TAB_SLUGS = {places:"places",saleitems:"services",pkgcount:"pkg-count",coupons:"coupons",prodmgmt:"products",svctags:"tags",ressrc:"sources",extplatforms:"ext-platforms",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",branchgroups:"branch-groups",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",branchaudit:"branch-audit",pointmig:"point-migration",memberrules:"member-rules",joinbrand:"join-brand",kiosks:"kiosks",alimtalkLog:"alimtalk-log",smsLog:"sms-log",longValidity:"long-validity",couplePkgMigrate:"couple-pkg-migrate",plan:"plan",paymentSettings:"payments",loginLog:"login-log"};
+  const TAB_SLUGS = {places:"places",saleitems:"services",pkgcount:"pkg-count",coupons:"coupons",prodmgmt:"products",svctags:"tags",ressrc:"sources",extplatforms:"ext-platforms",notiSettings:"noti",memoTemplates:"memo-templates",aisettings:"ai",brandmembers:"members",branchgroups:"branch-groups",mypage:"mypage",schedule:"schedule",pkgaudit:"pkg-audit",branchaudit:"branch-audit",pointmig:"point-migration",memberrules:"member-rules",joinbrand:"join-brand",kiosks:"kiosks",alimtalkLog:"alimtalk-log",smsLog:"sms-log",longValidity:"long-validity",couplePkgMigrate:"couple-pkg-migrate",plan:"plan",paymentSettings:"payments",loginLog:"login-log",stampProgram:"stamp-program"};
   const SLUG_TO_TAB = Object.fromEntries(Object.entries(TAB_SLUGS).map(([k,v])=>[v,k]));
   const tab = SLUG_TO_TAB[loc.pathname.replace(/^\/settings\/?/,"").split("/")[0]] || null;
   const setTab=t=>{ if(t) navTo(`/settings/${TAB_SLUGS[t]||t}`); else navTo("/settings"); };
@@ -389,6 +390,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
       {key:"prodmgmt",    icon:"clipboard",label:"제품 관리",      desc:"판매 제품 관리"},
       ...(isOwner ? [{key:"brandmembers", icon:"userPlus", label:"브랜드 멤버 관리", desc:"지점 가입 요청 승인/거절", badge:pendingCount}] : []),
       {key:"schedule",     icon:"calendar", label:"직원 근무표",      desc:"직원 월별 근무 자동 배정"},
+      {key:"stampProgram", icon:"check",    label:"재방문 스탬프",    desc:"28일 재방문 스탬프 적립·회차별 보상 설정"},
     ]}] : []),
     ...(isMaster ? [{section:"예약 설정",items:[
       {key:"svctags",     icon:"tag",      label:"태그 관리",      desc:"예약 태그 추가·편집"},
@@ -461,6 +463,7 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
     {tab==="smsLog" && <AdminPlan data={data} setData={setData} currentUser={currentUser} userBranches={userBranches} initialSubTab="sms"/>}
     {tab==="longValidity" && <AdminLongValidityReview data={data} userBranches={userBranches}/>}
     {tab==="couplePkgMigrate" && isMaster && <AdminCouplePkgMigrate data={data} userBranches={userBranches}/>}
+    {tab==="stampProgram" && isMaster && <AdminStampProgram data={data} setData={setData} bizId={bizId}/>}
     {tab==="loginLog" && isOwner && <AdminLoginLog data={data} bizId={bizId}/>}
     {tab==="joinbrand"    && !isMaster &&<AdminJoinBrand   currentUser={currentUser} onBack={back}/>}
     {tab && !["mypage","schedule"].includes(tab) && !isMaster && <div style={{textAlign:"center",padding:"60px 20px",color:T.textMuted}}>

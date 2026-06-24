@@ -99,6 +99,15 @@ html, body {
 }
 .point-card .ptlabel { font-size: 13px; font-weight: 700; color: #92400E; }
 .point-card .ptval { font-size: 22px; font-weight: 800; color: #C2410C; letter-spacing: -0.5px; }
+.stamp-card { background: linear-gradient(135deg,#EEF2FF,#E0E7FF); border-radius: 14px; padding: 16px; text-align: center; }
+.stamp-head { font-size: 30px; font-weight: 800; color: #4338CA; letter-spacing: -0.5px; }
+.stamp-head .stamp-total { font-size: 18px; color: #818CF8; font-weight: 700; }
+.stamp-dots { display: flex; flex-wrap: wrap; gap: 7px; justify-content: center; margin: 12px 0 6px; }
+.stamp-dot { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #C7D2FE; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #A5B4FC; background: #fff; }
+.stamp-dot.filled { background: #6366F1; border-color: #6366F1; color: #fff; }
+.stamp-dot.reward { border-color: #F59E0B; color: #D97706; }
+.stamp-dot.reward.filled { background: #F59E0B; border-color: #F59E0B; color: #fff; }
+.stamp-next { font-size: 12.5px; color: #4F46E5; font-weight: 600; margin-top: 4px; }
 .empty {
   text-align: center; color: var(--text-mute); font-size: 13px; padding: 18px 12px;
   background: #fff; border: 1px dashed var(--gray-line); border-radius: 9px;
@@ -149,6 +158,15 @@ html, body {
     <div class="summary">
       <div class="name" id="resName"></div>
       <div class="num" id="resNum"></div>
+    </div>
+
+    <div class="section" id="stampSection" style="display:none;">
+      <h3>🌱 재방문 스탬프</h3>
+      <div class="stamp-card">
+        <div class="stamp-head"><span id="stampCount">0</span><span class="stamp-total">/<span id="stampFinal">8</span></span></div>
+        <div class="stamp-dots" id="stampDots"></div>
+        <div class="stamp-next" id="stampNext"></div>
+      </div>
     </div>
 
     <div class="section">
@@ -312,10 +330,35 @@ function renderResult(j) {
     document.getElementById('resNum').textContent = j.message || '하우스왁싱에 등록된 정보가 없어요. 매장에 문의해주세요.';
     document.getElementById('resPkgs').innerHTML = '<div class="empty">보유권 없음</div>';
     document.getElementById('resPoints').textContent = '0';
+    document.getElementById('stampSection').style.display = 'none';
     return;
   }
   document.getElementById('resName').textContent = c.name + '님';
   document.getElementById('resNum').textContent = c.cust_num ? '#'+c.cust_num : '';
+
+  // 재방문 스탬프 (제도 on일 때만)
+  const stampSec = document.getElementById('stampSection');
+  const sp = j.stamp;
+  if (sp && sp.on) {
+    stampSec.style.display = '';
+    const cnt = sp.count || 0, fin = sp.final || 8;
+    const ms = sp.milestones || [];
+    const rewardN = {}; ms.forEach(m => { rewardN[m.n] = m.label; });
+    document.getElementById('stampCount').textContent = cnt;
+    document.getElementById('stampFinal').textContent = fin;
+    let dots = '';
+    for (let i = 1; i <= fin; i++) {
+      const filled = i <= cnt, isReward = !!rewardN[i];
+      dots += `<div class="stamp-dot${filled ? ' filled' : ''}${isReward ? ' reward' : ''}" title="${isReward ? escapeHtml(rewardN[i]) : ''}">${isReward ? '★' : i}</div>`;
+    }
+    document.getElementById('stampDots').innerHTML = dots;
+    const nextReward = ms.filter(m => m.n > cnt).sort((a, b) => a.n - b.n)[0];
+    document.getElementById('stampNext').textContent = nextReward
+      ? `${nextReward.n - cnt}번 더 방문하면 "${nextReward.label}"`
+      : (cnt >= fin ? '사이클 완성! 다음 방문부터 새 스탬프가 시작돼요' : '');
+  } else {
+    stampSec.style.display = 'none';
+  }
 
   // 보유권
   const pkgs = j.packages || [];

@@ -716,6 +716,24 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     })();
   }, [cust.id]);
 
+  // 재방문 스탬프 현황 로드 (신규 등록 시 진행 표시용 — 제도 off면 null)
+  useEffect(() => {
+    if (editMode || viewOnly || !cust.id || String(cust.id).startsWith("new_")) { setStampInfo(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`${SB_URL}/rest/v1/rpc/get_stamp`, {
+          method: "POST", headers: { ...sbHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ p_biz: _activeBizId, p_cust: cust.id }),
+        });
+        if (!r.ok) { if (!cancelled) setStampInfo(null); return; }
+        const st = await r.json();
+        if (!cancelled) setStampInfo(st && st.on ? st : null);
+      } catch { if (!cancelled) setStampInfo(null); }
+    })();
+    return () => { cancelled = true; };
+  }, [cust.id, editMode, viewOnly]);
+
   // ── 대기 입금(awaiting_sale) 자동 prefill — 매출 폼 열림 + 그 고객 ID 일치 ──
   // editMode/viewOnly는 prefill 안 함 (기존 매출 재현이라 새 입금 가산 부적절)
   useEffect(() => {
@@ -767,6 +785,24 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
   const [issueCouponIds, setIssueCouponIds] = useState({}); // 매출과 함께 수동 발행할 쿠폰 {svcId: count}
   const [couponsOpen, setCouponsOpen] = useState(false); // 쿠폰 발행 아코디언 — 기본 접힘
   const pointEarnManualRef = React.useRef(false); // 사용자가 수동 수정했는지
+  // ── 재방문 스탬프 (제도 on일 때만) ──
+  const [stampInfo, setStampInfo] = useState(null); // get_stamp 결과 {on,count,final,milestones,given,lastVisit,windowDays}
+  // 이번 등록 시 예상 회차 + 보상 (28일 간격 클라 추정 — 실제 적립·발급은 저장 시 accrue_stamp가 확정)
+  const _stampProj = React.useMemo(() => {
+    if (!stampInfo || !stampInfo.on) return null;
+    const cnt = Number(stampInfo.count)||0, fin = Number(stampInfo.final)||8, win = Number(stampInfo.windowDays)||28;
+    const lv = stampInfo.lastVisit;
+    let next;
+    if (!lv) next = 1;
+    else {
+      const days = Math.round((new Date(todayStr()) - new Date(lv)) / 86400000);
+      next = (days <= win && cnt < fin) ? cnt + 1 : 1; // 28일 초과 or 사이클 완성 → 새 1회차
+    }
+    const resetCycle = next === 1 && cnt > 0;
+    const given = Array.isArray(stampInfo.given) ? stampInfo.given : [];
+    const ms = (stampInfo.milestones||[]).find(m => Number(m.n) === next && (resetCycle || !given.includes(next)));
+    return { current: cnt, next, final: fin, milestone: ms || null, resetCycle };
+  }, [stampInfo]);
   // 📸 viewOnly/editMode 매출확인·수정: 매출 등록 시점 스냅샷이 있으면 그걸 그대로 사용 (현재 잔액 조회 차단)
   const _snapshotData = (viewOnly || editMode) ? (reservation?._existingSale?.snapshotData || reservation?._existingSale?.snapshot_data) : null;
   // 매출 등록 시점 input state (items/pkgUse/pointUse/payMethod/extraRows 등) 전체 재현용
@@ -3279,6 +3315,36 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       await sb.upsert("sale_details", _saleDetails);
     }
 
+    // ── 재방문 스탬프 적립 (시술 방문만) — 엔진(accrue_stamp)이 제도 on/off·28일 간격·마일스톤 자동 판정 ──
+    //    멱등(같은 매출/같은 날 중복적립 방지)은 서버 RPC가 처리. 실패해도 매출 저장엔 영향 없음(try/catch).
+    try {
+      const _isStampVisit = svcTotal > 0 || isPkgUseSubmit || SVC_LIST.some(s => items[s.id]?.checked) || _extraSvcAddTotal > 0;
+      if (!editMode && cust.id && _isStampVisit) {
+        const sr = await fetch(`${SB_URL}/rest/v1/rpc/accrue_stamp`, {
+          method: "POST", headers: { ...sbHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ p_biz: _activeBizId, p_cust: cust.id, p_sale_id: sale.id, p_visit: sale.date }),
+        });
+        if (sr.ok) {
+          const st = await sr.json();
+          // 마일스톤 도달 → 보상 쿠폰 발급 (rewardServiceId 있으면 그 시술 1회권, 없으면 라벨 쿠폰)
+          if (st && st.on && !st.dup && st.milestone) {
+            const ms = st.milestone;
+            const rsvc = ms.rewardServiceId ? (data?.services || []).find(s => s.id === ms.rewardServiceId) : null;
+            const _exp = new Date(); _exp.setMonth(_exp.getMonth() + 2); // 보상 쿠폰 2개월 유효
+            sb.insert("customer_packages", {
+              id: "cpn_" + uid(), business_id: _activeBizId, customer_id: cust.id,
+              service_id: ms.rewardServiceId || null,
+              service_name: (rsvc?.name || ms.label || `${ms.n}회차 보상`),
+              total_count: 1, used_count: 0,
+              purchased_at: new Date().toISOString(),
+              note: `재방문스탬프 ${ms.n}회차 보상 | 유효:${_exp.toISOString().slice(0, 10)}`,
+              branch_id: sale.bid || null,
+            }).catch(e => console.warn("[stamp reward]", e));
+          }
+        }
+      }
+    } catch (e) { console.warn("[accrue_stamp]", e); }
+
     // ── 고객 앞 대기 입금(awaiting_sale)을 이번 매출로 마킹 ──
     if (!editMode && pendingDeposits.length > 0) {
       try {
@@ -3860,6 +3926,15 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
           </div>
           {/* (Totals 제거 — 우측 패널에 중복 표시되어 있음) */}
         </div>
+
+        {/* 재방문 스탬프 진행 표시 (제도 on + 신규 등록 + 연결된 고객) */}
+        {_stampProj && (
+          <div style={{padding:"6px 14px",borderBottom:"1px solid #e0e0e0",background:"#EEF2FF",fontSize:11.5,color:"#4338CA",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            <span style={{fontWeight:700,display:"inline-flex",alignItems:"center",gap:4}}><I name="check" size={12}/>재방문 스탬프 {_stampProj.current}/{_stampProj.final}</span>
+            <span style={{color:"#6366F1"}}>→ 이번 시술 시 {_stampProj.resetCycle ? "새 사이클 1회차" : `${_stampProj.next}회차`}</span>
+            {_stampProj.milestone && <span style={{fontWeight:700,color:"#C2410C",background:"#FFEDD5",padding:"1px 8px",borderRadius:10,display:"inline-flex",alignItems:"center",gap:3}}><I name="gift" size={12}/>{_stampProj.milestone.label} 발급</span>}
+          </div>
+        )}
 
         {/* Main Body - 2단 레이아웃 */}
         <div style={{display:_m?"block":"flex",flex:1,overflow:"hidden"}}>
