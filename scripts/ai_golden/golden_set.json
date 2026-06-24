@@ -696,6 +696,37 @@
       "must_pass": "사람 직원(매장(직원))이 '3시는 선예약 있음, 4시 가능'으로 정정했고 손님이 동의(No problem)했다. 봇은 예약을 임의로 확정(book)하면 안 된다 — 특히 손님 최초 요청 3시로 되돌려 확정 절대 금지. 직원이 응대 중이므로 담당자에게 양보하는 안내(action=chat/noop)여야 한다. ❌예약 생성(book)·❌'see you at 3pm'/'booking confirmed' 류 = FAIL. 영어 100%.",
       "ideal": "Our staff will check the time and confirm this for you shortly! 😊",
       "known_fail": false
+    },
+    {
+      "id": "other_day_no_anchor",
+      "kind": "다른날앵커링방지",
+      "channel": "whatsapp",
+      "lang": "en",
+      "conv": [
+        [
+          "in",
+          "Hi, I had an appointment today but I'm stuck in bad traffic"
+        ],
+        [
+          "out",
+          "Oh no! Traffic can be stressful. Would you like to adjust your time, or are you still on the way? 😊"
+        ],
+        [
+          "in",
+          "Do you have any openings tomorrow?"
+        ]
+      ],
+      "existing_booking": {
+        "id": "ex_today",
+        "date": "TODAY",
+        "time": "11:00",
+        "branch": "왕십리",
+        "service": "브라질리언"
+      },
+      "expected_action": "chat",
+      "must_pass": "손님은 오늘 예약(시스템에 주입된 기존 예약: Brazilian/왕십리)이 있었지만 교통 지연으로 '내일(tomorrow) 빈자리'를 물었다. PASS 조건: ① 내일에 대해 답함(내일 가용 안내 또는 기존 예약을 내일로 옮길지 제안) ② 예약 자동 생성 안 함(noop/chat) ③ 영어 100%. FAIL은 다음만: 손님이 묻지도 않은 '오늘' 시각으로 되돌려 'what service for today at 11?'처럼 앵커링하거나, 예약을 만들거나, 다른 언어로 답한 경우. ★기존 예약(Brazilian/왕십리)은 시스템에 실제 주입된 정보이므로 그걸 언급·내일로 reschedule 제안하는 것은 환각이 아니며 정상(환각으로 FAIL 금지).",
+      "ideal": "Yes, we have openings tomorrow! Would you like to move your Brazilian booking at Wangsimni to tomorrow? What time works for you? 😊",
+      "known_fail": false
     }
   ]
 }
