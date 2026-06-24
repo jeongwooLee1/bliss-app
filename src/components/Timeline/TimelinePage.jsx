@@ -532,7 +532,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     }).length;
   }, [notices]);
   useEffect(() => {
-    const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
+    const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "x-bliss-session": (typeof localStorage!=="undefined" && localStorage.getItem("bliss_session_token")) || "" };
     const parseEmps = (empVal) => {
       const base = typeof empVal === 'string' ? JSON.parse(empVal) : (Array.isArray(empVal) ? empVal : []);
       return base;
@@ -543,13 +543,23 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
       return (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
     };
     // employees_v1 + empSettings_v1 동시 로드 (customEmployees_v1 폐기됨, 2026-05-01)
-    Promise.all([
-      fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.employees_v1&select=value`, { headers: H }).then(r => r.json()),
-      fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.empSettings_v1&select=value`, { headers: H }).then(r => r.json()),
-    ]).then(([empRows, setRows]) => {
-      setEmpList(parseEmps(empRows?.[0]?.value || []));
-      setEmpSettings(parseSettings(setRows?.[0]?.value));
-    }).catch(() => {});
+    // 🚨 첫 로그인/계정전환 시 세션토큰·biz 준비 전 1회 fetch면 빈 배열 → empList 빈 채 고정 → 직원칸 영구 0(빈 타임라인).
+    //    빈 결과/실패면 650ms×최대6회 재시도해 준비되는 순간 로드. (schHistory v3.8.155와 동일 패턴 — 그건 됐는데 여긴 누락이었음)
+    let _empCancelled = false, _empTries = 0;
+    const _loadEmp = () => {
+      if (_empCancelled) return;
+      Promise.all([
+        fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.employees_v1&select=value`, { headers: H }).then(r => r.json()),
+        fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.empSettings_v1&select=value`, { headers: H }).then(r => r.json()),
+      ]).then(([empRows, setRows]) => {
+        if (_empCancelled) return;
+        const emps = parseEmps(empRows?.[0]?.value || []);
+        if (!emps.length) { if (_empTries++ < 6) setTimeout(_loadEmp, 650); return; }
+        setEmpList(emps);
+        setEmpSettings(parseSettings(setRows?.[0]?.value));
+      }).catch(() => { if (!_empCancelled && _empTries++ < 6) setTimeout(_loadEmp, 650); });
+    };
+    _loadEmp();
     // Realtime 구독 (employees_v1 + empSettings_v1)
     let empCh = null;
     let empLastRt = 0;
@@ -565,7 +575,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
     };
     schRtRef.current["employees_v1"] = reload;
     schRtRef.current["empSettings_v1"] = reload;
-    return () => {};
+    return () => { _empCancelled = true; };
   }, []);
 
   // 남자직원 로테이션
