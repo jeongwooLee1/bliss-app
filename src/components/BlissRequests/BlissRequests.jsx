@@ -76,8 +76,9 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
     try {
       if (!_activeBizId) { setLoading(false); return; }
       const r = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=in.(bliss_requests_v1,bliss_notices_v1,employees_v1)&select=key,value`, {
-        headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
+        headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }, cache: "no-store"
       });
+      if (!r.ok) { console.error("BlissRequests load HTTP", r.status); setLoading(false); return; }  // 오류 시 기존 state 유지(빈 덮어쓰기 방지)
       const rows = await r.json();
       const reqRow = rows.find(x=>x.key==='bliss_requests_v1');
       const ntcRow = rows.find(x=>x.key==='bliss_notices_v1');
@@ -101,8 +102,25 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
   };
   useEffect(() => { loadData(); }, []);
 
+  // 🛡 데이터 유실 방지: 빈 목록으로 저장하려는데 서버에 항목이 있으면(로드 실패/토큰 레이스) 차단·복원
+  const _serverList = async (key) => {
+    try {
+      const chk = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.${key}&select=value`, {
+        headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }, cache: "no-store" });
+      if (!chk.ok) return null;
+      const rows = await chk.json();
+      const v = rows?.[0]?.value;
+      const arr = typeof v === 'string' ? JSON.parse(v) : (Array.isArray(v) ? v : []);
+      return Array.isArray(arr) ? arr : null;
+    } catch (e) { return null; }
+  };
   const saveAll = async (next) => {
     if (!_activeBizId) throw new Error('activeBizId not set');
+    if (!next || next.length === 0) {
+      const cur = await _serverList("bliss_requests_v1");
+      if (cur && cur.length > 0) { console.warn(`[BlissRequests] 빈 요청목록 저장 차단 — 서버 ${cur.length}건 보존, 재로드`); await loadData(); return; }
+      if (cur === null) { console.error("[BlissRequests] 서버 확인 실패 — 빈 요청 저장 중단(데이터 보호)"); return; }
+    }
     setRequests(next.sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||"")));
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
     await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
@@ -112,6 +130,11 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
   };
   const saveNotices = async (next) => {
     if (!_activeBizId) throw new Error('activeBizId not set');
+    if (!next || next.length === 0) {
+      const cur = await _serverList("bliss_notices_v1");
+      if (cur && cur.length > 0) { console.warn(`[BlissRequests] 빈 공지목록 저장 차단 — 서버 ${cur.length}건 보존, 재로드`); await loadData(); return; }
+      if (cur === null) { console.error("[BlissRequests] 서버 확인 실패 — 빈 공지 저장 중단(데이터 보호)"); return; }
+    }
     setNotices(next.sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||"")));
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
     await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
