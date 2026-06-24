@@ -1530,9 +1530,14 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       const ctx=(convo||[]).slice(-4).map(m=>`${m.direction==="out"?(m.is_ai?"AI":"매장"):"고객"}: ${String(m.message_text||"").replace(/\s+/g," ").slice(0,140)}`).join("\n");
       const chLabel=_ACC_NAME[sel.account_id]||sel.channel||"";
       const desc=`[AI 고객응대오류] ${chLabel} · ${sel.user_id||""}\n\nAI 자동응대가 잘못 답변한 건으로 직원이 접수했습니다. (화면 캡처 첨부)\n\n[최근 대화]\n${ctx}`;
-      const r=await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.bliss_requests_v1&select=value`,{headers:sbHeaders});
-      const rows=await r.json();
-      let list=[]; try{ const v=rows?.[0]?.value; list=typeof v==="string"?JSON.parse(v):(Array.isArray(v)?v:[]); }catch{}
+      // 🛡 기존 요청목록 안전 재조회 — 빈결과(토큰레이스)로 [row]만 저장하면 전체 유실 → 빈결과면 재시도(최대 4회)
+      let list=[];
+      for(let i=0;i<4;i++){
+        try{ const r=await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.bliss_requests_v1&select=value`,{headers:sbHeaders,cache:"no-store"});
+          if(r.ok){ const rows=await r.json(); const v=rows?.[0]?.value; list=typeof v==="string"?JSON.parse(v):(Array.isArray(v)?v:[]); if(Array.isArray(list)&&list.length>0) break; } }catch{}
+        await new Promise(res=>setTimeout(res,500));
+      }
+      if(!Array.isArray(list)) list=[];
       const row={ id:genId(), name:currentUser?.name||"직원", branchId:userBranches?.[0]||"", description:desc,
         images:imgUrl?[imgUrl]:[], status:"pending", reply:"", createdAt:new Date().toISOString(), page:location.pathname, kind:"ai_error" };
       await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`,{
@@ -1584,15 +1589,29 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
 
   // 📋 자주 쓰는 답변(클립보드) — 매장 공유 로드/저장/삽입
   const loadQuickReplies = useCallback(async()=>{
-    try{
-      const r=await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.quick_replies_v1&select=value`,{headers:{...sbHeaders,"Cache-Control":"no-cache"},cache:"no-store"});
-      const rows=await r.json(); const v=rows?.[0]?.value;
-      const list=typeof v==="string"?JSON.parse(v):(Array.isArray(v)?v:[]);
-      setQuickReplies(Array.isArray(list)?list:[]);
-    }catch(e){ console.warn("[quickReplies load]",e); }
+    // 첫로그인 빈결과(토큰레이스)면 state []로 굳어 → 이후 추가/수정 저장이 기존 답변 통째 덮어씀. 빈결과면 재시도.
+    let _t=0;
+    const _load=async()=>{
+      try{
+        const r=await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.quick_replies_v1&select=value`,{headers:{...sbHeaders,"Cache-Control":"no-cache"},cache:"no-store"});
+        const rows=await r.json(); const v=rows?.[0]?.value;
+        const list=typeof v==="string"?JSON.parse(v):(Array.isArray(v)?v:[]);
+        if((!Array.isArray(list)||list.length===0) && _t++<5){ setTimeout(_load,700); return; }
+        setQuickReplies(Array.isArray(list)?list:[]);
+      }catch(e){ if(_t++<5){ setTimeout(_load,700); return; } console.warn("[quickReplies load]",e); }
+    };
+    _load();
   },[]);
   useEffect(()=>{ loadQuickReplies(); },[loadQuickReplies]);
   const persistQuickReplies = async(list)=>{
+    // 🛡 빈 목록 저장이 stale state(로드 실패)에서 비롯돼 기존 답변 통째 유실 방지 — 서버 재확인
+    if(!Array.isArray(list) || list.length===0){
+      try{
+        const r=await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.quick_replies_v1&select=value`,{headers:sbHeaders,cache:"no-store"});
+        const rows=await r.json(); const v=rows?.[0]?.value; const cur=typeof v==="string"?JSON.parse(v):(Array.isArray(v)?v:[]);
+        if(Array.isArray(cur)&&cur.length>0){ console.warn("[quickReplies] 빈 저장 차단 — 서버 "+cur.length+"건, 재로드"); loadQuickReplies(); return; }
+      }catch{ return; }
+    }
     setQuickReplies(list);
     try{
       await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`,{
