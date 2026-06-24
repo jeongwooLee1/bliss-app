@@ -51,6 +51,7 @@ import OffRequestCard from './OffRequestCard'
 
 function BlissRequests({ data, currentUser, userBranches, isMaster }) {
   const [tab, setTab] = useState("notices"); // notices | requests
+  const [reqFilter, setReqFilter] = useState("active"); // active(진행중=대기+검토중) | done(처리완료) | all
   const [requests, setRequests] = useState([]);
   const [notices, setNotices] = useState([]);
   const [employees, setEmployees] = useState([]); // employees_v1 (확인 명단용)
@@ -799,14 +800,20 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
       </div>
     </div>}
 
+    {/* 상태 필터 — 처리완료 분리 */}
+    <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+      {[["active","진행중",requests.filter(r=>r.status!=="done").length],["done","처리완료",requests.filter(r=>r.status==="done").length],["all","전체",requests.length]].map(([k,lbl,n])=>(
+        <button key={k} onClick={()=>setReqFilter(k)} style={{padding:"6px 14px",borderRadius:16,border:"1px solid "+(reqFilter===k?T.primary:T.border),background:reqFilter===k?T.primary:"#fff",color:reqFilter===k?"#fff":T.textSub,fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{lbl} {n}</button>
+      ))}
+    </div>
     {/* 요청 목록 */}
-    {requests.length === 0 ? (
+    {(reqFilter==="all"?requests:requests.filter(r=>reqFilter==="done"?r.status==="done":r.status!=="done")).length === 0 ? (
       <div style={{textAlign:"center",padding:60,color:T.textMuted,fontSize:14,background:T.bgCard,borderRadius:12,border:"1px solid "+T.border}}>
-        아직 등록된 요청이 없습니다. 첫 번째 요청을 작성해주세요!
+        {reqFilter==="done" ? "처리완료된 요청이 없습니다." : reqFilter==="active" ? "진행 중인 요청이 없습니다." : "아직 등록된 요청이 없습니다. 첫 번째 요청을 작성해주세요!"}
       </div>
     ) : (
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {requests.map(r => {
+        {(reqFilter==="all"?requests:requests.filter(r=>reqFilter==="done"?r.status==="done":r.status!=="done")).map(r => {
           const st = STATUS[r.status] || STATUS.pending;
           const isOpen = openId === r.id;
           const reqInitial = (r.name || "?").slice(0, 1);
