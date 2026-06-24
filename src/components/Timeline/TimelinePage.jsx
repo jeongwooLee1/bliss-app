@@ -1422,22 +1422,28 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   // userBranches 변경 시 viewBids 동기화 — 단, 저장된 값이 유효하면 존중
   useEffect(() => {
     const savedRaw = (()=>{ try { return JSON.parse(localStorage.getItem(VIEW_BIDS_KEY) || "null"); } catch { return null; } })();
+    // 🚨 저장된 viewBids는 '현재 업체 지점'에 속할 때만 유효 (업체 전환 시 타 업체 지점 id가 남아 빈 타임라인 되는 버그 fix).
+    //    isMaster여도 무조건 keep 금지 — 다른 업체로 전환하면 저장값이 이 업체 지점이 아니므로 reset해야 칼럼이 뜬다.
+    const _curIds = new Set(allBranchList.map(b=>b.id));
     const hasValidSaved = Array.isArray(savedRaw) && savedRaw.length > 0
-      && savedRaw.every(id => isMaster || accessibleBids.includes(id));
-    if (hasValidSaved) return; // 저장된 유저 선택 유지
+      && savedRaw.every(id => _curIds.has(id));
+    if (hasValidSaved) return; // 현재 업체 지점에 한해 저장된 유저 선택 유지
     if (isMaster) {
       setViewBids(allBranchList.map(b=>b.id));
     } else if (userBranches.length > 0) {
       setExpanded(false);
       setViewBids(userBranches);
     }
-  }, [userBranches.join(",")]);
+  }, [userBranches.join(","), allBranchList.length]);
 
   // Sync viewBids when branches change (e.g. added/removed in admin) — 기존 선택 유지하며 새 지점만 추가
   useEffect(() => {
     const newIds = allBranchList.map(b=>b.id);
+    if (newIds.length === 0) return; // 아직 지점 로드 전 — 건드리지 않음
     setViewBids(prev => {
-      const filtered = prev.filter(id => newIds.includes(id));
+      const filtered = (prev||[]).filter(id => newIds.includes(id));
+      // 전부 타 업체 지점 id라 비면 → 현재 업체 기본값으로 reset (업체 전환 빈 타임라인 방지)
+      if (filtered.length === 0) return defaultViewBids;
       return filtered.length !== prev.length ? filtered : prev;
     });
   }, [allBranchList.length]);
