@@ -3596,10 +3596,21 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             setPendingChange({ type: "move", block, data: snap, orig, branchChanged });
           } else {
             // dur도 함께 동기화 → DB의 dur과 end_time 정합 유지
-            sb.update("reservations", block.id, {
-              room_id: movedRoomId, time: snap.time, end_time: movedEndTime, dur: trueDur,
-              bid: movedBid, staff_id: movedStaffId || null
-            }).catch(console.error);
+            // 이동 저장이 fire-and-forget(.catch)이라 실패 시 조용히 유실 → 옮긴 블록이 되돌아가던 버그 (수연 id_rkappwqb6s)
+            // await + 1회 재시도, 그래도 실패하면 옵티미스틱을 원위치로 되돌려 서버와 일치(혼선 방지)
+            (async () => {
+              const _p = { room_id: movedRoomId, time: snap.time, end_time: movedEndTime, dur: trueDur, bid: movedBid, staff_id: movedStaffId || null };
+              try { await sb.update("reservations", block.id, _p); }
+              catch (e1) {
+                console.warn("[move-save] 1차 실패, 재시도", e1);
+                try { await sb.update("reservations", block.id, _p); }
+                catch (e2) {
+                  console.error("[move-save] 저장 실패 — 원위치 복원", e2);
+                  setData(prev => ({ ...prev, reservations: (prev?.reservations||[]).map(r => r.id === block.id
+                    ? { ...r, time: orig.time, roomId: orig.roomId, bid: orig.bid, staffId: orig.staffId } : r) }));
+                }
+              }
+            })();
           }
           // 🆕 자동 확정: pending/request 예약을 직원 칼럼으로 이동 시 → status=reserved
           (() => {
@@ -5461,11 +5472,10 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                     const ranges = [];
                     // 직원 근무외(비활성) = 활성(근무구간 ∩ 영업시간) 바깥
                     if (room.isStaffCol && room.activeSegments) {
-                      const _bTs = (data?.branches||[]).find(b=>b.id===room.branch_id)?.timelineSettings;
-                      const openMin  = Math.max(startMin2, _hm2(_bTs?.openTime, startMin2));
-                      const closeMin = Math.min(endMin2,  _hm2(_bTs?.closeTime, endMin2));
+                      // 근무외(회색)는 클릭 판정과 동일하게 '직원 근무시간' 기준 — 영업시작/마감으로 자르지 않음
+                      // (조기출근·잔업 직원의 근무시간을 흰색으로 유지, 강남 id_eyf3gb9fjl)
                       const parsed = room.activeSegments.map(s => ({from:_hm2(s.from,startMin2), until:_hm2(s.until,endMin2)}))
-                        .map(p => ({from: Math.max(p.from, openMin), until: Math.min(p.until, closeMin)}))
+                        .map(p => ({from: Math.max(p.from, startMin2), until: Math.min(p.until, endMin2)}))
                         .filter(p => p.until > p.from).sort((a,b)=>a.from-b.from);
                       let cursor = startMin2;
                       for (const p of parsed) { if (p.from > cursor) ranges.push({from:cursor, until:p.from}); cursor = Math.max(cursor, p.until); }

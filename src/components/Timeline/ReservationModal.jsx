@@ -2262,7 +2262,7 @@ ${naverText}
                             _restoreCustSnapshot();
                             setEditingCust(false); setCustSearch(""); setShowCustDropdown(false);
                           }}
-                          style={{flex:1,padding:"8px 0",border:"none",borderRight:"1px solid #e2e5ea",background:"transparent",color:"#666",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                          style={{flex:1,whiteSpace:"nowrap",padding:"8px 0",border:"none",borderRight:"1px solid #e2e5ea",background:"transparent",color:"#666",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                           취소
                         </button>
                         <button onClick={()=>{
@@ -2271,7 +2271,7 @@ ${naverText}
                             setShowCustDropdown(false);
                             setTimeout(()=>commitBtnRef.current?.click(), 0);  // 메인 저장이 _persistCustEdits 후 onSave(모달 닫힘)
                           }}
-                          style={{flex:1,padding:"8px 0",border:"none",background:"transparent",color:T.primary,fontSize:12,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                          style={{flex:1,whiteSpace:"nowrap",padding:"8px 0",border:"none",background:"transparent",color:T.primary,fontSize:12,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
                           <I name="check" size={11} style={{marginRight:3}}/>저장
                         </button>
                       </>
@@ -2283,7 +2283,7 @@ ${naverText}
                             setCustSearch("");
                             setShowCustDropdown(false);
                           }}
-                          style={{flex:1,padding:"8px 0",border:"none",borderRight:"1px solid #e2e5ea",background:"transparent",color:"#666",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                          style={{flex:1,whiteSpace:"nowrap",padding:"8px 0",border:"none",borderRight:"1px solid #e2e5ea",background:"transparent",color:"#666",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
                           변경
                         </button>
                         {!f.custId && f.custPhone && <button onClick={()=>{
@@ -2306,7 +2306,7 @@ ${naverText}
                             if (q.length >= 2) { setCustSearch(q); setShowCustDropdown(true); }
                           }}
                           title="이 전화번호로 기존 고객 찾기"
-                          style={{flex:1,padding:"8px 0",border:"none",borderRight:"1px solid #e2e5ea",background:"transparent",color:T.success,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                          style={{flex:1,whiteSpace:"nowrap",padding:"8px 0",border:"none",borderRight:"1px solid #e2e5ea",background:"transparent",color:T.success,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                           <I name="search" size={11} style={{marginRight:3}}/>기존고객
                         </button>}
                         {(f.custId || (_hasVisitor && f.visitorCustId)) && <button onClick={()=>{
@@ -2322,17 +2322,17 @@ ${naverText}
                             }
                           }}
                           title={(_hasVisitor && f.primarySubject==='visitor') ? `방문자 ${f.visitorName} 고객정보` : "예약자 고객정보 빠른 보기"}
-                          style={{flex:1,padding:"8px 0",border:"none",borderRight:"1px solid #e2e5ea",background:"transparent",color:T.primary,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                          style={{flex:1,whiteSpace:"nowrap",padding:"8px 0",border:"none",borderRight:"1px solid #e2e5ea",background:"transparent",color:T.primary,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
                           고객정보 ↗ {_hasVisitor && (<span style={{fontSize:9,opacity:0.7,marginLeft:2}}>({f.primarySubject==='visitor'?'방문자':'예약자'})</span>)}
                         </button>}
                         {(f.custPhone || (_hasVisitor && f.visitorPhone)) && <button onClick={()=>setShowSmsModal(true)}
                           title={(_hasVisitor && f.primarySubject==='visitor') ? `방문자 ${f.visitorName}에게 문자` : "예약자에게 문자 발송"}
-                          style={{flex:1,padding:"8px 0",border:"none",background:"transparent",color:"#7C3AED",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                          style={{flex:1,whiteSpace:"nowrap",padding:"8px 0",border:"none",background:"transparent",color:"#7C3AED",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                           <I name="msgSq" size={11} style={{marginRight:3}}/>메시지 {_hasVisitor && (<span style={{fontSize:9,opacity:0.7,marginLeft:2}}>({f.primarySubject==='visitor'?'방문자':'예약자'})</span>)}
                         </button>}
                         {item?.id && !isSchedule && (f.custName||"").trim() && onAddCompanion && <button onClick={()=>{ onAddCompanion(f); onClose?.(); }}
                           title="같은 시간·관리사에 친구(동반자) 1명 추가 — PC는 Ctrl 드래그 복사"
-                          style={{flex:1,padding:"8px 0",border:"none",borderLeft:"1px solid #e2e5ea",background:"transparent",color:T.primary,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                          style={{flex:1,whiteSpace:"nowrap",padding:"8px 0",border:"none",borderLeft:"1px solid #e2e5ea",background:"transparent",color:T.primary,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
                           <I name="userPlus" size={11} style={{marginRight:3}}/>동반자
                         </button>}
                       </>
@@ -2460,7 +2460,7 @@ ${naverText}
                         _restoreCustSnapshot();
                         setEditingCust(false); setCustSearch(""); setShowCustDropdown(false);
                       }}
-                      style={{flex:1,padding:"8px 0",border:"none",borderRight:"1px solid #e2e5ea",background:"transparent",color:"#666",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                      style={{flex:1,whiteSpace:"nowrap",padding:"8px 0",border:"none",borderRight:"1px solid #e2e5ea",background:"transparent",color:"#666",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                       취소
                     </button>
                     <button onClick={()=>{
@@ -2468,7 +2468,7 @@ ${naverText}
                         setCustSnapshot(null);
                         setEditingCust(false); setCustSearch(""); setShowCustDropdown(false);
                       }}
-                      style={{flex:1,padding:"8px 0",border:"none",background:"transparent",color:T.primary,fontSize:12,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                      style={{flex:1,whiteSpace:"nowrap",padding:"8px 0",border:"none",background:"transparent",color:T.primary,fontSize:12,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
                       <I name="check" size={11} style={{marginRight:3}}/>정보 저장
                     </button>
                   </>
@@ -2480,7 +2480,7 @@ ${naverText}
                         setCustSearch("");
                         setShowCustDropdown(false);
                       }}
-                      style={{flex:1,padding:"8px 0",border:"none",borderRight:"1px solid #e2e5ea",background:"transparent",color:"#666",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                      style={{flex:1,whiteSpace:"nowrap",padding:"8px 0",border:"none",borderRight:"1px solid #e2e5ea",background:"transparent",color:"#666",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
                       변경
                     </button>
                     {(f.custId || f.visitorCustId) && <button onClick={()=>{
@@ -2495,17 +2495,17 @@ ${naverText}
                         }
                       }}
                       title={(f.primarySubject==='visitor') ? `방문자 ${f.visitorName} 고객정보` : "예약자 고객정보 빠른 보기"}
-                      style={{flex:1,padding:"8px 0",border:"none",borderRight:"1px solid #e2e5ea",background:"transparent",color:T.primary,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                      고객정보 ↗ <span style={{fontSize:9,opacity:0.7,marginLeft:2}}>({f.primarySubject==='visitor'?'방문자':'예약자'})</span>
+                      style={{flex:1,whiteSpace:"nowrap",padding:"8px 0",border:"none",borderRight:"1px solid #e2e5ea",background:"transparent",color:T.primary,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                      고객정보 ↗ {_hasVisitor && (<span style={{fontSize:9,opacity:0.7,marginLeft:2}}>({f.primarySubject==='visitor'?'방문자':'예약자'})</span>)}
                     </button>}
                     {(f.custPhone || f.visitorPhone) && <button onClick={()=>setShowSmsModal(true)}
                       title={(f.primarySubject==='visitor') ? `방문자 ${f.visitorName}에게 문자` : "예약자에게 문자 발송"}
-                      style={{flex:1,padding:"8px 0",border:"none",background:"transparent",color:"#7C3AED",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                      <I name="msgSq" size={11} style={{marginRight:3}}/>메시지 <span style={{fontSize:9,opacity:0.7,marginLeft:2}}>({f.primarySubject==='visitor'?'방문자':'예약자'})</span>
+                      style={{flex:1,whiteSpace:"nowrap",padding:"8px 0",border:"none",background:"transparent",color:"#7C3AED",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                      <I name="msgSq" size={11} style={{marginRight:3}}/>메시지 {_hasVisitor && (<span style={{fontSize:9,opacity:0.7,marginLeft:2}}>({f.primarySubject==='visitor'?'방문자':'예약자'})</span>)}
                     </button>}
                     {item?.id && !isSchedule && (f.custName||"").trim() && onAddCompanion && <button onClick={()=>{ onAddCompanion(f); onClose?.(); }}
                       title="같은 시간·관리사에 친구(동반자) 1명 추가 — PC는 Ctrl 드래그 복사"
-                      style={{flex:1,padding:"8px 0",border:"none",borderLeft:"1px solid #e2e5ea",background:"transparent",color:T.primary,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                      style={{flex:1,whiteSpace:"nowrap",padding:"8px 0",border:"none",borderLeft:"1px solid #e2e5ea",background:"transparent",color:T.primary,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
                       <I name="userPlus" size={11} style={{marginRight:3}}/>동반자
                     </button>}
                   </>

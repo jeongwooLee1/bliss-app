@@ -1942,6 +1942,20 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   };
 
   // 대화 헤더 고객정보 2단 — ① 채널(메신저) 고객정보 ② 블리스 고객정보 (정우님: 한 곳에 몰려 복잡 → 분리)
+  // 채팅 중 고객 메모(특이사항) 작성/확인 (강남 id_wwdmkla7o0)
+  const [custMemoOpen, setCustMemoOpen] = useState(false);
+  const [custMemoDraft, setCustMemoDraft] = useState("");
+  const [custMemoSaved, setCustMemoSaved] = useState(false);
+  const _selCustMemo = sel ? chatCustMapFull[sel.channel + "_" + sel.user_id] : null;
+  useEffect(() => { setCustMemoDraft(_selCustMemo?.memo || ""); setCustMemoOpen(false); setCustMemoSaved(false); }, [sel?.channel, sel?.user_id, _selCustMemo?.id]);
+  const saveCustMemo = async () => {
+    const c = sel ? chatCustMapFull[sel.channel + "_" + sel.user_id] : null;
+    if (!c?.id) return;
+    await sb.update("customers", c.id, { memo: custMemoDraft });
+    if (typeof setData === "function") setData(prev => prev ? { ...prev, customers: (prev.customers||[]).map(x => x.id === c.id ? { ...x, memo: custMemoDraft } : x) } : prev);
+    c.memo = custMemoDraft;
+    setCustMemoSaved(true); setTimeout(() => setCustMemoSaved(false), 1500);
+  };
   const renderHeaderInfo = (compact) => {
     if (!sel) return null;
     const key = sel.channel + "_" + sel.user_id;
@@ -1973,6 +1987,20 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             </span>
           </div>
           {renderCustSummary(cust, key, compact)}
+          {/* 고객 메모 — 채팅 중 특이사항 작성/확인 (id_wwdmkla7o0) */}
+          <div style={{marginTop:4}}>
+            <button onClick={()=>setCustMemoOpen(v=>!v)} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:compact?10:11,fontWeight:700,color:(cust.memo||"").trim()?T.primary:T.textSub,background:"none",border:"none",padding:0,cursor:"pointer",fontFamily:"inherit"}}>
+              <I name="edit" size={10}/>고객 메모{(cust.memo||"").trim()?" ●":""} {custMemoOpen?"▲":"▼"}
+            </button>
+            {custMemoOpen && <div style={{marginTop:4,display:"flex",flexDirection:"column",gap:4}}>
+              <textarea value={custMemoDraft} onChange={e=>setCustMemoDraft(e.target.value)} placeholder="고객 특이사항·메모 (저장하면 고객 정보에 반영돼요)"
+                style={{width:"100%",minHeight:compact?44:54,fontSize:compact?11:12,padding:"6px 8px",border:"1px solid "+T.border,borderRadius:6,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <button onClick={saveCustMemo} style={{fontSize:compact?10:11,fontWeight:800,color:"#fff",background:T.primary,border:"none",borderRadius:6,padding:"4px 14px",cursor:"pointer",fontFamily:"inherit"}}>저장</button>
+                {custMemoSaved && <span style={{fontSize:compact?10:11,color:"#10B981",fontWeight:700}}>저장됨 ✓</span>}
+              </div>
+            </div>}
+          </div>
         </>) : (
           <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",minWidth:0}}>
             <span style={{fontSize:fs2,color:T.textMuted,whiteSpace:"nowrap"}}>{compact?"미연결":"블리스 고객 미연결"}</span>
