@@ -59,10 +59,16 @@ export default function QuickRequest({ currentUser, userBranches }) {
     try {
       let imgUrl = ''
       if (img) { try { imgUrl = await uploadImageToStorage(img, 'requests') } catch { imgUrl = '' } }
-      const r = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.bliss_requests_v1&select=value`, { headers: sbHeaders })
-      const rows = await r.json()
+      // 🛡 기존 요청목록 안전 재조회 — 빈결과(토큰레이스)로 [row]만 저장하면 전체 유실 → 빈결과면 재시도(최대 4회)
       let list = []
-      try { const v = rows?.[0]?.value; list = typeof v === 'string' ? JSON.parse(v) : (Array.isArray(v) ? v : []) } catch {}
+      for (let i = 0; i < 4; i++) {
+        try {
+          const r = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.bliss_requests_v1&select=value`, { headers: sbHeaders, cache: 'no-store' })
+          if (r.ok) { const rows = await r.json(); const v = rows?.[0]?.value; list = typeof v === 'string' ? JSON.parse(v) : (Array.isArray(v) ? v : []); if (Array.isArray(list) && list.length > 0) break }
+        } catch {}
+        await new Promise(res => setTimeout(res, 500))
+      }
+      if (!Array.isArray(list)) list = []
       const row = {
         id: genId(), name: currentUser?.name || '직원',
         branchId: userBranches?.[0] || '', description: desc.trim(),
