@@ -4444,7 +4444,8 @@ CLAUDE.md 로깅이 v3.8.135에서 끊겨 136~141 요약 보충(상세는 git lo
 
 ### AI 응대 일일 자동점검 시스템 (서버, React 변경 0) (2026-06-24)
 정우님 "고객 대화 매일 모니터링해서 AI 오답 찾아 보완 — 시키지 않아도" → 자동 점검·보고 시스템 구축(품질 우선: 탐지·보고·제안만, **자동수정 없음**).
-- **`/home/ubuntu/naver-sync/ai_daily_audit.py`** (standalone) + ubuntu cron `30 0 * * *`(매일 09:30 KST). 어제 `messages`의 AI 자동응대 대화 → 의심신호 사전필터(직원 개입/고객 정정·불만/AI 담당자 미룸, ≤50) → Gemini(3.5-flash, thinkingBudget:0) 보수적 판정 → 텔레그램 다이제스트(🔴🟠🟡+문제+보완제안) + `ai_audit_log` 기록.
+- **`/home/ubuntu/naver-sync/ai_daily_audit.py`** (standalone) + ubuntu cron `30 0 * * *`(매일 09:30 KST). 어제 `messages`의 AI 자동응대 대화 → 의심신호 사전필터(직원 개입/고객 정정·불만/AI 담당자 미룸, ≤50) → Gemini(3.5-flash, thinkingBudget:0) 보수적 판정 → **flagged를 공지&요청(`bliss_requests_v1`, kind='ai_audit', name='AI 자동점검', pending)에 자동 등록** + `ai_audit_log` 기록 + 짧은 TG 알림.
+- **피드백 루프(정우님 핵심)**: TG만 보내면 Claude가 못 받아 무의미 → 공지&요청 등록해야 정우님 확인 + **Claude가 다음 세션에 읽고 수정→done**(기존 수정요청 워크플로우).
 - **DB** `ai_audit_log`(migration `ai_audit_log_init`, RLS `bliss_session_ok` 게이트): flagged + `__run__` 센티넬(하루1회 dedup). bulk insert 키 통일 필수(PGRST102).
 - **키**: `.env`(ubuntu)에 `GEMINI_KEY`·`BLISS_SESSION_TOKEN` 추가(messages RLS 잠금 → x-bliss-session 필요).
 - **검증(6/23)**: AI대화 7/의심 5/플래그 2 — "직원이 4시로 변경했는데 AI가 다시 3시 확정"(high) 실오류 포착. 텔레그램·DB·cron 정상.
