@@ -1358,6 +1358,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
   const [showBranchPicker, setShowBranchPicker] = useState(false);
   // 헤더 시계 아이콘 → 풀스크린 시계 오버레이
   const [showClockOverlay, setShowClockOverlay] = useState(false);
+  const [alarmMuted, setAlarmMuted] = useState(()=> typeof localStorage!=="undefined" && localStorage.getItem("bliss_alarm_muted")==="1"); // 블리스 알람음 끄기 (정우 id_kr0p2w1ke7)
   const clockOverlayRef = useRef(null);
   useEffect(() => {
     if (!showClockOverlay) return;
@@ -4298,6 +4299,13 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             title="시계 (ESC로 닫기)"
             style={{minWidth:38,height:32,borderRadius:T.radius.md,border:"1px solid #e8e8e8",background:T.bgCard,color:T.primary,cursor:"pointer",fontFamily:"inherit",padding:0,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginLeft:6}}>
             <I name="clock" size={16} color={T.primary}/>
+          </button>
+          {/* 알람음 켜기/끄기 (정우 id_kr0p2w1ke7) — 시계 옆 */}
+          <button onClick={()=>{ const m=!alarmMuted; setAlarmMuted(m); try{localStorage.setItem("bliss_alarm_muted", m?"1":"0");}catch{} }}
+            title={alarmMuted?"알람음 꺼짐 — 눌러서 켜기":"알람음 켜짐 — 눌러서 끄기"}
+            style={{minWidth:38,height:32,borderRadius:T.radius.md,border:"1px solid "+(alarmMuted?"#FCA5A5":"#e8e8e8"),background:alarmMuted?"#FEF2F2":T.bgCard,color:alarmMuted?"#DC2626":T.primary,cursor:"pointer",fontFamily:"inherit",padding:0,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginLeft:6,position:"relative"}}>
+            <I name="bell" size={16} color={alarmMuted?"#DC2626":T.primary}/>
+            {alarmMuted && <span style={{position:"absolute",width:24,height:2,background:"#DC2626",transform:"rotate(-45deg)",borderRadius:1,pointerEvents:"none"}}/>}
           </button>
         </div>
         {/* 📣 팀채팅 공지 말풍선 — 7-day 버튼 오른쪽 빈 공간에 배치 */}

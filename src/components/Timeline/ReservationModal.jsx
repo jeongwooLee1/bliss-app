@@ -769,6 +769,7 @@ function TimelineModal({ item, onSave, onAddCompanion, onDelete, onDeleteRequest
   const [custSnapshot, setCustSnapshot] = useState(null);
   const commitBtnRef = React.useRef(null);
   const [savedFlash, setSavedFlash] = useState(false); // 고객정보 저장됨✓ 피드백
+  const [srcWarn, setSrcWarn] = useState(false); const srcWarnAckRef = useRef(false); // 예약경로 빠짐 경고 (정우 id_l979mzu660)
   // editing 모드 진입 직전의 cust 필드 6종 저장 → 취소 시 복원용
   const _captureCustSnapshot = () => setCustSnapshot({
     custId: f.custId||"", custName: f.custName||"", custName2: f.custName2||"",
@@ -3088,6 +3089,18 @@ ${naverText}
                 </button>;
               })()}
               {savedFlash && <div style={{position:"fixed",top:18,left:"50%",transform:"translateX(-50%)",background:T.success,color:"#fff",padding:"8px 20px",borderRadius:20,fontSize:13,fontWeight:800,zIndex:99999,boxShadow:"0 4px 16px rgba(0,0,0,.22)",pointerEvents:"none",display:"flex",alignItems:"center",gap:5}}><I name="check" size={14} color="#fff"/>저장됨</div>}
+              {/* 예약경로 빠짐 경고창 (정우 id_l979mzu660) */}
+              {srcWarn && createPortal(
+                <div onClick={()=>setSrcWarn(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:100001,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,padding:"20px 22px",width:"min(340px,90vw)",boxShadow:"0 12px 40px rgba(0,0,0,.25)"}}>
+                    <div style={{fontSize:15,fontWeight:800,marginBottom:8}}>예약경로가 비어 있어요</div>
+                    <div style={{fontSize:12.5,color:T.gray600,lineHeight:1.55,marginBottom:16}}>이 예약의 <b>예약경로(유입경로)</b>가 선택되지 않았어요. 경로를 선택하면 통계·정산에 정확히 반영됩니다.</div>
+                    <div style={{display:"flex",gap:8,justifyContent:"flex-end",flexWrap:"wrap"}}>
+                      <button onClick={()=>{ srcWarnAckRef.current=true; setSrcWarn(false); setTimeout(()=>commitBtnRef.current?.click(),0); }} style={{padding:"8px 14px",borderRadius:8,border:"1px solid "+T.border,background:"#fff",color:T.gray600,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>그대로 저장</button>
+                      <button onClick={()=>setSrcWarn(false)} style={{padding:"8px 14px",borderRadius:8,border:"none",background:T.primary,color:"#fff",fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>경로 선택하기</button>
+                    </div>
+                  </div>
+                </div>, document.body)}
               <button
                 ref={commitBtnRef}
                 disabled={!isSchedule && f.type==="reservation" && !f.custName?.trim()}
@@ -3096,6 +3109,9 @@ ${naverText}
                 // 변경 모드에서 검색 없이 이름만 바꿨으면 — 저장 전에 resolve(같은 분 오타 / 다른 분 연결·신규)
                 if (_nameEditedInline() && !nameResolveOkRef.current) { _openNameResolve(); return; }
                 nameResolveOkRef.current = false;
+                // 예약경로(유입경로) 비었으면 경고 (정우 id_l979mzu660). 내부일정·매출확인 제외. "그대로 저장"이면 srcWarnAckRef로 통과
+                if (!isSchedule && f.type==="reservation" && !(f.source||"").trim() && !srcWarnAckRef.current) { setSrcWarn(true); return; }
+                srcWarnAckRef.current = false;
                 if (editingCust) _persistCustEdits(); // 변경 모드 칸만 수정하고 예약 저장 시 고객정보 누락 방지
                 // 외부선결제 금액 입력 시 플랫폼 필수
                 if ((f.externalPrepaid || 0) > 0 && !(f.externalPlatform || "").trim()) {

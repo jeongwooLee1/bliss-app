@@ -103,6 +103,14 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
     setLoading(false);
   };
   useEffect(() => { loadData(); }, []);
+  // 자동 갱신(폴링) — 새 요청/공지가 새로고침 없이 목록에 뜨도록 (정우 "풀링 안 됨"). 편집·작성·답글 중엔 스킵(입력 방해·덮어쓰기 방지)
+  useEffect(() => {
+    const iv = setInterval(() => {
+      if (editingDescId || editingNoticeId || showForm || showNoticeForm || showOffForm || (replyText && replyText.trim())) return;
+      loadData();
+    }, 25000);
+    return () => clearInterval(iv);
+  }, [editingDescId, editingNoticeId, showForm, showNoticeForm, showOffForm, replyText]);
 
   // 🛡 데이터 유실 방지: 빈 목록으로 저장하려는데 서버에 항목이 있으면(로드 실패/토큰 레이스) 차단·복원
   const _serverList = async (key) => {

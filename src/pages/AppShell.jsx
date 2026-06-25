@@ -28,7 +28,7 @@ import BlissRequests from '../components/BlissRequests/BlissRequests'
 import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 
 const uid = genId;
-const BLISS_V = "3.8.168"
+const BLISS_V = "3.8.169"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -1862,6 +1862,8 @@ function App() {
   // times: 패턴 반복 횟수 (처음=1, 반복알람=4). 음량 0.7로 키움(직원이 놓치지 않게)
   const _playBeep = React.useCallback((pattern = "msg", times = 1) => {
     try {
+      // 알람음 음소거 (정우 id_kr0p2w1ke7) — 타임라인 시계 옆 버튼에서 켜고 끔
+      if (typeof localStorage!=="undefined" && localStorage.getItem("bliss_alarm_muted")==="1") return;
       // 사용자 제스처 후에만 AudioContext 생성 가능 — 실패 시 무음
       if (!_audioCtxRef.current) {
         const AC = window.AudioContext || window.webkitAudioContext;
