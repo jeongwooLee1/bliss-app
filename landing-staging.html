@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="naver-site-verification" content="24105d027762c24a49648c715f47610d51a67be6" />
+<script>/* OAuth(카카오/구글) 콜백이 정적 랜딩에 떨어지면 React 앱으로 넘겨 로그인 완료 (auth_oauth는 앱에서만 실행됨) */try{if(/[?&]code=/.test(location.search)||/access_token=/.test(location.hash))location.replace('/timeline'+location.search+location.hash);}catch(e){}</script>
 <script>/* 로그인된 직원은 앱으로 바로 보냄 (신규 방문자만 홍보 페이지). 세션토큰까지 있을 때만 = SPA 자동로그인 조건과 일치(토큰 없으면 리다이렉트 안 함 → 로그인 무한루프 방지) */try{if(!/preview_no_redirect/.test(location.search)&&localStorage.getItem('bliss_session')&&localStorage.getItem('bliss_session_token'))location.replace('/timeline');}catch(e){}</script>
 <script>/* 방문자 카운터 (비공개·IP당 당일1회·로그인 직원 제외) */try{if(!localStorage.getItem('bliss_session_token'))fetch('/track-visit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:location.pathname,ref:(document.referrer||'')}),keepalive:true}).catch(function(){});}catch(e){}</script>
 <title>블리스미 blissme — 뷰티샵 예약·매출 관리 프로그램</title>
