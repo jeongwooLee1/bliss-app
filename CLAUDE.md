@@ -4552,3 +4552,11 @@ QuickRequest.submit(전 직원 우클릭 수정요청, common/QuickRequest.jsx:6
 - **사실 v3.8.161에 이미 플러밍됨**: AdminStampProgram 보상 드롭다운이 전 카테고리(쿠폰 포함)를 보여줘 혜택관리 쿠폰을 보상으로 선택 가능 + SaleForm 발급이 customer_packages(service_id=선택 쿠폰상품)로 나가 쿠폰 엔진이 자동 인식(다음 방문 시 할인 자동적용). → 드러나지 않았을 뿐.
 - **이번 변경(드러내기, AdminStampProgram.jsx)**: 보상 선택 드롭다운에서 **쿠폰 카테고리("혜택관리 쿠폰")를 맨 위 그룹으로** 정렬 + 빈 옵션 라벨 "보상 — 쿠폰/시술 선택" + 설명에 "혜택관리→쿠폰등록 쿠폰 고르면 그대로 발급(쿠폰 시스템 재사용), 일반 시술은 무료 1회권, 미지정은 라벨 쿠폰" 명시.
 **유의**: 보상 = ① 쿠폰 상품(혜택관리 쿠폰, promoConfig 자동할인 — 쿠폰 시스템 일원화) ② 일반 시술(무료 1회권=다회권 스타일, "인중/겨드랑이 무료" 같은 무료시술에 자연스러움) ③ 미지정(라벨 쿠폰, 직원 수동) 셋 다 지원. 발급 자체는 SaleForm accrual hook의 customer_packages insert(v3.8.161) 그대로 — 별도 코드경로지만 결과물(customer_packages 쿠폰행)은 이벤트 쿠폰발급과 동일. 제도 여전히 OFF(관리설정에서 켬).
+
+### 재방문 스탬프 보상 쿠폰 전 지점 생성 + 마일스톤 연결 (2026-06-24, DB only)
+정우님 "전 지점 쿠폰도 알아서 만들어줘" → 기획서 3·5·8 회차 보상을 **브랜드(business_id=biz_khvurgshb) 단위 free_service 쿠폰**으로 생성·연결. 전 지점 자동 적용(쿠폰=services 비즈레벨, 지점 제한 없음).
+- **신규 쿠폰 2종** (services, cat=쿠폰 sc_id_jlpnqrrbca, price 0, is_active): `svc_coupon_injung_free`("인중 왁싱 무료" → free_service 타깃 인중 97l05v3dj) / `svc_coupon_armpit_free`("겨드랑이 왁싱 무료" → 겨드랑이 h1nmfvr7v). promo_config `{couponType:"free_service",couponTarget:"services",expiryMonths:12,couponTargetServiceIds:[..]}`.
+- **8회차 = 기존 쿠폰 재사용**: "에너지20분"(sv_id_om7zjau7yu, free_service→에너지20분 cfy96101x) 그대로.
+- **stamp_program.milestones 연결**: 3→svc_coupon_injung_free / 5→svc_coupon_armpit_free / 8→sv_id_om7zjau7yu(reset). settings jsonb merge(on·windowDays·final 보존).
+- **현재 on=true(라이브)** — 하우스왁싱 8지점 가동 중. 매출등록(시술방문) 시 accrue_stamp 적립 → 3·5·8 도달 시 해당 쿠폰을 customer_packages에 자동 발급 → 다음 방문 매출등록 시 쿠폰 엔진이 free_service 자동 적용(해당 시술 무료).
+**유의**: DB only(코드·배포 무관). 쿠폰은 혜택관리→쿠폰 등록 목록 + 관리설정→재방문 스탬프 보상 드롭다운(쿠폰 그룹)에 노출. free_service 쿠폰이라 "그 시술 1회 무료"(다회권 아님, 쿠폰 엔진 할인). 보상 변경은 관리설정에서 쿠폰 재선택. 신규 쿠폰 sort 90/91.
