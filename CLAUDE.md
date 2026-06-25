@@ -4580,3 +4580,10 @@ QuickRequest.submit(전 직원 우클릭 수정요청, common/QuickRequest.jsx:6
 - **ai_no_double_confirm** (ReservationModal+TimelinePage, 정우 id_5koz32ij7l): AI 예약(`ai_*`/`aibook_*`) 직원 확정 시 `rsv_confirm` 확정문자 재발송 생략(AI가 이미 "예약되었습니다" 안내 → 중복 방지). 상태변경(reserved)·변경안내는 그대로.
 - **blissreq_edit_images** (BlissRequests): 공지&요청 본문 인라인 편집에 사진 첨부/붙여넣기(Ctrl+V)/삭제 추가(images 배열, uploadImageToStorage 'requests'). 편집 중엔 기존 이미지뷰 숨김.
 **유의**: implicit flow는 전역 OAuth 방식 변경 — 일반 브라우저 카카오 로그인은 정우님 확인 완료, **카카오톡 인앱브라우저(채팅 링크로 열기) 케이스 1회 확인 권장**. 문제 시 supabase.js 한 줄 revert. 카카오 OAuth는 landing.html 포워드(필수) + implicit(인앱브라우저 보강) 2겹.
+
+### v3.8.165 — 받은메시지함 모바일 대화 UI 정리 (헤더 2줄 + 액션바 더보기 접기) (2026-06-25, 정우 id_w62neo4bza)
+워크트리 인계 patch(inbox_action_compact, MessagesPage.jsx 단일) 적용·배포.
+- **헤더 2줄 분리**: `renderHeaderInfo(compact, part)` — part='ch'(채널 고객정보)/'cust'(블리스 고객정보)로 분리. 모바일 대화 헤더 = 행1[뒤로·아바타·채널정보·예약상태badge·외부링크↗] + 행2[블리스 고객정보 전체폭]. 기존 1줄에 다 몰려 잘리던 것 해소.
+- **compact 고객정보 1줄화**: 고객칩(#번호·연결해제×) + 방문/예약/노쇼 요약 + 메모토글을 한 줄(5줄→2줄), 메모는 펼침만 아래. 전화·해제·메모 저장 기능 전부 보존.
+- **액션바 핵심3 + 더보기**: 모바일에서 AI답변·AI번역·AI예약만 인라인(라벨도 짧게 "AI답변/AI번역/AI예약"), 나머지(차단·자주답변·완료/상담완료·읽지않음·발신직원) → **＋더보기 드롭다운**으로 접음. 데스크탑은 기존대로 전부 인라인(`if(!isMobile) return _sec`).
+**유의**: 받은메시지함 모바일/사이드패널(forceCompact)만 변경, 데스크탑 무영향. 기능 보존(차단·완료·읽지않음·자주답변·직원선택 전부 더보기 안에). 카카오는 답장 딥링크(기존)·AI버튼 숨김 유지.

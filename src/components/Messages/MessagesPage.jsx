@@ -24,6 +24,7 @@ const _normKakaoArr = (arr) => Array.isArray(arr) ? arr.map(_normKakaoMsg) : arr
 function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranches=[], isMaster=false, currentUser=null, pendingChat=null, onPendingChatDone, setPendingOpenRes, setPage, forceCompact=false, inboxResetKey=0, onClosePanel }) {
   // forceCompact: 사이드 패널 모드 — 좁은 폭에서 모바일 UI(리스트↔개별 토글) 사용
   const isMobile = forceCompact || (typeof window !== "undefined" && window.innerWidth < 768);
+  const [actMore, setActMore] = useState(false); // 모바일 액션바: 핵심 3개 외 나머지 접기/펼치기 (정우 id_w62neo4bza, 시안A)
   const CH_ICON = {naver:"N",kakao:"K",instagram:"I",whatsapp:"W",telegram:"T",line:"L"};
   const CH_NAME = {naver:"네이버톡톡",kakao:"카카오",instagram:"인스타",whatsapp:"왓츠앱",telegram:"텔레그램",line:"LINE",sms:"문자"};
   const CH_COLOR = {naver:"#03C75A",kakao:"#F9E000",instagram:"#E1306C",whatsapp:"#128C7E",telegram:"#2AABEE",line:"#06C755",sms:"#5A8DEE"};
@@ -1975,7 +1976,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     c.memo = custMemoDraft;
     setCustMemoSaved(true); setTimeout(() => setCustMemoSaved(false), 1500);
   };
-  const renderHeaderInfo = (compact) => {
+  const renderHeaderInfo = (compact, part) => {
     if (!sel) return null;
     const key = sel.channel + "_" + sel.user_id;
     const cust = chatCustMapFull[key];
@@ -1989,15 +1990,40 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     // compact: 전화가 ②(블리스 고객)에 있으면 ①(채널 정보)에선 생략 — 중복 제거·세로 길이 단축
     const showChPhone = chPhone && !(compact && _custPhone);
     const chMeta = (CH_NAME[sel.channel]||sel.channel) + (_bn?" · "+_bn:"") + (showChPhone?" · "+chPhone:"");
-    return (<>
-      {/* ① 채널 고객정보 — compact는 한 줄(전화 생략) */}
+    const _ch = (
+      /* ① 채널 고객정보 — compact는 한 줄(전화 생략) */
       <div style={{display:"flex",alignItems:"baseline",gap:6,flexWrap:compact?"nowrap":"wrap",minWidth:0,overflow:"hidden"}}>
         <span style={{fontWeight:800,fontSize:fs1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flexShrink:0,maxWidth:compact?"58%":"100%"}}>{dispName||"고객"}</span>
         <span style={{fontSize:fs2,color:T.textSub,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0}}>{chMeta}</span>
-      </div>
-      {/* ② 블리스 고객정보 */}
-      <div style={{marginTop:compact?3:4,paddingTop:compact?3:4,borderTop:"1px dashed "+T.border,minWidth:0}}>
-        {cust ? (<>
+      </div>);
+    const _cust = (
+      /* ② 블리스 고객정보 */
+      <div style={{marginTop:part==='cust'?0:(compact?3:4),paddingTop:part==='cust'?0:(compact?3:4),borderTop:part==='cust'?"none":"1px dashed "+T.border,minWidth:0}}>
+        {cust ? (compact ? (
+          /* 시안 A — 모바일: 고객칩 + 요약 + 메모토글 한 줄(5줄→2줄), 메모 펼침만 아래. 전화·해제·메모 기능 보존 (정우 id_w62neo4bza) */
+          <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap",minWidth:0}}>
+            <span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:11,fontWeight:700,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary+"40",borderRadius:6,padding:"1px 6px",minWidth:0,maxWidth:"58%"}} title={_custPhone?cust.name+" · "+_custPhone:cust.name}>
+              <I name="user" size={10}/>
+              <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{cust.name}{cust.custNum?` #${cust.custNum}`:""}</span>
+              <button onClick={unlinkCustomer} title="고객 연결 해제" style={{flexShrink:0,marginLeft:1,background:"none",border:"none",padding:"0 2px",fontSize:12,fontWeight:900,color:T.textMuted,cursor:"pointer",lineHeight:1,fontFamily:"inherit"}}>×</button>
+            </span>
+            {(()=>{ const _v=Number(cust.visits||0), _ns=Number(cust.noShowCount||0), _rc=custResCount[key]; return (
+              <span style={{fontSize:10,color:T.textSub,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0}}>
+                {"방문 "+_v}{_rc!=null?" · 예약 "+_rc:""}{_ns>0?<span style={{color:"#DC2626"}}>{" · 노쇼 "+_ns}</span>:""}
+              </span>); })()}
+            <button onClick={()=>setCustMemoOpen(v=>!v)} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,fontWeight:700,color:(cust.memo||"").trim()?T.primary:T.textSub,background:"none",border:"none",padding:0,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+              <I name="edit" size={10}/>메모{(cust.memo||"").trim()?" ●":""} {custMemoOpen?"▲":"▼"}
+            </button>
+            {custMemoOpen && <div style={{marginTop:4,width:"100%",display:"flex",flexDirection:"column",gap:4}}>
+              <textarea value={custMemoDraft} onChange={e=>setCustMemoDraft(e.target.value)} placeholder="고객 특이사항·메모 (저장하면 고객 정보에 반영돼요)"
+                style={{width:"100%",minHeight:44,fontSize:11,padding:"6px 8px",border:"1px solid "+T.border,borderRadius:6,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <button onClick={saveCustMemo} style={{fontSize:10,fontWeight:800,color:"#fff",background:T.primary,border:"none",borderRadius:6,padding:"4px 14px",cursor:"pointer",fontFamily:"inherit"}}>저장</button>
+                {custMemoSaved && <span style={{fontSize:10,color:"#10B981",fontWeight:700}}>저장됨 ✓</span>}
+              </div>
+            </div>}
+          </div>
+        ) : (<>
           <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",minWidth:0}}>
             <span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:compact?11:12.5,fontWeight:700,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary+"40",borderRadius:6,padding:"1px 6px",maxWidth:"100%",minWidth:0}} title={_custPhone}>
               <I name="user" size={10}/>
@@ -2020,14 +2046,16 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
               </div>
             </div>}
           </div>
-        </>) : (
+        </>)) : (
           <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",minWidth:0}}>
             <span style={{fontSize:fs2,color:T.textMuted,whiteSpace:"nowrap"}}>{compact?"미연결":"블리스 고객 미연결"}</span>
             <button onClick={()=>setLinkPickerOpen(v=>!v)} style={{flexShrink:0,fontSize:compact?9:10,fontWeight:800,color:T.primary,background:T.primaryLt||"#EEF2FF",border:"1px solid "+T.primary,borderRadius:6,padding:"2px 8px",cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:3,whiteSpace:"nowrap"}}><I name="globe" size={10}/>고객 연결</button>
           </div>
         )}
-      </div>
-    </>);
+      </div>);
+    if(part==='ch') return _ch;
+    if(part==='cust') return _cust;
+    return (<>{_ch}{_cust}</>);
   };
 
   // 모바일 목록 렌더 (인스타 스타일)
@@ -2156,11 +2184,20 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   if(isMobile && sel) return (
     <div style={forceCompact ? {position:"absolute",inset:0,zIndex:5,display:"flex",flexDirection:"column",background:"#f5f5f7"} : {position:"fixed",inset:0,zIndex:600,display:"flex",flexDirection:"column",background:"#f5f5f7"}}>
       {/* 헤더 — compact 모드에선 padding/font/buttons 모두 축소 */}
-      <div style={{padding:forceCompact?"6px 8px":"12px 16px",borderBottom:"1px solid "+T.border,background:T.bgCard,display:"flex",alignItems:"center",gap:forceCompact?6:10,flexShrink:0}}>
+      <div style={{padding:forceCompact?"6px 8px":"10px 14px",borderBottom:"1px solid "+T.border,background:T.bgCard,display:"flex",flexDirection:"column",gap:4,flexShrink:0}}>
+        {/* 행1 — 뒤로·아바타·채널정보·예약/외부링크 (정우 id_w62neo4bza, 시안A 2줄) */}
+        <div style={{display:"flex",alignItems:"center",gap:forceCompact?6:10}}>
         <button onClick={()=>{ setSel(null); if(onChatOpen) onChatOpen(false); }} style={{background:"none",border:"none",cursor:"pointer",color:T.primary,padding:"4px 6px 4px 0",flexShrink:0}}><I name="arrowL" size={forceCompact?16:20}/></button>
         <div style={{width:forceCompact?22:28,height:forceCompact?22:28,borderRadius:14,background:CH_COLOR[sel.channel]||T.primary,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} title={CH_NAME[sel.channel]||sel.channel}><ChannelLogo channel={sel.channel} size={forceCompact?13:16}/></div>
-        <div style={{flex:1,minWidth:0,position:"relative"}}>
-          {renderHeaderInfo(true)}
+        <div style={{flex:1,minWidth:0}}>
+          {renderHeaderInfo(true,'ch')}
+        </div>
+        {(()=>{const res=chatLatestRes[sel.channel+"_"+sel.user_id];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"대기":res.status==="completed"?"완료":res.status==="reserved"?"예약":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":res.status==="completed"?"#9E9E9E":res.status==="no_show"?"#EF5350":T.primary;return<button onClick={()=>{if(setPendingOpenRes&&setPage){setPendingOpenRes({...res, _highlightOnly:true});setPage("timeline");}}} title={`${st} ${res.date?.slice(5)} ${res.time} — 타임라인 바로가기 (예약 강조)`} style={{fontSize:forceCompact?10:11,fontWeight:700,color:clr,background:clr+"15",border:"1px solid "+clr+"40",borderRadius:6,padding:forceCompact?"3px 6px":"4px 8px",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}><I name="calendar" size={11}/>{forceCompact?"":st}</button>;})()}
+        {_extLink && <a href={_extLink.url} target="_blank" rel="noopener" title={"↗ " + _extLink.short + " 앱에서 이 고객 대화 열기 (원래 메신저로 이동)"} style={{fontSize:forceCompact?10:11,fontWeight:700,color:_extLink.color,background:_extLink.color+"18",border:"1px solid "+_extLink.color+"44",borderRadius:6,padding:forceCompact?"3px 6px":"4px 8px",textDecoration:"none",flexShrink:0,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}>{forceCompact?"↗":_extLink.short+" ↗"}</a>}
+        </div>
+        {/* 행2 — 블리스 고객정보 전체폭 (정우 id_w62neo4bza, 시안A 2줄) + 고객연결 picker */}
+        <div style={{position:"relative",paddingLeft:forceCompact?28:38}}>
+          {renderHeaderInfo(true,'cust')}
           {linkPickerOpen && !chatCustMapFull[sel.channel+"_"+sel.user_id] && (
             <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:50,background:"#fff",border:"1px solid "+T.border,borderRadius:8,boxShadow:"0 4px 20px rgba(0,0,0,.15)",padding:8,width:280}}>
               <input autoFocus value={linkSearch} onChange={e=>setLinkSearch(e.target.value)} placeholder="이름·전화·이메일·번호 검색"
@@ -2190,8 +2227,6 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             </div>
           )}
         </div>
-        {(()=>{const res=chatLatestRes[sel.channel+"_"+sel.user_id];if(!res)return null;const st=res.status==="confirmed"?"확정":res.status==="request"?"대기":res.status==="completed"?"완료":res.status==="reserved"?"예약":res.status==="no_show"?"노쇼":null;if(!st)return null;const clr=res.status==="confirmed"?"#4CAF50":res.status==="request"?"#FF9800":res.status==="completed"?"#9E9E9E":res.status==="no_show"?"#EF5350":T.primary;return<button onClick={()=>{if(setPendingOpenRes&&setPage){setPendingOpenRes({...res, _highlightOnly:true});setPage("timeline");}}} title={`${st} ${res.date?.slice(5)} ${res.time} — 타임라인 바로가기 (예약 강조)`} style={{fontSize:forceCompact?10:11,fontWeight:700,color:clr,background:clr+"15",border:"1px solid "+clr+"40",borderRadius:6,padding:forceCompact?"3px 6px":"4px 8px",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}><I name="calendar" size={11}/>{forceCompact?"":st}</button>;})()}
-        {_extLink && <a href={_extLink.url} target="_blank" rel="noopener" title={"↗ " + _extLink.short + " 앱에서 이 고객 대화 열기 (원래 메신저로 이동)"} style={{fontSize:forceCompact?10:11,fontWeight:700,color:_extLink.color,background:_extLink.color+"18",border:"1px solid "+_extLink.color+"44",borderRadius:6,padding:forceCompact?"3px 6px":"4px 8px",textDecoration:"none",flexShrink:0,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3}}>{forceCompact?"↗":_extLink.short+" ↗"}</a>}
       </div>
       {/* 메시지 */}
       <div style={{flex:1,overflowY:"auto",padding:forceCompact?"10px 10px 4px":"16px 16px 4px",display:"flex",flexDirection:"column",gap:forceCompact?6:10,WebkitOverflowScrolling:"touch",background:"#f5f5f7"}}>
@@ -2229,7 +2264,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       </div>
       {/* 입력창 */}
       <div style={{background:"transparent",padding:"8px 12px 12px",flexShrink:0}}>
-        <div className="msg-action-row" style={{display:"flex",gap:6,marginBottom:6,alignItems:"center",flexWrap:"wrap"}}>
+        <div className="msg-action-row" style={{display:"flex",gap:6,marginBottom:6,alignItems:"center",flexWrap:"wrap",position:"relative"}}>
           {/* 좁은 docked 패널에서 버튼 우측 잘림(정우 id_0uho9mcop2) → flexWrap:wrap 줄바꿈(가로스크롤·잘림 X). .msg-action-row>button{flex-shrink:0}로 안 쭈그러듦 */}
           {/* AI 답변추천·번역 — 카톡은 블리스에서 직접 전송 불가(답장은 '카카오에서 답장' 딥링크)라 숨김 (정우 id_vnuqbqugzf) */}
           {(sel.channel||"naver")!=="kakao" && (<>
@@ -2237,7 +2272,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
           <button onClick={genAI} disabled={aiLoading}
             title="AI가 대화 맥락 보고 답변 추천 (직원 검토 후 발송)"
             style={{padding:forceCompact?"5px 10px":"6px 12px",background:T.primaryLt,color:T.primaryDk,border:"1px solid "+T.primary+"55",borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:"pointer",fontWeight:T.fw.bold,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
-            <I name={aiLoading?"loader":"sparkles"} size={13}/> {aiLoading?"생성 중…":"AI 답변 추천"}
+            <I name={aiLoading?"loader":"sparkles"} size={13}/> {aiLoading?"생성 중…":(isMobile?"AI답변":"AI 답변 추천")}
           </button>
           {/* 번역 토글 (번역 진행 중에는 빨간 ON-AIR 점 깜빡) */}
           <button onClick={cycleTranslateMode}
@@ -2249,21 +2284,20 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
               borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:"pointer",fontWeight:T.fw.bold,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5,position:"relative"}}>
             {(translating||inTranslating) && <span style={{width:7,height:7,borderRadius:"50%",background:T.danger,animation:"blissPulse 1s infinite",display:"inline-block"}}/>}
             <I name="languages" size={13}/>
-            {(translating||inTranslating) ? "번역 중…" : (translateMode==="auto"?"번역 자동":translateMode==="force_en"?"번역 영어":"번역 OFF")}
+            {(translating||inTranslating) ? "번역 중…" : (isMobile?(translateMode==="auto"?"AI번역":translateMode==="force_en"?"번역EN":"번역off") : (translateMode==="auto"?"번역 자동":translateMode==="force_en"?"번역 영어":"번역 OFF"))}
           </button>
           </>)}
           {/* AI 예약 등록 */}
           <button onClick={aiBook} disabled={aiBookLoading}
             title="AI가 대화 분석해서 예약 자동 등록 (담당자 확인 후 확정)"
             style={{padding:forceCompact?"5px 10px":"6px 12px",background:aiBookLoading?T.gray400:T.primary,color:"#fff",border:"1px solid "+(aiBookLoading?T.gray400:T.primaryDk),borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:aiBookLoading?"wait":"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
-            <I name={aiBookLoading?"loader":"calendar"} size={13} color="#fff"/> {aiBookLoading?"분석 중…":"AI 예약등록"}
+            <I name={aiBookLoading?"loader":"calendar"} size={13} color="#fff"/> {aiBookLoading?"분석 중…":(isMobile?"AI예약":"AI 예약등록")}
           </button>
-          {/* 🚫 차단(+삭제 합체) — 차단하면 이어서 "대화 삭제할까요?" 물어봄 (정우 요청). 차단=인입 저장·번역·AI 전부 중단 */}
-          <button onClick={()=>setChatAction({type:selBlocked?"unblock":"block"})}
-            title={selBlocked?"차단 해제 — 이 번호의 메시지를 다시 받습니다 (대화 삭제도 여기서)":"차단 — 새 메시지·번역·AI 응답 중단. 차단 후 대화 삭제 여부를 물어봐요"}
-            style={{padding:forceCompact?"5px 10px":"6px 12px",background:selBlocked?"#FEF2F2":"#fff",color:selBlocked?"#DC2626":T.gray600,border:"1px solid "+(selBlocked?"#FCA5A5":T.border),borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
-            <I name="alert" size={13}/> {selBlocked?"차단됨":"차단"}
-          </button>
+          {/* + 더보기 — 모바일에서 핵심(AI답변·AI번역·AI예약) 외 나머지를 드롭다운 메뉴로 (정우 id_w62neo4bza) */}
+          {isMobile && <button onClick={()=>setActMore(o=>!o)} title="더보기 (차단·자주답변·완료·읽지않음·직원)"
+            style={{padding:"5px 12px",background:actMore?T.primary:"#fff",color:actMore?"#fff":T.gray600,border:"1px solid "+(actMore?T.primary:T.border),borderRadius:T.radius.md,fontSize:15,cursor:"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>
+            {actMore?"✕":"＋"}
+          </button>}
           {chatAction && createPortal(
             <div onClick={()=>setChatAction(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:100000,display:"flex",alignItems:"center",justifyContent:"center"}}>
               <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,padding:"20px 22px",width:"min(340px,90vw)",boxShadow:"0 12px 40px rgba(0,0,0,.25)"}}>
@@ -2289,29 +2323,38 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                 </div>
               </div>
             </div>, document.body)}
-          {(sel.channel||"naver")!=="kakao" && renderQrButton()}
-          {/* 완료 — chat_completed + 확인필요 해소 + (네이버) 톡톡 상담완료 통합 (정우 통합 요청). 네이버는 녹색 "상담완료" */}
-          {(()=>{ const _dn=!!doneMap[(sel.channel||'naver')+'_'+sel.user_id]; const _nv=(sel.channel||"naver")==="naver"; const _busy=doneBusy||endCounselLoading; return (
-            <button onClick={toggleDone} disabled={_busy}
-              title={_dn?"완료 해제 — 이 대화를 다시 진행 상태로 되돌립니다":(_nv?"상담완료 — 네이버 톡톡 파트너센터 [상담완료] 자동 적용 + 완료 표시 + 확인 필요 해제 + AI 자동응답 중단":"완료 — 완료 표시 + 확인 필요 해제 + AI 자동응답 중단 (새 문의 오면 자동 재활성화)")}
-              style={{padding:forceCompact?"5px 10px":"6px 12px",background:_dn?"#6B7280":(_nv?"#10B981":"#fff"),color:(_dn||_nv)?"#fff":T.gray600,border:"1px solid "+(_dn?"#6B7280":(_nv?"#059669":T.border)),borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:_busy?"wait":"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
-              <I name={_busy?"loader":"check"} size={13} color={(_dn||_nv)?"#fff":undefined}/> {_busy?"처리 중…":(_dn?"완료됨":(_nv?"상담완료":"완료"))}
+          {/* 나머지 액션 — 데스크탑: 인라인 / 모바일: + 버튼 드롭다운 메뉴 (정우 id_w62neo4bza) */}
+          {(()=>{ const _sec = (<>
+            <button onClick={()=>setChatAction({type:selBlocked?"unblock":"block"})}
+              title={selBlocked?"차단 해제 — 이 번호의 메시지를 다시 받습니다 (대화 삭제도 여기서)":"차단 — 새 메시지·번역·AI 응답 중단. 차단 후 대화 삭제 여부를 물어봐요"}
+              style={{padding:forceCompact?"5px 10px":"6px 12px",background:selBlocked?"#FEF2F2":"#fff",color:selBlocked?"#DC2626":T.gray600,border:"1px solid "+(selBlocked?"#FCA5A5":T.border),borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
+              <I name="alert" size={13}/> {selBlocked?"차단됨":"차단"}
             </button>
-          );})()}
-          {/* 읽지않음 — 이 대화를 다시 '안 읽음'으로 표시하고 목록으로 (나중에 처리). 전 채널 노출 */}
-          <button onClick={async()=>{ await markUnread(sel.user_id, sel.channel||"naver"); setSel(null); if(onChatOpen) onChatOpen(false); }}
-            title="읽지않음 — 이 대화를 다시 안 읽음으로 표시하고 목록으로 돌아갑니다 (나중에 처리)"
-            style={{padding:forceCompact?"5px 10px":"6px 12px",background:"#fff",color:T.gray600,border:"1px solid "+T.border,borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
-            <I name="msgSq" size={13}/> 읽지않음
-          </button>
-          {/* 발신 직원 선택 — 디폴트: 지점명, 수동 선택 시 localStorage 저장 */}
-          <select value={selStaff} onChange={e=>updateSelStaff(e.target.value)}
-            title="답장 발신자 — 메시지 머리에 표시됩니다 (디폴트: 지점명, 변경 시 자동 저장)"
-            style={{padding:forceCompact?"5px 10px":"6px 12px",background:"#fff",color:T.text,border:"1px solid "+T.border,borderRadius:T.radius.md,fontSize:forceCompact?11:12,fontWeight:T.fw.bold,fontFamily:"inherit",cursor:"pointer"}}>
-            {_userBranchName && <option value={_userBranchName}>{_userBranchName} (지점)</option>}
-            {empList.map(e=>{ const v=e.id||e.name; if (v===_userBranchName) return null; return <option key={v} value={v}>{v}</option>; })}
-            <option value="">— 말머리 없음 —</option>
-          </select>
+            {(sel.channel||"naver")!=="kakao" && renderQrButton()}
+            {(()=>{ const _dn=!!doneMap[(sel.channel||'naver')+'_'+sel.user_id]; const _nv=(sel.channel||"naver")==="naver"; const _busy=doneBusy||endCounselLoading; return (
+              <button onClick={toggleDone} disabled={_busy}
+                title={_dn?"완료 해제 — 이 대화를 다시 진행 상태로 되돌립니다":(_nv?"상담완료 — 네이버 톡톡 파트너센터 [상담완료] 자동 적용 + 완료 표시 + 확인 필요 해제 + AI 자동응답 중단":"완료 — 완료 표시 + 확인 필요 해제 + AI 자동응답 중단 (새 문의 오면 자동 재활성화)")}
+                style={{padding:forceCompact?"5px 10px":"6px 12px",background:_dn?"#6B7280":(_nv?"#10B981":"#fff"),color:(_dn||_nv)?"#fff":T.gray600,border:"1px solid "+(_dn?"#6B7280":(_nv?"#059669":T.border)),borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:_busy?"wait":"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
+                <I name={_busy?"loader":"check"} size={13} color={(_dn||_nv)?"#fff":undefined}/> {_busy?"처리 중…":(_dn?"완료됨":(_nv?"상담완료":"완료"))}
+              </button>
+            );})()}
+            <button onClick={async()=>{ await markUnread(sel.user_id, sel.channel||"naver"); setSel(null); if(onChatOpen) onChatOpen(false); }}
+              title="읽지않음 — 이 대화를 다시 안 읽음으로 표시하고 목록으로 돌아갑니다 (나중에 처리)"
+              style={{padding:forceCompact?"5px 10px":"6px 12px",background:"#fff",color:T.gray600,border:"1px solid "+T.border,borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
+              <I name="msgSq" size={13}/> 읽지않음
+            </button>
+            <select value={selStaff} onChange={e=>updateSelStaff(e.target.value)}
+              title="답장 발신자 — 메시지 머리에 표시됩니다 (디폴트: 지점명, 변경 시 자동 저장)"
+              style={{padding:forceCompact?"5px 10px":"6px 12px",background:"#fff",color:T.text,border:"1px solid "+T.border,borderRadius:T.radius.md,fontSize:forceCompact?11:12,fontWeight:T.fw.bold,fontFamily:"inherit",cursor:"pointer"}}>
+              {_userBranchName && <option value={_userBranchName}>{_userBranchName} (지점)</option>}
+              {empList.map(e=>{ const v=e.id||e.name; if (v===_userBranchName) return null; return <option key={v} value={v}>{v}</option>; })}
+              <option value="">— 말머리 없음 —</option>
+            </select>
+          </>);
+          if(!isMobile) return _sec;
+          if(!actMore) return null;
+          return <div style={{position:"absolute",bottom:"calc(100% + 6px)",right:0,zIndex:60,background:"#fff",border:"1px solid "+T.border,borderRadius:10,boxShadow:"0 8px 28px rgba(0,0,0,.2)",padding:7,display:"flex",flexDirection:"column",alignItems:"stretch",gap:6,minWidth:170}}>{_sec}</div>;
+          })()}
         </div>
         {aiKoDraft&&<div style={{fontSize:forceCompact?11:12,color:"#4338ca",padding:"4px 8px",background:"#eff6ff",borderRadius:6,marginBottom:6,borderLeft:"3px solid #818cf8"}}>🇰🇷 {aiKoDraft}</div>}
         {aiBooked&&<div style={{fontSize:forceCompact?11:12,padding:"6px 10px",background:"#ECFDF5",border:"1px solid #A7F3D0",borderRadius:8,marginBottom:6,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
@@ -2518,7 +2561,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
                   borderRadius:T.radius.md,fontSize:12,cursor:"pointer",fontWeight:T.fw.bold,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5,position:"relative"}}>
                 {(translating||inTranslating) && <span style={{width:7,height:7,borderRadius:"50%",background:T.danger,animation:"blissPulse 1s infinite",display:"inline-block"}}/>}
                 <I name="languages" size={13}/>
-                {(translating||inTranslating) ? "번역 중…" : (translateMode==="auto"?"번역 자동":translateMode==="force_en"?"번역 영어":"번역 OFF")}
+                {(translating||inTranslating) ? "번역 중…" : (isMobile?(translateMode==="auto"?"AI번역":translateMode==="force_en"?"번역EN":"번역off") : (translateMode==="auto"?"번역 자동":translateMode==="force_en"?"번역 영어":"번역 OFF"))}
               </button>
               </>)}
               <button onClick={aiBook} disabled={aiBookLoading}
