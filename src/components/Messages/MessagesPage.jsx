@@ -2385,21 +2385,20 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             </select>
           </div>
         </div>}
-        <div style={{display:"flex",alignItems:"flex-end",gap:8}}>
-          {isMobile && <button onClick={()=>setActMore(o=>!o)} title="더보기 (자주답변·완료·읽지않음·차단·직원)" style={{width:forceCompact?32:36,height:forceCompact?32:36,borderRadius:"50%",background:actMore?T.primary:T.gray100,color:actMore?"#fff":T.gray600,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:21,lineHeight:1,fontFamily:"inherit",transition:"transform .18s",transform:actMore?"rotate(45deg)":"none"}}>＋</button>}
-          <div style={{position:"relative",flex:1}}>
+          <div style={{position:"relative"}}>
+          {/* ＋ 버튼 — 입력 필드 안 왼쪽, 세로 가운데 (ChatGPT식, 정우 id_w62neo4bza) */}
+          {isMobile && <button onClick={()=>setActMore(o=>!o)} title="더보기 (자주답변·완료·읽지않음·차단·직원)" style={{position:"absolute",left:6,top:"50%",transform:actMore?"translateY(-50%) rotate(45deg)":"translateY(-50%)",width:forceCompact?28:30,height:forceCompact?28:30,borderRadius:"50%",background:actMore?T.primary:T.gray100,color:actMore?"#fff":T.gray600,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:19,lineHeight:1,fontFamily:"inherit",transition:"transform .18s",zIndex:2}}>＋</button>}
           <textarea id="bliss-reply-ta" value={reply} onChange={e=>{ setReply(e.target.value); setAiKoDraft(""); setReplyIsAi(false); }}
             onFocus={()=>{ if(actMore) setActMore(false); }}
             onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}}
             placeholder="메시지 입력..."
-            style={{width:"100%",padding:forceCompact?"8px 44px 8px 12px":"10px 52px 10px 14px",border:"1px solid "+T.border,borderRadius:12,fontSize:forceCompact?12:15,resize:"none",minHeight:forceCompact?36:42,maxHeight:200,fontFamily:"inherit",outline:"none",background:"#fff",color:"#1f2937",lineHeight:"20px",overflowY:"auto",boxSizing:"border-box",WebkitAppearance:"none",appearance:"none"}}
+            style={{width:"100%",padding:forceCompact?("8px 44px 8px "+(isMobile?"42px":"12px")):("10px 52px 10px "+(isMobile?"44px":"14px")),border:"1px solid "+T.border,borderRadius:12,fontSize:forceCompact?12:15,resize:"none",minHeight:forceCompact?36:42,maxHeight:200,fontFamily:"inherit",outline:"none",background:"#fff",color:"#1f2937",lineHeight:"20px",overflowY:"auto",boxSizing:"border-box",WebkitAppearance:"none",appearance:"none"}}
           />
           {(reply.trim()||sending)&&<button onClick={()=>doSend()} disabled={sending||!reply.trim()}
-            style={{position:"absolute",right:6,bottom:5,width:forceCompact?26:32,height:forceCompact?26:32,background:"#7C3AED",color:"#fff",border:"none",borderRadius:"50%",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",width:forceCompact?26:32,height:forceCompact?26:32,background:"#7C3AED",color:"#fff",border:"none",borderRadius:"50%",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
             {sending?<span style={{fontSize:11}}>⏳</span>:<svg width={forceCompact?13:16} height={forceCompact?13:16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>}
           </button>}
-        </div>
-        </div>
+          </div>
         </div>
         )}
       </div>

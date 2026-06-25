@@ -4593,3 +4593,6 @@ v3.8.165 후속(inbox_more_outside_close, MessagesPage.jsx). 모바일 액션바
 
 ### v3.8.167 — 받은메시지함 ChatGPT식 ＋ 메뉴 (입력창 왼쪽) (2026-06-25, 정우 id_w62neo4bza)
 v3.8.165~166 후속(inbox_chatgpt_plus_menu, index.html+MessagesPage.jsx). 모바일 액션바의 "＋더보기" 버튼을 제거하고 **입력창 왼쪽 원형 ＋ 버튼**으로 이동(ChatGPT식). 열면 입력창 위로 페이드(plusMenuIn 애니, index.html CSS)하며 **테두리 없는 텍스트 메뉴**(자주답변·완료/상담완료·읽지않음·차단 + 보내는 직원 select). ＋ 버튼은 열림 시 45° 회전, 입력창 포커스/바깥클릭 시 닫힘(actRowRef는 입력창 래퍼로 이동). 모바일 비카톡만 ＋메뉴, 데스크탑은 인라인 액션바 유지(`if(!isMobile||kakao) return _sec`), 카톡은 기존 답장 딥링크.
+
+### v3.8.168 — 받은메시지함 ＋ 버튼 입력창 안쪽으로 (ChatGPT식 다듬기) (2026-06-25, 정우 id_w62neo4bza)
+v3.8.167 후속(MessagesPage.jsx). ＋ 버튼을 입력창 옆 별도 버튼 → **textarea 안쪽 왼쪽(absolute, 세로 가운데)** 으로 이동(전송버튼이 오른쪽 안쪽인 것과 대칭, ChatGPT식). textarea 왼쪽 패딩 42/44px 확보, 전송버튼도 top:50% 세로중앙 정렬. 모바일만(데스크탑 무영향).
