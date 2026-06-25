@@ -72,6 +72,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
   // 요청 본문(description) 인라인 편집
   const [editingDescId, setEditingDescId] = useState(null);
   const [editingDescText, setEditingDescText] = useState("");
+  const [editingDescImages, setEditingDescImages] = useState([]);
 
   const loadData = async () => {
     try {
@@ -450,15 +451,35 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
   const startEditDesc = (r) => {
     setEditingDescId(r.id);
     setEditingDescText(r.description || "");
+    setEditingDescImages(Array.isArray(r.images) ? [...r.images] : (r.imageData ? [r.imageData] : []));
   };
   const cancelEditDesc = () => {
     setEditingDescId(null);
     setEditingDescText("");
+    setEditingDescImages([]);
+  };
+  const addEditDescImages = async (files) => {
+    for (const file of Array.from(files || [])) {
+      if (!file.type?.startsWith("image/")) continue;
+      if (file.size > 5 * 1024 * 1024) { alert("이미지 크기 5MB 이하로 업로드해주세요"); continue; }
+      const url = await uploadImageToStorage(file, "requests");
+      if (url) setEditingDescImages(p => [...p, url]); else alert("이미지 업로드 실패");
+    }
+  };
+  const onPasteEditDesc = async (e) => {
+    const items = e.clipboardData?.items || [];
+    for (const it of items) {
+      if (it.type && it.type.startsWith("image/")) {
+        const file = it.getAsFile();
+        if (file && file.size <= 5 * 1024 * 1024) { const url = await uploadImageToStorage(file, "requests"); if (url) setEditingDescImages(p => [...p, url]); }
+      }
+    }
   };
   const saveEditDesc = async (id) => {
     const txt = editingDescText.trim();
     if (!txt) { alert("내용을 입력해주세요."); return; }
-    const next = requests.map(r => r.id === id ? { ...r, description: txt } : r);
+    const imgs = editingDescImages;
+    const next = requests.map(r => r.id === id ? { ...r, description: txt, images: imgs } : r);
     await saveAll(next);
     cancelEditDesc();
   };
@@ -854,11 +875,25 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
             {isOpen && <div style={{padding:"0 16px 16px",borderTop:"1px solid "+T.gray100}}>
               {editingDescId === r.id ? (
                 <div style={{padding:"12px 0"}}>
-                  <textarea value={editingDescText} onChange={e=>setEditingDescText(e.target.value)}
+                  <textarea value={editingDescText} onChange={e=>setEditingDescText(e.target.value)} onPaste={onPasteEditDesc}
                     style={{width:"100%",minHeight:90,padding:"8px 10px",fontSize:13,border:"1.5px solid "+T.primary,borderRadius:8,fontFamily:"inherit",resize:"vertical",lineHeight:1.5}}/>
-                  <div style={{display:"flex",gap:6,marginTop:6}}>
+                  {editingDescImages.length > 0 && <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>
+                    {editingDescImages.map((img,i)=>(
+                      <div key={i} style={{position:"relative"}}>
+                        <img src={img} alt={"첨부-"+(i+1)} style={{height:64,borderRadius:6,border:"1px solid "+T.border}}/>
+                        <button onClick={()=>setEditingDescImages(p=>p.filter((_,j)=>j!==i))} title="삭제"
+                          style={{position:"absolute",top:-6,right:-6,width:18,height:18,borderRadius:9,border:"none",background:T.danger,color:"#fff",fontSize:11,cursor:"pointer",lineHeight:1,fontFamily:"inherit"}}>×</button>
+                      </div>
+                    ))}
+                  </div>}
+                  <div style={{display:"flex",gap:6,marginTop:8,alignItems:"center",flexWrap:"wrap"}}>
                     <button onClick={()=>saveEditDesc(r.id)} style={{padding:"5px 14px",fontSize:11,fontWeight:700,background:T.primary,color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontFamily:"inherit"}}>저장</button>
                     <button onClick={cancelEditDesc} style={{padding:"5px 12px",fontSize:11,background:"#fff",color:T.textSub,border:"1px solid "+T.border,borderRadius:6,cursor:"pointer",fontFamily:"inherit"}}>취소</button>
+                    <label style={{padding:"5px 12px",fontSize:11,fontWeight:600,background:"#fff",color:T.primary,border:"1px solid "+T.primary+"66",borderRadius:6,cursor:"pointer",fontFamily:"inherit"}}>
+                      사진 추가
+                      <input type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>{addEditDescImages(e.target.files); e.target.value="";}}/>
+                    </label>
+                    <span style={{fontSize:10,color:T.gray400}}>붙여넣기(Ctrl+V)도 가능</span>
                   </div>
                 </div>
               ) : (
@@ -870,7 +905,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
                   )}
                 </div>
               )}
-              {(() => {
+              {editingDescId !== r.id && (() => {
                 const imgs = Array.isArray(r.images) ? r.images : (r.imageData ? [r.imageData] : []);
                 if (imgs.length === 0) return null;
                 return <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:6}}>

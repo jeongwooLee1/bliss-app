@@ -3,8 +3,10 @@ import { createClient } from '@supabase/supabase-js'
 export const SB_URL = 'https://dpftlrsuqxqqeouwbfjd.supabase.co'
 export const SB_KEY = 'sb_publishable_3H-KTP0MoV_KuY74ocbefw_3Ze5xBJj'
 
+// flowType:'implicit' — 카카오톡 인앱브라우저에서 PKCE code_verifier(localStorage)가 유실돼
+// OAuth 콜백 성공해도 세션 교환 실패→첫화면 복귀하던 문제 해결. implicit은 토큰을 URL hash로 직접 받아 verifier 불필요.
 export const supabase = createClient(SB_URL, SB_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true }
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'implicit' }
 })
 
 // Realtime 구독용 글로벌 참조

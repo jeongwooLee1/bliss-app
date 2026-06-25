@@ -3299,6 +3299,9 @@ ${naverText}
               {/* AI 예약 확정 버튼 */}
               {f.status==="request" && <Btn style={{padding:"10px 26px",background:"#9C27B0",boxShadow:"0 4px 14px rgba(156,39,176,.35)",whiteSpace:"nowrap"}}
                 onClick={async ()=>{
+                  // AI 예약(ai_*/aibook_*)은 AI가 이미 "예약되었습니다" 안내함 → 직원 확정 시 확정문자 재발송 생략(중복 방지, 정우 id_5koz32ij7l). 상태변경(reserved)은 그대로.
+                  const _aiBooked = /^(ai_|aibook_)/.test(String(f.reservationId||item?.reservationId||""));
+                  if(!_aiBooked){
                   // data.branches에서 동적으로 계정 매핑
                   const branchAccMap={};
                   (data?.branches||[]).forEach(b=>{ if(b.naverAccountId) branchAccMap[b.id]=b.naverAccountId; });
@@ -3373,6 +3376,7 @@ ${naverText}
                       });
                     }
                   }catch(e){console.error("확정 메시지 발송 실패",e);}
+                  } // /if(!_aiBooked) — AI 예약은 확정문자 생략
                   onSave({...f,status:"reserved"});
                 }}>예약 확정</Btn>}
             </>}

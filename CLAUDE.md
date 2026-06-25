@@ -4573,3 +4573,10 @@ QuickRequest.submit(전 직원 우클릭 수정요청, common/QuickRequest.jsx:6
 **fix**(가장 안전 — redirectTo·허용목록 안 건드림): `public/landing.html`(+landing-staging.html) 최상단에 OAuth 콜백 포워드 스크립트 추가 — `?code=` 또는 `#access_token=` 감지 시 `location.replace('/timeline'+search+hash)`로 **React 앱에 넘김**. React(supabase-js detectSessionInUrl 기본 true·PKCE)가 코드 교환→getSession→auth_oauth→handleAccountLogin로 로그인 완료. 카카오·구글 공통(둘 다 `/`로 복귀).
 **배포**: 정적 파일만(landing.html+staging) scp+CF퍼지(files). React 번들·BLISS_V 무관 → 버전업 불필요. 라이브 스크립트 반영 확인.
 **유의**: redirectTo는 `/` 유지(Supabase 허용목록 검증됨). 포워드 스크립트가 track-visit·로그인리다이렉트보다 먼저 실행. auth_oauth는 이메일 매칭이 1순위라 OAuth UUID와 login_id 불일치 무관. 실제 카카오 로그인 완료는 정우님 1회 확인 권장(인증 흐름이라 자동검증 불가).
+
+### v3.8.164 — 워크트리 인계 patch 3건 배포 (카카오 OAuth 보강 등) (2026-06-25)
+배포 누락 점검 결과 미적용 인계 patch 3건 발견 → 적용·배포.
+- **supabase.js implicit flow**: `flowType:'implicit'`(+detectSessionInUrl:true). **카카오톡 인앱브라우저**에서 PKCE code_verifier(localStorage)가 유실돼 OAuth 콜백 성공해도 세션교환 실패→첫화면 복귀하던 케이스 보강(implicit은 토큰을 URL hash로 직접 받아 verifier 불필요). 직전 landing.html OAuth 포워드 fix(콜백을 React앱으로 넘김)와 **상보적** — landing.html 스크립트가 `?code=`·`#access_token=` 둘 다 포워드하므로 PKCE/implicit 모두 동작. 일반 브라우저(이미 작동)+인앱브라우저 둘 다 커버.
+- **ai_no_double_confirm** (ReservationModal+TimelinePage, 정우 id_5koz32ij7l): AI 예약(`ai_*`/`aibook_*`) 직원 확정 시 `rsv_confirm` 확정문자 재발송 생략(AI가 이미 "예약되었습니다" 안내 → 중복 방지). 상태변경(reserved)·변경안내는 그대로.
+- **blissreq_edit_images** (BlissRequests): 공지&요청 본문 인라인 편집에 사진 첨부/붙여넣기(Ctrl+V)/삭제 추가(images 배열, uploadImageToStorage 'requests'). 편집 중엔 기존 이미지뷰 숨김.
+**유의**: implicit flow는 전역 OAuth 방식 변경 — 일반 브라우저 카카오 로그인은 정우님 확인 완료, **카카오톡 인앱브라우저(채팅 링크로 열기) 케이스 1회 확인 권장**. 문제 시 supabase.js 한 줄 revert. 카카오 OAuth는 landing.html 포워드(필수) + implicit(인앱브라우저 보강) 2겹.

@@ -5928,7 +5928,9 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             const branch = (data?.branches||[]).find(b=>b.id===item.bid);
             const rsvUrlId = item.reservationId || item.id || "";
             const rsvUrl = rsvUrlId ? "https://blissme.ai/r.html?"+encodeURIComponent(rsvUrlId) : "";
-            queueAlimtalk(branch?.id, notiKey, item.custPhone, {
+            // AI 예약(ai_*/aibook_*)은 AI가 이미 "예약되었습니다" 안내함 → 확정 문자 중복 발송 생략(변경 안내는 그대로). 정우 id_5koz32ij7l
+            const _aiBooked = /^(ai_|aibook_)/.test(String(item.reservationId||item.id||""));
+            if (!(notiKey==="rsv_confirm" && _aiBooked)) queueAlimtalk(branch?.id, notiKey, item.custPhone, {
               "#{사용자명}":branch?.name||"", "#{날짜}":item.date||"", "#{시간}":item.time||"",
               "#{작업자}":item.worker||"", "#{작업장소}":branch?.name||"",
               "#{대표전화번호}":branch?.phone||"", "#{예약URL}":rsvUrl
