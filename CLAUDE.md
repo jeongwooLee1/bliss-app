@@ -4590,3 +4590,6 @@ QuickRequest.submit(전 직원 우클릭 수정요청, common/QuickRequest.jsx:6
 
 ### v3.8.166 — 받은메시지함 "＋더보기" 드롭다운 바깥 클릭 닫기 (2026-06-25, 정우)
 v3.8.165 후속(inbox_more_outside_close, MessagesPage.jsx). 모바일 액션바 ＋더보기 드롭다운에 `actRowRef`(msg-action-row) + useEffect(mousedown/touchstart 바깥 클릭 시 setActMore(false)) 추가 → 메뉴 밖 누르면 닫힘. `React.useRef`/`React.useEffect` 사용(React default import 확인됨 — 런타임 안전).
+
+### v3.8.167 — 받은메시지함 ChatGPT식 ＋ 메뉴 (입력창 왼쪽) (2026-06-25, 정우 id_w62neo4bza)
+v3.8.165~166 후속(inbox_chatgpt_plus_menu, index.html+MessagesPage.jsx). 모바일 액션바의 "＋더보기" 버튼을 제거하고 **입력창 왼쪽 원형 ＋ 버튼**으로 이동(ChatGPT식). 열면 입력창 위로 페이드(plusMenuIn 애니, index.html CSS)하며 **테두리 없는 텍스트 메뉴**(자주답변·완료/상담완료·읽지않음·차단 + 보내는 직원 select). ＋ 버튼은 열림 시 45° 회전, 입력창 포커스/바깥클릭 시 닫힘(actRowRef는 입력창 래퍼로 이동). 모바일 비카톡만 ＋메뉴, 데스크탑은 인라인 액션바 유지(`if(!isMobile||kakao) return _sec`), 카톡은 기존 답장 딥링크.

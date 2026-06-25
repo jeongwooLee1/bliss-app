@@ -2272,7 +2272,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       </div>
       {/* 입력창 */}
       <div style={{background:"transparent",padding:"8px 12px 12px",flexShrink:0}}>
-        <div className="msg-action-row" ref={actRowRef} style={{display:"flex",gap:6,marginBottom:6,alignItems:"center",flexWrap:"wrap",position:"relative"}}>
+        <div className="msg-action-row" style={{display:"flex",gap:6,marginBottom:6,alignItems:"center",flexWrap:"wrap",position:"relative"}}>
           {/* 좁은 docked 패널에서 버튼 우측 잘림(정우 id_0uho9mcop2) → flexWrap:wrap 줄바꿈(가로스크롤·잘림 X). .msg-action-row>button{flex-shrink:0}로 안 쭈그러듦 */}
           {/* AI 답변추천·번역 — 카톡은 블리스에서 직접 전송 불가(답장은 '카카오에서 답장' 딥링크)라 숨김 (정우 id_vnuqbqugzf) */}
           {(sel.channel||"naver")!=="kakao" && (<>
@@ -2301,11 +2301,6 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             style={{padding:forceCompact?"5px 10px":"6px 12px",background:aiBookLoading?T.gray400:T.primary,color:"#fff",border:"1px solid "+(aiBookLoading?T.gray400:T.primaryDk),borderRadius:T.radius.md,fontSize:forceCompact?11:12,cursor:aiBookLoading?"wait":"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:5}}>
             <I name={aiBookLoading?"loader":"calendar"} size={13} color="#fff"/> {aiBookLoading?"분석 중…":(isMobile?"AI예약":"AI 예약등록")}
           </button>
-          {/* + 더보기 — 모바일에서 핵심(AI답변·AI번역·AI예약) 외 나머지를 드롭다운 메뉴로 (정우 id_w62neo4bza) */}
-          {isMobile && <button onClick={()=>setActMore(o=>!o)} title="더보기 (차단·자주답변·완료·읽지않음·직원)"
-            style={{padding:"5px 12px",background:actMore?T.primary:"#fff",color:actMore?"#fff":T.gray600,border:"1px solid "+(actMore?T.primary:T.border),borderRadius:T.radius.md,fontSize:15,cursor:"pointer",fontWeight:T.fw.bolder,fontFamily:"inherit",display:"inline-flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>
-            {actMore?"✕":"＋"}
-          </button>}
           {chatAction && createPortal(
             <div onClick={()=>setChatAction(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:100000,display:"flex",alignItems:"center",justifyContent:"center"}}>
               <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,padding:"20px 22px",width:"min(340px,90vw)",boxShadow:"0 12px 40px rgba(0,0,0,.25)"}}>
@@ -2359,9 +2354,8 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
               <option value="">— 말머리 없음 —</option>
             </select>
           </>);
-          if(!isMobile) return _sec;
-          if(!actMore) return null;
-          return <div style={{position:"absolute",bottom:"calc(100% + 6px)",right:0,zIndex:60,background:"#fff",border:"1px solid "+T.border,borderRadius:10,boxShadow:"0 8px 28px rgba(0,0,0,.2)",padding:7,display:"flex",flexDirection:"column",alignItems:"stretch",gap:6,minWidth:170}}>{_sec}</div>;
+          if(!isMobile || (sel.channel||"naver")==="kakao") return _sec;
+          return null; // 모바일 비카톡: 입력창 + 메뉴로 이동
           })()}
         </div>
         {aiKoDraft&&<div style={{fontSize:forceCompact?11:12,color:"#4338ca",padding:"4px 8px",background:"#eff6ff",borderRadius:6,marginBottom:6,borderLeft:"3px solid #818cf8"}}>🇰🇷 {aiKoDraft}</div>}
@@ -2372,10 +2366,30 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         </div>}
         {renderQrPanel()}
         {(sel.channel||"naver")==="kakao" ? renderKakaoReply(forceCompact) : (
-        <div>
+        <div ref={actRowRef} style={{position:"relative"}}>
         {renderSmsHint()}
-        <div style={{position:"relative"}}>
+        {/* + 메뉴 — ChatGPT식: 입력창 왼쪽 + 버튼 → 위로 페이드, 테두리 없는 텍스트 항목 (정우 id_w62neo4bza) */}
+        {isMobile && actMore && <div className="plus-menu" style={{position:"absolute",bottom:"calc(100% + 8px)",left:0,zIndex:60,background:"#fff",border:"1px solid "+T.border,borderRadius:14,boxShadow:"0 10px 32px rgba(0,0,0,.16)",padding:6,minWidth:210,maxWidth:"calc(100vw - 40px)"}}>
+          {(sel.channel||"naver")!=="kakao" && <button className="plus-menu-item" onClick={()=>{setActMore(false);setQrOpen(o=>!o);}} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"9px 12px",border:"none",background:"none",borderRadius:9,fontSize:13,color:T.text,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}><I name="clipboard" size={16}/> 자주답변</button>}
+          {(()=>{ const _dn=!!doneMap[(sel.channel||'naver')+'_'+sel.user_id]; const _nv=(sel.channel||"naver")==="naver"; return (
+            <button className="plus-menu-item" onClick={()=>{setActMore(false);toggleDone();}} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"9px 12px",border:"none",background:"none",borderRadius:9,fontSize:13,color:T.text,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}><I name="check" size={16}/> {_dn?"완료 해제":(_nv?"상담완료":"완료")}</button>
+          );})()}
+          <button className="plus-menu-item" onClick={async()=>{setActMore(false); await markUnread(sel.user_id, sel.channel||"naver"); setSel(null); if(onChatOpen) onChatOpen(false);}} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"9px 12px",border:"none",background:"none",borderRadius:9,fontSize:13,color:T.text,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}><I name="msgSq" size={16}/> 읽지않음</button>
+          <button className="plus-menu-item" onClick={()=>{setActMore(false);setChatAction({type:selBlocked?"unblock":"block"});}} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"9px 12px",border:"none",background:"none",borderRadius:9,fontSize:13,color:selBlocked?"#DC2626":T.text,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}><I name="alert" size={16}/> {selBlocked?"차단됨":"차단"}</button>
+          <div style={{height:1,background:T.border,margin:"4px 10px"}}/>
+          <div style={{display:"flex",alignItems:"center",gap:10,padding:"7px 12px",fontSize:13,color:T.text}}><I name="user" size={16}/> 보내는 직원
+            <select value={selStaff} onChange={e=>updateSelStaff(e.target.value)} style={{marginLeft:"auto",border:"none",background:"none",fontSize:12.5,color:T.primary,fontWeight:700,fontFamily:"inherit",cursor:"pointer",maxWidth:120}}>
+              {_userBranchName && <option value={_userBranchName}>{_userBranchName}</option>}
+              {empList.map(e=>{ const v=e.id||e.name; if (v===_userBranchName) return null; return <option key={v} value={v}>{v}</option>; })}
+              <option value="">말머리 없음</option>
+            </select>
+          </div>
+        </div>}
+        <div style={{display:"flex",alignItems:"flex-end",gap:8}}>
+          {isMobile && <button onClick={()=>setActMore(o=>!o)} title="더보기 (자주답변·완료·읽지않음·차단·직원)" style={{width:forceCompact?32:36,height:forceCompact?32:36,borderRadius:"50%",background:actMore?T.primary:T.gray100,color:actMore?"#fff":T.gray600,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:21,lineHeight:1,fontFamily:"inherit",transition:"transform .18s",transform:actMore?"rotate(45deg)":"none"}}>＋</button>}
+          <div style={{position:"relative",flex:1}}>
           <textarea id="bliss-reply-ta" value={reply} onChange={e=>{ setReply(e.target.value); setAiKoDraft(""); setReplyIsAi(false); }}
+            onFocus={()=>{ if(actMore) setActMore(false); }}
             onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}}
             placeholder="메시지 입력..."
             style={{width:"100%",padding:forceCompact?"8px 44px 8px 12px":"10px 52px 10px 14px",border:"1px solid "+T.border,borderRadius:12,fontSize:forceCompact?12:15,resize:"none",minHeight:forceCompact?36:42,maxHeight:200,fontFamily:"inherit",outline:"none",background:"#fff",color:"#1f2937",lineHeight:"20px",overflowY:"auto",boxSizing:"border-box",WebkitAppearance:"none",appearance:"none"}}
@@ -2384,6 +2398,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
             style={{position:"absolute",right:6,bottom:5,width:forceCompact?26:32,height:forceCompact?26:32,background:"#7C3AED",color:"#fff",border:"none",borderRadius:"50%",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
             {sending?<span style={{fontSize:11}}>⏳</span>:<svg width={forceCompact?13:16} height={forceCompact?13:16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>}
           </button>}
+        </div>
         </div>
         </div>
         )}
