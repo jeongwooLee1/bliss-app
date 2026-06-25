@@ -230,7 +230,7 @@ export default function SendSmsModal({ open, onClose, customers = [], branches =
     }
 
     try {
-      let ok = 0, fail = 0
+      let ok = 0, fail = 0, sessionErr = false
       const hasVar = /#\{[^}]+\}/.test(message)
       if (!hasVar) {
         // 변수 없음 → 100명/배치 단일 메시지 발송
@@ -243,7 +243,7 @@ export default function SendSmsModal({ open, onClose, customers = [], branches =
             ok += slice.length
             _deductBilling(message, slice.length)
           }
-          else { fail += slice.length; console.warn('[send-sms] batch fail', res) }
+          else { fail += slice.length; if (res.status === 401) sessionErr = true; console.warn('[send-sms] batch fail', res) }
           setProgress({ sent: i + slice.length, total: partition.valid.length, ok, fail })
         }
       } else {
@@ -257,12 +257,16 @@ export default function SendSmsModal({ open, onClose, customers = [], branches =
             ok++
             _deductBilling(personalMsg, 1)
           }
-          else { fail++; console.warn('[send-sms] one fail', c._ph, res) }
+          else { fail++; if (res.status === 401) sessionErr = true; console.warn('[send-sms] one fail', c._ph, res) }
           setProgress({ sent: i + 1, total: partition.valid.length, ok, fail })
         }
       }
-      alert(`발송 완료\n성공: ${ok}건\n실패: ${fail}건`)
-      onClose?.()
+      if (sessionErr && ok === 0) {
+        alert('로그인 세션이 만료돼 문자를 보내지 못했습니다.\n\n화면을 새로고침(F5)하거나, 로그아웃 후 다시 로그인한 뒤 발송해주세요.')
+      } else {
+        alert(`발송 완료\n성공: ${ok}건\n실패: ${fail}건`)
+        onClose?.()
+      }
     } catch (e) {
       alert('발송 실패: ' + (e?.message || e))
     } finally {
@@ -284,6 +288,7 @@ export default function SendSmsModal({ open, onClose, customers = [], branches =
     try {
       const res = await callEdge(receivers, personalMsg)
       if (res.ok && isAck(res.body)) alert('테스트 발송 완료 — 폰 확인하세요')
+      else if (res.status === 401) alert('로그인 세션이 만료됐어요. 화면을 새로고침(F5)한 뒤 다시 시도해주세요.')
       else alert('테스트 발송 실패: ' + JSON.stringify(res.body).slice(0, 200))
     } finally { setSending(false) }
   }

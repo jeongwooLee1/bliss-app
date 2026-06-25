@@ -4205,8 +4205,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
 
         {/* Top Bar - sticky (v3.8.39: 스크롤 영역 안으로 복귀 — 우측 스크롤바가 툴바 높이까지 올라가도록) */}
         <div ref={topbarRef} className="tl-topbar" style={{position:"sticky",top:0,left:0,zIndex:30,borderBottom:"none",boxShadow:"0 4px 8px -2px rgba(0,0,0,0.12)",background:T.bgCard,padding:"6px 12px",display:"flex",alignItems:"center",columnGap:6,rowGap:10,flexWrap:"wrap",minWidth:"100%",boxSizing:"border-box",overflow:"visible"}}>
-        {/* Row 1: Date nav + settings + branch */}
-        <div style={{display:"flex",alignItems:"center",gap:window.innerWidth<=768?3:6,flexShrink:0,flexWrap:"wrap",maxWidth:"100%"}}>
+        {/* Row 1: Date nav + settings + branch — 모바일은 1줄 고정(nowrap+가로스크롤)로 헤더 2줄 유지 (정우 id_iuzn2ldhed) */}
+        <div style={{display:"flex",alignItems:"center",gap:window.innerWidth<=768?3:6,flexShrink:0,flexWrap:window.innerWidth<=768?"nowrap":"wrap",overflowX:window.innerWidth<=768?"auto":"visible",scrollbarWidth:"none",maxWidth:"100%",minWidth:0}}>
           {/* 보기 전환 세그먼트 [일|주|월] — 날짜 탭(아래 줄)과 분리해 툴바 좌측에 배치, 혼동 방지 (정우님 2026-06-13) */}
           <div style={{display:"flex",flexShrink:0,border:"1px solid #d0d0d0",borderRadius:T.radius.md,overflow:"hidden"}}>
             {[["day","일"],["week","주"],["month","월"]].map(([v,lbl],i)=>(
@@ -4224,13 +4224,13 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
               {branchFocusVal==="__custom" && <option value="__custom">지점 {viewBids.length}곳</option>}
             </select>
           )}
-          <button onClick={()=>changeDate(-1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:T.fs.sm,color:T.gray600,padding:"2px 4px",flexShrink:0}}><I name="chevL" size={14}/></button>
+          <button onClick={()=>changeDate(-1)} style={{display:window.innerWidth<=768?"none":undefined,background:"none",border:"none",cursor:"pointer",fontSize:T.fs.sm,color:T.gray600,padding:"2px 4px",flexShrink:0}}><I name="chevL" size={14}/></button>
           <span className="tl-date-label" onClick={()=>setShowCal(!showCal)} style={{fontSize:window.innerWidth<=768?T.fs.xs:T.fs.sm,fontWeight:T.fw.bolder,color:T.text,flexShrink:0,whiteSpace:"nowrap",cursor:"pointer"}}>{dateLabel}</span>
           <div style={{position:"relative",flexShrink:0}}>
             
             {showCal && <MiniCal selDate={selDate} onSelect={d=>{setSelDate(d);setShowCal(false);}} onClose={()=>setShowCal(false)}/>}
           </div>
-          <button onClick={()=>changeDate(1)} style={{background:"none",border:"none",cursor:"pointer",fontSize:T.fs.sm,color:T.gray600,padding:"2px 4px",flexShrink:0}}><I name="chevR" size={14}/></button>
+          <button onClick={()=>changeDate(1)} style={{display:window.innerWidth<=768?"none":undefined,background:"none",border:"none",cursor:"pointer",fontSize:T.fs.sm,color:T.gray600,padding:"2px 4px",flexShrink:0}}><I name="chevR" size={14}/></button>
           {/* "오늘" 버튼 제거 — 날짜 탭의 "오늘" 표시로 대체 (v3.7.917) */}
           {/* 새로고침 + 네이버 갱신 통합 — 네이버 list + 막기 상태 즉시 동기화 후 페이지 reload */}
           <button onClick={async (e)=>{

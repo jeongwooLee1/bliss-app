@@ -4560,3 +4560,9 @@ QuickRequest.submit(전 직원 우클릭 수정요청, common/QuickRequest.jsx:6
 - **stamp_program.milestones 연결**: 3→svc_coupon_injung_free / 5→svc_coupon_armpit_free / 8→sv_id_om7zjau7yu(reset). settings jsonb merge(on·windowDays·final 보존).
 - **현재 on=true(라이브)** — 하우스왁싱 8지점 가동 중. 매출등록(시술방문) 시 accrue_stamp 적립 → 3·5·8 도달 시 해당 쿠폰을 customer_packages에 자동 발급 → 다음 방문 매출등록 시 쿠폰 엔진이 free_service 자동 적용(해당 시술 무료).
 **유의**: DB only(코드·배포 무관). 쿠폰은 혜택관리→쿠폰 등록 목록 + 관리설정→재방문 스탬프 보상 드롭다운(쿠폰 그룹)에 노출. free_service 쿠폰이라 "그 시술 1회 무료"(다회권 아님, 쿠폰 엔진 할인). 보상 변경은 관리설정에서 쿠폰 재선택. 신규 쿠폰 sort 90/91.
+
+### v3.8.163 — 워크트리 인계 3건 배포 (2026-06-25)
+워크트리 세션 작업분 3개 패치 적용·배포.
+- **BlissRequests.jsx 저장 머지 (근본fix)**: saveAll/saveNotices가 로컬 배열로 통째 덮어쓰던 걸 **서버 현재값과 id 머지**로 변경(서버 전체 보존 → 로컬 변경 overlay → removeIds만 삭제). stale/빈 로컬 배열이 서버 데이터 덮어써 발생한 요청·공지 유실(2026-06-25 3차) 근본 차단. removeReq/removeNotice는 명시 삭제 id 전달.
+- **SendSmsModal.jsx 세션만료 안내**: 발송/테스트발송 시 401 감지 → "발송완료 0건" 대신 "세션 만료, 새로고침(F5)·재로그인 후 발송" 안내(sessionErr && ok===0).
+- **TimelinePage.jsx 모바일 헤더 2줄 유지(id_iuzn2ldhed)**: Row1을 모바일에서 nowrap+가로스크롤(scrollbar 숨김), 좌우 날짜 화살표 버튼 모바일 숨김 → 헤더 2줄 유지.

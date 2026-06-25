@@ -115,32 +115,40 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
       return Array.isArray(arr) ? arr : null;
     } catch (e) { return null; }
   };
-  const saveAll = async (next) => {
+  const saveAll = async (next, removeIds = []) => {
     if (!_activeBizId) throw new Error('activeBizId not set');
-    if (!next || next.length === 0) {
-      const cur = await _serverList("bliss_requests_v1");
-      if (cur && cur.length > 0) { console.warn(`[BlissRequests] 빈 요청목록 저장 차단 — 서버 ${cur.length}건 보존, 재로드`); await loadData(); return; }
-      if (cur === null) { console.error("[BlissRequests] 서버 확인 실패 — 빈 요청 저장 중단(데이터 보호)"); return; }
-    }
-    setRequests(next.sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||"")));
+    // 서버 현재값과 id 머지 — stale/빈 로컬 배열이 서버 데이터를 통째로 덮어써 유실되는 사고 방지 (2026-06-25 3차 유실 근본fix)
+    const cur = await _serverList("bliss_requests_v1");
+    if (cur === null) { console.error("[BlissRequests] 서버 확인 실패 — 저장 중단(데이터 보호)"); alert("저장 실패: 서버 연결 확인 후 다시 시도해주세요."); return; }
+    const rm = new Set(removeIds || []);
+    const byId = {};
+    for (const x of cur) if (x && x.id) byId[x.id] = x;            // 서버 현재 전체 보존
+    for (const x of (next || [])) if (x && x.id) byId[x.id] = x;   // 로컬 변경(추가/수정) overlay
+    for (const rid of rm) delete byId[rid];                         // 명시 삭제만 제거
+    const merged = Object.values(byId).sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||""));
+    setRequests(merged);
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
     await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
       method: "POST", headers: H,
-      body: JSON.stringify({ business_id: _activeBizId, id: "bliss_requests_v1", key: "bliss_requests_v1", value: JSON.stringify(next) })
+      body: JSON.stringify({ business_id: _activeBizId, id: "bliss_requests_v1", key: "bliss_requests_v1", value: JSON.stringify(merged) })
     });
   };
-  const saveNotices = async (next) => {
+  const saveNotices = async (next, removeIds = []) => {
     if (!_activeBizId) throw new Error('activeBizId not set');
-    if (!next || next.length === 0) {
-      const cur = await _serverList("bliss_notices_v1");
-      if (cur && cur.length > 0) { console.warn(`[BlissRequests] 빈 공지목록 저장 차단 — 서버 ${cur.length}건 보존, 재로드`); await loadData(); return; }
-      if (cur === null) { console.error("[BlissRequests] 서버 확인 실패 — 빈 공지 저장 중단(데이터 보호)"); return; }
-    }
-    setNotices(next.sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||"")));
+    // 서버 현재값과 id 머지 — stale/빈 로컬 배열의 서버 덮어쓰기 유실 방지 (요청목록과 동일 패턴)
+    const cur = await _serverList("bliss_notices_v1");
+    if (cur === null) { console.error("[BlissRequests] 서버 확인 실패 — 공지 저장 중단(데이터 보호)"); alert("저장 실패: 서버 연결 확인 후 다시 시도해주세요."); return; }
+    const rm = new Set(removeIds || []);
+    const byId = {};
+    for (const x of cur) if (x && x.id) byId[x.id] = x;
+    for (const x of (next || [])) if (x && x.id) byId[x.id] = x;
+    for (const rid of rm) delete byId[rid];
+    const merged = Object.values(byId).sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||""));
+    setNotices(merged);
     const H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" };
     await fetch(`${SB_URL}/rest/v1/schedule_data?on_conflict=business_id,key`, {
       method: "POST", headers: H,
-      body: JSON.stringify({ business_id: _activeBizId, id: "bliss_notices_v1", key: "bliss_notices_v1", value: JSON.stringify(next) })
+      body: JSON.stringify({ business_id: _activeBizId, id: "bliss_notices_v1", key: "bliss_notices_v1", value: JSON.stringify(merged) })
     });
   };
   const submitNotice = async () => {
@@ -186,7 +194,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
   };
   const removeNotice = async (id) => {
     if (!confirm("이 공지를 삭제할까요?")) return;
-    await saveNotices(notices.filter(n => n.id !== id));
+    await saveNotices(notices.filter(n => n.id !== id), [id]);
     if (openNoticeId === id) setOpenNoticeId(null);
   };
   // ── 휴무 신청 (공지에 얹는 특수 글) ──
@@ -457,7 +465,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
 
   const removeReq = async (id) => {
     if (!confirm("이 요청을 삭제할까요?")) return;
-    await saveAll(requests.filter(r => r.id !== id));
+    await saveAll(requests.filter(r => r.id !== id), [id]);
     if (openId === id) setOpenId(null);
   };
 
