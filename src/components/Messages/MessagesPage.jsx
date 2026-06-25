@@ -25,6 +25,14 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   // forceCompact: 사이드 패널 모드 — 좁은 폭에서 모바일 UI(리스트↔개별 토글) 사용
   const isMobile = forceCompact || (typeof window !== "undefined" && window.innerWidth < 768);
   const [actMore, setActMore] = useState(false); // 모바일 액션바: 핵심 3개 외 나머지 접기/펼치기 (정우 id_w62neo4bza, 시안A)
+  const actRowRef = React.useRef(null); // + 더보기 드롭다운 — 바깥 클릭 시 닫기 (정우)
+  React.useEffect(() => {
+    if (!actMore) return;
+    const h = (e) => { if (actRowRef.current && !actRowRef.current.contains(e.target)) setActMore(false); };
+    document.addEventListener("mousedown", h);
+    document.addEventListener("touchstart", h);
+    return () => { document.removeEventListener("mousedown", h); document.removeEventListener("touchstart", h); };
+  }, [actMore]);
   const CH_ICON = {naver:"N",kakao:"K",instagram:"I",whatsapp:"W",telegram:"T",line:"L"};
   const CH_NAME = {naver:"네이버톡톡",kakao:"카카오",instagram:"인스타",whatsapp:"왓츠앱",telegram:"텔레그램",line:"LINE",sms:"문자"};
   const CH_COLOR = {naver:"#03C75A",kakao:"#F9E000",instagram:"#E1306C",whatsapp:"#128C7E",telegram:"#2AABEE",line:"#06C755",sms:"#5A8DEE"};
@@ -2264,7 +2272,7 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
       </div>
       {/* 입력창 */}
       <div style={{background:"transparent",padding:"8px 12px 12px",flexShrink:0}}>
-        <div className="msg-action-row" style={{display:"flex",gap:6,marginBottom:6,alignItems:"center",flexWrap:"wrap",position:"relative"}}>
+        <div className="msg-action-row" ref={actRowRef} style={{display:"flex",gap:6,marginBottom:6,alignItems:"center",flexWrap:"wrap",position:"relative"}}>
           {/* 좁은 docked 패널에서 버튼 우측 잘림(정우 id_0uho9mcop2) → flexWrap:wrap 줄바꿈(가로스크롤·잘림 X). .msg-action-row>button{flex-shrink:0}로 안 쭈그러듦 */}
           {/* AI 답변추천·번역 — 카톡은 블리스에서 직접 전송 불가(답장은 '카카오에서 답장' 딥링크)라 숨김 (정우 id_vnuqbqugzf) */}
           {(sel.channel||"naver")!=="kakao" && (<>

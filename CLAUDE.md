@@ -4587,3 +4587,6 @@ QuickRequest.submit(전 직원 우클릭 수정요청, common/QuickRequest.jsx:6
 - **compact 고객정보 1줄화**: 고객칩(#번호·연결해제×) + 방문/예약/노쇼 요약 + 메모토글을 한 줄(5줄→2줄), 메모는 펼침만 아래. 전화·해제·메모 저장 기능 전부 보존.
 - **액션바 핵심3 + 더보기**: 모바일에서 AI답변·AI번역·AI예약만 인라인(라벨도 짧게 "AI답변/AI번역/AI예약"), 나머지(차단·자주답변·완료/상담완료·읽지않음·발신직원) → **＋더보기 드롭다운**으로 접음. 데스크탑은 기존대로 전부 인라인(`if(!isMobile) return _sec`).
 **유의**: 받은메시지함 모바일/사이드패널(forceCompact)만 변경, 데스크탑 무영향. 기능 보존(차단·완료·읽지않음·자주답변·직원선택 전부 더보기 안에). 카카오는 답장 딥링크(기존)·AI버튼 숨김 유지.
+
+### v3.8.166 — 받은메시지함 "＋더보기" 드롭다운 바깥 클릭 닫기 (2026-06-25, 정우)
+v3.8.165 후속(inbox_more_outside_close, MessagesPage.jsx). 모바일 액션바 ＋더보기 드롭다운에 `actRowRef`(msg-action-row) + useEffect(mousedown/touchstart 바깥 클릭 시 setActMore(false)) 추가 → 메뉴 밖 누르면 닫힘. `React.useRef`/`React.useEffect` 사용(React default import 확인됨 — 런타임 안전).
