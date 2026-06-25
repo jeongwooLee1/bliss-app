@@ -4566,3 +4566,10 @@ QuickRequest.submit(전 직원 우클릭 수정요청, common/QuickRequest.jsx:6
 - **BlissRequests.jsx 저장 머지 (근본fix)**: saveAll/saveNotices가 로컬 배열로 통째 덮어쓰던 걸 **서버 현재값과 id 머지**로 변경(서버 전체 보존 → 로컬 변경 overlay → removeIds만 삭제). stale/빈 로컬 배열이 서버 데이터 덮어써 발생한 요청·공지 유실(2026-06-25 3차) 근본 차단. removeReq/removeNotice는 명시 삭제 id 전달.
 - **SendSmsModal.jsx 세션만료 안내**: 발송/테스트발송 시 401 감지 → "발송완료 0건" 대신 "세션 만료, 새로고침(F5)·재로그인 후 발송" 안내(sessionErr && ok===0).
 - **TimelinePage.jsx 모바일 헤더 2줄 유지(id_iuzn2ldhed)**: Row1을 모바일에서 nowrap+가로스크롤(scrollbar 숨김), 좌우 날짜 화살표 버튼 모바일 숨김 → 헤더 2줄 유지.
+
+### 카카오/구글 로그인 안 됨 fix — OAuth 콜백이 정적 랜딩에 떨어지던 문제 (2026-06-25, 정적만·버전업 없음)
+**증상**(정우님): "카카오로 시작하기"가 안 됨(계속 재시도, 로그에 카카오 로그인 성공 4회+ 찍힘).
+**진단**: ① Supabase 카카오 OAuth **인증 자체는 정상**(authorize→카카오 302, /callback 로그인 성공 기록 다수). ② auth_oauth RPC도 정상(**이메일 우선 매칭** lower(email)=p_email → cripiss@kakao.com이 정우님 active owner 계정 accnt_fc3086dad0cc를 정확히 찾음, 중복생성 안 함. provLogin=`kakao_<authUUID>`는 login_id(`kakao_id_u64idmrkv3`)와 안 맞지만 이메일 매칭이 우선이라 무관). **근본원인**: signInWithOAuth `redirectTo=window.location.origin+'/'` → 카카오 인증 후 `blissme.ai/?code=`로 돌아오는데 루트 `/`는 **landing.html(정적 홍보페이지)** 서빙 → landing.html엔 OAuth 처리 코드 없음(로그인토큰 있을 때만 /timeline) → **React 앱이 안 떠서 auth_oauth가 영영 실행 안 됨** → 로그인 미완료.
+**fix**(가장 안전 — redirectTo·허용목록 안 건드림): `public/landing.html`(+landing-staging.html) 최상단에 OAuth 콜백 포워드 스크립트 추가 — `?code=` 또는 `#access_token=` 감지 시 `location.replace('/timeline'+search+hash)`로 **React 앱에 넘김**. React(supabase-js detectSessionInUrl 기본 true·PKCE)가 코드 교환→getSession→auth_oauth→handleAccountLogin로 로그인 완료. 카카오·구글 공통(둘 다 `/`로 복귀).
+**배포**: 정적 파일만(landing.html+staging) scp+CF퍼지(files). React 번들·BLISS_V 무관 → 버전업 불필요. 라이브 스크립트 반영 확인.
+**유의**: redirectTo는 `/` 유지(Supabase 허용목록 검증됨). 포워드 스크립트가 track-visit·로그인리다이렉트보다 먼저 실행. auth_oauth는 이메일 매칭이 1순위라 OAuth UUID와 login_id 불일치 무관. 실제 카카오 로그인 완료는 정우님 1회 확인 권장(인증 흐름이라 자동검증 불가).
