@@ -41,10 +41,17 @@ function AdminStampProgram({ data, setData, bizId }) {
   const addM = () => setMilestones(prev => [...prev, { n: (prev.length ? Math.max(...prev.map(x => Number(x.n) || 0)) + 1 : 1), label: '', rewardServiceId: null, reset: false }])
   const removeM = (i) => setMilestones(prev => prev.filter((_, idx) => idx !== i))
 
-  // 보상 시술 선택 목록 (카테고리별)
+  // 보상 선택 목록 (카테고리별) — 혜택관리 쿠폰(쿠폰 카테고리)을 맨 위로 (기존 쿠폰 재사용 우선)
   const svcOpts = useMemo(() => {
-    const sortedCats = [...allCats].sort((a, b) => (a.sort || 0) - (b.sort || 0))
-    return sortedCats.map(c => ({ cat: c, svcs: allServices.filter(s => s.cat === c.id && s.isActive !== false) })).filter(g => g.svcs.length > 0)
+    const groups = allCats
+      .map(c => ({ cat: c, svcs: allServices.filter(s => s.cat === c.id && s.isActive !== false) }))
+      .filter(g => g.svcs.length > 0)
+    groups.sort((a, b) => {
+      const ac = a.cat.name === '쿠폰' ? 0 : 1, bc = b.cat.name === '쿠폰' ? 0 : 1
+      if (ac !== bc) return ac - bc
+      return (a.cat.sort || 0) - (b.cat.sort || 0)
+    })
+    return groups
   }, [allServices, allCats])
 
   const finalN = useMemo(() => {
@@ -99,7 +106,7 @@ function AdminStampProgram({ data, setData, bizId }) {
     <div className="card" style={{ padding: 18, marginBottom: 16 }}>
       <div style={{ fontSize: T.fs.sm, fontWeight: T.fw.black, marginBottom: 6 }}>보상 회차</div>
       <div style={{ fontSize: T.fs.xxs, color: T.textMuted, marginBottom: 14, lineHeight: 1.6 }}>
-        설정한 회차에 도달하면 보상 쿠폰이 고객에게 <b>자동 발급</b>됩니다(유효 2개월). <b>보상 시술</b>을 지정하면 그 시술 <b>무료 1회권</b>으로, 미지정 시 이름만 적힌 쿠폰으로 발급돼요.<br />
+        설정한 회차에 도달하면 보상이 고객에게 <b>자동 발급</b>됩니다(유효 2개월, 보유권에서 확인·사용). <b>혜택 관리 → 쿠폰 등록</b>에서 만든 <b>쿠폰</b>을 보상으로 고르면 그 쿠폰이 그대로 발급되고(쿠폰 시스템 재사용), 일반 시술을 고르면 그 시술 <b>무료 1회권</b>으로, 미지정 시 이름만 적힌 쿠폰으로 발급돼요.<br />
         <b>사이클 완성</b> 회차에 도달하면 다음 방문부터 새 사이클(1회차)로 리셋됩니다.
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -109,7 +116,7 @@ function AdminStampProgram({ data, setData, bizId }) {
             <span style={{ fontSize: 12, color: T.textSub }}>회차</span>
             <input value={m.label} onChange={e => updM(i, { label: e.target.value })} placeholder="보상 이름 (예: 인중 왁싱 무료)" style={{ ...inpS, flex: 1, minWidth: 150 }} />
             <select value={m.rewardServiceId || ''} onChange={e => updM(i, { rewardServiceId: e.target.value || null })} style={{ ...inpS, minWidth: 150, fontSize: 12 }}>
-              <option value="">보상 시술 (선택 안 함)</option>
+              <option value="">보상 — 쿠폰/시술 선택 (미지정=라벨만)</option>
               {svcOpts.map(g => <optgroup key={g.cat.id} label={g.cat.name}>{g.svcs.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</optgroup>)}
             </select>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer', color: m.reset ? T.primary : T.textSub, fontWeight: m.reset ? 700 : 500 }}>
