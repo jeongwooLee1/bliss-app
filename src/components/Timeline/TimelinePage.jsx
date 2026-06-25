@@ -4417,7 +4417,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                   if (b.bid !== room.branch_id) return false;
                   // 미배정 예약은 미배정 칼럼에 표시 (미배정 칼럼이 있으면)
                   if (isUnassigned(b) && allRooms.some(r => r.isNaver && r.branch_id === b.bid)) return false;
-                  if (b.staffId && b.staffId === room.staffId) return true;
+                  // staffId가 오늘 근무 직원칼럼이면 그 칼럼에만 매칭 — staffId·roomId가 서로 다른 직원칼럼을 가리키면(지점 swap 잔재) 두 칼럼 중복 표시되던 버그 방지 (정우 id_8und1khgr3). 근무 안 하는 직원이면 roomId 폴백(블록 사라짐 방지)
+                  if (b.staffId && allRooms.some(r => r.isStaffCol && r.branch_id === b.bid && r.staffId === b.staffId)) return b.staffId === room.staffId;
                   if (b.roomId === room.id) return true;
                   return false;
                 }

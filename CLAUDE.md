@@ -4610,3 +4610,6 @@ v3.8.167 후속(MessagesPage.jsx). ＋ 버튼을 입력창 옆 별도 버튼 →
 **fix**: 자동 동반자 status = `(본인이 request/pending이면) reserved, 아니면 본인 status`. 동반자는 확정대기에 안 잡힘.
 **현재 stuck 정리**: DB pending/request 0건이라 **버전업 배포로 클라 재로드→DB 재동기화 시 phantom 배너 자동 소거**. 추가 데이터 작업 불필요.
 **유의**: 1줄 조건 변경(additive, hook/​import 무관). 커플룸 동반자는 본인과 무관히 reserved로 시작(직원이 필요 시 별도 확정). v3.8.169 알람음 끄기 버튼과 함께 "알람 안 꺼짐" 류 해소.
+
+### v3.8.171 — 타임라인 블록 두 칼럼 중복 표시 fix (지점 swap 잔재) (2026-06-25, 정우 id_8und1khgr3)
+워크트리 인계(timeline_swap_dup, TimelinePage 블록 배치 필터 1줄). 블록의 `staffId`·`roomId`가 **서로 다른 직원칼럼을 가리키면**(지점/담당자 swap 후 한쪽 필드 잔재) 두 칼럼에 **중복 표시**되던 버그 → 블록 배치 매칭을 "staffId가 오늘 근무 직원칼럼이면 그 칼럼에만(`b.staffId===room.staffId`)"으로 변경. staffId가 오늘 근무 안 하는 직원이면 roomId 폴백(블록 사라짐 방지). `isStaffCol`(allRooms 속성, 2128 정의) 실재 확인. additive·hook 무관.
