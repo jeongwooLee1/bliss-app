@@ -2866,7 +2866,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             selectedServices: Array.isArray(item.selectedServices) ? [...item.selectedServices] : [],
             selectedTags: [COUPLE_TAG_ID],
             date: item.date, time: item.time, dur: item.dur,
-            status: item.status || "reserved",
+            // 본인이 확정대기(request/pending)면 자동 동반자는 reserved로 — request로 두면 본인 확정해도 동반자가 확정대기 배너에 phantom으로 남음 (정우 id_1xtxkl236e)
+            status: (item.status && item.status!=="request" && item.status!=="pending") ? item.status : "reserved",
             type: 'reservation', isSchedule: false, source: 'manual',
             isBeta: !!(betaGroupMode || item.isBeta),
             reservationGroupId: _grpId,

@@ -4603,3 +4603,10 @@ v3.8.167 후속(MessagesPage.jsx). ＋ 버튼을 입력창 옆 별도 버튼 →
 - **예약경로 빠짐 경고**(정우 id_l979mzu660, ReservationModal): 예약 저장 시 `f.source`(유입경로) 비어있으면 경고 모달("그대로 저장"/"경로 선택하기"). 내부일정·매출확인 제외. "그대로 저장"이면 srcWarnAckRef로 통과. 통계·정산 정확도용. createPortal/useRef import 확인됨.
 - **알람음 끄기 버튼**(정우 id_kr0p2w1ke7, TimelinePage 시계 옆 종 버튼 + AppShell _playBeep): localStorage `bliss_alarm_muted` 토글 → 켜면 _playBeep 즉시 return(무음). 반복되는 "알람 삐삑" 수동 음소거 수단. 빨간 종+사선 표시.
 **유의**: 전부 additive(+34/-0). 폴링은 BlissRequests v3.8.163 머지-저장 가드와 호환(빈배열 덮어쓰기 차단 유지). 알람음 끄기는 기기별(localStorage) — 직원이 자기 기기에서 끔.
+
+### v3.8.170 — 커플룸 자동 동반자 phantom 확정대기 fix (안 꺼지는 확정대기 원인) (2026-06-25, 정우 id_1xtxkl236e)
+**증상**: 라이브에서 확정대기 배너/알람이 본인 확정해도 안 꺼지고 남음.
+**원인**(TimelinePage 커플룸 자동 동반자 생성): 동반자가 본인 status(`request`/`pending`)를 그대로 상속 → 본인을 확정해도 **동반자가 확정대기로 남아 배너에 phantom**으로 계속 뜸. (DB 조사: 현재 pending/request 0건 = 서버는 깨끗, 클라 stale 데이터의 phantom).
+**fix**: 자동 동반자 status = `(본인이 request/pending이면) reserved, 아니면 본인 status`. 동반자는 확정대기에 안 잡힘.
+**현재 stuck 정리**: DB pending/request 0건이라 **버전업 배포로 클라 재로드→DB 재동기화 시 phantom 배너 자동 소거**. 추가 데이터 작업 불필요.
+**유의**: 1줄 조건 변경(additive, hook/​import 무관). 커플룸 동반자는 본인과 무관히 reserved로 시작(직원이 필요 시 별도 확정). v3.8.169 알람음 끄기 버튼과 함께 "알람 안 꺼짐" 류 해소.
