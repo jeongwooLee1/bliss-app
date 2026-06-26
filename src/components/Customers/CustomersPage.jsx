@@ -1741,7 +1741,7 @@ function CustomersPage({ data, setData, userBranches, isMaster, pendingOpenCust,
 
     {/* 세그먼트 프리셋 (공비서 대비) — 클릭 1번으로 신규/재방문/단골/이탈/노쇼 필터 → 선택 후 ✉ 일괄 문자 */}
     <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
-      {[['all','전체'],['new','신규'],['repeat','재방문'],['vip','단골'],['churned','이탈'],['noshow','노쇼주의'],['pkg','보유권']].map(([k,lbl])=>(
+      {[['all','전체'],['new','신규'],['churned','이탈'],['noshow','노쇼주의'],['pkg','보유권']].map(([k,lbl])=>(
         <button key={k} type="button"
           onClick={()=>{unlockSingleAndReload();setPreset(k);}}
           title={k==='new'?'1회 이하 방문':k==='repeat'?'2회 이상 방문':k==='vip'?'10회 이상 방문':k==='churned'?'90일 이상 미방문':k==='noshow'?'노쇼 이력 있는 고객':k==='pkg'?'정액권·다회권 잔여 보유':'전체 고객'}

@@ -4613,3 +4613,6 @@ v3.8.167 후속(MessagesPage.jsx). ＋ 버튼을 입력창 옆 별도 버튼 →
 
 ### v3.8.171 — 타임라인 블록 두 칼럼 중복 표시 fix (지점 swap 잔재) (2026-06-25, 정우 id_8und1khgr3)
 워크트리 인계(timeline_swap_dup, TimelinePage 블록 배치 필터 1줄). 블록의 `staffId`·`roomId`가 **서로 다른 직원칼럼을 가리키면**(지점/담당자 swap 후 한쪽 필드 잔재) 두 칼럼에 **중복 표시**되던 버그 → 블록 배치 매칭을 "staffId가 오늘 근무 직원칼럼이면 그 칼럼에만(`b.staffId===room.staffId`)"으로 변경. staffId가 오늘 근무 안 하는 직원이면 roomId 폴백(블록 사라짐 방지). `isStaffCol`(allRooms 속성, 2128 정의) 실재 확인. additive·hook 무관.
+
+### v3.8.172 — 고객관리 세그먼트 프리셋 정리 (재방문·단골 제거) (2026-06-26)
+워크트리 인계(cust_segments_trim, CustomersPage 1줄). 세그먼트 프리셋 버튼에서 **재방문·단골 제거** → 전체/신규/이탈/노쇼주의/보유권 5개만 유지(repeat/vip 핸들러·title 매핑은 잔존하나 버튼 미노출, 무해).
