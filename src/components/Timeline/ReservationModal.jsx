@@ -1930,6 +1930,15 @@ ${naverText}
               const onConfirm = async (e) => {
                 e.stopPropagation();
                 const btn = e.currentTarget; const orig = btn.textContent;
+                // 네이버가 이미 확정한 예약(확정일시 있음)인데 블리스만 확정대기로 남은 경우(재방문 자동확정 등)
+                // → 몇 분간 거부하는 네이버 확정 API 호출 없이 블리스 상태만 바로 예약중으로 동기화
+                if (f.naverConfirmedDt || item?.naverConfirmedDt) {
+                  btn.textContent = '✓ 완료'; btn.disabled = true;
+                  setF(prev => ({...prev, status:'reserved'}));
+                  if (setData) setData(prev => ({...prev, reservations:(prev.reservations||[]).map(x => x.id === f.id ? {...x, status:'reserved'} : x)}));
+                  try { await sb.update('reservations', f.id, { status: 'reserved' }); } catch {}
+                  return;
+                }
                 btn.textContent = '확정 중…'; btn.disabled = true;
                 const r = await naverConfirmBooking(bizId, resId);
                 const errMsg = String(r?.msg || r?.error || '');
@@ -1950,7 +1959,7 @@ ${naverText}
                 }
               };
               return <button onClick={onConfirm}
-                style={{fontSize:T.fs.sm,color:T.bgCard,fontWeight:T.fw.bolder,background:T.naver,padding:"5px 12px",borderRadius:T.radius.md,border:'none',cursor:'pointer',display:"inline-flex",alignItems:"center",gap:3,fontFamily:'inherit'}}>✓ 네이버 확정</button>;
+                style={{fontSize:T.fs.sm,color:T.bgCard,fontWeight:T.fw.bolder,background:T.naver,padding:"5px 12px",borderRadius:T.radius.md,border:'none',cursor:'pointer',display:"inline-flex",alignItems:"center",gap:3,fontFamily:'inherit'}}>{(f.naverConfirmedDt || item?.naverConfirmedDt) ? '✓ 확정 반영' : '✓ 네이버 확정'}</button>;
               })()}
             </div>
           </div>}

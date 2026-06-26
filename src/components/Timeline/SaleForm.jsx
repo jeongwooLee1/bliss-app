@@ -4046,26 +4046,24 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
                     const branchShort = isInactive ? getPkgPurchaseBranchShort(pkg, data?.branches) : '';
                     const onClickCoupon = () => {
                       if (isInactive) return;
-                      if (targetSvcs.length === 1) {
-                        const s = targetSvcs[0];
+                      // 쿠폰 클릭 → 매칭되는 대상 시술 전부 자동 체크. (매칭 안 되는 쿠폰은 targetSvcs가 비어 무동작 — "안 되는 건 빼고")
+                      targetSvcs.forEach(s => {
                         if (items[s.id]?.checked) return;
-                        const dp = _defPrice(s, gender);
-                        toggle(s.id, dp);
-                      }
+                        toggle(s.id, _defPrice(s, gender));
+                      });
                     };
                     return <div key={pkg.id} className="sale-svc-row"
                       onClick={onClickCoupon}
                       style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:4,
                         background:allChecked?"#fff8e1":"transparent",
-                        cursor:isInactive?"not-allowed":(targetSvcs.length===1?"pointer":"default"),
+                        cursor:isInactive?"not-allowed":(targetSvcs.length>=1?"pointer":"default"),
                         opacity:isInactive?0.55:1,lineHeight:1.4}}>
                       <span style={{fontSize:13,color:"#78350f",fontWeight:allChecked?700:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flex:1,minWidth:0}}>
                         {allChecked && <span style={{color:"#b45309",marginRight:3}}>✓</span>}
                         🎫 {pkg.service_name}
                         <span style={{marginLeft:6,fontSize:9,padding:"1px 5px",borderRadius:6,background:"#fef3c7",color:"#92400e",fontWeight:700}}>{typeLabel}</span>
                         {isInactive && <span title="구매지점 외에서는 사용 불가 — 사용하려면 모달 우측 지점을 변경하세요" style={{marginLeft:6,fontSize:9,padding:"1px 5px",borderRadius:6,background:"#FEE2E2",color:"#991B1B",border:"1px solid #FCA5A5",fontWeight:700}}>🔒 {branchShort||'타지점'} 구매</span>}
-                        {!isInactive && targetSvcs.length > 1 && <span style={{marginLeft:6,fontSize:9,color:"#92400e"}}>· 적용 시술 {targetSvcs.length}개 (시술 카드 🎫 클릭)</span>}
-                        {!isInactive && targetSvcs.length === 1 && !allChecked && <span style={{marginLeft:6,fontSize:9,color:"#b45309",fontWeight:700}}>→ 클릭하면 시술 자동 추가</span>}
+                        {!isInactive && targetSvcs.length >= 1 && !allChecked && <span style={{marginLeft:6,fontSize:9,color:"#b45309",fontWeight:700}}>→ 클릭하면 시술{targetSvcs.length>1?` ${targetSvcs.length}개`:""} 자동 추가</span>}
                       </span>
                       <span style={{flexShrink:0,fontSize:11,color:"#92400e",fontWeight:700}}>잔여 {remain}회</span>
                       {exp && <span style={{flexShrink:0,fontSize:10,color:"#92400e"}}>{exp.replace(/^20(\d\d)/, '$1')}까지</span>}
