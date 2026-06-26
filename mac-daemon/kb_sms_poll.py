@@ -178,8 +178,10 @@ def is_card_settlement(name):
     if re.match(r'^(신한|삼성|현대|롯데|국민|농협|비씨|씨티)\s*\d', n):
         return True  # 카드사명 + 숫자 (신한13028239)
     if re.search(r'[가-힣]{2,}', n):
-        return False  # 한글 이름(2자+ 연속) 있으면 고객 입금
-    return True  # 한글 이름 없음(영문코드/숫자/한글1자 약자) = 카드정산
+        return False  # 한글 이름(2자+ 연속) 있으면 고객 입금 (메모 숫자 무관)
+    if re.search(r'\d', n):
+        return True  # 한글 이름 없고 숫자 포함 = 카드/정산 코드 (KB109251201·롯데카드97293·현840)
+    return False  # 한글 이름 없고 숫자도 없음 = 영문 이름 손님(BIRDSONGME 등) → 고객 입금 (정우님 2026-06-26: 영어라고 무조건 카드정산 아님)
 
 
 def parse_kb(text):

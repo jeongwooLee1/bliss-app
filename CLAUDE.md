@@ -4630,3 +4630,10 @@ v3.8.167 후속(MessagesPage.jsx). ＋ 버튼을 입력창 옆 별도 버튼 →
 - **#3 (보통, WhatsApp 면도문의 "You're all set")**: 직원 응대 중 AI가 "You're all set for 19:00"로 끼어들어 확정 — **#1과 같은 패턴인데 "all set"이 가드 키워드에 없어 빠져나감**(진짜 남은 구멍).
 **fix(#3, ai_booking.py 백업 bak_allset_*)**: 직원응대중 확정멘트 가드 `_is_confirm_reply` 키워드에 `"all set","see you on","see you at","예약해 드렸","예약 도와드렸"` 추가 → 직원 응대 중이면 그 표현도 보류·담당자 양보. 골든 케이스 `staff_active_allset_defer`(직원응대중+면도문의→AI 양보) 추가 → **골든 37/37 게이트 PASS + 신규 케이스 PASS + 회귀 0**(EXIT 0). systemctl restart 적용. 3건 모두 done 처리.
 **유의**: 가드는 `_staff_active`(사람 직원 outbound 최근10개 내)일 때만 발동 → 일반 예약/farewell엔 영향 0(회귀 0 확인). golden_set.json 38케이스(git scripts/ai_golden 동기화). ai_booking.py는 서버 전용(git 미추적). React/배포 무관.
+
+### 입금문자 카드정산 오분류 fix — 영문이름 손님이 숨겨지던 버그 (2026-06-26, mac-daemon)
+**증상**(정우): 강남 입금문자가 안 들어온다.
+**진단**: 데몬(kb_sms_poll, StartInterval 15초)·DB 정상 — 강남 입금은 들어오고 있었음. 단 **영문 이름 손님 입금이 "카드정산"(status=card)으로 자동 오분류돼 입금문자 탭에서 숨겨짐**. `is_card_settlement`가 "한글 2자+ 이름 없으면 카드"라 BIRDSONGME(2만)·VISHA(20.5만, 강남 손님계좌) 같은 영문 손님이 카드로 빠짐.
+**fix** (`mac-daemon/kb_sms_poll.py is_card_settlement`): 한글이름2+→손님(메모숫자 무관, 김금희월(2시)예 보존) / 한글없음+숫자있음→카드코드(KB109251201·롯데카드97293·현840) / **한글없음+숫자없음→영문 손님(BIRDSONGME 등)** 로 변경. 명확한 카드신호(잔액prefix·'카드'·'정산'·카드사명+숫자·숫자포함코드)만 카드, 영문 이름은 손님. 단위테스트 8/8 PASS.
+**데이터 복구**: status='card'인데 영문이름(숫자·카드키워드 없음) 2건(BIRDSONGME 06/26·VISHA 06/17, 둘 다 강남 809101**812) → pending 복구 → 탭 노출.
+**유의**: 데몬은 StartInterval 15초 주기실행이라 파일 수정이 다음 실행부터 자동 적용(재시작 불필요, 했지만). 카드정산은 숫자/카드사명/'카드'키워드로만 판정 — 영문 손님은 이제 안 숨겨짐. 본사 대량이체(권신영·이정우 등)는 status=ignored 유지(원래 안 보임, 정상). 영문이름+숫자(드문 영문 카드코드)는 여전히 카드로 분류.
