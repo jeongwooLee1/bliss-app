@@ -8,9 +8,9 @@ import AdminAlimtalkLog from './AdminAlimtalkLog'
 import AdminSmsLog from './AdminSmsLog'
 
 // ⚠️ 토스 자동결제(빌링) 계약 활성화 전까지 false — 월 이용료 카드 등록 버튼을 "준비 중"으로 막음
-// (빌링 계약 미완료 시 토스 SDK가 "자동 결제(빌링) 계약이 안 되어 있습니다" 오류 모달을 띄움)
-// 계약 완료(카드사 심사 ~6월 중순, 송정윤 매니저) 후 true로 변경하면 카드 등록 활성화.
-const BILLING_READY = false
+// 정기결제(월 이용료)는 포트원 V2 + KCP 빌링으로 활성화 (2026-06-26). 토스 빌링 계약 막혀서 KCP로 전환.
+// 키: Supabase Edge Secret PORTONE_STORE_ID/CHANNEL_KEY/V2_API_SECRET. 카드등록=PaymentApp BillingRegister(포트원).
+const BILLING_READY = true
 
 // 사업장 요금제 + 기능 토글 + 지점별 잔액·사용량 + 발송내역 통합
 function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTab = 'plan' }) {
