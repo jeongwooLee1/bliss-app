@@ -4616,3 +4616,9 @@ v3.8.167 후속(MessagesPage.jsx). ＋ 버튼을 입력창 옆 별도 버튼 →
 
 ### v3.8.172 — 고객관리 세그먼트 프리셋 정리 (재방문·단골 제거) (2026-06-26)
 워크트리 인계(cust_segments_trim, CustomersPage 1줄). 세그먼트 프리셋 버튼에서 **재방문·단골 제거** → 전체/신규/이탈/노쇼주의/보유권 5개만 유지(repeat/vip 핸들러·title 매핑은 잔존하나 버튼 미노출, 무해).
+
+### Gemini usage 'chat' 착시 규명 + source 분리 태깅 (2026-06-26, 서버, React 변경 0)
+**증상**(정우): 어제(6/25) Gemini 호출 530건(주간 최다)인데 "문의도 답변도 그렇게 많지 않았다 — 말이 안 된다".
+**규명**: 어제 실제 손님에게 발송된 AI 답변 = **40건**(messages is_ai=true), 인입 79건. 그런데 `chat` Gemini 호출 = **465건**(91%가 발송 안 됨). 원인 = **standalone 테스트/점검 스크립트가 ai_booking_agent를 직접 import 실행 → 전부 'chat'으로 집계**. 서버 파일 mtime이 증거: 어제 ai_booking.py 프롬프트 10+회 수정(00:47 useearn→…→13:08 biztime, SMS관련 다수) — 매 수정마다 golden_run(31케이스)+_ai_accuracy_audit replay. gemini 버스트(11~12시·22시 KST)가 그 수정 시각과 정확히 일치. 서비스 로그(journalctl -u bliss-naver)엔 그 시각 chat 거의 0줄 = standalone 프로세스 확정. 9시 버스트 38건 = ai_daily_audit cron(00:30 UTC). **폭주·루프 아님 + 비용도 낮음**(출력 71k는 6/20의 1/3, 입력 93% 캐시).
+**fix (ai_booking.py, 백업 bak_callsrc_*)**: `_CALL_SOURCE = "chat" if os.environ.get("BLISS_RUNTIME")=="service" else "harness"`(L18 _CTX_BIZ 뒤) + `_ai_ask_msgs`의 `source="chat"` 2곳 → `source=_CALL_SOURCE`. systemd env.conf에 `Environment=BLISS_RUNTIME=service` 추가 + daemon-reload + restart. → **bliss-naver 서비스(진짜 손님 자동응답)만 'chat', golden/audit/accuracy/_ai_*test 등 standalone 전부 'harness'**. 검증: standalone→harness / BLISS_RUNTIME=service→chat 확인. harness 15개 파일 안 고치고 env 한 줄로 분리(특정 harness가 세분 라벨 원하면 import 후 `ai_booking._CALL_SOURCE='golden'` 덮어쓰기 가능 — 호출시점 읽음).
+**유의**: translate/rsv_analyze/svc_extract/needs_reply 등 다른 source는 이미 명시 태깅이라 무관(_ai_ask_msgs의 chat만 분리됨). 앞으로 usage 분석 시 source='chat'만 진짜 손님 자동응답. React/배포 무관(서버 직접, 버전업·CF퍼지 없음).
