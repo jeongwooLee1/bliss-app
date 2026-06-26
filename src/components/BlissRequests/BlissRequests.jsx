@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { T } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY } from '../../lib/sb'
 import { uploadImageToStorage } from '../../lib/supabase'
@@ -49,6 +50,46 @@ function NoticeBody({ text }) {
 import MarkupEditor from '../common/MarkupEditor'
 import OffRequestCard from './OffRequestCard'
 
+// 첨부 이미지 확대 보기 — 클릭/휠로 줌, 크게 보면 스크롤로 이동, 바깥 클릭·ESC로 닫기
+function ImageLightbox({ src, onClose }) {
+  const [zoom, setZoom] = useState(1);
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
+  }, [onClose]);
+  const onWheel = (e) => {
+    e.preventDefault();
+    setZoom(z => Math.min(6, Math.max(1, +(z + (e.deltaY < 0 ? 0.35 : -0.35)).toFixed(2))));
+  };
+  const toggle = (e) => { e.stopPropagation(); setZoom(z => (z > 1 ? 1 : 2.5)); };
+  return createPortal(
+    <div onClick={onClose} onWheel={onWheel}
+      style={{ position:"fixed", inset:0, zIndex:99999, background:"rgba(0,0,0,.88)", overflow:"auto", cursor:"zoom-out" }}>
+      <div style={{ minWidth:"100%", minHeight:"100%", display:"flex", alignItems:"center", justifyContent:"center", padding:20, boxSizing:"border-box" }}>
+        <img src={src} alt="첨부 확대" onClick={toggle}
+          style={{
+            width: zoom > 1 ? `${zoom * 88}vw` : "auto",
+            maxWidth: zoom > 1 ? "none" : "94vw",
+            maxHeight: zoom > 1 ? "none" : "92vh",
+            objectFit:"contain", borderRadius:6, transition:"width .12s",
+            cursor: zoom > 1 ? "zoom-out" : "zoom-in",
+            boxShadow:"0 8px 40px rgba(0,0,0,.5)"
+          }}/>
+      </div>
+      <button onClick={onClose} title="닫기 (ESC)"
+        style={{ position:"fixed", top:14, right:16, width:40, height:40, borderRadius:"50%", border:"none",
+          background:"rgba(255,255,255,.16)", color:"#fff", fontSize:22, cursor:"pointer", lineHeight:1, fontFamily:"inherit" }}>×</button>
+      <div style={{ position:"fixed", bottom:14, left:0, right:0, textAlign:"center", color:"rgba(255,255,255,.7)", fontSize:12, pointerEvents:"none" }}>
+        클릭/휠로 확대 · 바깥 클릭 또는 ESC로 닫기{zoom > 1 ? ` · ${Math.round(zoom * 100)}%` : ""}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function BlissRequests({ data, currentUser, userBranches, isMaster }) {
   const [tab, setTab] = useState("notices"); // notices | requests
   const [reqFilter, setReqFilter] = useState("active"); // active(진행중=대기+검토중) | done(처리완료) | all
@@ -73,6 +114,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
   const [editingDescId, setEditingDescId] = useState(null);
   const [editingDescText, setEditingDescText] = useState("");
   const [editingDescImages, setEditingDescImages] = useState([]);
+  const [lightbox, setLightbox] = useState(null); // 첨부 이미지 확대 보기 src
 
   const loadData = async () => {
     try {
@@ -687,7 +729,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
                   {imgs.map((img, i) => (
                     <div key={i} style={{position:"relative",display:"inline-block"}}>
                       <img src={img} alt={`공지${i+1}`}
-                        onClick={()=>window.open(img,'_blank')}
+                        onClick={()=>setLightbox(img)}
                         style={{maxWidth:"100%",maxHeight:600,borderRadius:8,border:"1px solid "+T.border,cursor:"zoom-in",display:"block"}}/>
                       {isMaster && <div style={{position:"absolute",top:8,right:8,display:"flex",gap:4}}>
                         <button onClick={(e)=>{e.stopPropagation(); setExistingMarkup({noticeId: n.id, idx: i});}}
@@ -917,7 +959,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
                 const imgs = Array.isArray(r.images) ? r.images : (r.imageData ? [r.imageData] : []);
                 if (imgs.length === 0) return null;
                 return <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:6}}>
-                  {imgs.map((img, i) => <img key={i} src={img} alt={"첨부-"+(i+1)} style={{maxWidth:"100%",maxHeight:400,borderRadius:8,border:"1px solid "+T.border}}/>)}
+                  {imgs.map((img, i) => <img key={i} src={img} alt={"첨부-"+(i+1)} onClick={()=>setLightbox(img)} style={{maxWidth:"100%",maxHeight:400,borderRadius:8,border:"1px solid "+T.border,cursor:"zoom-in"}}/>)}
                 </div>;
               })()}
               {r.reply && <div style={{marginTop:12,padding:"10px 14px",background:T.primaryLt||"#EEF2FF",borderRadius:8,borderLeft:"3px solid "+T.primary}}>
@@ -953,6 +995,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
       </div>
     )}
     </>}
+    {lightbox && <ImageLightbox src={lightbox} onClose={()=>setLightbox(null)} />}
   </div>;
 }
 
