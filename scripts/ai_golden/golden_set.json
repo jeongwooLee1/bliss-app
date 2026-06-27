@@ -3,7 +3,7 @@
  "cases": [
   {
    "id": "cancel_basic",
-   "kind": "취소요청(담당자양보)",
+   "kind": "취소-미래(직접취소)",
    "channel": "whatsapp",
    "lang": "en",
    "conv": [
@@ -26,14 +26,14 @@
    ],
    "existing_booking": {
     "id": "g_ex1",
-    "date": "2026-06-15",
+    "date": "TODAY+7",
     "time": "13:30",
     "branch": "강남",
     "service": "브라질리언"
    },
-   "expected_action": "chat",
-   "must_pass": "명시적 취소요청(여러 메시지 분할, 사과·인사 섞여도)이지만 — AI는 취소를 직접 처리하지 않고 담당자에게 넘긴다(action=chat/noop). action=cancel 금지. 'cancelled/취소해 드렸어요/취소 완료' 등 '취소됐다'는 멘트 절대 금지(실제로 AI는 취소 안 함). 담당자가 확인 후 처리한다는 안내여야 함. 응답 영어 100%. 취소 이후처럼 'See you at HH:MM' 재안내도 금지.",
-   "ideal": "I've noted your cancellation request — our staff will review and handle it shortly. Please hold on a moment."
+   "expected_action": "cancel",
+   "must_pass": "미래(오늘 아님) 예약의 취소요청 → AI가 직접 취소(action=cancel). chat으로 얼버무리면 실패. 응답 영어 100%. 취소 이후 'See you at HH:MM' 재안내 금지.",
+   "ideal": "No problem! Your appointment has been cancelled. See you next time! 🤍"
   },
   {
    "id": "farewell_after_cancel",
@@ -862,6 +862,64 @@
    "expected_action": "book",
    "must_pass": "손님이 이름·지점·날짜(tomorrow)·시간(4pm)·시술·성별을 모두 줬고, 봇이 'Would you like me to book the appointment for you?'로 물은 뒤 손님이 'Yes please'로 확정했다. 봇은 정보를 다시 요청하거나 'shall I book?/잡아드릴까요?'를 반복하지 말고 예약을 진행해야 한다(action=book). ❌정보 재요청·❌예약여부 재질문 반복·❌noop = FAIL. 영어 100%.",
    "ideal": "Done! Your appointment is confirmed 😊 See you then!",
+   "known_fail": false
+  },
+  {
+   "id": "cancel_sameday_booked_today",
+   "kind": "취소-당일·당일예약(직접취소)",
+   "channel": "whatsapp",
+   "lang": "en",
+   "suggest_only": false,
+   "conv": [
+    [
+     "out",
+     "Your booking is confirmed for today 2 PM at Gangnam!"
+    ],
+    [
+     "in",
+     "Sorry, can you cancel it please"
+    ]
+   ],
+   "existing_booking": {
+    "id": "g_ex_t1",
+    "date": "TODAY",
+    "created_at": "TODAY",
+    "time": "14:00",
+    "branch": "강남",
+    "service": "브라질리언"
+   },
+   "expected_action": "cancel",
+   "must_pass": "당일 예약을 오늘 잡고(예약 후) 바로 취소 요청 → 예약금 없이 AI 직접 취소(action=cancel). 담당자 양보/예약금 안내로 미루면 실패. 영어 100%.",
+   "ideal": "No problem! Your appointment has been cancelled. 🤍",
+   "known_fail": false
+  },
+  {
+   "id": "cancel_sameday_prior",
+   "kind": "취소-당일·사전예약(담당자양보)",
+   "channel": "whatsapp",
+   "lang": "en",
+   "suggest_only": false,
+   "conv": [
+    [
+     "out",
+     "See you today at 2 PM, Gangnam!"
+    ],
+    [
+     "in",
+     "Something came up, please cancel my appointment today"
+    ]
+   ],
+   "existing_booking": {
+    "id": "g_ex_p1",
+    "date": "TODAY",
+    "created_at": "TODAY-2",
+    "time": "14:00",
+    "branch": "강남",
+    "service": "브라질리언"
+   },
+   "expected_action": "chat",
+   "must_pass": "당일취소인데 예약은 이전(과거일)에 잡아둔 건 → AI가 직접 취소하지 않는다(action=chat/noop). 당일취소 예약금/패키지 차감 가능을 고객에게 안내하고 담당자가 확인 후 처리한다고 해야 함. ⛔ 'cancelled/취소 완료/취소해 드렸어요' 등 취소됐다는 멘트 절대 금지. 영어 100%.",
+   "ideal": "Same-day cancellations may incur a deposit or package deduction. Our staff will review and handle it shortly 🤍",
    "known_fail": false
   }
  ]

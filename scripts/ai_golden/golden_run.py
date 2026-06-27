@@ -235,11 +235,20 @@ def run_case(c, facts):
     ex = c.get("existing_booking")
     ex_dict = None
     if ex:
-        _exdate = ex.get("date") or TODAY
-        if _exdate == "TODAY": _exdate = TODAY
+        import re as _re_rd
+        def _reldate(v):
+            if not v: return TODAY
+            if v == "TODAY": return TODAY
+            _m = _re_rd.match(r"TODAY([+-]\d+)$", v)
+            if _m: return (datetime.now(KST)+timedelta(days=int(_m.group(1)))).strftime("%Y-%m-%d")
+            return v
+        _exdate = _reldate(ex.get("date"))
+        _cr = ex.get("created_at")
+        _cr_full = (_reldate(_cr)+"T10:00:00+09:00") if _cr else None
         ex_dict = {"id": ex["id"], "date": _exdate, "time": ex.get("time","12:00"),
                    "bid": _branch_bid(ex.get("branch","")), "service_name": ex.get("service",""),
-                   "status": "reserved", "cust_name": "골든", "cust_phone": "", "dur": 45}
+                   "status": "reserved", "cust_name": "골든", "cust_phone": "", "dur": 45,
+                   "created_at": _cr_full}
     ai_booking.find_existing_booking = (lambda d: (lambda *a, **k: d))(ex_dict)
 
     # 마지막 inbound = user_msg
