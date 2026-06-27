@@ -5491,9 +5491,10 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                       for (const p of parsed) { if (p.from > cursor) ranges.push({from:cursor, until:p.from}); cursor = Math.max(cursor, p.until); }
                       if (cursor < endMin2) ranges.push({from:cursor, until:endMin2});
                     }
-                    // 네이버 전체막힘 30분 슬롯
-                    const blk = blockedSlotsByBranch[room.branch_id];
-                    if (blk) blk.forEach(slot => ranges.push({from: slot*30, until: slot*30+30}));
+                    // 네이버 전체막힘 30분 슬롯 점 표시 제거 (출퇴근 점과 혼동 — 강남 id_6922ullhq7, 정우님 2026-06-27)
+                    // 막힘 정보는 막기 칼럼에서 확인. 되살리려면 아래 2줄 주석 해제.
+                    // const blk = blockedSlotsByBranch[room.branch_id];
+                    // if (blk) blk.forEach(slot => ranges.push({from: slot*30, until: slot*30+30}));
                     if (!ranges.length) return null;
                     // 클램프 + 병합(겹치거나 인접한 구간 합쳐 한 겹·타일 이음새 없음)
                     const clamped = ranges.map(r => ({from: Math.max(startMin2, r.from), until: Math.min(endMin2, r.until)}))
