@@ -4730,10 +4730,15 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                                     onChange={e=>{
                                       const v=e.target.value;
                                       const [hh,mm]=v.split(":").map(Number);
-                                      const totalMin=Math.min(23*60+50,(hh+10)*60+mm);
-                                      const eh=Math.floor(totalMin/60),em=totalMin%60;
-                                      const autoEnd = `${String(eh).padStart(2,"0")}:${String(em).padStart(2,"0")}`;
-                                      setEmpMovePopup(p=>({...p, draftWh:{start:v, end:autoEnd}}));
+                                      const startMin=hh*60+mm;
+                                      // 시작시간만 바꿔도 퇴근시간이 9시(시작+10h)로 리셋되던 버그 — 기존 종료시간 유지 (정우님 2026-06-27)
+                                      const _ce=(wh.end||"21:00").split(":").map(Number);
+                                      let endStr = wh.end||"21:00";
+                                      if (_ce[0]*60+_ce[1] <= startMin) {
+                                        const totalMin=Math.min(23*60+50,startMin+600);
+                                        endStr = `${String(Math.floor(totalMin/60)).padStart(2,"0")}:${String(totalMin%60).padStart(2,"0")}`;
+                                      }
+                                      setEmpMovePopup(p=>({...p, draftWh:{start:v, end:endStr}}));
                                     }}>
                                     {hours.map(h=><option key={h} value={h}>{h}</option>)}
                                   </select>
