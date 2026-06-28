@@ -3549,6 +3549,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
               const remain = Math.max(0, total - usedTotal);
               notiKey = 'tkt_pay';
               params = {
+                "_saleId": sale.id,
                 "#{고객명}": cust.name || "",
                 "#{총횟수}": total,
                 "#{사용횟수}": r.amount, // 이번 매출 사용 회수
@@ -3561,6 +3562,7 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
             } else if (r.unit === 'won') {
               notiKey = 'pkg_pay';
               params = {
+                "_saleId": sale.id,
                 "#{고객명}": cust.name || "",
                 "#{충전금액}": (r.balance_before + (pkg.used_count || 0)).toLocaleString(),
                 "#{사용금액}": r.amount.toLocaleString(),
@@ -3577,15 +3579,12 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
               }).catch(e => console.warn("[tkt_pay queue]", e));
             }
           });
-          // 중복 발송 방지: 최근 3시간 내 같은 고객에 보유권 알림톡 발송 이력 있으면 재발송 여부 확인 (매출 취소→재등록 대비)
+          // 중복 발송 방지(자동): 같은 매출(sale.id)로 이미 보유권 알림톡 큐가 있으면 재발송 안 함.
+          // → 같은 매출을 여러 번 저장/재시도해도 차감된 권당 딱 1회만 발송(중복 폭탄 방지).
+          // → 매출 취소 후 '새 매출'(다른 sale.id)로 재등록하면 정상적으로 다시 발송됨.
           if (Object.keys(grouped).length > 0) {
-            const _since = new Date(Date.now() - 3*60*60*1000).toISOString();
-            sb.get("alimtalk_queue", `&phone=eq.${cleanPhone}&noti_key=in.(tkt_pay,pkg_pay)&created_at=gte.${_since}&status=neq.failed&limit=1`)
-              .then(rows => {
-                if (rows && rows.length > 0) {
-                  if (window.confirm("이 고객에게 보유권(다담권/다회권) 알림톡이 최근 발송됐어요.\n매출을 취소 후 다시 등록하면 중복으로 또 갈 수 있습니다.\n\n다시 보낼까요?")) _sendPkgAlerts();
-                } else { _sendPkgAlerts(); }
-              })
+            sb.get("alimtalk_queue", `&phone=eq.${cleanPhone}&noti_key=in.(tkt_pay,pkg_pay)&params->>_saleId=eq.${sale.id}&limit=1`)
+              .then(rows => { if (!rows || rows.length === 0) _sendPkgAlerts(); })
               .catch(() => _sendPkgAlerts());
           }
         }

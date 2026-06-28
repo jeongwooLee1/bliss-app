@@ -4678,3 +4678,9 @@ v3.8.167 후속(MessagesPage.jsx). ＋ 버튼을 입력창 옆 별도 버튼 →
 - `SaleForm.jsx` 영수증 생성(`DetailedSaleForm`): ① 할인 섹션에 **회원가 할인(promoDiscountTotal)·이벤트 쿠폰(evtCouponDiscountTotal)** 줄 추가(기존 일반할인·쿠폰할인·이벤트할인에 더해) ② 결제 섹션 끝에 **"기타 차감"** 보정줄 — `_otherDeduct = max(0, svcTotal+prodTotal − 표시된차감합 − grandTotal)`로 위에 안 찍힌 차감(구독권 무료·체험단 등)을 잡아 **영수증 합계 = 실결제(grandTotal) 정확히 일치** 보장.
 - 참조 변수(promoDiscountTotal·evtCouponDiscountTotal·externalDeduct·pkgDeduct·newPkgInstantDeduct) 전부 정의 확인(런타임 ReferenceError 방지). React only.
 - 적용: v3.8.178 라이브 배포(version.txt 검증, CF 퍼지 everything). 영수증은 매출 viewOnly·editMode 영수증 버튼에서만 — 라이브 매출 영수증으로 합계 일치 스팟체크 권장(데모 검증 제약).
+
+### v3.8.179 — 보유권(다담권/다회권) 알림톡 중복 발송 fix (매출 sale.id 기준 결정적 dedup) (2026-06-28)
+워크트리 인계 패치(`alimtalk_dup_fix.patch`) 적용·배포. 보유권 차감 시 나가는 tkt_pay(다회권)·pkg_pay(다담권) 알림톡이 같은 매출 재저장/재시도 시 중복 발송되던 문제.
+- `SaleForm.jsx` `_sendPkgAlerts`: ① tkt_pay·pkg_pay params에 **`_saleId: sale.id`** 추가 ② 기존 "최근 3시간 내 발송이력 있으면 `window.confirm`으로 재발송 물음"(native confirm·시간창 부정확) → **`alimtalk_queue`에 같은 `params->>_saleId`(이 매출) 큐가 이미 있으면 재발송 안 함**(결정적). → 같은 매출을 여러 번 저장/재시도해도 **차감된 권당 딱 1회만** 발송(중복 폭탄 차단), 매출 취소 후 **새 매출(다른 sale.id)** 로 재등록하면 정상 재발송.
+- native `window.confirm` 제거([[feedback_bliss_custom_dialogs]] 부합). React only.
+- 적용: v3.8.179 라이브 배포(version.txt 검증, CF 퍼지 everything). 보유권 차감 매출 등록 시 알림톡 1회만 가는지 라이브 확인 권장.
