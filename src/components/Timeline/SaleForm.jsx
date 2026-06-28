@@ -2282,10 +2282,12 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
       lines.push(_padLine("제품 합계", fmt(prodTotal)));
     }
     // 할인/이벤트/쿠폰
-    if (discount > 0 || couponDiscountTotal > 0 || eventDiscountTotal > 0) {
+    if (discount > 0 || promoDiscountTotal > 0 || couponDiscountTotal > 0 || evtCouponDiscountTotal > 0 || eventDiscountTotal > 0) {
       lines.push("");
       if (discount > 0) lines.push(_padLine("일반 할인", "-" + fmt(discount)));
+      if (promoDiscountTotal > 0) lines.push(_padLine("회원가 할인", "-" + fmt(promoDiscountTotal)));
       if (couponDiscountTotal > 0) lines.push(_padLine("쿠폰 할인", "-" + fmt(couponDiscountTotal)));
+      if (evtCouponDiscountTotal > 0) lines.push(_padLine("이벤트 쿠폰", "-" + fmt(evtCouponDiscountTotal)));
       if (eventDiscountTotal > 0) lines.push(_padLine("이벤트 할인", "-" + fmt(eventDiscountTotal)));
     }
     // 결제
@@ -2301,6 +2303,10 @@ export function DetailedSaleForm({ reservation, branchId, userBranches, onSubmit
     if (pkgDeduct > 0) payRows.push(_padLine("선불잔액 차감", "-" + fmt(pkgDeduct)));
     if (newPkgInstantDeduct > 0) payRows.push(_padLine("신규 선불권 차감", "-" + fmt(newPkgInstantDeduct)));
     if (_pt > 0) payRows.push(_padLine("포인트 사용", "-" + fmt(_pt)));
+    // 영수증이 총 결제금액(grandTotal)과 정확히 맞도록 — 위에 표시 안 된 차감(구독권 무료·체험단 등)을 '기타 차감'으로 보정 (정우님 2026-06-27 영수증 금액 불일치)
+    const _shownDeduct = discount + promoDiscountTotal + couponDiscountTotal + evtCouponDiscountTotal + eventDiscountTotal + externalDeduct + pkgDeduct + newPkgInstantDeduct + _pt;
+    const _otherDeduct = Math.max(0, svcTotal + prodTotal - _shownDeduct - grandTotal);
+    if (_otherDeduct > 0) payRows.push(_padLine("기타 차감", "-" + fmt(_otherDeduct)));
     if (payRows.length) {
       lines.push("");
       lines.push("[결제]");

@@ -4672,3 +4672,9 @@ v3.8.167 후속(MessagesPage.jsx). ＋ 버튼을 입력창 옆 별도 버튼 →
 - **프론트(v3.8.175)**: `PaymentApp` BillingRegister/BillingSuccess → 포트원 `requestIssueBillingKey`(PC=Promise 인라인 처리, 모바일=redirectUrl→BillingSuccess가 billingKey 쿼리 처리), 공통 `postBillingIssue`/`BillingResultView`. `AdminPlan` `BILLING_READY=true`(카드등록 버튼 활성, `/pay/billing/{branchId}` 오픈).
 - **⚠️ 검증 PENDING(실연동)**: 채널이 실연동이라 테스트 채널 없음 → **정우님 실제 카드 등록 + 소액(첫 구독료) 실결제로 검증 후 환불** 필요. 포트원 V2 `billing-key` 결제 응답 shape(성공 status)은 첫 실결제 raw로 확인해 billing-charge 성공판정 보정 가능성 있음(현재 poRes.ok + status PAID/공백 허용). billing_charges/billings/billing_subscriptions 기록으로 추적.
 - **유의**: 정기결제만 포트원, 충전·예약금은 토스. 포트원 키는 본사(테라포트) 단일(Edge Secret). KCP paymentId 한글·특수문자 X·40자. API Secret 만료기한 설정값 — 만료 전 갱신 필요(무기한 권장).
+
+### v3.8.178 — 영수증 금액 불일치 fix (회원가·이벤트쿠폰·기타차감 줄 추가) (2026-06-28)
+워크트리 인계 패치(`receipt_fix.patch`) 적용·배포. 정우님 06-27 보고 — 영수증 합계가 실결제(grandTotal)와 안 맞음(구독권 무료·체험단·회원가·이벤트쿠폰 차감이 영수증에 안 찍혀 금액 어긋남).
+- `SaleForm.jsx` 영수증 생성(`DetailedSaleForm`): ① 할인 섹션에 **회원가 할인(promoDiscountTotal)·이벤트 쿠폰(evtCouponDiscountTotal)** 줄 추가(기존 일반할인·쿠폰할인·이벤트할인에 더해) ② 결제 섹션 끝에 **"기타 차감"** 보정줄 — `_otherDeduct = max(0, svcTotal+prodTotal − 표시된차감합 − grandTotal)`로 위에 안 찍힌 차감(구독권 무료·체험단 등)을 잡아 **영수증 합계 = 실결제(grandTotal) 정확히 일치** 보장.
+- 참조 변수(promoDiscountTotal·evtCouponDiscountTotal·externalDeduct·pkgDeduct·newPkgInstantDeduct) 전부 정의 확인(런타임 ReferenceError 방지). React only.
+- 적용: v3.8.178 라이브 배포(version.txt 검증, CF 퍼지 everything). 영수증은 매출 viewOnly·editMode 영수증 버튼에서만 — 라이브 매출 영수증으로 합계 일치 스팟체크 권장(데모 검증 제약).
