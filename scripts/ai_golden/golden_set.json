@@ -1059,6 +1059,34 @@
    "expected_action": "book",
    "must_pass": "고객이 여로 성별(여성)을 밝혔으니 여성/남성 재질문은 실패. 지점 시술 날짜 시간 성별(여=F) 다 있으니 action=book.",
    "ideal": "성별을 '여'로 이미 밝혔으므로 여성/남성을 다시 묻지 않고, 홍대점 브라질리언 오늘 오후 2시(14:00) 여성 예약을 바로 진행/확정하는 응답."
+  },
+  {
+   "id": "confirm_book_from_history",
+   "kind": "확정의사+정보이미제공(양식 재전송 금지 / 도돌이표)",
+   "channel": "whatsapp",
+   "lang": "en",
+   "conv": [
+    [
+     "in",
+     "Do you have availability for men's forehead/temple/cheek waxing this week?"
+    ],
+    [
+     "in",
+     "Hyun Kil Lee\n010-3978-0928\nGangnam Main\nJuly 5\n2:30 PM\nForehead/temple/upper cheek\nMale"
+    ],
+    [
+     "in",
+     "What is the estimated cost?"
+    ],
+    [
+     "in",
+     "Yes I'll book"
+    ]
+   ],
+   "existing_booking": null,
+   "expected_action": "book",
+   "must_pass": "손님이 앞 메시지에서 이름·연락처·지점(Gangnam Main)·날짜(July 5)·시간(2:30PM)·시술(forehead/temple/cheek)·성별(Male)을 한 메시지에 모두 제공했고, 마지막에 'Yes I''ll book'으로 확정 의사를 밝힘. AI는 [현재 누적 정보]가 비어 보여도 대화 history의 정보로 예약을 진행(action=book)해야 한다. 하드 금지선: ①Name ②Phone ③Branch... 형태의 7개 항목 예약 양식을 재전송(도돌이표)하면 실패. 이미 대화에 있는 정보를 다시 묻지 말 것. 영어로 응답.",
+   "ideal": "예약을 바로 진행하며 남성 기준 가격을 함께 안내. 양식 재요청 없음."
   }
  ]
 }
