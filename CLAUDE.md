@@ -4730,3 +4730,10 @@ v3.8.167 후속(MessagesPage.jsx). ＋ 버튼을 입력창 옆 별도 버튼 →
 거래관리(도매 구매주문) 세션의 미커밋 WIP를 배포세션이 배포. `TradesPage.jsx` OrdersTab — "대신 입력" 버튼→`OrderFormModal`(팝업) 방식을 **상단 "새 주문 입력" 카드(처음부터 펼침, `formOpen` 기본 true)에 `OrderForm` 인라인**으로 변경(원장이 바로 입력). 접기/펼치기 토글. `OrderFormModal`은 정의만 남고 미사용(무해).
 - 빌드 검증(OrderForm 정의됨·깨진 참조 0) 후 배포. 거래세션 작업이라 상세는 그쪽 인계.
 - 적용: v3.8.186 라이브 배포(version.txt 검증, CF 퍼지 everything).
+
+### v3.8.187 — 거래관리 새 주문 폼 개선 (거래처 자동선택 + 공급가액/부가세 표시) (거래세션 WIP 배포) (2026-07-01)
+거래관리 세션 WIP 배포. `TradesPage.jsx` OrderForm(인라인 새 주문 폼):
+- **거래처 자동 선택**: `userBranches` prop 전달 → 거래처(customers)가 1개면 자동 선택, 복수면 로그인 지점(userBranches) 일치 1개 자동, 그 외 직접 선택. 저장 후에도 autoCust 유지.
+- **합계 상세**: 합계만 → **공급가액 + 부가세 + 합계** 분리 표시.
+- `AdminTrades`·`OrdersTab`→`OrderForm`에 userBranches prop 배선. 빌드 검증 후 배포.
+- 적용: v3.8.187 라이브 배포(version.txt 검증, CF 퍼지 everything).

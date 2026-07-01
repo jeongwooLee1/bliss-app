@@ -59,7 +59,7 @@ export default function TradesPage({ data, userBranches = [], isMaster, role, cu
         <h2 style={{ fontSize: T.fs.xl, fontWeight: T.fw.black, color: T.text, margin: 0 }}>거래관리</h2>
         <span style={{ fontSize: T.fs.xs, color: T.textMuted }}>{isMaster ? '본사 · 도매 주문/명세서/세금계산서' : '지점 구매신청'}</span>
       </div>
-      {isMaster ? <AdminTrades {...common} /> : <BranchOrder {...common} userBranches={userBranches} />}
+      {isMaster ? <AdminTrades {...common} userBranches={userBranches} /> : <BranchOrder {...common} userBranches={userBranches} />}
       {toast && <div style={{ position: 'fixed', bottom: 90, left: '50%', transform: 'translateX(-50%)', background: T.gray800, color: '#fff', padding: '10px 18px', borderRadius: T.radius.full, fontSize: T.fs.sm, fontWeight: 600, zIndex: 12000, boxShadow: T.shadow.lg }}>{toast}</div>}
     </div>
   )
@@ -210,7 +210,7 @@ function AdminTrades(props) {
 }
 
 /* ── 주문접수 ── */
-function OrdersTab({ bizId, orders, customersMap, suppliersMap, branchNameMap, reload, showToast, currentUser, suppliers, products, defaultSupplier, customers }) {
+function OrdersTab({ bizId, orders, customersMap, suppliersMap, branchNameMap, reload, showToast, currentUser, suppliers, products, defaultSupplier, customers, userBranches }) {
   const [flt, setFlt] = useState('active') // active|all|requested|paid|shipped|done
   const [docOrder, setDocOrder] = useState(null) // {order, kind:'statement'|'tax'}
   const [formOpen, setFormOpen] = useState(true) // 새 주문 입력 폼 (원장용 — 처음부터 펼침)
@@ -256,7 +256,7 @@ function OrdersTab({ bizId, orders, customersMap, suppliersMap, branchNameMap, r
         </button>
         {formOpen && (
           <div style={{ marginTop: 12 }}>
-            <OrderForm bizId={bizId} suppliers={suppliers} products={products} customers={customers} defaultSupplier={defaultSupplier} currentUser={currentUser} showToast={showToast} onSaved={() => { reload('orders'); showToast('주문 저장됨 ✓') }} />
+            <OrderForm bizId={bizId} suppliers={suppliers} products={products} customers={customers} defaultSupplier={defaultSupplier} currentUser={currentUser} userBranches={userBranches} showToast={showToast} onSaved={() => { reload('orders'); showToast('주문 저장됨 ✓') }} />
           </div>
         )}
       </div>
@@ -338,9 +338,13 @@ function DocModal({ order, kind, supplier, customer, onClose, showToast }) {
 }
 
 /* ── 새 주문 입력 폼 (원장용 인라인) ── */
-function OrderForm({ bizId, suppliers, products, customers, defaultSupplier, currentUser, showToast, onSaved }) {
+function OrderForm({ bizId, suppliers, products, customers, defaultSupplier, currentUser, userBranches, showToast, onSaved }) {
+  // 단일 거래처 계정은 자동 선택, 복수면 직접 선택
+  const autoCust = customers.length === 1
+    ? customers[0].id
+    : (() => { const mine = (userBranches || []).length ? customers.filter(c => c.branch_id && userBranches.includes(c.branch_id)) : []; return mine.length === 1 ? mine[0].id : '' })()
   const [supId, setSupId] = useState(defaultSupplier?.id || suppliers[0]?.id || '')
-  const [custId, setCustId] = useState('')
+  const [custId, setCustId] = useState(autoCust)
   const [txDate, setTxDate] = useState(todayStr())
   const [taxType, setTaxType] = useState('별도')
   const [memo, setMemo] = useState('')
@@ -362,7 +366,7 @@ function OrderForm({ bizId, suppliers, products, customers, defaultSupplier, cur
       memo, status: 'paid', requested_by: currentUser?.name || '(본사)', confirmed_by: currentUser?.name || '', paid_at: new Date().toISOString(),
     }
     await sb.insert('trade_orders', row)
-    setCart({}); setMemo(''); setCustId(''); setSearch('')
+    setCart({}); setMemo(''); setCustId(autoCust); setSearch('')
     setSaving(false)
     onSaved()
   }
@@ -393,8 +397,12 @@ function OrderForm({ bizId, suppliers, products, customers, defaultSupplier, cur
         {!filtered.length && <div style={{ fontSize: T.fs.xs, color: T.textMuted, textAlign: 'center', padding: 12 }}>제품이 없습니다</div>}
       </div>
       <input style={{ ...inp, marginBottom: 8 }} placeholder="메모 (선택)" value={memo} onChange={e => setMemo(e.target.value)} />
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: T.fs.lg, fontWeight: 800, color: T.primary }}>합계 {fmt(totals.grandTotal)}원</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'baseline', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: T.fs.sm, color: T.textSub }}>공급가액 <b style={{ color: T.text }}>{fmt(totals.totalSupply)}</b></span>
+          <span style={{ fontSize: T.fs.sm, color: T.textSub }}>부가세 <b style={{ color: T.text }}>{fmt(totals.totalTax)}</b></span>
+          <span style={{ fontSize: T.fs.lg, fontWeight: 800, color: T.primary }}>합계 {fmt(totals.grandTotal)}원</span>
+        </div>
         <Btn onClick={save} disabled={saving} size="lg">{saving ? '저장 중…' : '주문 저장'}</Btn>
       </div>
     </>
