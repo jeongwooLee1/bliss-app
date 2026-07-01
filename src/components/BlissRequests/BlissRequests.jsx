@@ -102,6 +102,8 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
   const [editingNoticeId, setEditingNoticeId] = useState(null); // null = 신규, 그 외 = 편집 중인 공지 id
   const [openId, setOpenId] = useState(null);
   const [openNoticeId, setOpenNoticeId] = useState(null);
+  const [noticeSearch, setNoticeSearch] = useState(""); // 공지 제목·내용 검색 (강남 요청)
+  const [copiedNoticeId, setCopiedNoticeId] = useState(null); // 복사됨 피드백
   // Form state
   const [form, setForm] = useState({ name: "", branchId: userBranches?.[0] || "", description: "", images: [] });
   const [noticeForm, setNoticeForm] = useState({ title: "", version: "", content: "", images: [] });
@@ -672,13 +674,23 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
           onClose={() => setExistingMarkup(null)}
         />;
       })()}
+      {notices.length > 0 && <div style={{marginBottom:8,position:"relative"}}>
+        <input value={noticeSearch} onChange={e=>setNoticeSearch(e.target.value)} placeholder="공지 검색 (제목·내용)"
+          style={{width:"100%",padding:"9px 32px 9px 12px",fontSize:13,border:"1px solid "+T.border,borderRadius:8,fontFamily:"inherit",boxSizing:"border-box"}}/>
+        {noticeSearch && <span onClick={()=>setNoticeSearch("")} title="지우기"
+          style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",cursor:"pointer",color:T.gray400,fontSize:15,fontWeight:800,lineHeight:1}}>×</span>}
+      </div>}
       {notices.length === 0 ? (
         <div style={{textAlign:"center",padding:60,color:T.textMuted,fontSize:14,background:T.bgCard,borderRadius:12,border:"1px solid "+T.border}}>
           공지사항이 없습니다.
         </div>
-      ) : (
+      ) : (() => {
+        const _q = noticeSearch.trim().toLowerCase();
+        const _shown = _q ? notices.filter(n => (`${n.title||""} ${n.content||""}`).toLowerCase().includes(_q)) : notices;
+        if (_shown.length === 0) return <div style={{textAlign:"center",padding:40,color:T.textMuted,fontSize:14,background:T.bgCard,borderRadius:12,border:"1px solid "+T.border}}>검색 결과가 없습니다.</div>;
+        return (
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {notices.map(n => {
+          {_shown.map(n => {
             const isOpen = openNoticeId === n.id;
             // 과거 데이터 호환 — imageData(단일) 또는 images(배열) 모두 지원
             const imgs = Array.isArray(n.images) ? n.images : (n.imageData ? [n.imageData] : []);
@@ -814,6 +826,17 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
                       style={{padding:"7px 14px",borderRadius:8,border:"none",background:T.primary,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>등록</button>
                   </div>
                 </div>
+                <div style={{marginTop:12,display:"flex",gap:6,flexWrap:"wrap"}}>
+                  <button onClick={()=>{
+                    const _t = `${n.title||""}\n\n${n.content||""}`.trim();
+                    const _done = ()=>{ setCopiedNoticeId(n.id); setTimeout(()=>setCopiedNoticeId(v=>v===n.id?null:v),1500); };
+                    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(_t).then(_done).catch(()=>{});
+                    else { const _ta=document.createElement("textarea"); _ta.value=_t; _ta.style.position="fixed"; _ta.style.opacity="0"; document.body.appendChild(_ta); _ta.select(); try{document.execCommand("copy");_done();}catch(_){} document.body.removeChild(_ta); }
+                  }}
+                    style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+(copiedNoticeId===n.id?"#6ee7b7":T.border),background:copiedNoticeId===n.id?"#ECFDF5":"#fff",color:copiedNoticeId===n.id?"#059669":T.textSub,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:4}}>
+                    <I name={copiedNoticeId===n.id?"check":"clipboard"} size={11} color={copiedNoticeId===n.id?"#059669":T.textSub}/> {copiedNoticeId===n.id?"복사됨":"내용 복사"}
+                  </button>
+                </div>
                 {isMaster && <div style={{marginTop:12,display:"flex",gap:6,flexWrap:"wrap"}}>
                   <button onClick={()=>startEditNotice(n)}
                     style={{padding:"4px 10px",borderRadius:6,border:"1px solid #C4B5FD",background:"#F5F3FF",color:"#5B21B6",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:4}}>
@@ -828,7 +851,7 @@ function BlissRequests({ data, currentUser, userBranches, isMaster }) {
             </div>;
           })}
         </div>
-      )}
+      );})()}
     </>}
     {tab==="requests" && <>
 

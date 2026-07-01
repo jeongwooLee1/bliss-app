@@ -28,7 +28,7 @@ import BlissRequests from '../components/BlissRequests/BlissRequests'
 import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 
 const uid = genId;
-const BLISS_V = "3.8.179"
+const BLISS_V = "3.8.180"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -2683,9 +2683,8 @@ function App() {
       {newVer && <div onClick={()=>{try{window.location.href=window.location.pathname+"?v="+newVer;}catch(e){window.location.reload();}}} style={{position:"fixed",top:10,right:10,zIndex:9999,background:T.primary,color:"#fff",padding:"10px 16px",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 12px rgba(0,0,0,.25)",animation:"ovFadeIn .3s"}}>
         🔄 새 버전 v{newVer} — 즉시 업데이트
       </div>}
-      {/* 플로팅 AI — 우하단 항상 표시 */}
-      {/* 블리스 AI 플로팅 버튼 — 공지 발송 등 버튼 가림 이슈로 일단 숨김 (복구: false→true, 정우님 2026-06-01) */}
-      {false && <FloatingAI data={data} currentUser={currentUser} isMaster={isMaster} bizId={currentBizId}/>}
+      {/* 플로팅 AI — 우하단 항상 표시 (복구 2026-07-01, 정우님) */}
+      <FloatingAI data={data} currentUser={currentUser} isMaster={isMaster} bizId={currentBizId}/>
       {/* 우클릭 → 수정 요청(화면 캡처 + 바로 등록) — 전 직원 */}
       <QuickRequest currentUser={currentUser} userBranches={userBranches}/>
       {/* 받은메시지함 사이드 패널 — 좌측(사이드바 우측) 슬라이드, 다른 페이지 작업 가능 */}
