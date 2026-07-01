@@ -1,6 +1,6 @@
 # HANDOFF
 
-## [작업중] 2026-07-01 — 거래관리(도매 구매주문) 모듈 신규 (v3.8.183, 로컬검증 완료·배포 대기)
+## [✅ 배포완료] 2026-07-01 — 거래관리(도매 구매주문) 모듈 신규 (v3.8.183 라이브, git 878c4b4)
 > 네추럴룩/테라포트 → 지점 도매 공급 거래관리를 블리스 안에 신규 구현. **지점 구매신청 → 입금(자동매칭) → 입금확인 → 배송 워크플로우 + 거래명세서·세금계산서(홈택스 대량발행 엑셀)**. 정우님 결정: 공급자 둘 다(선택식)/거래이력까지 이관/거래처=지점(branches)연동/지점직원 직접신청/입금문자 자동매칭/고정 본사담당자 1명 SMS/홈택스 엑셀.
 - **DB(적용완료, migration `trade_management` + seed)**: `trade_suppliers`(네추럴룩 시드+테라포트 빈칸)·`trade_products`(18종)·`trade_customers`(6지점, branch_id 연동)·`trade_orders`(status: requested→paid→shipped→done, items jsonb)·`trade_settings`(본사담당자 phone·기본공급자). `bank_deposits.matched_trade_order_id` 컬럼 + **트리거 `trade_auto_match_deposit`**(미매칭 입금 pending·deposit_kind null → 같은 biz의 requested 주문 중 grand_total=amount **유일**하면 자동 paid+matched). 전부 RLS `bliss_session_ok()` 게이트(보안 잠금 준수).
 - **프론트**: `src/components/Trades/TradesPage.jsx`(지점 BranchOrder + 본사 AdminTrades 6탭: 주문접수·거래내역·거래처·제품·공급자·설정) + `tradeUtils.js`(명세서/세금계산서 HTML·numToKor·홈택스 엑셀 `exportHometaxExcel`·거래내역 엑셀). 명세서 복사(clipboard)/JPG(html2canvas)/인쇄. xlsx·html2canvas 기존 의존성.

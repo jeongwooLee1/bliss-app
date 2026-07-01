@@ -4690,3 +4690,15 @@ v3.8.167 후속(MessagesPage.jsx). ＋ 버튼을 입력창 옆 별도 버튼 →
 - **배경(중요·stale 표기였음)**: 서버 `/bliss-ai-chat`은 2026-06-03에 이미 Claude Sonnet→Gemini 3.5로 교체됐는데(유료 Claude 전면 제거), FloatingAI.jsx의 버튼 라벨·주석만 "Sonnet"으로 남아 **실제론 Gemini인데 Sonnet인 것처럼 표기**돼 있었음. 이번에 표기·경로를 실제(Gemini 3.5)에 맞춰 통일 + 혼란 버튼 제거.
 - **전 AI 경로 = Gemini 3.5 Flash 통일 확인**: 받은메시지함 자동응대·답변추천·예약(`_ai_ask_msgs`: gemini-3.5 cached→uncached→gpt-4.1-mini→gpt-4o-mini 폴백) / AI 예약분석·시술추출·번역 / BlissAI(이번) 전부 Gemini 3.5 주력. Claude(유료) 런타임 호출 0.
 - React only. 빌드 통과·잔여 Sonnet/2.5 참조 0 확인. 적용: v3.8.182 라이브 배포(version.txt 검증, CF 퍼지 everything).
+
+### v3.8.183 — 거래관리(도매 구매주문) 모듈 신규 (2026-07-01)
+네추럴룩/테라포트 → 지점 도매 공급을 블리스 안에서 관리. 기존 스탠드얼론 `거래관리시스템.html`(로컬 SynologyDrive)을 멀티테넌트 모듈로 이식.
+- **워크플로우**: 지점 직원 **구매신청**(제품 선택) → 입금(계좌이체) → **입금문자 자동매칭**(트리거) → 본사 입금확인 → 배송 → 완료. status `requested→paid→shipped→done`(+cancelled).
+- **DB(migration `trade_management`+seed)**: `trade_suppliers`(네추럴룩 시드·테라포트 빈칸)·`trade_products`(18종)·`trade_customers`(6지점 branch_id 연동)·`trade_orders`(items jsonb)·`trade_settings`(본사담당자 phone·기본공급자). `bank_deposits.matched_trade_order_id` + 트리거 `trade_auto_match_deposit`(미매칭 입금 pending·deposit_kind null → 같은 biz `requested` 주문 중 grand_total=amount **유일**하면 자동 paid+matched). 전부 RLS `bliss_session_ok()` 게이트.
+- **프론트**: `src/components/Trades/TradesPage.jsx`(지점 BranchOrder + 본사 AdminTrades 6탭: 주문접수·거래내역·거래처·제품·공급자·설정) + `tradeUtils.js`(거래명세서/세금계산서 HTML·numToKor·**홈택스 대량발행 엑셀** `exportHometaxExcel`·거래내역 엑셀). 명세서 복사(clipboard)/JPG(html2canvas)/인쇄.
+- **배선**: AppShell nav `trades`(staff+owner, `hasFeature('trade_management')` 게이트)+PAGE_ROUTES+Route+`pendingTradeCount` 배지(본사 requested 카운트 120초폴링) / Sidebar "거래 관리" 카테고리(nav에 trades 있을 때만) / MobileBottomNav 메인탭 / features.js ALL_FEATURES `trade_management`.
+- **멀티테넌트**: `businesses.settings.features.trade_management=true` — **biz_khvurgshb(하우스왁싱) + biz_demo_hw01(데모, 최소 시드) ON**. 타 테넌트 미노출(하드코딩 0).
+- **알림**: 구매신청 시 `callSendSms`(NPRO)로 본사담당자(trade_settings.manager_phone) SMS + 사이드바 배지.
+- **버그 fix**: 초기 `sb.get('trade_settings')`가 기본 `order=created_at`을 붙이는데 컬럼 없어 400 → filter에 `order=updated_at.asc` 명시.
+- **로컬검증**(데모 owner /trades): 6탭·제품테이블·설정 정상, 콘솔 에러 0. 배포 v3.8.183(version.txt·CF퍼지·git push 878c4b4). FloatingAI.jsx v3.8.182 미커밋분 함께 정리.
+- **유의**: ① seed 거래이력은 원본 JSON의 1건만(추가 과거이력 있으면 별도 이관) ② 테라포트 사업자정보 미입력(공급자 설정탭에서 입력) ③ 지점 직원(staff) BranchOrder 뷰는 실 지점계정 스팟체크 권장 ④ 입금 자동매칭 트리거 실입금 동작 확인 필요.
