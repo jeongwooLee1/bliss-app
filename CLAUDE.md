@@ -4744,3 +4744,10 @@ v3.8.167 후속(MessagesPage.jsx). ＋ 버튼을 입력창 옆 별도 버튼 →
 - **본사 관리자 모드 토글**(owner/super만 노출): OFF면 탭 = 주문·거래내역만(지점은 구매신청), ON이면 거래처·제품·공급자·설정 탭까지(입금확인·배송·제품·공급자 관리). 탭 라벨·배지 모드별 적응("주문"↔"주문접수", "구매 주문 신청"↔"새 주문 입력").
 - OrderForm에 settings·branchNameMap·adminMode prop 배선. `useEffect` import 확인(런타임 안전). 빌드 검증 후 배포.
 - 적용: v3.8.188 라이브 배포(version.txt 검증, CF 퍼지 everything).
+
+### v3.8.189 — 거래관리 관리자 모드 비밀번호 + 입금내역 탭(도매 입금매칭) + KB 데몬 입금유형 확장 (거래세션 WIP) (2026-07-01)
+거래관리 세션 WIP 배포 (React + Mac 데몬).
+- **관리자 모드 비밀번호**(`TradesPage.jsx`): 관리자 모드 토글 켤 때 비번 요구(초기값 8008, `trade_settings`). 본사(owner/super)만.
+- **입금내역 탭(DepositsTab)**: 도매 입금(네추럴룩·테라포트 계좌, `bank_deposits`) 목록 → 신청 주문(`trade_orders` status=requested)에 **입금자+금액 자동/수동 매칭**(matched→paid, `deposit_kind='trade'`·`matched_trade_order_id`·`matched_deposit_id`). 매칭해제·무시·되돌리기. **DB 컬럼 존재 검증 완료**(bank_deposits.deposit_kind/matched_trade_order_id, trade_orders.matched_deposit_id).
+- **KB 입금 SMS 데몬 확장**(`mac-daemon/kb_sms_poll.py`, launchd가 파일 직접 실행 → 다음 주기 자동 반영, 배포 파이프라인 무관): KB_PATTERN 입금유형을 `(입금|출금)` → `[^\n]*(?:입금|출금)[^\n]*`로 확장(전자금융입금·스마트폰입금·인터넷입금·ATM입금 등 변형 캡처) + `kind` 정규화(입금/출금). SYNTAX_OK. git 커밋만(이미 데몬 반영).
+- 적용: v3.8.189 라이브 배포(version.txt 검증, CF 퍼지 everything).

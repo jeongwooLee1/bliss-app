@@ -113,7 +113,7 @@ KB_PATTERN = re.compile(
     r'\[KB\]\s*(\d{2})/(\d{2})\s+(\d{2}):(\d{2})\s*\n+'
     r'([\w\*\-]+)\s*\n+'
     r'([^\n]+?)\s*\n+'
-    r'(입금|출금)\s*\n+'
+    r'([^\n]*(?:입금|출금)[^\n]*)\s*\n+'   # 입금유형: 입금/전자금융입금/스마트폰입금/인터넷입금이/ATM입금 · 출금계열
     r'([\d,]+)'
     r'(?:\s*\n+잔액\s*([\d,]+))?',
     re.DOTALL,
@@ -190,7 +190,9 @@ def parse_kb(text):
     m = KB_PATTERN.search(text)
     if not m:
         return None
-    mm, dd, hh, mn, masked, name, kind, amount_s, balance_s = m.groups()
+    mm, dd, hh, mn, masked, name, kind_raw, amount_s, balance_s = m.groups()
+    # 입금유형 정규화: '전자금융입금/스마트폰입금/인터넷입금이' → '입금', '인터넷출금이/FBS출금' → '출금'
+    kind = '출금' if '출금' in kind_raw else ('입금' if '입금' in kind_raw else kind_raw)
     return {'account_masked': masked, 'transferer_name': name.strip(), 'kind': kind,
             'amount': _money(amount_s), 'balance': _money(balance_s), 'dt': _stated_dt(mm, dd, hh, mn)}
 

@@ -50,21 +50,17 @@ export default function TradesPage({ data, userBranches = [], isMaster, role, cu
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center', color: T.textSub }}>불러오는 중…</div>
 
-  // 본사(대표/슈퍼)만 전 지점 거래처·주문을 보고, 지점 원장은 자기 지점만
-  const isHQ = role === 'owner' || role === 'super'
-  const myCustomers = isHQ ? customers : customers.filter(c => c.branch_id && (userBranches || []).includes(c.branch_id))
-  const myOrders = isHQ ? orders : orders.filter(o => (userBranches || []).includes(o.branch_id))
-
-  const common = { bizId, suppliers, products, customers: myCustomers, orders: myOrders, settings, suppliersMap, customersMap, branchNameMap, defaultSupplier, reload, showToast, currentUser }
+  // 스코핑(전 지점 vs 자기 지점)은 AdminTrades가 관리자 모드 on/off로 판단
+  const common = { bizId, suppliers, products, customers, orders, settings, suppliersMap, customersMap, branchNameMap, defaultSupplier, reload, showToast, currentUser }
 
   return (
     <div style={{ maxWidth: 1180, margin: '0 auto', width: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
         <I name="handshake" size={22} color={T.primary} />
         <h2 style={{ fontSize: T.fs.xl, fontWeight: T.fw.black, color: T.text, margin: 0 }}>거래관리</h2>
-        <span style={{ fontSize: T.fs.xs, color: T.textMuted }}>{isMaster ? '도매 주문·명세서·세금계산서' : '지점 구매신청'}</span>
+        <span style={{ fontSize: T.fs.xs, color: T.textMuted }}>도매 주문·명세서·세금계산서</span>
       </div>
-      {isMaster ? <AdminTrades {...common} role={role} userBranches={userBranches} /> : <BranchOrder {...common} userBranches={userBranches} />}
+      <AdminTrades {...common} role={role} userBranches={userBranches} />
       {toast && <div style={{ position: 'fixed', bottom: 90, left: '50%', transform: 'translateX(-50%)', background: T.gray800, color: '#fff', padding: '10px 18px', borderRadius: T.radius.full, fontSize: T.fs.sm, fontWeight: 600, zIndex: 12000, boxShadow: T.shadow.lg }}>{toast}</div>}
     </div>
   )
@@ -183,32 +179,51 @@ const qtyBtn = { width: 26, height: 30, border: `1px solid ${T.border}`, borderR
 
 /* ═══════════════ 본사 관리 뷰 ═══════════════ */
 function AdminTrades(props) {
-  const { orders, role } = props
-  const canAdmin = role === 'owner' || role === 'super' // 본사(네추럴룩/테라포트) 관계자만 관리자 모드
+  const { orders, customers, userBranches, settings } = props
   const [adminMode, setAdminMode] = useState(false)
+  const [pwOpen, setPwOpen] = useState(false)
+  const [pwInput, setPwInput] = useState('')
+  const [pwErr, setPwErr] = useState('')
   const [tab, setTab] = useState('orders')
-  const pending = orders.filter(o => o.status === 'requested').length
+  const adminPw = settings?.admin_password || '8008'
+
+  // 관리자 모드 ON = 전 지점 관리 / OFF = 자기 지점만
+  const ub = userBranches || []
+  const scopedCustomers = adminMode ? customers : (ub.length ? customers.filter(c => c.branch_id && ub.includes(c.branch_id)) : customers)
+  const scopedOrders = adminMode ? orders : (ub.length ? orders.filter(o => ub.includes(o.branch_id)) : orders)
+  const scoped = { ...props, customers: scopedCustomers, orders: scopedOrders }
+
+  const pending = scopedOrders.filter(o => o.status === 'requested').length
   const allTabs = [
     { id: 'orders', label: adminMode ? '주문접수' : '주문', icon: 'clipboard', badge: adminMode ? pending : 0 },
     { id: 'history', label: '거래내역', icon: 'chart' },
+    { id: 'deposits', label: '입금내역', icon: 'banknote', admin: true },
     { id: 'customers', label: '거래처', icon: 'users', admin: true },
     { id: 'products', label: '제품', icon: 'pkg', admin: true },
     { id: 'suppliers', label: '공급자', icon: 'building', admin: true },
     { id: 'settings', label: '설정', icon: 'settings', admin: true },
   ]
-  const tabs = allTabs.filter(t => !t.admin || (adminMode && canAdmin))
+  const tabs = allTabs.filter(t => !t.admin || adminMode)
   useEffect(() => { if (!tabs.find(t => t.id === tab)) setTab('orders') }, [adminMode]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const clickToggle = () => {
+    if (adminMode) { setAdminMode(false); return }        // 끄기는 자유
+    setPwInput(''); setPwErr(''); setPwOpen(true)          // 켜기는 비밀번호 확인
+  }
+  const submitPw = () => {
+    if (pwInput === adminPw) { setAdminMode(true); setPwOpen(false); setPwInput('') }
+    else setPwErr('비밀번호가 올바르지 않습니다')
+  }
+
   return (
     <div>
-      {canAdmin && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginBottom: 12, background: adminMode ? T.primaryLt : 'transparent', borderRadius: T.radius.md, padding: adminMode ? '8px 12px' : 0 }}>
-          {adminMode && <span style={{ flex: 1, fontSize: T.fs.xs, color: T.primaryDk, fontWeight: 700 }}>본사 관리자 모드 — 제품·공급자·거래처·입금확인·배송 관리</span>}
-          <span style={{ fontSize: T.fs.sm, color: adminMode ? T.primaryDk : T.textSub, fontWeight: 700 }}>관리자 모드</span>
-          <button onClick={() => setAdminMode(m => !m)} title="본사(공급자) 관리 기능 표시" style={{ position: 'relative', width: 46, height: 26, borderRadius: 13, border: 'none', cursor: 'pointer', background: adminMode ? T.primary : T.gray300, transition: 'background .15s', flexShrink: 0 }}>
-            <span style={{ position: 'absolute', top: 3, left: adminMode ? 23 : 3, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left .15s', boxShadow: '0 1px 3px rgba(0,0,0,.3)' }} />
-          </button>
-        </div>
-      )}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginBottom: 12, background: adminMode ? T.primaryLt : 'transparent', borderRadius: T.radius.md, padding: adminMode ? '8px 12px' : 0 }}>
+        {adminMode && <span style={{ flex: 1, fontSize: T.fs.xs, color: T.primaryDk, fontWeight: 700 }}>본사 관리자 모드 — 전 지점 · 제품·공급자·거래처·입금확인·배송</span>}
+        <span style={{ fontSize: T.fs.sm, color: adminMode ? T.primaryDk : T.textSub, fontWeight: 700 }}>관리자 모드</span>
+        <button onClick={clickToggle} title="본사 관리 기능 — 비밀번호 필요" style={{ position: 'relative', width: 46, height: 26, borderRadius: 13, border: 'none', cursor: 'pointer', background: adminMode ? T.primary : T.gray300, transition: 'background .15s', flexShrink: 0 }}>
+          <span style={{ position: 'absolute', top: 3, left: adminMode ? 23 : 3, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left .15s', boxShadow: '0 1px 3px rgba(0,0,0,.3)' }} />
+        </button>
+      </div>
       <div style={{ display: 'flex', gap: 4, marginBottom: 14, flexWrap: 'wrap' }}>
         {tabs.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 14px', borderRadius: T.radius.full, border: 'none', cursor: 'pointer', fontSize: T.fs.sm, fontWeight: 700, background: tab === t.id ? T.primary : T.gray200, color: tab === t.id ? '#fff' : T.gray700 }}>
@@ -217,12 +232,25 @@ function AdminTrades(props) {
           </button>
         ))}
       </div>
-      {tab === 'orders' && <OrdersTab {...props} adminMode={adminMode && canAdmin} />}
-      {tab === 'history' && <HistoryTab {...props} />}
-      {tab === 'customers' && <CustomersTab {...props} />}
-      {tab === 'products' && <ProductsTab {...props} />}
-      {tab === 'suppliers' && <SuppliersTab {...props} />}
-      {tab === 'settings' && <SettingsTab {...props} />}
+      {tab === 'orders' && <OrdersTab {...scoped} adminMode={adminMode} />}
+      {tab === 'history' && <HistoryTab {...scoped} />}
+      {tab === 'deposits' && <DepositsTab {...scoped} />}
+      {tab === 'customers' && <CustomersTab {...scoped} />}
+      {tab === 'products' && <ProductsTab {...scoped} />}
+      {tab === 'suppliers' && <SuppliersTab {...scoped} />}
+      {tab === 'settings' && <SettingsTab {...scoped} />}
+      {pwOpen && (
+        <Modal onClose={() => setPwOpen(false)} width={320}>
+          <strong style={{ fontSize: T.fs.md }}>관리자 모드 비밀번호</strong>
+          <p style={{ fontSize: T.fs.xs, color: T.textSub, margin: '6px 0 12px' }}>본사 관리 기능을 켜려면 비밀번호를 입력하세요.</p>
+          <input type="password" autoFocus style={{ ...inp, marginBottom: 6 }} value={pwInput} onChange={e => { setPwInput(e.target.value); setPwErr('') }} onKeyDown={e => { if (e.key === 'Enter') submitPw() }} placeholder="비밀번호" />
+          {pwErr && <div style={{ fontSize: T.fs.xs, color: T.danger, marginBottom: 6 }}>{pwErr}</div>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+            <Btn variant="secondary" onClick={() => setPwOpen(false)}>취소</Btn>
+            <Btn onClick={submitPw}>확인</Btn>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }
@@ -442,6 +470,79 @@ function OrderForm({ bizId, suppliers, products, customers, defaultSupplier, cur
   )
 }
 
+/* ── 입금내역 (도매 입금 — 네추럴룩/테라포트 계좌) ── */
+function DepositsTab({ bizId, orders, customersMap, showToast, reload, currentUser }) {
+  const [deps, setDeps] = useState(null)
+  const [flt, setFlt] = useState('all')
+  const [matchFor, setMatchFor] = useState(null)
+  const load = () => sb.get('bank_deposits', `&business_id=eq.${bizId}&bid=is.null&order=sms_sent_at.desc&limit=200`).then(setDeps)
+  useEffect(() => { load() }, [bizId]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (deps === null) return <div style={{ padding: 30, textAlign: 'center', color: T.textSub }}>불러오는 중…</div>
+  const shown = deps.filter(d => flt === 'all' ? (d.status !== 'ignored' && d.status !== 'card') : d.status === flt)
+  const orderById = Object.fromEntries(orders.map(o => [o.id, o]))
+  const reqOrders = orders.filter(o => o.status === 'requested')
+  const doMatch = async (d, o) => {
+    await sb.update('trade_orders', o.id, { status: 'paid', paid_at: new Date().toISOString(), confirmed_by: currentUser?.name || '수동매칭', matched_deposit_id: d.id })
+    await sb.update('bank_deposits', d.id, { status: 'matched', deposit_kind: 'trade', matched_trade_order_id: o.id, matched_at: new Date().toISOString(), matched_by: currentUser?.name || '수동' })
+    setMatchFor(null); load(); reload('orders'); showToast('매칭 완료 ✓')
+  }
+  const unmatch = async (d) => {
+    if (d.matched_trade_order_id) await sb.update('trade_orders', d.matched_trade_order_id, { status: 'requested', paid_at: null, confirmed_by: '', matched_deposit_id: null })
+    await sb.update('bank_deposits', d.id, { status: 'pending', deposit_kind: null, matched_trade_order_id: null })
+    load(); reload('orders'); showToast('매칭 해제됨')
+  }
+  const ignore = async (d) => { await sb.update('bank_deposits', d.id, { status: 'ignored' }); load(); showToast('무시됨') }
+  const badge = (s) => ({ pending: ['미매칭', T.warning, T.warningLt], matched: ['매칭됨', T.successDk, T.successLt], ignored: ['무시', T.gray500, T.gray200] }[s] || [s, T.gray600, T.gray200])
+  const FILTERS = [['all', '전체'], ['pending', '미매칭'], ['matched', '매칭됨'], ['ignored', '무시']]
+  return (
+    <div>
+      <div style={{ fontSize: T.fs.xs, color: T.textSub, marginBottom: 10 }}>네추럴룩·테라포트 계좌 입금(도매). 입금자+금액이 맞으면 신청 주문이 자동 입금확인됩니다.</div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+        {FILTERS.map(([v, l]) => <button key={v} onClick={() => setFlt(v)} style={{ padding: '5px 12px', borderRadius: T.radius.full, border: `1px solid ${flt === v ? T.primary : T.border}`, background: flt === v ? T.primaryLt : T.bgCard, color: flt === v ? T.primaryDk : T.gray700, fontSize: T.fs.xs, fontWeight: 700, cursor: 'pointer' }}>{l}</button>)}
+      </div>
+      {shown.length ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {shown.map(d => {
+            const b = badge(d.status); const mo = d.matched_trade_order_id && orderById[d.matched_trade_order_id]
+            return (
+              <div key={d.id} style={{ ...card, padding: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: T.fs.xxs, fontWeight: 700, padding: '3px 9px', borderRadius: T.radius.full, color: b[1], background: b[2] }}>{b[0]}</span>
+                  <span style={{ fontSize: T.fs.sm, fontWeight: 800 }}>{d.transferer_name || '-'}</span>
+                  <span style={{ fontSize: T.fs.xs, color: T.textSub }}>{(d.sms_sent_at || '').slice(0, 10)} · {d.source === 'hana_sms' ? '하나' : d.source === 'sh_sms' ? '수협' : d.source === 'woori_sms' ? '우리' : 'KB'}</span>
+                  <div style={{ flex: 1 }} />
+                  <span style={{ fontSize: T.fs.md, fontWeight: 800, color: T.primary }}>{fmt(d.amount)}원</span>
+                </div>
+                {mo && <div style={{ fontSize: T.fs.xs, color: T.successDk, marginTop: 6 }}>→ {customersMap[mo.customer_id]?.name || '-'} 주문({fmt(mo.grand_total)}원) 매칭{d.matched_by === 'trade_auto' ? ' (자동)' : ''}</div>}
+                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                  {d.status === 'pending' && <Btn size="sm" onClick={() => setMatchFor(d)}><I name="handshake" size={13} />주문 매칭</Btn>}
+                  {d.status === 'pending' && <Btn size="sm" variant="ghost" style={{ color: T.danger }} onClick={() => ignore(d)}>무시</Btn>}
+                  {d.status === 'matched' && <Btn size="sm" variant="ghost" onClick={() => unmatch(d)}>매칭 해제</Btn>}
+                  {d.status === 'ignored' && <Btn size="sm" variant="ghost" onClick={() => sb.update('bank_deposits', d.id, { status: 'pending' }).then(load)}>되돌리기</Btn>}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : <Empty msg="입금 내역이 없습니다" />}
+      {matchFor && (
+        <Modal onClose={() => setMatchFor(null)} width={460}>
+          <strong style={{ fontSize: T.fs.md }}>주문에 매칭</strong>
+          <div style={{ fontSize: T.fs.xs, color: T.textSub, margin: '6px 0 12px' }}>{matchFor.transferer_name} · {fmt(matchFor.amount)}원 입금을 신청 주문에 연결</div>
+          <div style={{ maxHeight: 300, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {reqOrders.length ? reqOrders.map(o => (
+              <button key={o.id} onClick={() => doMatch(matchFor, o)} style={{ textAlign: 'left', border: `1px solid ${o.grand_total === matchFor.amount ? T.primary : T.border}`, background: o.grand_total === matchFor.amount ? T.primaryLt : T.bgCard, borderRadius: T.radius.md, padding: '8px 10px', cursor: 'pointer' }}>
+                <div style={{ fontSize: T.fs.sm, fontWeight: 700 }}>{customersMap[o.customer_id]?.name || '-'} · {fmt(o.grand_total)}원{o.grand_total === matchFor.amount ? ' (금액일치)' : ''}</div>
+                <div style={{ fontSize: T.fs.xxs, color: T.textSub }}>{o.tx_date} · {o.requested_by || ''}</div>
+              </button>
+            )) : <Empty msg="신청 대기 주문이 없습니다" />}
+          </div>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
 /* ── 거래내역 ── */
 function HistoryTab({ orders, customersMap, suppliersMap, showToast }) {
   const [from, setFrom] = useState('')
@@ -658,6 +759,14 @@ function SettingsTab({ bizId, settings, suppliers, reload, showToast }) {
         <select style={{ ...inp, marginBottom: 14 }} value={form.default_supplier_id || ''} onChange={e => setForm(s => ({ ...s, default_supplier_id: e.target.value }))}>
           <option value="">선택</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
+        <Btn onClick={save}>저장</Btn>
+      </div>
+
+      <div style={{ ...card, marginTop: 12 }}>
+        <div style={{ fontSize: T.fs.md, fontWeight: 800, marginBottom: 4 }}>관리자 모드 비밀번호</div>
+        <div style={{ fontSize: T.fs.xs, color: T.textSub, marginBottom: 12 }}>관리자 모드를 켤 때 묻는 비밀번호입니다. (초기값 8008)</div>
+        <label style={lbl}>비밀번호</label>
+        <input style={{ ...inp, marginBottom: 14 }} value={form.admin_password || ''} onChange={e => setForm(s => ({ ...s, admin_password: e.target.value }))} placeholder="8008" />
         <Btn onClick={save}>저장</Btn>
       </div>
     </div>
