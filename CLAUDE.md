@@ -4787,3 +4787,11 @@ Phase 1(알림톡·AI자동응대·제품)에 이어 **태그 관리 + 재방문
 - **로컬 E2E**(demo owner, 실 Gemini): create_tag("블테스트태그 초록색"→#4CAF50·schedule_yn=false 실DB 생성) / toggle_stamp_program("켜줘"→현재 꺼짐→켜기 카드+실행→stamp_on=true, events_master 미변경 확인) / toggle_event(임시 이벤트 삽입·리로드→"꺼줘"→이름매칭+현재켜짐→끄기 카드+실행→enabled false 실DB). 콘솔 에러 0, demo 원상복구.
 - 적용: v3.8.192 라이브 배포(version.txt 검증, CF 퍼지 everything).
 - **유의**: ① member_price_rules(회원가 규칙)는 현재 shape이 qualifyingServiceIds(서비스ID 목록)라 자연어 액션 부적합 → **제외**(UI 유지) ② 이벤트/쿠폰 **생성**은 다필드 트리거·조건·보상 빌더라 위험 → 액션 **미추가**(토글만, 생성은 UI 이벤트 빌더). 쿠폰 상품은 create_service(cat=쿠폰)로 커버 ③ toggle_event는 이름 exact 우선·부분 매칭 폴백, 못 찾으면 등록 이벤트 목록 안내. **다음(Phase 3)**: 대화형 온보딩·최근 변경내역 조회 + (BlissAI 완숙 후) AI Book 흡수·삭제.
+
+### v3.8.193 — BlissAI 설정확대 Phase 3: 최근 변경내역 조회 (로그조회) (2026-07-01)
+BlissAI 확대 마무리 단계. **BlissAI로 바꾼 설정 이력을 원장이 되묻는** 읽기 전용 기능. (AI Book 흡수·대화형 온보딩은 이미 기능상 커버·게이트라 무추가 — 아래 유의)
+- **`actionRunner.js`**: `export async function getRecentActionLogs(limit=15)` — `schedule_data.bliss_ai_action_logs_v1`(BlissAI 감사로그, executeAction 성공/실패마다 writeAuditLog가 unshift, 최대 1000건) 읽어 최근 N건 반환. value는 이중 인코딩(문자열) 파싱.
+- **`FloatingAI.jsx`**: handleSend에서 write-intent 체크 **전에** 정규식(`변경 내역/기록/이력`·`최근 변경/바꾼/설정/한 것`·`뭐/무엇/어떤 걸 바꿨·변경·수정`·`내가 바꾼/변경한/한 것`)으로 감지 → getRecentActionLogs → 메시지로 표시(확인카드 없음, 읽기 전용). 포맷: `• MM/DD HH:MM(KST) · {액션 라벨(ACTION_SCHEMAS.label)} · {대상} {✓/✗(에러)} — {실행자}`. 감지되면 Gemini 호출 없이 즉시 응답(비용 0).
+- **로컬 E2E**(demo, Phase 1·2 테스트로 쌓인 실 로그 5건): "최근 변경 내역 보여줘" → 개별 이벤트·재방문 스탬프·태그 추가·제품 수정·AI FAQ 추가 5건이 시각·라벨·대상·✓·체험계정으로 정확 표시. 콘솔 에러 0, demo 로그 정리.
+- 적용: v3.8.193 라이브 배포(version.txt 검증, CF 퍼지 everything).
+- **유의**: ① **AI Book 흡수** = create_reservation(자연어+이미지)로 기능 커버됨. AI Book 버튼 **삭제는 하지 않음**(스코프: "BlissAI가 모든 기능 잘 수행하면 그때 삭제" — 완숙 확인 후 별도) ② **대화형 온보딩**은 v3.6.0에 설정마법사가 이미 BlissAI 대화형으로 흡수됨(+`setup_initial` 액션) → 신규 마법사 무추가 ③ 로그조회는 감지 정규식 기반(오탐 최소화 특정 표현만) — 일반 조회/대화는 기존 경로 그대로 ④ BlissAI 감사로그(bliss_ai_action_logs_v1)는 사업장별 schedule_data(RLS 잠금) — main.jsx 토큰 인터셉터로 read 통과. **BlissAI 설정확대 Phase 1~3 완료**(알림톡·AI자동응대·제품·태그·스탬프·이벤트 토글 + 로그조회 = 신규 write 액션 9종 + 읽기 1종, 전부 미리보기→확인카드→실행, owner 자기 사업장).

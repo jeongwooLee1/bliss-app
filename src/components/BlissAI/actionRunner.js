@@ -539,6 +539,22 @@ async function writeAuditLog(entry) {
   } catch { /* ignore log failure */ }
 }
 
+// ─── 감사 로그 조회 (최근 변경내역) ─────────────────────────────────────────
+export async function getRecentActionLogs(limit = 15) {
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/schedule_data?business_id=eq.${_activeBizId}&key=eq.bliss_ai_action_logs_v1&select=value`, {
+      headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY },
+    })
+    const rows = await r.json()
+    let list = []
+    if (rows?.[0]?.value) {
+      const v = rows[0].value
+      list = typeof v === 'string' ? JSON.parse(v) : (Array.isArray(v) ? v : [])
+    }
+    return Array.isArray(list) ? list.slice(0, limit) : []
+  } catch { return [] }
+}
+
 // ─── 예약 생성 실행 ────────────────────────────────────────────────────────
 // 정책:
 //   고객 매칭 = 연락처(phone/phone2) 또는 이메일이 일치하면 동일인 (이름만 같으면 X)

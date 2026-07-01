@@ -10,7 +10,7 @@ import { genId } from '../../lib/utils'
 import { buildFullPrompt, buildStablePrompt, buildDynamicCtx } from './contextBuilder'
 import { searchDocs, buildDocsContext } from '../../lib/aiDocs'
 import { buildWriteIntentPrompt, ACTION_SCHEMAS } from './actionSchemas'
-import { validateAction, buildPreview, executeAction } from './actionRunner'
+import { validateAction, buildPreview, executeAction, getRecentActionLogs } from './actionRunner'
 import { parseBookingWithAI, findCustomerForBooking, findReservationsToCancel } from '../../lib/aiBookParse'
 import ActionConfirmCard from './ActionConfirmCard'
 
@@ -335,6 +335,29 @@ export default function FloatingAI({ data, currentUser, isMaster, bizId }) {
           text: '이미지를 받았습니다. 이 이미지로 무엇을 도와드릴까요?\n\n예시:\n• "예약 등록해줘" — 카톡/스크린샷에서 예약 정보 추출해 등록\n• "내용 분석해줘" — 이미지에 적힌 내용 설명\n• "시술 가격 보고 등록" — 시술상품 추가 (현재는 관리설정에서만)\n\n원하시는 작업과 함께 이미지를 다시 보내주세요.',
           at: Date.now(),
         }])
+        return
+      }
+      // ── 최근 변경내역 조회 (읽기 전용, 확인카드 없음)
+      if (q && !img && /(변경\s*(내역|기록|이력)|최근\s*(변경|바꾼|설정|한\s*것|작업)|(뭐|무엇|어떤\s*걸?)[를을]?\s*(바꿨|변경|수정했)|내가\s*(바꾼|변경한|설정한|한\s*것))/.test(q)) {
+        try {
+          const logs = await getRecentActionLogs(15)
+          if (!logs.length) {
+            setMessages(prev => [...prev, { role: 'assistant', text: '아직 이곳(블리스 AI)에서 변경한 기록이 없어요.', at: Date.now() }])
+          } else {
+            const lines = logs.map(e => {
+              let t = ''
+              try { t = new Date(e.at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) } catch { t = (e.at || '').slice(5, 16).replace('T', ' ') }
+              const label = (ACTION_SCHEMAS[e.action]?.label) || e.action
+              const tgt = e.target ? ` · ${e.target}` : ''
+              const status = e.ok ? '✓' : `✗ (${(e.error || '실패').slice(0, 30)})`
+              const by = e.user ? ` — ${e.user}` : ''
+              return `• ${t} · ${label}${tgt} ${status}${by}`
+            })
+            setMessages(prev => [...prev, { role: 'assistant', text: `최근 변경 내역 (${logs.length}건):\n${lines.join('\n')}`, at: Date.now() }])
+          }
+        } catch (e) {
+          setMessages(prev => [...prev, { role: 'assistant', text: '변경 내역을 불러오지 못했어요: ' + (e?.message || e), at: Date.now() }])
+        }
         return
       }
       // ── 2단계: 텍스트만 있을 때 쓰기 인텐트 체크
