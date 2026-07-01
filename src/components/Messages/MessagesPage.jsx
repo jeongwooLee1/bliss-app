@@ -707,14 +707,17 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   const chatLatestRes = useMemo(()=>{
     const m={};
     const SKIP=["cancelled","naver_cancelled","naver_changed"];
+    const _dk = r => (r?.date||"")+(r?.time||"");
     // 1순위: chatResMap (chat 정보가 직접 박힌 예약)
     Object.entries(chatResMap).forEach(([k, r]) => { m[k] = r; });
-    // 2순위: 고객 매칭으로 최근 예약 찾기
+    // 2순위: 고객 cust_id로 찾은 최신 예약 — chatResMap보다 늦은 날짜면 교체.
+    //  (예: 7/2 예약이 chat 링크 없이 cust_id로만 연결됐고, 6월 예약에만 chat 링크가 있으면
+    //   기존엔 6월을 보여줬음 → 두 소스 중 최신 예약이 이기도록. id_kytnjmqm64)
     Object.entries(chatCustMapFull).forEach(([k, cust])=>{
-      if (m[k]) return;
       const list = (data?.reservations||[]).filter(r => r.custId === cust.id && !SKIP.includes(r.status))
-        .sort((a,b) => ((b.date||"")+(b.time||"")).localeCompare((a.date||"")+(a.time||"")));
-      if (list[0]) m[k] = list[0];
+        .sort((a,b) => _dk(b).localeCompare(_dk(a)));
+      const latest = list[0];
+      if (latest && (!m[k] || _dk(latest) > _dk(m[k]))) m[k] = latest;
     });
     return m;
   },[chatResMap, chatCustMapFull, data?.reservations]);
