@@ -155,6 +155,66 @@ const BUSINESS = {
   },
 };
 
+// ─── 알림톡/문자 설정 (branches.noti_config) ────────────────────────────────
+// notiKey → 한글 라벨 (AI 프롬프트 매핑 + 프리뷰 공용)
+export const NOTI_KEY_LABELS = {
+  rsv_confirm: '예약 확정 알림',
+  rsv_1day: '1일 전(전날) 알림',
+  rsv_today: '당일 알림',
+  after_1d_first_only: '시술 후 1일 (신규·1회)',
+  after_5d: '시술 후 5일',
+  after_10d: '시술 후 10일',
+  after_18d_first_only: '시술 후 18일 (신규·1회)',
+  after_21d: '시술 후 21일',
+  after_35d: '시술 후 35일',
+  after_60d: '시술 후 60일',
+};
+const NOTI = {
+  update_noti_config: {
+    label: '알림톡/문자 설정', op: 'update_noti_config', icon: '🔔',
+    table: 'branches', targetField: 'name,short',   // 지점 findTarget
+    // target: 지점명(단일 지점이면 생략 가능) / changes: { notiKey, on?, msgTpl?, sendTime? }
+    fieldsAllowed: ['notiKey', 'on', 'msgTpl', 'sendTime'],
+    validate: (p) => !p.notiKey ? '어떤 알림인지 알려주세요 (예약확정 / 1일전 / 당일 / 시술후 5·10·21·35·60일)' : null,
+  },
+};
+
+// ─── AI 자동응대 (businesses.settings) ───────────────────────────────────────
+export const AI_CHANNEL_LABELS = {
+  naver: '네이버 톡톡', instagram: '인스타그램', whatsapp: '왓츠앱',
+  line: '라인', kakao: '카카오', sms: '문자(SMS)',
+};
+const AI_REPLY = {
+  toggle_ai_reply: {
+    label: 'AI 자동응대', op: 'toggle_ai_reply', icon: '🤖',
+    // changes: { on(필수), channel?(없으면 전체 채널) }
+    fieldsAllowed: ['on', 'channel'],
+    validate: (p) => (p.on == null) ? 'AI 자동응대를 켤지 끌지 알려주세요' : null,
+  },
+  add_faq: {
+    label: 'AI FAQ 추가', op: 'add_faq', icon: '💬',
+    // changes: { q(질문), a(답변), category? }
+    fieldsAllowed: ['q', 'a', 'category'],
+    validate: (p) => (!p.q || !p.a) ? 'FAQ 질문과 답변을 모두 알려주세요' : null,
+  },
+};
+
+// ─── 제품 (products) ─────────────────────────────────────────────────────────
+const PRODUCT = {
+  create_product: {
+    label: '제품 추가', table: 'products', op: 'create', icon: '➕',
+    fieldsAllowed: ['name', 'price', 'cat', 'note', 'stock', 'is_active'],
+    validate: (p) => !p.name ? '제품 이름이 필요합니다' : null,
+  },
+  update_product: {
+    label: '제품 수정', table: 'products', op: 'update', icon: '✏️', targetField: 'name',
+    fieldsAllowed: ['name', 'price', 'cat', 'note', 'stock', 'is_active'],
+  },
+  delete_product: {
+    label: '제품 삭제', table: 'products', op: 'delete', icon: '🗑', dangerous: true, doubleConfirm: true, targetField: 'name',
+  },
+};
+
 // ─── 예약 생성 (자연어 파싱 기반) ────────────────────────────────────────
 const RESERVATION = {
   create_reservation: {
@@ -217,6 +277,9 @@ export const ACTION_SCHEMAS = {
   ...RES_SOURCE,
   ...CUSTOMER,
   ...BUSINESS,
+  ...NOTI,
+  ...AI_REPLY,
+  ...PRODUCT,
   ...RESERVATION,
   ...SETUP,
 };
@@ -255,6 +318,59 @@ ${stateSnapshot || '(없음)'}
 
 사용자: "강남점 없애줘"
 응답: {"intent":"write","action":"delete_branch","target":"강남"}
+
+[알림톡/문자 설정 — update_noti_config]
+notiKey 매핑: rsv_confirm(예약확정) / rsv_1day(1일전·전날 리마인더) / rsv_today(당일 알림) / after_5d·after_10d·after_21d·after_35d·after_60d(시술 후 N일 케어) / after_1d_first_only·after_18d_first_only(신규 첫방문 케어)
+- 지점 명시 안 하면 target은 빈 문자열(단일 지점이면 자동 적용, 여러 지점이면 시스템이 지점을 물음)
+- 켜기=on:true, 끄기=on:false, 문구=msgTpl, 발송시각=sendTime("HH:MM")
+
+사용자: "예약확정 알림톡 켜줘"
+응답: {"intent":"write","action":"update_noti_config","target":"","changes":{"notiKey":"rsv_confirm","on":true}}
+
+사용자: "강남점 당일 알림 문구 바꿔 — 오늘 예약 잊지 마세요 :)"
+응답: {"intent":"write","action":"update_noti_config","target":"강남","changes":{"notiKey":"rsv_today","msgTpl":"오늘 예약 잊지 마세요 :)"}}
+
+사용자: "전날 리마인더 10시에 보내줘"
+응답: {"intent":"write","action":"update_noti_config","target":"","changes":{"notiKey":"rsv_1day","sendTime":"10:00"}}
+
+사용자: "시술 후 5일 케어문자 꺼줘"
+응답: {"intent":"write","action":"update_noti_config","target":"","changes":{"notiKey":"after_5d","on":false}}
+
+[AI 자동응대 — toggle_ai_reply / add_faq]
+- toggle_ai_reply: 받은 메시지에 AI가 자동으로 답하는 기능. changes.channel 없으면 전체 채널, 있으면 그 채널만
+- channel 매핑: naver(네이버 톡톡) / instagram(인스타) / whatsapp(왓츠앱) / line(라인) / kakao(카카오) / sms(문자)
+- add_faq: AI가 참고할 질문·답변(FAQ) 추가. changes.q(질문), changes.a(답변)
+
+사용자: "AI 자동응대 켜줘"
+응답: {"intent":"write","action":"toggle_ai_reply","changes":{"on":true}}
+
+사용자: "인스타 AI 자동응답 꺼줘"
+응답: {"intent":"write","action":"toggle_ai_reply","changes":{"on":false,"channel":"instagram"}}
+
+사용자: "왓츠앱 자동응대 켜"
+응답: {"intent":"write","action":"toggle_ai_reply","changes":{"on":true,"channel":"whatsapp"}}
+
+사용자: "AI가 '주차 되나요?'라고 물으면 '건물 지하에 무료주차 가능해요'라고 답하게 해줘"
+응답: {"intent":"write","action":"add_faq","changes":{"q":"주차 되나요?","a":"건물 지하에 무료주차 가능해요"}}
+
+[제품(판매상품) 관리 — products]
+- create_product(추가) / update_product(수정) / delete_product(삭제). 시술(services)이 아니라 매장에서 파는 제품(디퓨저·홈케어 등)
+- 필드: name(이름) / price(가격) / cat(분류) / note(메모) / stock(재고) / is_active(판매여부)
+
+사용자: "디퓨저 제품 2만원에 추가해줘"
+응답: {"intent":"write","action":"create_product","changes":{"name":"디퓨저","price":20000}}
+
+사용자: "홈케어 오일 가격 3만5천원으로 수정"
+응답: {"intent":"write","action":"update_product","target":"홈케어 오일","changes":{"price":35000}}
+
+사용자: "진정크림 재고 10개로 바꿔"
+응답: {"intent":"write","action":"update_product","target":"진정크림","changes":{"stock":10}}
+
+사용자: "디퓨저 제품 판매 중지"
+응답: {"intent":"write","action":"update_product","target":"디퓨저","changes":{"is_active":false}}
+
+사용자: "디퓨저 제품 삭제해줘"
+응답: {"intent":"write","action":"delete_product","target":"디퓨저"}
 
 사용자: "오늘 예약 몇 건?"
 응답: {"intent":"query"}

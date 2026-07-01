@@ -4755,3 +4755,20 @@ v3.8.167 후속(MessagesPage.jsx). ＋ 버튼을 입력창 옆 별도 버튼 →
 ### v3.8.190 — 모바일 하단탭에서 거래관리 → "더보기"로 이동 (2026-07-01)
 `MobileBottomNav.jsx`: 모바일 하단 메인 탭(타임라인·매출·메시지함·고객)에서 **거래관리(trades) 제거 → "더보기" 오버플로 메뉴로 이동**. 하단탭 슬롯 정리(거래관리는 사용빈도 낮아 더보기로). `moreItems` 필터에서 trades 제외 해제. React only.
 - 적용: v3.8.190 라이브 배포(version.txt 검증, CF 퍼지 everything).
+
+### v3.8.191 — BlissAI 설정확대 Phase 1: 알림톡/문자·AI 자동응대·제품 액션 (2026-07-01)
+BlissAI(플로팅 ✨)를 "샵원장이 운영·설정을 묻거나 시키면 미리보기→확인카드→실행"하는 도구로 확대하는 스코프의 **Phase 1**. 신규 쓰기 액션 4종 추가 (기존 21종 액션 체계·확인카드 플로우 재사용). 전 변경 **미리보기→확인카드→실행**(자동 실행 금지), 권한=owner(자기 사업장, `isMaster`).
+- **`actionSchemas.js`**:
+  - `NOTI.update_noti_config`(알림톡/문자, 직전 작업) — `NOTI_KEY_LABELS` + notiKey 매핑 프롬프트.
+  - `AI_REPLY` 신규: **`toggle_ai_reply`**(op:'toggle_ai_reply' — `businesses.settings.ai_auto_reply_channels`, changes `{on, channel?}`. channel 없으면 전 채널 일괄) + **`add_faq`**(op:'add_faq' — RAG FAQ 추가, changes `{q, a, category?}`). `AI_CHANNEL_LABELS`(naver/instagram/whatsapp/line/kakao/sms) export.
+  - `PRODUCT` 신규: **`create/update/delete_product`**(table:'products', 기존 generic op create/update/delete 재사용, fieldsAllowed `name·price·cat·note·stock·is_active`, targetField 'name').
+  - `ACTION_SCHEMAS`에 `...AI_REPLY, ...PRODUCT` 등록 + buildWriteIntentPrompt에 알림톡·AI자동응대·제품 예시 추가.
+- **`actionRunner.js`**:
+  - buildPreview: toggle_ai_reply(대상=채널/전체·상태) / add_faq(Q·A·분류) / update_noti_config 케이스.
+  - executeAction: **toggle_ai_reply**(businesses.settings **fresh 재조회** 후 ai_auto_reply_channels 병합 + ai_auto_reply_enabled 파생 — 다른 설정 stale 덮어쓰기 방지) / **add_faq**(`faqStore.saveFaqItem`으로 임베딩→document_chunks upsert, FAQ 편집기와 동일 경로, `window.__systemGeminiKey`) / update_noti_config(branches.noti_config fresh 병합).
+  - findTarget sourceMap에 **`products: data?.products || []`** 추가(update/delete_product 대상 해결). import: `AI_CHANNEL_LABELS`, `saveFaqItem`.
+  - 제품 create는 generic op가 `genId('products')`(text id) 부여, `is_active` DB 기본 true라 신규 제품 자동 노출.
+- **권한(Task #1)**: `isMaster`(owner/super/manager)가 이미 설정 액션 게이트 통과 + actionRunner가 `business_id: bizId` 스코프 → 자기 사업장만. 코드 변경 불필요(확인만).
+- **로컬 E2E 검증**(demo owner, BlissAI 실 Gemini 분류): toggle_ai_reply("AI 자동응대 켜줘"→전체채널·켜기 카드) / create_product("디퓨저 2만원 추가"→name·price 카드) / **add_faq("주차 되나요?..."→카드+실행→document_chunks 임베딩 실DB 생성 확인 후 정리)** / **update_product**(테스트 제품 삽입·리로드→"재고 5개로"→findTarget이 products 매칭+before 3→5 카드+실행→DB stock 5 확인 후 정리). 콘솔 에러 0.
+- 적용: v3.8.191 라이브 배포(version.txt 검증, CF 퍼지 everything).
+- **유의**: ① BlissAI에서 제품 create 직후 같은 세션 update는 `data.products` 미갱신으로 findTarget 못 찾음(페이지 새로고침 필요, 엣지) ② add_faq는 `window.__systemGeminiKey` 필요(없으면 안내) ③ FAQ는 RAG(document_chunks, core=false)로 추가 → 서버 `_rag_search_docs` 자동 검색, 즉시 반영 ④ delete_product는 hard delete(products 행 삭제) — 매출 이력의 제품명 스냅샷과 무관. **다음(Phase 2)**: 이벤트·쿠폰·태그·스탬프·회원가 규칙 액션 + AI Book 흡수.

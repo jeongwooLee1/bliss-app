@@ -8,7 +8,8 @@
  */
 import { sb, SB_URL, SB_KEY } from '../../lib/sb'
 import { _activeBizId } from '../../lib/db'
-import { ACTION_SCHEMAS } from './actionSchemas'
+import { ACTION_SCHEMAS, NOTI_KEY_LABELS, AI_CHANNEL_LABELS } from './actionSchemas'
+import { saveFaqItem } from '../../lib/faqStore'
 import { parseBookingWithAI, findCustomerForBooking } from '../../lib/aiBookParse'
 
 // ─── 타겟 검색 ──────────────────────────────────────────────────────────────
@@ -28,6 +29,7 @@ export function findTarget(action, target, data) {
     rooms: data?.rooms || [],
     reservation_sources: data?.resSources || [],
     customers: data?.customers || [],
+    products: data?.products || [],
   }
   const source = schema.table ? sourceMap[schema.table] : null
   if (source) {
@@ -126,6 +128,35 @@ export function buildPreview({ action, target, changes = {} }, data) {
   if (schema.op === 'update_setting') {
     rows.push({ label: 'setting key', before: '', after: changes.key })
     rows.push({ label: 'value', before: '', after: JSON.stringify(changes.value).slice(0, 100) })
+    return { label: schema.label, icon: schema.icon, rows }
+  }
+
+  if (schema.op === 'update_noti_config') {
+    const branches = data?.branches || []
+    const branch = targetRow || (branches.length === 1 ? branches[0] : null)
+    if (!branch && target) {
+      return { label: schema.label, icon: schema.icon, error: `지점을 찾을 수 없습니다: ${target}` }
+    }
+    const kLabel = NOTI_KEY_LABELS[changes.notiKey] || changes.notiKey || '(알림 종류 지정 필요)'
+    rows.push({ label: '지점', before: '', after: branch?.name || branch?.short || '(어느 지점? — 지점명 필요)' })
+    rows.push({ label: '알림 종류', before: '', after: kLabel })
+    if (changes.on != null) rows.push({ label: '상태', before: '', after: changes.on ? '켜기 ✅' : '끄기 ⛔' })
+    if (changes.sendTime) rows.push({ label: '발송 시각', before: '', after: changes.sendTime })
+    if (changes.msgTpl) rows.push({ label: '문구', before: '(현재 문구)', after: changes.msgTpl })
+    return { label: schema.label, icon: schema.icon, targetName: branch?.name || branch?.short, rows }
+  }
+
+  if (schema.op === 'toggle_ai_reply') {
+    const chLabel = changes.channel ? (AI_CHANNEL_LABELS[changes.channel] || changes.channel) : '전체 채널'
+    rows.push({ label: '대상', before: '', after: chLabel })
+    rows.push({ label: '상태', before: '', after: changes.on ? '자동응대 켜기 ✅' : '자동응대 끄기 ⛔' })
+    return { label: schema.label, icon: schema.icon, rows }
+  }
+
+  if (schema.op === 'add_faq') {
+    rows.push({ label: '질문(Q)', before: '', after: changes.q || '(없음)' })
+    rows.push({ label: '답변(A)', before: '', after: changes.a || '(없음)' })
+    if (changes.category) rows.push({ label: '분류', before: '', after: changes.category })
     return { label: schema.label, icon: schema.icon, rows }
   }
 
@@ -259,6 +290,62 @@ export async function executeAction({ action, target, changes = {} }, data, { bi
       // changes.key 경로에 value 대입 (dot notation 지원)
       setDeepPath(settings, changes.key, changes.value)
       result = await sb.update('businesses', bizId, { settings: JSON.stringify(settings) })
+    }
+    else if (schema.op === 'update_noti_config') {
+      // 알림톡/문자 설정 = branches.noti_config JSON.
+      // ⚠️ DB에서 현재 config를 fresh 읽어 해당 notiKey만 merge (data.branches stale값 덮으면 다른 알림 전부 소실)
+      if (!bizId) throw new Error('bizId 없음')
+      const branches = data?.branches || []
+      let branch = target ? findTarget(action, target, data) : null
+      if (!branch && branches.length === 1) branch = branches[0]
+      if (!branch) throw new Error(target ? `지점을 찾을 수 없어요: ${target}` : '어느 지점의 알림을 바꿀지 지점명을 알려주세요 (예: 강남점)')
+      const key = changes.notiKey
+      if (!key) throw new Error('알림 종류(notiKey)가 필요합니다')
+      const r = await fetch(`${SB_URL}/rest/v1/branches?id=eq.${branch.id}&select=noti_config`, {
+        headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY },
+      })
+      let cfg = {}
+      try { const arr = await r.json(); const raw = arr?.[0]?.noti_config; cfg = typeof raw === 'string' ? JSON.parse(raw) : (raw || {}) } catch {}
+      const cur = cfg[key] || {}
+      cfg[key] = {
+        ...cur,
+        ...(changes.on != null ? { on: !!changes.on } : {}),
+        ...(changes.msgTpl ? { msgTpl: changes.msgTpl } : {}),
+        ...(changes.sendTime ? { sendTime: changes.sendTime } : {}),
+      }
+      result = await sb.update('branches', branch.id, { noti_config: JSON.stringify(cfg) })
+    }
+    else if (schema.op === 'toggle_ai_reply') {
+      // AI 자동응대 = businesses.settings.ai_auto_reply_channels JSON.
+      // ⚠️ DB에서 현재 settings를 fresh 읽어 병합 (data.businesses stale값이 다른 설정 덮는 것 방지)
+      if (!bizId) throw new Error('bizId 없음')
+      const on = !!changes.on
+      const r = await fetch(`${SB_URL}/rest/v1/businesses?id=eq.${bizId}&select=settings`, {
+        headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY },
+      })
+      let settings = {}
+      try { const arr = await r.json(); const raw = arr?.[0]?.settings; settings = typeof raw === 'string' ? JSON.parse(raw) : (raw || {}) } catch {}
+      const chans = { ...(settings.ai_auto_reply_channels || {}) }
+      const ch = changes.channel
+      if (ch) {
+        chans[ch] = on
+      } else {
+        // 채널 미지정 → 전체 채널 일괄
+        for (const c of Object.keys(AI_CHANNEL_LABELS)) chans[c] = on
+      }
+      settings.ai_auto_reply_channels = chans
+      settings.ai_auto_reply_enabled = Object.values(chans).some(v => v)
+      result = await sb.update('businesses', bizId, { settings: JSON.stringify(settings) })
+    }
+    else if (schema.op === 'add_faq') {
+      // AI 참고 FAQ = RAG 학습문서(document_chunks) 임베딩. faqStore 재사용(FAQ 편집기와 동일 경로)
+      if (!bizId) throw new Error('bizId 없음')
+      const q = (changes.q || '').trim(), a = (changes.a || '').trim()
+      if (!q || !a) throw new Error('FAQ 질문·답변이 필요합니다')
+      const gkey = (typeof window !== 'undefined' && window.__systemGeminiKey) || ''
+      if (!gkey) throw new Error('AI 키가 없어 FAQ를 추가할 수 없어요 (관리자에게 문의)')
+      const id = await saveFaqItem(bizId, { q, a, category: changes.category || '기타', core: false, active: true }, gkey)
+      result = { id, q, a }
     }
 
     // ─── schedule_data 기반 CRUD (직원 목록 등) ────────────────────────
