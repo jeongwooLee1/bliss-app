@@ -6,7 +6,7 @@ import { supabase as _supaClient } from '../lib/supabase'
 import { fromDb, resolveSystemIds, setActiveBiz, _activeBizId } from '../lib/db'
 import { initRtPings, onRtPing, debounce } from '../lib/rtPings'
 import { refreshBranchesSch } from '../components/Schedule/scheduleConstants'
-import { setFeatures, extractFeatures } from '../lib/features'
+import { setFeatures, extractFeatures, hasFeature } from '../lib/features'
 import Timeline from '../components/Timeline/TimelinePage'
 import ReservationList from '../components/Reservations/ReservationsPage'
 import AdminInbox from '../components/Messages/MessagesPage'
@@ -26,16 +26,17 @@ import FloatingAI from '../components/BlissAI/FloatingAI'
 import QuickRequest from '../components/common/QuickRequest'
 import BlissRequests from '../components/BlissRequests/BlissRequests'
 import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
+import TradesPage from '../components/Trades/TradesPage'
 
 const uid = genId;
-const BLISS_V = "3.8.182"
+const BLISS_V = "3.8.183"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
   const ref = useScrollRestore(storageKey)
   return <div ref={ref} className="fade-in" style={{overflow:"auto",flex:1,WebkitOverflowScrolling:"touch"}}>{children}</div>
 }
-const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", marketing:"/marketing", users:"/users", messages:"/messages", admin:"/settings", schedule:"/schedule", requests:"/requests", blissai:"/blissai" };
+const PAGE_ROUTES = { timeline:"/timeline", reservations:"/reservations", sales:"/sales", customers:"/customers", marketing:"/marketing", trades:"/trades", users:"/users", messages:"/messages", admin:"/settings", schedule:"/schedule", requests:"/requests", blissai:"/blissai" };
 // reservations 테이블엔 대용량 JSONB 없음 (snapshot_data는 sales 테이블에만 존재)
 // type/is_schedule/source/repeat 등 필터링 필수 컬럼이 누락되면 화면 비어짐 → * 사용이 안전
 const RES_SELECT = "*";
@@ -1561,6 +1562,7 @@ function App() {
   const [depositLatest, setDepositLatest] = useState(null); // 미매칭 입금 최근 1건 (배너 미리보기)
   const [pendingReviewCount, setPendingReviewCount] = useState(0); // 답글 안 단 네이버 리뷰 (사이드바 합산용)
   const [pendingReqCount, setPendingReqCount] = useState(0);
+  const [pendingTradeCount, setPendingTradeCount] = useState(0); // 거래관리 구매신청 대기 (본사 사이드바 배지)
   const [unackNoticesPopup, setUnackNoticesPopup] = useState(null); // {count, ids}
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
@@ -1766,6 +1768,20 @@ function App() {
     };
     load();
     const off = onRtPing("schedule_data", (row) => { if (row && row.ref === "bliss_requests_v1") load(); });
+    const poll = setInterval(load, 120_000);
+    return () => { try{ off(); }catch(e){} clearInterval(poll); };
+  }, [currentBizId]);
+  // 거래관리 구매신청(requested) 대기 카운트 — 본사 사이드바 배지 (테넌트별)
+  useEffect(() => {
+    if (!currentBizId || !hasFeature("trade_management")) { setPendingTradeCount(0); return; }
+    setPendingTradeCount(0);
+    const load = () => {
+      if (!_activeBizId) { setPendingTradeCount(0); return; }
+      fetch(`${SB_URL}/rest/v1/trade_orders?business_id=eq.${_activeBizId}&status=eq.requested&select=id`, { headers: { ...sbHeaders, "Cache-Control":"no-cache" }, cache:"no-store" })
+        .then(r => r.ok ? r.json() : []).then(rows => setPendingTradeCount(Array.isArray(rows) ? rows.length : 0)).catch(()=>{});
+    };
+    load();
+    const off = onRtPing("trade_orders", load);
     const poll = setInterval(load, 120_000);
     return () => { try{ off(); }catch(e){} clearInterval(poll); };
   }, [currentBizId]);
@@ -2634,6 +2650,7 @@ function App() {
   // 직원(staff)은 공지·타임라인만. 그 외 메뉴 비노출 (라우트 가드와 함께 동작)
   const nav = role === "staff" ? [
     { id:"timeline", label:"타임라인", icon:<I name="calendar" size={16}/> },
+    ...(hasFeature("trade_management") ? [{ id:"trades", label:"거래관리", icon:<I name="handshake" size={16}/> }] : []),
     { id:"requests", label:"공지 & 요청", icon:"📢", badge:pendingReqCount },
     { id:"review", label:"직원 후기", icon:<I name="star" size={16}/>, href:"/review.html" },
   ] : [
@@ -2642,6 +2659,7 @@ function App() {
     { id:"sales", label:"매출관리", icon:<I name="wallet" size={16}/> },
     { id:"customers", label:"고객관리", icon:<I name="users" size={16}/> },
     { id:"marketing", label:"마케팅", icon:<I name="msgSq" size={16}/> },
+    ...(hasFeature("trade_management") ? [{ id:"trades", label:"거래관리", icon:<I name="handshake" size={16}/>, badge:pendingTradeCount }] : []),
     ...((role==="owner"||role==="super")?[{ id:"users", label:"사용자관리", icon:<I name="user" size={16}/> }]:[]),
     { id:"messages", label:"받은메시지함", icon:<I name="msgSq" size={16}/>, badge: unreadMsgCount + pendingDepositCount + pendingReviewCount },
     { id:"admin", label:"관리설정", icon:<I name="settings" size={16}/> },
@@ -2792,6 +2810,7 @@ function App() {
             <Route path="/sale-summary" element={<ScrollArea storageKey="page_sale_summary"><SaleSummary/></ScrollArea>}/>
             <Route path="/customers" element={<ScrollArea storageKey="page_customers"><CustomersPage data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} pendingOpenCust={pendingOpenCust} setPendingOpenCust={setPendingOpenCust} setPage={setPage} setPendingOpenRes={setPendingOpenRes}/></ScrollArea>}/>
             <Route path="/marketing" element={<ScrollArea storageKey="page_marketing"><MarketingBroadcast data={data} userBranches={userBranches} bizId={currentBizId} currentUser={currentUser} isMaster={isMaster}/></ScrollArea>}/>
+            <Route path="/trades" element={<ScrollArea storageKey="page_trades"><TradesPage data={data} userBranches={userBranches} isMaster={isMaster} role={role} currentUser={currentUser} bizId={currentBizId}/></ScrollArea>}/>
             <Route path="/users" element={<ScrollArea storageKey="page_users"><UsersPage data={data} setData={setData} bizId={currentBizId}/></ScrollArea>}/>
             <Route path="/messages" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}><AdminInbox sb={sb} branches={data?.branches} data={data} setData={setData} userBranches={userBranches} isMaster={isMaster} currentUser={currentUser} onRead={(cnt)=>{if(cnt>0)setUnreadMsgCount(prev=>Math.max(0,prev-cnt));loadUnreadRef.current&&loadUnreadRef.current();}} onChatOpen={setIsChatOpen} pendingChat={pendingChat} onPendingChatDone={()=>setPendingChat(null)} setPendingOpenRes={setPendingOpenRes} setPage={setPage} depositPending={pendingDepositCount} reviewPending={pendingReviewCount} setPendingOpenCust={setPendingOpenCust} onReviewReplied={()=>setPendingReviewCount(p=>Math.max(0,p-1))}/></div>}/>
             <Route path="/schedule" element={<div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}>{isMaster && <SchedulePage/>}</div>}/>

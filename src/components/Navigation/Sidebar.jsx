@@ -26,6 +26,7 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
     { label:"예약 관리", items: nav.filter(n=>["timeline","reservations"].includes(n.id)) },
     { label:"고객 관리", items: nav.filter(n=>["customers","marketing"].includes(n.id)) },
     { label:"매출 관리", items: nav.filter(n=>["sales"].includes(n.id)) },
+    ...(nav.find(n=>n.id==="trades") ? [{ label:"거래 관리", items: nav.filter(n=>n.id==="trades") }] : []),
     ...(nav.find(n=>n.id==="admin") ? [{ label:"시스템", items: nav.filter(n=>["users","messages","blissai","admin","wizard","requests"].includes(n.id)) }] : []),
     ...(nav.find(n=>n.id==="review") ? [{ label:"기타", items: nav.filter(n=>n.id==="review") }] : []),
   ];

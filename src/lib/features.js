@@ -41,6 +41,9 @@ export const ALL_FEATURES = {
   // 업종 특화 (Pro 전용 — 왁싱·뷰티)
   care_sms:           { label: '케어 SMS',        desc: '시술 후 N일 자동 케어 안내' },
   external_prepaid:   { label: '외부 플랫폼',     desc: '서울뷰티·크리에이트립 등 선결제' },
+
+  // 도매 거래관리 (본사 전용 — 지점 구매신청 → 입금확인 → 배송 + 명세서/세금계산서)
+  trade_management:   { label: '거래관리',        desc: '도매 구매주문·거래명세서·세금계산서(홈택스 엑셀)' },
 }
 
 // 신규 사업장 기본값 (전부 false → trial 모드)

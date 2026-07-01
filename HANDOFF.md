@@ -1,5 +1,16 @@
 # HANDOFF
 
+## [작업중] 2026-07-01 — 거래관리(도매 구매주문) 모듈 신규 (v3.8.183, 로컬검증 완료·배포 대기)
+> 네추럴룩/테라포트 → 지점 도매 공급 거래관리를 블리스 안에 신규 구현. **지점 구매신청 → 입금(자동매칭) → 입금확인 → 배송 워크플로우 + 거래명세서·세금계산서(홈택스 대량발행 엑셀)**. 정우님 결정: 공급자 둘 다(선택식)/거래이력까지 이관/거래처=지점(branches)연동/지점직원 직접신청/입금문자 자동매칭/고정 본사담당자 1명 SMS/홈택스 엑셀.
+- **DB(적용완료, migration `trade_management` + seed)**: `trade_suppliers`(네추럴룩 시드+테라포트 빈칸)·`trade_products`(18종)·`trade_customers`(6지점, branch_id 연동)·`trade_orders`(status: requested→paid→shipped→done, items jsonb)·`trade_settings`(본사담당자 phone·기본공급자). `bank_deposits.matched_trade_order_id` 컬럼 + **트리거 `trade_auto_match_deposit`**(미매칭 입금 pending·deposit_kind null → 같은 biz의 requested 주문 중 grand_total=amount **유일**하면 자동 paid+matched). 전부 RLS `bliss_session_ok()` 게이트(보안 잠금 준수).
+- **프론트**: `src/components/Trades/TradesPage.jsx`(지점 BranchOrder + 본사 AdminTrades 6탭: 주문접수·거래내역·거래처·제품·공급자·설정) + `tradeUtils.js`(명세서/세금계산서 HTML·numToKor·홈택스 엑셀 `exportHometaxExcel`·거래내역 엑셀). 명세서 복사(clipboard)/JPG(html2canvas)/인쇄. xlsx·html2canvas 기존 의존성.
+- **배선(AppShell)**: nav 항목 `trades`(staff+owner, `hasFeature('trade_management')` 게이트) + PAGE_ROUTES + Route + `pendingTradeCount` 배지(본사, requested 카운트·120초폴링) + Sidebar 카테고리 "거래 관리"(nav에 trades 있을 때만) + MobileBottomNav 메인탭. features.js ALL_FEATURES에 `trade_management` 추가.
+- **기능 플래그(멀티테넌트, 하드코딩 0)**: `businesses.settings.features.trade_management=true` — **biz_khvurgshb(하우스왁싱) + biz_demo_hw01(데모, 최소 시드) ON**. 타 테넌트는 flag 없어 미노출.
+- **알림**: 지점 구매신청 시 `callSendSms`(NPRO)로 본사담당자(trade_settings.manager_phone)에게 SMS + 사이드바 배지. 입금은 위 트리거로 서버측 자동확인.
+- **로컬검증 완료**(데모 owner, /trades): 6탭 렌더·제품테이블(왁스40000 등)·설정(체험담당자) 정상, 콘솔 에러 0(초기 trade_settings created_at 400 버그 fix — `order=updated_at` 명시). 빌드 통과.
+- **⏳ 남은 것**: ① **배포**(정우님 신호 시 — 빌드·서버·CF퍼지·git commit+push, 이미 BLISS_V+version.txt 3.8.183 동시 bump 완료) ② **거래이력 전부 이관**(현재 seed는 JSON의 history 1건만 — 실제 과거 도매 거래이력이 더 있으면 추가 이관 필요, 정우님 확인) ③ 테라포트 사업자정보 입력(공급자 설정에서) ④ 지점 직원(staff) BranchOrder 뷰는 owner 계정이라 로컬 미검증 — 실 지점계정 스팟체크 권장 ⑤ 입금 자동매칭 트리거 실입금 동작 확인.
+- 기존 스탠드얼론 원본: `~/Library/CloudStorage/SynologyDrive-자료/09. 거래관리프로그램/거래관리시스템.html`.
+
 ## 🚨🚨 [최우선 인계] 2026-06-14 밤 — Supabase 공개키 데이터 노출 차단(RLS) 진행 중 (미완)
 
 > **보안 사고**: 외부에서 앱 URL로 고객DB 덤프됨. **근본원인**: 앱이 쓰는 **공개 publishable 키가 JS 번들에 박혀**(누구나 추출) + **거의 모든 테이블 RLS가 `USING(true)`(anon 전체허용)** → URL만 알면 전 DB 덤프 가능. 팀 패턴(memory `reference_supabase_rls`)이 "RLS 켜고 `anon_all_X USING(true)` — Advisor 만족용"이라 **Advisor 초록불(=RLS 켜짐)인데 실보호 0**. 한 군데 버그가 아니라 **DB 전체 구조 문제**.

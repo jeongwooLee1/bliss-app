@@ -120,6 +120,8 @@ export default function FloatingAI({ data, currentUser, isMaster, bizId }) {
   const [error, setError] = useState('')
   const [attachedImage, setAttachedImage] = useState(null) // {base64, mimeType, preview}
   const [recording, setRecording] = useState(false)
+  const [hoverIdx, setHoverIdx] = useState(-1)   // 메시지 hover 시 복사 아이콘 노출 (Claude식)
+  const [copiedIdx, setCopiedIdx] = useState(-1) // 복사 완료 체크 피드백
   const listRef = useRef(null)
   const fileRef = useRef(null)
   const recogRef = useRef(null)
@@ -228,7 +230,7 @@ export default function FloatingAI({ data, currentUser, isMaster, bizId }) {
       ]})
       const rImg = await fetch(GEMINI_URL + '?key=' + geminiKey, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents, generationConfig: { temperature: 0.3, maxOutputTokens: 4096 } }),
+        body: JSON.stringify({ contents, generationConfig: { temperature: 0.3, maxOutputTokens: 4096, thinkingConfig: { thinkingBudget: 0 } } }),
       })
       if (rImg.ok) {
         const dd = await rImg.json()
@@ -244,7 +246,7 @@ export default function FloatingAI({ data, currentUser, isMaster, bizId }) {
       contents.push({ role: 'user', parts: [{ text: prompt }] })
       const r2 = await fetch(GEMINI_URL + '?key=' + geminiKey, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents, generationConfig: { temperature: 0.3, maxOutputTokens: 4096 } }),
+        body: JSON.stringify({ contents, generationConfig: { temperature: 0.3, maxOutputTokens: 4096, thinkingConfig: { thinkingBudget: 0 } } }),
       })
       if (r2.ok) {
         const dd = await r2.json()
@@ -520,7 +522,7 @@ export default function FloatingAI({ data, currentUser, isMaster, bizId }) {
             )
           }
           return (
-            <div key={i} style={{ display: 'flex', flexDirection: isUser ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 6 }}>
+            <div key={i} onMouseEnter={() => setHoverIdx(i)} onMouseLeave={() => setHoverIdx(-1)} style={{ display: 'flex', flexDirection: isUser ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 6 }}>
               <div style={{ maxWidth: '85%', display: 'flex', flexDirection: 'column', alignItems: isUser ? 'flex-end' : 'flex-start', gap: 4 }}>
                 <div style={isUser
                   ? {
@@ -544,12 +546,24 @@ export default function FloatingAI({ data, currentUser, isMaster, bizId }) {
                 </div>
                 {!isUser && !m.action && m.text && (
                   <button onClick={async () => {
-                    try { await navigator.clipboard.writeText(_sanitize(m.text)); }
+                    try { await navigator.clipboard.writeText(_sanitize(m.text)); setCopiedIdx(i); setTimeout(() => setCopiedIdx(c => (c === i ? -1 : c)), 1200); }
                     catch { /* noop */ }
                   }}
-                    title="답변 복사"
-                    style={{ fontSize: 10, color: T.gray500, background: '#fff', border: '1px solid '+T.border, padding: '2px 8px', borderRadius: 10, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                    📋 복사
+                    title={copiedIdx === i ? '복사됨' : '복사'}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      width: 26, height: 26, padding: 0, borderRadius: 7,
+                      background: 'transparent', border: 'none', cursor: 'pointer', color: T.gray500,
+                      opacity: (hoverIdx === i || copiedIdx === i) ? 1 : 0,
+                      transition: 'opacity .12s ease, background .12s ease',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#F4F4F5'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
+                    {copiedIdx === i ? (
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    ) : (
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    )}
                   </button>
                 )}
                 {!isUser && m.unknown && (

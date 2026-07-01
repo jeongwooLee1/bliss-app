@@ -7,11 +7,12 @@ function MobileBottomNav({ nav, page, setPage, isChatOpen=false }) {
   if(isChatOpen) return null;
   const mainItems = [
     ...(nav.find(n=>n.id==="timeline")    ? [{id:"timeline",   label:"타임라인", icon:"calendar"}]  : []),
+    ...(nav.find(n=>n.id==="trades")      ? [{id:"trades",     label:"거래관리", icon:"handshake", badge: nav.find(n=>n.id==="trades")?.badge||0}] : []),
     ...(nav.find(n=>n.id==="sales")       ? [{id:"sales",      label:"매출",     icon:"wallet"}]    : []),
     ...(nav.find(n=>n.id==="messages")    ? [{id:"messages",   label:"메시지함",  icon:"msgSq", badge: nav.find(n=>n.id==="messages")?.badge||0}] : []),
     ...(nav.find(n=>n.id==="customers")   ? [{id:"customers",  label:"고객",     icon:"users"}]     : []),
   ];
-  const moreItems = nav.filter(n=>!["timeline","sales","messages","customers"].includes(n.id));
+  const moreItems = nav.filter(n=>!["timeline","trades","sales","messages","customers"].includes(n.id));
   const items = [...mainItems, {id:"__more", label:"더보기", icon:"menu"}];
   return (
     <>
