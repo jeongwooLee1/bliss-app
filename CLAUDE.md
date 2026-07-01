@@ -4751,3 +4751,7 @@ v3.8.167 후속(MessagesPage.jsx). ＋ 버튼을 입력창 옆 별도 버튼 →
 - **입금내역 탭(DepositsTab)**: 도매 입금(네추럴룩·테라포트 계좌, `bank_deposits`) 목록 → 신청 주문(`trade_orders` status=requested)에 **입금자+금액 자동/수동 매칭**(matched→paid, `deposit_kind='trade'`·`matched_trade_order_id`·`matched_deposit_id`). 매칭해제·무시·되돌리기. **DB 컬럼 존재 검증 완료**(bank_deposits.deposit_kind/matched_trade_order_id, trade_orders.matched_deposit_id).
 - **KB 입금 SMS 데몬 확장**(`mac-daemon/kb_sms_poll.py`, launchd가 파일 직접 실행 → 다음 주기 자동 반영, 배포 파이프라인 무관): KB_PATTERN 입금유형을 `(입금|출금)` → `[^\n]*(?:입금|출금)[^\n]*`로 확장(전자금융입금·스마트폰입금·인터넷입금·ATM입금 등 변형 캡처) + `kind` 정규화(입금/출금). SYNTAX_OK. git 커밋만(이미 데몬 반영).
 - 적용: v3.8.189 라이브 배포(version.txt 검증, CF 퍼지 everything).
+
+### v3.8.190 — 모바일 하단탭에서 거래관리 → "더보기"로 이동 (2026-07-01)
+`MobileBottomNav.jsx`: 모바일 하단 메인 탭(타임라인·매출·메시지함·고객)에서 **거래관리(trades) 제거 → "더보기" 오버플로 메뉴로 이동**. 하단탭 슬롯 정리(거래관리는 사용빈도 낮아 더보기로). `moreItems` 필터에서 trades 제외 해제. React only.
+- 적용: v3.8.190 라이브 배포(version.txt 검증, CF 퍼지 everything).
