@@ -1,5 +1,31 @@
 # HANDOFF
 
+## [⏳ 인계 — 거래관리(도매) 세션] 2026-07-01 — 다음 작업: 원장 화면 원페이지 재설계
+
+### ✅ 현재 라이브 (v3.8.195, 전부 커밋+배포 완료 · working tree 클린)
+도매 거래관리(네추럴룩/테라포트 → 지점 공급) 모듈. 파일 = **`src/components/Trades/TradesPage.jsx`**(전부) + `tradeUtils.js`(명세서/세금계산서/홈택스엑셀 헬퍼) + `MobileBottomNav.jsx`(더보기).
+- **진입/권한**: `hasFeature('trade_management')` 게이트(businesses.settings.features, biz_khvurgshb+biz_demo_hw01만 ON). 사이드바 "거래 관리 › 거래관리", 모바일은 **더보기** 안. 라우트 `/trades`(AppShell).
+- **관리자 모드 토글**(우상단, 전 계정 표시): OFF=원장 모드(자기 지점, 주문·거래내역 2탭), ON=본사 관리(전 지점, 주문접수·거래내역·**입금내역**·거래처·제품·공급자·설정 7탭 + 입금확인/배송/세금계산서/홈택스엑셀). **켤 때 비밀번호(초기 8008, `trade_settings.admin_password`, 설정탭서 변경)**. 끄기는 자유.
+- **스코핑**: adminMode ON=전 지점 / OFF=userBranches 지점만.
+- **주문 입력폼(OrderForm)**: 인라인(모달 아님), 거래처 1곳이면 자동선택, 제품 수량, **공급가액·부가세·합계** 표시. 원장 저장=`requested`(신청)+본사 SMS알림 / 관리자 저장=`paid`(입금확인).
+- **입금 자동확인**(★핵심, 라이브): 지점이 네추럴룩(KB 925848\*\*856)/테라포트(KB 065937\*\*132)로 입금 → 맥 데몬(`mac-daemon/kb_sms_poll.py`, chat.db 파싱)이 `bank_deposits`에 적재(bid=null) → **트리거 `trade_auto_match_deposit`**가 **입금자이름+금액** 맞는 `requested` 주문을 자동 `paid`(입금확인). 입금내역 탭서 수동매칭/무시/해제도 가능.
+
+### ⏳ 다음 작업 (정우님 요청 2026-07-01, 미착수) — 원장 화면 원페이지 재설계
+정우님: "거래관리의 **주문과 거래내역 탭을 나누지 말고 원페이지**로. **거래내역이 처음 떠 있고 주문 버튼만 하나** 만들 것. UI가 구리다 — **테두리 만들지 말고 그림자 처리**로."
+- 대상 = **원장 모드(관리자 모드 OFF)** 화면. 지금은 [주문][거래내역] 2탭인데 → **탭 제거, 한 페이지**로.
+- **거래내역(주문 목록)이 기본 노출**, 상단에 **"주문" 버튼 하나** → 누르면 주문 입력폼(OrderForm) 열림(모달 또는 접힘/펼침). 현재는 폼이 처음부터 펼쳐져 있고 필터+목록이 아래 = 이걸 뒤집기.
+- **테두리(border) 전부 제거 → 그림자(boxShadow)** 로 카드 구분. (`card` 상수 = 이미 shadow.sm 있음, OrderForm/필터칩/입력칸의 `border:1px solid` 들을 그림자·배경으로 교체)
+- 관리자 모드(ON)의 7탭 구조는 그대로 둘지 정우님 확인(요청은 원장 화면 기준). 
+- ⚠️ 작업 후 로컬 검증(데모 대표계정 /trades) + **배포는 배포세션에서**(이 세션서 직접 배포 금지).
+
+### DB/데몬 (전부 라이브, 코드배포 무관)
+- 테이블: `trade_suppliers/products/customers/orders/settings`(business_id 스코프, RLS bliss_session_ok) + `bank_deposits.matched_trade_order_id` 컬럼.
+- 트리거 `trade_auto_match_deposit`(bank_deposits BEFORE INSERT): 입금자이름(괄호접미사 제거)+금액 우선매칭, 없으면 금액유일 폴백. deposit_kind='trade'/matched_by='trade_auto'.
+- `bank_deposits.bid`는 **branches FK** → 공급자계좌 입금은 **bid=null**(지점 받은메시지함엔 안 뜸, 의도).
+- 데몬: `mac-daemon/kb_sms_poll.py` KB파서가 입금유형변형(전자금융입금·스마트폰입금 등)까지 파싱하도록 수정 + `.env BLISS_KB_ACCOUNTS`에 925848\*\*856·065937\*\*132 추가(branch_id:null). launchd `com.bliss.kb-sync` 15초 주기, 맥에서 작동중. **git엔 kb_sms_poll.py만 추적(.env 시크릿 제외)**.
+- 데이터: 공급자 2(네추럴룩 시드/테라포트 065937-04-005132·632-81-02070), 제품 19(P001~P019 공캔), 거래처=6지점+모담왁싱&래쉬(150-25-02290, 코드00007, branch_id null). 거래이력: 네추럴룩 세금계산서 24건 + 모담 2건 이관(status done).
+- 원본 스탠드얼론: `~/Library/CloudStorage/SynologyDrive-자료/09. 거래관리프로그램/거래관리시스템.html`.
+
 ## [⏳ 인계 — 모니터링 세션] 2026-07-01 — 블리스미 인스타 SaaS AI + 결제통일 + 오늘 완료분
 
 ### ✅ 완료 (2026-07-01, 이 세션) — 블리스미 인스타 SaaS 자동응답
