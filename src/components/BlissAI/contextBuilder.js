@@ -60,6 +60,17 @@ export function buildStaticContext(data) {
         const notice = String(b.bookingNotice).trim().replace(/\n+/g, ' / ');
         line += `\n  · 예약/방문 안내: ${notice.length > 240 ? notice.slice(0, 240) + '…' : notice}`;
       }
+      // 오시는 길/접근 정보 (예약장소관리 access_info) — 지도 링크·주차·교통 등. BlissAI가 "지도 등록 안 됨" 오답하던 것 보강.
+      const ai = (typeof b.accessInfo === 'string' ? (() => { try { return JSON.parse(b.accessInfo); } catch { return {}; } })() : (b.accessInfo || {}));
+      const aiSegs = [];
+      if (ai.locationDesc) aiSegs.push(`위치: ${ai.locationDesc}`);
+      if (ai.parking) aiSegs.push(`주차: ${ai.parking}`);
+      if (ai.elevator) aiSegs.push(`엘리베이터/계단: ${ai.elevator}`);
+      if (ai.transit) aiSegs.push(`대중교통: ${ai.transit}`);
+      if (ai.naverMap) aiSegs.push(`네이버지도: ${ai.naverMap}`);
+      if (ai.googleMap) aiSegs.push(`구글지도: ${ai.googleMap}`);
+      if (ai.etc && String(ai.etc).trim()) aiSegs.push(`기타: ${String(ai.etc).trim().replace(/\n+/g, ' ')}`);
+      if (aiSegs.length) line += `\n  · 오시는 길: ${aiSegs.join(' / ')}`;
       return line;
     });
     parts.push(`[지점 ${branches.length}개 — 운영시간/연락처/안내]\n${lines.join('\n')}`);
