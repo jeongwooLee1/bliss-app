@@ -6,7 +6,7 @@
 - **계정 확정**: 정우님이 `17841423954085459` = **blissme.ai_official** 확인. Meta 앱 Bliss Messaging-IG OAuth로 토큰 발급(60일) + `messages` 웹훅 구독.
 - **배선 완료**: 서버 `BLISS_IG_TOKENS_B64` 10개 + 재시작 / `app_secrets.ig_tokens` 동기화 / `ig_branch_override` `17841423954085459→br_4bcauqvrb`(강남) / 주간 자동갱신 포함. (상세 = CLAUDE.md "인스타 계정 blissme.ai_official …" 항목)
 - **전용 SaaS AI 라이브**: `ai_booking.py`에 `BLISSME_PRODUCT_ACCOUNTS`={17841423954085459} early-return 분기 → `_blissme_product_agent`(별도 프롬프트: 제품·요금 Trial한달/Starter3.3만/Pro7.7만·무료체험/데모 안내·특정 왁싱 시술예약 금지). 왁싱 로직 전부 우회. golden 게이트 회귀 0(42~43 PASS, price_male_complex 플레이크만). 검증 3케이스 통과.
-- **⚠️ 미결 — 받은메시지함 표시 라벨**: 이 세션에서 정우님이 "어느 지점 아래?" 질문에 **강남점** 선택 → 현재 강남점 아래 표시(seoul 방식). 단 이 HANDOFF 원문엔 **"강남 아니라 '블리스미'로 표시"** 요청이 있었음 → 불일치. 별도 "블리스미" 라벨(지점 아님)로 표시하려면 **앱 코드 수정**(MessagesPage `_ACC_NAME`/필터에 blissme 전용 라벨) + 배포 필요. 정우님 재확인 후 진행.
+- **✅ 받은메시지함 "블리스미" 표시 완료 (v3.8.194)**: `settings.account_labels={"17841423954085459":"블리스미"}` 신규 필드 + `MessagesPage` `accountLabels` 로드→`_ACC_NAME` 최종 오버라이드(지점 매핑보다 우선) → 받은메시지함에 강남 대신 **"블리스미"** 표시. `ig_branch_override`→강남은 유지(가시성·미읽 배지 기존대로, 표시명만 변경 = 최소 변경). 상세 CLAUDE.md v3.8.194. ⏳정우님 라이브 확인 권장(하우스왁싱 로그인→블리스미 대화 라벨 + 첫 DM AI 응답). 후속옵션: 블리스미 별도 사업체/오너전용 가시성 완전분리(현재는 라벨만).
 - **참고**: 도입문의 연락처(contact@blissme.ai·070-8983-6838)는 프롬프트에 미포함(원하면 `BLISSME_PRODUCT_SYSTEM`에 추가). 위례·천호점은 IG 토큰만 있고 branches.instagram_account_id 비어있음(별도).
 
 ### ⏳ 대기 — 결제 통일(KCP)

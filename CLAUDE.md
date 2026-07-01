@@ -4809,3 +4809,12 @@ BlissAI 확대 마무리 단계. **BlissAI로 바꾼 설정 이력을 원장이 
 `golden_run.py`가 `KeyError: 'ideal'`로 크래시 — golden_set.json의 47번째 케이스 **`gender_short_kr`**(2026-07-01 추가분)가 `ideal` 필드 누락(반쯤 추가되다 만 것, 특정 세션 무관 선재 데이터 버그). 이게 없으면 골든이 아무나 돌려도 크래시 → 미래 ai_booking.py 변경 게이트 불능.
 - **fix**: git(`scripts/ai_golden/golden_set.json`) + 서버(`/home/ubuntu/naver-sync/golden_set.json`) 양쪽 `gender_short_kr`에 `ideal` 필드 추가(타깃 텍스트 삽입, json 재포맷 없음, 서버 백업 `golden_set.json.bak_ideal_*`). 이후 골든 정상 완료(42 PASS + 3 XFAIL + 1 XPASS + 1 flake).
 - **유의**: `ideal`은 심판 톤 참고용(하드 판정은 `must_pass`만) — 새 골든 케이스 추가 시 `id·kind·channel·lang·conv·existing_booking·expected_action·must_pass·ideal` 전부 채울 것(누락 시 하니스 크래시). git·서버 golden_set.json 동기 유지.
+
+### v3.8.194 — 블리스미 인스타 SaaS 계정 받은메시지함 "블리스미" 표시 (2026-07-01)
+HANDOFF 최우선 대기였던 블리스미 인스타 SaaS 건 완결. 블리스미(blissme.ai SaaS, 샵원장 B2B 영업)는 하우스왁싱 왁싱(B2C)과 정보 완전 다름 → ①왁싱 AI 자동응답 차단 ②블리스미 SaaS 영업 AI ③받은메시지함 "블리스미" 표시.
+- **①②는 이미 서버 완료·가동**(오늘 11:40 ai_booking.py): `BLISSME_PRODUCT_ACCOUNTS={"17841423954085459"}`(blissme.ai_official IG) + `_blissme_product_agent`(`BLISSME_PRODUCT_SYSTEM` = SaaS 제품·요금(무료체험 한달·Starter 3.3만·Pro 7.7만)·기능·데모 안내, 왁싱 예약 절대 안 함, 고객 언어로 답). `ai_booking_agent`가 line 1686에서 이 계정을 **최우선 라우팅** → 왁싱 답변 원천 차단. 채널 게이트 재사용(instagram 자동응답 on 확인).
+- **③ 받은메시지함 표시 (이번 v3.8.194)**: 문제 = `ig_branch_override`가 이 계정을 `br_4bcauqvrb`(강남)로 매핑해 받은메시지함에 "강남"으로 뜸. → **`settings.account_labels`**(신규, account_id→커스텀 표시명) 추가 = `{"17841423954085459":"블리스미"}` (jsonb 병합, 다른 설정 보존). `MessagesPage.jsx`: `accountLabels` state 로드 + `_ACC_NAME` **최종 오버라이드**(지점 매핑보다 우선, igBranchOverride/kakaoBranchOverride와 동일 패턴) → "블리스미" 표시. 
+- **최소 변경(표시명만)**: `ig_branch_override`→강남 매핑은 **유지**(가시성·미읽 배지는 기존대로 강남 접근자에게 노출, 위험 최소화). 정우님 요청인 "블리스미 표시"만 충족.
+- **적용**: v3.8.194 라이브 배포(version.txt 검증, CF 퍼지 everything, git push). 서버는 무변경(이미 라이브).
+- **검증**: 빌드 통과 + 프리뷰 부팅·받은메시지함 렌더 무크래시(데모엔 블리스미 데이터 없어 실제 "블리스미" 라벨은 라이브 실계정에서만 — DB account_labels 매핑은 확인). 블리스미 인스타 DM 인입 시 SaaS AI 자동응답 + 받은메시지함 "블리스미" 표시. **정우님 라이브 확인 권장**(하우스왁싱 계정 로그인 → 블리스미 대화 "블리스미"로 뜨는지 + 첫 DM AI 응답 톤).
+- **유의**: account_labels는 지점 아닌 특수 계정 표시명 오버라이드 범용 필드(향후 다른 특수 계정도 재사용). 블리스미를 별도 사업체(business)/오너 전용 가시성으로 완전 분리하는 건 향후 옵션(현재는 하우스왁싱 받은메시지함 안에서 라벨만 "블리스미"). 서버 ai_booking.py는 git 미추적(서버 전용).
