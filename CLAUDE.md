@@ -4684,3 +4684,9 @@ v3.8.167 후속(MessagesPage.jsx). ＋ 버튼을 입력창 옆 별도 버튼 →
 - `SaleForm.jsx` `_sendPkgAlerts`: ① tkt_pay·pkg_pay params에 **`_saleId: sale.id`** 추가 ② 기존 "최근 3시간 내 발송이력 있으면 `window.confirm`으로 재발송 물음"(native confirm·시간창 부정확) → **`alimtalk_queue`에 같은 `params->>_saleId`(이 매출) 큐가 이미 있으면 재발송 안 함**(결정적). → 같은 매출을 여러 번 저장/재시도해도 **차감된 권당 딱 1회만** 발송(중복 폭탄 차단), 매출 취소 후 **새 매출(다른 sale.id)** 로 재등록하면 정상 재발송.
 - native `window.confirm` 제거([[feedback_bliss_custom_dialogs]] 부합). React only.
 - 적용: v3.8.179 라이브 배포(version.txt 검증, CF 퍼지 everything). 보유권 차감 매출 등록 시 알림톡 1회만 가는지 라이브 확인 권장.
+
+### v3.8.182 — BlissAI(플로팅 ✨) Gemini 3.5 Flash로 통일 (Sonnet 표기·경로 제거) (2026-07-01)
+정우님 "제미나이 3.5로 통일". BlissAI(FloatingAI.jsx)가 기본 Gemini **2.5** Flash + "💎 Sonnet으로 더 똑똑하게" 버튼(→서버 `/bliss-ai-chat`)이었는데, ① 클라 기본 모델을 **gemini-2.5-flash → gemini-3.5-flash** ② **"Sonnet 버튼"·"Sonnet 4.5" 배지·죽은 smart 브랜치 제거**(주석·라벨도 정리) ③ Gemini 실패 폴백은 서버 `/bliss-ai-chat`(이미 gemini-3.5-flash 반환, 2026-06-03에 Claude→Gemini 교체됨) 유지.
+- **배경(중요·stale 표기였음)**: 서버 `/bliss-ai-chat`은 2026-06-03에 이미 Claude Sonnet→Gemini 3.5로 교체됐는데(유료 Claude 전면 제거), FloatingAI.jsx의 버튼 라벨·주석만 "Sonnet"으로 남아 **실제론 Gemini인데 Sonnet인 것처럼 표기**돼 있었음. 이번에 표기·경로를 실제(Gemini 3.5)에 맞춰 통일 + 혼란 버튼 제거.
+- **전 AI 경로 = Gemini 3.5 Flash 통일 확인**: 받은메시지함 자동응대·답변추천·예약(`_ai_ask_msgs`: gemini-3.5 cached→uncached→gpt-4.1-mini→gpt-4o-mini 폴백) / AI 예약분석·시술추출·번역 / BlissAI(이번) 전부 Gemini 3.5 주력. Claude(유료) 런타임 호출 0.
+- React only. 빌드 통과·잔여 Sonnet/2.5 참조 0 확인. 적용: v3.8.182 라이브 배포(version.txt 검증, CF 퍼지 everything).

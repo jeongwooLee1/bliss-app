@@ -15,7 +15,7 @@ import { parseBookingWithAI, findCustomerForBooking, findReservationsToCancel } 
 import ActionConfirmCard from './ActionConfirmCard'
 
 const CLAUDE_URL = 'https://blissme.ai/bliss-ai-chat'
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent'
 const STORAGE_KEY = 'bliss_floating_ai_v3'
 
 // Typebot 스타일 인사말 — 3개 버블이 순차적으로 등장
@@ -214,7 +214,7 @@ export default function FloatingAI({ data, currentUser, isMaster, bizId }) {
       || ''
   }, [data?.businesses])
 
-  // 모델 호출 — 기본 Gemini Flash (이미지 첨부 시 무조건 Gemini), smart=true면 Claude Sonnet 4.5
+  // 모델 호출 — Gemini 3.5 Flash 통일 (이미지 첨부 포함). 실패 시 서버(/bliss-ai-chat, Gemini 3.5) 폴백
   const callAI = async (prompt, { smart = false, image = null } = {}) => {
     const histTurns = messages.filter(m => m.role === 'user' || m.role === 'assistant').slice(-10)
       .map(m => ({ role: m.role, text: m.text || '' }))
@@ -237,17 +237,7 @@ export default function FloatingAI({ data, currentUser, isMaster, bizId }) {
       }
       throw new Error('이미지 분석 실패 (Gemini)')
     }
-    if (smart) {
-      // Sonnet 4.5
-      const r = await fetch(CLAUDE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: JSON.stringify({ messages: [...histTurns, { role: 'user', text: prompt }] }),
-      })
-      if (r.ok) { const d = await r.json(); if (d?.answer) return d.answer }
-      throw new Error('Claude 응답 실패')
-    }
-    // 기본: Gemini Flash
+    // Gemini 3.5 Flash (기본)
     if (geminiKey) {
       const contents = []
       histTurns.forEach(m => contents.push({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.text || '' }] }))
@@ -262,7 +252,7 @@ export default function FloatingAI({ data, currentUser, isMaster, bizId }) {
         if (txt) return txt
       }
     }
-    // Gemini 실패 시 Sonnet 폴백
+    // Gemini 직접호출 실패 시 서버(/bliss-ai-chat, Gemini 3.5) 폴백
     const r3 = await fetch(CLAUDE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
@@ -566,21 +556,6 @@ export default function FloatingAI({ data, currentUser, isMaster, bizId }) {
                   <span style={{ fontSize: 10, color: '#B45309', background: '#FEF3C7', border: '1px solid #FCD34D', padding: '2px 7px', borderRadius: 10, fontWeight: 700 }}>
                     📌 답변 부족 — 요청사항으로 자동 등록됨
                   </span>
-                )}
-                {!isUser && i === messages.length - 1 && !sending && messages[i - 1]?.role === 'user' && !m.smart && (
-                  <button onClick={() => {
-                    const prevQ = messages[i - 1]?.text || ''
-                    if (!prevQ) return
-                    setMessages(prev => prev.slice(0, i))
-                    handleSend(prevQ, { smart: true })
-                  }}
-                    title="Claude Sonnet 4.5로 다시 답변 (더 정확·고비용)"
-                    style={{ fontSize: 10, color: '#7C3AED', background: '#fff', border: '1px solid #C4B5FD', padding: '2px 8px', borderRadius: 10, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                    💎 Sonnet으로 더 똑똑하게
-                  </button>
-                )}
-                {!isUser && m.smart && (
-                  <span style={{ fontSize: 9, color: '#7C3AED', fontWeight: 700, opacity: 0.7 }}>💎 Sonnet 4.5</span>
                 )}
               </div>
             </div>
