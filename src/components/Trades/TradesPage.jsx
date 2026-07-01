@@ -213,7 +213,7 @@ function AdminTrades(props) {
 function OrdersTab({ bizId, orders, customersMap, suppliersMap, branchNameMap, reload, showToast, currentUser, suppliers, products, defaultSupplier, customers }) {
   const [flt, setFlt] = useState('active') // active|all|requested|paid|shipped|done
   const [docOrder, setDocOrder] = useState(null) // {order, kind:'statement'|'tax'}
-  const [newOpen, setNewOpen] = useState(false)
+  const [formOpen, setFormOpen] = useState(true) // 새 주문 입력 폼 (원장용 — 처음부터 펼침)
   const [sel, setSel] = useState({}) // id->bool for excel
 
   const shown = orders.filter(o => {
@@ -245,12 +245,27 @@ function OrdersTab({ bizId, orders, customersMap, suppliersMap, branchNameMap, r
   const FILTERS = [['active', '진행중'], ['requested', '신청'], ['paid', '입금확인'], ['shipped', '배송'], ['done', '완료'], ['all', '전체']]
   return (
     <div>
+      {/* 새 주문 입력 — 원장용, 처음부터 펼쳐서 바로 입력 */}
+      <div style={{ ...card, marginBottom: 14, padding: 14 }}>
+        <button onClick={() => setFormOpen(o => !o)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
+          <I name="plus" size={16} color={T.primary} />
+          <span style={{ fontSize: T.fs.md, fontWeight: 800, color: T.text }}>새 주문 입력</span>
+          <span style={{ fontSize: T.fs.xs, color: T.textMuted }}>거래처·제품 선택 후 저장</span>
+          <div style={{ flex: 1 }} />
+          <I name={formOpen ? 'chevU' : 'chevD'} size={16} color={T.gray600} />
+        </button>
+        {formOpen && (
+          <div style={{ marginTop: 12 }}>
+            <OrderForm bizId={bizId} suppliers={suppliers} products={products} customers={customers} defaultSupplier={defaultSupplier} currentUser={currentUser} showToast={showToast} onSaved={() => { reload('orders'); showToast('주문 저장됨 ✓') }} />
+          </div>
+        )}
+      </div>
+
       <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
         {FILTERS.map(([v, l]) => (
           <button key={v} onClick={() => setFlt(v)} style={{ padding: '5px 12px', borderRadius: T.radius.full, border: `1px solid ${flt === v ? T.primary : T.border}`, background: flt === v ? T.primaryLt : T.bgCard, color: flt === v ? T.primaryDk : T.gray700, fontSize: T.fs.xs, fontWeight: 700, cursor: 'pointer' }}>{l}</button>
         ))}
         <div style={{ flex: 1 }} />
-        <Btn variant="secondary" size="sm" onClick={() => setNewOpen(true)}><I name="plus" size={13} />대신 입력</Btn>
         <Btn variant="outline" size="sm" onClick={exportExcel}><I name="download" size={13} />홈택스 엑셀{selected.length ? ` (${selected.length})` : ''}</Btn>
       </div>
 
@@ -283,7 +298,6 @@ function OrdersTab({ bizId, orders, customersMap, suppliersMap, branchNameMap, r
       ) : <Empty msg="해당 주문이 없습니다" />}
 
       {docOrder && <DocModal {...docOrder} supplier={suppliersMap[docOrder.order.supplier_id]} customer={customersMap[docOrder.order.customer_id]} onClose={() => setDocOrder(null)} showToast={showToast} />}
-      {newOpen && <OrderFormModal bizId={bizId} suppliers={suppliers} products={products} customers={customers} defaultSupplier={defaultSupplier} currentUser={currentUser} onClose={() => setNewOpen(false)} onSaved={() => { setNewOpen(false); reload('orders'); showToast('저장됨 ✓') }} />}
     </div>
   )
 }
@@ -323,8 +337,8 @@ function DocModal({ order, kind, supplier, customer, onClose, showToast }) {
   )
 }
 
-/* ── 대신 입력(본사) / 주문 작성 폼 ── */
-function OrderFormModal({ bizId, suppliers, products, customers, defaultSupplier, currentUser, onClose, onSaved }) {
+/* ── 새 주문 입력 폼 (원장용 인라인) ── */
+function OrderForm({ bizId, suppliers, products, customers, defaultSupplier, currentUser, showToast, onSaved }) {
   const [supId, setSupId] = useState(defaultSupplier?.id || suppliers[0]?.id || '')
   const [custId, setCustId] = useState('')
   const [txDate, setTxDate] = useState(todayStr())
@@ -332,11 +346,13 @@ function OrderFormModal({ bizId, suppliers, products, customers, defaultSupplier
   const [memo, setMemo] = useState('')
   const [cart, setCart] = useState({})
   const [search, setSearch] = useState('')
+  const [saving, setSaving] = useState(false)
   const items = Object.entries(cart).filter(([, q]) => q > 0).map(([code, q]) => { const p = products.find(x => x.code === code); return p ? lineOf(p, q) : null }).filter(Boolean)
   const totals = calcTotals(items)
   const save = async () => {
-    if (!custId) return alert('거래처를 선택하세요')
-    if (!items.length) return alert('품목을 추가하세요')
+    if (!custId) return showToast('거래처를 선택하세요')
+    if (!items.length) return showToast('제품을 선택하세요')
+    setSaving(true)
     const cust = customers.find(c => c.id === custId)
     const row = {
       id: genId('to'), business_id: bizId, order_no: `S${txDate.replace(/-/g, '')}-${String(Date.now()).slice(-4)}`,
@@ -346,37 +362,42 @@ function OrderFormModal({ bizId, suppliers, products, customers, defaultSupplier
       memo, status: 'paid', requested_by: currentUser?.name || '(본사)', confirmed_by: currentUser?.name || '', paid_at: new Date().toISOString(),
     }
     await sb.insert('trade_orders', row)
+    setCart({}); setMemo(''); setCustId(''); setSearch('')
+    setSaving(false)
     onSaved()
   }
   const filtered = products.filter(p => p.active !== false && (!search || p.name.includes(search)))
   return (
-    <Modal onClose={onClose} width={720}>
-      <strong style={{ fontSize: T.fs.md }}>주문 대신 입력</strong>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, margin: '12px 0' }}>
-        <select style={inp} value={supId} onChange={e => setSupId(e.target.value)}>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
-        <select style={inp} value={custId} onChange={e => setCustId(e.target.value)}><option value="">거래처 선택</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
-        <input type="date" style={inp} value={txDate} onChange={e => setTxDate(e.target.value)} />
-        <select style={inp} value={taxType} onChange={e => setTaxType(e.target.value)}><option>별도</option><option>포함</option><option>영세</option><option>면세</option></select>
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+        <label style={{ fontSize: T.fs.xxs, color: T.textSub, fontWeight: 700 }}>공급자<select style={{ ...inp, marginTop: 3 }} value={supId} onChange={e => setSupId(e.target.value)}>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
+        <label style={{ fontSize: T.fs.xxs, color: custId ? T.textSub : T.danger, fontWeight: 700 }}>거래처 *<select style={{ ...inp, marginTop: 3, borderColor: custId ? T.border : T.danger }} value={custId} onChange={e => setCustId(e.target.value)}><option value="">거래처를 선택하세요</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+        <label style={{ fontSize: T.fs.xxs, color: T.textSub, fontWeight: 700 }}>거래일자<input type="date" style={{ ...inp, marginTop: 3 }} value={txDate} onChange={e => setTxDate(e.target.value)} /></label>
+        <label style={{ fontSize: T.fs.xxs, color: T.textSub, fontWeight: 700 }}>과세<select style={{ ...inp, marginTop: 3 }} value={taxType} onChange={e => setTaxType(e.target.value)}><option>별도</option><option>포함</option><option>영세</option><option>면세</option></select></label>
       </div>
       <input style={{ ...inp, marginBottom: 8 }} placeholder="제품 검색" value={search} onChange={e => setSearch(e.target.value)} />
-      <div style={{ maxHeight: 200, overflowY: 'auto', border: `1px solid ${T.border}`, borderRadius: T.radius.md, padding: 8, marginBottom: 8 }}>
-        {filtered.map(p => (
-          <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
-            <span style={{ fontSize: T.fs.sm }}>{p.name} <span style={{ color: T.textMuted }}>{fmt(p.price)}</span></span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <button onClick={() => setCart(c => ({ ...c, [p.code]: Math.max(0, (c[p.code] || 0) - 1) }))} style={qtyBtn}>−</button>
-              <span style={{ width: 28, textAlign: 'center', fontSize: T.fs.sm }}>{cart[p.code] || 0}</span>
-              <button onClick={() => setCart(c => ({ ...c, [p.code]: (c[p.code] || 0) + 1 }))} style={qtyBtn}>+</button>
+      <div style={{ maxHeight: 240, overflowY: 'auto', border: `1px solid ${T.border}`, borderRadius: T.radius.md, padding: 8, marginBottom: 8 }}>
+        {filtered.map(p => {
+          const q = cart[p.code] || 0
+          return (
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 4px', background: q > 0 ? T.primaryLt : 'transparent', borderRadius: T.radius.sm }}>
+              <span style={{ fontSize: T.fs.sm }}>{p.name} <span style={{ color: T.textMuted }}>{fmt(p.price)}원</span></span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <button onClick={() => setCart(c => ({ ...c, [p.code]: Math.max(0, (c[p.code] || 0) - 1) }))} style={qtyBtn}>−</button>
+                <input value={q} onChange={e => setCart(c => ({ ...c, [p.code]: Math.max(0, parseInt(e.target.value) || 0) }))} style={{ ...inp, width: 44, textAlign: 'center', padding: '4px 2px' }} />
+                <button onClick={() => setCart(c => ({ ...c, [p.code]: (c[p.code] || 0) + 1 }))} style={qtyBtn}>+</button>
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
+        {!filtered.length && <div style={{ fontSize: T.fs.xs, color: T.textMuted, textAlign: 'center', padding: 12 }}>제품이 없습니다</div>}
       </div>
-      <input style={{ ...inp, marginBottom: 8 }} placeholder="메모" value={memo} onChange={e => setMemo(e.target.value)} />
+      <input style={{ ...inp, marginBottom: 8 }} placeholder="메모 (선택)" value={memo} onChange={e => setMemo(e.target.value)} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: T.fs.md, fontWeight: 800, color: T.primary }}>합계 {fmt(totals.grandTotal)}원</span>
-        <div style={{ display: 'flex', gap: 8 }}><Btn variant="secondary" onClick={onClose}>취소</Btn><Btn onClick={save}>저장</Btn></div>
+        <span style={{ fontSize: T.fs.lg, fontWeight: 800, color: T.primary }}>합계 {fmt(totals.grandTotal)}원</span>
+        <Btn onClick={save} disabled={saving} size="lg">{saving ? '저장 중…' : '주문 저장'}</Btn>
       </div>
-    </Modal>
+    </>
   )
 }
 

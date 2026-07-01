@@ -4725,3 +4725,8 @@ v3.8.167 후속(MessagesPage.jsx). ＋ 버튼을 입력창 옆 별도 버튼 →
 - **현황**: BlissAI 액션 21종 이미 있음(지점·시술/카테고리·직원·담당자·예약경로·고객·사업정보·앱설정generic·예약·초기세팅). `actionSchemas.js`+`actionRunner.js`+`ActionConfirmCard`. 설정변경 게이트 현재 `master`.
 - **Phase 1(다음)**: 새 액션 `update_noti_config`(branches.noti_config 켜기/끄기·문구·시간) + `toggle_ai_reply`·`add_faq`(settings.ai_*/RAG) + `create/update/delete_product`(products). + actionRunner에 business_id 강제(멀티테넌트) + 설정게이트 master→owner(자기사업장) + write-intent 프롬프트에 예시 추가.
 - Phase 2: 이벤트·쿠폰·태그·스탬프·회원가규칙. Phase 3: AI Book 흡수 + 대화형 온보딩 마법사 + 로그조회.
+
+### v3.8.186 — 거래관리 새 주문 입력 모달→인라인 폼 (거래세션 WIP 배포) (2026-07-01)
+거래관리(도매 구매주문) 세션의 미커밋 WIP를 배포세션이 배포. `TradesPage.jsx` OrdersTab — "대신 입력" 버튼→`OrderFormModal`(팝업) 방식을 **상단 "새 주문 입력" 카드(처음부터 펼침, `formOpen` 기본 true)에 `OrderForm` 인라인**으로 변경(원장이 바로 입력). 접기/펼치기 토글. `OrderFormModal`은 정의만 남고 미사용(무해).
+- 빌드 검증(OrderForm 정의됨·깨진 참조 0) 후 배포. 거래세션 작업이라 상세는 그쪽 인계.
+- 적용: v3.8.186 라이브 배포(version.txt 검증, CF 퍼지 everything).
