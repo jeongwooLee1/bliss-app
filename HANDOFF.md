@@ -1,5 +1,31 @@
 # HANDOFF
 
+## [⏳ 인계 — 모니터링 세션] 2026-07-01 — 블리스미 인스타 SaaS AI + 결제통일 + 오늘 완료분
+
+### ⏳⏳ 최우선 대기 — 블리스미 인스타 SaaS 자동응답 (계정 확정 필요)
+- 블리스미(blissme.ai SaaS)는 **샵 원장 대상 B2B 영업**(DM·광고로 가입 유도). 하우스왁싱 왁싱(B2C)과 업종·정보 완전 다름.
+- **문제**: 블리스미 인스타 DM에 **하우스왁싱 왁싱 AI 자동응답**(가격·예약)이 나감 + 받은메시지함에 "강남점"으로 표시됨.
+- **정우님 요청**: ① 블리스미 인스타 = 강남 아니라 "블리스미"로 표시 ② 자동응답 = 왁싱 아니라 **블리스미 SaaS 영업 응답**(샵원장에게 기능·요금 안내). "기존 자동답변과 정보가 완전 다르다".
+- **막힌 지점**: 블리스미 인스타 account_id 미확정. 인스타 계정 5개 중 하우스왁싱 지점 4개(강남 `17841400218759830`·홍대 `17841424540907024`·seoul `17841455170480955`·잠실 `17841449388904548`) 외 **`17841423954085459`(오늘 첫 메시지 1건, "am9-pm11 상담가능")가 블리스미 후보이나 정우님 미확인**.
+- **계획**(정우님 계정 확정 후): ①즉시 = 그 account_id → 왁싱 AI 자동응답 **차단**(ai_booking, 엉뚱한 왁싱답변 방지) ②구축 = 블리스미 SaaS 전용 AI(샵원장 영업: 예약관리·매출·고객·AI예약·알림톡·다지점 기능 / 요금 Trial한달·Starter3.3만·Pro7.7만 / 데모 blissme.ai demo·demo1234 / 도입문의 contact@blissme.ai·070-8983-6838). 서버 ai_booking account_id 분기 + **별도 프롬프트**(왁싱과 완전 분리), golden 회귀 확인. 받은메시지함 "블리스미" 표시(ig_branch_override 등).
+
+### ⏳ 대기 — 결제 통일(KCP)
+- 충전(포인트) 토스 카드결제 = **토스가 본사(테라포트) 카드심사 안 해줌** → reservation_payments topup 전부 `pending`, billing_payments 0(실충전 0건). 정우님 결정: **충전도 KCP로 통일**(구독료 KCP 정기결제 빌링키 재활용 — 카드 1회 등록→충전·구독 공용, KCP 일반결제 별도신청 불필요). KCP 정기결제 카드사 심사 진행 중(완료 4=신한/현대/롯데아멕스/NH, 심사중 6=삼성/BC/KB/하나외환/하나/우리). **심사 완료 후** 충전 결제경로 토스→KCP빌링 전환 + 실카드 소액 테스트.
+
+### ⏳ 대기 — AI 자동점검 `id_aiaudit_1782865807509_0` (bliss_requests reviewing)
+- WhatsApp 12014583507: 손님이 이름·지점·날짜·시간·시술·성별 다 주고 "Yes I'll book" 했는데 AI가 예약 양식 재전송(도돌이표) → 직원 수동 확정. 가격문의(중간) 후 예약 컨텍스트 유실 추정. 서버 ai_booking 흐름 수정 필요(성급예약방지 룰 충돌 조심 + golden 회귀).
+
+### ✅ 오늘 완료 (2026-07-01, 모니터링 세션)
+- **v3.8.180**(라이브·git c62faf8): FloatingAI 플로팅 버튼 복구(`false &&` 제거) + 공지&요청 검색창(제목·내용)·내용복사 버튼 (강남 id_h1lf7rosmr done).
+- **v3.8.181**(라이브): 타임라인 시계 오버레이 "닫기(ESC)" 버튼 상단중앙 이동(clock.html 반전↔·배경 버튼과 겹침 해소).
+- **서버 ai_booking.py**: 성별 "여/남" 짧은답 감지 → `booking.gender` 직접세팅(재질문 원천차단). golden **47케이스 게이트 PASS**(`gender_short_kr` 추가, git scripts/ai_golden 동기화). .bak.
+- **서버 bliss_naver.py**: ① 네이버톡 webhook **즉시 고객연결**(닉네임 채워져도 전화 backfill + 전화→customers→sns 즉시연결, 10분 cron 안 기다림) ② **채팅채널(WA/IG/LINE/네이버톡) 당일 차트/동의서 링크 발송**(`_send_chat_reminders`, **24h 창 열린 손님만** — IG `_ig_open`·WA 24h체크. 내일 09시 배치부터) ③ 크리에이트립 `sns_type` NameError 버그 fix(6/1부터 예약 등록 실패하던 것) + 7/2 Tracey Brown 예약 복구.
+- **GBP 케이스 텔레그램 알림**: approved-only(설문조사 등 오알림 차단).
+- **AI 자동점검** id_aiaudit_1782779413699_0(날짜오탐) done + 점검 프롬프트에 상대날짜(내일/모레) 판단금지 가드.
+- **Human Agent 포기**(2026-07-01): Meta 재제출 안 함(basic+manage 승인=24h창 안 발송 OK, 24h밖은 카톡/문자/WA템플릿). 메모리 `reference_chat_24h_window`(24h창 원칙 + Human Agent 포기).
+
+> 이 세션 = `/loop` 받은메시지함 수정요청 모니터링(10분). bliss_requests_v1(biz_khvurgshb+biz_id_yq41r06fdp) pending 처리. **main 브랜치=배포세션**. ⚠️ 병렬로 거래관리 세션(v3.8.183)도 작업 중 — 버전 충돌 주의.
+
 ## [✅ 배포완료] 2026-07-01 — 거래관리(도매 구매주문) 모듈 신규 (v3.8.183 라이브, git 878c4b4)
 > 네추럴룩/테라포트 → 지점 도매 공급 거래관리를 블리스 안에 신규 구현. **지점 구매신청 → 입금(자동매칭) → 입금확인 → 배송 워크플로우 + 거래명세서·세금계산서(홈택스 대량발행 엑셀)**. 정우님 결정: 공급자 둘 다(선택식)/거래이력까지 이관/거래처=지점(branches)연동/지점직원 직접신청/입금문자 자동매칭/고정 본사담당자 1명 SMS/홈택스 엑셀.
 - **DB(적용완료, migration `trade_management` + seed)**: `trade_suppliers`(네추럴룩 시드+테라포트 빈칸)·`trade_products`(18종)·`trade_customers`(6지점, branch_id 연동)·`trade_orders`(status: requested→paid→shipped→done, items jsonb)·`trade_settings`(본사담당자 phone·기본공급자). `bank_deposits.matched_trade_order_id` 컬럼 + **트리거 `trade_auto_match_deposit`**(미매칭 입금 pending·deposit_kind null → 같은 biz의 requested 주문 중 grand_total=amount **유일**하면 자동 paid+matched). 전부 RLS `bliss_session_ok()` 게이트(보안 잠금 준수).
