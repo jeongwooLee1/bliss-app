@@ -30,6 +30,7 @@ export function findTarget(action, target, data) {
     reservation_sources: data?.resSources || [],
     customers: data?.customers || [],
     products: data?.products || [],
+    service_tags: data?.serviceTags || [],
   }
   const source = schema.table ? sourceMap[schema.table] : null
   if (source) {
@@ -158,6 +159,31 @@ export function buildPreview({ action, target, changes = {} }, data) {
     rows.push({ label: '답변(A)', before: '', after: changes.a || '(없음)' })
     if (changes.category) rows.push({ label: '분류', before: '', after: changes.category })
     return { label: schema.label, icon: schema.icon, rows }
+  }
+
+  if (schema.op === 'toggle_stamp_program' || schema.op === 'toggle_events_master') {
+    const settings = _readBizSettings(data)
+    const cur = schema.op === 'toggle_stamp_program'
+      ? !!(settings.stamp_program && settings.stamp_program.on)
+      : (settings.events_master_enabled !== false)
+    rows.push({ label: '현재', before: '', after: cur ? '켜짐 ✅' : '꺼짐 ⛔' })
+    rows.push({ label: '변경', before: '', after: changes.on ? '켜기 ✅' : '끄기 ⛔' })
+    return { label: schema.label, icon: schema.icon, rows }
+  }
+
+  if (schema.op === 'toggle_event') {
+    const settings = _readBizSettings(data)
+    const evts = Array.isArray(settings.events) ? settings.events : []
+    const evt = evts.find(e => String(e.name || '').toLowerCase() === String(target || '').toLowerCase())
+      || evts.find(e => String(e.name || '').toLowerCase().includes(String(target || '').toLowerCase()) && target)
+    if (!evt) {
+      const names = evts.map(e => e.name).filter(Boolean).slice(0, 8).join(', ')
+      return { label: schema.label, icon: schema.icon, error: `이벤트를 찾을 수 없어요: ${target}${names ? `\n(등록된 이벤트: ${names})` : ''}` }
+    }
+    rows.push({ label: '이벤트', before: '', after: evt.name })
+    rows.push({ label: '현재', before: '', after: (evt.enabled !== false) ? '켜짐 ✅' : '꺼짐 ⛔' })
+    rows.push({ label: '변경', before: '', after: changes.on ? '켜기 ✅' : '끄기 ⛔' })
+    return { label: schema.label, icon: schema.icon, targetName: evt.name, rows }
   }
 
   if (schema.op === 'cancel_reservation') {
@@ -347,6 +373,31 @@ export async function executeAction({ action, target, changes = {} }, data, { bi
       const id = await saveFaqItem(bizId, { q, a, category: changes.category || '기타', core: false, active: true }, gkey)
       result = { id, q, a }
     }
+    else if (schema.op === 'toggle_stamp_program' || schema.op === 'toggle_events_master' || schema.op === 'toggle_event') {
+      // businesses.settings 토글 — DB에서 fresh 읽어 병합 (다른 설정 stale 덮어쓰기 방지)
+      if (!bizId) throw new Error('bizId 없음')
+      const on = !!changes.on
+      const r = await fetch(`${SB_URL}/rest/v1/businesses?id=eq.${bizId}&select=settings`, {
+        headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY },
+      })
+      let settings = {}
+      try { const arr = await r.json(); const raw = arr?.[0]?.settings; settings = typeof raw === 'string' ? JSON.parse(raw) : (raw || {}) } catch {}
+      if (schema.op === 'toggle_stamp_program') {
+        settings.stamp_program = { ...(settings.stamp_program || {}), on }
+      } else if (schema.op === 'toggle_events_master') {
+        settings.events_master_enabled = on
+      } else {
+        // toggle_event — 이름으로 매칭해 enabled flip
+        const evts = Array.isArray(settings.events) ? settings.events : []
+        const t = String(target || '').toLowerCase()
+        let idx = evts.findIndex(e => String(e.name || '').toLowerCase() === t)
+        if (idx < 0 && t) idx = evts.findIndex(e => String(e.name || '').toLowerCase().includes(t))
+        if (idx < 0) throw new Error(`이벤트를 찾을 수 없어요: ${target}`)
+        evts[idx] = { ...evts[idx], enabled: on }
+        settings.events = evts
+      }
+      result = await sb.update('businesses', bizId, { settings: JSON.stringify(settings) })
+    }
 
     // ─── schedule_data 기반 CRUD (직원 목록 등) ────────────────────────
     else if (schema.op === 'schedule_list_add' || schema.op === 'schedule_list_bulk_add' || schema.op === 'schedule_list_update' || schema.op === 'schedule_list_delete') {
@@ -440,6 +491,11 @@ function cleanFields(obj, allowedList) {
 function genId(prefix) {
   const p = (prefix || 'id').replace(/[^a-z_]/gi, '').slice(0, 8) || 'id'
   return `${p}_${Math.random().toString(36).slice(2, 11)}`
+}
+// businesses.settings 파싱 (data.businesses[0].settings — 미리보기의 현재값 표시용)
+function _readBizSettings(data) {
+  const biz = (data?.businesses || [])[0] || {}
+  try { const raw = biz.settings; return typeof raw === 'string' ? JSON.parse(raw) : (raw || {}) } catch { return {} }
 }
 function setDeepPath(obj, path, value) {
   const parts = String(path).split('.')
