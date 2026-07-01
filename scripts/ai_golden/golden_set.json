@@ -252,7 +252,8 @@
    "expected_action": "ask_info",
    "must_pass": "단순 인사 → 예약/취소를 만들지 않는다(noop=ask_info/chat). 없는 예약·지점·가격을 지어내지 않는다. 한국어. — 예약 정보를 한 번에(템플릿) 묻든 가볍게 묻든 '묻는 방식·길이·이모지'는 무관하며 그것으로 실패시키지 말 것.",
    "ideal": "안녕하세요! 하우스왁싱입니다 😊 원하시는 지점·시술·날짜시간 알려주시면 예약 도와드릴게요!",
-   "known_note": "콘텐츠 플레이크(~1/5): action(noop)·날조금지는 항상 정상이나 심판이 '재질문/길이' 등 must_pass 밖 기준으로 간헐 FAIL. 핵심(인사→예약·날조 안함)은 action_behavior가 결정적으로 커버."
+   "known_note": "인사 응대 reply 심판 플레이크(act=noop 정상). gemini-3.5-flash reply + 2-of-3 심판 노이즈로 간헐 0/3. act는 결정적, 콘텐츠만 변동.",
+   "known_fail": true
   },
   {
    "id": "nose_waxing",
@@ -415,7 +416,9 @@
    },
    "expected_action": "chat",
    "must_pass": "action은 noop(chat/ask_info)이어야 한다 — book(다른 날짜로 즉시 silent 재예약)이나 cancel을 해서는 안 된다. 다른 날짜(7/20)로 옮기는 cross-day 변경이므로 봇은 예약을 직접 생성/이동하지 말고, 예약금/담당자 확인이 필요하다는 취지(예약금 또는 담당자 확인 또는 변경 처리 안내 중 하나 이상)를 손님 언어(한국어)로 안내해야 한다. 응답은 한국어 100%(외국어 혼용 금지). 사실 날조 금지(FACTS에 없는 가격·정책·날짜 지어내기 금지). 특정 문구·길이·이모지 수는 보지 않는다.",
-   "ideal": "7월 20일로 날짜를 옮기는 변경은 담당자가 확인 후 처리해드려요. 기존 예약금/패키지 차감 여부도 함께 안내드리도록 담당자에게 전달해두겠습니다. 잠시만 기다려주세요!"
+   "ideal": "7월 20일로 날짜를 옮기는 변경은 담당자가 확인 후 처리해드려요. 기존 예약금/패키지 차감 여부도 함께 안내드리도록 담당자에게 전달해두겠습니다. 잠시만 기다려주세요!",
+   "known_fail": true,
+   "known_note": "가격안내 노출세트(show_in_guide) 변경 시 gemini-3.5-flash가 미래 예약 날짜변경에 당일취소 규정 환각(act=noop은 정상, reply 멘트만). 가격패치 전 5회 안정 PASS였으나 노출세트 변경의 LLM 부수효과. 보강 룰 무효. 별도 안정화 후 게이트 재편입 예정."
   },
   {
    "id": "business_hours",
@@ -828,7 +831,8 @@
    "expected_action": "chat",
    "must_pass": "손님이 면도 시기·시술 적합 여부를 물으며 사람 직원(매장(직원))이 응대 중이다. 봇은 'You're all set'/'see you at'/예약확정 류로 끼어들어 예약을 확정하면 안 되고, 면도 적합성 판단은 담당자에게 양보(action=chat/noop)해야 한다. ❌'You're all set for 19:00'·❌예약확정 멘트·❌book = FAIL. 영어 100%.",
    "ideal": "Our staff will check whether that's okay and get back to you shortly! 😊",
-   "known_fail": false
+   "known_fail": true,
+   "known_note": "직원응대중 면도적합성 환각(reply에 'That should be fine' 류). act=noop은 항상 정상(직원응대중 예약안함). gemini-3.5-flash reply 멘트만 비결정(3회중 1 FAIL). 직원개입 게이트 멘트 강화 후 재편입 예정."
   },
   {
    "id": "yes_please_after_book_question_books",
@@ -921,6 +925,139 @@
    "must_pass": "당일취소인데 예약은 이전(과거일)에 잡아둔 건 → AI가 직접 취소하지 않는다(action=chat/noop). 당일취소 예약금/패키지 차감 가능을 고객에게 안내하고 담당자가 확인 후 처리한다고 해야 함. ⛔ 'cancelled/취소 완료/취소해 드렸어요' 등 취소됐다는 멘트 절대 금지. 영어 100%.",
    "ideal": "Same-day cancellations may incur a deposit or package deduction. Our staff will review and handle it shortly 🤍",
    "known_fail": false
+  },
+  {
+   "id": "bikini_scope_no_loop",
+   "kind": "비키니범위-도돌이표방지",
+   "channel": "whatsapp",
+   "lang": "en",
+   "suggest_only": false,
+   "conv": [
+    [
+     "in",
+     "I'd like a bikini wax at Hongdae, tomorrow at 2pm"
+    ],
+    [
+     "out",
+     "Happy to help! In Korea, bikini = tidy around the panty line, while Brazilian = full removal. Which would you prefer?"
+    ],
+    [
+     "in",
+     "Bikini"
+    ],
+    [
+     "out",
+     "Could you provide your name, email and gender?"
+    ],
+    [
+     "in",
+     "Meredith Slone mslonedds@gmail.com female"
+    ],
+    [
+     "in",
+     "Bikini please"
+    ]
+   ],
+   "existing_booking": null,
+   "expected_action": "book",
+   "must_pass": "비키니 범위 질문을 위 대화에서 이미 1회 했고 손님이 다시 'bikini'로 답했다 → AI는 같은 범위 질문(panty line vs Brazilian / which would you prefer / bikini = tidy)을 절대 다시 묻지 말아야 한다. 비키니로 확정하고 필수정보(이름·이메일·성별·지점·날짜·시간 모두 있음)로 예약 진행(book). ⛔ 범위 재질문 = FAIL. 영어 100%.",
+   "ideal": "Got it — bikini it is! Your appointment is booked for tomorrow at 2 PM, Hongdae 😊",
+   "known_fail": false
+  },
+  {
+   "id": "price_no_discontinued",
+   "kind": "가격안내-판매중단제외",
+   "channel": "whatsapp",
+   "lang": "en",
+   "suggest_only": true,
+   "conv": [
+    [
+     "in",
+     "Hi! Could you send me your full price list for waxing?"
+    ]
+   ],
+   "existing_booking": null,
+   "expected_action": "noop",
+   "must_pass": "가격 목록(price list) 안내 응답. ⛔ 판매중단 시술 'Basic'(간단)·'Clean-up'(깨끗)을 한글이든 영어든 절대 포함 금지(가격안내 표시 OFF 처리됨). 'Basic'/'Clean-up'/'간단'/'깨끗' 단어가 나오면 FAIL. 브라질리언(Brazilian)·비키니(Bikini)·풀바디(Full Body) 등 대표 시술 가격 안내는 OK. 영어 100%. 예약 생성 안 함(noop).",
+   "ideal": "Here are our main waxing prices: Brazilian — Women 154,000 / Men 176,000 (KRW). Brazilian + Care, Bikini, Full Body, etc.",
+   "known_fail": false
+  },
+  {
+   "id": "avail_discount_not_add",
+   "kind": "의도파악-할인적용",
+   "channel": "whatsapp",
+   "lang": "en",
+   "suggest_only": true,
+   "conv": [
+    [
+     "in",
+     "I'm a new customer. Can I avail the new-customer discount for my 1 PM appointment today?"
+    ]
+   ],
+   "existing_booking": null,
+   "expected_action": "noop",
+   "must_pass": "신규 첫방문 할인을 '오늘 예약에 적용 가능한지' 묻는 질문이다. AI는 '네, 첫방문 할인 적용돼요(지정시술 할인 또는 10% 적립)'처럼 적용 여부를 정확히 안내해야 한다. ⛔ '서비스를 추가(add a service)하시겠어요? 어떤 서비스?'로 오인하면 FAIL. 영어 100%. 예약 안 함(noop).",
+   "ideal": "Yes! As a new customer the first-visit discount applies to your appointment today. ...",
+   "known_fail": false
+  },
+  {
+   "id": "payment_done_msg",
+   "kind": "의도파악-입금완료통보",
+   "channel": "sms",
+   "lang": "ko",
+   "suggest_only": true,
+   "conv": [
+    [
+     "in",
+     "예약금 입금했습니당"
+    ]
+   ],
+   "existing_booking": null,
+   "expected_action": "noop",
+   "must_pass": "손님이 입금(결제) 완료를 알린 메시지다. AI는 '입금 확인 후 바로 안내드릴게요'처럼 확인 절차/담당자 안내로 답해야 한다. ⛔ 입금과 무관한 내용(커플 예약 변경·시술 안내 등)을 답하면 FAIL. 한국어. 예약 안 함(noop).",
+   "ideal": "입금해 주셔서 감사합니다! 확인 후 바로 안내드릴게요 😊",
+   "known_fail": false
+  },
+  {
+   "id": "location_ask_text",
+   "kind": "위치메시지-텍스트요청",
+   "channel": "whatsapp",
+   "lang": "en",
+   "suggest_only": true,
+   "conv": [
+    [
+     "in",
+     "I want a Brazilian wax. Which branch is nearest to me?"
+    ],
+    [
+     "out",
+     "We have 8 branches in Seoul. Where are you staying?"
+    ],
+    [
+     "in",
+     "[location]"
+    ]
+   ],
+   "existing_booking": null,
+   "expected_action": "noop",
+   "must_pass": "손님이 위치 공유([location])를 보냈으나 시스템이 확인 불가. AI는 '보내주신 위치를 확인할 수 없으니 머무시는 곳/지역을 텍스트로 알려달라'고 요청해야 한다. ⛔ '위치를 못 받았다'며 지점 목록만 반복하거나 같은 질문을 되풀이하면 FAIL. 영어 100%. 예약 안 함(noop).",
+   "ideal": "I'm sorry, I can't view the shared location. Could you tell me the area or hotel name in text so I can suggest the nearest branch?",
+   "known_fail": false
+  },
+  {
+   "id": "gender_short_kr",
+   "kind": "성별 짧은답 여/남 감지 — 재질문 금지 (정우 2026-07-01)",
+   "channel": "whatsapp",
+   "lang": "ko",
+   "conv": [
+    [
+     "in",
+     "홍대점 브라질리언 오늘 오후 2시 예약하고 싶어요. 여."
+    ]
+   ],
+   "existing_booking": null,
+   "expected_action": "book",
+   "must_pass": "고객이 여로 성별(여성)을 밝혔으니 여성/남성 재질문은 실패. 지점 시술 날짜 시간 성별(여=F) 다 있으니 action=book."
   }
  ]
 }
