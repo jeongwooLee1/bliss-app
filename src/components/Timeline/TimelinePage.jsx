@@ -3988,7 +3988,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
           <iframe src="/clock.html" title="시계" style={{width:"100%",height:"100%",border:"none",display:"block"}}/>
           <button onClick={()=>setShowClockOverlay(false)}
             title="닫기 (ESC)"
-            style={{position:"absolute",top:16,left:16,zIndex:1,background:"rgba(255,255,255,.12)",color:"#fff",border:"1px solid rgba(255,255,255,.25)",borderRadius:8,padding:"6px 14px",fontSize:14,cursor:"pointer",fontFamily:"inherit",backdropFilter:"blur(4px)"}}>✕ 닫기 (ESC)</button>
+            style={{position:"absolute",top:16,left:"50%",transform:"translateX(-50%)",zIndex:1,background:"rgba(255,255,255,.12)",color:"#fff",border:"1px solid rgba(255,255,255,.25)",borderRadius:8,padding:"6px 14px",fontSize:14,cursor:"pointer",fontFamily:"inherit",backdropFilter:"blur(4px)"}}>✕ 닫기 (ESC)</button>
         </div>
       )}
       {/* 모바일 롱프레스 시 텍스트 선택/콜아웃 메뉴 차단 (드래그 UX 보호) */}
