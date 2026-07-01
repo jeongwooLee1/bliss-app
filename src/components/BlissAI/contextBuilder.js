@@ -382,6 +382,30 @@ export function buildEventsContext(data) {
 }
 
 // ─── 최종 프롬프트 조립 ─────────────────────────────────────────────────────
+// ─── 답변 지침 (고정 문자열 — 프롬프트 캐시 대상) ─────────────────────────
+export const ANSWER_GUIDE =
+    '[답변 지침 — 고객 SNS 응대 톤]\n' +
+    '★ 직원이 이 답변을 고객에게 그대로 SNS(카톡·인스타·왓츠앱·네이버톡)로 복사해서 보낸다고 가정.\n' +
+    '★ 톤: 친근하고 따뜻한 존댓말. "안녕하세요~", "고객님 :)", "~해주세요 😊" 처럼 자연스럽게.\n' +
+    '\n' +
+    '[답변 형식]\n' +
+    '1) 🚨 왁싱 관련 모든 질문(시술·사후관리·트러블·인그로운·통증·가려움·임산부·주기·효과·위생·남성고객·매장편의·클레임 등)은 반드시 위 자료에 근거. 일반 지식·웹검색·추측 금지.\n' +
+    '2) 우선순위: 업로드 문서 > FAQ > 매장 데이터.\n' +
+    '3) 자료에 답이 없으면: "이 부분은 담당자에게 확인 후 다시 안내드릴게요 :)" 라고만. 추측 금지.\n' +
+    '4) ⛔ 매장 이름(하우스왁싱 등) · "FAQ" · "자료에 따르면" 같은 내부용 표현 노출 금지. 자연스럽게 답변.\n' +
+    '5) ⛔ 마크다운 절대 금지: **볼드** *이탤릭* # 헤더 > 인용 --- 구분선 `코드` [링크](url).\n' +
+    '6) ⛔ 리스트/번호 매기기 자제: "1)", "•", "-" 같은 글머리표 쓰지 말고 자연스러운 문장으로 풀어쓰기. 정말 항목이 많으면 줄바꿈으로만 구분.\n' +
+    '7) 길이: 보통 2~4문장. 너무 짧지도 길지도 않게. 핵심만.\n' +
+    '8) 이모지 1~2개 자연스럽게 (😊 :) ~ 등). 과하게 X.\n' +
+    '9) 의학적 진단·처방 X. 심한 증상은 "병원 상담 권유드릴게요" 정도로.\n' +
+    '\n' +
+    '[좋은 예]\n' +
+    '질문: "왁싱하고 가려운데 어떡해요?"\n' +
+    '답변: "가려움은 피부 건조 때문에 생기는 경우가 많아요 :) 보습 충분히 발라주시고, 긁지 않으시는 게 좋아요~ 시술 후 며칠은 자극을 최소화해주세요 😊"\n' +
+    '\n' +
+    '[나쁜 예 — 절대 금지]\n' +
+    '"가려움의 주요 원인은 다음과 같습니다.\n- 원인: 피부 건조\n- 관리 방법:\n  • 보습\n  • 자극 최소화" ← 이런 문서 정리 톤 금지';
+
 export function buildFullPrompt({ question, data, faqItems, role = 'master', extraContext = '' }) {
   const parts = [SYSTEM_PROMPT];
   const staticCtx = buildStaticContext(data);
@@ -406,28 +430,34 @@ export function buildFullPrompt({ question, data, faqItems, role = 'master', ext
   // Tier 3 (실시간 조회) 결과
   if (extraContext) parts.push(extraContext);
   parts.push(`[현재 사용자 질문]\n${question}`);
-  parts.push(
-    '[답변 지침 — 고객 SNS 응대 톤]\n' +
-    '★ 직원이 이 답변을 고객에게 그대로 SNS(카톡·인스타·왓츠앱·네이버톡)로 복사해서 보낸다고 가정.\n' +
-    '★ 톤: 친근하고 따뜻한 존댓말. "안녕하세요~", "고객님 :)", "~해주세요 😊" 처럼 자연스럽게.\n' +
-    '\n' +
-    '[답변 형식]\n' +
-    '1) 🚨 왁싱 관련 모든 질문(시술·사후관리·트러블·인그로운·통증·가려움·임산부·주기·효과·위생·남성고객·매장편의·클레임 등)은 반드시 위 자료에 근거. 일반 지식·웹검색·추측 금지.\n' +
-    '2) 우선순위: 업로드 문서 > FAQ > 매장 데이터.\n' +
-    '3) 자료에 답이 없으면: "이 부분은 담당자에게 확인 후 다시 안내드릴게요 :)" 라고만. 추측 금지.\n' +
-    '4) ⛔ 매장 이름(하우스왁싱 등) · "FAQ" · "자료에 따르면" 같은 내부용 표현 노출 금지. 자연스럽게 답변.\n' +
-    '5) ⛔ 마크다운 절대 금지: **볼드** *이탤릭* # 헤더 > 인용 --- 구분선 `코드` [링크](url).\n' +
-    '6) ⛔ 리스트/번호 매기기 자제: "1)", "•", "-" 같은 글머리표 쓰지 말고 자연스러운 문장으로 풀어쓰기. 정말 항목이 많으면 줄바꿈으로만 구분.\n' +
-    '7) 길이: 보통 2~4문장. 너무 짧지도 길지도 않게. 핵심만.\n' +
-    '8) 이모지 1~2개 자연스럽게 (😊 :) ~ 등). 과하게 X.\n' +
-    '9) 의학적 진단·처방 X. 심한 증상은 "병원 상담 권유드릴게요" 정도로.\n' +
-    '\n' +
-    '[좋은 예]\n' +
-    '질문: "왁싱하고 가려운데 어떡해요?"\n' +
-    '답변: "가려움은 피부 건조 때문에 생기는 경우가 많아요 :) 보습 충분히 발라주시고, 긁지 않으시는 게 좋아요~ 시술 후 며칠은 자극을 최소화해주세요 😊"\n' +
-    '\n' +
-    '[나쁜 예 — 절대 금지]\n' +
-    '"가려움의 주요 원인은 다음과 같습니다.\n- 원인: 피부 건조\n- 관리 방법:\n  • 보습\n  • 자극 최소화" ← 이런 문서 정리 톤 금지'
-  );
+  parts.push(ANSWER_GUIDE);
+  return parts.join('\n\n');
+}
+
+// ─── 서버 캐싱용 분리 빌더 ───────────────────────────────────────────────
+// 고정 컨텍스트(cache_sys): 시스템프롬프트 + 지점 + 가격표 + 지침 → 매 호출 동일 → 프롬프트 캐시 적중
+export function buildStablePrompt(data, role = 'master') {
+  const parts = [SYSTEM_PROMPT];
+  const staticCtx = buildStaticContext(data);
+  if (staticCtx) parts.push(staticCtx);
+  const svcCtx = buildServicesContext(data);   // 항상 주입(캐시 일관성 — 조건부 아님)
+  if (svcCtx) parts.push(`[시술 가격표]\n${svcCtx}`);
+  if (role !== 'master') {
+    parts.push('[권한] 현재 사용자는 지점 계정(읽기 전용)입니다. 조회는 자유롭게 가능하지만, 설정 변경·데이터 수정은 불가합니다. 변경 요청을 받으면 "브랜드 대표에게 요청해주세요"라고 안내해주세요.');
+  }
+  parts.push(ANSWER_GUIDE);
+  return parts.join('\n\n');
+}
+
+// 동적 컨텍스트(dynctx): 질문별 FAQ + 이벤트 + RAG 문서 → 캐시 안 함
+export function buildDynamicCtx(question, data, faqItems, extraContext = '') {
+  const parts = [];
+  const faqCtx = buildFAQContext(question, faqItems);
+  if (faqCtx) parts.push(faqCtx);
+  if (/이벤트|쿠폰|할인|적립|포인트|혜택|프로모션|첫방문|첫구매|신규|보너스|다담권.*증정|무료\s*시술/i.test(question)) {
+    const evtCtx = buildEventsContext(data);
+    if (evtCtx) parts.push(evtCtx);
+  }
+  if (extraContext) parts.push(extraContext);   // RAG 검색결과
   return parts.join('\n\n');
 }

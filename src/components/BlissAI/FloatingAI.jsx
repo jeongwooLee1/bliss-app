@@ -7,7 +7,7 @@ import { _activeBizId } from '../../lib/db'
 import { T } from '../../lib/constants'
 import { sb, SB_URL, SB_KEY } from '../../lib/sb'
 import { genId } from '../../lib/utils'
-import { buildFullPrompt } from './contextBuilder'
+import { buildFullPrompt, buildStablePrompt, buildDynamicCtx } from './contextBuilder'
 import { searchDocs, buildDocsContext } from '../../lib/aiDocs'
 import { buildWriteIntentPrompt, ACTION_SCHEMAS } from './actionSchemas'
 import { validateAction, buildPreview, executeAction } from './actionRunner'
@@ -217,6 +217,18 @@ export default function FloatingAI({ data, currentUser, isMaster, bizId }) {
   }, [data?.businesses])
 
   // 모델 호출 — Gemini 3.5 Flash 통일 (이미지 첨부 포함). 실패 시 서버(/bliss-ai-chat, Gemini 3.5) 폴백
+  // 서버 캐싱 경로 — /bliss-ai-chat (고정 컨텍스트 프롬프트 캐싱 + Gemini 3.5). 실패 시 '' 반환 → 클라 폴백
+  const callServerCached = async ({ messages: msgs, system, dynctx }) => {
+    const r = await fetch(CLAUDE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ messages: msgs, system, dynctx }),
+    })
+    if (!r.ok) return ''
+    const d = await r.json()
+    return d?.answer || ''
+  }
+
   const callAI = async (prompt, { smart = false, image = null } = {}) => {
     const histTurns = messages.filter(m => m.role === 'user' || m.role === 'assistant').slice(-10)
       .map(m => ({ role: m.role, text: m.text || '' }))
@@ -399,8 +411,21 @@ export default function FloatingAI({ data, currentUser, isMaster, bizId }) {
           if (ctx) extraContext = ctx
         }
       } catch (_) { /* 문서 검색 실패해도 답변 진행 */ }
-      const prompt = buildFullPrompt({ question: q, data, faqItems, role, extraContext })
-      const answer = await callAI(prompt, { smart: !!opts.smart, image: img })
+      // 서버 캐싱 경로: 고정(시스템+지점+가격표+지침)=cache_sys / 동적(FAQ+RAG)=dynctx. 실패 시 클라 직접호출 폴백
+      const histTurns = messages.filter(m => m.role === 'user' || m.role === 'assistant').slice(-10)
+        .map(m => ({ role: m.role, text: m.text || '' }))
+      let answer = ''
+      try {
+        answer = await callServerCached({
+          messages: [...histTurns, { role: 'user', text: q }],
+          system: buildStablePrompt(data, role),
+          dynctx: buildDynamicCtx(q, data, faqItems, extraContext),
+        })
+      } catch (_) { answer = '' }
+      if (!answer) {
+        const prompt = buildFullPrompt({ question: q, data, faqItems, role, extraContext })
+        answer = await callAI(prompt, { image: img })
+      }
       const unk = detectUnknown(answer)
       setMessages(prev => [...prev, { role: 'assistant', text: answer, at: Date.now(), unknown: unk, smart: !!opts.smart, _typewriter: true }])
       // AI가 답변 못한 질문 → 요청사항으로 자동 등록 (백그라운드)

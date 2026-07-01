@@ -4702,3 +4702,12 @@ v3.8.167 후속(MessagesPage.jsx). ＋ 버튼을 입력창 옆 별도 버튼 →
 - **버그 fix**: 초기 `sb.get('trade_settings')`가 기본 `order=created_at`을 붙이는데 컬럼 없어 400 → filter에 `order=updated_at.asc` 명시.
 - **로컬검증**(데모 owner /trades): 6탭·제품테이블·설정 정상, 콘솔 에러 0. 배포 v3.8.183(version.txt·CF퍼지·git push 878c4b4). FloatingAI.jsx v3.8.182 미커밋분 함께 정리.
 - **유의**: ① seed 거래이력은 원본 JSON의 1건만(추가 과거이력 있으면 별도 이관) ② 테라포트 사업자정보 미입력(공급자 설정탭에서 입력) ③ 지점 직원(staff) BranchOrder 뷰는 실 지점계정 스팟체크 권장 ④ 입금 자동매칭 트리거 실입금 동작 확인 필요.
+
+### v3.8.184 — BlissAI 서버 캐싱+RAG 라우팅 완전판 + 복사아이콘 hover + 씽킹 (v3.8.183 불완전분 정합) (2026-07-01)
+정우님 "BlissAI 더 똑똑 + 캐시로 비용↓". **⚠️ v3.8.183(거래관리) 배포 때 다른 세션이 내 미커밋 `FloatingAI.jsx`를 불완전하게 커밋 + 짝인 `contextBuilder.js`를 누락 → git·라이브 모두 BlissAI 캐싱 미반영(라이브 번들 dynctx=0) + git 깨짐(FloatingAI가 없는 함수 import). 이 배포로 완전판 정합.**
+- **클라(`FloatingAI.jsx`+`contextBuilder.js`)**: BlissAI 답변 생성을 서버 `/bliss-ai-chat`로 라우팅. `contextBuilder`에 **`ANSWER_GUIDE` 상수 추출 + `buildStablePrompt`(고정=시스템+지점+가격표+지침, cache_sys 대상) + `buildDynamicCtx`(동적=FAQ+이벤트+RAG)** 분리. FloatingAI가 `callServerCached({messages, system, dynctx})`로 전송, 실패 시 클라 직접호출(buildFullPrompt) 폴백. 이미지 경로는 클라 Gemini 유지.
+- **서버(`bliss_naver.py` `/bliss-ai-chat`, 직접패치·이미 라이브)**: BlissAI 전용 캐싱 핸들러 — `system`(cache_sys)을 Gemini `cachedContents`(3600s TTL, sha16 해시로 공유)로 캐싱 + `dynctx` 동적턴 + gemini-3.5-flash(thinkingLevel low). 캐시 최소토큰 미달/실패 시 systemInstruction 직접(uncached) 폴백 → 무중단. `_gemini_cached`(고객응대용 JSON canned reply) 재사용 안 함(BlissAI는 자연문장). 백업 `bliss_naver.py.bak_blissai_cache_20260701_060446`.
+- **검증**: 라이브 `/bliss-ai-chat` 스모크 — 입력 1,526토큰 중 **cached 1,466(96%)** (`gemini_usage_log` source=`blissai_cached`) → 입력비 ~90%↓. 답변 자연문장(마크다운·JSON 없음, 지침 준수). 작은 컨텍스트는 uncached 폴백 정상.
+- **복사아이콘 hover**: BlissAI 답변 "📋 복사" 텍스트버튼 → 마우스 hover 시 나타나는 SVG 복사아이콘(Claude식), 클릭 시 초록 체크 피드백. **씽킹**: 클라 이미지경로 generationConfig에 thinkingBudget:0(속도). "Sonnet으로 더 똑똑하게" 버튼·배지·죽은 smart브랜치 제거(전 경로 Gemini 3.5 통일).
+- **전 AI 경로 = Gemini 3.5**: 받은메시지함(`_ai_ask_msgs`) / 예약분석·추출·번역 / BlissAI(이번). Claude 런타임 0. **BlissAI가 받은메시지함과 FAQ 지식 공유는 부분** — BlissAI는 client `searchDocs`(RAG document_chunks) + `settings.ai_faq` 키워드, 받은메시지함은 서버 `_rag_search_docs`. 둘 다 RAG document_chunks 접근(대체로 공유).
+- 적용: v3.8.184 라이브 배포(version.txt 검증, CF 퍼지 everything) — **git 정합(contextBuilder.js 함수 포함) 확인 필수**. BlissAI 답변 시 라이브 번들 `dynctx` 포함·서버 캐싱 적중 스팟체크 권장.
