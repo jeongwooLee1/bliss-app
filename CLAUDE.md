@@ -4711,3 +4711,17 @@ v3.8.167 후속(MessagesPage.jsx). ＋ 버튼을 입력창 옆 별도 버튼 →
 - **복사아이콘 hover**: BlissAI 답변 "📋 복사" 텍스트버튼 → 마우스 hover 시 나타나는 SVG 복사아이콘(Claude식), 클릭 시 초록 체크 피드백. **씽킹**: 클라 이미지경로 generationConfig에 thinkingBudget:0(속도). "Sonnet으로 더 똑똑하게" 버튼·배지·죽은 smart브랜치 제거(전 경로 Gemini 3.5 통일).
 - **전 AI 경로 = Gemini 3.5**: 받은메시지함(`_ai_ask_msgs`) / 예약분석·추출·번역 / BlissAI(이번). Claude 런타임 0. **BlissAI가 받은메시지함과 FAQ 지식 공유는 부분** — BlissAI는 client `searchDocs`(RAG document_chunks) + `settings.ai_faq` 키워드, 받은메시지함은 서버 `_rag_search_docs`. 둘 다 RAG document_chunks 접근(대체로 공유).
 - 적용: v3.8.184 라이브 배포(version.txt 검증, CF 퍼지 everything) — **git 정합(contextBuilder.js 함수 포함) 확인 필수**. BlissAI 답변 시 라이브 번들 `dynctx` 포함·서버 캐싱 적중 스팟체크 권장.
+
+### v3.8.185 — BlissAI 답변 톤: 고객 응대 → 직원 업무 도구 (정우님) (2026-07-01)
+정우님: BlissAI가 답변을 "안녕하세요 고객님 :) 안내해 드릴게요~"처럼 **고객 응대 톤**으로 함. BlissAI는 **샵원장이 운영·설정 물어보는 직원 도구**라 부적합.
+- `contextBuilder.js` `ANSWER_GUIDE`(buildStablePrompt·buildFullPrompt 공용, 서버 cache_sys 포함)를 **[답변 지침 — 직원 업무 도구]** 로 교체: 질문한 직원(원장)에게 직접 답, "고객님/문의하신/안내해 드릴게요" 등 고객 응대 톤 금지, 가격·정보는 사실만 간결히(내부용이라 표·목록 OK). **예외**: 직원이 "고객한테 보낼 문구로"/"카톡으로 보낼 답변으로" 명시 시에만 고객 응대 톤.
+- 서버 스모크 검증: "하우스왁싱 가격안내" → "하우스왁싱 시술 가격표입니다. 브라질리언 여 회원가 88,000..." (직원톤, 고객 인사 없음). 캐시는 지침 바뀌어 새 해시로 자동 재캐싱.
+- React only(contextBuilder). 적용: v3.8.185 라이브 배포(version.txt 검증, CF 퍼지 everything).
+- **⚠️ 배포 시 유의(멀티세션)**: 배포 시점 `TradesPage.jsx`에 다른 세션의 미커밋 WIP(새주문폼 모달→인라인)가 있어 stash로 제외 후 배포·복원(git≠live 재발 방지). 거래관리 WIP는 stash pop으로 복원됨 — 거래세션이 커밋·배포 필요.
+
+### [진행중] BlissAI = 샵원장 운영/설정 도우미 확대 (스코프 잠금 2026-07-01)
+정우님 지시 스코프 (구현 예정): BlissAI를 샵원장이 **운영·블리스 사용법·설정을 묻거나 시키면 확인 후 실행**하는 도구로 확대 + 상단 AI Book 통합.
+- **확정**: ① 권한=각 원장 **자기 사업장(business_id) 설정 자유**(지점 staff는 조회만) ② 모든 변경 **미리보기→확인카드→실행**(자동 금지) ③ AI Book=**BlissAI가 모든 기능 잘 수행하면 그때 버튼 삭제**(지금은 병행) ④ Phase 1=**알림톡/문자 + AI 자동응대 + 제품**.
+- **현황**: BlissAI 액션 21종 이미 있음(지점·시술/카테고리·직원·담당자·예약경로·고객·사업정보·앱설정generic·예약·초기세팅). `actionSchemas.js`+`actionRunner.js`+`ActionConfirmCard`. 설정변경 게이트 현재 `master`.
+- **Phase 1(다음)**: 새 액션 `update_noti_config`(branches.noti_config 켜기/끄기·문구·시간) + `toggle_ai_reply`·`add_faq`(settings.ai_*/RAG) + `create/update/delete_product`(products). + actionRunner에 business_id 강제(멀티테넌트) + 설정게이트 master→owner(자기사업장) + write-intent 프롬프트에 예시 추가.
+- Phase 2: 이벤트·쿠폰·태그·스탬프·회원가규칙. Phase 3: AI Book 흡수 + 대화형 온보딩 마법사 + 로그조회.
