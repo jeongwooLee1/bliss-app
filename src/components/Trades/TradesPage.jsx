@@ -50,16 +50,21 @@ export default function TradesPage({ data, userBranches = [], isMaster, role, cu
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center', color: T.textSub }}>불러오는 중…</div>
 
-  const common = { bizId, suppliers, products, customers, orders, settings, suppliersMap, customersMap, branchNameMap, defaultSupplier, reload, showToast, currentUser }
+  // 본사(대표/슈퍼)만 전 지점 거래처·주문을 보고, 지점 원장은 자기 지점만
+  const isHQ = role === 'owner' || role === 'super'
+  const myCustomers = isHQ ? customers : customers.filter(c => c.branch_id && (userBranches || []).includes(c.branch_id))
+  const myOrders = isHQ ? orders : orders.filter(o => (userBranches || []).includes(o.branch_id))
+
+  const common = { bizId, suppliers, products, customers: myCustomers, orders: myOrders, settings, suppliersMap, customersMap, branchNameMap, defaultSupplier, reload, showToast, currentUser }
 
   return (
     <div style={{ maxWidth: 1180, margin: '0 auto', width: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
         <I name="handshake" size={22} color={T.primary} />
         <h2 style={{ fontSize: T.fs.xl, fontWeight: T.fw.black, color: T.text, margin: 0 }}>거래관리</h2>
-        <span style={{ fontSize: T.fs.xs, color: T.textMuted }}>{isMaster ? '본사 · 도매 주문/명세서/세금계산서' : '지점 구매신청'}</span>
+        <span style={{ fontSize: T.fs.xs, color: T.textMuted }}>{isMaster ? '도매 주문·명세서·세금계산서' : '지점 구매신청'}</span>
       </div>
-      {isMaster ? <AdminTrades {...common} userBranches={userBranches} /> : <BranchOrder {...common} userBranches={userBranches} />}
+      {isMaster ? <AdminTrades {...common} role={role} userBranches={userBranches} /> : <BranchOrder {...common} userBranches={userBranches} />}
       {toast && <div style={{ position: 'fixed', bottom: 90, left: '50%', transform: 'translateX(-50%)', background: T.gray800, color: '#fff', padding: '10px 18px', borderRadius: T.radius.full, fontSize: T.fs.sm, fontWeight: 600, zIndex: 12000, boxShadow: T.shadow.lg }}>{toast}</div>}
     </div>
   )
@@ -178,19 +183,32 @@ const qtyBtn = { width: 26, height: 30, border: `1px solid ${T.border}`, borderR
 
 /* ═══════════════ 본사 관리 뷰 ═══════════════ */
 function AdminTrades(props) {
-  const { orders } = props
+  const { orders, role } = props
+  const canAdmin = role === 'owner' || role === 'super' // 본사(네추럴룩/테라포트) 관계자만 관리자 모드
+  const [adminMode, setAdminMode] = useState(false)
   const [tab, setTab] = useState('orders')
   const pending = orders.filter(o => o.status === 'requested').length
-  const tabs = [
-    { id: 'orders', label: '주문접수', icon: 'clipboard', badge: pending },
+  const allTabs = [
+    { id: 'orders', label: adminMode ? '주문접수' : '주문', icon: 'clipboard', badge: adminMode ? pending : 0 },
     { id: 'history', label: '거래내역', icon: 'chart' },
-    { id: 'customers', label: '거래처', icon: 'users' },
-    { id: 'products', label: '제품', icon: 'pkg' },
-    { id: 'suppliers', label: '공급자', icon: 'building' },
-    { id: 'settings', label: '설정', icon: 'settings' },
+    { id: 'customers', label: '거래처', icon: 'users', admin: true },
+    { id: 'products', label: '제품', icon: 'pkg', admin: true },
+    { id: 'suppliers', label: '공급자', icon: 'building', admin: true },
+    { id: 'settings', label: '설정', icon: 'settings', admin: true },
   ]
+  const tabs = allTabs.filter(t => !t.admin || (adminMode && canAdmin))
+  useEffect(() => { if (!tabs.find(t => t.id === tab)) setTab('orders') }, [adminMode]) // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div>
+      {canAdmin && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginBottom: 12, background: adminMode ? T.primaryLt : 'transparent', borderRadius: T.radius.md, padding: adminMode ? '8px 12px' : 0 }}>
+          {adminMode && <span style={{ flex: 1, fontSize: T.fs.xs, color: T.primaryDk, fontWeight: 700 }}>본사 관리자 모드 — 제품·공급자·거래처·입금확인·배송 관리</span>}
+          <span style={{ fontSize: T.fs.sm, color: adminMode ? T.primaryDk : T.textSub, fontWeight: 700 }}>관리자 모드</span>
+          <button onClick={() => setAdminMode(m => !m)} title="본사(공급자) 관리 기능 표시" style={{ position: 'relative', width: 46, height: 26, borderRadius: 13, border: 'none', cursor: 'pointer', background: adminMode ? T.primary : T.gray300, transition: 'background .15s', flexShrink: 0 }}>
+            <span style={{ position: 'absolute', top: 3, left: adminMode ? 23 : 3, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left .15s', boxShadow: '0 1px 3px rgba(0,0,0,.3)' }} />
+          </button>
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 4, marginBottom: 14, flexWrap: 'wrap' }}>
         {tabs.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 14px', borderRadius: T.radius.full, border: 'none', cursor: 'pointer', fontSize: T.fs.sm, fontWeight: 700, background: tab === t.id ? T.primary : T.gray200, color: tab === t.id ? '#fff' : T.gray700 }}>
@@ -199,7 +217,7 @@ function AdminTrades(props) {
           </button>
         ))}
       </div>
-      {tab === 'orders' && <OrdersTab {...props} />}
+      {tab === 'orders' && <OrdersTab {...props} adminMode={adminMode && canAdmin} />}
       {tab === 'history' && <HistoryTab {...props} />}
       {tab === 'customers' && <CustomersTab {...props} />}
       {tab === 'products' && <ProductsTab {...props} />}
@@ -210,7 +228,7 @@ function AdminTrades(props) {
 }
 
 /* ── 주문접수 ── */
-function OrdersTab({ bizId, orders, customersMap, suppliersMap, branchNameMap, reload, showToast, currentUser, suppliers, products, defaultSupplier, customers, userBranches }) {
+function OrdersTab({ bizId, orders, customersMap, suppliersMap, branchNameMap, reload, showToast, currentUser, suppliers, products, defaultSupplier, customers, userBranches, settings, adminMode }) {
   const [flt, setFlt] = useState('active') // active|all|requested|paid|shipped|done
   const [docOrder, setDocOrder] = useState(null) // {order, kind:'statement'|'tax'}
   const [formOpen, setFormOpen] = useState(true) // 새 주문 입력 폼 (원장용 — 처음부터 펼침)
@@ -249,14 +267,14 @@ function OrdersTab({ bizId, orders, customersMap, suppliersMap, branchNameMap, r
       <div style={{ ...card, marginBottom: 14, padding: 14 }}>
         <button onClick={() => setFormOpen(o => !o)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
           <I name="plus" size={16} color={T.primary} />
-          <span style={{ fontSize: T.fs.md, fontWeight: 800, color: T.text }}>새 주문 입력</span>
-          <span style={{ fontSize: T.fs.xs, color: T.textMuted }}>거래처·제품 선택 후 저장</span>
+          <span style={{ fontSize: T.fs.md, fontWeight: 800, color: T.text }}>{adminMode ? '새 주문 입력' : '구매 주문 신청'}</span>
+          <span style={{ fontSize: T.fs.xs, color: T.textMuted }}>{adminMode ? '거래처·제품 선택 후 저장' : '제품 선택 후 신청'}</span>
           <div style={{ flex: 1 }} />
           <I name={formOpen ? 'chevU' : 'chevD'} size={16} color={T.gray600} />
         </button>
         {formOpen && (
           <div style={{ marginTop: 12 }}>
-            <OrderForm bizId={bizId} suppliers={suppliers} products={products} customers={customers} defaultSupplier={defaultSupplier} currentUser={currentUser} userBranches={userBranches} showToast={showToast} onSaved={() => { reload('orders'); showToast('주문 저장됨 ✓') }} />
+            <OrderForm bizId={bizId} suppliers={suppliers} products={products} customers={customers} defaultSupplier={defaultSupplier} currentUser={currentUser} userBranches={userBranches} settings={settings} branchNameMap={branchNameMap} adminMode={adminMode} showToast={showToast} onSaved={() => { reload('orders'); showToast(adminMode ? '주문 저장됨 ✓' : '구매신청 완료 ✓') }} />
           </div>
         )}
       </div>
@@ -266,7 +284,7 @@ function OrdersTab({ bizId, orders, customersMap, suppliersMap, branchNameMap, r
           <button key={v} onClick={() => setFlt(v)} style={{ padding: '5px 12px', borderRadius: T.radius.full, border: `1px solid ${flt === v ? T.primary : T.border}`, background: flt === v ? T.primaryLt : T.bgCard, color: flt === v ? T.primaryDk : T.gray700, fontSize: T.fs.xs, fontWeight: 700, cursor: 'pointer' }}>{l}</button>
         ))}
         <div style={{ flex: 1 }} />
-        <Btn variant="outline" size="sm" onClick={exportExcel}><I name="download" size={13} />홈택스 엑셀{selected.length ? ` (${selected.length})` : ''}</Btn>
+        {adminMode && <Btn variant="outline" size="sm" onClick={exportExcel}><I name="download" size={13} />홈택스 엑셀{selected.length ? ` (${selected.length})` : ''}</Btn>}
       </div>
 
       {shown.length ? (
@@ -274,7 +292,7 @@ function OrdersTab({ bizId, orders, customersMap, suppliersMap, branchNameMap, r
           {shown.map(o => (
             <div key={o.id} style={{ ...card, padding: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <input type="checkbox" checked={!!sel[o.id]} onChange={e => setSel(s => ({ ...s, [o.id]: e.target.checked }))} />
+                {adminMode && <input type="checkbox" checked={!!sel[o.id]} onChange={e => setSel(s => ({ ...s, [o.id]: e.target.checked }))} />}
                 <StatusBadge status={o.status} />
                 <span style={{ fontSize: T.fs.sm, fontWeight: 800 }}>{customersMap[o.customer_id]?.name || branchNameMap[o.branch_id] || '-'}</span>
                 <span style={{ fontSize: T.fs.xs, color: T.textSub }}>{o.tx_date} · {o.requested_by || ''}</span>
@@ -285,12 +303,12 @@ function OrdersTab({ bizId, orders, customersMap, suppliersMap, branchNameMap, r
               </div>
               <div style={{ fontSize: T.fs.xs, color: T.gray700, margin: '8px 0' }}>{(o.items || []).map(i => `${i.name}×${i.qty}`).join(', ')}</div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {o.status === 'requested' && <Btn size="sm" onClick={() => setStatus(o, 'paid')}><I name="banknote" size={13} />입금확인</Btn>}
-                {o.status === 'paid' && <Btn size="sm" onClick={() => setStatus(o, 'shipped')}><I name="pkg" size={13} />배송처리</Btn>}
-                {o.status === 'shipped' && <Btn size="sm" variant="secondary" onClick={() => setStatus(o, 'done')}><I name="check" size={13} />완료</Btn>}
+                {adminMode && o.status === 'requested' && <Btn size="sm" onClick={() => setStatus(o, 'paid')}><I name="banknote" size={13} />입금확인</Btn>}
+                {adminMode && o.status === 'paid' && <Btn size="sm" onClick={() => setStatus(o, 'shipped')}><I name="pkg" size={13} />배송처리</Btn>}
+                {adminMode && o.status === 'shipped' && <Btn size="sm" variant="secondary" onClick={() => setStatus(o, 'done')}><I name="check" size={13} />완료</Btn>}
                 <Btn size="sm" variant="ghost" onClick={() => setDocOrder({ order: o, kind: 'statement' })}>거래명세서</Btn>
-                <Btn size="sm" variant="ghost" onClick={() => setDocOrder({ order: o, kind: 'tax' })}>세금계산서</Btn>
-                {o.status !== 'cancelled' && o.status !== 'done' && <Btn size="sm" variant="ghost" style={{ color: T.danger, marginLeft: 'auto' }} onClick={() => setStatus(o, 'cancelled')}>취소</Btn>}
+                {adminMode && <Btn size="sm" variant="ghost" onClick={() => setDocOrder({ order: o, kind: 'tax' })}>세금계산서</Btn>}
+                {adminMode && o.status !== 'cancelled' && o.status !== 'done' && <Btn size="sm" variant="ghost" style={{ color: T.danger, marginLeft: 'auto' }} onClick={() => setStatus(o, 'cancelled')}>취소</Btn>}
               </div>
             </div>
           ))}
@@ -337,8 +355,8 @@ function DocModal({ order, kind, supplier, customer, onClose, showToast }) {
   )
 }
 
-/* ── 새 주문 입력 폼 (원장용 인라인) ── */
-function OrderForm({ bizId, suppliers, products, customers, defaultSupplier, currentUser, userBranches, showToast, onSaved }) {
+/* ── 새 주문 입력 폼 (원장 신청 / 관리자 입력 겸용) ── */
+function OrderForm({ bizId, suppliers, products, customers, defaultSupplier, currentUser, userBranches, settings, branchNameMap, adminMode, showToast, onSaved }) {
   // 단일 거래처 계정은 자동 선택, 복수면 직접 선택
   const autoCust = customers.length === 1
     ? customers[0].id
@@ -363,9 +381,24 @@ function OrderForm({ bizId, suppliers, products, customers, defaultSupplier, cur
       supplier_id: supId, customer_id: custId, branch_id: cust?.branch_id || null,
       tx_date: txDate, tax_type: taxType, items,
       total_qty: totals.totalQty, total_supply: totals.totalSupply, total_tax: totals.totalTax, grand_total: totals.grandTotal,
-      memo, status: 'paid', requested_by: currentUser?.name || '(본사)', confirmed_by: currentUser?.name || '', paid_at: new Date().toISOString(),
+      memo,
+      // 관리자 모드(본사) = 입금확인(paid)으로 바로 기록 / 원장 모드 = 구매신청(requested)
+      ...(adminMode
+        ? { status: 'paid', requested_by: currentUser?.name || '(본사)', confirmed_by: currentUser?.name || '', paid_at: new Date().toISOString() }
+        : { status: 'requested', requested_by: currentUser?.name || '', requested_at: new Date().toISOString() }),
     }
     await sb.insert('trade_orders', row)
+    // 원장 구매신청 → 본사 담당자에게 SMS 알림
+    if (!adminMode) {
+      try {
+        const phone = normPhone(settings?.manager_phone)
+        if (settings?.notify_enabled !== false && phone) {
+          const bn = (branchNameMap && cust?.branch_id && branchNameMap[cust.branch_id]) || cust?.name || '지점'
+          const msg = `[거래관리] 구매신청\n${bn} / ${currentUser?.name || ''}\n금액: ${fmt(totals.grandTotal)}원 (${items.length}품목)\n블리스 거래관리에서 확인하세요.`
+          await callSendSms(cust?.branch_id || null, msg, [{ phone }])
+        }
+      } catch (e) { console.warn('[trade] 알림 SMS 실패', e) }
+    }
     setCart({}); setMemo(''); setCustId(autoCust); setSearch('')
     setSaving(false)
     onSaved()

@@ -4737,3 +4737,10 @@ v3.8.167 후속(MessagesPage.jsx). ＋ 버튼을 입력창 옆 별도 버튼 →
 - **합계 상세**: 합계만 → **공급가액 + 부가세 + 합계** 분리 표시.
 - `AdminTrades`·`OrdersTab`→`OrderForm`에 userBranches prop 배선. 빌드 검증 후 배포.
 - 적용: v3.8.187 라이브 배포(version.txt 검증, CF 퍼지 everything).
+
+### v3.8.188 — 거래관리 본사/지점 스코핑 + 본사 관리자 모드 토글 (거래세션 WIP 배포) (2026-07-01)
+거래관리 세션 WIP 배포. `TradesPage.jsx`:
+- **본사(owner/super) vs 지점 스코핑**: `isHQ`면 전 지점 거래처·주문, 지점 원장은 자기 지점(userBranches)만 필터.
+- **본사 관리자 모드 토글**(owner/super만 노출): OFF면 탭 = 주문·거래내역만(지점은 구매신청), ON이면 거래처·제품·공급자·설정 탭까지(입금확인·배송·제품·공급자 관리). 탭 라벨·배지 모드별 적응("주문"↔"주문접수", "구매 주문 신청"↔"새 주문 입력").
+- OrderForm에 settings·branchNameMap·adminMode prop 배선. `useEffect` import 확인(런타임 안전). 빌드 검증 후 배포.
+- 적용: v3.8.188 라이브 배포(version.txt 검증, CF 퍼지 everything).
