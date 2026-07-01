@@ -110,6 +110,8 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
   // 예: 공용 "하우스왁싱 서울" IG 계정을 강남본점에 매핑
   const [igBranchOverride, setIgBranchOverride] = useState({});
   const [kakaoBranchOverride, setKakaoBranchOverride] = useState({});
+  // 계정 표시명 오버라이드 (지점 아닌 특수 계정 — 예: blissme.ai 공식 인스타 → "블리스미")
+  const [accountLabels, setAccountLabels] = useState({});
   const [showAiSettings, setShowAiSettings] = useState(false);
   const [names, setNames] = useState({});
   const convoEndRef = useRef(null);
@@ -149,6 +151,11 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
     if (!_ACC_NAME[pfId]) _ACC_NAME[pfId] = brName || _ACC_NAME[pfId] || "";
     if (!_ACC_BID[pfId]) _ACC_BID[pfId] = bid;
     (_KK_EXTRA_BY_BID[bid] ||= []).push(String(pfId));
+  });
+  // 계정 표시명 오버라이드 (최종) — 지점 매핑보다 우선. 지점 아닌 특수 계정을 커스텀 라벨로 표시 (blissme.ai 공식 인스타 → "블리스미").
+  Object.entries(accountLabels || {}).forEach(([accId, label]) => {
+    if (!accId || !label) return;
+    _ACC_NAME[String(accId)] = label;
   });
 
   // userBranches + 연계된 지점들까지 확장 (id_ebgbebctt3 Phase 2)
@@ -289,6 +296,8 @@ function AdminInbox({ sb, branches, data, setData, onRead, onChatOpen, userBranc
         setIgBranchOverride(s.ig_branch_override || {});
         // 카카오 채널 pfId → branch_id 매핑
         setKakaoBranchOverride(s.kakao_branch_override || {});
+        // 계정 표시명 오버라이드 (blissme.ai 등 지점 아닌 특수 계정)
+        setAccountLabels(s.account_labels || {});
         // 미응답 N분 후 자동 답변
         const _dl = s.ai_auto_reply_delay || {};
         setAiDelay({enabled:!!_dl.enabled, minutes:Number(_dl.minutes)||5});
