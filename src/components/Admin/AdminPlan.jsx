@@ -78,7 +78,7 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
 
   const groupedFeatures = useMemo(() => {
     return [
-      { title: '운영', keys: ['schedule_advanced'] },
+      { title: '운영', keys: ['schedule_advanced','team_chat'] },
       { title: '멤버십·패키지', keys: ['customer_packages','package_share','member_pricing'] },
       { title: '마케팅', keys: ['event_engine','coupons','points'] },
       { title: '메시지 발송', keys: ['kakao_alimtalk','aligo_sms'] },

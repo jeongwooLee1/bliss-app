@@ -7,6 +7,7 @@
 export const ALL_FEATURES = {
   // 운영 (Operations)
   schedule_advanced:  { label: '직원근무표 고급', desc: '자동배정·룰위반·스냅샷·룰설정' },
+  team_chat:          { label: '팀 채팅',        desc: '사이드바 팀 채팅 사용 여부' },
 
   // 멤버십·패키지 (Membership)
   customer_packages:  { label: '고객 보유권',     desc: '다회권/연간회원권 구매·차감' },

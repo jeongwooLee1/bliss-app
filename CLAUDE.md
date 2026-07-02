@@ -4893,3 +4893,14 @@ HANDOFF 최우선 대기였던 블리스미 인스타 SaaS 건 완결. 블리스
 - **검증**(end-to-end): ① 테스트 계정으로 `account_signup` RPC 호출 → `session_token: "st_5627..."` 반환 확인 ② 그 토큰으로 businesses INSERT curl → 201 정상 통과 확인 ③ 테스트 데이터 정리(businesses·app_sessions·accounts).
 - 적용: v3.8.204 라이브 배포(version.txt·CF퍼지).
 - **유의**: 기존 로그인 경로(auth_login_v2 등)는 이미 session_token 발급 중 — 이번 fix는 회원가입 직후 → 사업장 생성 경로에만 영향. `_bliss_new_session`은 SECURITY DEFINER라 app_sessions RLS 잠금 우회 정상. session_token 저장은 **가입 → 사업장 생성** 시점만 커버(자동로그인 재시도는 별개 흐름 v3.8.101).
+
+### v3.8.205 — 팀 채팅 옵션화 + 신규 사업장 디폴트 직원1·직원2 자동 등록 (2026-07-02)
+정우님 요청 2건.
+- **① 팀 채팅 옵션화** (`features.js`·`AdminPlan.jsx`·`Sidebar.jsx`):
+  - `ALL_FEATURES`에 `team_chat: { label:'팀 채팅', desc:'사이드바 팀 채팅 사용 여부' }` 추가.
+  - `AdminPlan groupedFeatures` 운영 그룹 keys에 `team_chat` 편입 (직원근무표 고급 옆).
+  - `Sidebar.jsx`: `import { hasFeature }` + TeamChat 렌더링 게이트 `hasFeature('team_chat') !== false` (features 미설정 상태에선 기본 켜짐, 명시 false일 때만 숨김). 대표 관리자가 관리설정 → 요금제·잔액 → 활성 기능에서 켜고 끔.
+- **② 신규 사업장 디폴트 직원 seed** (`AppShell.jsx doCreateBiz`):
+  - businesses/branches/app_users 3연속 INSERT 후 **`employees_v1` schedule_data**에 `[{id:'직원1',name:'직원1',branch:brId,weeklyOff:2,...},{id:'직원2',...}]` 2명 초기값 upsert. 신규 원장이 회원가입 즉시 타임라인·근무표에 직원 컬럼 2개 자동 표시. seed 실패해도 사업장 생성은 성공으로 진행(try/catch 감쌈).
+- **검증**: 빌드 통과 + 프리뷰(demo owner /settings/plan): 활성 기능 운영 그룹에 **팀 채팅 · "사이드바 팀 채팅 사용 여부"** 옵션 정확 표시(스크린샷 확인, 콘솔 에러 0). seed 코드는 sb.upsert + useEmployees.save 저장 포맷 동일(id·key='employees_v1', value=JSON stringify) → 라이브 신규 회원가입 시 자동 반영.
+- 적용: v3.8.205 라이브 배포(version.txt·CF퍼지).

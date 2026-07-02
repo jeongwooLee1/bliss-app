@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { T } from '../../lib/constants'
-import { PLANS } from '../../lib/features'
+import { PLANS, hasFeature } from '../../lib/features'
 import I from '../common/I'
 import { Btn } from '../common'
 import { TeamChat } from '../Chat'
@@ -122,7 +122,8 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
         </span>
       </>}
     </div>}
-    {!isMobile && <div style={{borderTop:`2px solid ${T.primary}`,display:"flex",flexDirection:"column",flexShrink:0,flexGrow:0,flexBasis:(chatExpanded?420:190)+"px",height:(chatExpanded?420:190)+"px",overflow:"hidden",transition:"flex-basis .18s,height .18s"}}>
+    {/* 팀 채팅 — hasFeature('team_chat') 게이트 (관리설정 활성기능 토글로 켜기/끄기). 명시적으로 false면 숨김. */}
+    {!isMobile && hasFeature('team_chat') !== false && <div style={{borderTop:`2px solid ${T.primary}`,display:"flex",flexDirection:"column",flexShrink:0,flexGrow:0,flexBasis:(chatExpanded?420:190)+"px",height:(chatExpanded?420:190)+"px",overflow:"hidden",transition:"flex-basis .18s,height .18s"}}>
       <div style={{flex:1,minHeight:0,display:"flex",flexDirection:"column"}}>
         <TeamChat scrollTrigger={chatExpanded} extraHeaderRight={
           <button onClick={()=>setChatExpanded(v=>!v)} title={chatExpanded?"축소":"펼치기"}

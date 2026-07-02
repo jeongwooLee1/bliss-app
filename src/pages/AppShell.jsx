@@ -29,7 +29,7 @@ import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 import TradesPage from '../components/Trades/TradesPage'
 
 const uid = genId;
-const BLISS_V = "3.8.204"
+const BLISS_V = "3.8.205"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -488,6 +488,17 @@ function AccountGate({ mode, pendingAccount, onPick, onLogout, onJoinSuccess, on
       await sb.insert("app_users", { id: mbrId, account_id: acc.id, business_id: bizId,
         login_id: acc.login_id, name: acc.name, role: "owner", status: "active",
         branch_ids: JSON.stringify([brId]), view_branch_ids: JSON.stringify([brId]) });
+      // 신규 사업장 디폴트 직원 2명 (정우님 요청 2026-07-02): 근무표·타임라인에 즉시 표시되도록 employees_v1 seed
+      try {
+        const _defaultEmps = [
+          { id: "직원1", name: "직원1", branch: brId, weeklyOff: 2, isFreelancer: false, gender: "", isMale: false, rank: "직원" },
+          { id: "직원2", name: "직원2", branch: brId, weeklyOff: 2, isFreelancer: false, gender: "", isMale: false, rank: "직원" },
+        ];
+        await sb.upsert("schedule_data", [{
+          business_id: bizId, id: "employees_v1", key: "employees_v1",
+          value: JSON.stringify(_defaultEmps),
+        }]);
+      } catch(_e) { /* seed 실패해도 사업장 생성은 성공으로 진행 */ }
       onCreateBiz && onCreateBiz(mapMembership({
         id: mbrId, account_id: acc.id, business_id: bizId, role: "owner", status: "active",
         branch_ids: [brId], view_branch_ids: [brId], name: acc.name, email: acc.email,
