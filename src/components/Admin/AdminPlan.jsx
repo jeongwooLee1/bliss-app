@@ -156,18 +156,27 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
     }
   }
 
-  // ─── 포인트 충전: reservation_payments에 purpose='topup' row INSERT 후 새 탭 결제 ───
+  // ─── 포인트 충전: 지점 구독에 등록된 카드로 즉시 청구(KCP 빌링키 재사용) ───
+  // 카드 미등록이면 안내. 등록됐으면 → reservation_payments row INSERT + billing-charge(topup) 호출 → 성공 시 서버가 잔액 가산까지 처리.
   const handleTopup = async () => {
     if (!topupModal || topupBusy) return
     const { branchId, amount } = topupModal
     if (!amount || amount < 1000) { alert('충전 금액을 선택해주세요'); return }
+    const branchSub = subs.find(s => s.branch_id === branchId)
+    const billingId = branchSub?.billing_id
+    if (!billingId) {
+      alert('먼저 이 지점의 월 이용료 카드를 등록해주세요.\n등록된 카드로 충전도 청구됩니다.')
+      return
+    }
+    const branch = branches.find(b => b.id === branchId)
+    const branchName = branch?.short || branch?.name || '지점'
+    if (!confirm(`${branchName}에 등록된 카드로\n${Number(amount).toLocaleString()}원을 즉시 충전합니다.\n\n진행하시겠습니까?`)) return
     setTopupBusy(true)
-    // ⚠️ 새 탭은 클릭 제스처 내에서 '동기'로 먼저 열어야 함 (await 뒤 window.open은 사파리·팝업차단에서 빈탭/차단됨)
-    const payWin = window.open('', '_blank')
     try {
+      // 1) reservation_payments pending row 생성 (결제 이력용)
       const orderId = 'topup_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
       const H = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=representation' }
-      const r = await fetch(`${SB_URL}/rest/v1/reservation_payments`, {
+      const insR = await fetch(`${SB_URL}/rest/v1/reservation_payments`, {
         method: 'POST', headers: H,
         body: JSON.stringify({
           id: orderId,
@@ -176,20 +185,34 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
           amount,
           purpose: 'topup',
           status: 'pending',
-          payment_provider: 'tosspayments',
-          notes: `${PLANS[plan]?.label || plan} 매장 포인트 충전`,
+          payment_provider: 'portone',
+          notes: `${branchName} 포인트 충전 (구독카드 재사용)`,
         })
       })
-      if (!r.ok) { const t = await r.text().catch(()=>''); throw new Error(t || '주문 생성 실패') }
-      // 미리 연 탭의 주소를 결제 페이지로 — 팝업 차단으로 못 열었으면 동기 재시도
-      const payUrl = `/pay/${orderId}`
-      if (payWin) payWin.location.href = payUrl
-      else window.open(payUrl, '_blank', 'noopener,noreferrer')
+      if (!insR.ok) { const t = await insR.text().catch(()=>''); throw new Error(t || '주문 생성 실패') }
+
+      // 2) billing-charge 호출 (topup 파라미터 지정)
+      const chargeR = await fetch(`${SB_URL}/functions/v1/billing-charge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SB_KEY}` },
+        body: JSON.stringify({
+          billingId,
+          amount: Number(amount),
+          orderName: `${branchName} 포인트 충전`,
+          topup: { orderId, branchId },
+        })
+      })
+      const cd = await chargeR.json().catch(() => ({}))
+      if (!chargeR.ok || !cd?.ok) {
+        const errMsg = cd?.portoneError?.message || cd?.error || 'KCP 결제 실패'
+        throw new Error(errMsg)
+      }
       setTopupModal(null)
-      alert('새 탭에서 결제를 완료해주세요. 결제 후 이 페이지를 새로고침하면 잔액에 반영됩니다.')
+      alert(`✓ 충전 완료\n${Number(amount).toLocaleString()}원이 ${branchName} 잔액에 반영되었습니다.`)
+      // 잔액 새로고침
+      if (typeof loadBilling === 'function') { try { await loadBilling() } catch {} }
     } catch (e) {
-      if (payWin) payWin.close()
-      alert('충전 시작 실패: ' + (e?.message || e))
+      alert('충전 실패: ' + (e?.message || e))
     } finally {
       setTopupBusy(false)
     }
@@ -481,9 +504,9 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
             ))}
           </div>
           <div style={{fontSize:T.fs.xxs,color:T.textMuted,padding:'8px 12px',background:T.gray100,borderRadius:T.radius.md,marginBottom:16,lineHeight:1.6}}>
-            • 결제 완료 시 즉시 충전됩니다.<br/>
-            • 환불은 잔액 한도내만 가능 (사용한 포인트는 환불 불가).<br/>
-            • 토스페이먼츠로 결제되며, 카드 영수증이 발급됩니다.
+            • 지점 <b>월 이용료 카드</b>로 즉시 청구되어 충전됩니다.<br/>
+            • 카드가 등록되어 있지 않으면 먼저 카드 등록이 필요합니다.<br/>
+            • 환불은 잔액 한도내만 가능 (사용한 포인트는 환불 불가).
           </div>
           <div style={{display:'flex',gap:8}}>
             <button onClick={()=>setTopupModal(null)} disabled={topupBusy}

@@ -4826,3 +4826,12 @@ HANDOFF 최우선 대기였던 블리스미 인스타 SaaS 건 완결. 블리스
 - **소프트 스타일**(원장 화면): `inpSoft`(테두리 없이 배경 gray100+그림자) 신설 → OrderForm select/input·제품검색·메모·필터칩·수량버튼 전부 테두리 제거·배경/그림자로 구분. 거래처 미선택 경고는 border 대신 inset box-shadow.
 - **검증**: `npx vite build` 통과(TradesPage 컴파일 정상). 원장 원페이지·관리자 탭 분기는 실제 거래관리 접근(하우스왁싱 owner/지점)에서 확인 권장.
 - 적용: v3.8.196 라이브 배포(version.txt 검증, CF 퍼지 everything) + git commit·push.
+
+### v3.8.197 — 충전(topup) KCP 전환: 구독 카드 재사용 자동청구 (2026-07-02)
+보증보험 승인 대기 중, 승인 즉시 삼성카드로 구독+충전 둘 다 테스트할 수 있게 **충전 결제경로를 토스→KCP로 전환**. 정우님 원래 계획 "구독에 등록된 카드로 충전도 자동 청구" 그대로 구현.
+- **Edge Function `billing-charge` v18**: body에 `topup:{orderId,branchId}` 파라미터 지원 추가. subscription 카드(bill.purpose='subscription')를 재사용해 KCP(PortOne V2) 청구 → 성공 시 **reservation_payments 완료 기록**(status·payment_provider='portone'·payment_key·approved_at) + **billing_balances 자동 가산**(row 있으면 UPDATE, 없으면 INSERT). 실패 시 reservation_payments status='failed' + notes에 KCP 사유 기록. billings·billing_charges 스키마 무변경(subscription 청구 로직 그대로 재활용).
+- **`AdminPlan.jsx handleTopup` 재작성**: 지점 subs에서 `billing_id` 조회 → **없으면** "먼저 월 이용료 카드를 등록해주세요" 안내(카드번호 입력 없음) / **있으면** 확인 모달("등록된 카드로 N원 즉시 충전") → reservation_payments pending 생성 → `billing-charge` POST(`topup` 파라미터) → 성공 시 loadBilling으로 잔액 새로고침. 기존 토스 하드코딩(`payment_provider:'tosspayments'`)·`/pay/{orderId}` 새 탭·팝업차단 워크어라운드 전부 제거.
+- **충전 모달 안내문 갱신**: "토스페이먼츠로 결제" → "지점 월 이용료 카드로 즉시 청구 / 카드 미등록 시 먼저 등록 필요".
+- **검증**: 빌드 통과 + 프리뷰(demo owner) — 충전 모달 오픈·"1만원 결제하기" 클릭 → **"먼저 이 지점의 월 이용료 카드를 등록해주세요"** 안내 정확 표시(카드 미등록 상태 정상 처리). 콘솔 에러 0. 실카드 청구는 보증보험 승인 후 강남 삼성카드로 검증 예정.
+- 적용: v3.8.197 라이브 배포(version.txt·CF퍼지) + billing-charge Edge Function v18 라이브.
+- **유의**: ① topup 청구는 반드시 `purpose='subscription'` 카드에서만 (billing-charge가 400 거절) — 손님 정기결제 카드로 본사 topup 청구 오용 방지 ② 승인 후 라이브 검증 순서: 구독 등록(1000원 첫 결제) → 성공 시 → 충전 1000원 → 성공 시 강남 구독료 77000원 복구 ③ 삼성카드 KCP 심사 완료·보증보험 승인 두 조건 모두 충족돼야 카드 등록/청구 성공.
