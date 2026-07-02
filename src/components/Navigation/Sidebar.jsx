@@ -110,8 +110,8 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
         </div>
       ))}
     </div>
-    {/* 팀채팅 위쪽 — 버전 + 서버 + 스크래퍼 (잔액·종료일은 상단 헤더에 표시, 중복 제거) */}
-    {!isMobile && <div style={{padding:`6px ${T.sp.lg}px`,borderTop:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:6,fontSize:10,color:T.textMuted,flexWrap:"wrap"}}>
+    {/* 팀채팅 위쪽 — 버전 + 서버 + 스크래퍼 표시 (정우님 요청 2026-07-02: 사이드바에서 숨김. 복구는 false→true). */}
+    {false && !isMobile && <div style={{padding:`6px ${T.sp.lg}px`,borderTop:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:6,fontSize:10,color:T.textMuted,flexWrap:"wrap"}}>
       <span style={{color:T.danger,fontWeight:T.fw.bolder}}>v{BLISS_V}</span>
       <span style={{color:T.gray400}}>·</span>
       <span style={{color:serverV?"#03C75A":T.textMuted}}>서버 {serverV?`v${serverV}`:"…"}</span>

@@ -49,6 +49,8 @@ function ChatInput({ onSend, disabled }) {
         padding:'6px 6px 6px 10px',
         transition:'all .15s',
       }}>
+        {/* 공지로 전송 확성기 버튼 — 정우님 요청 2026-07-02: 사이드바 팀채팅에서 숨김. 복구는 false→true. announce state는 유지. */}
+        {false && (
         <button
           type="button"
           onClick={() => setAnnounce(v => !v)}
@@ -71,6 +73,7 @@ function ChatInput({ onSend, disabled }) {
             <path d="M11 7v10"/>
           </svg>
         </button>
+        )}
         <textarea
           ref={taRef}
           value={value}
