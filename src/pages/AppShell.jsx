@@ -29,7 +29,7 @@ import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 import TradesPage from '../components/Trades/TradesPage'
 
 const uid = genId;
-const BLISS_V = "3.8.201"
+const BLISS_V = "3.8.202"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -2654,7 +2654,8 @@ function App() {
     { id:"timeline", label:"타임라인", icon:<I name="calendar" size={16}/> },
     ...(hasFeature("trade_management") ? [{ id:"trades", label:"거래관리", icon:<I name="handshake" size={16}/> }] : []),
     { id:"requests", label:"공지 & 요청", icon:"📢", badge:pendingReqCount },
-    { id:"review", label:"직원 후기", icon:<I name="star" size={16}/>, href:"/review.html" },
+    // 직원 후기 항목은 정우님 요청(2026-07-02)으로 삭제. 복구는 아래 라인 복원.
+    // { id:"review", label:"직원 후기", icon:<I name="star" size={16}/>, href:"/review.html" },
   ] : [
     { id:"timeline", label:"타임라인", icon:<I name="calendar" size={16}/> },
     { id:"reservations", label:"예약목록", icon:<I name="clipboard" size={16}/> },
@@ -2664,9 +2665,10 @@ function App() {
     ...(hasFeature("trade_management") ? [{ id:"trades", label:"거래관리", icon:<I name="handshake" size={16}/>, badge:pendingTradeCount }] : []),
     ...((role==="owner"||role==="super")?[{ id:"users", label:"사용자관리", icon:<I name="user" size={16}/> }]:[]),
     { id:"messages", label:"받은메시지함", icon:<I name="msgSq" size={16}/>, badge: unreadMsgCount + pendingDepositCount + pendingReviewCount },
-    { id:"admin", label:"관리설정", icon:<I name="settings" size={16}/> },
     { id:"requests", label:"공지 & 요청", icon:"📢", badge:pendingReqCount },
-    { id:"review", label:"직원 후기", icon:<I name="star" size={16}/>, href:"/review.html" },
+    // 정우님 요청(2026-07-02): 관리설정을 맨 아래로 이동, 직원 후기 항목 삭제.
+    { id:"admin", label:"관리설정", icon:<I name="settings" size={16}/> },
+    // { id:"review", label:"직원 후기", icon:<I name="star" size={16}/>, href:"/review.html" },
   ];
 
   const branchNames = userBranches.map(bid => (data.branches||[]).find(b=>b.id===bid)?.short||bid).filter(Boolean).join(", ");
