@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { T } from '../../lib/constants'
 import { PLANS, hasFeature } from '../../lib/features'
 import I from '../common/I'
@@ -22,6 +22,16 @@ const fmtP = (n) => (n||0).toLocaleString() + 'P'
 
 function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", isSuper=false, onBackToSuper, serverV, scraperStatus=null, BLISS_V="", isMobile=false, billingState={}, bizSwitcher=null, onGoPlan=null }) {
   const [chatExpanded, setChatExpanded] = useState(false);
+  const [acctMenuOpen, setAcctMenuOpen] = useState(false);
+  const _acctRef = useRef(null);
+  // 브랜드명 클릭 드롭다운 바깥 클릭 시 닫기
+  useEffect(() => {
+    if (!acctMenuOpen) return;
+    const h = (e) => { if (_acctRef.current && !_acctRef.current.contains(e.target)) setAcctMenuOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [acctMenuOpen]);
+  const _goSlug = (slug) => { setAcctMenuOpen(false); window.location.href = '/settings/' + slug; };
   const cats = [
     { label:"예약 관리", items: nav.filter(n=>["timeline","reservations"].includes(n.id)) },
     { label:"고객 관리", items: nav.filter(n=>["customers","marketing"].includes(n.id)) },
@@ -35,9 +45,12 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
   const balanceLow = (billingState.totalBalance||0) < 1000
   return <>
     <div style={{padding:`${T.sp.md}px ${T.sp.lg}px`,borderBottom:`1px solid ${T.border}`,display:"flex",flexDirection:"column",gap:10,background:`linear-gradient(135deg, ${T.primaryLt} 0%, transparent 60%)`}}>
-      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
-        <div style={{flex:1,minWidth:0,cursor:"pointer",userSelect:"none"}} onClick={()=>{ window.location.href = '/timeline'; }} title="타임라인 오늘 날짜로 이동">
-          <div style={{fontSize:T.fs.lg,fontWeight:T.fw.black,color:T.primary,letterSpacing:-.5,lineHeight:1.15,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{isSuper ? `관리자 · ${bizName||"블리스"}` : (bizName||"Bliss")}</div>
+      <div ref={_acctRef} style={{position:"relative",display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
+        <div style={{flex:1,minWidth:0,cursor:"pointer",userSelect:"none"}} onClick={()=>setAcctMenuOpen(v=>!v)} title="계정 메뉴 열기">
+          <div style={{fontSize:T.fs.lg,fontWeight:T.fw.black,color:T.primary,letterSpacing:-.5,lineHeight:1.15,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",display:"flex",alignItems:"center",gap:5}}>
+            <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{isSuper ? `관리자 · ${bizName||"블리스"}` : (bizName||"Bliss")}</span>
+            <I name={acctMenuOpen ? "chevU" : "chevD"} size={14} style={{flexShrink:0,color:T.primaryDk}}/>
+          </div>
           <div style={{fontSize:T.fs.xs,color:T.textSub,marginTop:3,fontWeight:T.fw.bold}}>{
             isSuper ? "블리스 슈퍼관리자 · 점검 모드"
             : role==="owner" ? "대표 관리자"
@@ -47,6 +60,32 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
           }</div>
         </div>
         <button onClick={onLogout} title="로그아웃" style={{flexShrink:0,padding:"4px 9px",fontSize:10,fontWeight:T.fw.bolder,border:`1px solid ${T.border}`,background:T.bgCard,color:T.textSub,borderRadius:6,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>로그아웃</button>
+        {/* 브랜드명 클릭 드롭다운 — 마이페이지·접속 이력·브랜드가입요청 등 계정 관련 (정우님 요청 2026-07-02: 관리설정에서 상단으로 이동) */}
+        {acctMenuOpen && (
+          <div style={{position:"absolute",top:"100%",left:0,right:0,marginTop:6,background:T.bgCard,border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 6px 20px rgba(0,0,0,.15)",zIndex:200,overflow:"hidden"}}>
+            <button onClick={()=>{ setAcctMenuOpen(false); window.location.href='/timeline'; }} style={{display:"flex",alignItems:"center",gap:9,width:"100%",padding:"10px 12px",border:"none",background:"transparent",cursor:"pointer",fontFamily:"inherit",fontSize:13,color:T.text,textAlign:"left"}}>
+              <I name="calendar" size={14} style={{color:T.primaryDk}}/><span>타임라인 오늘</span>
+            </button>
+            <div style={{height:1,background:T.border}}/>
+            <button onClick={()=>_goSlug('mypage')} style={{display:"flex",alignItems:"center",gap:9,width:"100%",padding:"10px 12px",border:"none",background:"transparent",cursor:"pointer",fontFamily:"inherit",fontSize:13,color:T.text,textAlign:"left"}}>
+              <I name="user" size={14} style={{color:T.primaryDk}}/><span>마이페이지</span>
+            </button>
+            {(role==="owner" || role==="super") && (
+              <button onClick={()=>_goSlug('login-log')} style={{display:"flex",alignItems:"center",gap:9,width:"100%",padding:"10px 12px",border:"none",background:"transparent",cursor:"pointer",fontFamily:"inherit",fontSize:13,color:T.text,textAlign:"left"}}>
+                <I name="lock" size={14} style={{color:T.primaryDk}}/><span>접속 이력</span>
+              </button>
+            )}
+            {!(role==="owner" || role==="super" || role==="manager") && (
+              <button onClick={()=>_goSlug('join-brand')} style={{display:"flex",alignItems:"center",gap:9,width:"100%",padding:"10px 12px",border:"none",background:"transparent",cursor:"pointer",fontFamily:"inherit",fontSize:13,color:T.text,textAlign:"left"}}>
+                <I name="link" size={14} style={{color:T.primaryDk}}/><span>브랜드 가입 요청</span>
+              </button>
+            )}
+            <div style={{height:1,background:T.border}}/>
+            <button onClick={()=>{ setAcctMenuOpen(false); onLogout && onLogout(); }} style={{display:"flex",alignItems:"center",gap:9,width:"100%",padding:"10px 12px",border:"none",background:"transparent",cursor:"pointer",fontFamily:"inherit",fontSize:13,color:T.danger,textAlign:"left"}}>
+              <I name="arrowL" size={14}/><span>로그아웃</span>
+            </button>
+          </div>
+        )}
       </div>
       {bizSwitcher && bizSwitcher.options?.length > 0 && (
         <select value={bizSwitcher.current||""}

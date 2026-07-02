@@ -4904,3 +4904,11 @@ HANDOFF 최우선 대기였던 블리스미 인스타 SaaS 건 완결. 블리스
   - businesses/branches/app_users 3연속 INSERT 후 **`employees_v1` schedule_data**에 `[{id:'직원1',name:'직원1',branch:brId,weeklyOff:2,...},{id:'직원2',...}]` 2명 초기값 upsert. 신규 원장이 회원가입 즉시 타임라인·근무표에 직원 컬럼 2개 자동 표시. seed 실패해도 사업장 생성은 성공으로 진행(try/catch 감쌈).
 - **검증**: 빌드 통과 + 프리뷰(demo owner /settings/plan): 활성 기능 운영 그룹에 **팀 채팅 · "사이드바 팀 채팅 사용 여부"** 옵션 정확 표시(스크린샷 확인, 콘솔 에러 0). seed 코드는 sb.upsert + useEmployees.save 저장 포맷 동일(id·key='employees_v1', value=JSON stringify) → 라이브 신규 회원가입 시 자동 반영.
 - 적용: v3.8.205 라이브 배포(version.txt·CF퍼지).
+
+### v3.8.206 — 계정 설정을 상단 브랜드명 드롭다운으로 이동 (2026-07-02)
+정우님 요청 — 관리설정에 "내 계정" 섹션이 있는 게 어색함(사업장 단위 설정 아니라 본인 계정). 사이드바 상단 브랜드명 드롭다운으로 이전.
+- **`Sidebar.jsx`**: 상단 브랜드명 클릭 → `acctMenuOpen` 토글 → 드롭다운 (chevD/chevU 아이콘 표시). 항목: **타임라인 오늘 → 마이페이지 → 접속 이력**(owner/super만) → **브랜드 가입 요청**(멤버십 없는 직원만) → **로그아웃**. 바깥 클릭 시 자동 닫기(_acctRef + document mousedown). `_goSlug` 헬퍼로 `/settings/{slug}` 이동(mypage/login-log/join-brand — AdminPage TAB_SLUGS와 일치). `useRef`·`useEffect` import 추가.
+- **`AdminPage.jsx`**: 관리설정 메뉴에서 "내 계정" 섹션 통째 제거. **요금제 & 사용내역**은 사업장 단위 설정이라 별도 섹션 "요금 & 청구"로 분리 유지(isMaster만).
+- **검증**(프리뷰 demo owner + 스크린샷): 브랜드명 "체험 매장 ▲" 클릭 시 드롭다운 4개 항목 정확 표시. 관리설정 화면에서 마이페이지·접속이력·브랜드가입요청 미노출, 요금제만 "요금 & 청구" 섹션에 남음. 콘솔 에러 0.
+- 적용: v3.8.206 라이브 배포(version.txt·CF퍼지).
+- **유의**: 상단 오른쪽 로그아웃 버튼은 그대로 유지(드롭다운 안에도 있고, 기존 위치도 유지). "직원 후기"·"공지 & 요청" 등 다른 nav 항목은 무영향.

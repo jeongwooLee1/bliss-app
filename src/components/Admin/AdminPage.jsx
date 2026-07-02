@@ -403,12 +403,11 @@ function AdminPage({ data, setData, bizId, serverV, onLogout, currentUser, userB
       {key:"memoTemplates",icon:"file",      label:"메모 템플릿",    desc:"매출·예약·고객 메모 양식 설정"},
       ...(isOwner ? [{key:"aisettings",  icon:"sparkles", label:"AI 설정",        desc:"AI 분석 규칙 관리"}] : []),
     ]}] : []),
-    {section:"내 계정",items:[
-      {key:"mypage",      icon:"user",     label:"마이페이지",     desc:"내 계정 정보 및 비밀번호 변경"},
-      ...(isMaster ? [{key:"plan", icon:"zap", label:"💳 요금제 & 사용내역", desc:"잔액·요금제·발송내역·포인트 차감 한 곳"}] : []),
-      ...(isOwner ? [{key:"loginLog", icon:"lock", label:"접속 이력", desc:"계정별 로그인 IP·기기 기록 (보안 감시)"}] : []),
-      ...(!isMaster ? [{key:"joinbrand", icon:"link", label:"브랜드 가입 요청", desc:"브랜드 코드로 가입 요청"}] : []),
-    ]},
+    // '내 계정' 섹션은 사이드바 상단 브랜드명 드롭다운으로 이동됨(정우님 요청 2026-07-02).
+    // 요금제는 사업장 단위라 별도 섹션으로 남김.
+    ...(isMaster ? [{section:"요금 & 청구",items:[
+      {key:"plan", icon:"zap", label:"💳 요금제 & 사용내역", desc:"잔액·요금제·발송내역·포인트 차감 한 곳"},
+    ]}] : []),
   ];
 
   if(!tab) return <div>
