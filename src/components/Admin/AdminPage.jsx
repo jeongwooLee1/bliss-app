@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { T } from '../../lib/constants'
 import { sb, SB_URL, sbHeaders } from '../../lib/sb'
@@ -40,6 +40,27 @@ function AdminMyPage({ currentUser, onLogout }) {
   const [pw,setPw]=useState({cur:"",nw:"",nw2:""});
   const [msg,setMsg]=useState("");
   const [saving,setSaving]=useState(false);
+  // 연락처(이메일·전화) — accounts 테이블(RLS 잠금)이라 본인 계정만 조회/수정하는 RPC 경유 (정우 id_pcfdsqcm0r)
+  const [prof,setProf]=useState({email:currentUser?.email||"",phone:""});
+  const [profMsg,setProfMsg]=useState("");
+  const [profSaving,setProfSaving]=useState(false);
+  useEffect(()=>{ let alive=true; (async()=>{
+    try{
+      const r=await fetch(`${SB_URL}/rest/v1/rpc/account_get_profile`,{method:"POST",headers:{...sbHeaders,"Content-Type":"application/json"},body:"{}"});
+      const d=await r.json();
+      if(alive&&d&&d.ok) setProf({email:d.email||"",phone:d.phone||""});
+    }catch(e){}
+  })(); return ()=>{alive=false;}; },[]);
+  const saveProfile=async()=>{
+    setProfSaving(true); setProfMsg("");
+    try{
+      const r=await fetch(`${SB_URL}/rest/v1/rpc/account_update_profile`,{method:"POST",headers:{...sbHeaders,"Content-Type":"application/json"},body:JSON.stringify({p_email:prof.email,p_phone:prof.phone})});
+      const d=await r.json();
+      if(d&&d.ok) setProfMsg("✓ 저장됐어요");
+      else setProfMsg("저장 실패: "+((d&&d.error)==="no_session"?"세션이 만료됐어요. 새로고침 후 다시 로그인해주세요":((d&&d.error)||"다시 시도해주세요")));
+    }catch(e){ setProfMsg("저장 실패: "+e.message); }
+    finally{ setProfSaving(false); }
+  };
 
   const changePw=async()=>{
     if(!pw.cur){setMsg("현재 비밀번호를 입력해주세요");return;}
@@ -59,6 +80,21 @@ function AdminMyPage({ currentUser, onLogout }) {
     <div className="card" style={{padding:0,marginBottom:16,overflow:"hidden"}}>
       {[["이름",currentUser?.name||"-"],["아이디",currentUser?.loginId||currentUser?.login_id||"-"],["권한",roleLabel[currentUser?.role]||"-"]].map(([k,v],i,arr)=>
         <AListItem key={k} title={k} borderBottom={i<arr.length-1} right={<span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.text}}>{v}</span>}/>)}
+    </div>
+    <div className="card" style={{padding:20,marginBottom:16}}>
+      <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.text,marginBottom:16,display:"flex",alignItems:"center",gap:7}}>
+        <I name="user" size={14} style={{color:T.primary}}/> 연락처 정보
+      </div>
+      <AField label="이메일">
+        <input style={AInp} type="email" value={prof.email} onChange={e=>setProf(p=>({...p,email:e.target.value}))} placeholder="example@email.com"
+          onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/>
+      </AField>
+      <AField label="전화번호">
+        <input style={AInp} type="tel" value={prof.phone} onChange={e=>setProf(p=>({...p,phone:e.target.value}))} placeholder="010-0000-0000"
+          onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/>
+      </AField>
+      {profMsg&&<div style={{fontSize:T.fs.xs,color:profMsg.startsWith("✓")?T.success:T.danger,marginBottom:12,padding:"8px 12px",borderRadius:8,background:profMsg.startsWith("✓")?"#f0faf4":"#fff5f5"}}>{profMsg}</div>}
+      <AIBtn onClick={saveProfile} saving={profSaving} disabled={profSaving} label="연락처 저장"/>
     </div>
     <div className="card" style={{padding:20,marginBottom:16}}>
       <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.text,marginBottom:16,display:"flex",alignItems:"center",gap:7}}>
