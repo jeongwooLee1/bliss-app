@@ -4877,3 +4877,10 @@ HANDOFF 최우선 대기였던 블리스미 인스타 SaaS 건 완결. 블리스
 - **검증**(프리뷰 demo owner): 관리설정 index=13(마지막 nav 항목, 그 뒤는 팀채팅 컴포넌트만) + 직원 후기 등장횟수 0회 + 스크린샷 순서 확인 완료. 콘솔 에러 0.
 - 적용: v3.8.202 라이브 배포(version.txt·CF퍼지).
 - **유의**: 직원 후기 페이지(`/review.html`)는 정적 파일로 배포 유지 — URL 직접 이동은 계속 가능. 사이드바 진입점만 제거. 복구는 주석 처리된 라인(staff nav + 일반 nav 두 곳) 복원.
+
+### v3.8.203 — 신규 가입 폼(SignupWizard) 가운데 정렬 fix (2026-07-02)
+정우님 스크린샷 — `blissme.ai/login` 신규 가입 화면(BlissMe 카드)이 좌측 붙어있음. 로그인 화면은 flex 중앙정렬인데 회원가입 래퍼만 누락.
+- `AppShell.jsx:360`: SignupWizard 카드 스타일 `marginTop:20` → `margin:"20px auto 0"` (좌우 auto margin 추가). 카드 폭은 `width:"92%",maxWidth:460` 그대로 유지.
+- 부모 컨테이너(357)는 `position:fixed inset:0 overflowY:auto padding:"20px 16px 80px"`로 flex 아님 → auto margin이 정확한 해법.
+- **검증**(프리뷰 desktop): 스크린샷으로 카드가 화면 정중앙 위치·좌우 여백 균일 확인. 콘솔 에러 0.
+- 적용: v3.8.203 라이브 배포(version.txt·CF퍼지).
