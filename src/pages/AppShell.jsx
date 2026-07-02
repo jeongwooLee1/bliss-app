@@ -29,7 +29,7 @@ import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 import TradesPage from '../components/Trades/TradesPage'
 
 const uid = genId;
-const BLISS_V = "3.8.197"
+const BLISS_V = "3.8.198"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {

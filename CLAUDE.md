@@ -4835,3 +4835,10 @@ HANDOFF 최우선 대기였던 블리스미 인스타 SaaS 건 완결. 블리스
 - **검증**: 빌드 통과 + 프리뷰(demo owner) — 충전 모달 오픈·"1만원 결제하기" 클릭 → **"먼저 이 지점의 월 이용료 카드를 등록해주세요"** 안내 정확 표시(카드 미등록 상태 정상 처리). 콘솔 에러 0. 실카드 청구는 보증보험 승인 후 강남 삼성카드로 검증 예정.
 - 적용: v3.8.197 라이브 배포(version.txt·CF퍼지) + billing-charge Edge Function v18 라이브.
 - **유의**: ① topup 청구는 반드시 `purpose='subscription'` 카드에서만 (billing-charge가 400 거절) — 손님 정기결제 카드로 본사 topup 청구 오용 방지 ② 승인 후 라이브 검증 순서: 구독 등록(1000원 첫 결제) → 성공 시 → 충전 1000원 → 성공 시 강남 구독료 77000원 복구 ③ 삼성카드 KCP 심사 완료·보증보험 승인 두 조건 모두 충족돼야 카드 등록/청구 성공.
+
+### v3.8.198 — 반복 종료일 미설정 반복생성 fix + 활성 기능 개별 온오프 토글 (2026-07-02)
+작업세션이 배포 대기로 남긴 커밋(bf8773e)을 배포세션이 빌드·배포. 미리 검증 완료된 fix/feat 2건.
+- **TimelinePage 매일반복 종료일 미설정 fix** (정우 id_px5kws9o08): 반복(매일/매주/매월) 설정했는데 종료일을 비우면 다른 날에 아무것도 안 생기던 버그. `item.repeat!=='none'` 조건에서 `item.repeatUntil` 필수 게이트를 제거하고, 종료일 없으면 **start+90일**을 기본값으로 자동 생성. 원본 행에도 종료일을 기록해 재편집 시 표시. 가드 400개(무한생성 방지). 작업세션 검증: daily 91건·weekly 13건·monthly 3건 정상.
+- **AdminPlan 활성 기능 개별 온오프 토글** (정우 id_9e2n5wbvzj): 대표 관리자만 `businesses.settings.features`의 각 기능을 하나씩 켜고 끌 수 있음 (기존엔 요금제 세트로만 적용). `toggleFeature(k)` — 낙관적 setFeaturesLocal 반영 후 sb.update businesses.settings.features → 실패 시 롤백. 전역 `setFeatures(newFeatures)` 호출로 사이드바 등 즉시 반영. `groupedFeatures`에 **"거래 관리"**(trade_management) 그룹 신설. `AToggle` 컴포넌트 (`./AdminUI`) import 추가.
+- 적용: v3.8.198 라이브 배포(version.txt 검증 3.8.198, CF 퍼지 everything) + git push.
+- **유의**: 활성 기능 개별 토글은 `isOwner`(대표/super)만 접근. 토글 변경은 `settings.features`에 저장되고 `setFeatures` 알림으로 사이드바 nav 즉시 반영("새로고침 시 메뉴 반영" 메시지). 매일반복은 90일 기본이라 그 이상 원하면 종료일 명시 필요.
