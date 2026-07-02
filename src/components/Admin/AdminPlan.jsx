@@ -4,6 +4,7 @@ import { sb, SB_URL, SB_KEY } from '../../lib/sb'
 import { _activeBizId } from '../../lib/db'
 import { ALL_FEATURES, PLANS, featuresForPlan, setFeatures, extractFeatures, POINT_PRICING } from '../../lib/features'
 import I from '../common/I'
+import { AToggle } from './AdminUI'
 import AdminAlimtalkLog from './AdminAlimtalkLog'
 import AdminSmsLog from './AdminSmsLog'
 
@@ -84,8 +85,31 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
       { title: '메시지함 (Pro)', keys: ['messages_inbox','naver_scrape','naver_block','whatsapp','instagram_dm','line_chat'] },
       { title: 'AI (Pro)', keys: ['ai_auto_reply','ai_book','bliss_ai'] },
       { title: '동의서·업종 특화', keys: ['consent','care_sms','external_prepaid'] },
+      { title: '거래 관리', keys: ['trade_management'] },
     ]
   }, [])
+
+  // 기능 개별 온오프 (대표만) — businesses.settings.features 저장 (정우 id_9e2n5wbvzj)
+  const toggleFeature = async (k) => {
+    if (!isOwner) return
+    const next = !features[k]
+    const prevFeatures = features
+    const newFeatures = { ...features, [k]: next }
+    setFeaturesLocal(newFeatures)  // 낙관적
+    try {
+      let s = biz.settings
+      if (typeof s === 'string') { try { s = JSON.parse(s) } catch { s = {} } }
+      s = s || {}
+      s.features = newFeatures
+      await sb.update('businesses', biz.id, { settings: JSON.stringify(s) })
+      setFeatures(newFeatures)  // 전역 알림 → 사이드바 등 반영
+      if (setData) setData(prev => prev ? { ...prev, businesses: (prev.businesses||[]).map(b => b.id===biz.id ? { ...b, settings: JSON.stringify(s) } : b) } : prev)
+      setMsg(`${ALL_FEATURES[k]?.label || k} ${next ? '켜짐' : '꺼짐'} (새로고침 시 메뉴 반영)`)
+    } catch (e) {
+      setFeaturesLocal(prevFeatures)  // 실패 롤백
+      setMsg('기능 변경 실패: ' + (e.message || ''))
+    }
+  }
 
   // 지점별 사용량 집계
   const usageByBranch = useMemo(() => {
@@ -469,9 +493,9 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
                 <div style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:on?T.text:T.textMuted}}>{meta.label}</div>
                 <div style={{fontSize:T.fs.xxs,color:T.textMuted}}>{meta.desc}</div>
               </div>
-              <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:on?T.success:T.gray400}}>
-                {on ? 'ON' : 'OFF'}
-              </div>
+              {isOwner
+                ? <AToggle size="sm" on={on} onChange={()=>toggleFeature(k)}/>
+                : <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:on?T.success:T.gray400}}>{on ? 'ON' : 'OFF'}</div>}
             </div>
           })}
         </div>
@@ -479,7 +503,7 @@ function AdminPlan({ data, setData, currentUser, userBranches = [], initialSubTa
     ))}
 
     <div style={{fontSize:T.fs.xxs,color:T.textMuted,marginTop:12,padding:'8px 12px',background:T.gray100,borderRadius:T.radius.md}}>
-      💡 기능별 개별 토글은 추후 추가됩니다. 현재는 plan 단위로 일괄 적용됩니다.
+      💡 {isOwner ? '각 기능을 켜고 끌 수 있어요. 끄면 관련 메뉴가 숨겨집니다(새로고침 후 반영). 요금제 변경 시 기능이 일괄 재설정됩니다.' : '기능은 대표 관리자만 변경할 수 있어요.'}
     </div>
 
     {/* ─── 포인트 충전 모달 ─── */}

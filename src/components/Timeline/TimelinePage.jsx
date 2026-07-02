@@ -2899,15 +2899,20 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
         return { ...prev, reservations: _coupleCompanion ? [..._mappedRes, _coupleCompanion] : _mappedRes };
       }
       const items = [item];
-      if (item.repeat && item.repeat !== "none" && item.repeatUntil) {
+      if (item.repeat && item.repeat !== "none") {
         const fmtD = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
         const start = new Date(item.date + "T12:00:00");
-        const end = new Date(item.repeatUntil + "T12:00:00");
+        // 반복 종료일 미설정 시 기본 90일치 생성 (종료일 없으면 다른 날에 아무것도 안 생기던 버그 — 정우 id_px5kws9o08)
+        const _endStr = item.repeatUntil || fmtD(new Date(start.getTime() + 90*86400000));
+        item.repeatUntil = _endStr;  // 원본 행에도 종료일 기록 (재편집 시 표시)
+        const end = new Date(_endStr + "T12:00:00");
         const dayOfWeek = start.getDay();
         const dayOfMonth = start.getDate();
         let cur = new Date(start);
         cur.setDate(cur.getDate() + 1);
-        while (cur <= end) {
+        let _guard = 0;
+        while (cur <= end && _guard < 400) {
+          _guard++;
           let match = false;
           if (item.repeat === "daily") match = true;
           else if (item.repeat === "weekly") match = cur.getDay() === dayOfWeek;
@@ -2916,7 +2921,7 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
             const ds = fmtD(cur);
             const newId = uid();
             // 반복 항목마다 고유 reservation_id 필수 (NULLS NOT DISTINCT unique 회피)
-            items.push({ ...item, id: newId, reservationId: "manual_" + newId, date: ds, endDate: ds, repeat: item.repeat, repeatUntil: item.repeatUntil, repeatSourceId: item.id });
+            items.push({ ...item, id: newId, reservationId: "manual_" + newId, date: ds, endDate: ds, repeat: item.repeat, repeatUntil: _endStr, repeatSourceId: item.id });
           }
           cur.setDate(cur.getDate() + 1);
         }
