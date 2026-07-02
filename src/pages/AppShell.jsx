@@ -29,7 +29,7 @@ import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 import TradesPage from '../components/Trades/TradesPage'
 
 const uid = genId;
-const BLISS_V = "3.8.198"
+const BLISS_V = "3.8.199"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -410,7 +410,8 @@ function Login({ users, onAccountLogin, onSignup }) {
             <button onClick={()=>setShowSignup(true)} style={{background:"none",border:"none",fontSize:T.fs.sm,color:T.primary,fontWeight:T.fw.bolder,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>무료 체험 시작 →</button>
           </div>
           <div style={{fontSize:T.fs.xs,color:T.textMuted,textAlign:"center",marginTop:4}}>앱 v{BLISS_V}</div>
-          {/* 체험(데모) 계정 안내 */}
+          {/* 체험(데모) 계정 안내 — 정우님 요청으로 첫화면에서 숨김 (2026-07-02). 복구는 false→true. */}
+          {false && (
           <div style={{marginTop:10,padding:"10px 12px",background:T.primaryHover||T.gray100,borderRadius:T.radius.md,textAlign:"center"}}>
             <div style={{fontSize:T.fs.xs,color:T.primary,fontWeight:T.fw.bolder,marginBottom:3}}>체험용 데모 계정</div>
             <div style={{fontSize:T.fs.sm,color:T.text}}>아이디 <b>demo</b> · 비밀번호 <b>demo1234</b></div>
@@ -419,6 +420,7 @@ function Login({ users, onAccountLogin, onSignup }) {
               데모 계정으로 채우기
             </button>
           </div>
+          )}
         </div>
       </div>
       </div>

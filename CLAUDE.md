@@ -4842,3 +4842,11 @@ HANDOFF 최우선 대기였던 블리스미 인스타 SaaS 건 완결. 블리스
 - **AdminPlan 활성 기능 개별 온오프 토글** (정우 id_9e2n5wbvzj): 대표 관리자만 `businesses.settings.features`의 각 기능을 하나씩 켜고 끌 수 있음 (기존엔 요금제 세트로만 적용). `toggleFeature(k)` — 낙관적 setFeaturesLocal 반영 후 sb.update businesses.settings.features → 실패 시 롤백. 전역 `setFeatures(newFeatures)` 호출로 사이드바 등 즉시 반영. `groupedFeatures`에 **"거래 관리"**(trade_management) 그룹 신설. `AToggle` 컴포넌트 (`./AdminUI`) import 추가.
 - 적용: v3.8.198 라이브 배포(version.txt 검증 3.8.198, CF 퍼지 everything) + git push.
 - **유의**: 활성 기능 개별 토글은 `isOwner`(대표/super)만 접근. 토글 변경은 `settings.features`에 저장되고 `setFeatures` 알림으로 사이드바 nav 즉시 반영("새로고침 시 메뉴 반영" 메시지). 매일반복은 90일 기본이라 그 이상 원하면 종료일 명시 필요.
+
+### v3.8.199 — 로그인 첫화면 "체험용 데모 계정" 자동채움 블록 숨김 (2026-07-02)
+정우님 요청 — 첫 로그인 화면(`/login`) 하단의 **"체험용 데모 계정 · 아이디 demo · 비밀번호 demo1234 · [데모 계정으로 채우기]" 블록**을 숨김. 외부 방문자(랜딩 유입)가 늘어난 상황에서 로그인 화면에 데모 자격증명이 노출되는 게 부적절.
+- `AppShell.jsx` Login 화면의 데모 안내 블록(체험용 데모 계정 카드 + 자동채우기 버튼)을 `{false && (...)}`로 감쌈. **코드는 보존**(복구는 `false→true` 한 줄).
+- 로그인 폼·비번 재설정·회원가입 링크·앱 버전 표기 등 나머지 UI는 그대로.
+- **검증**(프리뷰 로그인화면): "체험용 데모 계정" 문구·"demo1234"·"데모 계정으로 채우기" 버튼 셋 다 미노출 확인, 콘솔 에러 0.
+- 적용: v3.8.199 라이브 배포(version.txt·CF퍼지).
+- **유의**: 데모 계정 자체(`demo/demo1234`)는 [[reference_bliss_demo_tenant]]로 그대로 살아있음 — 아이디·비번을 아는 사람은 로그인 가능. 첫화면에서 노출만 뺀 것.
