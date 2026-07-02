@@ -91,7 +91,9 @@ function Sidebar({ nav, page, setPage, role, branchNames, onLogout, bizName="", 
     <div style={{flex:1,minHeight:0,padding:"8px 0",overflowY:"auto"}}>
       {cats.map((cat,ci) => (
         <div key={ci}>
-          <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.gray500,padding:`12px ${T.sp.lg}px 4px`,letterSpacing:.5}}>{cat.label}</div>
+          {/* 정우님 요청 2026-07-02: 카테고리 라벨(예약 관리·고객 관리·매출 관리·거래 관리·시스템) 숨김 — 항목만 나열.
+              복구는 false→true. cats 그룹 구조는 유지(같은 그룹 항목은 연달아 표시). */}
+          {false && <div style={{fontSize:T.fs.xs,fontWeight:T.fw.bolder,color:T.gray500,padding:`12px ${T.sp.lg}px 4px`,letterSpacing:.5}}>{cat.label}</div>}
           {cat.items.map(n=>{
             const _st={display:"flex",alignItems:"center",gap:10,padding:`9px ${T.sp.lg}px`,border:"none",cursor:"pointer",fontSize:T.fs.sm,fontWeight:page===n.id?T.fw.bolder:T.fw.normal,
               background:page===n.id?T.primaryHover:"transparent",color:page===n.id?T.primaryDk:T.gray700,
