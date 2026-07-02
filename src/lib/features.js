@@ -166,7 +166,15 @@ export function extractFeatures(settings, bizId, plan) {
     try { parsed = JSON.parse(parsed) } catch { parsed = {} }
   }
   parsed = parsed || {}
-  if (parsed.features && typeof parsed.features === 'object') return parsed.features
+  // 명시 features 객체가 있어도, plan 기본값 위에 얹어 병합한다.
+  // → 나중에 추가된 기능 키(messages_inbox·consent 등)가 저장된 객체에 없으면
+  //   plan 기본값으로 폴백(누락=OFF 오표시 방지). 명시값(true/false)은 그대로 존중.
+  if (parsed.features && typeof parsed.features === 'object') {
+    const base = plan
+      ? featuresForPlan(plan)
+      : (bizId === 'biz_khvurgshb' ? featuresForPlan('pro') : DEFAULT_FEATURES_NEW_BIZ)
+    return { ...base, ...parsed.features }
+  }
   // plan 컬럼 있으면 그걸로 derive
   if (plan) return featuresForPlan(plan)
   // legacy 하우스왁싱: pro 처럼 동작
