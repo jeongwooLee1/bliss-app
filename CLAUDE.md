@@ -4884,3 +4884,12 @@ HANDOFF 최우선 대기였던 블리스미 인스타 SaaS 건 완결. 블리스
 - 부모 컨테이너(357)는 `position:fixed inset:0 overflowY:auto padding:"20px 16px 80px"`로 flex 아님 → auto margin이 정확한 해법.
 - **검증**(프리뷰 desktop): 스크린샷으로 카드가 화면 정중앙 위치·좌우 여백 균일 확인. 콘솔 에러 0.
 - 적용: v3.8.203 라이브 배포(version.txt·CF퍼지).
+
+### v3.8.204 — 회원가입 후 businesses INSERT RLS 42501 fix (2026-07-02)
+정우님 스크린샷 — 신규 가입 → "내 사업장 만들기" → **`new row violates row-level security policy for table "businesses"` (42501)** 로 실패. 사업장 생성 자체가 안 됨.
+- **원인**: 2026-06-14 보안차단으로 businesses 테이블 write는 `bliss_session_ok()` 토큰 게이트로 잠금(SELECT는 public_read). `account_signup` RPC는 accounts row만 만들고 **session_token 발급 안 함** → 회원가입 직후 시점에 `bliss_session_token` localStorage에 없음 → main.jsx fetch 인터셉터가 x-bliss-session 헤더 부착 안 함 → RLS 거절.
+- **fix (DB migration `account_signup_return_session_token`)**: `account_signup` 두 오버로드(4-param + 5-param phone) 모두 확장 — accounts INSERT 후 즉시 `_bliss_new_session(new_id)` 호출해 45일 staff 토큰 발급, 반환 JSON에 **`session_token`** 포함.
+- **fix (`AppShell.jsx` SignupWizard onSubmit)**: signup RPC 응답에서 `account.session_token`을 `localStorage.setItem('bliss_session_token', ...)` 저장. 이후 사업장 만들기 화면의 `sb.insert("businesses"/"branches"/"app_users")` 3연속 호출이 main.jsx 인터셉터로 자동 x-bliss-session 헤더 부착 → RLS 통과.
+- **검증**(end-to-end): ① 테스트 계정으로 `account_signup` RPC 호출 → `session_token: "st_5627..."` 반환 확인 ② 그 토큰으로 businesses INSERT curl → 201 정상 통과 확인 ③ 테스트 데이터 정리(businesses·app_sessions·accounts).
+- 적용: v3.8.204 라이브 배포(version.txt·CF퍼지).
+- **유의**: 기존 로그인 경로(auth_login_v2 등)는 이미 session_token 발급 중 — 이번 fix는 회원가입 직후 → 사업장 생성 경로에만 영향. `_bliss_new_session`은 SECURITY DEFINER라 app_sessions RLS 잠금 우회 정상. session_token 저장은 **가입 → 사업장 생성** 시점만 커버(자동로그인 재시도는 별개 흐름 v3.8.101).

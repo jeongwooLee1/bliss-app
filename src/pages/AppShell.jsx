@@ -29,7 +29,7 @@ import MarketingBroadcast from '../components/Marketing/MarketingBroadcast'
 import TradesPage from '../components/Trades/TradesPage'
 
 const uid = genId;
-const BLISS_V = "3.8.203"
+const BLISS_V = "3.8.204"
 
 // 라우트별 스크롤 위치 자동 유지 (새로고침 시 복원)
 function ScrollArea({ storageKey, children }) {
@@ -818,6 +818,8 @@ function SignupWizard({ onComplete, onBack }) {
         alert('가입 실패: 다시 시도해주세요.'); setSaving(false); return;
       }
       const account = await res.json();
+      // 가입 직후 세션 토큰 저장 — 다음 화면(사업장 만들기)에서 businesses/branches/app_users INSERT가 RLS 통과하려면 필수.
+      try { if (account?.session_token) localStorage.setItem('bliss_session_token', account.session_token); } catch(e) {}
       onComplete(account);
     } catch (e) {
       alert('가입 실패: ' + (e.message || '다시 시도해주세요.'));
