@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { T } from '../../lib/constants'
 import { sb } from '../../lib/sb'
+import { uploadImageToStorage } from '../../lib/supabase'
 import { _activeBizId, toDb } from '../../lib/db'
 import { genId } from '../../lib/utils'
 import I from '../common/I'
@@ -55,7 +56,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
   const [sheet,setSheet]=useState(false);
   const [edit,setEdit]=useState(null);
   const [editPair,setEditPair]=useState(null); // 페어 편집 시 {half, full}
-  const [form,setForm]=useState({cat:"",name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,isCouple:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0,badgeText:"",badgeColor:"#ffffff",badgeBg:"#f97316",promoConfig:{},isActive:true,grantsMemberPrice:false,isSubscription:false,showInGuide:false});
+  const [form,setForm]=useState({cat:"",name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,isCouple:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0,badgeText:"",badgeColor:"#ffffff",badgeBg:"#f97316",promoConfig:{},isActive:true,grantsMemberPrice:false,isSubscription:false,showInGuide:false,imageUrl:""});
   // 옵션 그룹 (절반/전체 같은 한 부위에 변형 옵션)
   const [useOptions, setUseOptions] = useState(false);
   const [opt1, setOpt1] = useState({name:"절반", dur:25, priceF:0, priceM:0, memberPriceF:0, memberPriceM:0});
@@ -104,7 +105,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
     if (typeof pc === "string") { try { pc = JSON.parse(pc); } catch(e) { pc = {}; } }
     setEdit(null);
     setEditPair({half: g.half, full: g.full});
-    setForm({cat:g.full.cat||"", name:g.base, dur:0, priceF:0, priceM:0, memberPriceF:0, memberPriceM:0, note:_stripPairTag(g.full.note||g.half.note||""), isPackage:false, isCouple:false, pkgCount:10, pkgPriceF:0, pkgPriceM:0, badgeText:g.full.badgeText||"", badgeColor:g.full.badgeColor||"#ffffff", badgeBg:g.full.badgeBg||"#f97316", promoConfig:pc||{}, isActive:g.full.isActive!==false, grantsMemberPrice:!!g.full.grantsMemberPrice, showInGuide:!!g.full.showInGuide});
+    setForm({cat:g.full.cat||"", name:g.base, dur:0, priceF:0, priceM:0, memberPriceF:0, memberPriceM:0, note:_stripPairTag(g.full.note||g.half.note||""), isPackage:false, isCouple:false, pkgCount:10, pkgPriceF:0, pkgPriceM:0, badgeText:g.full.badgeText||"", badgeColor:g.full.badgeColor||"#ffffff", badgeBg:g.full.badgeBg||"#f97316", promoConfig:pc||{}, isActive:g.full.isActive!==false, grantsMemberPrice:!!g.full.grantsMemberPrice, showInGuide:!!g.full.showInGuide,imageUrl:g.full.imageUrl||g.half.imageUrl||""});
     const halfBo = _getBaseAndOpt(g.half.name);
     const fullBo = _getBaseAndOpt(g.full.name);
     setOpt1({name: halfBo?.opt||"절반", dur:g.half.dur||0, priceF:g.half.priceF||0, priceM:g.half.priceM||0, memberPriceF:g.half.memberPriceF||0, memberPriceM:g.half.memberPriceM||0});
@@ -115,6 +116,8 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
   const [catSheet,setCatSheet]=useState(false);
   const [newCatName,setNewCatName]=useState("");
   const [saving,setSaving]=useState(false);
+  const [imgUp,setImgUp]=useState(false);
+  const [imgErr,setImgErr]=useState(false);
   const [del,setDel]=useState(null);
   // 이벤트 일괄 적용 모달
   const [bulkSheet, setBulkSheet] = useState(false);
@@ -152,7 +155,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
   const openNew=()=>{
     setEdit(null);
     setEditPair(null);
-    setForm({cat:defaultCatId,name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,isCouple:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0,badgeText:"",badgeColor:"#ffffff",badgeBg:"#f97316",promoConfig:{},isActive:true,grantsMemberPrice:false,isSubscription:false,showInGuide:false});
+    setForm({cat:defaultCatId,name:"",dur:20,priceF:0,priceM:0,memberPriceF:0,memberPriceM:0,note:"",isPackage:false,isCouple:false,pkgCount:10,pkgPriceF:0,pkgPriceM:0,badgeText:"",badgeColor:"#ffffff",badgeBg:"#f97316",promoConfig:{},isActive:true,grantsMemberPrice:false,isSubscription:false,showInGuide:false,imageUrl:""});
     setUseOptions(false);
     setOpt1({name:"절반", dur:25, priceF:0, priceM:0, memberPriceF:0, memberPriceM:0});
     setOpt2({name:"전체", dur:40, priceF:0, priceM:0, memberPriceF:0, memberPriceM:0});
@@ -163,7 +166,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
     if (typeof pc === "string") { try { pc = JSON.parse(pc); } catch(e) { pc = {}; } }
     setEdit(s);
     setEditPair(null);
-    setForm({cat:s.cat||"",name:s.name||"",dur:s.dur||20,priceF:s.priceF||0,priceM:s.priceM||0,memberPriceF:s.memberPriceF||0,memberPriceM:s.memberPriceM||0,note:s.note||"",isPackage:!!s.isPackage,isCouple:!!s.isCouple,pkgCount:s.pkgCount||10,pkgPriceF:s.pkgPriceF||0,pkgPriceM:s.pkgPriceM||0,badgeText:s.badgeText||"",badgeColor:s.badgeColor||"#ffffff",badgeBg:s.badgeBg||"#f97316",promoConfig:pc||{},isActive:s.isActive!==false,grantsMemberPrice:!!s.grantsMemberPrice,isSubscription:!!s.isSubscription,showInGuide:!!s.showInGuide});
+    setForm({cat:s.cat||"",name:s.name||"",dur:s.dur||20,priceF:s.priceF||0,priceM:s.priceM||0,memberPriceF:s.memberPriceF||0,memberPriceM:s.memberPriceM||0,note:s.note||"",isPackage:!!s.isPackage,isCouple:!!s.isCouple,pkgCount:s.pkgCount||10,pkgPriceF:s.pkgPriceF||0,pkgPriceM:s.pkgPriceM||0,badgeText:s.badgeText||"",badgeColor:s.badgeColor||"#ffffff",badgeBg:s.badgeBg||"#f97316",promoConfig:pc||{},isActive:s.isActive!==false,grantsMemberPrice:!!s.grantsMemberPrice,isSubscription:!!s.isSubscription,showInGuide:!!s.showInGuide,imageUrl:s.imageUrl||""});
     setUseOptions(false);
     setSheet(true);
   };
@@ -224,7 +227,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
       const _saveCat = (data?.categories||[]).find(cc => cc.id === form.cat);
       const _saveIsPkg = _saveCat?.name === '패키지' ? true : !!form.isPackage;
       // pkgPriceF/M 폐기 (메인 가격 사용으로 통일) — 호환성 위해 0으로 저장
-      const baseCommon = {cat:form.cat,note:form.note,isPackage:_saveIsPkg,isCouple:_saveIsPkg?!!form.isCouple:false,pkgCount:+form.pkgCount||0,pkgPriceF:0,pkgPriceM:0,badgeText:form.badgeText||null,badgeColor:form.badgeColor||null,badgeBg:form.badgeBg||null,promoConfig:Object.keys(cleanPc).length>0?cleanPc:null,isActive:form.isActive!==false,grantsMemberPrice:!!form.grantsMemberPrice,isSubscription:!!form.isSubscription,showInGuide:!!form.showInGuide};
+      const baseCommon = {cat:form.cat,note:form.note,isPackage:_saveIsPkg,isCouple:_saveIsPkg?!!form.isCouple:false,pkgCount:+form.pkgCount||0,pkgPriceF:0,pkgPriceM:0,badgeText:form.badgeText||null,badgeColor:form.badgeColor||null,badgeBg:form.badgeBg||null,promoConfig:Object.keys(cleanPc).length>0?cleanPc:null,isActive:form.isActive!==false,grantsMemberPrice:!!form.grantsMemberPrice,isSubscription:!!form.isSubscription,showInGuide:!!form.showInGuide,imageUrl:form.imageUrl||null};
       if (useOptions && editPair) {
         // 페어 편집: 양쪽 record 동시 업데이트, [pair:XX] 플래그 보존
         const pairId = _getPairId(editPair.full.note) || _getPairId(editPair.half.note) || uid().slice(0,8);
@@ -384,6 +387,7 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
         const sidx=g.idx;
         return <div key={s.id} className="card" data-drag-idx={sidx} {...svcMH(sidx)} {...svcTH(sidx)} style={{padding:"14px 16px",cursor:"grab",opacity:s.isActive===false?0.55:1,background:s.isActive===false?T.gray100:""}}>
           <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+            {s.imageUrl && <img src={s.imageUrl} alt="" style={{width:44,height:44,borderRadius:8,objectFit:"cover",flexShrink:0}}/>}
             <div style={{flex:1,minWidth:0}}>
               <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5,flexWrap:"wrap"}}>
                 <span style={{fontSize:T.fs.sm,fontWeight:T.fw.bolder,color:T.text,textDecoration:s.isActive===false?"line-through":"none"}}>{s.name}</span>
@@ -432,6 +436,19 @@ function AdminSaleItems({ data, setData, couponMode=false }) {
         }
       </AField>
       <AField label={useOptions?"부위명":"시술명"} required><input style={AInp} value={form.name} onChange={e=>set("name",e.target.value)} placeholder={useOptions?"예: 다리 (옵션이 자동 추가됨)":"예: 브라질리언"} onFocus={e=>e.target.style.borderColor=T.primary} onBlur={e=>e.target.style.borderColor="#e8e8f0"}/></AField>
+      <AField label="사진 (선택 — 메뉴 이미지)">
+        <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          {form.imageUrl
+            ? <img src={form.imageUrl} alt="" style={{width:56,height:56,borderRadius:8,objectFit:"cover",border:"1px solid "+T.border}}/>
+            : <div style={{width:56,height:56,borderRadius:8,background:T.gray100,display:"flex",alignItems:"center",justifyContent:"center"}}><I name="upload" size={18} style={{color:T.gray400}}/></div>}
+          <label style={{padding:"8px 13px",borderRadius:8,border:"1px solid "+T.primary,background:T.primaryLt||"#fef3c7",color:T.primary,fontSize:T.fs.xs,fontWeight:700,cursor:imgUp?"default":"pointer",display:"inline-flex",alignItems:"center",gap:5,opacity:imgUp?0.6:1}}>
+            <I name={imgUp?"loader":"upload"} size={14}/>{imgUp?"올리는 중…":(form.imageUrl?"사진 변경":"사진 찍기·올리기")}
+            <input type="file" accept="image/*" capture="environment" style={{display:"none"}} disabled={imgUp} onChange={async e=>{const f=e.target.files&&e.target.files[0];if(!f)return;setImgErr(false);setImgUp(true);const url=await uploadImageToStorage(f,"services");setImgUp(false);if(url)set("imageUrl",url);else setImgErr(true);e.target.value="";}}/>
+          </label>
+          {form.imageUrl && <button type="button" onClick={()=>set("imageUrl","")} style={{padding:"7px 11px",borderRadius:8,border:"1px solid "+T.border,background:"#fff",color:T.gray500,fontSize:T.fs.xs,cursor:"pointer",fontFamily:"inherit"}}>제거</button>}
+        </div>
+        {imgErr && <div style={{fontSize:T.fs.xxs,color:T.danger,marginTop:4}}>사진 업로드에 실패했어요. 다시 시도해주세요.</div>}
+      </AField>
       {/* 옵션 그룹 토글 (절반/전체 같은 변형) — 신규 등록 시만 */}
       {!edit && !editPair && <div style={{padding:"8px 10px",background:"#FFF8E1",border:"1px solid #FFE082",borderRadius:8,marginBottom:10}}>
         <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>

@@ -499,21 +499,21 @@ export default function FloatingAI({ data, currentUser, isMaster, bizId }) {
   if (!open) {
     const isMob = typeof window !== 'undefined' && window.innerWidth < 768
     return (
-      <button onClick={() => setOpen(true)} title="블리스 AI"
+      <button onClick={() => setOpen(true)} title="블리스 AI 도우미 — 예약·매출·고객·설정, 무엇이든 물어보거나 시켜보세요"
         style={{
           position: 'fixed', bottom: isMob ? 84 : 18, right: isMob ? 12 : 18, zIndex: 350,
-          width: 44, height: 44, borderRadius: '50%',
+          height: 44, borderRadius: 22, padding: '0 16px 0 13px',
           background: 'linear-gradient(135deg, #C4B5FD, #A78BFA)',
           color: '#fff', border: 'none', cursor: 'pointer',
-          boxShadow: '0 4px 12px rgba(167,139,250,.35), 0 1px 3px rgba(0,0,0,.08)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 20, fontFamily: 'inherit',
-          opacity: .85,
+          boxShadow: '0 4px 14px rgba(167,139,250,.4), 0 1px 3px rgba(0,0,0,.08)',
+          display: 'flex', alignItems: 'center', gap: 7,
+          fontSize: 14, fontWeight: 800, fontFamily: 'inherit', letterSpacing: '-0.2px',
+          opacity: .92,
           transition: 'transform .15s, opacity .15s, box-shadow .15s',
         }}
-        onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.06)'; e.currentTarget.style.opacity = '1'; }}
-        onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.opacity = '.85'; }}>
-        ✨
+        onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.05)'; e.currentTarget.style.opacity = '1'; }}
+        onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.opacity = '.92'; }}>
+        <span style={{ fontSize: 18 }}>✨</span>AI 도우미
       </button>
     )
   }
