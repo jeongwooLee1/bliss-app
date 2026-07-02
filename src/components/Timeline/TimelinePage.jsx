@@ -4364,7 +4364,8 @@ function Timeline({ data: _liveData, setData: _liveSetData, userBranches, viewBr
                       _alarmPressRef.current = {alarm:slotAlarms[0], branchId:targetBid, startY:t.clientY, startX:t.clientX, dragStarted:false};
                     }}
                     style={{position:"absolute",left:2,top:0,bottom:0,display:"flex",alignItems:"center",gap:2,fontSize:9,background:alarmDrag?.alarm?.id===slotAlarms[0].id?"#FDE68A":"#FEF3C7",color:"#92400E",padding:"0 4px",borderRadius:3,border:"1px solid #FBBF24",maxWidth:timeLabelsW-24,overflow:"hidden",whiteSpace:"nowrap",zIndex:2,cursor:"grab",userSelect:"none"}} title={`${slotAlarms[0].title} (클릭 편집 / 드래그 이동)`}>🔔{slotAlarms[0].title?.slice(0,4)||""}</span>}
-                  <span style={{fontSize:isHour?(window.innerWidth<=768?10:11):(window.innerWidth<=768?8:9),fontWeight:isHighlighted?700:(isHour?600:400),color:isHighlighted?T.primary:(isHour?T.gray700:T.gray500),whiteSpace:"nowrap",lineHeight:1,transition:"color 0.1s",transform:`translateY(${-rowH/2}px)`}}>{text}</span>
+                  {/* 첫 라벨(i=0, 영업 시작 시각)은 -rowH/2 올리면 그리드 위로 나가 헤더에 잘림 → 라벨 상단이 그리드 안에 남도록 클램프 */}
+                  <span style={{fontSize:isHour?(window.innerWidth<=768?10:11):(window.innerWidth<=768?8:9),fontWeight:isHighlighted?700:(isHour?600:400),color:isHighlighted?T.primary:(isHour?T.gray700:T.gray500),whiteSpace:"nowrap",lineHeight:1,transition:"color 0.1s",transform:`translateY(${i===0?Math.min(0,-rowH/2+7):-rowH/2}px)`}}>{text}</span>
                 </div>;
               })}
               {/* 알람 드래그 중: 타겟 슬롯 ghost */}
